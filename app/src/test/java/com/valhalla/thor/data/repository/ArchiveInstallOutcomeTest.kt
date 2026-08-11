@@ -251,10 +251,14 @@ class ArchiveInstallOutcomeTest {
     @Test
     fun `a stamp that could not be read before the install is not a landing`() {
         // The data-corruption case. `PackageManager` failing on the pre-install read — a binder
-        // hiccup, or a ROM that filters package visibility — must not look like "nothing was
-        // installed before, and something is now". If it did, a *failed* update would score as
-        // landed, and `InstalledWithoutGameData` tells the caller to write the new version's app
-        // data into the old copy still sitting on disk.
+        // failure, or a ROM refusing the call — must not look like "nothing was installed before,
+        // and something is now". If it did, a *failed* update would score as landed, and
+        // `InstalledWithoutGameData` tells the caller to write the new version's app data into the
+        // old copy still sitting on disk.
+        //
+        // Package-visibility filtering is deliberately not in that list: the platform answers a
+        // filtered package as not-installed, so it arrives as `Absent` on both sides and is scored
+        // by the no-stamp-afterwards rule instead. See `InstallStamp.Absent`.
         assertFalse(
             installLanded(before = InstallStamp.Unknown, after = InstallStamp.At(1_000L)),
         )

@@ -229,8 +229,13 @@ class AppArchiveInstallerImpl(
     } catch (_: PackageManager.NameNotFoundException) {
         InstallStamp.Absent
     } catch (e: Exception) {
-        // A binder hiccup, or a ROM that filters package visibility on this call. Logged because
-        // it silently costs the caller the difference between `Failed` and a data restore.
+        // A binder failure, or a ROM refusing the call outright. **Not** package-visibility
+        // filtering: the platform's contract there is to behave as though the package does not
+        // exist, so a filtered package throws `NameNotFoundException` and lands in `Absent` above —
+        // `InstallerLabelResolverImpl.kt:40` catches it the same way. That is safe here, because a
+        // filtered package reads `Absent` on *both* sides and [installLanded] scores that false.
+        // Logged because it silently costs the caller the difference between `Failed` and a data
+        // restore.
         Logger.e(TAG, "could not read the install stamp for $packageName", e)
         InstallStamp.Unknown
     }
@@ -315,10 +320,16 @@ internal sealed interface InstallStamp {
     /** The platform's stamp, in milliseconds. */
     data class At(val millis: Long) : InstallStamp
 
-    /** The platform said there is no such package. */
+    /**
+     * The platform said there is no such package.
+     *
+     * Which includes a package hidden from Thor by **package-visibility filtering** — the platform
+     * answers those as not-installed rather than as an error. Harmless here: a filtered package
+     * reads [Absent] on both sides of the install, and [installLanded] scores that no landing.
+     */
     data object Absent : InstallStamp
 
-    /** The platform could not be asked — a binder failure, or filtered package visibility. */
+    /** The platform could not be asked — a binder failure, or a ROM refusing the call. */
     data object Unknown : InstallStamp
 }
 
