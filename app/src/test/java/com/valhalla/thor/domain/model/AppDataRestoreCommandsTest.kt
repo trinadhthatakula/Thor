@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,6 +18,20 @@ class AppDataRestoreCommandsTest {
 
     private val root = "/data/user/0/com.example.app"
 
+    /**
+     * The refusal ERE compiled as a Java regex.
+     *
+     * That is only legitimate because the pattern is written with a literal space rather than
+     * `[[:space:]]` — Java's regex engine does not understand POSIX bracket expressions, and would
+     * silently read `[[:space:]]` as a class of the characters `:space`. Keeping the two dialects in
+     * agreement is what lets these tests pin the pattern's *behaviour* and not merely its text.
+     */
+    private val refusal = Regex(ARCHIVE_MEMBER_REFUSAL_PATTERN)
+
+    /** A plausible `tar -tv` line, so the tests exercise what grep will actually see. */
+    private fun listing(name: String, mode: String = "-rw-r--r--") =
+        "$mode 0/0             1024 2024-01-01 00:00 $name"
+
     @Test
     fun `the staging directory is a hidden child of the class root`() {
         assertEquals("$root/.thorbak-staging", stagingDirPath(root))
@@ -24,15 +39,15 @@ class AppDataRestoreCommandsTest {
 
     @Test
     fun `extract command for a compressed member is exactly right`() {
-        // Exact equality pins the ordering (mkdir, symlink guard, member-name check, then extract)
-        // and the member-name grep pattern. The pattern refuses absolute paths (^/) and any member
-        // whose name contains ".." as a path component, making extraction unable to write outside
-        // the staging directory regardless of which tar implementation the ROM supplies.
+        // Exact equality pins the ordering — mkdir, symlink guard, listing, refusal grep, extract —
+        // and pins that the listing declares the SAME compression the extraction does. A `-tf`
+        // listing against a gzipped archive is an unstated bet on read-side auto-detection.
         val tarPath = "/data/data/com.valhalla.thor/cache/x/ce.tar"
         val staging = "$root/.thorbak-staging"
         assertEquals(
             "mkdir -p '$staging' && [ ! -L '$staging' ] && " +
-                "! tar -tf '$tarPath' | grep -qE '^/|^\\.\\./|/\\.\\./|/\\.\\.\$' && " +
+                "! ( tar -tvzf '$tarPath' || echo $THOR_LIST_FAILED ) | " +
+                "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' && " +
                 "tar -xzf '$tarPath' -C '$staging'",
             extractCommand(root, tarPath, compressed = true),
         )
@@ -44,21 +59,105 @@ class AppDataRestoreCommandsTest {
         val staging = "$root/.thorbak-staging"
         assertEquals(
             "mkdir -p '$staging' && [ ! -L '$staging' ] && " +
-                "! tar -tf '$tarPath' | grep -qE '^/|^\\.\\./|/\\.\\./|/\\.\\.\$' && " +
+                "! ( tar -tvf '$tarPath' || echo $THOR_LIST_FAILED ) | " +
+                "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' && " +
                 "tar -xf '$tarPath' -C '$staging'",
             extractCommand(root, tarPath, compressed = false),
         )
     }
 
     @Test
+    fun `the refusal pattern is exactly this string`() {
+        // Typed out once, here, rather than repeated in every command assertion: those reference the
+        // constant, so a wrong pattern would sail past them. This is the one place text drift is caught,
+        // and the behavioural tests below are what say the text is the RIGHT text.
+        assertEquals(
+            "THOR_LIST_FAILED|(^| )/|(^| |/)\\.\\.(/|\$| )|(^| |/)\\.thorbak-staging(/|\$| )",
+            ARCHIVE_MEMBER_REFUSAL_PATTERN,
+        )
+    }
+
+    @Test
+    fun `a listing that tar could not produce is refused by the same pattern`() {
+        // The guard used to fold the listing into a pipeline whose exit status was grep's, not tar's:
+        // a tar that failed or listed partially produced "no match", `!` inverted it to 0, and the
+        // extraction ran anyway. The sentinel is what closes that, and it only closes it while the
+        // string the command echoes is the string the pattern matches.
+        val command = extractCommand(root, "/tmp/a.tar", compressed = true)!!
+
+        assertTrue(command.contains("|| echo $THOR_LIST_FAILED )"))
+        assertTrue(refusal.containsMatchIn(THOR_LIST_FAILED))
+    }
+
+    @Test
+    fun `every spelling of a dot-dot component is refused`() {
+        // The previous pattern hand-wrote the slash cases and so missed a member named exactly `..`:
+        // `^\.\./` needs a trailing slash and `/\.\.$` needs a leading one. Anchoring on the component
+        // boundary covers all four spellings with one alternative.
+        listOf("..", "../x", "x/..", "x/../y", "a/b/../../../etc").forEach { name ->
+            assertTrue(name, refusal.containsMatchIn(listing(name)))
+        }
+    }
+
+    @Test
+    fun `an absolute member name is refused`() {
+        assertTrue(refusal.containsMatchIn(listing("/etc/passwd")))
+        assertTrue(refusal.containsMatchIn(listing("/")))
+    }
+
+    @Test
+    fun `a link whose target escapes the tree is refused, and one that stays inside is not`() {
+        // `-C '<staging>'` does NOT bound this: a symlink member plus a later member written *through*
+        // it lands wherever the link points, with root's privilege. The rule is deliberately targeted
+        // rather than blanket — Thor's backup half tars whatever the app had, so refusing every symlink
+        // would leave Thor unable to restore its own archives.
+        assertTrue(refusal.containsMatchIn(listing("link -> /data/user/0/other.app", "lrwxrwxrwx")))
+        assertTrue(refusal.containsMatchIn(listing("link -> ../../other.app", "lrwxrwxrwx")))
+        assertTrue(refusal.containsMatchIn(listing("link -> sub/../../x", "lrwxrwxrwx")))
+        assertTrue(refusal.containsMatchIn(listing("hard link to /etc/shadow", "hrw-r--r--")))
+
+        assertFalse(refusal.containsMatchIn(listing("link -> databases/app.db", "lrwxrwxrwx")))
+        assertFalse(refusal.containsMatchIn(listing("link -> sub/dir/file", "lrwxrwxrwx")))
+    }
+
+    @Test
+    fun `a member named after the staging directory is refused`() {
+        // The composition defect: the swap protects exactly `! -name '.thorbak-staging'`, so an archive
+        // carrying a member by that name wipes the class root and then fails the `mv` onto itself — a
+        // destructive no-op that leaves the app with nothing. Both guards have to know the name.
+        assertTrue(refusal.containsMatchIn(listing(STAGING_DIR_NAME)))
+        assertTrue(refusal.containsMatchIn(listing("$STAGING_DIR_NAME/", "drwxr-xr-x")))
+        assertTrue(refusal.containsMatchIn(listing("$STAGING_DIR_NAME/x")))
+        assertTrue(refusal.containsMatchIn(listing("sub/$STAGING_DIR_NAME")))
+    }
+
+    @Test
+    fun `ordinary app data member names are not refused`() {
+        // A refusal pattern that fires on real data turns the whole restore path into a silent no-op,
+        // which is the same class of failure as one that never fires. `a..b` and `...` are legal names.
+        listOf(
+            "databases/app.db",
+            "shared_prefs/a..b.xml",
+            "files/...hidden",
+            "files/",
+            "files/My Photos/img.jpg",
+            "no_backup/x",
+        ).forEach { name ->
+            assertFalse(name, refusal.containsMatchIn(listing(name)))
+        }
+    }
+
+    @Test
     fun `the name the swap protects is exactly the name the extraction creates`() {
-        // Two string literals that must agree. If they drift, the swap deletes the staged data and the
-        // restore reports success over an empty directory.
+        // Three string literals that must agree: the directory the extract creates, the name the swap
+        // excludes from its deletion, and the member name the refusal pattern rejects. If any drifts,
+        // the swap deletes the staged data and the restore reports success over an empty directory.
         val extract = extractCommand(root, "/tmp/a.tar", compressed = true)!!
         val swap = swapStagedEntriesCommand(root)!!
 
         assertTrue(extract.contains("'$root/$STAGING_DIR_NAME'"))
         assertTrue(swap.contains("! -name '$STAGING_DIR_NAME'"))
+        assertTrue(refusal.containsMatchIn(listing(STAGING_DIR_NAME)))
     }
 
     @Test

@@ -23,6 +23,16 @@ const val THOR_OK = "THOR_OK"
 const val THOR_ABSENT = "THOR_ABSENT"
 
 /**
+ * Echoed *into the listing stream* when `tar` cannot list an archive Thor is about to extract.
+ *
+ * A guard that passes because its own input failed to be produced is worse than no guard, because the
+ * doc and the tests both read as though a check happened. Folding the failure into the same stream the
+ * refusal pattern greps makes a failed listing and a hostile member name take the **same** path: both
+ * match, and extraction does not run.
+ */
+const val THOR_LIST_FAILED = "THOR_LIST_FAILED"
+
+/**
  * Deliberately a copy of `ObbProbeParser`'s regex rather than an import of it.
  *
  * That one is `internal` in `com.valhalla.thor.data.repository`, and a `domain/` file importing from
@@ -274,6 +284,43 @@ internal fun stagingDirPath(root: String): String? {
     return "$root/$STAGING_DIR_NAME"
 }
 
+/** [STAGING_DIR_NAME] with its one regex metacharacter escaped, for use inside an ERE. */
+private val STAGING_NAME_ERE = STAGING_DIR_NAME.replace(".", "\\.")
+
+/**
+ * One ERE that refuses a `tar -tv` line naming a member Thor will not extract.
+ *
+ * Four alternatives:
+ *
+ * 1. **[THOR_LIST_FAILED]** — the sentinel [extractCommand] echoes when `tar` cannot list. Matching it
+ *    here is what turns a failed listing into a refusal instead of a pass.
+ * 2. **`(^| )/`** — an absolute member name, or a link target that is absolute. A `-tv` line never has
+ *    a space before a slash in its fixed fields (`root/root`, the size, the ISO date), so this fires
+ *    only on the name or on what follows `-> ` / `link to `.
+ * 3. **`(^| |/)\.\.(/|$| )`** — `..` as a whole path component, wherever it appears: bare `..`,
+ *    `../x`, `x/..`, `x/../y`, and the same four as a link target. Anchoring on the component
+ *    boundary rather than on hand-written slash cases is what makes a member named exactly `..`
+ *    match; `a..b` and `...` are legal names and do not.
+ * 4. **the staging directory's own name as a component** — [swapStagedEntriesCommand] excludes exactly
+ *    that name from its deletion, so an archive carrying a member by that name would wipe the class
+ *    root and then fail the `mv` onto itself: a destructive no-op leaving the app with nothing. The
+ *    two guards have to agree about the name, and this is the extraction half of that agreement.
+ *
+ * Alternatives 2 and 3 cover link **targets** as well as member names, which is why there is no
+ * separate `-> ` alternative: an absolute target is preceded by a space, and a `..` target is either
+ * preceded by a space or contains `/../`.
+ *
+ * A literal space rather than `[[:space:]]`: GNU, toybox and busybox all separate `-tv` fields with
+ * spaces, and a literal space means the same thing to POSIX ERE and to `java.util.regex` — so
+ * `AppDataRestoreCommandsTest` can pin this exact string's *behaviour* rather than only its text.
+ *
+ * The pattern over-refuses for a filename containing a space immediately followed by `/` or `..`
+ * (`"My Dir /f"`). That direction is the safe one, and such a name is far rarer than the symlink this
+ * exists to stop.
+ */
+internal val ARCHIVE_MEMBER_REFUSAL_PATTERN: String =
+    "$THOR_LIST_FAILED|(^| )/|(^| |/)\\.\\.(/|\$| )|(^| |/)$STAGING_NAME_ERE(/|\$| )"
+
 /**
  * Extract a decrypted tar into the staging directory under [root].
  *
@@ -285,22 +332,32 @@ internal fun stagingDirPath(root: String): String? {
  * 1. The `-L` test is not redundant with `mkdir -p`: `mkdir -p` exits 0 when the path is a symlink
  *    to a directory, and the extraction would then write through it with root's privilege, into a
  *    path the target app controls.
- * 2. **Member-name containment.** Before the actual extraction, `tar -t` lists every member name and
- *    `grep` refuses the whole extraction if any name starts with `/` (absolute path) or contains
- *    `..` as a path component. Thor does not choose its tar binary — the grep runs on every member
- *    name, so the check does not depend on the tar implementation stripping them. A member that
- *    violates the pattern makes `grep -qE` exit 0, `!` inverts to exit 1, and the `&&` chain
- *    short-circuits, leaving the staging directory empty and staging intact.
- * 3. Extraction uses `-C '$staging'`, so a name that slips through the grep check is still bounded
- *    by the staging directory root.
+ * 2. **The listing must be producible.** `tar -tv` is listed with the *same* compression the
+ *    extraction will use — never `-tf` against a gzipped archive on the hope that the implementation
+ *    auto-detects — and `|| echo $THOR_LIST_FAILED` injects a sentinel line if it does not succeed.
+ *    Without that, the pipeline's exit status is **grep's**, so a `tar` that failed or listed
+ *    partially reads as "no bad member" and extraction runs anyway.
+ * 3. **[ARCHIVE_MEMBER_REFUSAL_PATTERN] over that listing.** A match — a hostile member name, a
+ *    hostile link target, or the sentinel — makes `grep -qE` exit 0, `!` inverts it to 1, and the
+ *    `&&` chain short-circuits with nothing extracted.
+ *
+ * What `-C '$staging'` is **not**: a containment guarantee. It bounds where relative member names
+ * land, and it does nothing at all about a symlink member whose target escapes the tree — the next
+ * member written *through* that link lands wherever the link points, with root's privilege. That is
+ * why the refusal pattern reads link targets, and why the rule is targeted rather than blanket: a
+ * symlink or hardlink is refused when its target is absolute or contains `..`, and a relative,
+ * containment-safe target is allowed. Thor's own backup half tars whatever the app had, so refusing
+ * every symlink would leave Thor unable to restore its own archives.
  */
 internal fun extractCommand(root: String, tarPath: String, compressed: Boolean): String? {
     val staging = stagingDirPath(root) ?: return null
     if (!isQuotableAbsolutePath(tarPath)) return null
-    val flags = if (compressed) "-xzf" else "-xf"
+    val listFlags = if (compressed) "-tvzf" else "-tvf"
+    val extractFlags = if (compressed) "-xzf" else "-xf"
     return "mkdir -p '$staging' && [ ! -L '$staging' ] && " +
-        "! tar -tf '$tarPath' | grep -qE '^/|^\\.\\./|/\\.\\./|/\\.\\.\$' && " +
-        "tar $flags '$tarPath' -C '$staging'"
+        "! ( tar $listFlags '$tarPath' || echo $THOR_LIST_FAILED ) | " +
+        "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' && " +
+        "tar $extractFlags '$tarPath' -C '$staging'"
 }
 
 /**
