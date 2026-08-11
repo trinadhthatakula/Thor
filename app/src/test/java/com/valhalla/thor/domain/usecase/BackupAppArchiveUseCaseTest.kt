@@ -23,6 +23,7 @@ import com.valhalla.thor.domain.repository.ArchiveDestination
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -205,6 +206,33 @@ class BackupAppArchiveUseCaseTest {
         useCase(gateway, FakeStore(destination))(request(DataClass.CE, DataClass.DE), key()) {}
 
         assertEquals(THORBAK_HEADER_ENTRY, entryNames(destination.bytes.toByteArray()).last())
+    }
+
+    @Test
+    fun `the header is STORED and every streamed entry is deflated`() = runTest {
+        // Plan deviation 2: `thorbak.json` alone is STORED, because it is built in memory so `size`
+        // and `crc` are both known before `putNextEntry` demands them. Everything else is streamed as
+        // it is generated, so its CRC is unknowable up front and STORED is impossible — level-0
+        // deflate is the substitute. Without this test the two methods are indistinguishable to every
+        // other assertion here (`ZipInputStream` decodes both transparently), so a revert to a plain
+        // `ZipEntry(name)` for the header would stay green.
+        val destination = RecordingDestination()
+        val gateway = FakeGateway(entries = mapOf(DataClass.CE to listOf("files")))
+
+        useCase(gateway, FakeStore(destination))(request(DataClass.CE), key()) {}
+
+        val methods = mutableMapOf<String, Int>()
+        ZipInputStream(destination.bytes.toByteArray().inputStream()).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                zip.readBytes()
+                methods[entry.name] = entry.method
+                entry = zip.nextEntry
+            }
+        }
+
+        assertEquals(ZipEntry.STORED, methods[THORBAK_HEADER_ENTRY])
+        assertEquals(ZipEntry.DEFLATED, methods["ce.tar.gz.enc"])
     }
 
     @Test

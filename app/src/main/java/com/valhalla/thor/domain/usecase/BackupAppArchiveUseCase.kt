@@ -29,6 +29,7 @@ import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.util.Base64
+import java.util.zip.CRC32
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -112,9 +113,10 @@ internal class BackupAppArchiveUseCase(
             // §7.2 step 4: once, before the first class. Not per class.
             gateway.forceStop(request.packageName)
 
-            // Level 0: the members are ciphertext and the bundle is already compressed, so deflate
-            // would spend CPU to occasionally grow the file. STORED is not an option — it demands the
-            // CRC before `putNextEntry`, which is unknowable for a stream being generated.
+            // Level 0 for the streamed entries: the members are ciphertext and the bundle is already
+            // compressed, so deflate would spend CPU to occasionally grow the file. STORED is not an
+            // option for them — it demands the CRC before `putNextEntry`, which is unknowable for a
+            // stream being generated. The header, built in memory, is STORED; see below.
             val zip = ZipOutputStream(destination.output).apply { setLevel(Deflater.NO_COMPRESSION) }
 
             if (bundle != null) {
@@ -200,11 +202,20 @@ internal class BackupAppArchiveUseCase(
             )
 
             // The header is the **last** entry, because it names every member's nonce and chunk count
-            // and those are only known once the member is written. This is the one entry that can be
-            // STORED: it is in memory, so its size and CRC are both known — but level-0 deflate is
-            // already in force for the stream, and mixing methods buys nothing.
+            // and those are only known once the member is written. It is also the one entry that is
+            // STORED rather than level-0 deflated: it is built in memory, so `size` and `crc` — which
+            // `ZipOutputStream` demands *before* `putNextEntry` for a STORED entry, and which no
+            // streamed member can supply — are both known here. `setMethod` on the entry overrides the
+            // stream's level for this entry alone.
             val headerBytes = header.encode().encodeToByteArray()
-            zip.putNextEntry(ZipEntry(THORBAK_HEADER_ENTRY))
+            zip.putNextEntry(
+                ZipEntry(THORBAK_HEADER_ENTRY).apply {
+                    method = ZipEntry.STORED
+                    size = headerBytes.size.toLong()
+                    compressedSize = headerBytes.size.toLong()
+                    crc = CRC32().apply { update(headerBytes) }.value
+                }
+            )
             zip.write(headerBytes)
             zip.closeEntry()
             // `finish()`, never `close()`. `close()` would close `destination.output` underneath the
