@@ -11,7 +11,34 @@ sealed interface ArchiveInstallOutcome {
 
     data object Installed : ArchiveInstallOutcome
 
+    /**
+     * The app is not on the device, and [reason] says why.
+     *
+     * [reason] is the platform's own words — the message the install path put on
+     * `InstallerEventBus`, resolved to a string. Nobody is subscribed to that bus during a
+     * background restore, so this field is the only place it survives, and it is routinely the only
+     * actionable thing anyone will see: "switch to root or Shizuku and try again" is a sentence a
+     * user can act on, and the flat "the app could not be installed" it used to be replaced with is
+     * not.
+     */
     data class Failed(val reason: String) : ArchiveInstallOutcome
+
+    /**
+     * The app **is** installed and current, but something after the install itself failed — in
+     * practice its game data could not be placed.
+     *
+     * Its own outcome because the caller's next decision differs from [Failed]'s. The package is
+     * there, so restoring its data is both possible and the useful thing to do; reporting this as
+     * [Failed] leaves the user with an installed, empty app and no path forward but to start again.
+     * The caller should proceed **and** surface [reason], because a game whose expansions are
+     * missing starts and then crashes.
+     *
+     * Told apart from [Failed] without reading any message text: `lastUpdateTime` moved while the
+     * install ran, which is the platform's own record that *this* install landed. Presence cannot
+     * answer that — restoring over an existing install is the normal case, and a failed update
+     * leaves the old copy in place for `PackageManager` to say yes about.
+     */
+    data class InstalledWithoutGameData(val reason: String) : ArchiveInstallOutcome
 
     /**
      * The install neither succeeded nor reported an error inside the timeout.

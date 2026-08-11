@@ -188,13 +188,22 @@ class ObbInstaller(
      * expansions have been extracted and the whole point is not to extract them all. A volume that
      * fills mid-run surfaces as that file failing to copy — `obbPlaceCommand` verifies the written
      * size inside the same invocation, so a short write is a reported failure, not a silent one.
+     *
+     * It reads its expansion list through [readDeclaredExpansions] rather than [declaredExpansions],
+     * because the two silences differ here in a way they do not on the install path: this is the
+     * *terminal* operation for an app that is already installed, so there is no later step to fail
+     * on an unreadable archive with a better message. Reporting one as "nothing to place" would end
+     * a restore in "restored" and leave a game that starts and immediately crashes.
      */
     suspend fun placeStreaming(
         bundle: File,
         packageName: String,
         onFile: (String, Int, Int) -> Unit = { _, _, _ -> },
     ): ObbPlacement = withContext(ioDispatcher) {
-        val resolved = declaredExpansions(bundle, packageName)
+        val resolved = readDeclaredExpansions(bundle, packageName)
+            ?: return@withContext ObbPlacement.Failed(
+                "the app bundle in this archive could not be read, so its game data could not be placed"
+            )
         if (resolved.isEmpty()) return@withContext ObbPlacement.NotNeeded
         if (resolved.size > MAX_EXPANSION_ENTRIES) {
             return@withContext ObbPlacement.Failed(
@@ -264,28 +273,17 @@ class ObbInstaller(
     }
 
     /**
-     * The archive's expansions, already validated against [packageName]. Empty for a plain APK.
+     * The archive's expansions, already validated against [packageName]. Empty for a plain APK, and
+     * **also empty for an archive that could not be read at all.**
      *
-     * One pass over the central directory, not two: `BundleZip.read` returns every entry name
-     * alongside the sidecar bytes it was asked for, so calling `BundleZip.entryNames` as well would
-     * reopen and reparse the archive to rebuild a list already in hand.
+     * That conflation is deliberate on the install path, which is the only path that calls this:
+     * an unreadable archive is not this class's problem to report, because the install ahead will
+     * fail on it with a better message, and claiming "no expansions" here only means this feature
+     * adds nothing to that failure. The restore path has no install ahead of it and so calls
+     * [readDeclaredExpansions] directly — see [placeStreaming].
      */
     private fun declaredExpansions(bundle: File, packageName: String): List<ResolvedExpansion> =
-        try {
-            val contents = BundleZip.read(bundle, setOf("manifest.json"))
-            val manifest = contents.bytes["manifest.json"]
-                ?.let { parseXapkManifest(it.decodeToString()) }
-            resolveExpansions(
-                packageName = packageName,
-                declared = manifest?.expansions.orEmpty(),
-                entryNames = contents.entryNames
-            )
-        } catch (_: Exception) {
-            // An unreadable archive is not this class's problem to report — the install path
-            // ahead will fail on it with a better message. Claiming "no expansions" here only
-            // means this feature adds nothing to that failure.
-            emptyList()
-        }
+        readDeclaredExpansions(bundle, packageName).orEmpty()
 
     /**
      * Whether the active privilege can reach `Android/obb` at all.
@@ -317,6 +315,36 @@ class ObbInstaller(
     @Suppress("UsableSpace")
     private fun usableBytes(dir: File): Long = dir.usableSpace
 }
+
+/**
+ * The expansions [bundle] declares for [packageName], or **null when the archive could not be read**.
+ *
+ * The nullable return is the whole point: an empty list and a failed read are different answers, and
+ * folding them together is how a truncated `.thorbak` reports "nothing to place" and a restore ends
+ * in "restored" for a game that will crash on launch. Callers that have a later step to fail on the
+ * archive can flatten it with `orEmpty()`; the terminal ones must not.
+ *
+ * Empty — not null — for an archive that is simply expansion-free. A plain APK is a perfectly
+ * readable zip with no `manifest.json` and no `Android/obb/…` entries, and it must stay a
+ * "nothing to do", not become a failure.
+ *
+ * One pass over the central directory, not two: `BundleZip.read` returns every entry name alongside
+ * the sidecar bytes it was asked for, so calling `BundleZip.entryNames` as well would reopen and
+ * reparse the archive to rebuild a list already in hand.
+ */
+internal fun readDeclaredExpansions(bundle: File, packageName: String): List<ResolvedExpansion>? =
+    try {
+        val contents = BundleZip.read(bundle, setOf("manifest.json"))
+        val manifest = contents.bytes["manifest.json"]
+            ?.let { parseXapkManifest(it.decodeToString()) }
+        resolveExpansions(
+            packageName = packageName,
+            declared = manifest?.expansions.orEmpty(),
+            entryNames = contents.entryNames
+        )
+    } catch (_: Exception) {
+        null
+    }
 
 /**
  * The two device-touching halves of one streaming placement, so [streamObbEntries] can be tested

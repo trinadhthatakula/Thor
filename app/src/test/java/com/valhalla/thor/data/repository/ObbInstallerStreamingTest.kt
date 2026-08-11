@@ -6,17 +6,23 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.domain.model.ObbPlacement
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
- * The streaming placement loop, tested through [ObbStreamStep] so no `Context` is needed.
+ * `ObbInstaller`'s two hoisted halves — the streaming placement loop through [ObbStreamStep], and
+ * [readDeclaredExpansions] — so neither needs a `Context`.
  *
- * What matters here is disk: §8.4 exists because the existing `place` extracts every expansion before
- * placing any, so a 4 GB game costs 8 GB. These tests assert the peak, not just the outcome.
+ * What matters in the first half is disk: §8.4 exists because the existing `place` extracts every
+ * expansion before placing any, so a 4 GB game costs 8 GB. Those tests assert the peak, not just the
+ * outcome. What matters in the second is that "this archive declares no expansions" and "this
+ * archive could not be read" stay two answers.
  */
 class ObbInstallerStreamingTest {
 
@@ -125,5 +131,79 @@ class ObbInstallerStreamingTest {
 
         // 1-based: "1 of 2", not "0 of 2". A progress line that starts at zero reads as not started.
         assertEquals(listOf(Triple("main.obb", 1, 2), Triple("patch.obb", 2, 2)), seen)
+    }
+
+    // --- readDeclaredExpansions: "nothing declared" and "could not read" are different answers ---
+
+    private var zipCount = 0
+
+    private fun zipOf(vararg entries: Pair<String, ByteArray>): File {
+        val file = temp.newFile("declared-${entries.size}-${zipCount++}.xapk")
+        ZipOutputStream(file.outputStream()).use { out ->
+            entries.forEach { (name, bytes) ->
+                out.putNextEntry(ZipEntry(name))
+                out.write(bytes)
+                out.closeEntry()
+            }
+        }
+        return file
+    }
+
+    @Test
+    fun `an archive that cannot be read is null, not an empty list`() {
+        // The whole reason this function exists. `placeStreaming` is the terminal operation on the
+        // restore path — there is no install ahead of it to fail with a better message — so a
+        // truncated `.thorbak` that read as "no expansions" would end the restore in "restored" and
+        // leave a game that launches and immediately crashes.
+        val notAZip = temp.newFile("truncated.xapk").apply { writeBytes(ByteArray(64) { 0x7F }) }
+
+        assertNull(readDeclaredExpansions(notAZip, "com.example.game"))
+    }
+
+    @Test
+    fun `a plain apk declares nothing rather than failing`() {
+        // The other half of the same distinction: a monolithic APK is a perfectly readable zip with
+        // no `manifest.json` and no `Android/obb/…` entries. It must stay a `NotNeeded`, so this has
+        // to be an empty list and not a null.
+        val plain = zipOf(
+            "AndroidManifest.xml" to ByteArray(8),
+            "classes.dex" to ByteArray(8),
+        )
+
+        assertEquals(emptyList<ResolvedExpansion>(), readDeclaredExpansions(plain, "com.example.game"))
+    }
+
+    @Test
+    fun `a declared expansion is read out of the manifest and matched to its entry`() {
+        // The entry deliberately sits at the archive root while its `install_path` is the OBB
+        // directory — the shape a real `.xapk` uses, and the one the manifest-free fallback rule
+        // cannot find. A wiring that dropped the parsed manifest would resolve nothing here.
+        val zip = zipOf(
+            "manifest.json" to """
+                {"package_name":"com.example.game","expansions":[
+                  {"file":"main.1.obb","install_path":"Android/obb/com.example.game/main.1.obb"}
+                ]}
+            """.trimIndent().toByteArray(),
+            "base.apk" to ByteArray(8),
+            "main.1.obb" to ByteArray(16),
+        )
+
+        assertEquals(
+            listOf(ResolvedExpansion("main.1.obb", "main.1.obb")),
+            readDeclaredExpansions(zip, "com.example.game"),
+        )
+    }
+
+    @Test
+    fun `a manifest that is not json at all still reads the archive`() {
+        // `parseXapkManifest` returns null for unparseable JSON rather than throwing, so this is
+        // *not* an unreadable archive — the zip opened fine. It falls through to the manifest-free
+        // rule, which takes the `Android/obb/<pkg>/` entries the archive actually carries.
+        val zip = zipOf(
+            "manifest.json" to "not json {{{".toByteArray(),
+            "Android/obb/com.example.game/main.1.obb" to ByteArray(16),
+        )
+
+        assertEquals(listOf("main.1.obb"), readDeclaredExpansions(zip, "com.example.game")?.map { it.leafName })
     }
 }
