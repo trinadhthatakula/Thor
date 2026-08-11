@@ -98,8 +98,9 @@ internal class RestoreAppArchiveUseCase(
      * @param restoreObb "place the archive's game data". On an archive that holds no bundle
      *   (`header.appBundle == null` — a data-only backup) there is nothing to place, so this is
      *   satisfied by doing nothing and saying so in [ArchiveRestoreOutcome.Completed.warnings]; it is
-     *   **not** a failure, and the data restore proceeds. It is a failure only when the header
-     *   declares a bundle the container does not hold.
+     *   **not** a failure, and the data restore proceeds. It is a failure whenever the header declares
+     *   a bundle this run cannot produce — the entry is missing from the container, reading it threw,
+     *   or Thor's cache could not hold it. See [BundleStaging].
      * @param onProgress called on the calling coroutine, like [BackupAppArchiveUseCase]'s. The worker
      *   forwards it to `JobRegistry`. This use case takes no dispatcher of its own and does blocking
      *   work — the decrypt and the bundle copy — on the caller's, so **the worker must call it on
@@ -125,9 +126,9 @@ internal class RestoreAppArchiveUseCase(
             if (installFirst || restoreObb) extractBundle(source, header) else BundleStaging.None
         val bundle = (staging as? BundleStaging.Staged)?.file
         try {
-            // The three reasons there is no bundle mean three different things and are kept apart.
-            // Collapsing them is how "restore game data, left on, over a data-only archive" became a
-            // whole failed restore that wrote nothing and blamed the archive.
+            // "There is no bundle" is several different situations and they are kept apart. Collapsing
+            // them is how "restore game data, left on, over a data-only archive" became a whole failed
+            // restore that wrote nothing and blamed the archive.
             if (staging is BundleStaging.Unreadable) {
                 // The header declares one and the container does not deliver it. Both consumers need
                 // those exact bytes, so this stops here — before anything is destroyed.
@@ -373,27 +374,50 @@ internal class RestoreAppArchiveUseCase(
      */
     private sealed interface BundleStaging {
 
-        /** `header.appBundle == null` — a data-only backup. */
+        /**
+         * There is no bundle to stage, and that is not a problem. Either the header declares none
+         * (`header.appBundle == null` — a data-only backup) or one is declared and this run does not
+         * need it: [invoke] only calls [extractBundle] when `installFirst || restoreObb`, and skips
+         * straight to `None` otherwise rather than paying the app's whole download for nothing. The
+         * distinction does not reach a reader — every consumer of the staged file is guarded by the
+         * same two flags — but do not read `None` as "the archive holds no bundle".
+         */
         data object None : BundleStaging
 
         data class Staged(val file: File) : BundleStaging
 
-        /** The header declares a bundle; the container did not deliver it. */
+        /**
+         * The header declares a bundle this run could not produce: the entry is missing from the
+         * container, reading it threw, or Thor's cache could not hold the copy. [reason] says which.
+         */
         data class Unreadable(val reason: String) : BundleStaging
     }
 
     private suspend fun extractBundle(source: ArchiveSource, header: ArchiveHeader): BundleStaging {
         val declared = header.appBundle ?: return BundleStaging.None
-        // The header's `appBundle` is a claim about the container; the container is the authority. A
-        // header promising a bundle the zip does not hold stops here rather than handing the installer
-        // an empty file.
-        val entry = source.openEntry(declared.fileName)
-            ?: return BundleStaging.Unreadable(
-                "this archive says it holds ${declared.fileName}, but that file is not in it"
-            )
-        val out = gateway.stagingFile(THORBAK_BUNDLE_ENTRY)
+        // Every call that can throw is inside a `runCatching`, for the same reason the decrypt's catch
+        // was widened: an `IOException` escaping this function leaves `invoke`, and the worker gets a
+        // raw throw where the contract promises an `ArchiveRestoreOutcome`. `openEntry` throws on a
+        // truncated container and `stagingFile` throws when the cache is full — both are the expected
+        // failures here, not exotic ones.
         return runCatching {
-            entry.use { input -> out.outputStream().use(input::copyTo) }
+            // The header's `appBundle` is a claim about the container; the container is the authority. A
+            // header promising a bundle the zip does not hold stops here rather than handing the
+            // installer an empty file. This is the one non-throwing way to fail, so it returns
+            // non-locally with its own message instead of falling through to the generic one below.
+            val entry = source.openEntry(declared.fileName)
+                ?: return BundleStaging.Unreadable(
+                    "this archive says it holds ${declared.fileName}, but that file is not in it"
+                )
+            val out = gateway.stagingFile(THORBAK_BUNDLE_ENTRY)
+            try {
+                entry.use { input -> out.outputStream().use(input::copyTo) }
+            } catch (e: Throwable) {
+                // Delete here rather than in `getOrElse`, where `out` is out of scope: a half-copied
+                // `.xapk` left in the cache is what the installer would pick up on the next attempt.
+                out.delete()
+                throw e
+            }
             BundleStaging.Staged(out)
         }.getOrElse {
             // `runCatching` catches `Throwable`, so a cancellation would otherwise come back as a
@@ -401,7 +425,6 @@ internal class RestoreAppArchiveUseCase(
             // rethrow is here so that stays true the moment it is chunked or made suspending.
             if (it is CancellationException) throw it
             Logger.e(TAG, "could not stage the app bundle", it)
-            out.delete()
             BundleStaging.Unreadable("this archive's app bundle could not be unpacked: ${it.message}")
         }
     }

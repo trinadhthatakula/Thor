@@ -37,6 +37,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.util.Base64
 import javax.crypto.SecretKey
@@ -551,6 +552,27 @@ class RestoreAppArchiveUseCaseTest {
         assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
         assertEquals(emptyList<String>(), calls)
     }
+
+    @Test
+    fun `a container that throws while opening the bundle fails as an outcome, not as a throw`() =
+        runTest {
+            // A truncated `.thorbak` makes `openEntry` throw rather than answer null. The decrypt's
+            // catch was widened for exactly this reason; the bundle path needs the same, or the worker
+            // gets a raw `IOException` where the contract promises an `ArchiveRestoreOutcome`.
+            val (header, source) = archive(listOf(DataClass.CE))
+            val truncated = object : ArchiveSource by source {
+                override fun openEntry(name: String): InputStream? =
+                    if (name == THORBAK_BUNDLE_ENTRY) throw IOException("unexpected end of stream")
+                    else source.openEntry(name)
+            }
+
+            val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+                truncated, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
+            )
+
+            assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+            assertEquals(emptyList<String>(), calls)
+        }
 
     @Test
     fun `OBB is placed for an already-installed app when asked`() = runTest {
