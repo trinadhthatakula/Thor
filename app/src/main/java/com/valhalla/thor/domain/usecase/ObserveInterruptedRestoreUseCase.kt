@@ -46,7 +46,10 @@ class ObserveInterruptedRestoreUseCase(
 
     /**
      * Emits on every breadcrumb change and on every change to that app's live-job state. Null means
-     * "nothing to report", which covers both "no breadcrumb" and "the restore it belongs to is running".
+     * "nothing to report", which covers both "no breadcrumb" and "the restore it belongs to has not
+     * finished yet" — [ArchiveJobLauncher.runningJobFor] matches on `!isFinished`, so a restore still
+     * sitting in the queue suppresses the notice exactly as a running one does. That is the behaviour
+     * this wants: a queued restore has not failed either.
      */
     // `flatMapLatest` because the inner flow's *key* comes from the outer value: a new breadcrumb names
     // a different package, and the previous package's job watcher has to stop feeding this one.

@@ -395,11 +395,12 @@ internal class ArchiveRestoreViewModel(
             // Reachable only if the passphrase was dropped between unlocking and pressing the button.
             // Silently returning would leave a Restore button that does nothing.
             //
-            // No public path reaches it. `wipePassphrase` has four callers and none of them leaves this
-            // field null while `unlocked` — which `canStart` above requires — is still true: `open` and
-            // `useDifferentPassphrase` clear `unlocked` in the same breath, and the two unlock paths
+            // No public path reaches it. `wipePassphrase` has five callers and only one of them leaves
+            // this field null while `unlocked` — which `canStart` above requires — is still true: `open`
+            // and `useDifferentPassphrase` clear `unlocked` in the same breath, and the two unlock paths
             // (`submitPassphrase` accepting, the vault recall) assign the replacement on the next line.
-            // The one wipe that leaves the flag standing is `onCleared`, and that is `protected`. Kept,
+            // The fifth is `onCleared`, which does leave the flag standing — but it is `protected`, so
+            // it runs only after this view model is dead and nothing can press the button. Kept,
             // not deleted: without it this line is `!!` on a nullable field, i.e. a crash on a path
             // nobody can prove impossible from the call site.
             // `workerRan = false` here and at the two producers below: all three decide before
