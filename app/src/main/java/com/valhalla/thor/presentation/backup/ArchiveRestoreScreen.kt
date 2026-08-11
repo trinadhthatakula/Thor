@@ -441,9 +441,9 @@ private fun RestoreOutcome(finish: RestoreFinish, onDismiss: () -> Unit) {
             }
 
             is RestoreFinish.Cancelled -> if (finish.workerRan) {
-                // Cancelled with the worker already inside `doWork`. Nothing in Thor cancels a live
-                // job today, so this is the rare arm — but it is the one where "nothing was changed"
-                // would be false, and the damage is the same damage a failure leaves.
+                // Cancelled after the job had been handed to a built worker. Nothing in Thor cancels a
+                // live job today, so this is the rare arm — but it is the one where "nothing was
+                // changed" would be false, and the damage is the same damage a failure leaves.
                 Text(
                     text = stringResource(R.string.restore_cancelled_after_start),
                     style = MaterialTheme.typography.bodyMedium,

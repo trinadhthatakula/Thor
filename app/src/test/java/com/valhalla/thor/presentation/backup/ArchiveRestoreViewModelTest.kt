@@ -850,7 +850,7 @@ class ArchiveRestoreViewModelTest {
     @Test
     fun `a failure carries the worker's sentence, and says the device was touched`() =
         runTest(dispatcher) {
-            // FAILED is reachable only through `doWork` returning `Result.failure()`, so the damage
+            // Every FAILED Thor itself produces is `doWork` returning `Result.failure()`, so the damage
             // sentence applies whether or not this watcher happened to see RUNNING first. The fake
             // starts at PENDING precisely so it never does: `workerRan` is read off the status, not
             // off what this screen was lucky enough to observe.
@@ -905,9 +905,10 @@ class ArchiveRestoreViewModelTest {
     @Test
     fun `a cancel that followed a running job does not claim nothing was changed`() =
         runTest(dispatcher) {
-            // The other cancel. A job that reached RUNNING was inside `doWork`, which deletes each
-            // class before it writes it — so this one gets the damage sentence, not the reassurance
-            // the chain case gets. The two are one observed status apart and read as opposites.
+            // The other cancel. A job that reached RUNNING had been handed to a built worker, and that
+            // worker deletes each class before it writes it — so this one gets the damage sentence, not
+            // the reassurance the chain case gets. The two are one observed status apart and read as
+            // opposites.
             val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Pending))
             val vm = viewModel(launcher = launcher)
             vm.open(URI)

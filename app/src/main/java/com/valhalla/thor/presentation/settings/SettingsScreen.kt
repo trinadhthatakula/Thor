@@ -79,8 +79,7 @@ import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
-import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
-import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
+import com.valhalla.thor.domain.usecase.ObserveInterruptedRestoreUseCase
 import com.valhalla.thor.presentation.main.toDestination
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLanguage
@@ -709,18 +708,21 @@ fun SettingsScreen(
                     .background(MaterialTheme.colorScheme.surfaceContainerLow)
                     .padding(8.dp)
             ) {
-                // §8.5's notice, where a user who is not looking for it will still see it. Read from
-                // the store rather than through SettingsViewModel: it is one small file that no other
-                // part of Settings needs, and threading it through the view model would put a backup
-                // concern in the screen that owns every other preference.
+                // §8.5's notice, where a user who is not looking for it will still see it. Injected
+                // here rather than threaded through SettingsViewModel: it is one flow that no other
+                // part of Settings needs, and putting it in the view model that owns every preference
+                // would make a backup concern part of that class's surface.
                 //
-                // `observe()`, not a one-shot read: `ArchiveRestore` is registered as a detail pane,
-                // so on an expanded window this section and the restore screen are composed at the
-                // same time — the user taps "Got it" over there and a one-shot banner here would go
-                // on reporting a breadcrumb that no longer exists. The store reads on its own IO
-                // dispatcher, so nothing here touches a file on the main thread.
-                val breadcrumbs = koinInject<ArchiveBreadcrumbStore>()
-                val interrupted by remember(breadcrumbs) { breadcrumbs.observe() }
+                // The use case, not `ArchiveBreadcrumbStore.observe()` directly. A live observation of
+                // the raw breadcrumb is *wrong* on this surface: the breadcrumb is written at the start
+                // of the destructive phase, `ArchiveRestore` is registered as a detail pane, and on an
+                // expanded window this section is composed beside it — so a raw observe() renders "did
+                // not finish … restore it again" next to a progress bar reporting normal progress. The
+                // use case holds the notice back while a restore for that app is live, and still takes
+                // it down the moment "Got it" over there clears the breadcrumb. Both of its inputs read
+                // off the main thread.
+                val observeInterrupted = koinInject<ObserveInterruptedRestoreUseCase>()
+                val interrupted by remember(observeInterrupted) { observeInterrupted() }
                     .collectAsStateWithLifecycle(initialValue = null)
                 // Not dismissible here on purpose: the row beneath it leads to the screen that can
                 // clear it, and a dismiss in two places is two chances to lose the notice.

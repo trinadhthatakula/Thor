@@ -57,8 +57,14 @@ interface ArchiveBreadcrumbStore {
      * once keeps reporting a breadcrumb that has been deleted.
      *
      * **In-process only.** The trigger is a call on this instance, not a file watch — which is enough
-     * because Thor is one process and Koin binds one instance of this, workers included. An
+     * because one process writes breadcrumbs and Koin binds one instance of this within it, workers
+     * included: WorkManager declares no `android:process`, so a worker shares it. (Thor is not a
+     * single-process app — `ThorRootService` runs in `:root` — but nothing there touches this file.) An
      * implementation that has no way to change underneath itself may return a single-element flow.
+     *
+     * A consumer outside the screen running the restore wants `ObserveInterruptedRestoreUseCase`, not
+     * this: the breadcrumb is written at the *start* of the destructive phase, so a live observation of
+     * it reports a running restore as one that did not finish.
      */
     fun observe(): Flow<ArchiveBreadcrumb?>
 

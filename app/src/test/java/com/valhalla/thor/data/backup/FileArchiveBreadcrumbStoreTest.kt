@@ -182,8 +182,12 @@ class FileArchiveBreadcrumbStoreTest {
 
     @Test
     fun `observe re-emits when a restore writes a new breadcrumb`() = runTest {
-        // The other direction, and the one that reaches a user first: a restore started from the
-        // detail pane has to raise the notice on the Settings section beside it.
+        // The other direction: a breadcrumb written underneath a live collector reaches it, rather
+        // than waiting for the next entry into composition. This is the store's contract, not a
+        // statement about the banner — a breadcrumb is written at the *start* of the destructive
+        // phase, so the Settings notice must NOT go up here; `ObserveInterruptedRestoreUseCase` holds
+        // it back until that app has no live restore. What this emission is for is the moment the
+        // restore ends badly, when the same crumb is the notice.
         val store = store()
         val seen = mutableListOf<ArchiveBreadcrumb?>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {

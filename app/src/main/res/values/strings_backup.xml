@@ -95,15 +95,16 @@
     <string name="restore_failed_not_started">Nothing was started, so nothing on this device changed.</string>
     <!--
       Cancelled without ever running: jobs share one chain, WorkManager cancels the dependents of a job
-      that fails, and a dependent's work is never called. This is the only string in the file that gets
-      to say "nothing was changed", and it is true only because of that. The sibling below covers a
-      cancel that arrived after the worker had started.
+      that fails, and a dependent's work is never called. This is the only cancel string that gets to
+      say "nothing was changed", and it is true only because of that. (restore_failed_not_started above
+      says the same of a failure decided before the enqueue.) The sibling below covers a cancel that
+      arrived after the worker had started.
     -->
     <string name="restore_cancelled">Thor did not run this restore — the job ahead of it in the queue failed, so this one was cancelled before it started. Nothing was changed. Try again.</string>
     <!--
-      Cancelled with the worker already inside doWork, which this screen knows because it observed the
-      RUNNING state. Rendered above restore_failed_partial: the outcome differs from a failure, the
-      damage does not.
+      Cancelled after the job had been started, which this screen knows because it observed the RUNNING
+      state — written as WorkManager hands the job to a built worker. Rendered above
+      restore_failed_partial: the outcome differs from a failure, the damage does not.
     -->
     <string name="restore_cancelled_after_start">This restore was cancelled after it had already started.</string>
     <string name="restore_interrupted">The restore of %1$s did not finish. That app\'s data may be incomplete — restoring it again is the fix.</string>
