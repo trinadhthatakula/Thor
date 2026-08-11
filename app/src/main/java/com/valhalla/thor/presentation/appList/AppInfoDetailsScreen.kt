@@ -68,6 +68,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.widgets.AppActionRow
 import com.valhalla.thor.presentation.widgets.AppRiskAction
 import com.valhalla.thor.presentation.widgets.AppRiskDialog
@@ -279,6 +280,7 @@ fun AppInfoHeaderAndActions(
     var showFreezeConfirmation by remember { mutableStateOf(false) }
     var showReinstallWarning by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
+    var showBackupSheet by remember { mutableStateOf(false) }
 
     Column(modifier = modifier) {
         AppDetailsHeader(
@@ -321,7 +323,13 @@ fun AppInfoHeaderAndActions(
             onFixStore = { showReinstallWarning = true },
             onUninstall = { showUninstallConfirmation = true },
             onShare = { onAppAction(AppClickAction.Share(appInfo)) },
-            onExport = { showExportSheet = true }
+            onExport = { showExportSheet = true },
+            // Not optional in practice, whatever the defaulted parameter suggests. `MainScreen`
+            // routes to this screen whenever a detail pane exists and for landscape phones, and
+            // `AppInfoSheet` is never shown on those layouts — so leaving this out is not "the sheet
+            // carries backup and the details screen does not", it is "tablets and landscape phones
+            // have no way to reach backup at all".
+            onBackup = { showBackupSheet = true }
         )
     }
 
@@ -416,6 +424,17 @@ fun AppInfoHeaderAndActions(
 
     if (showExportSheet) {
         ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
+    }
+
+    // The same call `AppInfoSheet` makes, deliberately without a second copy of anything: the sheet
+    // reaches its own view model through Koin and scopes it to its own composition, so hosting it is
+    // one call and the per-app scoping cannot drift between the two surfaces.
+    if (showBackupSheet) {
+        AppBackupSheet(
+            packageName = appInfo.packageName,
+            appLabel = appInfo.appName ?: appInfo.packageName,
+            onDismiss = { showBackupSheet = false }
+        )
     }
 }
 

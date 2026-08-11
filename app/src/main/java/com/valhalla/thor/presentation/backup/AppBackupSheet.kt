@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.backup
 
 import android.content.Intent
 import android.text.format.Formatter
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
@@ -98,14 +99,33 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
     var confirmation by remember { mutableStateOf("") }
     var rememberIt by remember { mutableStateOf(true) }
 
+    // Resolved here rather than in the callback: a result callback is not a composable scope.
+    val notPersistable = stringResource(R.string.backup_destination_not_persistable)
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-            // The same preference the export flow writes: one chosen folder, not two.
-            scope.launch { preferenceRepository.setExportDirUri(uri.toString()) }
+            // A document provider is free to return a tree Uri without offering a persistable grant,
+            // and this throws SecurityException when it does — from inside a result callback, so an
+            // uncaught one takes the process with it. Not hypothetical on OEM ROMs with their own
+            // file providers. The folder is only recorded when the grant is real: a Uri Thor cannot
+            // re-open after a restart is a destination that breaks later instead of now.
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }.onSuccess {
+                // The same preference the export flow writes: one chosen folder, not two.
+                scope.launch {
+                    preferenceRepository.setExportDirUri(uri.toString())
+                    // After the write, never beside it: `currentTargetLabel()` resolves against the
+                    // saved Uri at call time, so asking first would answer with the old folder — and
+                    // the sheet would name the folder the archive is not going to.
+                    viewModel.refreshDestination()
+                }
+            }.onFailure {
+                Toast.makeText(context, notPersistable, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -235,6 +255,16 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                             LinearProgressIndicator(
                                 progress = { percent / 100f },
                                 modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (state.queued) {
+                            // Says where the job is, and stops there. Every job is appended to one
+                            // chain, and a dependent whose prerequisite fails is cancelled — so
+                            // "starting soon" would be a promise WorkManager has not made.
+                            Text(
+                                text = stringResource(R.string.backup_queued),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         state.progress?.let {

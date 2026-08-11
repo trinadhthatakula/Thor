@@ -25,9 +25,15 @@ import org.junit.Test
 class PassphraseVaultTest {
 
     /**
-     * [isSet] is a `get()` rather than a stored flow so it reads whatever [blob] holds at collection
-     * time — the tests below mutate `blob` through [write] and read it back directly, and a flow
-     * captured once at construction would answer for the constructor's value forever.
+     * [isSet] is a `get()` rather than a stored flow so it reads whatever [blob] holds at
+     * **property-access** time — the tests below mutate `blob` through [write] and read it back
+     * directly, and a flow captured once at construction would answer for the constructor's value
+     * forever.
+     *
+     * Property access, not collection: `flowOf(blob != null)` evaluates the condition when the getter
+     * runs and then replays that captured constant however late collection happens. Every test here
+     * accesses and collects in one expression (`vault.isRemembered.first()`), so the two coincide —
+     * but a test that holds the flow, changes `blob`, then collects will get the stale answer.
      */
     private class FakeStore(var blob: String? = null) : PassphraseVaultStore {
         override val isSet: Flow<Boolean> get() = flowOf(blob != null)

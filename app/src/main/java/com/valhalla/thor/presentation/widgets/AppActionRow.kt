@@ -79,11 +79,11 @@ fun AppActionRow(
     onToggleFreezerMembership: (() -> Unit)? = null,
     onOpenDetails: (() -> Unit)? = null,
     /**
-     * Null hides the tile — the same convention as [onToggleFreezerMembership] and [onOpenDetails].
+     * Null hides the tile — the same convention as [onToggleFreezerMembership] and [onOpenDetails],
+     * which is why it sits with them.
      *
-     * Grouped with the other optional parameters rather than beside `onExport`, which is required:
-     * a defaulted parameter in the middle of the required ones would compile but leave the list
-     * claiming an order that callers cannot use positionally.
+     * Null is not the only way to get no tile: the action is additionally gated on a privilege mode
+     * being active, so a non-null callback still renders nothing on a device with no shell.
      */
     onBackup: (() -> Unit)? = null
 ) {

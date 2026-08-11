@@ -81,7 +81,8 @@ class AppBackupViewModelTest {
         override val state: StateFlow<PrivilegeState> = MutableStateFlow(initial)
     }
 
-    private class FakeStore(val label: String = "Downloads/Thor") : AppArchiveStore {
+    /** [label] is a `var` so a test can move the destination the way the SAF picker does. */
+    private class FakeStore(var label: String = "Downloads/Thor") : AppArchiveStore {
         override suspend fun openArchive(fileName: String): ArchiveDestination? = null
         override suspend fun currentTargetLabel(): String = label
         override suspend fun discardOrphans(names: Set<String>): Set<String> = emptySet()
@@ -119,7 +120,27 @@ class AppBackupViewModelTest {
         val fail: Boolean = false,
     ) : ArchiveJobLauncher {
         var started: ArchiveBackupRequest? = null
+
+        /** A snapshot taken while `startBackup` runs — what the job actually received. */
         var startedWith: String? = null
+
+        /**
+         * The caller's array itself, by reference, so a test can look at it *after* the call.
+         *
+         * The pair with [startedWith] is what separates "wiped after use" from "wiped too early":
+         * one records the contents at call time, the other exposes the same object afterwards.
+         */
+        var startedArray: CharArray? = null
+
+        /**
+         * Per-id status flows, for the two tests that watch a second job in one sheet. An id with no
+         * entry here falls through to [statuses], which is what every single-job test uses.
+         *
+         * Load-bearing where a test asserts that a *new* watcher attached: with one shared flow the
+         * old watcher answers for the new job too, so a view model that never reattached would look
+         * exactly like one that did.
+         */
+        val statusesFor: MutableMap<UUID, MutableStateFlow<ThorJobStatus>> = mutableMapOf()
 
         override suspend fun startBackup(
             request: ArchiveBackupRequest,
@@ -127,6 +148,7 @@ class AppBackupViewModelTest {
         ): UUID? {
             started = request
             startedWith = passphrase.concatToString()
+            startedArray = passphrase
             return if (fail) null else jobId
         }
 
@@ -136,7 +158,7 @@ class AppBackupViewModelTest {
             salt: ByteArray,
         ): UUID? = null
 
-        override fun status(jobId: UUID): Flow<ThorJobStatus> = statuses
+        override fun status(jobId: UUID): Flow<ThorJobStatus> = statusesFor[jobId] ?: statuses
         override fun runningJobFor(kind: ThorJobKind, target: String): Flow<UUID?> = running
     }
 
@@ -255,6 +277,27 @@ class AppBackupViewModelTest {
             assertEquals("SD card/Backups", vm.uiState.value.destinationLabel)
         }
 
+    @Test
+    fun `picking a new folder moves the label with it`() = runTest(dispatcher) {
+        // `start` reads the label once, behind a one-shot guard. Without a way to ask again, the row
+        // names the old folder for the life of the sheet while the archive lands in the new one —
+        // and the folder the user just changed on purpose is the worst thing on the sheet to be
+        // wrong about.
+        val store = FakeStore(label = "Downloads/Thor")
+        val vm = viewModel(archiveStore = store)
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+        assertEquals("Downloads/Thor", vm.uiState.value.destinationLabel)
+
+        // What the SAF callback leaves behind: the preference is written, so the store — which
+        // resolves `exportDirUri` at call time — now answers differently.
+        store.label = "SD card/Backups"
+        vm.refreshDestination()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals("SD card/Backups", vm.uiState.value.destinationLabel)
+    }
+
     // --- selection -----------------------------------------------------------------------------
 
     @Test
@@ -311,13 +354,74 @@ class AppBackupViewModelTest {
     }
 
     @Test
-    fun `a filled vault does not ask`() = runTest(dispatcher) {
-        val vm = viewModel(vaultStore = FakeVaultStore(initial = "d29yZA"))
+    fun `whether the vault is filled is what decides the prompt`() = runTest(dispatcher) {
+        // Both halves, in one test, deliberately. `passphraseNeeded` defaults to false, so a filled
+        // vault asserted on its own is an assertion about the default: delete the whole
+        // `passphraseNeeded` read from `start` and it still passes. Emptying the store between two
+        // sheets is what makes the false mean something.
+        val store = FakeVaultStore(initial = "d29yZA")
+        val vm = viewModel(vaultStore = store)
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+        assertEquals(false, vm.uiState.value.passphraseNeeded)
 
+        // A new view model, not a second `start`: `start` is one-shot per instance, and a sheet
+        // reopened after the vault was cleared in Settings is a new instance anyway.
+        store.write(null)
+        val reopened = viewModel(vaultStore = store)
+        reopened.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(true, reopened.uiState.value.passphraseNeeded)
+    }
+
+    @Test
+    fun `the typed passphrase is wiped once the job has it`() = runTest(dispatcher) {
+        // `ThorJobLauncher.startBackup` documents that the caller owns the array and that the callee
+        // will not clear it. This is that caller. Every layer below spends real complexity keeping
+        // key material short-lived, and none of it survives a top layer that drops the passphrase in
+        // the clear.
+        val launcher = FakeLauncher()
+        val vm = viewModel(launcher = launcher)
         vm.start("com.example.app", "Example")
         testScheduler.advanceUntilIdle()
 
-        assertEquals(false, vm.uiState.value.passphraseNeeded)
+        val typed = "correct horse".toCharArray()
+        vm.beginBackup(typed, remember = true)
+        testScheduler.advanceUntilIdle()
+
+        // The pair is the point: the launcher took a snapshot at call time and got the real
+        // passphrase, so this is "wiped after use", not "wiped too early".
+        assertEquals("correct horse", launcher.startedWith)
+        assertEquals(" ".repeat(13), typed.concatToString())
+    }
+
+    @Test
+    fun `the recalled passphrase is wiped even when the enqueue fails`() = runTest(dispatcher) {
+        // The array `recall()` mints is entirely this class's own — nothing else holds a reference —
+        // so there is no Compose `String` ceiling to hide behind. The failing enqueue is the path
+        // that skips the ordinary end of the function, which is why the wipe is in a `finally`.
+        val store = FakeVaultStore()
+        PassphraseVault(store, PlainKeyProvider()).remember("stored one".toCharArray())
+        val launcher = FakeLauncher(fail = true)
+        val vm = viewModel(launcher = launcher, vaultStore = store)
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+
+        vm.beginBackup(CharArray(0), remember = false)
+        testScheduler.advanceUntilIdle()
+
+        // `startedArray` is the very array the view model recalled, held by reference: the launcher
+        // saw "stored one" when it was called, and the same object is blank now.
+        assertEquals("stored one", launcher.startedWith)
+        assertEquals(" ".repeat(10), launcher.startedArray?.concatToString())
+        assertTrue(vm.uiState.value.finished is BackupFinish.Failed)
+        // And the vault itself is untouched — the copy was wiped, not the stored blob. Zeroing the
+        // wrong thing would make the next backup prompt for a passphrase that is still remembered.
+        assertEquals(
+            "stored one",
+            PassphraseVault(store, PlainKeyProvider()).recall()?.concatToString(),
+        )
     }
 
     @Test
@@ -582,6 +686,116 @@ class AppBackupViewModelTest {
 
         assertNull(vm.uiState.value.finished)
         assertEquals(false, vm.uiState.value.running)
+    }
+
+    @Test
+    fun `a pruned job releases the watcher so the next one is still picked up`() =
+        runTest(dispatcher) {
+            // `Gone` is terminal like a success or a failure, and every other terminal arm detaches.
+            // Leaving this one attached keeps `watching` set, and `watching == null` is the whole of
+            // the `runningJobFor` guard — so the sheet would spend the rest of its life ignoring
+            // every job that came after.
+            val launcher = FakeLauncher()
+            val vm = viewModel(launcher = launcher)
+            vm.start("com.example.app", "Example")
+            testScheduler.advanceUntilIdle()
+            vm.beginBackup("correct horse".toCharArray(), remember = false)
+            testScheduler.advanceUntilIdle()
+
+            launcher.statuses.value = ThorJobStatus.Gone
+            testScheduler.advanceUntilIdle()
+            assertEquals(false, vm.uiState.value.running)
+
+            // The second job has a status flow of its own, on purpose: sharing one flow would let
+            // the *old* watcher answer for the new job, and a view model that never reattached would
+            // pass this test.
+            val second = UUID.fromString("00000000-0000-0000-0000-0000000000fe")
+            launcher.statusesFor[second] = MutableStateFlow(ThorJobStatus.Running)
+            launcher.running.value = second
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(true, vm.uiState.value.running)
+        }
+
+    @Test
+    fun `a job picked up after another finished inherits neither its bar nor its banner`() =
+        runTest(dispatcher) {
+            // The reattach path, which is the one `beginBackup`'s own clearing never covers: `finish`
+            // leaves the banner up and the bar at wherever the last job stopped, then nulls
+            // `watching` — and that is exactly the state `runningJobFor` hands the next job over in.
+            //
+            // Reachable as soon as anything other than this sheet can enqueue a backup for the
+            // package it is showing: a "back up everything" action, a schedule, a second entry point.
+            val registry = JobRegistry()
+            val launcher = FakeLauncher()
+            val vm = viewModel(launcher = launcher, registry = registry)
+            vm.start("com.example.app", "Example")
+            testScheduler.advanceUntilIdle()
+            vm.beginBackup("correct horse".toCharArray(), remember = false)
+            testScheduler.advanceUntilIdle()
+            registry.publish(
+                launcher.jobId,
+                ThorJobProgress(ThorJobStage.WRITING, "Example", completed = 6L, total = 10L),
+            )
+            launcher.statuses.value = ThorJobStatus.Succeeded
+            testScheduler.advanceUntilIdle()
+            assertEquals(60, vm.uiState.value.progress?.percent)
+            assertEquals(BackupFinish.Succeeded, vm.uiState.value.finished)
+
+            val second = UUID.fromString("00000000-0000-0000-0000-00000000cafe")
+            launcher.statusesFor[second] = MutableStateFlow(ThorJobStatus.Running)
+            launcher.running.value = second
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(true, vm.uiState.value.running)
+            // A bar at 60% over a job that has published nothing is a progress report for work that
+            // already ended, and "Backup saved." over a backup that is still writing is worse.
+            assertNull(vm.uiState.value.progress)
+            assertNull(vm.uiState.value.finished)
+        }
+
+    @Test
+    fun `a cancelled job is reported as a failure, not as a success`() = runTest(dispatcher) {
+        // Reachable rather than defensive: every job is appended to one chain, and WorkManager
+        // cancels the dependents of a prerequisite that returns `Result.failure()`. A backup queued
+        // behind a failing job therefore lands here with `doWork` never called — and "Backup saved."
+        // would name an archive that was never written.
+        val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Pending))
+        val vm = viewModel(launcher = launcher)
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+        vm.beginBackup("correct horse".toCharArray(), remember = false)
+        testScheduler.advanceUntilIdle()
+        assertEquals(true, vm.uiState.value.queued)
+
+        launcher.statuses.value = ThorJobStatus.Cancelled
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.finished is BackupFinish.Failed)
+        assertEquals(false, vm.uiState.value.running)
+        assertEquals(false, vm.uiState.value.queued)
+    }
+
+    @Test
+    fun `a queued job is not shown as one that is writing`() = runTest(dispatcher) {
+        // `Pending` covers ENQUEUED and BLOCKED. Folding it into `running` renders a backup waiting
+        // behind a long restore identically to one actively writing, for as long as the other job
+        // takes — the user reads "working" and watches nothing happen.
+        val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Pending))
+        val vm = viewModel(launcher = launcher)
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+
+        vm.beginBackup("correct horse".toCharArray(), remember = false)
+        testScheduler.advanceUntilIdle()
+        assertEquals(true, vm.uiState.value.running)
+        assertEquals(true, vm.uiState.value.queued)
+
+        launcher.statuses.value = ThorJobStatus.Running
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(true, vm.uiState.value.running)
+        assertEquals(false, vm.uiState.value.queued)
     }
 
     @Test

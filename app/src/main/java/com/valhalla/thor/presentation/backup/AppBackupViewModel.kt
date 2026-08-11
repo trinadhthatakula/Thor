@@ -50,6 +50,19 @@ data class AppBackupUiState(
     val passphraseNeeded: Boolean = false,
     val progress: ThorJobProgress? = null,
     val running: Boolean = false,
+    /**
+     * The job exists but WorkManager has not started it — `ENQUEUED` or `BLOCKED`, both of which
+     * [ThorJobStatus.Pending] carries.
+     *
+     * Separate from [running] rather than folded into it because the two look identical on screen
+     * otherwise: `beginUniqueWork(…, APPEND_OR_REPLACE, …)` appends behind whatever is already in the
+     * chain, so a backup queued behind a long restore shows the same indeterminate bar as one that is
+     * actively writing, for as long as the other job takes.
+     *
+     * Copy driven by this flag must not promise a run. A dependent is cancelled when its prerequisite
+     * returns `Result.failure()`, which is the [ThorJobStatus.Cancelled] arm below.
+     */
+    val queued: Boolean = false,
     val finished: BackupFinish? = null,
 ) {
     /** The bundle alone is a valid backup, as is data alone. Nothing at all is not. */
@@ -96,11 +109,17 @@ class AppBackupViewModel(
                 )
             }
         }
+        // Both reads are hoisted out of their `update` lambdas, matching `measure(packageName)` above.
+        // `update` is an inline compare-and-set retry loop, so a lost CAS re-runs the lambda — and
+        // these two lambdas would re-run a `DocumentFile` tree walk and a DataStore read inside it.
+        // Four coroutines here all write `_uiState`, so losing a CAS is ordinary, not exotic.
         viewModelScope.launch {
-            _uiState.update { it.copy(destinationLabel = archiveStore.currentTargetLabel()) }
+            val label = archiveStore.currentTargetLabel()
+            _uiState.update { it.copy(destinationLabel = label) }
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(passphraseNeeded = !vault.isRemembered.first()) }
+            val remembered = vault.isRemembered.first()
+            _uiState.update { it.copy(passphraseNeeded = !remembered) }
         }
         // The rotation case: a job for this app may already be running, in which case this sheet is a
         // progress view rather than a form.
@@ -123,6 +142,25 @@ class AppBackupViewModel(
 
     fun setIncludeBundle(include: Boolean) = _uiState.update { it.copy(includeBundle = include) }
 
+    /**
+     * Re-read the destination after the user has picked a new folder.
+     *
+     * [start] reads the label once, behind a one-shot guard, so nothing else would ever ask again —
+     * and the sheet would keep naming the old folder while the archive landed in the new one. The
+     * label is the one thing on this sheet the user just deliberately changed, so it is the worst
+     * place to be stale.
+     *
+     * Call it *after* the preference write has returned: [AppArchiveStore.currentTargetLabel] resolves
+     * against `exportDirUri` at call time, so an earlier call answers with the old folder.
+     * `ExportBottomSheet` does the same two steps in the same order.
+     */
+    fun refreshDestination() {
+        viewModelScope.launch {
+            val label = archiveStore.currentTargetLabel()
+            _uiState.update { it.copy(destinationLabel = label) }
+        }
+    }
+
     /** §10's "use a different passphrase" affordance. Shows the field even with a filled vault. */
     fun useDifferentPassphrase() = _uiState.update { it.copy(passphraseNeeded = true) }
 
@@ -136,41 +174,62 @@ class AppBackupViewModel(
     fun dismissResult() = _uiState.update { it.copy(finished = null, progress = null) }
 
     /**
-     * @param typed what the user entered, or an empty array when the field was not shown.
+     * @param typed what the user entered, or an empty array when the field was not shown. **Zeroed
+     *   before this returns to the caller's coroutine**, on every path — see the `finally` below.
      * @param remember whether to cache [typed] in the vault. Ignored when [typed] is empty.
      */
     fun beginBackup(typed: CharArray, remember: Boolean) {
         val state = _uiState.value
         if (!state.canStart) return
-        // `progress` is cleared with `finished`: the bar left over from the previous run belongs to a
-        // job that is over, and leaving it up would show this one starting at whatever percentage the
-        // last one stopped at until its first publish arrives.
-        _uiState.update { it.copy(running = true, finished = null, progress = null) }
+        // Cleared synchronously, before the coroutine that enqueues. Nothing is watching yet — the
+        // passphrase recall and the enqueue both have to complete first — so for that whole window
+        // this is the only thing that can take the previous run's bar down.
+        _uiState.update { it.copy(running = true, queued = false, finished = null, progress = null) }
 
         viewModelScope.launch {
             // An empty array means the field was not shown, so the vault is the source. A vault that
             // cannot be unwrapped is a *prompt*, not a failure: the archive would be perfectly
             // readable, it is the convenience layer that broke (§5.4).
-            val passphrase = typed.takeIf { it.isNotEmpty() } ?: vault.recall()
-            if (passphrase == null || passphrase.isEmpty()) {
-                _uiState.update { it.copy(running = false, passphraseNeeded = true) }
-                return@launch
-            }
-            if (remember && typed.isNotEmpty()) vault.remember(typed)
-
-            val request = ArchiveBackupRequest(
-                packageName = state.packageName,
-                classes = state.selected,
-                includeBundle = state.includeBundle,
-                salt = cipher.newSalt(),
-            )
-            val id = launcher.startBackup(request, passphrase)
-            if (id == null) {
-                _uiState.update {
-                    it.copy(running = false, finished = BackupFinish.Failed(null))
+            //
+            // Read before the `try` because `recall()` only runs when nothing was typed — so if it
+            // throws, `typed` is the empty array and there is no key material to leave behind.
+            val recalled = if (typed.isEmpty()) vault.recall() else null
+            try {
+                val passphrase = if (typed.isNotEmpty()) typed else recalled
+                if (passphrase == null || passphrase.isEmpty()) {
+                    _uiState.update { it.copy(running = false, passphraseNeeded = true) }
+                    return@launch
                 }
-            } else {
-                watch(id)
+                if (remember && typed.isNotEmpty()) vault.remember(typed)
+
+                val request = ArchiveBackupRequest(
+                    packageName = state.packageName,
+                    classes = state.selected,
+                    includeBundle = state.includeBundle,
+                    salt = cipher.newSalt(),
+                )
+                val id = launcher.startBackup(request, passphrase)
+                if (id == null) {
+                    _uiState.update {
+                        it.copy(running = false, queued = false, finished = BackupFinish.Failed(null))
+                    }
+                } else {
+                    watch(id)
+                }
+            } finally {
+                // `ThorJobLauncher.startBackup` states that the caller owns the array and that the
+                // callee will not clear it. This is that caller, and this is the whole of that
+                // ownership: every layer below pays real complexity to keep key material short-lived
+                // (`PassphraseVault` encodes through a `CharBuffer` to avoid minting a String,
+                // `ArchiveKeyHolder` expires derived keys after an hour) and none of it means anything
+                // if the passphrase is simply dropped in the clear here.
+                //
+                // In the `finally` so the early return above and any throw are covered too. `recalled`
+                // is this class's own array — nothing else holds a reference to it. `typed` came from
+                // the sheet, where it was a Compose `String` a moment earlier, so zeroing it narrows
+                // the window rather than closing it.
+                recalled?.fill(' ')
+                typed.fill(' ')
             }
         }
     }
@@ -184,31 +243,50 @@ class AppBackupViewModel(
     private fun watch(jobId: UUID) {
         watching?.cancel()
         watching = viewModelScope.launch {
-            _uiState.update { it.copy(running = true) }
+            // The invariant, and it is this function's job because both callers reach here:
+            // `beginBackup`, and the `runningJobFor` collector in `start`, which picks up a job this
+            // sheet did not enqueue. **Nothing from job A may be on screen once a watcher attaches
+            // to job B.** Only `beginBackup` clears anything of its own, so the reattach path starts
+            // from whatever `finish` left — which is the banner, still up, and `watching` nulled.
+            // The banner is cleared here; the bar is the collector's, below.
+            //
+            // `running` is set ahead of the first status rather than waiting for it: WorkManager's
+            // flow is not guaranteed to answer in the same frame, and a Start button over a job that
+            // is already writing invites a second one.
+            _uiState.update { it.copy(running = true, finished = null) }
             launch {
-                // Filtered, not assigned. `progressOf` mints a `MutableStateFlow(null)` for an id
-                // nothing has published for, so a collector that subscribes first would otherwise
-                // assign that null over whatever the state already holds.
-                //
-                // Narrower than it looks, and worth stating precisely rather than repeating the
-                // usual claim: `JobRegistry.clear` *removes* the entry, it does not null it, so a
-                // collector already attached to that flow never sees a null when a job ends. The
-                // null this guards against is only ever an initial value.
+                // Assigned, never filtered. The registry is keyed by job id, so this flow holds this
+                // job's progress and nothing else's — including the null that a job which has not
+                // published yet correctly has. Filtering that null was how job A's bar ended up
+                // sitting over job B's work: `progressOf` mints a fresh `MutableStateFlow(null)`,
+                // the filter dropped it, and the state kept whatever the last job left behind.
                 registry.progressOf(jobId).collect { progress ->
-                    if (progress != null) _uiState.update { it.copy(progress = progress) }
+                    _uiState.update { it.copy(progress = progress) }
                 }
             }
             launcher.status(jobId).collect { status ->
                 when (status) {
-                    is ThorJobStatus.Pending, is ThorJobStatus.Running ->
-                        _uiState.update { it.copy(running = true) }
+                    // Both are "the job exists and has not finished", which is why they share
+                    // `running`. `queued` is the part that differs and the part the user can act on.
+                    is ThorJobStatus.Pending -> _uiState.update {
+                        it.copy(running = true, queued = true)
+                    }
+
+                    is ThorJobStatus.Running -> _uiState.update {
+                        it.copy(running = true, queued = false)
+                    }
 
                     is ThorJobStatus.Succeeded -> finish(BackupFinish.Succeeded)
                     is ThorJobStatus.Failed -> finish(BackupFinish.Failed(status.reason))
+                    // WorkManager cancels the dependents of a prerequisite that fails, and every job
+                    // is appended to one chain — so a backup queued behind a failing job lands here
+                    // with `doWork` never called. Reporting it as anything but a failure would tell
+                    // the user an archive exists when none was written.
                     is ThorJobStatus.Cancelled -> finish(BackupFinish.Failed(null))
                     // Reached when a finished job's record has been pruned — which is what a
-                    // reattach after a long absence sees. Not a failure to report.
-                    is ThorJobStatus.Gone -> _uiState.update { it.copy(running = false) }
+                    // reattach after a long absence sees. Terminal like the three above, so it
+                    // releases the watcher the same way; it just has no outcome to report.
+                    is ThorJobStatus.Gone -> finish(result = null)
                 }
             }
         }
@@ -220,9 +298,14 @@ class AppBackupViewModel(
      * **This cancels the coroutine it is called from.** That is intended — the status flow never
      * completes on its own — but it means nothing placed after the `collect` in [watch] would run,
      * so cleanup does not belong there. The `progressOf` child collector is cancelled with it.
+     *
+     * @param result null for a terminal state with nothing to say: a pruned job is over, but it is
+     *   not a failure and it is not a success this sheet witnessed. Writing null cannot erase an
+     *   earlier banner, because [finish] is the only thing that ever sets one and it takes the
+     *   watcher down with it — so no watcher is ever alive while [AppBackupUiState.finished] is set.
      */
-    private fun finish(result: BackupFinish) {
-        _uiState.update { it.copy(running = false, finished = result) }
+    private fun finish(result: BackupFinish?) {
+        _uiState.update { it.copy(running = false, queued = false, finished = result) }
         watching?.cancel()
         watching = null
     }
