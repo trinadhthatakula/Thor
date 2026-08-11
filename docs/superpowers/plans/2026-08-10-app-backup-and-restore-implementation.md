@@ -10774,7 +10774,7 @@ class ArchiveRestoreViewModelTest {
         sources: ArchiveSourceFactory = FakeSources(FakeSource(head?.encode())),
     ) = ArchiveRestoreViewModel(
         sources = sources,
-        openArchive = OpenArchiveUseCase(cipher),
+        openArchive = OpenArchiveUseCase(cipher, dispatcher),
         probe = probe,
         installedFacts = ReadInstalledAppFactsUseCase(
             appRepository = FakeAppRepository(installedApps),
@@ -11716,6 +11716,8 @@ private fun refusalLabel(refusal: ArchiveRestoreRefusal): Int = when (refusal) {
     ArchiveRestoreRefusal.CLASS_NOT_IN_ARCHIVE -> R.string.restore_refused_class_missing
     ArchiveRestoreRefusal.NOTHING_SELECTED -> R.string.restore_refused_nothing_selected
     ArchiveRestoreRefusal.SCHEMA_TOO_NEW -> R.string.restore_refused_schema_too_new
+    ArchiveRestoreRefusal.INVALID_PACKAGE_NAME -> R.string.restore_refused_invalid_package_name
+    ArchiveRestoreRefusal.INVALID_USER_ID -> R.string.restore_refused_invalid_user_id
 }
 
 @StringRes
@@ -12064,6 +12066,8 @@ Append to `app/src/main/res/values/strings_backup.xml`, after Task 16's block, i
     <string name="restore_refused_class_missing">This backup does not hold one of the things selected.</string>
     <string name="restore_refused_nothing_selected">Nothing is selected.</string>
     <string name="restore_refused_schema_too_new">This backup was made by a newer version of Thor. Update Thor to restore it.</string>
+    <string name="restore_refused_invalid_package_name">This backup names an app in a way Thor will not accept. The file is damaged, or it was not written by Thor.</string>
+    <string name="restore_refused_invalid_user_id">This backup names a user profile Thor will not accept. The file is damaged, or it was not written by Thor.</string>
     <string name="restore_warning_version_older">The installed app is older than this backup. Apps can crash on data from a newer version — update the app first if it does.</string>
     <string name="restore_warning_ce_without_de">Startup data is in this backup but not selected. Some apps need both, and may behave as though half-migrated.</string>
     <string name="restore_settings_title">Restore a backup</string>
