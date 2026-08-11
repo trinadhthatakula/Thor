@@ -235,3 +235,88 @@ internal fun chownFileCommand(path: String, uid: Int): String? {
     if (uid < 0) return null
     return "chown $uid:$uid '$path' && chmod 600 '$path'"
 }
+
+/**
+ * The directory a restore extracts into, inside the class root it is replacing.
+ *
+ * Inside the class root, not in cache, so the promotion in [swapStagedEntriesCommand] is a series of
+ * same-filesystem renames rather than a second full copy. Hidden, so a user who looks at the directory
+ * mid-restore does not see it as app content.
+ *
+ * **This literal appears in two commands** — the extract creates it, the swap excludes it from the
+ * deletion. If the two ever disagree, the swap deletes the staged data after the original is already
+ * gone. `AppDataRestoreCommandsTest` pins them to each other for that reason.
+ */
+const val STAGING_DIR_NAME = ".thorbak-staging"
+
+internal fun stagingDirPath(root: String): String? {
+    if (!isQuotableAbsolutePath(root)) return null
+    return "$root/$STAGING_DIR_NAME"
+}
+
+/**
+ * Extract a decrypted tar into the staging directory under [root].
+ *
+ * @param compressed must match the member's recorded `compression`. Guessing would either fail on a
+ *   plain tar or, worse, succeed partially.
+ *
+ * The `-L` test is not redundant with `mkdir -p`: `mkdir -p` exits 0 when the path is a symlink to a
+ * directory, and the extraction would then write through it with root's privilege, into a path the
+ * target app controls.
+ */
+internal fun extractCommand(root: String, tarPath: String, compressed: Boolean): String? {
+    val staging = stagingDirPath(root) ?: return null
+    if (!isQuotableAbsolutePath(tarPath)) return null
+    val flags = if (compressed) "-xzf" else "-xf"
+    return "mkdir -p '$staging' && [ ! -L '$staging' ] && tar $flags '$tarPath' -C '$staging'"
+}
+
+/**
+ * Replace the class root's contents with the staged extraction, then remove the staging directory.
+ *
+ * Three properties, each of which has a test:
+ *
+ * - The deletion **excludes [STAGING_DIR_NAME]**. A `rm -rf <root>/\*` would delete the very directory
+ *   holding the data being restored, after the original is already gone.
+ * - Both halves use `find`, not a glob. A shell glob does not match dotfiles, and app data is full of
+ *   them; `mv <staging>/\* <root>/` silently leaves every dot entry behind.
+ * - `-mindepth 1 -maxdepth 1` so the walk is one level: the entries, not their contents, and not the
+ *   root itself.
+ *
+ * `-exec … +` for the delete (one `rm` for many paths) and `-exec … \;` for the move (`mv` needs its
+ * destination last). Both forms are on the toybox checklist for exactly this reason.
+ */
+internal fun swapStagedEntriesCommand(root: String): String? {
+    val staging = stagingDirPath(root) ?: return null
+    return "find '$root' -mindepth 1 -maxdepth 1 ! -name '$STAGING_DIR_NAME' -exec rm -rf {} + && " +
+        "find '$staging' -mindepth 1 -maxdepth 1 -exec mv -f {} '$root/' \\; && " +
+        "rmdir '$staging'"
+}
+
+/**
+ * Give the whole class root to the app's **live Linux uid**.
+ *
+ * A reinstalled app has a *new* uid, so the numeric owners inside the archive are always wrong; the
+ * caller reads this from `PackageManager` **after** the install lands (§8.2). Not called for the two
+ * external classes: `Android/data` on FUSE has synthesized ownership and `chown` there is meaningless.
+ */
+internal fun chownRecursiveCommand(root: String, uid: Int): String? {
+    if (!isQuotableAbsolutePath(root)) return null
+    // A negative uid is what `appUid()`'s null becomes if a caller coerces it. `chown -R -1:-1` is
+    // parsed as an option by some toybox builds.
+    if (uid < 0) return null
+    return "chown -R $uid:$uid '$root'"
+}
+
+/**
+ * Relabel the restored tree for SELinux.
+ *
+ * `-F` as well as `-R`: without the force, a file that already carries a context keeps whatever it was
+ * extracted with, and the app still cannot read it. Skipping this step is the most common reason a
+ * restore reports success and the app crashes on launch — which is precisely the failure mode this
+ * feature exists to avoid.
+ */
+internal fun restoreconCommand(root: String): String? {
+    if (!isQuotableAbsolutePath(root)) return null
+    return "restorecon -RF '$root'"
+}
