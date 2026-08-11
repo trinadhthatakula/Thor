@@ -115,18 +115,11 @@ class AppArchiveInstallerImpl(
     private suspend fun awaitOutcome(packageName: String): ArchiveInstallOutcome {
         val settled = withTimeoutOrNull(INSTALL_WAIT_MS) {
             eventBus.events.first { it is InstallState.Success || it is InstallState.Error }
-        } ?: return ArchiveInstallOutcome.Unconfirmed
-
-        if (settled is InstallState.Error) {
-            // The bus already carries the platform's own reason; a second sentence about restore
-            // would bury the cause under one of its consequences.
-            return ArchiveInstallOutcome.Failed("the app could not be installed")
         }
-        return if (appRepository.getAppDetails(packageName) != null) {
-            ArchiveInstallOutcome.Installed
-        } else {
-            ArchiveInstallOutcome.Unconfirmed
-        }
+        // Only asked once the wait has settled, and never when it produced an error: on the error
+        // path the answer is about the *previous* copy of the app, not this install.
+        val installed = settled is InstallState.Success && appRepository.getAppDetails(packageName) != null
+        return archiveInstallOutcome(settled, installed)
     }
 
     override suspend fun placeBundleObb(
@@ -145,4 +138,42 @@ class AppArchiveInstallerImpl(
          */
         private const val INSTALL_WAIT_MS = 10 * 60 * 1000L
     }
+}
+
+/**
+ * The verdict [AppArchiveInstallerImpl.awaitOutcome] reaches, as a pure function of what it saw.
+ *
+ * Top-level and `internal` for testability, the same trade [streamObbEntries] makes in this package:
+ * `AppArchiveInstallerImpl` takes an `ObbInstaller`, which needs a `Context`, and there is no mocking
+ * library on the unit-test classpath — so the class cannot be constructed off-device, and this
+ * decision would otherwise ship untested.
+ *
+ * The order of the branches is the contract:
+ *
+ *  - **A wait that ran out is [ArchiveInstallOutcome.Unconfirmed], never [ArchiveInstallOutcome.Failed].**
+ *    `session.commit()` is fire-and-forget, so an install that actually landed can still reach the
+ *    timeout; calling that a failure tells a user their restore did not install when it did.
+ *  - **An error is tested before presence.** A failed *update* leaves the old copy installed, so
+ *    `PackageManager` answers yes to a question about a version that never landed. Reading presence
+ *    first would call that `Installed` and let the caller write the new version's data into the old
+ *    app.
+ *  - **A `Success` nobody can corroborate is [ArchiveInstallOutcome.Unconfirmed] too.** The bus is
+ *    process-wide, so a `Success` on it is not proof that *this* package is there.
+ *
+ * @param settled the terminal state the bus produced, or null when the wait ran out.
+ * @param installed whether `PackageManager` can see the package. Meaningful only when [settled] is a
+ *   success; the caller does not ask otherwise.
+ */
+internal fun archiveInstallOutcome(
+    settled: InstallState?,
+    installed: Boolean,
+): ArchiveInstallOutcome = when {
+    settled == null -> ArchiveInstallOutcome.Unconfirmed
+    settled is InstallState.Error ->
+        // The bus already carries the platform's own reason; a second sentence about restore would
+        // bury the cause under one of its consequences.
+        ArchiveInstallOutcome.Failed("the app could not be installed")
+
+    installed -> ArchiveInstallOutcome.Installed
+    else -> ArchiveInstallOutcome.Unconfirmed
 }
