@@ -109,4 +109,14 @@ class AppDataArchiveTest {
         assertEquals(ids.size, ids.toSet().size)
         assertEquals(names.size, names.toSet().size)
     }
+
+    @Test
+    fun `only the two internal classes are chownable and relabellable`() {
+        // Not a tautology restating the getter: it pins *which* classes, so adding a fifth class
+        // forces a decision here rather than defaulting it to "external, skip ownership".
+        assertEquals(
+            listOf(DataClass.CE, DataClass.DE),
+            DataClass.entries.filter { it.isInternal },
+        )
+    }
 }

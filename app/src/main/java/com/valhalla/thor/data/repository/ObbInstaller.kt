@@ -5,7 +5,9 @@ package com.valhalla.thor.data.repository
 
 import android.content.Context
 import android.os.Environment
+import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.repository.SystemRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
@@ -14,25 +16,6 @@ import java.io.File
 
 /** Where the install side unpacks an archive's expansions before the shell moves them into place. */
 internal const val OBB_INSTALL_STAGING_DIR = "obb_in"
-
-/** What happened to an archive's game data. */
-sealed interface ObbPlacement {
-
-    /** The archive declared no expansions, so there was nothing to do. */
-    data object NotNeeded : ObbPlacement
-
-    /** [count] expansion files are now in `Android/obb/<pkg>/`. */
-    data class Placed(val count: Int) : ObbPlacement
-
-    /**
-     * The app installed but its game data did not land.
-     *
-     * Reported to the user rather than swallowed: an installed game that crashes on first launch
-     * with no explanation is the failure mode GH#164 describes, and silence here would reproduce
-     * it from the other direction.
-     */
-    data class Failed(val reason: String) : ObbPlacement
-}
 
 /**
  * Places a `.xapk`'s expansion files into `Android/obb/<pkg>/`.
@@ -180,6 +163,107 @@ class ObbInstaller(
     }
 
     /**
+     * Place a bundle's expansions **without extracting them all first** (§8.4).
+     *
+     * Distinct from [place] rather than a flag on it: [place] is the install path PR #376 verified on
+     * hardware, and a defaulted parameter changing its behaviour is exactly the shape that hides the
+     * call site that matters. The follow-up row in Task 18 proposes converging the two once this one
+     * has its own hardware pass.
+     *
+     * Restore reaches here for an app that is **already installed** — the install path already places
+     * OBB itself. Skipping the bundle for an installed app would leave a game whose expansions were
+     * wiped with no way to get them back.
+     *
+     * Two guards [place] gets for free from `extractExpansions` have to be restated here, because
+     * this path hands that function one expansion at a time and both of its limits are per-call:
+     *
+     *  - **The entry count.** [MAX_EXPANSION_ENTRIES] is checked against the whole resolved set
+     *    below. A one-element list never trips it, so without this line a manifest-free archive
+     *    carrying a million `*.obb` entries would stream every one of them — a million inodes and a
+     *    million privileged `cp` invocations, which is precisely what that constant exists to stop.
+     *  - **The byte budget** genuinely does become per-file, and that is the correct bound here
+     *    rather than a lost one: it caps the staging directory, and streaming holds one file there.
+     *
+     * There is no upfront free-space check, unlike [place], because the total is not known until the
+     * expansions have been extracted and the whole point is not to extract them all. A volume that
+     * fills mid-run surfaces as that file failing to copy — `obbPlaceCommand` verifies the written
+     * size inside the same invocation, so a short write is a reported failure, not a silent one.
+     */
+    suspend fun placeStreaming(
+        bundle: File,
+        packageName: String,
+        onFile: (String, Int, Int) -> Unit = { _, _, _ -> },
+    ): ObbPlacement = withContext(ioDispatcher) {
+        val resolved = declaredExpansions(bundle, packageName)
+        if (resolved.isEmpty()) return@withContext ObbPlacement.NotNeeded
+        if (resolved.size > MAX_EXPANSION_ENTRIES) {
+            return@withContext ObbPlacement.Failed(
+                "this archive lists more game data files than Thor will unpack"
+            )
+        }
+
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath
+            ?: return@withContext ObbPlacement.Failed("shared storage is unavailable")
+        val mkdirCommand = obbMkdirCommand(externalRoot, packageName)
+            ?: return@withContext ObbPlacement.Failed(
+                "this app's game data folder is not a path Thor will create"
+            )
+        val externalCache = context.externalCacheDir
+            ?: return@withContext ObbPlacement.Failed("shared storage is unavailable")
+
+        val staging = File(externalCache, "$OBB_INSTALL_STAGING_DIR/$packageName")
+        if (!staging.deleteRecursively()) {
+            return@withContext ObbPlacement.Failed(
+                "the leftovers of an earlier attempt could not be cleared"
+            )
+        }
+        val mkdir = systemRepository.executeShellCommand(mkdirCommand).getOrNull()
+        if (mkdir == null || mkdir.first != 0) {
+            return@withContext ObbPlacement.Failed("the game data folder could not be created")
+        }
+
+        try {
+            streamObbEntries(
+                leafNames = resolved.map { it.leafName },
+                staging = staging,
+                onFile = onFile,
+                step = object : ObbStreamStep {
+                    override suspend fun extract(leafName: String, into: File): File? =
+                        extractExpansions(bundle, resolved.filter { it.leafName == leafName }, into)
+                            .firstOrNull()
+                            ?.file
+
+                    override suspend fun place(source: File, leafName: String): Boolean {
+                        val command = obbPlaceCommand(
+                            externalStorageDir = externalRoot,
+                            packageName = packageName,
+                            leaf = leafName,
+                            sourcePath = source.absolutePath,
+                            expectedBytes = source.length(),
+                        ) ?: return false
+                        val move = systemRepository.executeShellCommand(command).getOrNull()
+                        return move != null && move.first == 0
+                    }
+                },
+            )
+        } catch (e: CancellationException) {
+            // Physically before the `Exception` catch or it is dead code, and swallowing it would
+            // report a cancelled restore as a game-data failure while leaving the coroutine looking
+            // as though it completed.
+            throw e
+        } catch (e: Exception) {
+            // `extractExpansions` refuses an unusable archive by throwing, and this returns an
+            // `ObbPlacement` across a domain port that has a `Failed` case for exactly that. Letting
+            // the throw out would hand the restore use case an `internal` data-layer exception type
+            // to interpret instead of the reason string it is meant to render. [place] converts the
+            // same throws for the same reason.
+            ObbPlacement.Failed(e.message ?: "the game data in this file could not be unpacked")
+        } finally {
+            staging.deleteRecursively()
+        }
+    }
+
+    /**
      * The archive's expansions, already validated against [packageName]. Empty for a plain APK.
      *
      * One pass over the central directory, not two: `BundleZip.read` returns every entry name
@@ -232,6 +316,65 @@ class ObbInstaller(
      */
     @Suppress("UsableSpace")
     private fun usableBytes(dir: File): Long = dir.usableSpace
+}
+
+/**
+ * The two device-touching halves of one streaming placement, so [streamObbEntries] can be tested
+ * without a `Context`.
+ *
+ * Same trade `ObbPlacementTest` makes for the command builders: the decisions are hoisted out of the
+ * class that needs `Environment` and `Context`, and only the decisions are tested.
+ */
+internal interface ObbStreamStep {
+
+    /** Extract one entry into [into], returning the file written, or null if it did not appear. */
+    suspend fun extract(leafName: String, into: File): File?
+
+    /** Copy it into `Android/obb/<pkg>/` with the shell. False means the copy did not land. */
+    suspend fun place(source: File, leafName: String): Boolean
+}
+
+/**
+ * Extract → place → **delete**, one expansion at a time (§8.4).
+ *
+ * The delete is in a `finally` inside the loop. That single placement is what holds peak disk at one
+ * expansion file: move it after the loop and a 4 GB game needs 8 GB, which is the behaviour this
+ * function exists to avoid.
+ *
+ * The `finally` is genuinely reachable on the cancellation path here, unlike the shape
+ * [openOrRelease] had to work around: both [ObbStreamStep] members are `suspend` and both really do
+ * suspend (a shell round trip, a multi-gigabyte read), so the `try` has suspension points for a
+ * cancellation to be delivered at. No `ensureActive()` checkpoint is needed to make the cleanup
+ * reachable, and adding one would only move the delete earlier by an instant.
+ *
+ * Stops at the first failure. A game missing one expansion is broken, so spending the remaining
+ * minutes and gigabytes to reach the same broken outcome helps nobody.
+ *
+ * @param onFile called before each entry with its leaf name and 1-based position. One-based because a
+ *   progress line reading "0 of 2" reads as not started.
+ */
+internal suspend fun streamObbEntries(
+    leafNames: List<String>,
+    staging: File,
+    step: ObbStreamStep,
+    onFile: (String, Int, Int) -> Unit = { _, _, _ -> },
+): ObbPlacement {
+    if (leafNames.isEmpty()) return ObbPlacement.NotNeeded
+
+    leafNames.forEachIndexed { index, leafName ->
+        onFile(leafName, index + 1, leafNames.size)
+        var extracted: File? = null
+        try {
+            extracted = step.extract(leafName, staging)
+                ?: return ObbPlacement.Failed("$leafName could not be read out of the archive")
+            if (!step.place(extracted, leafName)) {
+                return ObbPlacement.Failed("$leafName could not be copied into place")
+            }
+        } finally {
+            extracted?.delete()
+        }
+    }
+    return ObbPlacement.Placed(leafNames.size)
 }
 
 /**

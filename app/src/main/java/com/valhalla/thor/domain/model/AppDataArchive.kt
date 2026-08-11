@@ -63,6 +63,15 @@ enum class DataClass(val id: String) {
      * in a file manager is not Thor's to decide against.
      */
     val excludesVolatileDirs: Boolean get() = this != EXTERNAL_MEDIA
+
+    /**
+     * True for the two classes under `/data`, where numeric ownership and SELinux labels are real.
+     *
+     * The external pair live on FUSE, which synthesizes ownership from the caller — `chown` there
+     * changes nothing and `restorecon` has no label to apply. Restore uses this to decide whether
+     * §8.3's steps d and e run at all.
+     */
+    val isInternal: Boolean get() = this == CE || this == DE
 }
 
 /**
