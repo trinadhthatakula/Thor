@@ -75,9 +75,14 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
      * the launched block is dispatched, the block and its `finally` never run, and [passphrase] is left
      * intact. It is **narrower here than there**, which is worth stating because the disclosure reads
      * the other way round. `AppBackupSheet` scopes its view model with `rememberViewModelStoreOwner()`,
-     * so its window opens on every dismissal; this sheet uses the default, activity-scoped owner, so
-     * the window opens only when the activity finishes for good — at which point the process is going
-     * anyway. Narrow is not closed, so it is written down rather than left to be rediscovered.
+     * so its window opens on every dismissal; this sheet takes the default owner, which under
+     * `NavDisplay` is the **`NavEntry`**, not the activity — `MainScreen` installs
+     * `rememberViewModelStoreNavEntryDecorator()` on every tab's entries. So what makes the window
+     * narrow is a property of the route, not of the owner: `ThorRoute.Settings` is the root of
+     * `settingsBackStack` and is never popped, so its entry outlives every visit to this sheet.
+     * Do not read that as "the process is going anyway" — a finishing activity can leave a cached
+     * process behind, still holding whatever this array did not get to wipe. Narrow is not closed,
+     * so it is written down rather than left to be rediscovered.
      */
     fun save(passphrase: CharArray, confirmation: CharArray) {
         // Length before match: see the test that names this. Both checks run before the vault is
@@ -116,7 +121,8 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
                 // `busy` is cleared **here and nowhere else** — deliberately not folded into the
                 // completion update above, which only ever runs on the path that already worked. A
                 // `busy` left true disables both text fields and every button the sheet is showing,
-                // `dismiss()` does not reset it, and this view model is scoped to the activity, so the
+                // `dismiss()` does not reset it, and this view model outlives the sheet — its owner is
+                // the `NavEntry` for `ThorRoute.Settings`, that back stack's never-popped root — so the
                 // flag would survive closing and reopening the sheet: the user's only way out would be
                 // to leave the app. The cost of putting it here is one extra emission on the happy
                 // path.

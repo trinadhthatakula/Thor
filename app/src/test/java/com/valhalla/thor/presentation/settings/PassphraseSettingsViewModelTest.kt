@@ -374,8 +374,9 @@ class PassphraseSettingsViewModelTest {
         }
 
         // The state the user cannot get out of if this is wrong: `dismiss()` does not reset `busy`,
-        // and this view model is activity-scoped, so a stuck flag survives closing and reopening the
-        // sheet — leaving the app would be the only way back.
+        // and this view model outlives the sheet — its owner is the `NavEntry` for
+        // `ThorRoute.Settings`, the never-popped root of that back stack — so a stuck flag survives
+        // closing and reopening the sheet, and leaving the app would be the only way back.
         assertEquals(false, busyAfterThrow)
         assertEquals("store is gone", escaped.message)
     }
