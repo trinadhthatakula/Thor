@@ -130,6 +130,20 @@ class AppDataCommandsTest {
     }
 
     @Test
+    fun `the restore staging directory is never packed into a backup, for any class`() {
+        // It exists only when a restore died between extracting and swapping. Packing it would produce
+        // an archive that ARCHIVE_MEMBER_REFUSAL_PATTERN refuses **in whole**, so one interrupted
+        // restore would make every later backup of that app permanently unrestorable.
+        DataClass.entries.forEach { dataClass ->
+            val entries = filterBackupEntries(dataClass, "databases\n$STAGING_DIR_NAME\nfiles")
+
+            assertEquals(dataClass.id, listOf("databases", "files"), entries.kept)
+            // Thor's own control directory, not something Thor refused of the user's — so no row.
+            assertEquals(dataClass.id, emptyList<ArchiveSkip>(), entries.skipped)
+        }
+    }
+
+    @Test
     fun `external media keeps everything the user can see`() {
         val listing = "cache\nWhatsApp Images"
 

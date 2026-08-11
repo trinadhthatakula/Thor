@@ -28,9 +28,20 @@ class AppDataRestoreCommandsTest {
      */
     private val refusal = Regex(ARCHIVE_MEMBER_REFUSAL_PATTERN)
 
-    /** A plausible `tar -tv` line, so the tests exercise what grep will actually see. */
-    private fun listing(name: String, mode: String = "-rw-r--r--") =
-        "$mode 0/0             1024 2024-01-01 00:00 $name"
+    /**
+     * A plausible `tar -tv` line, so the tests exercise what grep will actually see.
+     *
+     * [owner] and [stamp] are parameters because `uname`/`gname` are 32-byte **attacker-controlled**
+     * fields in the tar header and the field widths differ between GNU, toybox and busybox. A fixture
+     * that hard-codes one shape proves the pattern works against that shape and nothing else.
+     */
+    private fun listing(
+        name: String,
+        mode: String = "-rw-r--r--",
+        owner: String = "0/0",
+        size: String = "1024",
+        stamp: String = "2024-01-01 00:00:00",
+    ) = "$mode $owner  $size $stamp $name"
 
     @Test
     fun `the staging directory is a hidden child of the class root`() {
@@ -45,9 +56,9 @@ class AppDataRestoreCommandsTest {
         val tarPath = "/data/data/com.valhalla.thor/cache/x/ce.tar"
         val staging = "$root/.thorbak-staging"
         assertEquals(
-            "mkdir -p '$staging' && [ ! -L '$staging' ] && " +
-                "! ( tar -tvzf '$tarPath' || echo $THOR_LIST_FAILED ) | " +
-                "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' && " +
+            "rm -rf '$staging' && mkdir -p '$staging' && [ ! -L '$staging' ] && " +
+                "( ( tar -tvzf '$tarPath' || echo $THOR_LIST_FAILED ) | " +
+                "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' ; [ \$? -eq 1 ] ) && " +
                 "tar -xzf '$tarPath' -C '$staging'",
             extractCommand(root, tarPath, compressed = true),
         )
@@ -58,12 +69,34 @@ class AppDataRestoreCommandsTest {
         val tarPath = "/tmp/a.tar"
         val staging = "$root/.thorbak-staging"
         assertEquals(
-            "mkdir -p '$staging' && [ ! -L '$staging' ] && " +
-                "! ( tar -tvf '$tarPath' || echo $THOR_LIST_FAILED ) | " +
-                "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' && " +
+            "rm -rf '$staging' && mkdir -p '$staging' && [ ! -L '$staging' ] && " +
+                "( ( tar -tvf '$tarPath' || echo $THOR_LIST_FAILED ) | " +
+                "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' ; [ \$? -eq 1 ] ) && " +
                 "tar -xf '$tarPath' -C '$staging'",
             extractCommand(root, tarPath, compressed = false),
         )
+    }
+
+    @Test
+    fun `extraction runs only when grep exits 1, never on any other non-zero status`() {
+        // The `!` this replaced inverted EVERY non-zero status, so grep exiting 2 (a pattern it cannot
+        // compile) or 127 (no grep on the device) read as "no bad member" and extraction ran with no
+        // member check at all — the same fail-open shape as the tar listing, one stage to the right.
+        val command = extractCommand(root, "/tmp/a.tar", compressed = true)!!
+
+        assertTrue(command.contains("; [ \$? -eq 1 ] ) && tar -xzf"))
+        assertFalse("the ! inversion must be gone", command.contains("! ("))
+    }
+
+    @Test
+    fun `a stale staging directory is removed before the extraction, not merged with`() {
+        // `mkdir -p` exits 0 on an existing directory, so debris from a restore that died between
+        // extracting and swapping would survive — and the swap then moves it into the class root
+        // alongside this archive's contents, silently mixing two backups into one app.
+        val staging = "$root/.thorbak-staging"
+        val command = extractCommand(root, "/tmp/a.tar", compressed = true)!!
+
+        assertTrue(command.startsWith("rm -rf '$staging' && mkdir -p '$staging' &&"))
     }
 
     @Test
@@ -129,6 +162,51 @@ class AppDataRestoreCommandsTest {
         assertTrue(refusal.containsMatchIn(listing("$STAGING_DIR_NAME/", "drwxr-xr-x")))
         assertTrue(refusal.containsMatchIn(listing("$STAGING_DIR_NAME/x")))
         assertTrue(refusal.containsMatchIn(listing("sub/$STAGING_DIR_NAME")))
+    }
+
+    @Test
+    fun `the pattern survives every -tv field shape, including an attacker-chosen owner`() {
+        // `uname`/`gname` are 32-byte fields in the tar header, so the owner column is attacker-chosen.
+        // The KDoc must not claim the fixed fields are safe by construction — what makes the pattern
+        // sound is the DIRECTION: matching is per line and each alternative only ever ADDS a match, so
+        // a crafted field can cause an extra refusal and can never suppress a real one.
+        val fieldShapes = listOf(
+            listing("x/../y", owner = "0/0"),
+            listing("x/../y", owner = "u0_a123/u0_a123"),
+            listing("x/../y", owner = "0/0", size = "9223372036854775807"),
+            listing("x/../y", owner = "0/0", stamp = "2024-01-01 00:00"),
+            listing("x/../y", owner = "a".repeat(32) + "/" + "b".repeat(32)),
+            listing("x/../y", mode = "crw-rw-rw-", size = "10,  59"),
+        )
+        fieldShapes.forEach { line -> assertTrue(line, refusal.containsMatchIn(line)) }
+
+        // A hostile owner name produces a refusal, never an acceptance.
+        assertTrue(refusal.containsMatchIn(listing("databases/app.db", owner = "a /b/a /b")))
+        assertFalse(refusal.containsMatchIn(listing("databases/app.db", owner = "u0_a123/u0_a123")))
+    }
+
+    @Test
+    fun `the documented over-refusal is real, and only ever in the refusing direction`() {
+        // Matching the name inside a verbose line rather than against a `^` anchor costs exactly this:
+        // a name containing a space immediately followed by `/` or `..` is refused. It is documented in
+        // the KDoc as a deviation, so it is pinned here rather than left to be discovered as a bug.
+        assertTrue(refusal.containsMatchIn(listing("My Dir /f")))
+        assertTrue(refusal.containsMatchIn(listing("foo ../x")))
+
+        // The near misses that must still restore.
+        assertFalse(refusal.containsMatchIn(listing("My Dir/f")))
+        assertFalse(refusal.containsMatchIn(listing("foo/..bar")))
+    }
+
+    @Test
+    fun `the pattern uses only portable ERE syntax`() {
+        // Compiling as a Java regex is proved by the `refusal` field above; this pins the other half,
+        // that grep can compile it too. Since the guard now proceeds only on grep's exit 1, a pattern
+        // grep rejects fails CLOSED — but a restore that refuses every archive is still a broken
+        // restore, so the portability is worth asserting rather than assuming.
+        listOf("\\d", "\\s", "\\w", "\\b", "[[:", "*?", "+?", "(?", "\\1").forEach {
+            assertFalse(it, ARCHIVE_MEMBER_REFUSAL_PATTERN.contains(it))
+        }
     }
 
     @Test

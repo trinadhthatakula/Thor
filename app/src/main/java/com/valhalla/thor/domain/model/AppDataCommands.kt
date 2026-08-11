@@ -214,6 +214,12 @@ internal fun filterBackupEntries(dataClass: DataClass, listing: String): ClassEn
         // an operand that does not exist. Only a wholly blank line is dropped.
         if (name.isBlank()) continue
         if (name == "." || name == "..") continue
+        // Thor's own restore staging directory, never app content. It exists only when a restore died
+        // between extracting and swapping, and packing it would produce an archive that
+        // ARCHIVE_MEMBER_REFUSAL_PATTERN refuses **in whole** — one interrupted restore would make
+        // every later backup of that app permanently unrestorable. Unconditional, unlike VOLATILE_DIRS:
+        // this is not a per-class choice.
+        if (name == STAGING_DIR_NAME) continue
         if (dataClass.excludesVolatileDirs && name in VOLATILE_DIRS) continue
         if (!isQuotableEntryName(name)) {
             skipped += ArchiveSkip(
@@ -284,8 +290,19 @@ internal fun stagingDirPath(root: String): String? {
     return "$root/$STAGING_DIR_NAME"
 }
 
-/** [STAGING_DIR_NAME] with its one regex metacharacter escaped, for use inside an ERE. */
-private val STAGING_NAME_ERE = STAGING_DIR_NAME.replace(".", "\\.")
+private val ERE_METACHARACTERS = "\\^\$.[]|()*+?{}".toSet()
+
+/**
+ * [STAGING_DIR_NAME] escaped for use inside an ERE.
+ *
+ * Escapes **every** ERE metacharacter, not just the `.` today's name happens to contain. A targeted
+ * `.replace(".", "\\.")` reads as sufficient and silently under-escapes the moment the constant gains
+ * another metacharacter — and the natural repair for the resulting red test is to paste the new literal
+ * into the expected string, which restores green over a pattern that no longer means what it says.
+ */
+private val STAGING_NAME_ERE = STAGING_DIR_NAME
+    .map { if (it in ERE_METACHARACTERS) "\\$it" else "$it" }
+    .joinToString("")
 
 /**
  * One ERE that refuses a `tar -tv` line naming a member Thor will not extract.
@@ -294,9 +311,14 @@ private val STAGING_NAME_ERE = STAGING_DIR_NAME.replace(".", "\\.")
  *
  * 1. **[THOR_LIST_FAILED]** — the sentinel [extractCommand] echoes when `tar` cannot list. Matching it
  *    here is what turns a failed listing into a refusal instead of a pass.
- * 2. **`(^| )/`** — an absolute member name, or a link target that is absolute. A `-tv` line never has
- *    a space before a slash in its fixed fields (`root/root`, the size, the ISO date), so this fires
- *    only on the name or on what follows `-> ` / `link to `.
+ * 2. **`(^| )/`** — an absolute member name, or a link target that is absolute.
+ *
+ *    A `-tv` line's fixed fields normally hold no space before a slash (`root/root`, the size, the ISO
+ *    date), but that is **not** a soundness argument and must not be written as one: `uname` and
+ *    `gname` are 32-byte fields in the tar header, so an attacker chooses them and can put `" /"` in
+ *    the owner column. What makes the pattern sound is the *direction*: matching is per line and every
+ *    alternative only ever **adds** a match, so a crafted field can cause an extra refusal and can
+ *    never suppress a real one. Nothing in a `-tv` line can mask a hostile name.
  * 3. **`(^| |/)\.\.(/|$| )`** — `..` as a whole path component, wherever it appears: bare `..`,
  *    `../x`, `x/..`, `x/../y`, and the same four as a link target. Anchoring on the component
  *    boundary rather than on hand-written slash cases is what makes a member named exactly `..`
@@ -327,19 +349,28 @@ internal val ARCHIVE_MEMBER_REFUSAL_PATTERN: String =
  * @param compressed must match the member's recorded `compression`. Guessing would either fail on a
  *   plain tar or, worse, succeed partially.
  *
- * Three safeguards, in order:
+ * Four safeguards, in order:
  *
- * 1. The `-L` test is not redundant with `mkdir -p`: `mkdir -p` exits 0 when the path is a symlink
- *    to a directory, and the extraction would then write through it with root's privilege, into a
- *    path the target app controls.
- * 2. **The listing must be producible.** `tar -tv` is listed with the *same* compression the
+ * 1. **`rm -rf` before `mkdir -p`.** `mkdir -p` exits 0 on an existing directory, so without the
+ *    removal, debris from a restore that died between extraction and the swap survives — and
+ *    [swapStagedEntriesCommand] then moves *that* into the class root alongside this archive's
+ *    contents, silently mixing two backups into one app. It also means the tree being extracted into
+ *    is one this command created, rather than one an interrupted run left behind with whatever the
+ *    previous archive planted in it. On a symlinked staging path `rm -rf` removes the link, not its
+ *    target.
+ * 2. The `-L` test is still not redundant: it closes the window between the `mkdir` and the
+ *    extraction, where `mkdir -p` would exit 0 on a symlink to a directory and the extraction would
+ *    write through it with root's privilege, into a path the target app controls.
+ * 3. **The listing must be producible.** `tar -tv` is listed with the *same* compression the
  *    extraction will use — never `-tf` against a gzipped archive on the hope that the implementation
  *    auto-detects — and `|| echo $THOR_LIST_FAILED` injects a sentinel line if it does not succeed.
- *    Without that, the pipeline's exit status is **grep's**, so a `tar` that failed or listed
- *    partially reads as "no bad member" and extraction runs anyway.
- * 3. **[ARCHIVE_MEMBER_REFUSAL_PATTERN] over that listing.** A match — a hostile member name, a
- *    hostile link target, or the sentinel — makes `grep -qE` exit 0, `!` inverts it to 1, and the
- *    `&&` chain short-circuits with nothing extracted.
+ * 4. **[ARCHIVE_MEMBER_REFUSAL_PATTERN] over that listing, and the extraction runs only on grep's
+ *    exit 1.** `( … | grep -qE … ; [ $? -eq 1 ] )` is deliberate and the `!` it replaced was a bug of
+ *    its own: `!` inverts *every* non-zero status, so `grep` exiting **2** (a pattern it cannot
+ *    compile) or **127** (no grep on the device) read as "no bad member" and extraction ran with no
+ *    member check at all. Exit 1 — and only exit 1 — means grep read the whole listing and found
+ *    nothing. The `;` inside the subshell does not break the outer `&&` chain, because a subshell's
+ *    status is its last command's.
  *
  * What `-C '$staging'` is **not**: a containment guarantee. It bounds where relative member names
  * land, and it does nothing at all about a symlink member whose target escapes the tree — the next
@@ -348,15 +379,20 @@ internal val ARCHIVE_MEMBER_REFUSAL_PATTERN: String =
  * symlink or hardlink is refused when its target is absolute or contains `..`, and a relative,
  * containment-safe target is allowed. Thor's own backup half tars whatever the app had, so refusing
  * every symlink would leave Thor unable to restore its own archives.
+ *
+ * **Inherited, not established here:** the listing and the extraction are two independent reads of
+ * [tarPath], so the guard binds the second read only while nothing can substitute that file in
+ * between. That holds because the caller stages the decrypted tar in Thor's own internal cache; a
+ * caller that ever points this at a path another process can write makes the check advisory.
  */
 internal fun extractCommand(root: String, tarPath: String, compressed: Boolean): String? {
     val staging = stagingDirPath(root) ?: return null
     if (!isQuotableAbsolutePath(tarPath)) return null
     val listFlags = if (compressed) "-tvzf" else "-tvf"
     val extractFlags = if (compressed) "-xzf" else "-xf"
-    return "mkdir -p '$staging' && [ ! -L '$staging' ] && " +
-        "! ( tar $listFlags '$tarPath' || echo $THOR_LIST_FAILED ) | " +
-        "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' && " +
+    return "rm -rf '$staging' && mkdir -p '$staging' && [ ! -L '$staging' ] && " +
+        "( ( tar $listFlags '$tarPath' || echo $THOR_LIST_FAILED ) | " +
+        "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' ; [ \$? -eq 1 ] ) && " +
         "tar $extractFlags '$tarPath' -C '$staging'"
 }
 
