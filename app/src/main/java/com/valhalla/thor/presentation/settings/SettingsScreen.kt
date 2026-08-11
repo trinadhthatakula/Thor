@@ -45,7 +45,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -701,7 +700,7 @@ fun SettingsScreen(
         if (hasPrivilege) {
             Spacer(Modifier.height(32.dp))
 
-            SettingsSectionLabel(stringResource(R.string.action_backup))
+            SettingsSectionLabel(stringResource(R.string.backup_and_restore))
 
             Column(
                 modifier = Modifier
@@ -710,16 +709,19 @@ fun SettingsScreen(
                     .background(MaterialTheme.colorScheme.surfaceContainerLow)
                     .padding(8.dp)
             ) {
-                // §8.5's notice, where a user who is not looking for it will still see it. Read
-                // through produceState rather than through SettingsViewModel: it is one small file
-                // read that no other part of Settings needs, and threading it through the view model
-                // would put a backup concern in the screen that owns every other preference.
-                // `read()` moves itself to IO (FileArchiveBreadcrumbStore), so this is not a file
-                // read on the main thread.
+                // §8.5's notice, where a user who is not looking for it will still see it. Read from
+                // the store rather than through SettingsViewModel: it is one small file that no other
+                // part of Settings needs, and threading it through the view model would put a backup
+                // concern in the screen that owns every other preference.
+                //
+                // `observe()`, not a one-shot read: `ArchiveRestore` is registered as a detail pane,
+                // so on an expanded window this section and the restore screen are composed at the
+                // same time — the user taps "Got it" over there and a one-shot banner here would go
+                // on reporting a breadcrumb that no longer exists. The store reads on its own IO
+                // dispatcher, so nothing here touches a file on the main thread.
                 val breadcrumbs = koinInject<ArchiveBreadcrumbStore>()
-                val interrupted by produceState<ArchiveBreadcrumb?>(initialValue = null) {
-                    value = breadcrumbs.read()
-                }
+                val interrupted by remember(breadcrumbs) { breadcrumbs.observe() }
+                    .collectAsStateWithLifecycle(initialValue = null)
                 // Not dismissible here on purpose: the row beneath it leads to the screen that can
                 // clear it, and a dismiss in two places is two chances to lose the notice.
                 interrupted?.let { crumb ->
@@ -732,7 +734,7 @@ fun SettingsScreen(
                 }
                 SettingsClickRow(
                     icon = R.drawable.settings_backup_restore,
-                    title = stringResource(R.string.restore_settings_title),
+                    title = stringResource(R.string.restore_title),
                     subtitle = stringResource(R.string.restore_settings_desc),
                     onClick = onNavigateToRestore
                 )

@@ -24,6 +24,8 @@ import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
 import com.valhalla.thor.domain.repository.ArchiveSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
@@ -198,6 +200,11 @@ class RestoreAppArchiveUseCaseTest {
         }
 
         override suspend fun read(): ArchiveBreadcrumb? = current
+
+        // Unused by the use case, which writes and clears but never watches. Re-reads rather than
+        // replaying, so it stays truthful if a later test does watch it.
+        override fun observe(): Flow<ArchiveBreadcrumb?> = flow { emit(read()) }
+
         override suspend fun clear() {
             current = null
             history += "clear"

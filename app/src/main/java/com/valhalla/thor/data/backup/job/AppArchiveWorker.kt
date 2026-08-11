@@ -213,11 +213,14 @@ internal class ArchiveRestoreWorker(
                 return@use fail("that backup file is not ${request.packageName}'s any more")
             }
 
+            // Resolved once and handed to the use case below, which would otherwise ask the
+            // repository for the same package a second line later. `null` is "not installed", which
+            // is a state the gate handles — see `installFirst`.
             val app = appRepository.getAppDetails(request.packageName)
             // The same assembly the restore screen ran before it offered the button, from the same
             // use case: two spellings of "installed" is two gates, and only one of them would have
             // been the one the user was shown.
-            val installed = installedFacts(request.packageName)
+            val installed = app?.let { installedFacts(it) }
             // Re-run, not replay. The app may have arrived or gone while this waited on the chain,
             // and this gate is the only signer comparison in the whole restore: when it answers
             // installFirst = false the use case deliberately performs none of its own, because the

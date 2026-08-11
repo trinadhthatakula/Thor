@@ -78,17 +78,34 @@
     <string name="restore_done_warnings">Some parts did not finish:</string>
     <string name="restore_failed">Restore failed: %1$s</string>
     <!--
-      Never "nothing was changed". A restore deletes each class before it writes it, and on the
-      install-first path it may have installed the app before it failed — so the honest instruction is
-      to go and look, not to be reassured.
+      The damage sentence. Shown only where RestoreFinish.workerRan is true — a failed WorkInfo, or a
+      cancel this screen saw run — and never as the second line of a failure decided before the
+      enqueue. Where it does apply it must never say "nothing was changed": a restore deletes each
+      class before it writes it, and on the install-first path it may have installed the app before it
+      failed, so the honest instruction is to go and look. Its last sentence tells the user to run a
+      destructive operation again, which is the reason the condition on it is load-bearing.
     -->
     <string name="restore_failed_partial">This stopped part-way, so the app\'s data may be incomplete — and if Thor installed the app from this backup, it is still installed. Restoring again is the fix.</string>
     <!--
-      The one outcome where "nothing was changed" is true: the job was cancelled before it was ever
-      started, so its work never ran. Jobs share one chain, and WorkManager cancels the dependents of
-      a job that fails.
+      The pre-flight failures: Thor no longer holds the passphrase, the archive's salt will not decode,
+      or the enqueue threw. All three are decided before a job exists, so the device is untouched and
+      the string above would be false. Deliberately does not say "try again" — the reason above it says
+      what to do, and two instructions in two lines contradict each other.
+    -->
+    <string name="restore_failed_not_started">Nothing was started, so nothing on this device changed.</string>
+    <!--
+      Cancelled without ever running: jobs share one chain, WorkManager cancels the dependents of a job
+      that fails, and a dependent's work is never called. This is the only string in the file that gets
+      to say "nothing was changed", and it is true only because of that. The sibling below covers a
+      cancel that arrived after the worker had started.
     -->
     <string name="restore_cancelled">Thor did not run this restore — the job ahead of it in the queue failed, so this one was cancelled before it started. Nothing was changed. Try again.</string>
+    <!--
+      Cancelled with the worker already inside doWork, which this screen knows because it observed the
+      RUNNING state. Rendered above restore_failed_partial: the outcome differs from a failure, the
+      damage does not.
+    -->
+    <string name="restore_cancelled_after_start">This restore was cancelled after it had already started.</string>
     <string name="restore_interrupted">The restore of %1$s did not finish. That app\'s data may be incomplete — restoring it again is the fix.</string>
     <string name="restore_interrupted_dismiss">Got it</string>
     <string name="restore_refused_signer_mismatch">This backup was made from an app signed by a different developer. Restoring it would hand one app another\'s data, so Thor will not do it.</string>
@@ -101,6 +118,11 @@
     <string name="restore_refused_invalid_user_id">This backup names a user profile Thor will not accept. The file is damaged, or it was not written by Thor.</string>
     <string name="restore_warning_version_older">The installed app is older than this backup. Apps can crash on data from a newer version — update the app first if it does.</string>
     <string name="restore_warning_ce_without_de">Startup data is in this backup but not selected. Some apps need both, and may behave as though half-migrated.</string>
-    <string name="restore_settings_title">Restore a backup</string>
     <string name="restore_settings_desc">Read a .thorbak file and put an app\'s data back.</string>
+    <!--
+      The Settings section heading, covering both halves: the row under it restores, and Task 18 adds
+      the saved-passphrase row to the same section. Not action_backup ("Back up"), which is a button
+      label on an app — a heading that reads as a verb over a row that reads as a different verb.
+    -->
+    <string name="backup_and_restore">Backup &amp; restore</string>
 </resources>

@@ -92,8 +92,15 @@
                        occurrence of the next literal with NO backtracking. ".*\.thorbak" therefore
                        matches only single-dot names — and Thor's own file name is
                        "<packageName>-<versionCode>.thorbak", which always has at least two dots, so
-                       that one pattern alone would match nothing Thor ever writes. Hence one pattern
-                       per dot count.
+                       that one pattern alone would match nothing Thor ever writes. Hence a ladder of
+                       one pattern per dot count.
+
+                 The ladder is lowercase-only, and that is deliberate rather than an oversight: every
+                 archive extension this manifest claims (.apk, .xapk, .apks, .apkm, .apkp) gives
+                 uppercase a pathSuffix and exactly one one-dot pathPattern, on the grounds that
+                 nothing produces a multi-dot uppercase name. Adding five UPPERCASE rungs here would
+                 make this the one block in the file that does — for a file name Thor never writes,
+                 since it lowercases its own. Change all six or change none.
 
                  Two known limitations, both shared with that filter:
                    - Intent matching tests Uri.getPath(), so this fires for providers whose document

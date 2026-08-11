@@ -46,6 +46,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -284,6 +285,13 @@ class ArchiveRestoreViewModelTest {
         }
 
         override suspend fun read(): ArchiveBreadcrumb? = current
+
+        // Re-reads on collection rather than replaying a captured value. Nothing here collects it —
+        // the view model takes the one-shot `read()` in `init` on purpose, so that a restore's own
+        // breadcrumb does not appear on the screen that is writing it — but a fake that would go
+        // stale is a fake that would make the next test lie.
+        override fun observe(): Flow<ArchiveBreadcrumb?> = flow { emit(read()) }
+
         override suspend fun clear() {
             cleared = true
             current = null
@@ -728,7 +736,10 @@ class ArchiveRestoreViewModelTest {
             vm.beginRestore()
             testScheduler.advanceUntilIdle()
 
-            assertEquals(RestoreFinish.Failed(null), vm.uiState.value.finished)
+            // `workerRan = false`: the enqueue threw, so there is no job and nothing on the device was
+            // touched. The screen renders the damage sentence off this flag, and the damage sentence
+            // ends by telling the user to run a destructive operation again.
+            assertEquals(RestoreFinish.Failed(null, workerRan = false), vm.uiState.value.finished)
             assertEquals(false, vm.uiState.value.running)
             assertFalse(typed.all { it == ' ' })
         }
@@ -751,11 +762,30 @@ class ArchiveRestoreViewModelTest {
 
     @Test
     fun `a refused archive cannot be started even if everything else is ticked`() = runTest(dispatcher) {
+        // Every other clause of `canStart` deliberately left true, so `refusal == null` is the only
+        // one holding the button. Unlocked through the vault rather than a signer mismatch: a
+        // mismatch returns early before the passphrase is ever tried, which leaves `unlocked` false —
+        // and a version of this test that never unlocks passes with `refusal == null` deleted, which
+        // is how the clause went unconstrained in the first place.
+        val store = FakeVaultStore()
+        PassphraseVault(store, PlainKeyProvider()).remember(passphrase.toCharArray())
         val launcher = FakeLauncher()
-        val vm = viewModel(signer = "CD".repeat(32), launcher = launcher)
+        val vm = viewModel(vaultStore = store, launcher = launcher)
         vm.open(URI)
         testScheduler.advanceUntilIdle()
         vm.setConfirmed(true)
+        assertEquals(true, vm.uiState.value.canStart)
+
+        // NOTHING_SELECTED: reachable in one interaction, and the refusal a user is most likely to
+        // create by hand.
+        vm.toggleClass(DataClass.CE)
+        vm.toggleClass(DataClass.DE)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(ArchiveRestoreRefusal.NOTHING_SELECTED, vm.uiState.value.refusal)
+        assertEquals(true, vm.uiState.value.unlocked)
+        assertEquals(true, vm.uiState.value.confirmed)
+        assertEquals(false, vm.uiState.value.canStart)
 
         vm.beginRestore()
         testScheduler.advanceUntilIdle()
@@ -818,32 +848,13 @@ class ArchiveRestoreViewModelTest {
     }
 
     @Test
-    fun `a failure carries the worker's sentence`() = runTest(dispatcher) {
-        val launcher = FakeLauncher()
-        val vm = viewModel(launcher = launcher)
-        vm.open(URI)
-        testScheduler.advanceUntilIdle()
-        vm.submitPassphrase(passphrase.toCharArray())
-        testScheduler.advanceUntilIdle()
-        vm.setConfirmed(true)
-        vm.beginRestore()
-        testScheduler.advanceUntilIdle()
-
-        launcher.statuses.value = ThorJobStatus.Failed("ce was already replaced")
-        testScheduler.advanceUntilIdle()
-
-        assertEquals(RestoreFinish.Failed("ce was already replaced"), vm.uiState.value.finished)
-    }
-
-    @Test
-    fun `a job cancelled by the chain is its own outcome, not a failure with nothing to say`() =
+    fun `a failure carries the worker's sentence, and says the device was touched`() =
         runTest(dispatcher) {
-            // Nothing in the app calls `cancel`, so a CANCELLED restore is always the chain case:
-            // `APPEND_OR_REPLACE` queued this behind another job, that job returned
-            // `Result.failure()`, and WorkManager cancelled its dependents. Folded into
-            // `Failed(null)` it renders as "it stopped without saying why", which is the one thing
-            // that is not true here.
-            val launcher = FakeLauncher()
+            // FAILED is reachable only through `doWork` returning `Result.failure()`, so the damage
+            // sentence applies whether or not this watcher happened to see RUNNING first. The fake
+            // starts at PENDING precisely so it never does: `workerRan` is read off the status, not
+            // off what this screen was lucky enough to observe.
+            val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Pending))
             val vm = viewModel(launcher = launcher)
             vm.open(URI)
             testScheduler.advanceUntilIdle()
@@ -853,11 +864,66 @@ class ArchiveRestoreViewModelTest {
             vm.beginRestore()
             testScheduler.advanceUntilIdle()
 
+            launcher.statuses.value = ThorJobStatus.Failed("ce was already replaced")
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(
+                RestoreFinish.Failed("ce was already replaced", workerRan = true),
+                vm.uiState.value.finished,
+            )
+        }
+
+    @Test
+    fun `a job cancelled by the chain is its own outcome, not a failure with nothing to say`() =
+        runTest(dispatcher) {
+            // Nothing in the app calls `cancel`, so a CANCELLED restore is in practice the chain
+            // case: `APPEND_OR_REPLACE` queued this behind another job, that job returned
+            // `Result.failure()`, and WorkManager cancelled its dependents. Folded into
+            // `Failed(null)` it renders as "it stopped without saying why", which is the one thing
+            // that is not true here. `workerRan` false is what earns it the "nothing was changed"
+            // copy: the job sat PENDING and was cancelled from there, so `doWork` was never called.
+            // PENDING is not RUNNING — reading a queue entry as proof of work would put the damage
+            // sentence on the one cancel where nothing happened.
+            val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Pending))
+            val vm = viewModel(launcher = launcher)
+            vm.open(URI)
+            testScheduler.advanceUntilIdle()
+            vm.submitPassphrase(passphrase.toCharArray())
+            testScheduler.advanceUntilIdle()
+            vm.setConfirmed(true)
+            vm.beginRestore()
+            testScheduler.advanceUntilIdle()
+            assertEquals(true, vm.uiState.value.queued)
+
             launcher.statuses.value = ThorJobStatus.Cancelled
             testScheduler.advanceUntilIdle()
 
-            assertEquals(RestoreFinish.Cancelled, vm.uiState.value.finished)
+            assertEquals(RestoreFinish.Cancelled(workerRan = false), vm.uiState.value.finished)
             assertEquals(false, vm.uiState.value.running)
+        }
+
+    @Test
+    fun `a cancel that followed a running job does not claim nothing was changed`() =
+        runTest(dispatcher) {
+            // The other cancel. A job that reached RUNNING was inside `doWork`, which deletes each
+            // class before it writes it — so this one gets the damage sentence, not the reassurance
+            // the chain case gets. The two are one observed status apart and read as opposites.
+            val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Pending))
+            val vm = viewModel(launcher = launcher)
+            vm.open(URI)
+            testScheduler.advanceUntilIdle()
+            vm.submitPassphrase(passphrase.toCharArray())
+            testScheduler.advanceUntilIdle()
+            vm.setConfirmed(true)
+            vm.beginRestore()
+            testScheduler.advanceUntilIdle()
+
+            launcher.statuses.value = ThorJobStatus.Running
+            testScheduler.advanceUntilIdle()
+            launcher.statuses.value = ThorJobStatus.Cancelled
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(RestoreFinish.Cancelled(workerRan = true), vm.uiState.value.finished)
         }
 
     @Test

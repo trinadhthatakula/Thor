@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.domain.repository
 
+import kotlinx.coroutines.flow.Flow
+
 /**
  * A record that a restore was in flight.
  *
@@ -44,6 +46,21 @@ interface ArchiveBreadcrumbStore {
 
     /** Null when no restore is recorded as in flight. */
     suspend fun read(): ArchiveBreadcrumb?
+
+    /**
+     * [read], re-run whenever this store's own [write] or [clear] changes the answer. Emits once on
+     * collection, so it is a drop-in for a one-shot read.
+     *
+     * It exists because two surfaces show this notice at once. `ArchiveRestore` is registered as a
+     * detail pane, so on an expanded window the restore screen and the Settings section are composed
+     * together: acknowledging the notice on one has to take it off the other, and a screen that reads
+     * once keeps reporting a breadcrumb that has been deleted.
+     *
+     * **In-process only.** The trigger is a call on this instance, not a file watch — which is enough
+     * because Thor is one process and Koin binds one instance of this, workers included. An
+     * implementation that has no way to change underneath itself may return a single-element flow.
+     */
+    fun observe(): Flow<ArchiveBreadcrumb?>
 
     /** Idempotent: called on every success path and again from the launch sweep. */
     suspend fun clear()

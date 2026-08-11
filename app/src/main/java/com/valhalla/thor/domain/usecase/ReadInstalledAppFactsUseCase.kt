@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.domain.usecase
 
+import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.InstalledAppFacts
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppRepository
@@ -23,13 +24,20 @@ internal class ReadInstalledAppFactsUseCase(
     private val gateway: AppDataArchiveGateway,
 ) {
 
-    suspend operator fun invoke(packageName: String): InstalledAppFacts? {
-        val app = appRepository.getAppDetails(packageName) ?: return null
-        return InstalledAppFacts(
-            // Null here is *not* "no signer" — the gate refuses on it. See InstalledAppFacts.
-            signerSha256 = gateway.signerSha256(packageName),
-            versionCode = app.versionCode,
-            versionName = app.versionName,
-        )
-    }
+    suspend operator fun invoke(packageName: String): InstalledAppFacts? =
+        appRepository.getAppDetails(packageName)?.let { invoke(it) }
+
+    /**
+     * The same facts, for a caller that has already resolved the [AppInfo].
+     *
+     * Non-null in, non-null out: "which app" is settled by the argument, so this overload cannot
+     * express "not installed" and cannot be handed a null that quietly becomes one. The worker needs
+     * both the label and the facts, and without this it queried the same package twice.
+     */
+    suspend operator fun invoke(app: AppInfo): InstalledAppFacts = InstalledAppFacts(
+        // Null here is *not* "no signer" — the gate refuses on it. See InstalledAppFacts.
+        signerSha256 = gateway.signerSha256(app.packageName),
+        versionCode = app.versionCode,
+        versionName = app.versionName,
+    )
 }

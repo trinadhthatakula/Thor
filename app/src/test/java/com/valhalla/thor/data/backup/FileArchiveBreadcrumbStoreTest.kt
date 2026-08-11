@@ -3,6 +3,13 @@
 
 package com.valhalla.thor.data.backup
 
+import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,12 +20,18 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
+// `UnconfinedTestDispatcher`, for the two `observe` tests that need a collector attached before the
+// call they are watching. House style is the class-level opt-in — see AppBackupViewModelTest.
+@OptIn(ExperimentalCoroutinesApi::class)
 class FileArchiveBreadcrumbStoreTest {
 
     @get:Rule
     val temp = TemporaryFolder()
 
-    private fun store(dir: File = temp.newFolder("files")) = FileArchiveBreadcrumbStore(dir)
+    // `Unconfined` so a `withContext` inside the store does not park work on `runTest`'s scheduler:
+    // these tests assert on the filesystem right after the call returns, not on virtual time.
+    private fun store(dir: File = temp.newFolder("files")) =
+        FileArchiveBreadcrumbStore(dir, Dispatchers.Unconfined)
 
     @Test
     fun `a written breadcrumb reads back`() = runTest {
@@ -90,7 +103,9 @@ class FileArchiveBreadcrumbStoreTest {
         // run with no notice behind it and nobody knows — the exact silence §8.5 exists to prevent.
         val notADirectory = temp.newFile("files-that-is-a-file")
 
-        assertFalse(FileArchiveBreadcrumbStore(notADirectory).write("com.example.app", "Example"))
+        val store = FileArchiveBreadcrumbStore(notADirectory, Dispatchers.Unconfined)
+
+        assertFalse(store.write("com.example.app", "Example"))
     }
 
     @Test
@@ -134,5 +149,50 @@ class FileArchiveBreadcrumbStoreTest {
         store.write("com.example.app", "Example")
 
         assertEquals("com.example.app", store.read()!!.packageName)
+    }
+
+    @Test
+    fun `observe emits what read would answer, without waiting for a change`() = runTest {
+        // A one-shot read is the common use; `observe` has to be a drop-in for it or every caller
+        // needs an initial value of its own.
+        val store = store()
+        store.write("com.example.app", "Example")
+
+        assertEquals("com.example.app", store.observe().first()!!.packageName)
+    }
+
+    @Test
+    fun `observe re-emits when the breadcrumb is cleared underneath a collector`() = runTest {
+        // The I2 case. `ArchiveRestore` is a detail pane, so on an expanded window the Settings
+        // banner and the restore screen are composed at the same time: the user acknowledges the
+        // notice over there, and a Settings banner that read once would go on naming an app whose
+        // breadcrumb no longer exists.
+        val store = store()
+        store.write("com.example.app", "Example")
+        val seen = mutableListOf<ArchiveBreadcrumb?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            store.observe().toList(seen)
+        }
+
+        store.clear()
+
+        assertEquals("com.example.app", seen.first()!!.packageName)
+        assertNull(seen.last())
+    }
+
+    @Test
+    fun `observe re-emits when a restore writes a new breadcrumb`() = runTest {
+        // The other direction, and the one that reaches a user first: a restore started from the
+        // detail pane has to raise the notice on the Settings section beside it.
+        val store = store()
+        val seen = mutableListOf<ArchiveBreadcrumb?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            store.observe().toList(seen)
+        }
+
+        store.write("com.example.app", "Example")
+
+        assertNull(seen.first())
+        assertEquals("com.example.app", seen.last()!!.packageName)
     }
 }

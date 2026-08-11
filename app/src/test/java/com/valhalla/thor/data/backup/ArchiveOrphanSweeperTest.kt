@@ -10,6 +10,8 @@ import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveDestination
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -45,6 +47,11 @@ class ArchiveOrphanSweeperTest {
         // Boolean, not Unit: Task 14's review made the §8.5 write reportable.
         override suspend fun write(packageName: String, appLabel: String): Boolean = true
         override suspend fun read(): ArchiveBreadcrumb? = crumb
+
+        // The sweeper never observes; it reads once at launch. Re-reads rather than replaying so the
+        // fake cannot answer with a breadcrumb `clear()` has since removed.
+        override fun observe(): Flow<ArchiveBreadcrumb?> = flow { emit(read()) }
+
         override suspend fun clear() {
             cleared = true
             crumb = null

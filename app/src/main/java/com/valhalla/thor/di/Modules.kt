@@ -91,8 +91,10 @@ class AppModule {
     // stays JVM-testable, and there is no File in the graph for the scan to inject. With
     // compileSafety on, an annotation on the class is a build failure, not a runtime one.
     @Single
-    fun archiveBreadcrumbStore(context: Context): ArchiveBreadcrumbStore =
-        FileArchiveBreadcrumbStore(context.filesDir)
+    fun archiveBreadcrumbStore(
+        context: Context,
+        @Named("io") ioDispatcher: CoroutineDispatcher,
+    ): ArchiveBreadcrumbStore = FileArchiveBreadcrumbStore(context.filesDir, ioDispatcher)
 
     /** `filesDir`, for the same reason as the breadcrumb store: a record the platform may evict lies. */
     @Single

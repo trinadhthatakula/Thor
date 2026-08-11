@@ -152,6 +152,14 @@ class ThorJobLauncher(
     /**
      * Cancel a job this launcher started, dropping its key **first**.
      *
+     * **No call sites as of Task 17, and deliberately not on [ArchiveJobLauncher].** Three pieces of
+     * copy are written on the premise that nothing in Thor cancels a live restore — `RestoreFinish`,
+     * `ArchiveRestoreScreen.RestoreOutcome`, and `restore_cancelled` in `strings_backup.xml`, whose
+     * "nothing was changed" is earned only because the cancels users actually see are chain
+     * dependents that never ran. **Adding a caller means revisiting all three**, starting with the
+     * `workerRan` flag the restore screen reads. It is kept because it is the only place that gets the
+     * key-drop-before-cancel order right, and a future caller writing its own would get it wrong.
+     *
      * The order is the whole point. `ThorJobWorker`'s `finally` drops the key on every path its
      * `doWork` can reach, but a job cancelled between [ArchiveKeyHolder.put] and WorkManager actually
      * *starting* `doWork` never reaches it — `doWork` is never called, so no `finally` runs, and the

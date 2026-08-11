@@ -42,8 +42,29 @@ import org.koin.core.annotation.KoinViewModel
  * Its own type rather than Task 16's `BackupFinish`, which is structurally similar: a restore
  * reporting through a type named *Backup* is the kind of thing that reads fine in a diff and wrong in
  * a stack trace. The three arms are three different sentences, which is the reason there are three.
+ *
+ * Two of them carry [workerRan], because the sentence a user needs turns on it and nothing else can
+ * answer it later. A restore deletes each data class before it writes it, so *"your data may be
+ * incomplete"* is the truth once the worker has run and a lie before it — and a screen that says it
+ * anyway sends the user to re-run a destructive operation over a device nothing touched.
  */
 sealed interface RestoreFinish {
+
+    /**
+     * True only where Thor **knows** the worker reached the device: `doWork` was entered, so the
+     * destructive phase may have been too.
+     *
+     * False means either "definitely not" — the enqueue never happened — or "not as far as this
+     * screen saw", which is the honest reading of a cancel that arrived without a preceding `Running`.
+     * The two are collapsed on purpose. The dominant unobserved case is a dependent cancelled inside
+     * `THOR_JOB_CHAIN`, where `doWork` genuinely never runs, and the case this cannot see —
+     * a process killed mid-restore — is not this screen's to report: §8.5's breadcrumb outlives the
+     * process and says it on the next launch, which is why that mechanism exists.
+     *
+     * Abstract rather than defaulted to false: a default would hand the safe-looking answer to every
+     * arm added later, and the arm added later is the one whose author has not read this KDoc.
+     */
+    val workerRan: Boolean
 
     /**
      * @param warnings what the run finished **in spite of** — a failed OBB placement, an archive with
@@ -51,20 +72,34 @@ sealed interface RestoreFinish {
      *   Carried on the success arm and not folded into [Failed] because the data did land: a user
      *   told "restore failed" runs it again, which destroys and rewrites data that is correct.
      */
-    data class Succeeded(val warnings: List<String> = emptyList()) : RestoreFinish
+    data class Succeeded(val warnings: List<String> = emptyList()) : RestoreFinish {
+        // A SUCCEEDED `WorkInfo` is `Result.success()`, which only `doWork` returns. Nothing reads
+        // this arm's copy off it — a success has its own sentence — but stating it keeps the
+        // property's meaning uniform rather than "the field the failure arms use".
+        override val workerRan: Boolean get() = true
+    }
 
-    /** @param reason the worker's own sentence, or null when the failure came from WorkManager. */
-    data class Failed(val reason: String?) : RestoreFinish
+    /**
+     * @param reason the worker's own sentence, or null when the failure came from WorkManager.
+     * @param workerRan false for the three pre-flight failures in [ArchiveRestoreViewModel.beginRestore],
+     *   which are decided before anything is enqueued; true for a `WorkInfo` that reached FAILED, which
+     *   only `doWork` returning `Result.failure()` can produce.
+     */
+    data class Failed(val reason: String?, override val workerRan: Boolean) : RestoreFinish
 
     /**
      * The job reached a terminal CANCELLED state.
      *
      * Not `Failed(null)`, which renders as "it stopped without saying why" — the one thing that is
-     * not true here. Nothing in Thor calls `cancel`, so in practice this is always the chain case:
-     * every job is appended to `THOR_JOB_CHAIN`, and WorkManager cancels the dependents of a
-     * prerequisite that returns `Result.failure()`. `doWork` was never called.
+     * not true here. Nothing in Thor calls `ThorJobLauncher.cancel`, so in practice this is the chain
+     * case: every job is appended to `THOR_JOB_CHAIN`, and WorkManager cancels the dependents of a
+     * prerequisite that returns `Result.failure()` without ever calling `doWork`.
+     *
+     * @param workerRan true when this watcher saw the job RUNNING before the cancel — a state
+     *   WorkManager publishes only once `doWork` has been entered. A cancel is the one terminal state
+     *   whose damage cannot be read off the state itself, so it is read off the history instead.
      */
-    data object Cancelled : RestoreFinish
+    data class Cancelled(override val workerRan: Boolean) : RestoreFinish
 }
 
 data class ArchiveRestoreUiState(
@@ -348,12 +383,16 @@ internal class ArchiveRestoreViewModel(
         val key = passphrase ?: run {
             // Reachable only if the passphrase was dropped between unlocking and pressing the button.
             // Silently returning would leave a Restore button that does nothing.
+            // `workerRan = false` here and at the two producers below: all three decide before
+            // `startRestore`, so no job exists, and the screen must not tell a user whose device was
+            // never touched that their data may be half-written.
             _uiState.update {
                 it.copy(
                     unlocked = false,
                     passphraseNeeded = true,
                     finished = RestoreFinish.Failed(
-                        "Thor no longer has the passphrase for this backup — unlock it again"
+                        reason = "Thor no longer has the passphrase for this backup — unlock it again",
+                        workerRan = false,
                     ),
                 )
             }
@@ -361,7 +400,12 @@ internal class ArchiveRestoreViewModel(
         }
         val salt = header.kdf.saltBytes() ?: run {
             _uiState.update {
-                it.copy(finished = RestoreFinish.Failed("this archive's salt could not be read"))
+                it.copy(
+                    finished = RestoreFinish.Failed(
+                        reason = "this archive's salt could not be read",
+                        workerRan = false,
+                    )
+                )
             }
             return
         }
@@ -376,8 +420,14 @@ internal class ArchiveRestoreViewModel(
             )
             val id = launcher.startRestore(request, key, salt)
             if (id == null) {
+                // The enqueue itself threw; `ThorJobLauncher` has already dropped the key. There is no
+                // job, so nothing ran.
                 _uiState.update {
-                    it.copy(running = false, queued = false, finished = RestoreFinish.Failed(null))
+                    it.copy(
+                        running = false,
+                        queued = false,
+                        finished = RestoreFinish.Failed(reason = null, workerRan = false),
+                    )
                 }
             } else {
                 watch(id)
@@ -474,6 +524,10 @@ internal class ArchiveRestoreViewModel(
             // `ThorJobLauncher` does not await `enqueue()`. Only the order tells the two apart, so a
             // `Gone` before the job has ever been seen alive is ignored rather than reported.
             var seenLive = false
+            // Separate from `seenLive`, which is also set by `Pending` — a queued job has not been
+            // started. RUNNING is the one state WorkManager publishes from inside `doWork`, so it is
+            // the only proof this screen can hold that the worker reached the device.
+            var seenRunning = false
             launcher.status(jobId).collect { status ->
                 when (status) {
                     is ThorJobStatus.Pending -> {
@@ -483,14 +537,25 @@ internal class ArchiveRestoreViewModel(
 
                     is ThorJobStatus.Running -> {
                         seenLive = true
+                        seenRunning = true
                         _uiState.update { it.copy(running = true, queued = false) }
                     }
 
                     // `status.warnings`, not an empty list: a restore that placed the data but not
                     // the game data succeeds, and this is the only place that reaches the user.
                     is ThorJobStatus.Succeeded -> finish(RestoreFinish.Succeeded(status.warnings))
-                    is ThorJobStatus.Failed -> finish(RestoreFinish.Failed(status.reason))
-                    is ThorJobStatus.Cancelled -> finish(RestoreFinish.Cancelled)
+                    // `workerRan = true` unconditionally, and not from `seenRunning`: FAILED is
+                    // reachable only through `doWork` returning `Result.failure()`. A watcher that
+                    // attached late can miss RUNNING but cannot make the run un-happen.
+                    is ThorJobStatus.Failed ->
+                        finish(RestoreFinish.Failed(reason = status.reason, workerRan = true))
+
+                    // The one terminal state that does not say for itself whether work happened.
+                    // Unobserved RUNNING is read as "it did not run": the common cancel is a chain
+                    // dependent, which never enters `doWork`, and §8.5's breadcrumb — not this
+                    // screen — is what reports a restore whose process died while it was live.
+                    is ThorJobStatus.Cancelled ->
+                        finish(RestoreFinish.Cancelled(workerRan = seenRunning))
                     // After the job has been seen alive, the record went away underneath a live
                     // watcher: terminal, with no outcome to report. Before that, the row has simply
                     // not landed — finishing there would take the bar down a frame after the tap and

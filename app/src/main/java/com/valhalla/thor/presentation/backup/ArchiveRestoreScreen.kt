@@ -368,10 +368,22 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
 /**
  * How a finished restore is reported.
  *
- * Three outcomes, three sentences. The one thing none of them may do is describe a state the code
- * cannot vouch for: a failed restore has already deleted whatever it got through, and on the
- * install-first path it may have installed the app before failing — so the failure copy points at the
- * device rather than reassuring anyone that nothing happened.
+ * Three outcomes, five sentences: both failure arms split on [RestoreFinish.workerRan], because what
+ * is honest depends on whether anything reached the device.
+ *
+ * | Outcome | Copy |
+ * |---|---|
+ * | `Succeeded` | it landed — go and check it, plus anything it finished in spite of |
+ * | `Failed(workerRan = true)` | the worker's reason, then the damage sentence |
+ * | `Failed(workerRan = false)` | the reason, then *nothing was started* |
+ * | `Cancelled(workerRan = false)` | the chain cancelled it; nothing was changed |
+ * | `Cancelled(workerRan = true)` | it was cancelled after it started, then the damage sentence |
+ *
+ * The one thing none of them may do is describe a state the code cannot vouch for — in either
+ * direction. A restore that ran deletes each class before it writes it, and on the install-first path
+ * it may have installed the app before failing, so *"nothing was changed"* is a lie there. A restore
+ * refused before its enqueue touched nothing at all, so the damage sentence is a lie *here* — and a
+ * worse one, because it ends by telling the user to run a destructive operation again.
  */
 @Composable
 private fun RestoreOutcome(finish: RestoreFinish, onDismiss: () -> Unit) {
@@ -414,19 +426,43 @@ private fun RestoreOutcome(finish: RestoreFinish, onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.error
                 )
                 Text(
-                    text = stringResource(R.string.restore_failed_partial),
+                    text = stringResource(
+                        if (finish.workerRan) {
+                            R.string.restore_failed_partial
+                        } else {
+                            // A passphrase Thor no longer holds, a salt it cannot decode, an enqueue
+                            // that threw. All three are decided before any job exists.
+                            R.string.restore_failed_not_started
+                        }
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
             }
 
-            // The only case in which "nothing was changed" is true, and it is true because `doWork`
-            // was never called at all.
-            RestoreFinish.Cancelled -> Text(
-                text = stringResource(R.string.restore_cancelled),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error
-            )
+            is RestoreFinish.Cancelled -> if (finish.workerRan) {
+                // Cancelled with the worker already inside `doWork`. Nothing in Thor cancels a live
+                // job today, so this is the rare arm — but it is the one where "nothing was changed"
+                // would be false, and the damage is the same damage a failure leaves.
+                Text(
+                    text = stringResource(R.string.restore_cancelled_after_start),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = stringResource(R.string.restore_failed_partial),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                // The chain case, and the only place "nothing was changed" is earned: WorkManager
+                // cancels a dependent without ever calling `doWork`.
+                Text(
+                    text = stringResource(R.string.restore_cancelled),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
         TextButton(onClick = onDismiss) {
             Text(stringResource(R.string.restore_interrupted_dismiss))
