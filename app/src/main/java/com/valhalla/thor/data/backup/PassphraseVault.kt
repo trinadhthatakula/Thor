@@ -55,6 +55,8 @@ interface VaultKeyProvider {
 
 /** Where the wrapped passphrase lives. Separated so the vault's logic is JVM-testable. */
 interface PassphraseVaultStore {
+    /** Whether a blob is stored. Not whether it can still be unwrapped — see [PassphraseVault.recall]. */
+    val isSet: Flow<Boolean>
     suspend fun read(): String?
     suspend fun write(value: String?)
 }
@@ -123,7 +125,15 @@ private val WRAPPED = stringPreferencesKey("wrapped_passphrase")
 @Single(binds = [PassphraseVaultStore::class])
 class DataStorePassphraseVaultStore(private val context: Context) : PassphraseVaultStore {
 
-    val flow: Flow<String?> = context.passphraseVault.data.map { it[WRAPPED] }
+    private val flow: Flow<String?> = context.passphraseVault.data.map { it[WRAPPED] }
+
+    /**
+     * `catch` kept from the property this replaced: the corruption handler covers an unreadable
+     * *file*, but `DataStore.data` still surfaces a plain `IOException` on a failed read, and an
+     * exception escaping here would tear down whichever screen is collecting. "Not remembered" is the
+     * right degradation — it prompts, and prompting is always correct.
+     */
+    override val isSet: Flow<Boolean> = flow.map { it != null }.catch { emit(false) }
 
     override suspend fun read(): String? = flow.first()
 
@@ -155,10 +165,18 @@ class PassphraseVault(
     private val keyProvider: VaultKeyProvider,
 ) {
 
+    /**
+     * Whether a blob is stored — **not** whether it will unwrap.
+     *
+     * A Keystore key invalidated by a biometric re-enrolment leaves this true and [recall] null, and
+     * that pair is deliberate: the caller then prompts rather than reporting a failure.
+     *
+     * Straight through to the store now that [PassphraseVaultStore] answers it. The downcast this
+     * replaced returned a constant `false` for every store that was not the DataStore one, which made
+     * the property untestable and would have read "nothing remembered" under any other backing.
+     */
     val isRemembered: Flow<Boolean>
-        get() = (store as? DataStorePassphraseVaultStore)?.flow?.map { it != null }
-            ?.catch { emit(false) }
-            ?: kotlinx.coroutines.flow.flowOf(false)
+        get() = store.isSet
 
     suspend fun remember(passphrase: CharArray) {
         // Encode to bytes without creating an intermediate String — a String cannot be zeroed.

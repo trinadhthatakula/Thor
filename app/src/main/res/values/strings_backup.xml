@@ -12,4 +12,33 @@
     <string name="job_restoring">Restoring</string>
     <string name="job_channel_name">Backup and restore</string>
     <string name="job_channel_description">Progress for backups and restores running in the background</string>
+
+    <string name="action_backup">Back up</string>
+    <string name="backup_unsupported">Thor cannot read another app\'s private data with the access it has right now. This needs root, or Shizuku started from root.</string>
+    <string name="backup_include_bundle">Include the app installer</string>
+    <string name="backup_include_bundle_desc">Lets this backup reinstall the app if it is gone.</string>
+    <!--
+      "Startup data" rather than "Device-encrypted data": the class exists because apps keep
+      first-run and keyset state there, which is what a user needs to know. The encryption mode is
+      not.
+    -->
+    <string name="backup_class_ce">App data</string>
+    <string name="backup_class_de">Startup data</string>
+    <string name="backup_class_external_data">Files on shared storage</string>
+    <string name="backup_class_external_media">Media on shared storage</string>
+    <string name="backup_size_measuring">Checking size…</string>
+    <string name="backup_size_empty">Empty</string>
+    <string name="backup_size_unknown">Size unknown</string>
+    <string name="backup_destination">Saving to %1$s</string>
+    <string name="backup_destination_pending">Finding the backup folder…</string>
+    <string name="backup_change_destination">Change</string>
+    <string name="backup_passphrase">Passphrase</string>
+    <string name="backup_passphrase_confirm">Confirm passphrase</string>
+    <string name="backup_passphrase_warning">Thor cannot recover this passphrase. Without it, this backup cannot be restored.</string>
+    <string name="backup_remember_passphrase">Remember it on this device</string>
+    <string name="backup_use_different_passphrase">Use a different passphrase</string>
+    <string name="backup_start">Back up</string>
+    <string name="backup_done">Backup saved.</string>
+    <string name="backup_failed">Backup failed: %1$s</string>
+    <string name="backup_failed_unknown">it stopped without saying why</string>
 </resources>

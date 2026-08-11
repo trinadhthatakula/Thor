@@ -5,6 +5,9 @@ package com.valhalla.thor.data.backup
 
 import java.util.Base64
 import javax.crypto.AEADBadTagException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -21,7 +24,13 @@ import org.junit.Test
  */
 class PassphraseVaultTest {
 
+    /**
+     * [isSet] is a `get()` rather than a stored flow so it reads whatever [blob] holds at collection
+     * time — the tests below mutate `blob` through [write] and read it back directly, and a flow
+     * captured once at construction would answer for the constructor's value forever.
+     */
     private class FakeStore(var blob: String? = null) : PassphraseVaultStore {
+        override val isSet: Flow<Boolean> get() = flowOf(blob != null)
         override suspend fun read(): String? = blob
         override suspend fun write(value: String?) { blob = value }
     }
@@ -107,6 +116,22 @@ class PassphraseVaultTest {
     @Test
     fun `an empty vault recalls nothing`() = runTest {
         assertNull(PassphraseVault(FakeStore(), FakeProvider()).recall())
+    }
+
+    @Test
+    fun `isRemembered follows the store`() = runTest {
+        // A regression pin, not decoration. Before `isSet` moved onto the interface this property
+        // downcast to `DataStorePassphraseVaultStore` and returned a constant `false` for anything
+        // else — so under any other store the UI read "no passphrase remembered" and asked for one
+        // that was already there. Note it answers "is there a blob", not "will it unwrap": the wiped
+        // -key test above pins the second half, where this stays true and `recall()` is null.
+        val store = FakeStore()
+        val vault = PassphraseVault(store, FakeProvider())
+        assertEquals(false, vault.isRemembered.first())
+
+        vault.remember("correct horse".toCharArray())
+
+        assertEquals(true, vault.isRemembered.first())
     }
 
     @Test

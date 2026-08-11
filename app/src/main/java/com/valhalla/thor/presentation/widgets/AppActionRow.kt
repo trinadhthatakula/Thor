@@ -45,12 +45,13 @@ import org.koin.compose.koinInject
  * Every action is a callback: this composable decides *whether an action is applicable* (privilege,
  * system-app status, installer, feature settings), the caller decides what it does and whether it
  * needs a confirmation first. The two exceptions are the launcher-pin action, which is entirely
- * self-contained, and the two nullable callbacks below, which are genuinely surface-specific:
+ * self-contained, and the three nullable callbacks below, which are genuinely surface-specific:
  *
  * - [onOpenDetails] — meaningless on the details screen itself; pass null there.
  * - [onToggleFreezerMembership] — pass null where freezer membership isn't known. What *leaving* the
  *   freezer means is the host's to define, and the two hosts define it differently: see
  *   `docs/follow-ups/freezer-membership-toggle-semantics.md`.
+ * - [onBackup] — pass null from a host that does not carry the backup sheet.
  *
  * A null callback hides its action rather than disabling it; an action that can never do anything
  * useful here is noise, not a hint.
@@ -76,7 +77,15 @@ fun AppActionRow(
     modifier: Modifier = Modifier,
     isInFreezer: Boolean = false,
     onToggleFreezerMembership: (() -> Unit)? = null,
-    onOpenDetails: (() -> Unit)? = null
+    onOpenDetails: (() -> Unit)? = null,
+    /**
+     * Null hides the tile — the same convention as [onToggleFreezerMembership] and [onOpenDetails].
+     *
+     * Grouped with the other optional parameters rather than beside `onExport`, which is required:
+     * a defaulted parameter in the middle of the required ones would compile but leave the list
+     * claiming an order that callers cannot use positionally.
+     */
+    onBackup: (() -> Unit)? = null
 ) {
     val hasPrivilege = isRoot || isShizuku || isDhizuku
     val isFrozen = !appInfo.enabled
@@ -200,6 +209,19 @@ fun AppActionRow(
             label = stringResource(R.string.action_export),
             onClick = onExport
         )
+
+        // Gated on privilege *as well as* on the callback: there is no unprivileged path to another
+        // app's data at all, so a host that offers this without a shell would be offering a sheet
+        // whose only possible content is a refusal. Same shape as the Fix Store gate below.
+        if (hasPrivilege) {
+            onBackup?.let { backup ->
+                ActionItem(
+                    icon = R.drawable.settings_backup_restore,
+                    label = stringResource(R.string.action_backup),
+                    onClick = backup
+                )
+            }
+        }
 
         onOpenDetails?.let { openDetails ->
             ActionItem(
