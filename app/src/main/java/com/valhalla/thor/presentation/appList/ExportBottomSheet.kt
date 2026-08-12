@@ -112,16 +112,12 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
         obbProbe = systemRepository.probeObb(appInfo.packageName)
     }
 
-    // Keyed on `format` as well as on the verdict, so the invariant "XAPK is never the selection
-    // once the probe says Undetermined" holds whichever of the two moved last. Keyed on the verdict
-    // alone it would depend on the chip's `enabled` being the only way `format` can change — a
-    // guarantee that lives in a sibling composable and would break silently if that changed.
-    // Terminates because formatOptions.first() is autoFor(), which is only ever APK or APKS.
-    LaunchedEffect(obbProbe, format) {
-        if (obbProbe is ObbProbe.Undetermined && format == BundleFormat.XAPK) {
-            format = formatOptions.first()
-        }
-    }
+    // There used to be a LaunchedEffect here that forced the selection off XAPK whenever the probe
+    // came back Undetermined. It went with the chip's `enabled` gate below and with the matching
+    // throw in AppBundleBuilderImpl: together they made "Thor could not read Android/obb" refuse the
+    // format outright. Most apps have no expansion files, so the verdict we could not read was
+    // usually "there is nothing to read", and the refusal fired on the ordinary case. Per the owner
+    // the export proceeds and says what it did; see `shouldWarnUnreadableObb`.
 
     val runExport = {
         exporting = true
@@ -256,18 +252,16 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 formatOptions.forEach { option ->
-                    // `is Undetermined` is false while obbProbe is still null, so the chip stays
-                    // enabled for the length of the probe rather than flickering disabled and back.
-                    // A selection made in that window is re-checked by the builder, which fails the
-                    // export rather than writing an incomplete bundle.
-                    val xapkBlocked = option == BundleFormat.XAPK && obbProbe is ObbProbe.Undetermined
                     FilterChip(
                         selected = option == format,
                         onClick = { format = option },
-                        // Disabled, not hidden. Under the "only offer .xapk when the OBB is
-                        // capturable" policy a vanishing chip would leave the user with no way to
-                        // learn why the format they came for is missing.
-                        enabled = !exporting && !xapkBlocked,
+                        // Only the export in flight disables a chip now. The probe verdict no longer
+                        // does: a disabled .xapk chip was how "we could not read Android/obb" reached
+                        // the user, and it read as "this app cannot be exported as .xapk" when the
+                        // truth was usually that there was nothing to pack. The verdict is still
+                        // shown — as a note under the row, which the user can act on — rather than
+                        // enforced as a refusal.
+                        enabled = !exporting,
                         // A file extension, not copy — the same token in every locale, so it is
                         // built from BundleFormat rather than from a translated string.
                         label = { Text(".${option.extension}") },
@@ -277,17 +271,6 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                         )
                     )
                 }
-            }
-
-            // Sits under the chip row, not under the explain text, because it explains why a
-            // chip the user can see cannot be pressed.
-            if (obbProbe is ObbProbe.Undetermined) {
-                Text(
-                    text = stringResource(R.string.export_xapk_unavailable),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
             }
 
             // Plain-language explanation of the selected format, plus what the .xapk will actually
@@ -305,29 +288,37 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            val present = obbProbe as? ObbProbe.Present
-            if (format == BundleFormat.XAPK && present != null) {
-                val totalObbBytes = present.files.sumOf { it.sizeBytes }
-                if (totalObbBytes > 0) {
-                    Text(
-                        text = stringResource(
-                            R.string.export_obb_included,
-                            Formatter.formatShortFileSize(context, totalObbBytes)
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (present.otherEntryCount > 0) {
-                    // Not a refusal. The format cannot carry anything but .obb files, so a bundle
-                    // without those extras is complete by the format's own definition — the user is
-                    // told, and decides.
-                    Text(
-                        text = stringResource(R.string.export_obb_partial),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            // The three OBB notes, in the order the user needs them: how much is going in, what is
+            // being left out, and — the case this fix is about — that we could not tell either way.
+            // All three are notes and none of them blocks the Export button.
+            val obbBytesToShow = obbSizeBytesToShow(format, obbProbe)
+            if (obbBytesToShow > 0) {
+                Text(
+                    text = stringResource(
+                        R.string.export_obb_included,
+                        Formatter.formatShortFileSize(context, obbBytesToShow)
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (shouldNotePartialObb(format, obbProbe)) {
+                // Not a refusal. The format cannot carry anything but .obb files, so a bundle
+                // without those extras is complete by the format's own definition — the user is
+                // told, and decides.
+                Text(
+                    text = stringResource(R.string.export_obb_partial),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (shouldWarnUnreadableObb(format, obbProbe)) {
+                Text(
+                    text = stringResource(R.string.export_xapk_no_game_data),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
 
             // Destination
@@ -426,3 +417,47 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
         }
     }
 }
+
+/**
+ * How many bytes of game data the sheet should tell the user are going in, or 0 for "say nothing".
+ *
+ * Hoisted out of the composable so the three OBB notes are decidable without a device. Each takes
+ * the probe as `ObbProbe?` because **null is a fourth state at this layer and only at this layer**:
+ * the probe is in flight. It is not [ObbProbe.Undetermined] — that is an answer — and a sheet that
+ * treated it as one would flash a "could not read" note for the length of every probe.
+ *
+ * [format] is read rather than assumed, because the chips are live: the user can select `.apk`
+ * after the probe has already answered `Present`, and a size line still on screen would be
+ * describing bytes that container does not carry.
+ */
+internal fun obbSizeBytesToShow(format: BundleFormat, probe: ObbProbe?): Long {
+    if (format != BundleFormat.XAPK) return 0L
+    val present = probe as? ObbProbe.Present ?: return 0L
+    return present.files.sumOf { it.sizeBytes }
+}
+
+/**
+ * Whether to note that the app's `Android/obb` holds entries the `.xapk` format cannot carry.
+ *
+ * Distinct from [obbSizeBytesToShow] being 0: a directory can hold nothing but subdirectories, in
+ * which case there are no bytes to announce and there is still something being left behind. That is
+ * [ObbProbe.Present] with an empty `files` and a non-zero `otherEntryCount`, and it is the reason
+ * these are two functions rather than one.
+ */
+internal fun shouldNotePartialObb(format: BundleFormat, probe: ObbProbe?): Boolean =
+    format == BundleFormat.XAPK && (probe as? ObbProbe.Present)?.otherEntryCount?.let { it > 0 } == true
+
+/**
+ * Whether to note that Thor could not read the app's game data at all.
+ *
+ * This is what is left of the old refusal. `Undetermined` used to disable the `.xapk` chip, force
+ * the selection away from it, and throw in the builder; now it prints one line and the user decides.
+ * The verdict is still not [ObbProbe.None] — that prints nothing, because nothing is what there is
+ * to say — which is the distinction `ObbProbe` exists to keep.
+ *
+ * Gated on [format] because the note is about what a `.xapk` will contain. An `.apk`/`.apks` export
+ * never carries expansions, so telling the user we could not read them would be answering a question
+ * they did not ask.
+ */
+internal fun shouldWarnUnreadableObb(format: BundleFormat, probe: ObbProbe?): Boolean =
+    format == BundleFormat.XAPK && probe is ObbProbe.Undetermined

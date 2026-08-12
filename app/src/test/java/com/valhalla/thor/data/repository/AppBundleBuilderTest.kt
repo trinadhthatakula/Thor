@@ -4,11 +4,15 @@
 package com.valhalla.thor.data.repository
 
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ObbFile
+import com.valhalla.thor.domain.model.ObbProbe
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 
 /**
  * What goes into the zip, in what order, and under what name.
@@ -126,6 +130,75 @@ class AppBundleBuilderTest {
             command,
             command.startsWith("[ ! -L '$dir' ] && [ ! -L '$dir/main.obb' ] && cp -f ")
         )
+    }
+
+    @Test
+    fun `an unreadable probe packs nothing instead of refusing the export`() {
+        // The owner's regression test. `build` used to throw IOException on Undetermined and the
+        // export sheet disabled the .xapk chip to match, so "Thor could not read Android/obb" —
+        // which for ~70% of apps means "there was nothing there to read" — came back as a failed
+        // export. Undetermined now packs nothing and the export proceeds.
+        assertEquals(
+            emptyList<ObbFile>(),
+            expansionsToPack(BundleFormat.XAPK, ObbProbe.Undetermined("no privileged shell"))
+        )
+
+        // The other side of the same boundary, in the same test: if this arm ever also returned
+        // empty, the assertion above would still pass while the feature packed no expansions at
+        // all. Present is the only verdict that can name files, and it must still name them.
+        val files = listOf(ObbFile("main.1.com.example.game.obb", 4L), ObbFile("patch.1.obb", 8L))
+        assertEquals(
+            files,
+            expansionsToPack(BundleFormat.XAPK, ObbProbe.Present(files, otherEntryCount = 0))
+        )
+    }
+
+    @Test
+    fun `nothing is packed for a probe that found nothing or a format that carries nothing`() {
+        // None is a real measurement, and it means the same list as Undetermined by a different
+        // route. Pinned separately so that collapsing the two arms is a visible edit.
+        assertEquals(emptyList<ObbFile>(), expansionsToPack(BundleFormat.XAPK, ObbProbe.None))
+
+        // .apks has no expansion convention and zipSourcesFor already drops them; this makes the
+        // rule true a step earlier, so an .apks export never stages bytes it will not ship. Present
+        // deliberately, because APKS + None would pass on the wrong arm.
+        val files = listOf(ObbFile("main.1.com.example.game.obb", 4L))
+        assertEquals(
+            emptyList<ObbFile>(),
+            expansionsToPack(BundleFormat.APKS, ObbProbe.Present(files, otherEntryCount = 0))
+        )
+    }
+
+    @Test
+    fun `a copy that fails after the probe measured files is still fatal`() {
+        // This is GH#164 and it did NOT get relaxed. Present means the probe read those names and
+        // sizes off the device, so a null from stageExpansions is data we know we are dropping —
+        // as opposed to Undetermined, which is data we cannot prove exists.
+        val requested = listOf(ObbFile("main.1.com.example.game.obb", 4L))
+
+        val thrown = assertThrows(IOException::class.java) {
+            requireStagedExpansions(requested = requested, staged = null)
+        }
+        // The message, not just the type: an IOException from somewhere else in this call would
+        // satisfy a type-only assertion while this guard was gone.
+        assertEquals(
+            "this app's game data could not be read, so the .xapk would be incomplete",
+            thrown.message
+        )
+    }
+
+    @Test
+    fun `staged expansions pass through, and nothing requested needs nothing staged`() {
+        // The passing side of the guard above. Without it, `throw` unconditionally would be green.
+        val staged = listOf(ZipSource(File("/tmp/s/main.obb"), "Android/obb/com.example.game/main.obb"))
+        assertEquals(
+            staged,
+            requireStagedExpansions(listOf(ObbFile("main.obb", 4L)), staged)
+        )
+
+        // And the short-circuit: an app with no expansions reaches this with null from a staging
+        // step that was never run. Throwing there would fail every ordinary .xapk export.
+        assertEquals(emptyList<ZipSource>(), requireStagedExpansions(emptyList(), null))
     }
 
     @Test

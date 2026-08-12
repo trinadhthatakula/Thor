@@ -36,7 +36,17 @@ sealed interface ObbProbe {
      * The active privilege could not read `Android/obb` at all — the Dhizuku device-owner process,
      * a gateway failure, a truncated reply.
      *
-     * **Never treat this as [None].** It is the whole reason this type is a tri-state.
+     * **Never treat this as [None].** It is the whole reason this type is a tri-state: [None] is a
+     * measurement and this is the absence of one, they carry different [reason]s, and the export
+     * sheet and the log say different things about them.
+     *
+     * What they no longer carry is different *blocking* consequences. Export used to refuse `.xapk`
+     * outright on this verdict, which made the commonest situation on the device — an app with no
+     * expansion files, probed through a shell that could not answer — an error. Per the owner it now
+     * packs nothing and proceeds, and the export is fatal only where loss is *provable*: see
+     * `requireStagedExpansions`, which fires when [Present] named files and the copy then failed.
+     * Reading this as "so it is basically [None]" is the fold this type exists to prevent; the two
+     * agree on one narrow question (how many expansions to pack) and on nothing else.
      */
     data class Undetermined(val reason: String) : ObbProbe
 }

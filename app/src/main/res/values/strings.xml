@@ -199,8 +199,15 @@
     <!-- Shown for every ObbProbe.Undetermined, which is more than a missing privilege: a failed,
          empty, truncated or malformed reply from a shell Thor *does* have lands here too. So it
          states what is certainly true (Thor cannot read the data now) and offers the usual cause
-         without asserting it — the same mistake as the explain string this feature retracted. -->
-    <string name="export_xapk_unavailable">Thor can\'t read this app\'s game data right now — usually that means root or Shizuku access is needed. A .xapk without it would install a game that doesn\'t run.</string>
+         without asserting it — the same mistake as the explain string this feature retracted.
+
+         Renamed from export_xapk_unavailable, because it no longer describes anything unavailable.
+         The old copy said a .xapk "would install a game that doesn't run", which was a refusal
+         written as a warning: it asserted the app *has* game data, and Undetermined is precisely
+         the verdict that cannot say so. Most apps have none, so most of the time the sentence was
+         false as well as blocking. The rename is deliberate — a translation carried over under the
+         old key would keep promising a broken install. -->
+    <string name="export_xapk_no_game_data">Thor can\'t read this app\'s game data right now — usually that means root or Shizuku access is needed. The .xapk will still be built, without it.</string>
     <string name="export_obb_included">Includes %1$s of game data.</string>
     <string name="export_obb_partial">Some items in this app\'s game data folder aren\'t expansion files and won\'t be included.</string>
     <string name="export_format">Format</string>

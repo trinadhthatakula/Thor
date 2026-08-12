@@ -494,7 +494,7 @@
     <string name="export_explain_apk">Thor 将此应用保存为单个安装文件 (.apk) 到下方文件夹中。您可以使用它备份应用或在以后重新安装。</string>
     <string name="export_explain_apks">此应用包含多个拆分部分，它们会被打包为一个捆绑包 (.apks) 并保存到下方文件夹中。可随时使用 Thor 安装程序重新安装。</string>
     <string name="export_explain_xapk">Thor 会把此应用的各个部分打包成下方文件夹中的单个 .xapk，其他安装器也能识别这种格式。当 Thor 当前的访问方式可以读取时，游戏数据（OBB 文件）会一并打包。</string>
-    <string name="export_xapk_unavailable">Thor 暂时无法读取该应用的游戏数据——通常这说明需要 Root 或 Shizuku。缺少游戏数据的 .xapk 装上后游戏也无法运行。</string>
+    <string name="export_xapk_no_game_data">Thor 暂时无法读取该应用的游戏数据——通常这说明需要 Root 或 Shizuku。.xapk 仍会照常打包，只是不含这些数据。</string>
     <string name="export_obb_included">包含 %1$s 游戏数据。</string>
     <string name="export_obb_partial">此应用游戏数据文件夹中有些内容不是扩展文件，不会被打包。</string>
     <string name="export_format">格式</string>
