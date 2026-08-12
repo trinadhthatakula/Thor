@@ -409,9 +409,14 @@ The spec sketches how the APK/XAPK export batch would sit on this seam; it does 
 
 WorkManager's `Data` is written to its own SQLite database. Putting the passphrase or the derived
 key there writes the secret to disk in the clear — disqualifying. And `setProgress` is an SQLite
-write per call, so even non-secret progress is worth coarsening — **which Thor does itself**, to
-roughly 1/s on the notification and to one update per storage class on the progress callback.
-WorkManager promises no throttling of its own; it coalesces nothing.
+write per call, which is the second reason progress does not travel that way: it goes to an
+in-memory `JobRegistry` instead, so there is no per-update disk write left to coarsen.
+
+What Thor does coarsen is the **notification**, and only that: at most one update per second, plus
+an immediate one whenever the stage changes, so a phase boundary is never held back by the timer.
+`JobRegistry` is updated on **every** `publish` call — it is a `StateFlow` the sheet collects, and
+throttling it would cost the screen the accuracy it exists to show. WorkManager promises no
+throttling of its own; it coalesces nothing.
 
 ### 9.3 What WorkManager is and is not doing here
 

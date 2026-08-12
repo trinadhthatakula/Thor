@@ -376,7 +376,7 @@ Each was raised, verified, and deliberately kept. Filing them would invite a reg
   because `launchGuarded` runs `block` through `coroutineScope`, which *reports* it at the call site.
   A scope-level handler would have swallowed it instead, which is the opposite trade.
 - **`signerSha256` reads `apkContentsSigners` only, never `signingCertificateHistory`.** Deliberate;
-  the rationale is at `AppDataArchiveGatewayImpl.kt:288-290`. An archive taken before a signing-key
+  the rationale is on `AppDataArchiveGatewayImpl.signerSha256` itself. An archive taken before a signing-key
   rotation is refused with `SIGNER_MISMATCH` after the rotation, and **that is the check working**.
   Consulting the history would let a rotated key match an older archive, which is the one thing the
   check exists to stop, so **do not implement rotation-history matching** — the "fix" inverts the
