@@ -9,7 +9,6 @@
     <string name="settings">设置</string>
     <string name="settings_desc">设置页面以更改应用设置</string>
     <string name="config_engine_v">配置引擎 • v%1$s</string>
-    <string name="general">通用</string>
     <string name="show_reinstall_card">显示重新安装卡片</string>
     <string name="show_reinstall_card_desc">在主屏幕上显示修复商店提醒</string>
     <string name="show_installer_tile">显示安装器磁贴</string>
@@ -21,21 +20,17 @@
     <string name="show_extensions_tile_desc">在主屏幕上显示扩展</string>
     <string name="default_tab">默认标签页</string>
     <string name="default_tab_desc">Thor 启动时打开的页面</string>
-    <string name="appearance">外观</string>
     <string name="theme">主题</string>
     <string name="theme_desc">视觉界面风格</string>
     <string name="amoled_mode">AMOLED 模式</string>
     <string name="amoled_desc">纯黑背景</string>
     <string name="dynamic_colors">动态色彩</string>
     <string name="dynamic_colors_desc">Material You 集成</string>
-    <string name="security">安全</string>
     <string name="biometric_lock">生物识别锁定</string>
     <string name="biometric_lock_desc">启动时需要验证</string>
     <string name="biometric_not_available">生物识别未注册或不可用</string>
-    <string name="work_mode">工作模式</string>
     <string name="active_engine">活动引擎</string>
     <string name="active_engine_desc">在可用提供者之间切换</string>
-    <string name="about">关于</string>
     <string name="version">版本</string>
     <string name="release_candidate">发布候选版</string>
     <string name="source_code">源代码</string>
@@ -524,7 +519,6 @@
     <string name="failed_to_load_permissions">加载权限失败</string>
     <string name="permission_status_updated">权限状态已更新</string>
     <string name="failed_to_modify_permission">修改权限失败</string>
-    <string name="permissions">权限</string>
     <string name="usage_access">使用情况访问权限</string>
     <string name="usage_access_granted_subtitle">已授予 — 启用应用大小排序</string>
     <string name="usage_access_needed_subtitle">读取应用大小以进行按大小排序所需</string>
@@ -628,5 +622,34 @@
     <string name="export_list_failed">无法保存列表</string>
     <string name="clear_all_caches_requires_usage_access">没有「使用情况访问权限」，Shizuku 无法清除所有应用的缓存。必须告诉 Android 需要释放多少字节，而只有该权限才能测量缓存的大小。请在系统设置中授予 Thor 使用情况访问权限后重试。</string>
     <string name="clear_all_caches_unsupported_dhizuku">Dhizuku 无法清除缓存。它没有可用于执行 Android 缓存清理的 shell，设备所有者 API 也没有对应的接口。请切换到 Root 或 Shizuku 模式。</string>
+
+    <!-- 分类式设置页面 — 参见 values/strings_settings.xml -->
+    <string name="settings_category_appearance">外观</string>
+    <string name="settings_category_home">主屏幕</string>
+    <string name="settings_category_installing">安装与分享</string>
+    <string name="settings_category_security">安全</string>
+    <string name="settings_category_about">关于与支持</string>
+    <string name="settings_search_hint">搜索设置…</string>
+    <string name="settings_search_no_results">没有与“%1$s”匹配的设置。</string>
+    <string name="settings_search_result_in">位于 %1$s</string>
+    <string name="cd_settings_search_clear">清除搜索</string>
+    <string name="cd_back">返回</string>
+    <string name="settings_select_category">选择一个类别以查看其设置</string>
+    <string name="settings_engine_none">无</string>
+    <string name="app_language_desc">Thor 自身界面使用的语言</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="theme_system">跟随系统</string>
+    <string name="settings_summary_opens_on">启动时打开%1$s</string>
+    <string name="settings_summary_auto_freeze_on">自动冻结已开启</string>
+    <string name="settings_summary_auto_freeze_off">自动冻结已关闭</string>
+    <string name="settings_summary_suspend_mode">暂停模式</string>
+    <string name="settings_summary_auto_reinstall_on">自动重新安装已开启</string>
+    <string name="settings_summary_auto_reinstall_off">自动重新安装已关闭</string>
+    <string name="settings_summary_app_lock_on">应用锁已开启</string>
+    <string name="settings_summary_app_lock_off">应用锁已关闭</string>
+    <string name="settings_summary_restore_interrupted">有一次恢复未完成</string>
+    <string name="settings_summary_backup">恢复存档，或更改密码短语</string>
+    <string name="settings_summary_unprivileged">需要 Root、Shizuku 或 Dhizuku</string>
 
 </resources>
