@@ -218,6 +218,7 @@ class ObserveInterruptedRestoreUseCaseTest {
             request: ArchiveRestoreRequest,
             passphrase: CharArray,
             salt: ByteArray,
+            iterations: Int,
         ): UUID? = null
 
         override fun status(jobId: UUID): Flow<ThorJobStatus> = MutableStateFlow(ThorJobStatus.Gone)

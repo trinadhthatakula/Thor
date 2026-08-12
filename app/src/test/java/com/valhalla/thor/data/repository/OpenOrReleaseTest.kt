@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.domain.repository.ArchiveSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -12,7 +13,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -86,16 +87,20 @@ class OpenOrReleaseTest {
         // restore screen is about to read from.
         val copy = cacheCopy()
         var released = false
+        val built = ZipArchiveSource(copy, "ok.thorbak", onClose = { copy.delete() })
 
         val source = openOrRelease(
-            build = { ZipArchiveSource(copy, "ok.thorbak", onClose = { copy.delete() }) },
+            build = { built },
             release = { released = true },
         )
 
-        assertNotNull("a successful build must be handed back", source)
+        // Identity, not `assertNotNull`: `openOrRelease` is generic and `T` infers non-null here, so a
+        // null check would be a fact about the type rather than about the function. What is worth
+        // pinning is that the caller gets the very source `build` produced.
+        assertSame("a successful build must be handed back", built, source)
         assertFalse("a successful open must not release what it hands back", released)
         assertTrue("the cache copy must survive for the caller to read", copy.exists())
-        source!!.close()
+        source.close()
     }
 
     @Test
@@ -107,7 +112,9 @@ class OpenOrReleaseTest {
         val scope = CoroutineScope(StandardTestDispatcher(testScheduler))
 
         val call = scope.async {
-            openOrRelease(
+            // Explicit type argument: `build` returning a bare `null` would otherwise infer `Nothing?`
+            // and pin the contract on a type no caller uses.
+            openOrRelease<ArchiveSource?>(
                 build = {
                     scope.cancel()
                     null

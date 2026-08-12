@@ -34,6 +34,7 @@ import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveJobLauncher
+import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSource
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -151,8 +152,17 @@ class ArchiveRestoreViewModelTest {
         }
     }
 
-    private class FakeSources(val source: FakeSource?) : ArchiveSourceFactory {
-        override suspend fun open(uriString: String): ArchiveSource? = source
+    /**
+     * @param source null for a URI that produced no container; [failure] then says which of the two
+     *   failures that was. Defaulted to [ArchiveOpenOutcome.Unreadable] so the tests that only care
+     *   that *something* failed keep reading as they did.
+     */
+    private class FakeSources(
+        val source: FakeSource?,
+        private val failure: ArchiveOpenOutcome = ArchiveOpenOutcome.Unreadable,
+    ) : ArchiveSourceFactory {
+        override suspend fun open(uriString: String): ArchiveOpenOutcome =
+            source?.let { ArchiveOpenOutcome.Opened(it) } ?: failure
     }
 
     /**
@@ -164,9 +174,10 @@ class ArchiveRestoreViewModelTest {
      */
     private class CountingSources(private val byUri: Map<String, FakeSource>) : ArchiveSourceFactory {
         val opens = mutableListOf<String>()
-        override suspend fun open(uriString: String): ArchiveSource? {
+        override suspend fun open(uriString: String): ArchiveOpenOutcome {
             opens += uriString
-            return byUri[uriString]
+            return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) }
+                ?: ArchiveOpenOutcome.Unreadable
         }
     }
 
@@ -274,15 +285,25 @@ class ArchiveRestoreViewModelTest {
         var started: ArchiveRestoreRequest? = null
         var startedSalt: ByteArray? = null
 
+        /**
+         * Recorded rather than ignored because the default is wrong and silent: `deriveKey` falls back
+         * to *this build's* `KDF_ITERATIONS`, so a launcher call that omits the archive's own count
+         * derives a different key from a correct passphrase and the job reports a damaged archive.
+         * `-1` is "never called", which no real count can be confused with.
+         */
+        var startedIterations: Int = -1
+
         override suspend fun startBackup(request: ArchiveBackupRequest, passphrase: CharArray): UUID? = null
 
         override suspend fun startRestore(
             request: ArchiveRestoreRequest,
             passphrase: CharArray,
             salt: ByteArray,
+            iterations: Int,
         ): UUID? {
             started = request
             startedSalt = salt
+            startedIterations = iterations
             return if (enqueues) jobId else null
         }
 
@@ -437,21 +458,42 @@ class ArchiveRestoreViewModelTest {
     }
 
     @Test
-    fun `a file that cannot be opened at all is reported`() = runTest(dispatcher) {
+    fun `a file that cannot be read at all is reported`() = runTest(dispatcher) {
         val vm = viewModel(sources = FakeSources(source = null))
 
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
         // A reason id rather than a sentence: there is no layer below to have produced one — the
-        // factory simply returned null — so the wording belongs to the screen and lives in
-        // `strings_backup.xml`.
+        // factory reported an access failure, not a parse failure — so the wording belongs to the
+        // screen and lives in `strings_backup.xml`.
         assertEquals(
             ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
             vm.uiState.value.error,
         )
         assertEquals(false, vm.uiState.value.loading)
     }
+
+    @Test
+    fun `a file that is not an archive is a different message from one that cannot be read`() =
+        runTest(dispatcher) {
+            // The picker offers every file on the device, so this is the ordinary mistake — and the
+            // two failures point opposite ways. "Could not read it" tells a user to try the same file
+            // again, which is the one thing that will never work here. Both directions are pinned:
+            // the reason that arrives, and the reason that must not.
+            val vm = viewModel(
+                sources = FakeSources(source = null, failure = ArchiveOpenOutcome.NotAnArchive),
+            )
+
+            vm.open(URI)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(
+                ArchiveRestoreMessage.Known(ArchiveRestoreReason.NOT_AN_ARCHIVE),
+                vm.uiState.value.error,
+            )
+            assertEquals(false, vm.uiState.value.loading)
+        }
 
     @Test
     fun `an incapable privilege state is reported and nothing can start`() = runTest(dispatcher) {
@@ -813,7 +855,7 @@ class ArchiveRestoreViewModelTest {
         }
 
     @Test
-    fun `the request carries the selection, the OBB choice, and the archive's own salt`() =
+    fun `the request carries the selection, the OBB choice, and the archive's own salt and rounds`() =
         runTest(dispatcher) {
             val launcher = FakeLauncher()
             val vm = viewModel(launcher = launcher)
@@ -836,6 +878,10 @@ class ArchiveRestoreViewModelTest {
             // The archive's salt, not a fresh one — a restore derives the key the backup used or it
             // derives the wrong key.
             assertTrue(salt.contentEquals(launcher.startedSalt))
+            // And its round count, for the same reason and from the same header. The fixture's 1000 is
+            // deliberately not `KDF_ITERATIONS`, so a call that let `deriveKey` default would show up
+            // here as this build's constant instead of the archive's.
+            assertEquals(1000, launcher.startedIterations)
         }
 
     @Test

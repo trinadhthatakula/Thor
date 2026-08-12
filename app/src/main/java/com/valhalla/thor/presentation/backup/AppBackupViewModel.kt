@@ -68,9 +68,12 @@ sealed interface BackupFinish {
     /**
      * The job reached a terminal CANCELLED state.
      *
-     * Not `Failed(null)`: nothing in Thor cancels a live job, so in practice this is the chain case —
-     * every job is appended to one `APPEND_OR_REPLACE` chain and WorkManager cancels the dependents
-     * of a prerequisite that returns `Result.failure()`, without ever calling `doWork`.
+     * Not `Failed(null)`, because a cancel is two different events wearing one state. The notification
+     * carries a Cancel action (`ThorJobNotifications` builds `WorkManager.createCancelPendingIntent`),
+     * so a user can stop a job that is **running**; and every job is appended to one
+     * `APPEND_OR_REPLACE` chain, so WorkManager also cancels the dependents of a prerequisite that
+     * returned `Result.failure()`, without ever calling `doWork`. Neither is a failure to report as
+     * one, and [workerRan] is what tells them apart.
      *
      * @param workerRan true only where this watcher saw the job RUNNING before the cancel. A cancel
      *   is the one terminal state whose meaning cannot be read off the state itself, so it is read

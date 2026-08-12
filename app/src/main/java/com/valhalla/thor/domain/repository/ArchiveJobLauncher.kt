@@ -50,11 +50,20 @@ interface ArchiveJobLauncher {
     /** @param passphrase not cleared here; the caller owns it. @return the job id, or null if it could not be enqueued. */
     suspend fun startBackup(request: ArchiveBackupRequest, passphrase: CharArray): UUID?
 
-    /** @param salt the archive's own, from its header — never a freshly generated one. */
+    /**
+     * @param salt the archive's own, from its header — never a freshly generated one.
+     * @param iterations the archive's own KDF round count, from the same header as [salt]. **Not a
+     *   convenience parameter and not one to default.** `AppArchiveCipher.deriveKey` defaults to this
+     *   build's constant, and taking that default here derives a different key for every archive a
+     *   different Thor wrote — from the correct passphrase. The failure surfaces at the first GCM tag,
+     *   which reads as "this backup is damaged" and sends the user to check their file rather than
+     *   their Thor version. Salt and rounds travel together because a key is only ever right for both.
+     */
     suspend fun startRestore(
         request: ArchiveRestoreRequest,
         passphrase: CharArray,
         salt: ByteArray,
+        iterations: Int,
     ): UUID?
 
     fun status(jobId: UUID): Flow<ThorJobStatus>

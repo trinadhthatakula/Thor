@@ -7,7 +7,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.net.toUri
-import com.valhalla.thor.domain.repository.ArchiveSource
+import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineDispatcher
@@ -42,30 +42,35 @@ class UriArchiveSourceFactory(
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ArchiveSourceFactory {
 
-    override suspend fun open(uriString: String): ArchiveSource? = withContext(ioDispatcher) {
-        val uri = runCatching { uriString.toUri() }.getOrNull() ?: return@withContext null
+    override suspend fun open(uriString: String): ArchiveOpenOutcome = withContext(ioDispatcher) {
+        val uri = runCatching { uriString.toUri() }.getOrNull()
+            ?: return@withContext ArchiveOpenOutcome.Unreadable
         val name = displayNameOf(uri) ?: uri.lastPathSegment ?: "backup"
 
         val descriptor = runCatching { context.contentResolver.openFileDescriptor(uri, "r") }
             .getOrNull()
-            ?: return@withContext null
+            ?: return@withContext ArchiveOpenOutcome.Unreadable
 
         openOrRelease(
             build = {
                 runCatching {
-                    ZipArchiveSource(
-                        file = File("/proc/self/fd/${descriptor.fd}"),
-                        displayName = name,
-                        onClose = { runCatching { descriptor.close() } },
+                    ArchiveOpenOutcome.Opened(
+                        ZipArchiveSource(
+                            file = File("/proc/self/fd/${descriptor.fd}"),
+                            displayName = name,
+                            onClose = { runCatching { descriptor.close() } },
+                        )
                     )
                 }.getOrElse { direct ->
                     // The fd path failed; the descriptor is no longer needed regardless of why.
                     runCatching { descriptor.close() }
                     if (direct is ZipException) {
                         // The bytes were readable but are not a zip — a copy fallback would fail
-                        // identically. Give up immediately rather than spending disk space and time.
+                        // identically. Give up immediately rather than spending disk space and time,
+                        // and say *which* failure this was: the user picked the wrong file, and the
+                        // one thing that will not help them is trying the same one again.
                         Logger.w(TAG, "$name is not a valid zip (${direct.message})")
-                        null
+                        ArchiveOpenOutcome.NotAnArchive
                     } else {
                         // ESPIPE (pipe fd), EACCES (another app's private file via SAF), etc. — a
                         // path problem rather than a format one. Copy the whole file into cache and
@@ -76,13 +81,13 @@ class UriArchiveSourceFactory(
                     }
                 }
             },
-            release = { source ->
-                // A source that reached here can no longer be handed to anyone: closing it closes
-                // the zip, closes the fd via `onClose`, and deletes the cache copy on the fallback
-                // path. The trailing `descriptor.close()` covers the case where `source` is null
-                // (fd-path failure with no fallback) — it is idempotent-by-runCatching, so the
-                // double close on the paths that already closed inline is harmless.
-                source?.close()
+            release = { outcome ->
+                // An outcome that reached here can no longer be handed to anyone: closing the source
+                // closes the zip, closes the fd via `onClose`, and deletes the cache copy on the
+                // fallback path. The trailing `descriptor.close()` covers the two failure outcomes,
+                // which hold nothing to close — it is idempotent-by-runCatching, so the double close
+                // on the paths that already closed inline is harmless.
+                (outcome as? ArchiveOpenOutcome.Opened)?.source?.close()
                 runCatching { descriptor.close() }
             },
         )
@@ -105,23 +110,26 @@ class UriArchiveSourceFactory(
      * bargain: prefix-and-suffix instead of equality, which the staging sweep already does for `.part`
      * names. The name is only ever produced and consumed here, so nothing has to parse it.
      */
-    private fun copyThenOpen(uri: Uri, name: String): ArchiveSource? {
+    private fun copyThenOpen(uri: Uri, name: String): ArchiveOpenOutcome {
         val copy = runCatching {
             File.createTempFile(COPY_FILE_PREFIX, COPY_FILE_SUFFIX, context.cacheDir)
         }.getOrElse {
             Logger.e(TAG, "could not create a cache copy for $name", it)
-            return null
+            return ArchiveOpenOutcome.Unreadable
         }
         return runCatching {
             context.contentResolver.openInputStream(uri)!!.use { input ->
                 copy.outputStream().use(input::copyTo)
             }
             // Deletes *this* copy, by identity — the whole point of the unique name.
-            ZipArchiveSource(copy, name, onClose = { copy.delete() })
+            ArchiveOpenOutcome.Opened(ZipArchiveSource(copy, name, onClose = { copy.delete() }))
         }.getOrElse {
             Logger.e(TAG, "could not read $name", it)
             copy.delete()
-            null
+            // A `ZipException` here is the same statement the fd path makes with
+            // `ArchiveOpenOutcome.NotAnArchive`: the copy completed and the bytes are not a zip. The
+            // rest — the stream that would not open, the volume that filled up — is access.
+            if (it is ZipException) ArchiveOpenOutcome.NotAnArchive else ArchiveOpenOutcome.Unreadable
         }
     }
 
@@ -178,7 +186,7 @@ class UriArchiveSourceFactory(
  * check only because its `try` really does suspend. The idiom does not transfer on its own.
  *
  * Be exact about what the [NonCancellable] at the cleanup site buys, because the obvious reading is
- * wrong: [release] is a plain `(ArchiveSource?) -> Unit`, so it has no suspension point and cannot
+ * wrong: [release] is a plain `(T?) -> Unit`, so it has no suspension point and cannot
  * itself be cancelled — `release(built)` on its own line would behave identically. What
  * [NonCancellable] is load-bearing *for* is the `withContext` around it: on the cancellation path
  * this coroutine is already cancelled, and any other `withContext` would throw before running its
@@ -189,17 +197,21 @@ class UriArchiveSourceFactory(
  * a `ContentResolver` and a real `ParcelFileDescriptor`, neither of which exists on the unit-test
  * classpath.
  */
-internal suspend fun openOrRelease(
-    build: () -> ArchiveSource?,
-    release: (ArchiveSource?) -> Unit,
-): ArchiveSource? {
+internal suspend fun <T> openOrRelease(
+    build: () -> T,
+    release: (T?) -> Unit,
+): T {
     var committed = false
-    var built: ArchiveSource? = null
+    // Nullable independently of [T], because "build has not run yet" is a third state the result type
+    // does not have to be able to express: [release] is reachable from the cancellation path before
+    // `build` returns, and on that path there is nothing to free.
+    var built: T? = null
     try {
-        built = build()
+        val result = build()
+        built = result
         currentCoroutineContext().ensureActive()
         committed = true
-        return built
+        return result
     } finally {
         if (!committed) {
             withContext(NonCancellable) { release(built) }

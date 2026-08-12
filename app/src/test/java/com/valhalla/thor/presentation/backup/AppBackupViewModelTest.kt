@@ -158,6 +158,7 @@ class AppBackupViewModelTest {
             request: ArchiveRestoreRequest,
             passphrase: CharArray,
             salt: ByteArray,
+            iterations: Int,
         ): UUID? = null
 
         override fun status(jobId: UUID): Flow<ThorJobStatus> = statusesFor[jobId] ?: statuses

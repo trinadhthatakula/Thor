@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveJobLauncher
+import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.domain.usecase.ArchiveHeaderOutcome
@@ -105,9 +106,13 @@ sealed interface RestoreFinish {
      * The job reached a terminal CANCELLED state.
      *
      * Not `Failed(null)`, which renders as "it stopped without saying why" — the one thing that is
-     * not true here. Nothing in Thor calls `ThorJobLauncher.cancel`, so in practice this is the chain
-     * case: every job is appended to `THOR_JOB_CHAIN`, and WorkManager cancels the dependents of a
-     * prerequisite that returns `Result.failure()` without ever calling `doWork`.
+     * not true here. `ThorJobLauncher.cancel` has no call site, but that does not make this the chain
+     * case: `ThorJobNotifications` puts a Cancel action on the ongoing notification built from
+     * `WorkManager.createCancelPendingIntent`, which cancels the **work** and so can land here with a
+     * worker mid-restore. The other route is the chain — every job is appended to `THOR_JOB_CHAIN`,
+     * and WorkManager cancels the dependents of a prerequisite that returned `Result.failure()`
+     * without ever calling `doWork`. The two differ in exactly one way that matters to a user, which
+     * is whether the device was touched, and [workerRan] is what separates them.
      *
      * @param workerRan true when this watcher saw the job RUNNING before the cancel — the state
      *   WorkManager writes as it hands the job to a built worker, a line before `startWork()`. A cancel
@@ -154,8 +159,18 @@ sealed interface ArchiveRestoreMessage {
  * `refusalLabel` and `warningLabel` live there.
  */
 enum class ArchiveRestoreReason {
-    /** `ArchiveSourceFactory` could not open the URI at all — no header was ever read. */
+    /**
+     * `ArchiveSourceFactory` could not read the URI at all — no header was ever read.
+     *
+     * About the *access*, not the file: a revoked grant, an unmounted volume, no room in cache for
+     * the fallback copy. The file it names may be a perfectly good backup, so the advice is to try
+     * the same one again — which is exactly the wrong advice for [NOT_AN_ARCHIVE], and why the two
+     * are not one reason.
+     */
     FILE_UNREADABLE,
+
+    /** The bytes were readable and are not a `.thorbak` — the ordinary "wrong file picked". */
+    NOT_AN_ARCHIVE,
 
     /** The archive is intact; the key derived from what was typed does not open it. */
     WRONG_PASSPHRASE,
@@ -360,15 +375,29 @@ internal class ArchiveRestoreViewModel(
             val supported = capability.isSupported()
             _uiState.update { it.copy(supported = supported) }
 
-            val source = sources.open(uriString)
-            if (source == null) {
-                _uiState.update {
-                    it.copy(
-                        loading = false,
-                        error = ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
-                    )
+            // The picker offers every file on the device, so "that is not a backup" is the ordinary
+            // mistake and it gets its own sentence. The two failures point the user opposite ways:
+            // one says pick a different file, the other says this one is fine, try it again.
+            val source = when (val opened = sources.open(uriString)) {
+                is ArchiveOpenOutcome.Opened -> opened.source
+                ArchiveOpenOutcome.NotAnArchive -> {
+                    _uiState.update {
+                        it.copy(
+                            loading = false,
+                            error = ArchiveRestoreMessage.Known(ArchiveRestoreReason.NOT_AN_ARCHIVE),
+                        )
+                    }
+                    return@launchGuarded
                 }
-                return@launchGuarded
+                ArchiveOpenOutcome.Unreadable -> {
+                    _uiState.update {
+                        it.copy(
+                            loading = false,
+                            error = ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
+                        )
+                    }
+                    return@launchGuarded
+                }
             }
 
             // Closed as soon as the header is out. Holding it open would hold a ParcelFileDescriptor
@@ -625,7 +654,9 @@ internal class ArchiveRestoreViewModel(
                 classes = state.selected,
                 restoreObb = state.restoreObb,
             )
-            val id = launcher.startRestore(request, key, salt)
+            // `header.kdf.iterations`, never the default: this screen is the only place that holds the
+            // archive's own count, and the launcher derives the job's key from what it is given here.
+            val id = launcher.startRestore(request, key, salt, header.kdf.iterations)
             if (id == null) {
                 // The enqueue itself threw; `ThorJobLauncher` has already dropped the key. There is no
                 // job, so nothing ran.

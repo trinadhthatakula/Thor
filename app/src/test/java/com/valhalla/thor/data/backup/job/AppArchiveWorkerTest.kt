@@ -3,10 +3,15 @@
 
 package com.valhalla.thor.data.backup.job
 
+import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.domain.model.ArchiveHeader
+import com.valhalla.thor.domain.model.ArchiveKdf
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.usecase.ArchiveRestoreOutcome
+import java.util.Base64
+import javax.crypto.SecretKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -22,43 +27,66 @@ import org.junit.Test
  */
 class AppArchiveWorkerTest {
 
-    // region unsupportedKdfReason
+    // Real, not a fake: PBKDF2 and HMAC are JCE, so the check under test is the shipped one. Four
+    // rounds keeps it instant; `AppArchiveCipherTest` pins the shipped count.
+    private val cipher = AppArchiveCipher()
+
+    // region wrongKeyReason
 
     @Test
-    fun `an archive written at this build's iteration count is restorable`() {
-        // The only count `BackupAppArchiveUseCase` ever stamps, and the count
-        // `ThorJobLauncher.startRestore` derives at. Every archive this build wrote takes this arm.
-        assertNull(unsupportedKdfReason(KDF_ITERATIONS))
+    fun `the key the archive's own passphrase derives opens it`() {
+        val key = cipher.deriveKey(PASSPHRASE.toCharArray(), SALT, iterations = 4)
+
+        assertNull(wrongKeyReason(header(key), key, cipher))
     }
 
     @Test
-    fun `an archive written at another count is refused before anything is decrypted`() {
-        // The key the worker holds was derived at KDF_ITERATIONS, so this archive's members cannot be
-        // opened with it. Without this the run reaches the first `decryptMember`, fails its GCM tag,
+    fun `a key derived at a different round count is refused before anything is decrypted`() {
+        // The case the retired KDF-count comparison was a proxy for, asserted through the mechanism
+        // that replaced it. Without this the run reaches the first `decryptMember`, fails its GCM tag,
         // and reports a damaged archive — which is false, and points the user at their file.
-        val reason = unsupportedKdfReason(100_000)
+        val archiveKey = cipher.deriveKey(PASSPHRASE.toCharArray(), SALT, iterations = 4)
+        val jobKey = cipher.deriveKey(PASSPHRASE.toCharArray(), SALT, iterations = 5)
 
         assertEquals(
-            "this backup was written with a different key setting (100000 rounds, not " +
-                "$KDF_ITERATIONS), and this version of Thor cannot restore it",
-            reason,
+            "this backup could not be opened with the passphrase this restore was started with — " +
+                "open the file again and unlock it",
+            wrongKeyReason(header(archiveKey), jobKey, cipher),
         )
     }
 
     @Test
-    fun `a lower count is refused too, not only a higher one`() {
-        // Both directions are the same bug: the derived key differs, and which side of today's
-        // constant the archive sits on has no bearing on that.
-        assertTrue(unsupportedKdfReason(KDF_ITERATIONS - 1) != null)
-        assertTrue(unsupportedKdfReason(KDF_ITERATIONS + 1) != null)
+    fun `a key derived from a different salt is refused too`() {
+        // The count check could not see this one at all: same rounds, same passphrase, different
+        // archive. It is what a `content://` URI whose document was swapped between the confirm screen
+        // and the job produces, and the package-name check above only catches the swap to *another*
+        // app's backup.
+        val archiveKey = cipher.deriveKey(PASSPHRASE.toCharArray(), SALT, iterations = 4)
+        val jobKey = cipher.deriveKey(PASSPHRASE.toCharArray(), ByteArray(16) { 9 }, iterations = 4)
+
+        assertTrue(wrongKeyReason(header(archiveKey), jobKey, cipher) != null)
     }
 
     @Test
-    fun `the refusal names the count the archive wants`() {
-        // Asserted separately from the sentence above because it is the part with a job: a bug report
-        // that carries the number identifies which Thor wrote the archive. A message that only said
-        // "a different version" would pass a type-shaped assertion and tell nobody anything.
-        assertTrue(unsupportedKdfReason(310_000)!!.contains("310000"))
+    fun `an archive written at a count this build no longer uses is restorable`() {
+        // The regression the port exists to prevent. `KDF_ITERATIONS` is this build's number; an
+        // archive from a Thor whose number differed is opened by the key its *own* header describes,
+        // and this function must not stand in the way of that. The retired comparison refused it.
+        val key = cipher.deriveKey(PASSPHRASE.toCharArray(), SALT, iterations = KDF_ITERATIONS - 1)
+
+        assertNull(wrongKeyReason(header(key, iterations = KDF_ITERATIONS - 1), key, cipher))
+    }
+
+    @Test
+    fun `a verifier that is not Base64 is reported as a damaged header, not as a wrong passphrase`() {
+        // Two different things to do about them: one sends the user back to the file, the other says
+        // the file is not readable. Collapsing them would have a user retyping a correct passphrase.
+        val key = cipher.deriveKey(PASSPHRASE.toCharArray(), SALT, iterations = 4)
+
+        assertEquals(
+            "this backup's header could not be read well enough to check the passphrase",
+            wrongKeyReason(header(key).copy(verifier = "not base64!!"), key, cipher),
+        )
     }
 
     // endregion
@@ -174,4 +202,31 @@ class AppArchiveWorkerTest {
     }
 
     // endregion
+
+    /**
+     * A header carrying the verifier for [key], which is the only field [wrongKeyReason] reads.
+     *
+     * `iterations` is a parameter rather than a constant so the "a count this build no longer uses"
+     * test can state the case it is about; nothing in the function under test looks at it any more,
+     * and that is precisely what that test pins.
+     */
+    private fun header(key: SecretKey, iterations: Int = 4) = ArchiveHeader(
+        createdAt = 1_000L,
+        thorVersionCode = 1950,
+        packageName = "com.example.app",
+        versionCode = 100L,
+        userId = 0,
+        signerSha256 = "AB".repeat(32),
+        kdf = ArchiveKdf(
+            iterations = iterations,
+            salt = Base64.getEncoder().encodeToString(SALT),
+        ),
+        verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
+        members = emptyList(),
+    )
+
+    private companion object {
+        const val PASSPHRASE = "hunter2"
+        val SALT = ByteArray(16) { it.toByte() }
+    }
 }

@@ -84,6 +84,7 @@ private fun messageText(message: ArchiveRestoreMessage): String = when (message)
 @StringRes
 private fun reasonLabel(reason: ArchiveRestoreReason): Int = when (reason) {
     ArchiveRestoreReason.FILE_UNREADABLE -> R.string.restore_error_unreadable_file
+    ArchiveRestoreReason.NOT_AN_ARCHIVE -> R.string.restore_error_not_an_archive
     ArchiveRestoreReason.WRONG_PASSPHRASE -> R.string.restore_error_wrong_passphrase
     ArchiveRestoreReason.UNLOCK_CHECK_FAILED -> R.string.restore_error_unlock_check_failed
     // The two that are interpolated into `restore_failed` ("Restore failed: %1$s") rather than drawn
@@ -488,9 +489,10 @@ private fun RestoreOutcome(finish: RestoreFinish, onDismiss: () -> Unit) {
             }
 
             is RestoreFinish.Cancelled -> if (finish.workerRan) {
-                // Cancelled after the job had been handed to a built worker. Nothing in Thor cancels a
-                // live job today, so this is the rare arm — but it is the one where "nothing was
-                // changed" would be false, and the damage is the same damage a failure leaves.
+                // Cancelled after the job had been handed to a built worker — reached by the Cancel
+                // action on the ongoing notification, which cancels the work rather than dismissing
+                // the notification. It is the arm where "nothing was changed" would be false, and the
+                // damage is the same damage a failure leaves.
                 Text(
                     text = stringResource(R.string.restore_cancelled_after_start),
                     style = MaterialTheme.typography.bodyMedium,
