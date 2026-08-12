@@ -11,6 +11,8 @@ import com.valhalla.thor.domain.model.KDF_SALT_BYTES
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
 import com.valhalla.thor.domain.model.saltBytes
 import com.valhalla.thor.domain.repository.ArchiveSource
+import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Factory
@@ -42,7 +44,22 @@ const val MAX_HEADER_BYTES = 1 * 1024 * 1024
 sealed interface ArchiveHeaderOutcome {
     data class Read(val header: ArchiveHeader) : ArchiveHeaderOutcome
 
-    /** @param reason shown to the user verbatim; it names what Thor looked for. */
+    /**
+     * This file cannot be used as an archive.
+     *
+     * @param reason shown to the user verbatim, so it has to say *which* of four different things
+     *   happened: the container holds no header entry, the header is larger than Thor will read, the
+     *   header will not decode, or the container itself could not be read at all. That last one is
+     *   the one that matters most to get right — a truncated or still-downloading `.thorbak` used to
+     *   be reported as "this file has no `thorbak.json`, so it is not a Thor backup", which tells
+     *   someone holding a real backup that it is the wrong kind of file. The four are separated in
+     *   the wording rather than in the type because both consumers (`ArchiveRestoreViewModel` and
+     *   `AppArchiveWorker`) render exactly this string and nothing else.
+     *
+     *   What is never in it: an exception message. `kotlinx.serialization`'s parser reports byte
+     *   offsets, token names and a dump of the JSON it was reading — a sentence for a bug report,
+     *   not for a person whose backup will not open. Those go to the log.
+     */
     data class NotAnArchive(val reason: String) : ArchiveHeaderOutcome
 }
 
@@ -68,30 +85,39 @@ class OpenArchiveUseCase(
 ) {
 
     suspend fun readHeader(source: ArchiveSource): ArchiveHeaderOutcome = withContext(ioDispatcher) {
-        val bytes = runCatching {
-            source.openEntry(THORBAK_HEADER_ENTRY)?.use { stream ->
-                val raw = stream.readAtMost(MAX_HEADER_BYTES + 1)
-                // A hostile `thorbak.json` could be gigabytes after deflate; cap to avoid OOM.
-                // A non-local return@withContext here surfaces the over-size outcome directly,
-                // distinct from the "no header entry" message that follows.
-                if (raw.size > MAX_HEADER_BYTES) {
-                    return@withContext ArchiveHeaderOutcome.NotAnArchive(
-                        "this file's $THORBAK_HEADER_ENTRY exceeds $MAX_HEADER_BYTES bytes"
-                    )
-                }
-                raw
-            }
-        }.getOrNull()
-            ?: return@withContext ArchiveHeaderOutcome.NotAnArchive(
-                "this file has no $THORBAK_HEADER_ENTRY, so it is not a Thor backup"
+        // Two failures, kept apart, because only one of them is about the file being the wrong kind
+        // of thing: a null return is "there is no header entry in this container", while a throw is
+        // "this container would not read" — truncated, damaged, or still being copied in.
+        val bytes = try {
+            source.openEntry(THORBAK_HEADER_ENTRY)?.use { it.readAtMost(MAX_HEADER_BYTES + 1) }
+        } catch (e: CancellationException) {
+            // `Exception` below would otherwise turn a cancelled read into a verdict about the file.
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, "could not read $THORBAK_HEADER_ENTRY", e)
+            return@withContext ArchiveHeaderOutcome.NotAnArchive(
+                "this file could not be read; it may be damaged or still being copied"
             )
+        } ?: return@withContext ArchiveHeaderOutcome.NotAnArchive(
+            "this file has no $THORBAK_HEADER_ENTRY, so it is not a Thor backup"
+        )
+
+        // A hostile `thorbak.json` could be gigabytes after deflate; cap to avoid OOM. Its own
+        // message, distinct from the "no header entry" one above: the entry is there and is absurd.
+        if (bytes.size > MAX_HEADER_BYTES) {
+            return@withContext ArchiveHeaderOutcome.NotAnArchive(
+                "this file's $THORBAK_HEADER_ENTRY exceeds $MAX_HEADER_BYTES bytes"
+            )
+        }
 
         runCatching { ArchiveHeader.decode(bytes.decodeToString()) }
             .fold(
                 onSuccess = { ArchiveHeaderOutcome.Read(it) },
                 onFailure = {
+                    // The parser's own message is logged and not shown; see `NotAnArchive.reason`.
+                    Logger.e(TAG, "$THORBAK_HEADER_ENTRY could not be decoded", it)
                     ArchiveHeaderOutcome.NotAnArchive(
-                        "this file's $THORBAK_HEADER_ENTRY could not be read: ${it.message}"
+                        "this file's $THORBAK_HEADER_ENTRY is not one this version of Thor can read"
                     )
                 },
             )
@@ -158,6 +184,10 @@ class OpenArchiveUseCase(
     // tests, which would take this whole class off the test classpath.
     private fun String.decodeBase64(): ByteArray? =
         runCatching { Base64.getDecoder().decode(this) }.getOrNull()
+
+    private companion object {
+        const val TAG = "OpenArchive"
+    }
 
     /** Read up to [limit] bytes from this stream; the returned array is exactly the bytes read. */
     private fun InputStream.readAtMost(limit: Int): ByteArray {

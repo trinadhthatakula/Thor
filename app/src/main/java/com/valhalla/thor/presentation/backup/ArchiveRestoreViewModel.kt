@@ -188,7 +188,13 @@ data class ArchiveRestoreUiState(
     val warnings: List<ArchiveRestoreWarning> = emptyList(),
     val installFirst: Boolean = false,
     val selected: Set<DataClass> = emptySet(),
-    /** False when the archive holds no OBB, in which case the checkbox is not drawn at all. */
+    /**
+     * False when the archive holds no OBB, in which case the checkbox is not drawn at all — and
+     * false on an **install-first** restore even when it does, because that path installs the
+     * archive's `.xapk` and the install places the game data with it. `RestoreAppArchiveUseCase`
+     * documents that `restoreObb` is not honoured there; a checkbox that changes nothing is worse
+     * than no checkbox.
+     */
     val obbOffered: Boolean = false,
     val restoreObb: Boolean = false,
     val passphraseNeeded: Boolean = false,
@@ -641,10 +647,17 @@ internal class ArchiveRestoreViewModel(
         val header = _uiState.value.header ?: return
         when (val decision = evaluateArchiveRestoreGate(header, installed, _uiState.value.selected)) {
             is ArchiveRestoreDecision.Allowed -> _uiState.update {
+                val obbCount = header.appBundle?.obbCount ?: 0
                 it.copy(
                     refusal = null,
                     warnings = decision.warnings,
                     installFirst = decision.installFirst,
+                    // Withdrawn on the install-first path, where the install places the game data
+                    // itself and the flag reaches nothing. `restoreObb` is then set to what will
+                    // actually happen, so the request Thor sends matches the app the user gets; on
+                    // every other path the user's own choice is left alone.
+                    obbOffered = obbCount > 0 && !decision.installFirst,
+                    restoreObb = if (decision.installFirst) obbCount > 0 else it.restoreObb,
                 )
             }
 

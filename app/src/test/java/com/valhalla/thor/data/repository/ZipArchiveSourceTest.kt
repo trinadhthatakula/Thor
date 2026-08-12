@@ -56,7 +56,8 @@ class ZipArchiveSourceTest {
                 out.write(body.toByteArray())
                 out.closeEntry()
             }
-            // Header last, STORED — matches BackupAppArchiveUseCase.kt:211–219.
+            // Header last, STORED — matches the THORBAK_HEADER_ENTRY write that closes
+            // BackupAppArchiveUseCase.invoke.
             val headerBytes = headerBody.toByteArray()
             out.putNextEntry(
                 ZipEntry("thorbak.json").apply {

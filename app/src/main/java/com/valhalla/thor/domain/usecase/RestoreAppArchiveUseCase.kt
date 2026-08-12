@@ -33,7 +33,12 @@ sealed interface ArchiveRestoreOutcome {
     /**
      * @param warnings things the user should know that are not failures — a failed OBB placement, a
      *   class the archive skipped. Shown alongside §8.6's "launch the app to check".
-     * @param obb null when OBB was not part of this restore.
+     * @param obb what happened to the game data, and only when **this** class placed it. Null on an
+     *   install-first restore even though game data *was* placed there — `installBundle` places OBB
+     *   inside the install, and `ArchiveInstallOutcome.InstalledWithoutGameData` is the only signal
+     *   that path produces. Also null when the archive holds no bundle, or the user did not ask for
+     *   game data. **Nothing reads this field yet**: `AppArchiveWorker` forwards [warnings] alone, so
+     *   a failed placement reaches the user as a warning and a successful one is not reported at all.
      */
     data class Completed(
         val classesRestored: List<DataClass>,
@@ -43,11 +48,24 @@ sealed interface ArchiveRestoreOutcome {
 
     /**
      * @param classesRestored the classes that **did** land before the failure. "Restore failed" over a
-     *   `CE` that is already replaced tells the user nothing they can act on.
+     *   `CE` that is already replaced tells the user nothing they can act on. A class whose swap
+     *   landed but whose ownership or SELinux labels could not be set is **in** this list: the class
+     *   root holds the archive's copy either way, which is the fact the user has to act on, and
+     *   [reason] is what says the app may not be able to read it.
+     * @param classPossiblyCleared the class whose swap failed, when Thor cannot tell what that failure
+     *   left behind. `swapStagedEntriesCommand` deletes the class root's entries and *then* moves the
+     *   staged ones in, so one non-zero exit covers everything from "the non-empty guard stopped it
+     *   before anything was deleted" to "the delete ran and the move did not" — and that second state
+     *   is this app's old data gone with nothing in its place. Thor cannot tell which happened and
+     *   cannot undo either (§8.3 has no undo rung), so naming the class is the whole of what the
+     *   reporting can do; saying nothing tells the user *less* than the truth at the one moment the
+     *   truth is that their data may be gone. Null on every other failure, all of which leave the
+     *   class they stopped on exactly as it was.
      */
     data class Failed(
         val reason: String,
         val classesRestored: List<DataClass>,
+        val classPossiblyCleared: DataClass? = null,
     ) : ArchiveRestoreOutcome
 }
 
@@ -95,7 +113,12 @@ internal class RestoreAppArchiveUseCase(
      *   fresh "is it installed?" check: the two can disagree, and this one is the one the user was
      *   shown. True means the app is absent and is installed from the archive's bundle first, after
      *   which the signer *is* checked here — the gate could not check an absent app's.
-     * @param restoreObb "place the archive's game data". On an archive that holds no bundle
+     * @param restoreObb "place the archive's game data". **Not honoured when [installFirst] is true**
+     *   and the header declares game data: the install runs from the container's own `.xapk` and
+     *   `AppArchiveInstaller.installBundle` writes that bundle's OBB as part of it, so there is no
+     *   install-first path that leaves game data out. That combination places it anyway and says so
+     *   in [ArchiveRestoreOutcome.Completed.warnings]; the restore screen stops offering the toggle on
+     *   that path for the same reason. On an archive that holds no bundle
      *   (`header.appBundle == null` — a data-only backup) there is nothing to place, so this is
      *   satisfied by doing nothing and saying so in [ArchiveRestoreOutcome.Completed.warnings]; it is
      *   **not** a failure, and the data restore proceeds. It is a failure whenever the header declares
@@ -146,6 +169,14 @@ internal class RestoreAppArchiveUseCase(
             }
 
             if (installFirst) {
+                if (!restoreObb && (header.appBundle?.obbCount ?: 0) > 0) {
+                    // `installBundle` writes the bundle's OBB as part of the install; there is no
+                    // install that leaves it behind. Refusing the whole restore over a flag Thor
+                    // cannot honour would be worse than doing it and saying so — and doing it
+                    // silently is the "a control that does nothing" defect this warning replaces.
+                    warnings += "this app was installed from the archive, and that install places " +
+                        "its game data too, so it was not left out"
+                }
                 onProgress(ThorJobProgress(ThorJobStage.INSTALLING, appLabel))
                 when (val outcome = installer.installBundle(bundle!!, pkg)) {
                     ArchiveInstallOutcome.Installed -> Unit
@@ -217,8 +248,23 @@ internal class RestoreAppArchiveUseCase(
                     )
                 onProgress(restoring(appLabel, doneBytes, totalBytes))
 
-                val failure = restoreClass(source, dataClass, member, key, pkg, uid)
-                if (failure != null) return failWithBreadcrumbKept(failure, restored)
+                when (val outcome = restoreClass(source, dataClass, member, key, pkg, uid)) {
+                    ClassOutcome.Replaced -> Unit
+
+                    // In `restored` before the return: the class root holds the archive's copy, and
+                    // the user is owed that fact even though the app may not be able to read it.
+                    is ClassOutcome.ReplacedUnusable -> {
+                        restored += dataClass
+                        return failWithBreadcrumbKept(outcome.reason, restored)
+                    }
+
+                    is ClassOutcome.NotReplaced ->
+                        return failWithBreadcrumbKept(outcome.reason, restored)
+
+                    is ClassOutcome.SwapFailed -> return failWithBreadcrumbKept(
+                        outcome.reason, restored, classPossiblyCleared = dataClass
+                    )
+                }
 
                 restored += dataClass
                 doneBytes += member.plainBytes
@@ -237,8 +283,9 @@ internal class RestoreAppArchiveUseCase(
                 // Its own return path, so §8.3 steps 5 and 6 have to be repeated on it.
                 gateway.forceStop(pkg)
                 breadcrumbs.clear()
-                // The real placement, not a hard-coded `NotNeeded`: "2 game data files placed" is what
-                // the user is shown, and `NotNeeded` would report that nothing happened.
+                // The real placement rather than a hard-coded `NotNeeded`, which would say nothing
+                // happened when something did. What the *user* is told about it is the warning added
+                // just above; see `Completed.obb` for why the field itself reaches no one yet.
                 return ArchiveRestoreOutcome.Completed(restored, warnings, placement)
             }
 
@@ -257,7 +304,36 @@ internal class RestoreAppArchiveUseCase(
     }
 
     /**
-     * One class, in §8.3's order. Returns null on success, or the reason it failed.
+     * What one class's restore did to the device — not just whether it worked.
+     *
+     * Four arms because the caller has to tell three different things to the user, and a
+     * `String?` could carry only one of them: whether the class root now holds the archive's copy,
+     * whether it was left as it was, and whether Thor cannot say which.
+     */
+    private sealed interface ClassOutcome {
+
+        /** The class root holds the archive's copy and the app can read it. */
+        data object Replaced : ClassOutcome
+
+        /**
+         * The swap landed and a fixup after it did not, so the class root holds the archive's copy
+         * but the app may not be able to open it. It **did** land — the caller must count it in
+         * [ArchiveRestoreOutcome.Failed.classesRestored].
+         */
+        data class ReplacedUnusable(val reason: String) : ClassOutcome
+
+        /** The failure happened before the swap, so this class is exactly as it was. */
+        data class NotReplaced(val reason: String) : ClassOutcome
+
+        /**
+         * The swap itself failed. See [ArchiveRestoreOutcome.Failed.classPossiblyCleared]: this is
+         * the one outcome Thor cannot narrow, and the one that can mean the old data is gone.
+         */
+        data class SwapFailed(val reason: String) : ClassOutcome
+    }
+
+    /**
+     * One class, in §8.3's order.
      *
      * The whole member is decrypted **before** [AppDataArchiveGateway.extractInto] runs, and the swap
      * comes after that. A corrupt archive therefore fails with the original data still in place —
@@ -270,21 +346,23 @@ internal class RestoreAppArchiveUseCase(
         key: SecretKey,
         packageName: String,
         uid: Int,
-    ): String? {
+    ): ClassOutcome {
         val staged = gateway.stagingFile("restore-${dataClass.id}.tar")
         try {
             val ciphertext = try {
                 source.openEntry(member.fileName)
-                    ?: return "this archive is missing ${member.fileName}"
+                    ?: return ClassOutcome.NotReplaced("this archive is missing ${member.fileName}")
             } catch (e: IOException) {
                 // A truncated or damaged container throws here (`ZipException` is an `IOException`)
                 // rather than returning null, and a throw out of `invoke` costs the caller
                 // `classesRestored`.
                 Logger.e(TAG, "could not open ${member.fileName}", e)
-                return "this archive could not be read: ${e.message}"
+                return ClassOutcome.NotReplaced("this archive could not be read: ${e.message}")
             }
             val nonce = runCatching { Base64.getDecoder().decode(member.nonce) }.getOrNull()
-                ?: return "this archive's ${dataClass.id} member has an unreadable nonce"
+                ?: return ClassOutcome.NotReplaced(
+                    "this archive's ${dataClass.id} member has an unreadable nonce"
+                )
 
             try {
                 ciphertext.use { input ->
@@ -294,7 +372,9 @@ internal class RestoreAppArchiveUseCase(
                 }
             } catch (e: ArchiveIntegrityException) {
                 Logger.e(TAG, "${member.fileName} failed integrity", e)
-                return "this archive's ${dataClass.id} data is damaged and was not restored"
+                return ClassOutcome.NotReplaced(
+                    "this archive's ${dataClass.id} data is damaged and was not restored"
+                )
             } catch (e: IOException) {
                 // Not an integrity failure and not exotic: running out of room in Thor's internal
                 // cache is *the* expected failure for a multi-gigabyte restore, and neither
@@ -303,7 +383,9 @@ internal class RestoreAppArchiveUseCase(
                 // away `classesRestored` with it — and "CE is already replaced" is exactly what
                 // separates an actionable message from a useless one.
                 Logger.e(TAG, "${member.fileName} could not be staged", e)
-                return "${dataClass.id} could not be written to Thor's cache: ${e.message}"
+                return ClassOutcome.NotReplaced(
+                    "${dataClass.id} could not be written to Thor's cache: ${e.message}"
+                )
             }
 
             // The decrypt above is this use case's one long stretch with no suspension point in it, and
@@ -315,22 +397,36 @@ internal class RestoreAppArchiveUseCase(
             currentCoroutineContext().ensureActive()
 
             val compressed = ArchiveCompression.fromId(member.compression) == ArchiveCompression.GZIP
+            // Unpacks into the class root's staging directory, beside the live data and never over
+            // it, so a failure here has replaced nothing.
             if (!gateway.extractInto(packageName, dataClass, staged, compressed)) {
-                return "${dataClass.id} could not be unpacked"
+                return ClassOutcome.NotReplaced("${dataClass.id} could not be unpacked")
             }
             // Past this line the original is gone.
             if (!gateway.swapStaged(packageName, dataClass)) {
-                return "${dataClass.id} could not be put into place"
+                // The reason carries the ambiguity as well as the field does, because the reason is
+                // the part every consumer already shows.
+                return ClassOutcome.SwapFailed(
+                    "${dataClass.id} could not be put into place, and Thor cannot tell whether its " +
+                        "previous data was already deleted"
+                )
             }
             if (dataClass.isInternal) {
+                // Both of these run *after* the swap: the class root already holds the archive's copy,
+                // so the failure is "restored, and the app may not be able to read it" — never
+                // "not restored". `ReplacedUnusable` is what keeps `classesRestored` honest about it.
                 if (!gateway.chownClass(packageName, dataClass, uid)) {
-                    return "${dataClass.id} was restored but its ownership could not be set"
+                    return ClassOutcome.ReplacedUnusable(
+                        "${dataClass.id} was restored but its ownership could not be set"
+                    )
                 }
                 if (!gateway.relabelClass(packageName, dataClass)) {
-                    return "${dataClass.id} was restored but its security labels could not be set"
+                    return ClassOutcome.ReplacedUnusable(
+                        "${dataClass.id} was restored but its security labels could not be set"
+                    )
                 }
             }
-            return null
+            return ClassOutcome.Replaced
         } finally {
             // Inside the loop, so peak disk is one class. Folding this up into `invoke` is the one
             // edit that breaks that and nothing else.
@@ -355,13 +451,19 @@ internal class RestoreAppArchiveUseCase(
         total = if (doneBytes > 0L) totalBytes else 0L,
     )
 
+    /**
+     * The only exit taken after the breadcrumb is written, and so the only one that can be reached
+     * with data already replaced. Every `Failed` built outside this function is on a path that runs
+     * before the first swap, which is why they all leave `classPossiblyCleared` at its null default.
+     */
     private fun failWithBreadcrumbKept(
         reason: String,
         restored: List<DataClass>,
+        classPossiblyCleared: DataClass? = null,
     ): ArchiveRestoreOutcome.Failed {
         // Deliberately no `breadcrumbs.clear()`. §8.5: a surviving breadcrumb is how the next launch
         // tells the user their data may be incomplete.
-        return ArchiveRestoreOutcome.Failed(reason, restored.toList())
+        return ArchiveRestoreOutcome.Failed(reason, restored.toList(), classPossiblyCleared)
     }
 
     /**

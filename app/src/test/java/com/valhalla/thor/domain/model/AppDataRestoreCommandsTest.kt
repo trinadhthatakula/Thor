@@ -116,10 +116,22 @@ class AppDataRestoreCommandsTest {
         // a tar that failed or listed partially produced "no match", `!` inverted it to 0, and the
         // extraction ran anyway. The sentinel is what closes that, and it only closes it while the
         // string the command echoes is the string the pattern matches.
+        //
+        // `refusal.containsMatchIn(THOR_LIST_FAILED)` — what this used to assert — is vacuous: the
+        // constant IS the pattern's first alternative, so it matches itself by construction and the
+        // assertion would go on passing while the command echoed something else entirely. So the
+        // sentinel is read back out of the command, and the check is the one grep performs: line by
+        // line over the stream a half-finished tar leaves behind.
         val command = extractCommand(root, "/tmp/a.tar", compressed = true)!!
+        val echoed = Regex("\\|\\| echo (\\S+) \\)").find(command)?.groupValues?.get(1)
 
-        assertTrue(command.contains("|| echo $THOR_LIST_FAILED )"))
-        assertTrue(refusal.containsMatchIn(THOR_LIST_FAILED))
+        assertEquals(THOR_LIST_FAILED, echoed)
+
+        // grep is line-oriented, so the refusal has to come from the sentinel line itself and not
+        // from the innocuous listing tar managed to emit before it died.
+        val partial = listOf(listing("databases/", mode = "drwxrwx---"), listing("databases/app.db"))
+        assertFalse(partial.any { refusal.containsMatchIn(it) })
+        assertTrue((partial + echoed!!).any { refusal.containsMatchIn(it) })
     }
 
     @Test

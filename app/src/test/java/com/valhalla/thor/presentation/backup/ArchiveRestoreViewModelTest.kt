@@ -541,6 +541,12 @@ class ArchiveRestoreViewModelTest {
         // and the gate tests absence *before* the signer for exactly this case.
         assertNull(vm.uiState.value.refusal)
         assertEquals(true, vm.uiState.value.installFirst)
+        // The game-data checkbox is withdrawn on this path and only on this path: installing the
+        // archive's `.xapk` places its OBB as part of the install, so `restoreObb` reaches nothing
+        // in `RestoreAppArchiveUseCase` and a checkbox for it changes nothing on the device. The
+        // flag is then set to what will actually happen, so the request does not claim otherwise.
+        assertEquals(false, vm.uiState.value.obbOffered)
+        assertEquals(true, vm.uiState.value.restoreObb)
     }
 
     @Test

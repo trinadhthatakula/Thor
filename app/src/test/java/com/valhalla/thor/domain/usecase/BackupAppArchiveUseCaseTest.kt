@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.domain.model.ARCHIVE_SPACE_MARGIN_BYTES
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveCompression
@@ -55,7 +56,21 @@ class BackupAppArchiveUseCaseTest {
         var published = false
         var discarded = false
 
-        override val output: OutputStream get() = bytes
+        /**
+         * How many times the stream handed out was closed — which must stay zero.
+         * [ArchiveDestination.output] says the destination owns closing it, and a
+         * `ByteArrayOutputStream` alone cannot tell anyone: its `close()` does nothing at all, so
+         * that contract was untestable until this wrapper existed.
+         */
+        var outputClosed = 0
+
+        override val output: OutputStream = object : OutputStream() {
+            override fun write(b: Int) = bytes.write(b)
+            override fun write(b: ByteArray, off: Int, len: Int) = bytes.write(b, off, len)
+            override fun close() {
+                outputClosed++
+            }
+        }
 
         override suspend fun publish(): Boolean {
             published = true
@@ -88,6 +103,11 @@ class BackupAppArchiveUseCaseTest {
     /**
      * @param tarBehaviour what each class's `tar` does. A class absent from the map is reported as an
      *   absent root, which is how "this app has no external media" arrives.
+     * @param entries what each class's listing keeps. **Absent from this map and mapped to an empty
+     *   list are two different device states**, and the elvis below only fires on the first: absent
+     *   is `rootAbsent = true`, the directory that could not be read, while
+     *   `DataClass.CE to emptyList()` is a root that is present and readable and holds nothing the
+     *   archive would keep. Only the second reaches §7.2 step 7a's empty-listing guard.
      */
     private inner class FakeGateway(
         private val entries: Map<DataClass, List<String>> = emptyMap(),
@@ -632,6 +652,99 @@ class BackupAppArchiveUseCaseTest {
         ) as ArchiveBackupOutcome.Completed
 
         assertEquals(listOf(DataClass.CE.id), outcome.header.members.map { it.dataClass })
+    }
+
+    @Test
+    fun `a class that fits by exactly the margin is captured, and one byte short is refused`() =
+        runTest {
+            // The accept side, which nothing pinned: every size in this file was 8 GiB against
+            // 512 MiB, so a rule that refused *every* class it could measure would have passed the
+            // whole suite. Both runs sit on the threshold itself, one either side, which is also the
+            // only way to say whether the comparison is `<` or `<=`.
+            //
+            // What is compared is the **packable** size — `measureDataClass` subtracts the volatile
+            // children the archive drops — not the size of the class directory.
+            val size = 128L * 1024 * 1024
+            val probe = FakeProbe(mapOf(DataClass.CE to DataClassSize.Known(size)))
+
+            val fits = RecordingDestination()
+            val captured = useCase(
+                FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))),
+                FakeStore(fits),
+                probe,
+            )(
+                request = request(DataClass.CE),
+                key = key(),
+                usableStagingBytes = size + ARCHIVE_SPACE_MARGIN_BYTES,
+            ) as ArchiveBackupOutcome.Completed
+
+            assertEquals(listOf(DataClass.CE.id), captured.header.members.map { it.dataClass })
+            assertEquals(emptyList<String>(), captured.header.warnings)
+
+            val short = RecordingDestination()
+            val refused = useCase(
+                FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))),
+                FakeStore(short),
+                probe,
+            )(
+                request = request(DataClass.CE),
+                key = key(),
+                usableStagingBytes = size + ARCHIVE_SPACE_MARGIN_BYTES - 1,
+            )
+
+            // Nothing else was selected, so the run has nothing at all to put in the container.
+            assertTrue(refused.toString(), refused is ArchiveBackupOutcome.Failed)
+        }
+
+    @Test
+    fun `a class root that is present and empty produces no member`() = runTest {
+        // §7.2 step 7a, and the guard is not cosmetic: without it a zero-entry tar becomes a member,
+        // and restore swaps that member over live data — with only `swapStagedEntriesCommand`'s
+        // `[ -n "$(ls -A ...)" ]` between the user and an emptied class root.
+        //
+        // Distinct from an absent root, which is the class *missing* from `entries`. Here CE is
+        // present, readable and holds nothing the archive keeps.
+        val destination = RecordingDestination()
+        val gateway = FakeGateway(
+            entries = mapOf(
+                DataClass.CE to emptyList(),
+                DataClass.DE to listOf("shared_prefs"),
+            ),
+        )
+
+        val outcome = useCase(gateway, FakeStore(destination))(
+            request = request(DataClass.CE, DataClass.DE),
+            key = key(),
+        ) as ArchiveBackupOutcome.Completed
+
+        assertEquals(listOf(DataClass.DE.id), outcome.header.members.map { it.dataClass })
+        assertTrue(gateway.tarCalls.toString(), gateway.tarCalls.none { it.first == DataClass.CE })
+        // Findable in the header, like every other class the user ticked and did not get.
+        assertTrue(
+            outcome.header.warnings.toString(),
+            outcome.header.warnings.any { it.contains(DataClass.CE.id) },
+        )
+    }
+
+    @Test
+    fun `the container stream is never closed by the use case`() = runTest {
+        // `ArchiveDestination.output` is the destination's to close, in `publish()`/`discard()`.
+        // The `ZipOutputStream` over it *is* closed — that is the only thing that ends its
+        // `Deflater`'s native buffers — so a close shield stands between the two. Remove the shield
+        // and this fails; remove the `finish()` and the container has no central directory.
+        val destination = RecordingDestination()
+
+        val outcome = useCase(
+            FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))),
+            FakeStore(destination),
+        )(request = request(DataClass.CE), key = key()) as ArchiveBackupOutcome.Completed
+
+        assertEquals(0, destination.outputClosed)
+        assertTrue(
+            entryNames(destination.bytes.toByteArray()).toString(),
+            entryNames(destination.bytes.toByteArray()).contains(THORBAK_HEADER_ENTRY),
+        )
+        assertNotNull(outcome.header)
     }
 
     @Test

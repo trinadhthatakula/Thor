@@ -4,13 +4,19 @@
 package com.valhalla.thor.domain.model
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * §8.1's table, row by row. Every row gets a named test, so a change to the table is a change to a
  * test name rather than a silently relaxed check.
+ *
+ * **Warnings are asserted as a whole list, never with `in` or a single `assertFalse`.** The default
+ * [header] holds CE *and* DE, so a test that selects CE alone gets `CE_WITHOUT_DE` whether it wants
+ * it or not: `assertFalse(INSTALLED_VERSION_OLDER in warnings)` under a test called *"proceeds
+ * quietly"* passed over a decision carrying a warning, and would have gone on passing if the rule
+ * under test had started warning about something else entirely. Selections here are chosen so the
+ * expected list is exactly what the row is about.
  */
 class ArchiveRestoreGateTest {
 
@@ -116,34 +122,38 @@ class ArchiveRestoreGateTest {
     @Test
     fun `an installed version older than the archive warns hard but is allowed`() {
         // Newer data on older code is the classic permanent-crash-on-launch. The user is told, in those
-        // words, and may proceed.
-        val decision = evaluateArchiveRestoreGate(header(versionCode = 200L), installed(versionCode = 100L), setOf(DataClass.CE))
+        // words, and may proceed. Both classes selected, so the list is exactly this one row.
+        val decision = evaluateArchiveRestoreGate(
+            header(versionCode = 200L),
+            installed(versionCode = 100L),
+            setOf(DataClass.CE, DataClass.DE),
+        )
 
         val allowed = decision as ArchiveRestoreDecision.Allowed
-        assertTrue(allowed.warnings.toString(), ArchiveRestoreWarning.INSTALLED_VERSION_OLDER in allowed.warnings)
+        assertEquals(listOf(ArchiveRestoreWarning.INSTALLED_VERSION_OLDER), allowed.warnings)
     }
 
     @Test
     fun `an installed version newer than the archive proceeds quietly`() {
         // Forward migration is what apps are built for. A warning here would train users to ignore
-        // warnings.
-        val decision = evaluateArchiveRestoreGate(header(versionCode = 100L), installed(versionCode = 200L), setOf(DataClass.CE))
-
-        val allowed = decision as ArchiveRestoreDecision.Allowed
-        assertFalse(
-            allowed.warnings.toString(),
-            ArchiveRestoreWarning.INSTALLED_VERSION_OLDER in allowed.warnings,
+        // warnings. "Quietly" means the whole list is empty — this used to select CE alone, so the
+        // decision it called quiet carried CE_WITHOUT_DE.
+        val decision = evaluateArchiveRestoreGate(
+            header(versionCode = 100L),
+            installed(versionCode = 200L),
+            setOf(DataClass.CE, DataClass.DE),
         )
+
+        assertEquals(emptyList<ArchiveRestoreWarning>(), (decision as ArchiveRestoreDecision.Allowed).warnings)
     }
 
     @Test
     fun `an equal version proceeds quietly`() {
-        // Brief line 161 listed setOf(DataClass.CE) here but that would trigger CE_WITHOUT_DE
-        // (since the default header includes DE), making warnings.isEmpty() false — contradicting
-        // the intent and the next test. setOf(CE, DE) is the correct selection for this version check.
+        // CE *and* DE: selecting CE alone from the default header trips CE_WITHOUT_DE, which has
+        // nothing to do with the version row this test is about.
         val decision = evaluateArchiveRestoreGate(header(versionCode = 100L), installed(versionCode = 100L), setOf(DataClass.CE, DataClass.DE))
 
-        assertTrue((decision as ArchiveRestoreDecision.Allowed).warnings.isEmpty())
+        assertEquals(emptyList<ArchiveRestoreWarning>(), (decision as ArchiveRestoreDecision.Allowed).warnings)
     }
 
     @Test
@@ -151,7 +161,7 @@ class ArchiveRestoreGateTest {
         val decision = evaluateArchiveRestoreGate(header(), installed(), setOf(DataClass.CE))
 
         val allowed = decision as ArchiveRestoreDecision.Allowed
-        assertTrue(allowed.warnings.toString(), ArchiveRestoreWarning.CE_WITHOUT_DE in allowed.warnings)
+        assertEquals(listOf(ArchiveRestoreWarning.CE_WITHOUT_DE), allowed.warnings)
     }
 
     @Test
@@ -165,7 +175,7 @@ class ArchiveRestoreGateTest {
         )
 
         val allowed = decision as ArchiveRestoreDecision.Allowed
-        assertFalse(allowed.warnings.toString(), ArchiveRestoreWarning.CE_WITHOUT_DE in allowed.warnings)
+        assertEquals(emptyList<ArchiveRestoreWarning>(), allowed.warnings)
     }
 
     @Test
@@ -207,12 +217,54 @@ class ArchiveRestoreGateTest {
     }
 
     @Test
+    fun `an archive whose schema version is zero or negative is refused`() {
+        // `schemaVersion` decides how every other field in the header is read, and it is untrusted
+        // JSON. The field defaults to ARCHIVE_SCHEMA_VERSION and is encoded even at its default, so
+        // no Thor ever wrote a 0 or a -1 — it is corruption or a crafted header, and "older than
+        // version 1" is not a thing this reader can fall back to. Fails closed, both values.
+        listOf(0, -1, Int.MIN_VALUE).forEach { version ->
+            val decision = evaluateArchiveRestoreGate(
+                header().copy(schemaVersion = version),
+                installed(),
+                setOf(DataClass.CE, DataClass.DE),
+            )
+
+            assertEquals(
+                "schemaVersion=$version",
+                ArchiveRestoreRefusal.INVALID_SCHEMA_VERSION,
+                (decision as ArchiveRestoreDecision.Refused).reason,
+            )
+        }
+    }
+
+    @Test
+    fun `the current schema version is read, not refused`() {
+        // The other side of the two-ended range, so neither bound can be widened unnoticed.
+        val decision = evaluateArchiveRestoreGate(
+            header().copy(schemaVersion = ARCHIVE_SCHEMA_VERSION),
+            installed(),
+            setOf(DataClass.CE, DataClass.DE),
+        )
+
+        assertTrue(decision.toString(), decision is ArchiveRestoreDecision.Allowed)
+    }
+
+    @Test
     fun `an absent app is not signer-checked, because there is no signer yet`() {
         // Order matters: checking the signer first would refuse every install-then-restore, which §8.1
         // explicitly calls "not a refusal". The install path re-checks after the install lands.
-        val decision = evaluateArchiveRestoreGate(header(), installed = null, setOf(DataClass.CE, DataClass.DE))
+        //
+        // The header's signer is deliberately *not* the installed one used everywhere else in this
+        // file: with a matching signer this test asserted nothing the first test in the file does not
+        // already assert, and would stay green with the signer rows moved above the absent-app row.
+        val decision = evaluateArchiveRestoreGate(
+            header(signerSha256 = "CD".repeat(32)),
+            installed = null,
+            setOf(DataClass.CE, DataClass.DE),
+        )
 
-        assertTrue(decision.toString(), decision is ArchiveRestoreDecision.Allowed)
+        val allowed = decision as ArchiveRestoreDecision.Allowed
+        assertTrue(allowed.installFirst)
     }
 
     @Test

@@ -17,11 +17,13 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.Base64
+import java.util.zip.ZipException
 import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -39,6 +41,19 @@ class OpenArchiveUseCaseTest {
         override val displayName = "fake.thorbak"
         override fun entryNames() = entries.keys.toList()
         override fun openEntry(name: String): InputStream? = entries[name]?.let(::ByteArrayInputStream)
+        override fun close() = Unit
+    }
+
+    /**
+     * A container that is there and will not read: truncated, damaged, or still being copied in.
+     *
+     * `ZipException` because that is what the real `ZipArchiveSource` raises, and because it is an
+     * `IOException` — the throw, not a null, is the whole point of the fixture.
+     */
+    private class UnreadableSource : ArchiveSource {
+        override val displayName = "half-copied.thorbak"
+        override fun entryNames(): List<String> = listOf(THORBAK_HEADER_ENTRY)
+        override fun openEntry(name: String): InputStream = throw ZipException("invalid CEN header")
         override fun close() = Unit
     }
 
@@ -81,10 +96,31 @@ class OpenArchiveUseCaseTest {
     }
 
     @Test
-    fun `a header that is not valid JSON is not an archive`() = runTest {
+    fun `a header that is not valid JSON is refused without quoting the parser`() = runTest {
         val outcome = useCase.readHeader(FakeSource(mapOf(THORBAK_HEADER_ENTRY to "{ nope".toByteArray())))
 
-        assertTrue(outcome.toString(), outcome is ArchiveHeaderOutcome.NotAnArchive)
+        val reason = (outcome as ArchiveHeaderOutcome.NotAnArchive).reason
+        // `reason` is shown to the user verbatim. kotlinx.serialization's message is a byte offset,
+        // a token name and a dump of the JSON it was reading — it belongs in the log, and it used to
+        // be pasted straight onto the screen.
+        assertTrue(reason, reason.contains(THORBAK_HEADER_ENTRY))
+        assertFalse(reason, reason.contains("JSON"))
+        assertFalse(reason, reason.contains("offset"))
+        assertFalse(reason, reason.contains("nope"))
+    }
+
+    @Test
+    fun `a container that will not read is not reported as a missing header`() = runTest {
+        // Two different facts that were one message. A truncated, damaged or still-downloading
+        // `.thorbak` throws out of `openEntry`, and every throw used to land on "this file has no
+        // thorbak.json, so it is not a Thor backup" — which tells someone holding their own backup
+        // that it is the wrong kind of file, and points them away from the thing they can act on.
+        val outcome = useCase.readHeader(UnreadableSource())
+
+        val reason = (outcome as ArchiveHeaderOutcome.NotAnArchive).reason
+        assertTrue(reason, reason.contains("could not be read"))
+        assertFalse(reason, reason.contains("has no"))
+        assertFalse(reason, reason.contains("not a Thor backup"))
     }
 
     @Test

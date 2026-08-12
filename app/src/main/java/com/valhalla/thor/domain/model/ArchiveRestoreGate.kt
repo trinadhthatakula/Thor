@@ -35,6 +35,16 @@ enum class ArchiveRestoreRefusal {
     SCHEMA_TOO_NEW,
 
     /**
+     * The header's `schemaVersion` is zero or negative.
+     *
+     * No Thor ever wrote one: the field defaults to `ARCHIVE_SCHEMA_VERSION` and is encoded even at
+     * its default, so this value was put there — by a crafted header or by corruption. It is the
+     * same fail-closed rule the two below follow, applied to the field that decides how every
+     * *other* field in the header is read.
+     */
+    INVALID_SCHEMA_VERSION,
+
+    /**
      * The header's `packageName` is not a valid package name.
      *
      * This field is read from untrusted archive JSON and is used in filesystem paths. An invalid
@@ -86,6 +96,13 @@ fun evaluateArchiveRestoreGate(
     installed: InstalledAppFacts?,
     selectedClasses: Set<DataClass>,
 ): ArchiveRestoreDecision {
+    // Both ends of the range. The upper one is §8.1's; the lower one is here because
+    // `schemaVersion` is untrusted JSON that decides how the rest of the header is read, and a
+    // header claiming version 0 or -1 is not an old archive Thor can still manage — it is not an
+    // archive Thor wrote. Fails closed, like `INVALID_PACKAGE_NAME` and `INVALID_USER_ID` below.
+    if (header.schemaVersion <= 0) {
+        return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.INVALID_SCHEMA_VERSION)
+    }
     if (header.schemaVersion > ARCHIVE_SCHEMA_VERSION) {
         return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.SCHEMA_TOO_NEW)
     }

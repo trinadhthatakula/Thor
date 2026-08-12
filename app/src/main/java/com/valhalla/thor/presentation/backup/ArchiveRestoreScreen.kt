@@ -56,6 +56,7 @@ private fun refusalLabel(refusal: ArchiveRestoreRefusal): Int = when (refusal) {
     ArchiveRestoreRefusal.CLASS_NOT_IN_ARCHIVE -> R.string.restore_refused_class_missing
     ArchiveRestoreRefusal.NOTHING_SELECTED -> R.string.restore_refused_nothing_selected
     ArchiveRestoreRefusal.SCHEMA_TOO_NEW -> R.string.restore_refused_schema_too_new
+    ArchiveRestoreRefusal.INVALID_SCHEMA_VERSION -> R.string.restore_refused_invalid_schema_version
     ArchiveRestoreRefusal.INVALID_PACKAGE_NAME -> R.string.restore_refused_invalid_package_name
     ArchiveRestoreRefusal.INVALID_USER_ID -> R.string.restore_refused_invalid_user_id
 }

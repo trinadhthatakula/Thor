@@ -28,6 +28,7 @@ import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.util.Logger
 import java.io.File
+import java.io.OutputStream
 import java.util.Base64
 import java.util.zip.CRC32
 import java.util.zip.Deflater
@@ -54,7 +55,7 @@ private const val TAG = "BackupAppArchive"
  *
  * **Note:** `AppArchiveCipher` is in `data.backup` and this use case is in `domain.usecase`. That
  * import crosses the layering boundary deliberately — the plan chose this over an abstraction that would
- * make `AppArchiveCipher` untestable via JCE in the domain tests. The reviewer is aware.
+ * make `AppArchiveCipher` untestable via JCE in the domain tests.
  */
 @Factory
 internal class BackupAppArchiveUseCase(
@@ -116,16 +117,23 @@ internal class BackupAppArchiveUseCase(
         val warnings = mutableListOf<String>()
         var published = false
 
+        // Level 0 for the streamed entries: the members are ciphertext and the bundle is already
+        // compressed, so deflate would spend CPU to occasionally grow the file. STORED is not an
+        // option for them — it demands the CRC before `putNextEntry`, which is unknowable for a
+        // stream being generated. The header, built in memory, is STORED; see below.
+        //
+        // Declared outside the `try` so the `finally` can close it on every path, including the
+        // cancelled one: `ZipOutputStream` holds a `Deflater` whose zlib buffers are native memory,
+        // and only `close()` calls `Deflater.end()` — `finish()` does not. `CloseShieldStream` is
+        // what makes closing it safe here; `ArchiveDestination.output` says "do not close it
+        // directly" because `publish()`/`discard()` own that stream.
+        val zip = ZipOutputStream(CloseShieldStream(destination.output))
+            .apply { setLevel(Deflater.NO_COMPRESSION) }
+
         try {
             onProgress(ThorJobProgress(ThorJobStage.PREPARING, appLabel))
             // §7.2 step 4: once, before the first class. Not per class.
             gateway.forceStop(request.packageName)
-
-            // Level 0 for the streamed entries: the members are ciphertext and the bundle is already
-            // compressed, so deflate would spend CPU to occasionally grow the file. STORED is not an
-            // option for them — it demands the CRC before `putNextEntry`, which is unknowable for a
-            // stream being generated. The header, built in memory, is STORED; see below.
-            val zip = ZipOutputStream(destination.output).apply { setLevel(Deflater.NO_COMPRESSION) }
 
             if (bundle != null) {
                 // [appLabel], not `bundle.name`: this label is the notification's whole content text,
@@ -173,8 +181,19 @@ internal class BackupAppArchiveUseCase(
                     warnings += "${dataClass.id}: the directory could not be read or does not exist"
                     continue
                 }
-                // §7.2 step 7a: an empty class root produces no member at all.
-                if (listing.kept.isEmpty()) continue
+                // §7.2 step 7a: an empty class root produces no member at all. Without this guard a
+                // zero-entry tar becomes a member, and restore swaps that member over live data —
+                // at which point the only thing between the user and an emptied class root is the
+                // `[ -n "$(ls -A '<staging>')" ]` guard in `swapStagedEntriesCommand`.
+                //
+                // Recorded rather than passed over in silence, and worded differently from the
+                // `rootAbsent` case above: the directory is there and readable, it simply holds
+                // nothing this archive keeps. A class the user ticked and did not get has to be
+                // findable in the header either way.
+                if (listing.kept.isEmpty()) {
+                    warnings += "${dataClass.id}: there was nothing to back up"
+                    continue
+                }
 
                 val member = captureClass(request, dataClass, listing.kept, key, zip, warnings)
                     ?: continue
@@ -231,9 +250,9 @@ internal class BackupAppArchiveUseCase(
             )
             zip.write(headerBytes)
             zip.closeEntry()
-            // `finish()`, never `close()`. `close()` would close `destination.output` underneath the
-            // destination, which owns that stream and closes it inside `publish()`. `finish()` writes
-            // the central directory — without it the container has no index and unzips as empty.
+            // `finish()` writes the central directory — without it the container has no index and
+            // unzips as empty. It has to happen *here*, before `publish()`, and not be left to the
+            // `close()` in the `finally`, which also runs on the paths that discard.
             zip.finish()
 
             published = destination.publish()
@@ -254,10 +273,16 @@ internal class BackupAppArchiveUseCase(
             Logger.e(TAG, "backup of ${request.packageName} failed", e)
             return ArchiveBackupOutcome.Failed(e.message ?: "the backup failed")
         } finally {
+            // Ends the `Deflater`'s native buffers on every path, including the cancelled and the
+            // already-finished one (`ZipOutputStream.finish` is idempotent, and `close()` reaches
+            // only the shield). `runCatching` because a throw out of a `finally` would replace the
+            // real failure with a bookkeeping one.
+            runCatching { zip.close() }
             // NonCancellable: `discard()` is a suspend call and may itself call `withContext`. On a
             // cancelled coroutine any suspension point throws immediately, so wrapping is required.
-            // Precedent: `AppDataArchiveGatewayImpl.kt:218`. A partial `.thorbak` that looks like a
-            // real archive is worse than no archive — this cleanup must complete regardless.
+            // Precedent: the `finally` in `AppDataArchiveGatewayImpl.tarClass`. A partial `.thorbak`
+            // that looks like a real archive is worse than no archive — this cleanup must complete
+            // regardless.
             if (!published) withContext(NonCancellable) { destination.discard() }
         }
     }
@@ -331,6 +356,12 @@ internal class BackupAppArchiveUseCase(
      *
      * A [DataClassSize.Undetermined] size also fails open, for the same reason: `du` not answering is
      * not evidence that the class is too big.
+     *
+     * What is compared matters as much as the comparison: [AppDataProbe.measureDataClass] measures
+     * **what a backup of this class would contain**, not the class directory — the volatile children
+     * the archive drops (`cache`, `code_cache`, `no_backup`) are subtracted. Comparing the directory's
+     * size instead would refuse a 20 MB backup because a browser is sitting on 3 GB of cache that is
+     * never staged.
      */
     private suspend fun spaceRefusal(
         packageName: String,
@@ -347,5 +378,24 @@ internal class BackupAppArchiveUseCase(
         } else {
             null
         }
+    }
+
+    /**
+     * Passes everything through and swallows `close()`, so the `ZipOutputStream` above can be closed
+     * — which is the only way its `Deflater`'s native buffers are released — without closing
+     * `ArchiveDestination.output`, which the destination owns and closes in `publish()`/`discard()`.
+     *
+     * `flush()` on close rather than nothing at all: `close()` is where a buffered stream expects its
+     * last bytes to leave, and this one is closed after `finish()` has written the central directory.
+     *
+     * Not a `FilterOutputStream`: that class's `write(ByteArray, Int, Int)` loops one byte at a time
+     * through `write(Int)`, which would put a per-byte virtual call under every archive member.
+     */
+    private class CloseShieldStream(private val delegate: OutputStream) : OutputStream() {
+        override fun write(b: Int) = delegate.write(b)
+        override fun write(b: ByteArray) = delegate.write(b)
+        override fun write(b: ByteArray, off: Int, len: Int) = delegate.write(b, off, len)
+        override fun flush() = delegate.flush()
+        override fun close() = delegate.flush()
     }
 }

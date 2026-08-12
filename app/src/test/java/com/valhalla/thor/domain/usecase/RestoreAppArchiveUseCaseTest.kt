@@ -637,17 +637,9 @@ class RestoreAppArchiveUseCaseTest {
         assertNull(crumbs.current)
     }
 
-    @Test
-    fun `a failure reports the classes that did land`() = runTest {
-        // "Restore failed" over a CE that is already replaced tells the user nothing they can act on.
-        val (header, source) = archive(listOf(DataClass.CE, DataClass.DE))
-
-        val outcome = useCase(FakeGateway(failOn = "swap:de"), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
-            source, header, key, listOf(DataClass.CE, DataClass.DE), installFirst = false, restoreObb = false,
-        )
-
-        assertEquals(listOf(DataClass.CE), (outcome as ArchiveRestoreOutcome.Failed).classesRestored)
-    }
+    // "A failure reports the classes that did land" lives with the four guard fixtures at the foot
+    // of this file, as `a swap that fails names the class whose data may be gone` — one fixture, and
+    // both halves of what that failure has to report, rather than two tests over the same setup.
 
     @Test
     fun `a class the archive does not hold is a failure that keeps the breadcrumb`() = runTest {
@@ -788,6 +780,126 @@ class RestoreAppArchiveUseCaseTest {
             completed.warnings.any { it.contains("interrupted") },
         )
     }
+
+    // --- the four gateway guards after the decrypt ----------------------------------------------
+    // One fixture each. Three of them had none, and deleting all three left the suite green — which
+    // is how a guard whose failure message contradicts the outcome it produces survives a review.
+
+    @Test
+    fun `an extraction that fails replaced nothing`() = runTest {
+        // Extraction unpacks into the class root's staging directory, never over the live data, so
+        // this failure is the last one that leaves the class exactly as the user left it. The swap
+        // must not be reached, and nothing may be reported as at risk.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(failOn = "extract:ce"), FakeInstaller(calls = calls), RecordingBreadcrumbs()
+        )(source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false)
+
+        val failed = outcome as ArchiveRestoreOutcome.Failed
+        assertTrue(failed.reason, failed.reason.contains("unpacked"))
+        assertEquals(emptyList<DataClass>(), failed.classesRestored)
+        assertNull(failed.classPossiblyCleared)
+        assertFalse(calls.toString(), calls.any { it.startsWith("swap") })
+    }
+
+    @Test
+    fun `a swap that fails names the class whose data may be gone`() = runTest {
+        // The worst outcome this use case can produce, and the one the result type could not
+        // describe: `swapStagedEntriesCommand` deletes the class root's entries and then moves the
+        // staged ones in, so a non-zero exit spans "nothing was touched" and "the delete ran and the
+        // move did not". Thor cannot tell which and cannot undo either — §8.3 has no undo rung — so
+        // the one thing left is to name the class instead of reporting a plain failure over data
+        // that may no longer exist.
+        val (header, source) = archive(listOf(DataClass.CE, DataClass.DE))
+
+        val outcome = useCase(
+            FakeGateway(failOn = "swap:de"), FakeInstaller(calls = calls), RecordingBreadcrumbs()
+        )(source, header, key, listOf(DataClass.CE, DataClass.DE), installFirst = false, restoreObb = false)
+
+        val failed = outcome as ArchiveRestoreOutcome.Failed
+        assertEquals(DataClass.DE, failed.classPossiblyCleared)
+        // Not in `classesRestored`: it did not land. Both facts are needed, which is why they are
+        // two fields — CE is replaced and DE may be neither replaced nor intact.
+        assertEquals(listOf(DataClass.CE), failed.classesRestored)
+        // The reason carries it too, because the reason is the part every consumer already shows.
+        assertTrue(failed.reason, failed.reason.contains("cannot tell"))
+    }
+
+    @Test
+    fun `a chown that fails still counts the class as restored`() = runTest {
+        // `chownClass` runs *after* the swap: the class root already holds the archive's copy. The
+        // KDoc on `classesRestored` says it lists the classes that did land, and excluding this one
+        // contradicted that — leaving the user told a restore failed with no hint that their old
+        // data is already gone from that class.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(failOn = "chown:ce"), FakeInstaller(calls = calls), RecordingBreadcrumbs()
+        )(source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false)
+
+        val failed = outcome as ArchiveRestoreOutcome.Failed
+        assertTrue(failed.reason, failed.reason.contains("ownership"))
+        assertEquals(listOf(DataClass.CE), failed.classesRestored)
+        // Replaced, not "possibly cleared": the swap succeeded and the data is in place.
+        assertNull(failed.classPossiblyCleared)
+        assertFalse(calls.toString(), calls.contains("relabel:ce"))
+    }
+
+    @Test
+    fun `a relabel that fails still counts the class as restored`() = runTest {
+        // Same contract as the chown above, and the more likely of the two on a real device: a tree
+        // with the right owner and the wrong SELinux context is the classic "restore said it worked
+        // and the app crashes on launch".
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(failOn = "relabel:ce"), FakeInstaller(calls = calls), RecordingBreadcrumbs()
+        )(source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false)
+
+        val failed = outcome as ArchiveRestoreOutcome.Failed
+        assertTrue(failed.reason, failed.reason.contains("security labels"))
+        assertEquals(listOf(DataClass.CE), failed.classesRestored)
+        assertNull(failed.classPossiblyCleared)
+    }
+
+    @Test
+    fun `an install-first restore says so when it places game data the user left out`() = runTest {
+        // `installBundle` writes the bundle's OBB as part of the install; there is no install-first
+        // path that honours "leave the game data out". The flag used to be dropped in silence behind
+        // a checkbox the screen went on offering.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs()
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        val completed = outcome as ArchiveRestoreOutcome.Completed
+        assertTrue(
+            completed.warnings.toString(),
+            completed.warnings.any { it.contains("game data") },
+        )
+        // Placed by the install, not by the OBB branch, which install-first never enters.
+        assertFalse(calls.toString(), calls.contains("obb"))
+        assertNull(completed.obb)
+    }
+
+    @Test
+    fun `an install-first restore over an archive with no game data says nothing about it`() =
+        runTest {
+            // The warning is about a flag that could not be honoured. An archive whose bundle holds
+            // no `.obb` had nothing to leave out, so there is nothing to explain — a warning here
+            // would be noise on the ordinary case.
+            val (header, source) = archive(listOf(DataClass.CE))
+            val noObb = header.copy(appBundle = header.appBundle!!.copy(obbCapture = "none", obbCount = 0))
+
+            val outcome = useCase(
+                FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs()
+            )(source, noObb, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+            val completed = outcome as ArchiveRestoreOutcome.Completed
+            assertEquals(emptyList<String>(), completed.warnings)
+        }
 
     private companion object {
         const val SIGNER = "AB"

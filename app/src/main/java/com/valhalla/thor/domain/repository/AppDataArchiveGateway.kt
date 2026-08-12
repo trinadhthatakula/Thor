@@ -11,8 +11,9 @@ import java.io.File
 /**
  * Everything privileged or Android-specific that the archive use cases need, behind one port.
  *
- * Deliberately **not** added to `SystemRepository`: two test files hand-write a full implementation of
- * that interface (`FreezeAppUseCaseTest.kt:33`, `BulkFreezeWorkerTest.kt:121`), so every method added
+ * Deliberately **not** added to `SystemRepository`: three test doubles hand-write a full implementation
+ * of that interface (`RecordingSystemRepository` in both `FreezeAppUseCaseTest` and
+ * `BulkFreezeWorkerTest`, and `FakeSystemRepository` in `ViewModelTestDoubles`), so every method added
  * there is a compile error in code that has nothing to do with backup. See deviation 7.
  *
  * Only `File`, `String` and domain types cross this boundary, so both use cases stay JVM-testable
