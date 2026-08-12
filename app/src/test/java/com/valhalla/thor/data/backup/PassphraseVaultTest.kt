@@ -5,13 +5,16 @@ package com.valhalla.thor.data.backup
 
 import java.util.Base64
 import javax.crypto.AEADBadTagException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
@@ -181,6 +184,47 @@ class PassphraseVaultTest {
     }
 
     @Test
+    fun `a store that throws is reported as false, not thrown`() = runTest {
+        // The guard `recall()` always had and `remember` did without. `PassphraseSettingsViewModel`
+        // ran this call in a bare `viewModelScope.launch`, where an uncaught throw is a dead process
+        // rather than a message — and the message this owes the user, `passphrase_error_store_failed`,
+        // says a passphrase that could not be cached is survivable.
+        //
+        // `IllegalStateException` deliberately, not `IOException`: `DataStorePassphraseVaultStore`
+        // swallows `IOException` itself, so that one never reaches this guard and a test using it
+        // would pass with the guard deleted.
+        val store = object : PassphraseVaultStore {
+            override val isSet: Flow<Boolean> = flowOf(false)
+            override suspend fun read(): String? = null
+            override suspend fun write(value: String?): Unit = throw IllegalStateException("store is gone")
+        }
+
+        val stored = PassphraseVault(store, FakeProvider()).remember("correct horse".toCharArray())
+
+        assertEquals(false, stored)
+    }
+
+    @Test
+    fun `a cancellation while remembering is not reported as a store failure`() {
+        // The half a broad `catch (e: Exception)` gets wrong. A cancelled coroutine must not come back
+        // saying "the store refused"; it must not come back at all. Both this guard and `recall()`'s
+        // rethrow `CancellationException` ahead of the broad catch.
+        //
+        // `runBlocking`, not `runTest`: `runTest` treats a `CancellationException` escaping the body as
+        // the test coroutine being cancelled, which is not what is under test here.
+        val store = object : PassphraseVaultStore {
+            override val isSet: Flow<Boolean> = flowOf(false)
+            override suspend fun read(): String? = null
+            override suspend fun write(value: String?): Unit =
+                throw CancellationException("the sheet was closed")
+        }
+
+        assertThrows(CancellationException::class.java) {
+            runBlocking { PassphraseVault(store, FakeProvider()).remember("correct horse".toCharArray()) }
+        }
+    }
+
+    @Test
     fun `a transient failure does not clear the blob`() = runTest {
         // Pins the non-clearing branch of the selective-clear guard. A locked device raises a
         // generic KeyStoreException — not KeyPermanentlyInvalidatedException — so setUnlockedDevice
@@ -196,7 +240,13 @@ class PassphraseVaultTest {
         val result = PassphraseVault(
             store,
             object : VaultKeyProvider {
-                override fun wrap(plaintext: ByteArray) = plaintext
+                // `.copyOf()`, not the argument itself. Harmless today — this provider is only ever
+                // reached through `recall()`, which never calls `wrap` — but `remember` wipes the buffer
+                // it hands to `wrap` in a `finally`, and a provider that returns that same array returns
+                // one the caller is about to fill with zeros. That ordering already shipped once on this
+                // branch, as Base64 of NULs written to the store. The convention in every double here is
+                // to copy, so that a double can never be the reason a wipe looks safe.
+                override fun wrap(plaintext: ByteArray) = plaintext.copyOf()
                 override fun unwrap(blob: ByteArray): ByteArray =
                     throw RuntimeException("device temporarily locked")
             }

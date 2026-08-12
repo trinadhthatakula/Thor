@@ -4,14 +4,12 @@
 package com.valhalla.thor.presentation.settings
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.backup.MIN_PASSPHRASE_LENGTH
 import com.valhalla.thor.data.backup.PassphraseVault
 import com.valhalla.thor.presentation.launchGuarded
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
 
 /**
@@ -107,7 +105,15 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
         }
         // Already known equal to `passphrase`, and nothing below reads it again.
         confirmation.fill(' ')
-        viewModelScope.launch {
+        launchGuarded(
+            // Reached by nothing the vault can produce: `PassphraseVault.remember` catches both its
+            // Keystore wrap and its store write and reports either as `false`, which the block below
+            // turns into `STORE_FAILED` on its own. This is the residual guard for anything else that
+            // could ever be added to the block, and it reports the same thing the vault's own failure
+            // reports, because from the sheet there is no difference: the passphrase is not stored.
+            // `busy` is not cleared here — the block's `finally` has already run by the time this does.
+            onFailure = { _uiState.update { it.copy(saved = false, error = PassphraseError.STORE_FAILED) } }
+        ) {
             _uiState.update { it.copy(busy = true, error = null, saved = false) }
             try {
                 val stored = vault.remember(passphrase)
@@ -118,9 +124,8 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
                     )
                 }
             } finally {
-                // Both of these are in the `finally` because a throw out of the vault must not leave
-                // either one behind. `remember` catches its own wrapping failures and reports them as
-                // `false`, so what reaches here is the store beneath it rather than the Keystore.
+                // Both of these are in the `finally` because nothing reaching this block may leave
+                // either one behind — including a cancellation, which no `catch` above would see.
                 //
                 // `busy` is cleared **here and nowhere else** — deliberately not folded into the
                 // completion update above, which only ever runs on the path that already worked. A
@@ -129,23 +134,15 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
                 // the `NavEntry` for `ThorRoute.Settings`, that back stack's never-popped root — so the
                 // flag would survive closing and reopening the sheet: the user's only way out would be
                 // to leave the app. The cost of putting it here is one extra emission on the happy
-                // path.
+                // path. The test `busy is cleared when the store fails, and the failure is reported`
+                // pins that, and pins it against a store that fails rather than one that returns.
                 //
-                // Clearing the flag is not catching the exception: this is a `finally`, not a `catch`,
-                // so the throw still leaves. The test `busy is cleared when the store throws, and the
-                // throw is not swallowed` asserts both halves, so turning this into a `catch` fails a
-                // test rather than passing quietly.
-                //
-                // This is now the **last** unguarded `viewModelScope.launch` in the three view models:
-                // every other one goes through `launchGuarded`, including `beginBackup`, which used to
-                // have this exact shape around its own `vault.remember` call. It is left bare on
-                // purpose rather than by omission. The throw this would swallow comes from the
-                // DataStore write inside `PassphraseVault.remember`, and the fix for it belongs
-                // *there*, beside the guard `recall()` already has — `remember` returning false is a
-                // result both call sites already handle, and this one maps it to
-                // `PassphraseError.STORE_FAILED`. Wrapping it here instead would report the store
-                // failure as nothing at all and leave `recall`'s asymmetry in place. See the
-                // cross-area hand-off in the presentation fix report.
+                // The store failure this used to have to let escape is now reported instead:
+                // `PassphraseVault.remember` catches its own store write, as `recall()` always did,
+                // and returns `false` — which the block above maps to `PassphraseError.STORE_FAILED`.
+                // That is what allowed this to stop being the one bare `viewModelScope.launch` on the
+                // branch; `launchGuarded` now wraps it like every other coroutine in these three view
+                // models.
                 passphrase.fill(' ')
                 _uiState.update { it.copy(busy = false) }
             }

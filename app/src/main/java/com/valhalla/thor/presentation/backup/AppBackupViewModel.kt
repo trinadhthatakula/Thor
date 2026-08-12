@@ -313,12 +313,17 @@ class AppBackupViewModel(
         _uiState.update { it.copy(running = true, queued = false, finished = null, progress = null) }
 
         launchGuarded(
-            // The `catch` this function did without. `vault.remember` writes the store outside any
-            // guard of its own, and `strings_backup.xml`'s `passphrase_error_store_failed` tells the
-            // user in as many words that failing to cache a passphrase is survivable — so ticking
-            // *Remember it on this device* must not be able to kill the process on the condition the
-            // copy calls harmless. `workerRan = false` and a null reason: everything in this block
-            // happens before `startBackup` returns an id, so no job exists and nothing was written.
+            // The `catch` this function did without. `strings_backup.xml`'s
+            // `passphrase_error_store_failed` tells the user in as many words that failing to cache a
+            // passphrase is survivable, so ticking *Remember it on this device* must not be able to kill
+            // the process on the condition the copy calls harmless.
+            //
+            // `PassphraseVault.remember` now catches its own store write and reports `false`, so that
+            // particular throw no longer reaches here — this block ignores the Boolean, because a backup
+            // whose passphrase merely failed to cache still succeeded. What is left for this guard is
+            // everything else in the block: `recall()`'s unwrap, `startBackup`, and any future addition.
+            // `workerRan = false` and a null reason: everything in this block happens before
+            // `startBackup` returns an id, so no job exists and nothing was written.
             onFailure = {
                 _uiState.update {
                     it.copy(

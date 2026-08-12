@@ -23,6 +23,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -181,16 +182,29 @@ class PassphraseVault(
     /**
      * Wrap [passphrase] and store it.
      *
-     * @return **false means nothing was written** — the Keystore key is gone or was never creatable —
-     * and a caller must not tell the user it was saved. Task 18's settings screen is the reason this is
-     * not `Unit`: "Saved" on a screen where nothing was saved is how a user stops writing their
-     * passphrase down.
+     * **Reports rather than throws, exactly as [recall] does.** Two things can fail: the Keystore
+     * wrap, and the store write beneath it. Neither escapes — both are caught and reported as
+     * `false`, so a caller cannot be handed a failure it has nowhere to put. That symmetry is the
+     * point: `PassphraseSettingsViewModel.save` maps `false` to `PassphraseError.STORE_FAILED` and
+     * `AppBackupViewModel.beginBackup` treats a failure to *cache* a passphrase as survivable, which
+     * is what `strings_backup.xml`'s `passphrase_error_store_failed` says in as many words. A throw
+     * out of here would be a store failure reported as nothing at all — or, out of a bare
+     * `viewModelScope.launch`, as a dead process.
      *
-     * True is the weaker claim of the two: it says wrapping succeeded and the blob was handed to
-     * [PassphraseVaultStore.write]. It is not a receipt from disk —
-     * [DataStorePassphraseVaultStore.write] swallows an `IOException` on purpose, because a failed
-     * write must not tear down the screen that asked for it — so a full or read-only data partition
-     * still returns true here. The consequence is bounded and is the one this cache degrades to
+     * `CancellationException` is rethrown, not reported: it is structured concurrency's own signal
+     * and swallowing it breaks cancellation rather than reporting a failure.
+     *
+     * @return **false means the passphrase was not stored** — the Keystore key is gone or was never
+     * creatable, or the store threw — and a caller must not tell the user it was saved. Task 18's
+     * settings screen is the reason this is not `Unit`: "Saved" on a screen where nothing was saved is
+     * how a user stops writing their passphrase down.
+     *
+     * True is the weaker claim of the two: it says wrapping succeeded and [PassphraseVaultStore.write]
+     * returned. **It is not a receipt from disk** — [DataStorePassphraseVaultStore.write] swallows an
+     * `IOException` on purpose, because a failed write must not tear down the screen that asked for it
+     * — so a full or read-only data partition still returns true here. The guard added around the
+     * write does not change that: it catches what that store lets *through*, and `IOException` is
+     * exactly what it does not. The consequence is bounded and is the one this cache degrades to
      * everywhere: [recall] returns null on the next launch and the user is prompted.
      *
      * [passphrase] belongs to the caller and is **not** cleared here — only the byte buffer derived
@@ -216,8 +230,22 @@ class PassphraseVault(
         } finally {
             passphraseBytes.fill(0)
         }
-        store.write(Base64.getEncoder().encodeToString(wrapped))
-        return true
+        // Encoded before the guard, and outside it: a `wrapped` that is somehow not encodable is a
+        // programming error, not a store failure, and folding it in here would report it as one.
+        val blob = Base64.getEncoder().encodeToString(wrapped)
+        return try {
+            store.write(blob)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The half `recall()` already had and this function did without. `write` is a suspend call
+            // into DataStore; it swallows `IOException` itself, so what reaches here is everything
+            // else — and it used to travel all the way out through a bare `viewModelScope.launch`,
+            // where an uncaught throw is a dead process rather than a message.
+            Logger.e("PassphraseVault", "the wrapped passphrase could not be stored", e)
+            false
+        }
     }
 
     suspend fun recall(): CharArray? {
@@ -240,6 +268,14 @@ class PassphraseVault(
             } finally {
                 plainBytes.fill(0)
             }
+        } catch (e: CancellationException) {
+            // Ahead of the broad catch below, and not reported as a recall failure: `store.read()` is
+            // a suspend call, so a view model cleared mid-read lands here, and answering "nothing is
+            // remembered" to a coroutine that is being cancelled is a lie that also breaks
+            // cancellation. `store.read()` is the *only* suspending call in the block — the decode
+            // below it is synchronous — so nothing has been unwrapped yet and there is no key
+            // material this bypasses a wipe of.
+            throw e
         } catch (e: Exception) {
             Logger.e("PassphraseVault", "vault passphrase recall failed; re-prompting", e)
             // Only clear the blob for failures that are permanently unrecoverable:

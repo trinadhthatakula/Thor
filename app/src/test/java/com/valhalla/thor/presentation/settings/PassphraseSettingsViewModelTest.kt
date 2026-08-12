@@ -23,7 +23,6 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
 
@@ -345,40 +344,51 @@ class PassphraseSettingsViewModelTest {
     }
 
     @Test
-    fun `busy is cleared when the store throws, and the throw is not swallowed`() {
-        // The throw is *meant* to escape `viewModelScope`: `save` clears the flag in a `finally`, not
-        // a `catch`. kotlinx-coroutines-test collects any exception that reaches the global handler
-        // and `runTest` rethrows it at the end of the body, so the escape is what this test asserts
-        // rather than something it works around — hence `assertThrows` *outside* `runTest` instead of
-        // the usual `= runTest(dispatcher)` expression body. (Moving the throw outside a `runTest`
-        // does not dodge the collector, it defers it: the exception is then reported against whichever
-        // test runs next, as `UncaughtExceptionsBeforeTest`.)
+    fun `busy is cleared when the store fails, and the failure is reported`() = runTest(dispatcher) {
+        // This test previously asserted the opposite of its second half: that the store's throw
+        // escaped `viewModelScope` uncaught, wrapped in an `assertThrows` outside `runTest`. That was
+        // a correct pin on the contract of the day and is deliberately changed, not lost —
+        // `PassphraseVault.remember` now catches its store write and returns `false`, the guard
+        // `recall()` always had. So the failure arrives as a *result*, and there is nothing left for a
+        // bare `viewModelScope.launch` to leak: an uncaught throw out of one is a dead process, which
+        // is not a way to tell a user their passphrase was not cached.
         //
-        // Asserting the escape is half the test, not decoration: clearing `busy` in a `catch` would
-        // satisfy the first assertion while silently swallowing every failure out of the store.
-        // Whether it *should* be caught is a branch-level question about `viewModelScope.launch` that
-        // this task does not settle — `AppBackupViewModel.beginBackup` has the same shape — and
-        // pinning it here means a later answer has to change this test deliberately.
-        var busyAfterThrow: Boolean? = null
-        val escaped = assertThrows(IllegalStateException::class.java) {
-            runTest(dispatcher) {
-                val vm = PassphraseSettingsViewModel(
-                    PassphraseVault(ThrowingVaultStore(), PlainKeyProvider())
-                )
+        // The escape half is still under test, inverted: `runTest` collects anything that reaches the
+        // global exception handler and rethrows it at the end of this body, so a `remember` that lets
+        // the store's `IllegalStateException` out again fails this test rather than passing quietly.
+        val vm = PassphraseSettingsViewModel(
+            PassphraseVault(ThrowingVaultStore(), PlainKeyProvider())
+        )
 
-                vm.save(pass("correct horse"), pass("correct horse"))
-                advanceUntilIdle()
-
-                busyAfterThrow = vm.uiState.value.busy
-            }
-        }
+        vm.save(pass("correct horse"), pass("correct horse"))
+        advanceUntilIdle()
 
         // The state the user cannot get out of if this is wrong: `dismiss()` does not reset `busy`,
         // and this view model outlives the sheet — its owner is the `NavEntry` for
         // `ThorRoute.Settings`, the never-popped root of that back stack — so a stuck flag survives
-        // closing and reopening the sheet, and leaving the app would be the only way back.
-        assertEquals(false, busyAfterThrow)
-        assertEquals("store is gone", escaped.message)
+        // closing and reopening the sheet, and leaving the app would be the only way back. It is
+        // cleared in a `finally`, so it survives however the block above ends.
+        assertEquals(false, vm.uiState.value.busy)
+        // Reported, not swallowed. A guard that returned `false` and said nothing would satisfy the
+        // `busy` assertion alone and leave the sheet claiming the passphrase was saved.
+        assertEquals(PassphraseError.STORE_FAILED, vm.uiState.value.error)
+        assertEquals(false, vm.uiState.value.saved)
+    }
+
+    @Test
+    fun `a store that throws leaves the vault reporting nothing remembered`() = runTest(dispatcher) {
+        // The other consequence of turning that throw into a `false`, and the one the sheet renders:
+        // `remembered` is collected from the vault, so a write that never landed must not flip it. A
+        // `remember` that returned true before checking would leave the sheet offering to recall a
+        // passphrase no launch can produce.
+        val vm = PassphraseSettingsViewModel(
+            PassphraseVault(ThrowingVaultStore(), PlainKeyProvider())
+        )
+
+        vm.save(pass("correct horse"), pass("correct horse"))
+        advanceUntilIdle()
+
+        assertEquals(false, vm.uiState.value.remembered)
     }
 
     // --- the outcome is per visit --------------------------------------------------------------
