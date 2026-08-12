@@ -63,11 +63,24 @@ class RestoreAppArchiveUseCaseTest {
         override fun close() = Unit
     }
 
-    /** One encrypted member plus the stats the header must record for it. */
-    private fun member(dataClass: DataClass, body: String = "tar bytes for ${dataClass.id}"): Pair<ArchiveMember, ByteArray> {
+    /**
+     * One encrypted member plus the stats the header must record for it.
+     *
+     * [compression] is a parameter and not the constant it used to be. `BackupAppArchiveUseCase` has a
+     * fallback lane — a class whose `tar -czf` fails is retried with `tar -cf` and recorded as
+     * [ArchiveCompression.NONE] — so a real archive can hold both kinds at once, and every fixture
+     * here claiming `GZIP` meant the restore side's compression handling had one input. The entry name
+     * is derived from it rather than passed separately: `memberName` is what decides `.tar.gz.enc`
+     * against `.tar.enc`, and a fixture free to disagree with itself would be pinning nothing.
+     */
+    private fun member(
+        dataClass: DataClass,
+        body: String = "tar bytes for ${dataClass.id}",
+        compression: ArchiveCompression = ArchiveCompression.GZIP,
+    ): Pair<ArchiveMember, ByteArray> {
         val nonce = cipher.newNonce()
         val out = ByteArrayOutputStream()
-        val name = dataClass.memberName(compressed = true)
+        val name = dataClass.memberName(compressed = compression == ArchiveCompression.GZIP)
         val stats = cipher.encryptMember(name, ByteArrayInputStream(body.toByteArray()), out, key, nonce)
         return ArchiveMember(
             dataClass = dataClass.id,
@@ -75,15 +88,26 @@ class RestoreAppArchiveUseCaseTest {
             nonce = Base64.getEncoder().encodeToString(nonce),
             plainBytes = stats.plainBytes,
             chunkCount = stats.chunkCount,
-            compression = ArchiveCompression.GZIP.id,
+            compression = compression.id,
         ) to out.toByteArray()
     }
 
+    /**
+     * @param uncompressed the classes to write the way the backup's `tar -czf` fallback writes them.
+     *   Defaulted empty, so every existing fixture is unchanged.
+     */
     private fun archive(
         classes: List<DataClass>,
         withBundle: Boolean = true,
+        uncompressed: Set<DataClass> = emptySet(),
     ): Pair<ArchiveHeader, FakeSource> {
-        val built = classes.map(::member)
+        val built = classes.map { dataClass ->
+            member(
+                dataClass,
+                compression =
+                    if (dataClass in uncompressed) ArchiveCompression.NONE else ArchiveCompression.GZIP,
+            )
+        }
         val entries = built.associate { (m, bytes) -> m.fileName to bytes }.toMutableMap()
         if (withBundle) entries[THORBAK_BUNDLE_ENTRY] = "xapk bytes".toByteArray()
         val header = ArchiveHeader(
@@ -127,6 +151,16 @@ class RestoreAppArchiveUseCaseTest {
          */
         val liveAtHandout = mutableListOf<String>()
 
+        /**
+         * What `extractInto` was told about each class's compression.
+         *
+         * Kept beside [calls] rather than folded into it: the sequence assertions match on
+         * `"extract:ce"` exactly, so widening that string would rewrite half the class to pin one
+         * boolean. The flag was being discarded by this override, which meant the header field that
+         * decides whether the extract shells `tar -xzf` or `tar -xf` reached the gateway unobserved.
+         */
+        val extractCompressed = mutableMapOf<DataClass, Boolean>()
+
         override suspend fun thorUserId() = 0
         override suspend fun externalStorageDir() = "/storage/emulated/0"
         override suspend fun stagingFile(name: String): File {
@@ -153,8 +187,10 @@ class RestoreAppArchiveUseCaseTest {
         override suspend fun appUid(packageName: String) = uid
         override suspend fun signerSha256(packageName: String) = signer
 
-        override suspend fun extractInto(packageName: String, dataClass: DataClass, tar: File, compressed: Boolean) =
-            record("extract", dataClass)
+        override suspend fun extractInto(packageName: String, dataClass: DataClass, tar: File, compressed: Boolean): Boolean {
+            extractCompressed[dataClass] = compressed
+            return record("extract", dataClass)
+        }
 
         override suspend fun swapStaged(packageName: String, dataClass: DataClass) = record("swap", dataClass)
         override suspend fun chownClass(packageName: String, dataClass: DataClass, uid: Int) = record("chown", dataClass)
@@ -272,6 +308,41 @@ class RestoreAppArchiveUseCaseTest {
         assertTrue(calls.toString(), calls.contains("extract:${DataClass.EXTERNAL_DATA.id}"))
         assertTrue(calls.toString(), calls.contains("swap:${DataClass.EXTERNAL_MEDIA.id}"))
         assertFalse(calls.toString(), calls.any { it.startsWith("chown") || it.startsWith("relabel") })
+    }
+
+    /**
+     * The extract is told how each member was written, per class, from that member's own header field.
+     *
+     * `RestoreAppArchiveUseCase` derives it as `fromId(member.compression) == GZIP` and hands it to
+     * `extractInto`, where the gateway turns it into `tar -xzf` or `tar -xf`. Getting it wrong is not
+     * a cosmetic failure: gzip's magic bytes are two, `tar` refuses the mismatch, and the class is
+     * reported as "could not be unpacked" after the archive has already been decrypted.
+     *
+     * One run carrying both kinds, rather than two runs carrying one each. The mixed archive is the
+     * real one — `BackupAppArchiveUseCase` retries a class whose `tar -czf` failed with `tar -cf` and
+     * records `NONE` for that class alone — and a single-kind fixture is satisfied by an
+     * implementation that reads the *first* member's field, or a constant, and applies it to every
+     * class.
+     */
+    @Test
+    fun `each class is unpacked the way its own member was written`() = runTest {
+        val (header, source) = archive(
+            listOf(DataClass.CE, DataClass.DE),
+            uncompressed = setOf(DataClass.DE),
+        )
+        val gateway = FakeGateway()
+
+        val outcome = useCase(gateway, FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key,
+            listOf(DataClass.CE, DataClass.DE),
+            installFirst = false,
+            restoreObb = false,
+        )
+
+        // Positively first: an empty map satisfies every equality below if the run never reached the
+        // loop, and a restore that failed early is exactly how that happens.
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+        assertEquals(mapOf(DataClass.CE to true, DataClass.DE to false), gateway.extractCompressed)
     }
 
     @Test
