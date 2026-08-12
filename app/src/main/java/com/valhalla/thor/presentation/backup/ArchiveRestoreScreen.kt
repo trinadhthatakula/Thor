@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -252,24 +253,30 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                 )
             }
 
-            header.heldClasses().forEach { dataClass ->
-                // `heldClasses()` is defined as the classes with a member, so this cannot drop a row
-                // the user should have seen; it is here so the size below is read off a member that
-                // exists rather than defaulted to a number nothing measured.
-                val member = header.member(dataClass) ?: return@forEach
-                CheckRow(
-                    checked = dataClass in state.selected,
-                    enabled = !state.running,
-                    label = stringResource(dataClassLabel(dataClass)),
-                    // `Known`, and only `Known`: an archive records the byte count it actually packed,
-                    // so there is no tri-state to render here. Routed through `sizeLabel` anyway so
-                    // every size in this feature is formatted by one function.
-                    detail = sizeLabel(DataClassSize.Known(member.plainBytes)),
-                    onCheckedChange = { viewModel.toggleClass(dataClass) }
-                )
+            // Withdrawn once the job is live rather than drawn disabled, matching `AppBackupSheet`. A
+            // running restore has already been told what to restore, so these rows can no longer change
+            // anything — and a screenful of greyed checkboxes above the bar is a form the user reads,
+            // cannot use, and has to scroll past to find the only thing that is moving.
+            if (!state.running) {
+                header.heldClasses().forEach { dataClass ->
+                    // `heldClasses()` is defined as the classes with a member, so this cannot drop a row
+                    // the user should have seen; it is here so the size below is read off a member that
+                    // exists rather than defaulted to a number nothing measured.
+                    val member = header.member(dataClass) ?: return@forEach
+                    CheckRow(
+                        checked = dataClass in state.selected,
+                        enabled = !state.running,
+                        label = stringResource(dataClassLabel(dataClass)),
+                        // `Known`, and only `Known`: an archive records the byte count it actually
+                        // packed, so there is no tri-state to render here. Routed through `sizeLabel`
+                        // anyway so every size in this feature is formatted by one function.
+                        detail = sizeLabel(DataClassSize.Known(member.plainBytes)),
+                        onCheckedChange = { viewModel.toggleClass(dataClass) }
+                    )
+                }
             }
 
-            if (state.obbOffered) {
+            if (state.obbOffered && !state.running) {
                 // pluralStringResource, not stringResource — this is R.plurals, and the count is
                 // passed twice on purpose: once to pick the quantity, once to fill %1$d.
                 val obbCount = header.appBundle?.obbCount ?: 0
@@ -298,7 +305,15 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                 )
             }
 
-            if (state.refusal == null) {
+            // Where the rows above were, so the bar appears in the space the controls vacated instead
+            // of below everything they left behind.
+            if (state.running) RestoreRunning(state = state)
+
+            // `!state.running` as well as an absent refusal: the passphrase field, the confirmation and
+            // the Restore button are all decisions the job has already taken. The progress bar this
+            // block used to hold has moved out of it — under a refusal it was unreachable anyway, which
+            // is correct today only because a refused restore cannot be running.
+            if (state.refusal == null && !state.running) {
                 if (state.passphraseNeeded) {
                     OutlinedTextField(
                         value = passphrase,
@@ -355,37 +370,6 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                     onCheckedChange = viewModel::setConfirmed
                 )
 
-                if (state.running) {
-                    val percent = state.progress?.percent
-                    if (percent == null) {
-                        // Indeterminate, never a determinate bar pinned at 0 — a bar at 0 % that is
-                        // moving is a different claim from one that has not started.
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    } else {
-                        LinearProgressIndicator(
-                            progress = { percent / 100f },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    if (state.queued) {
-                        // Says where the job is, and stops there. Every job is appended to one chain,
-                        // and a dependent whose prerequisite fails is cancelled before `doWork` runs —
-                        // so "starting soon" would be a promise WorkManager has not made.
-                        Text(
-                            text = stringResource(R.string.backup_queued),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    state.progress?.let {
-                        Text(
-                            text = it.label,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
                 Button(
                     onClick = viewModel::beginRestore,
                     enabled = state.canStart,
@@ -396,7 +380,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
             }
 
             state.finished?.let { finish ->
-                RestoreOutcome(finish = finish, onDismiss = viewModel::dismissResult)
+                RestoreOutcomeDialog(finish = finish, onDismiss = viewModel::dismissResult)
             }
 
             if (!state.running && state.finished !is RestoreFinish.Succeeded) {
@@ -405,8 +389,8 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                 // picked the wrong backup has to leave the screen to pick another.
                 //
                 // Withdrawn after a *successful* restore, which is the one moment the wrong-file case
-                // cannot apply: the card directly above says "Restore finished. Open the app to check
-                // it works", and offering "Choose a different file" under it puts a destructive
+                // cannot apply: the dialog over this column says "Restore finished. Open the app to
+                // check it works", and offering "Choose a different file" behind it puts a destructive
                 // operation one tap from an app that is now correct. Dismissing the outcome brings it
                 // back, so nothing is lost — the user just has to acknowledge the result first.
                 TextButton(onClick = { picker.launch(arrayOf("*/*")) }) {
@@ -423,7 +407,87 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
 }
 
 /**
+ * What the screen shows while a restore is live: the bar, and what it is working on.
+ *
+ * No Background button, unlike `BackupRunning`'s sheet — this is a screen, so there is nothing to
+ * dismiss, and the Back button at the bottom of the column is already the way out. Leaving is safe for
+ * the same reason it is there: the job is a WorkManager foreground service with its own notification,
+ * and `runningJobFor` re-attaches this screen to it on the way back in.
+ */
+@Composable
+private fun RestoreRunning(state: ArchiveRestoreUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        val percent = state.progress?.percent
+        if (percent == null) {
+            // Indeterminate, never a determinate bar pinned at 0 — a bar at 0 % that is moving is a
+            // different claim from one that has not started.
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        } else {
+            LinearProgressIndicator(
+                progress = { percent / 100f },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (state.queued) {
+            // Says where the job is, and stops there. Every job is appended to one chain, and a
+            // dependent whose prerequisite fails is cancelled before `doWork` runs — so "starting soon"
+            // would be a promise WorkManager has not made.
+            Text(
+                text = stringResource(R.string.backup_queued),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        state.progress?.let {
+            Text(
+                text = it.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * [RestoreOutcome] in a dialog.
+ *
+ * A dialog rather than the card at the foot of the column it used to be, because of how tall the column
+ * is: the title, the archive's three header lines, up to four class rows, the game-data row, the unlock
+ * row, the confirmation row, the bar and the Restore button all sit above it. The sentence saying
+ * whether an app's data came back therefore arrived below the fold, on the one screen where the user is
+ * watching for exactly that — and a restore finishes minutes after the tap that started it, so it is
+ * also the one event here the user is not already looking at the bottom of the screen for. It has to
+ * interrupt rather than wait to be found.
+ *
+ * All three outcomes, not only the success that prompted this. A failure was equally invisible, and one
+ * container for one decision is what keeps the five sentences [RestoreOutcome] documents from drifting
+ * into two shapes.
+ *
+ * No auto-dismiss, deliberately — unlike the backup sheet's success frame, which closes itself after
+ * three seconds. That one has nothing left to say; this one tells the user to go and open the app to
+ * check it works, and may be carrying warnings under it.
+ */
+@Composable
+private fun RestoreOutcomeDialog(finish: RestoreFinish, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        text = { RestoreOutcome(finish = finish) },
+        confirmButton = {
+            // `restore_outcome_dismiss`, not `restore_interrupted_dismiss`: that one is named and
+            // commented for the §8.5 breadcrumb banner at the top of this screen. Same word today, two
+            // owners, so rewording the breadcrumb's button cannot silently reword this one.
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.restore_outcome_dismiss))
+            }
+        }
+    )
+}
+
+/**
  * How a finished restore is reported.
+ *
+ * The body of [RestoreOutcomeDialog], which owns the dismiss button — so this stays a column of
+ * sentences and nothing else.
  *
  * Three outcomes, five sentences: both failure arms split on [RestoreFinish.workerRan], because what
  * is honest depends on whether anything reached the device.
@@ -443,7 +507,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
  * worse one, because it ends by telling the user to run a destructive operation again.
  */
 @Composable
-private fun RestoreOutcome(finish: RestoreFinish, onDismiss: () -> Unit) {
+private fun RestoreOutcome(finish: RestoreFinish) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         when (finish) {
             // §8.6: the honest instruction is "open it and check", because no amount of shell exit
@@ -522,12 +586,6 @@ private fun RestoreOutcome(finish: RestoreFinish, onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.error
                 )
             }
-        }
-        // `restore_outcome_dismiss`, not `restore_interrupted_dismiss`: that one is named and commented
-        // for the §8.5 breadcrumb banner at the top of this screen. Same word today, two owners, so
-        // rewording the breadcrumb's button cannot silently reword this one.
-        TextButton(onClick = onDismiss) {
-            Text(stringResource(R.string.restore_outcome_dismiss))
         }
     }
 }
