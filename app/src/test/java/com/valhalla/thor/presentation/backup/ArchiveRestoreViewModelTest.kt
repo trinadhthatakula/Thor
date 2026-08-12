@@ -49,6 +49,7 @@ import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -205,6 +206,27 @@ class ArchiveRestoreViewModelTest {
         override suspend fun open(uriString: String): ArchiveOpenOutcome {
             opens += uriString
             return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) } ?: failure
+        }
+    }
+
+    /**
+     * Like [CountingSources], but the file named in [delays] takes that long to hand back.
+     *
+     * Needed because [CountingSources] answers instantly, so two reads always finish in launch order
+     * and the desync `open` guards against cannot happen through it. The bug is specifically a read
+     * that *started* earlier finishing *later*: a big archive picked first, a small one picked while
+     * it loads. Only a source that suspends can put the two in that order.
+     */
+    private class DelayedSources(
+        private val byUri: Map<String, FakeSource>,
+        private val delays: Map<String, Long> = emptyMap(),
+    ) : ArchiveSourceFactory {
+        val opens = mutableListOf<String>()
+        override suspend fun open(uriString: String): ArchiveOpenOutcome {
+            opens += uriString
+            delays[uriString]?.let { delay(it) }
+            return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) }
+                ?: ArchiveOpenOutcome.Unreadable
         }
     }
 
@@ -438,6 +460,47 @@ class ArchiveRestoreViewModelTest {
             assertEquals(listOf(URI, other), sources.opens)
             assertEquals("com.example.other", vm.uiState.value.header?.packageName)
             assertEquals("com.example.other-5.thorbak", vm.uiState.value.fileName)
+        }
+
+    @Test
+    fun `a file picked while a slower one is still loading leaves nothing of the first behind`() =
+        runTest(dispatcher) {
+            // The screen keeps the picked URI in a field and everything else in the state, so two
+            // overlapping reads split its identity: the field is always the newest pick, while the
+            // header and every answer derived from it belong to whichever read finished *last*. Here
+            // the first file is the slow one, so without the cancel the sheet ends up describing the
+            // first archive while the request it would build carries the second one's URI — a wrong
+            // request with nothing on screen to reveal it. `AppArchiveWorker` refuses that on the
+            // package mismatch, so it is not a data-loss path, but the user is told a restore may have
+            // left their data incomplete for a job that never started.
+            //
+            // `advanceTimeBy(1)` first: the read has to be genuinely in flight for this to be the
+            // reported race rather than two calls in one frame. Both URIs therefore appear in `opens`
+            // — the first read is cancelled, not skipped.
+            val other = "content://com.example.docs/document/2"
+            val sources = DelayedSources(
+                byUri = mapOf(
+                    URI to FakeSource(header().encode()),
+                    other to FakeSource(
+                        header(packageName = "com.example.other", versionCode = 5L).encode(),
+                        displayName = "com.example.other-5.thorbak",
+                    ),
+                ),
+                delays = mapOf(URI to 1_000L),
+            )
+            val vm = viewModel(sources = sources)
+
+            vm.open(URI)
+            testScheduler.advanceTimeBy(1)
+            vm.open(other)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(listOf(URI, other), sources.opens)
+            assertEquals("com.example.other", vm.uiState.value.header?.packageName)
+            assertEquals("com.example.other-5.thorbak", vm.uiState.value.fileName)
+            // Not a leftover of the cancelled read either: the spinner it turned on is the one thing a
+            // cancelled coroutine cannot turn off itself, and the replacement read owns it now.
+            assertFalse(vm.uiState.value.loading)
         }
 
     @Test

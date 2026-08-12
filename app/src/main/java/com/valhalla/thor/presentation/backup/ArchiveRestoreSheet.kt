@@ -273,7 +273,11 @@ private fun RestoreSheetBody(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            OutlinedButton(onClick = onPickFile) {
+            // `header == null` is also true for the whole of a load, so without this gate the prompt
+            // and the spinner above it are drawn together and a tap here starts a second read of a
+            // different file. Disabled rather than hidden: a control that vanishes from under a
+            // finger mid-read is worse than one that visibly cannot be pressed yet.
+            OutlinedButton(onClick = onPickFile, enabled = !state.loading) {
                 Text(stringResource(R.string.restore_pick_file))
             }
         } else {
@@ -462,7 +466,10 @@ private fun RestoreSheetBody(
                 // check it works", and offering "Choose a different file" behind it puts a destructive
                 // operation one tap from an app that is now correct. Dismissing the outcome brings it
                 // back, so nothing is lost — the user just has to acknowledge the result first.
-                TextButton(onClick = onPickFile) {
+                // Gated on `loading` for the same reason as the prompt's button above: this one stays
+                // composed while a *replacement* file is being read, so it is the second way into the
+                // same double-pick.
+                TextButton(onClick = onPickFile, enabled = !state.loading) {
                     Text(stringResource(R.string.restore_pick_another))
                 }
             }

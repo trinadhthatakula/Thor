@@ -300,6 +300,19 @@ internal class ArchiveRestoreViewModel(
     private var watching: Job? = null
     private var reattach: Job? = null
 
+    /**
+     * The in-flight header read, held so [open] can cancel it before starting another.
+     *
+     * Without it, two reads race and split the screen's identity in half: [uriString] is always the
+     * newest pick, while `header` and everything derived from it belong to whichever read finished
+     * last. A slow archive picked first and a small one picked during its load leaves the sheet
+     * showing A's package, classes and unlocked passphrase while the request it builds carries B's
+     * URI — a wrong request the user has no way to see. `AppArchiveWorker` refuses it on a package
+     * mismatch before touching anything, so it is not a data-loss path, but the user is told a
+     * restore may have left their data incomplete for a job that never got past the gate.
+     */
+    private var opening: Job? = null
+
     init {
         // Not gated on a file being picked: the Settings entry point arrives with no URI, and after a
         // crash that is exactly how the user gets here.
@@ -339,6 +352,12 @@ internal class ArchiveRestoreViewModel(
         wipePassphrase()
         reattach?.cancel()
         reattach = null
+        // Cancel-and-replace rather than `if (loading) return`: an early return would silently discard
+        // the file the user just picked, which is the one thing they are certain they asked for.
+        // Cancelling is also what keeps [uriString] and `header` describing the same archive — see
+        // [opening]. `launchGuarded` rethrows CancellationException instead of routing it to
+        // `onFailure`, so the cancelled read cannot write a failure over the new one's state.
+        opening?.cancel()
         _uiState.update {
             it.copy(
                 loading = true,
@@ -360,7 +379,7 @@ internal class ArchiveRestoreViewModel(
             )
         }
 
-        launchGuarded(
+        opening = launchGuarded(
             // Without this the spinner set above is permanent: `loading = true` is written
             // synchronously and every path that clears it lives inside this block, so a throw from the
             // source factory or the header reader left a screen that span until the user backed out of
