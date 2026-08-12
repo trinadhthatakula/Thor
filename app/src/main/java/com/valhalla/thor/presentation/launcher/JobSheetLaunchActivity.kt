@@ -26,9 +26,15 @@ private const val TAG = "JobSheetLaunchActivity"
  * single `kind` string and leaves the resume exactly as `BulkResultNotifier` already does it.
  *
  * An **activity** trampoline is legal from a notification; Android 12's ban covers services and
- * broadcasts. And unlike [FreezerLaunchActivity] this one takes no `taskAffinity=""` and no
- * `launchMode` — that pair exists there to *avoid* resuming Thor's task, which is the one thing this
- * activity is for.
+ * broadcasts.
+ *
+ * It shares [FreezerLaunchActivity]'s `taskAffinity=""` and, unlike it, declares no `launchMode`. An
+ * earlier version of this comment claimed the opposite — that the affinity was omitted on purpose
+ * because "resuming Thor's task is this activity's entire purpose". That was wrong, and backwards: with
+ * Thor's own affinity, a tap arriving when no Thor task exists makes *this* activity root the task, and
+ * `excludeFromRecents` then applies to the task the resumed `HomeActivity` joins. The user gets their
+ * sheet and loses Thor from Recents. The empty affinity puts the trampoline in a throwaway task of its
+ * own, and the `NEW_TASK` launcher intent below resumes Thor's task exactly as before.
  *
  * No `attachBaseContext`/`AppLocale.wrap` override either: it renders nothing and reads no string
  * resource, so there is no text for a locale to get wrong. Its only output is a log line.

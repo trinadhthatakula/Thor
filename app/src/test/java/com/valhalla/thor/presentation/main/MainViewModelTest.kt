@@ -48,6 +48,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.util.UUID
 
 /**
  * Behaviour tests for [MainViewModel] — the one view model in `presentation/` that can be built on
@@ -949,10 +950,13 @@ class MainViewModelTest {
     // the half that does not: a request published to `JobSheetTargets` becomes sheet state, the right
     // one, and it is not lost if it arrives before the view model exists.
 
+    /** Stands in for the publishing worker's `WorkSpec` id. `JobSheetTargetsTest` covers what it is for. */
+    private fun jobId(n: Int) = UUID(0L, n.toLong())
+
     @Test
     fun `a restore request opens the restore sheet on that archive`() = runTest {
         val targets = JobSheetTargets()
-        targets.set(JobSheetTarget.Restore("content://docs/tree/1/thor.thorbak"))
+        targets.set(jobId(1), JobSheetTarget.Restore("content://docs/tree/1/thor.thorbak"))
         val vm = viewModel(sheetTargets = targets)
 
         targets.requestOpen(ThorJobKind.ARCHIVE_RESTORE)
@@ -970,7 +974,7 @@ class MainViewModelTest {
     @Test
     fun `a backup request opens the backup sheet with the label the worker resolved`() = runTest {
         val targets = JobSheetTargets()
-        targets.set(JobSheetTarget.Backup("com.supercell.clashofclans", "Clash of Clans"))
+        targets.set(jobId(1), JobSheetTarget.Backup("com.supercell.clashofclans", "Clash of Clans"))
         val vm = viewModel(sheetTargets = targets)
 
         targets.requestOpen(ThorJobKind.ARCHIVE_BACKUP)
@@ -988,7 +992,7 @@ class MainViewModelTest {
     @Test
     fun `a request made before the view model exists is not lost`() = runTest {
         val targets = JobSheetTargets()
-        targets.set(JobSheetTarget.Restore("content://docs/tree/1/thor.thorbak"))
+        targets.set(jobId(1), JobSheetTarget.Restore("content://docs/tree/1/thor.thorbak"))
 
         // The ordinary case, not an edge case: the tap is what brings Thor forward, so the request is
         // published while nothing is collecting. `JobSheetTargets` conflates rather than dropping —
@@ -1020,12 +1024,53 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the thorbak a launch was opened on opens the restore sheet once`() = runTest {
+        val vm = viewModel()
+
+        vm.openRestoreSheetForLaunchUri("content://docs/tree/1/thor.thorbak")
+        advanceUntilIdle()
+
+        assertEquals(
+            RestoreSheetState("content://docs/tree/1/thor.thorbak"),
+            vm.uiState.value.restoreSheet
+        )
+
+        // The recomposition case: `MainScreen`'s LaunchedEffect re-runs with the same non-null
+        // `pendingRestoreUri` after the user has dismissed the sheet. It must not come back.
+        vm.dismissRestoreSheet()
+        vm.openRestoreSheetForLaunchUri("content://docs/tree/1/thor.thorbak")
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.restoreSheet)
+    }
+
+    @Test
+    fun `a fresh view model reopens the launch thorbak, because a killed process kept the intent`() = runTest {
+        val first = viewModel()
+        first.openRestoreSheetForLaunchUri("content://docs/tree/1/thor.thorbak")
+        advanceUntilIdle()
+
+        // Process death, then a return through Recents: the activity is recreated with the same VIEW
+        // intent and a still-valid task-scoped read grant, and gets a new view model. The latch has to
+        // come back with it, which is the whole reason it does not live in a `rememberSaveable` — that
+        // survives process death while the sheet state does not, so the archive was silently dropped.
+        val second = viewModel()
+        second.openRestoreSheetForLaunchUri("content://docs/tree/1/thor.thorbak")
+        advanceUntilIdle()
+
+        assertEquals(
+            RestoreSheetState("content://docs/tree/1/thor.thorbak"),
+            second.uiState.value.restoreSheet
+        )
+    }
+
+    @Test
     fun `dismissing a sheet closes it and leaves the other alone`() = runTest {
         val targets = JobSheetTargets()
         val vm = viewModel(sheetTargets = targets)
 
         vm.openRestoreSheet("content://docs/tree/1/thor.thorbak")
-        targets.set(JobSheetTarget.Backup("com.a", "App A"))
+        targets.set(jobId(1), JobSheetTarget.Backup("com.a", "App A"))
         targets.requestOpen(ThorJobKind.ARCHIVE_BACKUP)
         advanceUntilIdle()
 

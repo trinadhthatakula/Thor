@@ -117,10 +117,13 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
     // reason. This used to be a `NavEntry` for `ThorRoute.ArchiveRestore`, whose store was created
     // when the route was pushed, cleared when it was popped, and keyed by the route's own
     // `uriString` — so the default owner was already per-archive and per-visit. As a sheet it is a
-    // conditional composable inside whichever tab is showing, at one call site reused for every
-    // archive, so the default owner is that tab's entry and outlives it: the next archive's sheet
-    // would get the previous archive's view model back, with its parsed header, its unlocked key and
-    // its ticked confirmation still in place.
+    // conditional composable in `MainScreen`'s overlay `Box`, a sibling of `NavDisplay` with no
+    // `NavEntry` decorator in scope, so the default owner is the host **Activity**: its store lives
+    // as long as the process, and the next archive's sheet would get the previous archive's view
+    // model back, with its parsed header, its unlocked key and its ticked confirmation still in
+    // place. (An earlier version of this comment said "that tab's entry". Wrong owner — the tab roots
+    // are never popped either, so the lifetime it described is the same one, but the reason a reader
+    // would go looking for it is not.)
     //
     // What this costs is bounded, and it is worth stating because the reasoning ran the other way
     // while this was a screen. Losing the view model on dismiss drops an unlock — 210,000 PBKDF2

@@ -246,6 +246,9 @@ class MainViewModel(
 
     private var pendingSupportPrompt = false
 
+    /** Whether [openRestoreSheetForLaunchUri] has already fired for this ViewModel. See it for why here. */
+    private var launchRestoreUriConsumed = false
+
     // Declared *above* `init`, and it has to stay there.
     //
     // `viewModelScope` runs on `Dispatchers.Main.immediate`, so a collector launched from `init`
@@ -363,6 +366,28 @@ class MainViewModel(
      */
     fun openRestoreSheet(uriString: String? = null) {
         _uiState.update { it.copy(restoreSheet = RestoreSheetState(uriString)) }
+    }
+
+    /**
+     * Open the restore sheet on the `.thorbak` this launch was opened on, at most once.
+     *
+     * The latch belongs here rather than in a `rememberSaveable` in `MainScreen`, and that is a
+     * correctness point, not tidiness: it has to have **the same lifetime as the sheet state it
+     * guards**. `restoreSheet` lives on this ViewModel, which survives a rotation and dies with the
+     * process; a `rememberSaveable` latch survives *both*. So the pair disagreed exactly once — kill the
+     * process while it is backgrounded, return through Recents, and the activity is recreated with the
+     * same VIEW intent and a still-valid task-scoped read grant, but the saved latch said "already
+     * handled" while the fresh ViewModel had no sheet. The archive the user opened Thor on was dropped
+     * with nothing on screen to say so. Sharing one lifetime makes the two answers agree by
+     * construction: rotation keeps both, process death clears both and the sheet reopens.
+     *
+     * Being on the ViewModel is also what makes the no-reopen-after-dismiss half testable, which the
+     * `rememberSaveable` never was.
+     */
+    fun openRestoreSheetForLaunchUri(uriString: String) {
+        if (launchRestoreUriConsumed) return
+        launchRestoreUriConsumed = true
+        openRestoreSheet(uriString)
     }
 
     fun dismissRestoreSheet() {

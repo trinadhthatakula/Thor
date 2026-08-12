@@ -177,19 +177,16 @@ fun MainScreen(
 
     val currentBackStack = backStacks[activeTab] ?: homeBackStack
 
-    // Consumed once. rememberSaveable, not remember: `MainViewModel` survives a rotation with the
-    // sheet's state on it, so re-running this would reopen a sheet the user had already dismissed.
+    // Consumed once, and the once is counted on `MainViewModel` — NOT in a `rememberSaveable` here.
+    // A saveable latch outlives the sheet state it guards, so after process death it would say
+    // "already handled" to a fresh ViewModel that has no sheet, and the archive Thor was opened on
+    // would be dropped silently. See MainViewModel.openRestoreSheetForLaunchUri.
     //
     // No tab switch any more. This used to jump to Settings and push a route there, because the
     // restore *screen* had to live in some tab's back stack; the sheet is hosted above all four, so
     // the tab the user opened Thor on is left alone.
-    var restoreUriConsumed by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(pendingRestoreUri) {
-        val uri = pendingRestoreUri
-        if (uri != null && !restoreUriConsumed) {
-            restoreUriConsumed = true
-            mainViewModel.openRestoreSheet(uri)
-        }
+        pendingRestoreUri?.let(mainViewModel::openRestoreSheetForLaunchUri)
     }
 
     val adaptiveInfo = currentWindowAdaptiveInfoV2()

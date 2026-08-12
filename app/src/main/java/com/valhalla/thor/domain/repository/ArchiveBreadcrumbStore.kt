@@ -51,10 +51,15 @@ interface ArchiveBreadcrumbStore {
      * [read], re-run whenever this store's own [write] or [clear] changes the answer. Emits once on
      * collection, so it is a drop-in for a one-shot read.
      *
-     * It exists because two surfaces show this notice at once. `ArchiveRestore` is registered as a
-     * detail pane, so on an expanded window the restore screen and the Settings section are composed
-     * together: acknowledging the notice on one has to take it off the other, and a screen that reads
-     * once keeps reporting a breadcrumb that has been deleted.
+     * It exists because two surfaces show this notice at once. `ArchiveRestoreSheet` is hosted in
+     * `MainScreen`'s overlay level, so the Settings row carrying the notice stays composed underneath it
+     * at every window size: acknowledging the notice in the sheet has to take it off the section behind,
+     * and a surface that reads once keeps reporting a breadcrumb that has been deleted.
+     *
+     * This sentence used to argue the same conclusion from a detail pane on an expanded window. That was
+     * false in both builds — the route rendered in the detail pane beside an *empty* list pane, so
+     * nothing was next to it — and it is the layout claim `ObserveInterruptedRestoreUseCase` retracts.
+     * Only the mechanism was wrong; the conclusion is now unconditional rather than width-dependent.
      *
      * **In-process only.** The trigger is a call on this instance, not a file watch — which is enough
      * because one process writes breadcrumbs and Koin binds one instance of this within it, workers

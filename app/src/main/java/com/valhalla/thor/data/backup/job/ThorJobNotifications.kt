@@ -36,8 +36,10 @@ class ThorJobNotifications(private val context: Context) {
      * [build] runs up to once a second for the whole of a multi-gigabyte job, and
      * `PendingIntent.getActivity` is an IPC to ActivityManager. Eager and immutable rather than a lazy
      * cache because two IPCs at construction cost less than reasoning about a map mutated from a
-     * worker thread — and `ThorJobNotifications` is only constructed when a job or the trampoline
-     * first asks for it, not on the launch path.
+     * worker thread — and the only thing that constructs `ThorJobNotifications` is a worker Koin builds
+     * when WorkManager actually runs a job, so this is never on the launch path. (Not the trampoline,
+     * which an earlier version of this sentence also listed: `JobSheetLaunchActivity` resolves
+     * `JobSheetTargets` and nothing else, so it pays for none of this.)
      *
      * Naming a `presentation` class from `data` is the one upward reference here, and it is the
      * existing shape for this: `AnyFileOpenerManager` names `PortableInstallerActivity` for the same
