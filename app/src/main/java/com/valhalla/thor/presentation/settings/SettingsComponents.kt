@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -31,7 +32,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -158,7 +159,17 @@ internal fun SettingsSwitchRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(rowContainerColor(highlighted))
-            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            // `toggleable`, not `clickable`: the row is the whole control, so it has to carry the
+            // control's semantics. Under `clickable` it announced as a button with no state at all
+            // — the Switch beside it had its own semantics cleared to stop the setting being
+            // offered twice, so between them nothing said on or off, and a screen reader user could
+            // change the setting but never hear what it was set to.
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onCheckedChange
+            )
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -172,14 +183,15 @@ internal fun SettingsSwitchRow(
             }
         }
         Spacer(Modifier.width(8.dp))
-        // The row is the tap target; the Switch is a picture of the state. Left to itself the
-        // Switch also announces itself as a separate toggle, so a screen reader offers the same
-        // setting twice and reads the title only on one of them.
+        // The row is the tap target; the Switch is a picture of the state. A null handler is what
+        // says so — Material3 only applies its own toggleable semantics when one is present, so
+        // this contributes no second announcement of the same setting and needs no
+        // `clearAndSetSemantics` to suppress one. It also stops consuming the pointer, which is
+        // what lets a tap landing on the thumb reach the row's toggleable above.
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            modifier = Modifier.clearAndSetSemantics { }
+            onCheckedChange = null,
+            enabled = enabled
         )
     }
 }

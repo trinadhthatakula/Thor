@@ -560,11 +560,19 @@ fun MainScreen(
                             // (Option C's depth limit); a settings back stack four entries tall means
                             // the index is no longer one Back away, which is the property the split
                             // was for.
-                            if (settingsBackStack.lastOrNull() is ThorRoute.SettingsCategory) {
-                                settingsBackStack[settingsBackStack.lastIndex] = route
-                            } else {
-                                settingsBackStack.add(route)
+                            //
+                            // Everything above the index goes, not merely a SettingsCategory sitting
+                            // on top. Extensions pushes ExtensionManager, which is *also* a detail
+                            // pane, so the index stays visible beside it — the user can pick a second
+                            // category at a moment when the top of the stack is not a category, and a
+                            // guard that only recognised SettingsCategory appended instead. Truncating
+                            // to the index is the only spelling of "replace" that holds for every
+                            // route a category can open. Index 0 is ThorRoute.Settings by
+                            // construction (rememberNavBackStack above), so size 1 *is* the index.
+                            while (settingsBackStack.size > 1) {
+                                settingsBackStack.removeAt(settingsBackStack.lastIndex)
                             }
+                            settingsBackStack.add(route)
                         }
                     )
                 }

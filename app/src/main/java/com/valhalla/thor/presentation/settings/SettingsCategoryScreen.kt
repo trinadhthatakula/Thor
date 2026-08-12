@@ -527,10 +527,13 @@ fun SettingsCategoryScreen(
                         highlighted = lit,
                         onCheckedChange = {
                             // This op can't be toggled in-app; deep-link to system settings.
-                            if (!usageGranted) {
-                                runCatching {
-                                    context.startActivity(usageAccessManager.usageAccessIntent())
-                                }
+                            // Unconditionally, in both directions: the screen that grants usage
+                            // access is the same screen that revokes it. Acting only on the
+                            // off→on tap left the row dead once granted — the switch bounced
+                            // back and nothing happened, with no way in-app to reach the
+                            // revoke toggle the row is a picture of.
+                            runCatching {
+                                context.startActivity(usageAccessManager.usageAccessIntent())
                             }
                         }
                     )
@@ -553,18 +556,19 @@ fun SettingsCategoryScreen(
                         checked = notificationsGranted,
                         highlighted = lit,
                         onCheckedChange = {
-                            if (!notificationsGranted) {
+                            if (!notificationsGranted && requestNotificationPermission != null) {
                                 // 33+: only the system dialog can grant this. Thor never self-grants
                                 // it even when it holds root/Shizuku — the dialog grants the
                                 // identical capability, and Dhizuku cannot self-grant at all.
-                                // 28-32: there is no runtime permission to request, so the only
-                                // lever is the app-level toggle; deep-link to it.
-                                if (requestNotificationPermission != null) {
-                                    requestNotificationPermission()
-                                } else {
-                                    runCatching {
-                                        context.startActivity(appNotificationSettingsIntent(context))
-                                    }
+                                requestNotificationPermission()
+                            } else {
+                                // 28-32 there is no runtime permission to request, and on 33+ there
+                                // is no dialog that *withdraws* one — requesting again while granted
+                                // returns granted without showing anything. Either way the app-level
+                                // toggle is the only lever, so the on→off tap deep-links to it
+                                // instead of doing nothing and letting the switch snap back.
+                                runCatching {
+                                    context.startActivity(appNotificationSettingsIntent(context))
                                 }
                             }
                         }
