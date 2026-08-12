@@ -16,6 +16,7 @@ import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.data.util.XapkExpansion
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ObbExportStagingDir
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.bundleFileNameFor
@@ -73,8 +74,12 @@ class AppBundleBuilderImpl(
         // Declared here rather than inside the try for exactly that reason: a `val` created inside
         // the try is not in scope in the catch blocks, and a staging dir a catch cannot see is a
         // staging dir a failed export cannot free.
+        //
+        // The directory name is the shared constant, not a literal: `ArchiveOrphanSweeper` removes
+        // this whole tree at launch, which is the only thing that cleans up after a *kill* mid-build,
+        // and a second spelling would point the sweep at a directory nothing writes to.
         val obbStagingDir = context.externalCacheDir?.let {
-            File(it, "obb_out/${appInfo.packageName}")
+            File(it, "${ObbExportStagingDir.NAME}/${appInfo.packageName}")
         }
         try {
             if (cacheDir.exists()) cacheDir.deleteRecursively()

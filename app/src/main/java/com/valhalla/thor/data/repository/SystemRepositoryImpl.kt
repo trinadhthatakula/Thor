@@ -5,12 +5,23 @@ package com.valhalla.thor.data.repository
 
 import android.os.Environment
 import android.os.SystemClock
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
+import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.model.DataClass
+import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.capabilityProbeCommand
+import com.valhalla.thor.domain.model.classSizeCommand
+import com.valhalla.thor.domain.model.dataClassRoot
+import com.valhalla.thor.domain.model.measuredExclusions
+import com.valhalla.thor.domain.model.parseCapabilityProbe
+import com.valhalla.thor.domain.model.parseClassSize
+import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -22,7 +33,7 @@ import kotlinx.coroutines.flow.first
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
-@Single(binds = [SystemRepository::class])
+@Single(binds = [SystemRepository::class, AppDataProbe::class])
 class SystemRepositoryImpl(
     private val rootGateway: RootSystemGateway,
     private val shizukuGateway: ShizukuSystemGateway,
@@ -30,7 +41,7 @@ class SystemRepositoryImpl(
     private val preferenceRepository: PreferenceRepository,
     private val storageStats: StorageStatsProvider,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
-) : SystemRepository {
+) : SystemRepository, AppDataProbe {
 
     override suspend fun isRootAvailable(): Boolean = withContext(ioDispatcher) {
         rootGateway.isRootAvailable()
@@ -333,6 +344,42 @@ class SystemRepositoryImpl(
             }
         )
         return verdict
+    }
+
+    /**
+     * Built on [executeShellCommand] for the reason [probeObb] gives: the probe and the capture that
+     * follows it must cross the *same* privileged surface, or a pass here stops being evidence.
+     */
+    override suspend fun probeDataArchiveCapability(): Boolean {
+        // BuildConfig.APPLICATION_ID, not the namespace: `debug` carries an applicationIdSuffix, and
+        // the data directory is named after the application id. The namespace would name a path that
+        // exists in no build — the same trap `ComponentName`'s two halves set.
+        val command = capabilityProbeCommand(BuildConfig.APPLICATION_ID, thorUserId) ?: return false
+        return executeShellCommand(command).fold(
+            onSuccess = { (exitCode, output) -> parseCapabilityProbe(exitCode, output) },
+            onFailure = { false }
+        )
+    }
+
+    override suspend fun measureDataClass(
+        packageName: String,
+        dataClass: DataClass
+    ): DataClassSize {
+        // Empty string rather than a bail-out when shared storage is unavailable: CE and DE do not
+        // use it, and `dataClassRoot` refuses the two external classes on an unquotable root anyway.
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath.orEmpty()
+        val root = dataClassRoot(dataClass, packageName, thorUserId, externalRoot)
+            ?: return DataClassSize.Undetermined
+        // The exclusions are not an optimisation. This number is shown as the class size *and* is what
+        // the space check refuses on, so measuring a cache the archive then drops refuses a backup that
+        // would have fitted. `measuredExclusions` derives them from the same constant the backup filter
+        // uses, so the two cannot drift.
+        val command = classSizeCommand(root, measuredExclusions(dataClass))
+            ?: return DataClassSize.Undetermined
+        return executeShellCommand(command).fold(
+            onSuccess = { (exitCode, output) -> parseClassSize(exitCode, output) },
+            onFailure = { DataClassSize.Undetermined }
+        )
     }
 
     private companion object {

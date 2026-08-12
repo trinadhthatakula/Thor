@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup and restore strings (#51 phase 2). Untranslated for now: these ship
+  English-only and are exempted from MissingTranslation at the file level, the
+  same way values/non-translatable.xml is. Translating them is a follow-up row,
+  not a blocker — see docs/follow-ups/app-data-backup-and-xapk-export.md.
+  Do NOT move these into values/strings.xml until values-ar, values-es,
+  values-fr and values-zh-rCN all carry them, or lint turns fatal.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="job_backing_up">Backing up</string>
+    <string name="job_restoring">Restoring</string>
+    <string name="job_channel_name">Backup and restore</string>
+    <string name="job_channel_description">Progress for backups and restores running in the background</string>
+
+    <string name="action_backup">Back up</string>
+    <string name="backup_unsupported">Thor cannot read another app\'s private data with the access it has right now. This needs root, or Shizuku started from root.</string>
+    <string name="backup_include_bundle">Include the app installer</string>
+    <string name="backup_include_bundle_desc">Lets this backup reinstall the app if it is gone.</string>
+    <string name="backup_class_ce">App data</string>
+    <!--
+      "Startup data" rather than "Device-encrypted data": the class exists because apps keep
+      first-run and keyset state there, which is what a user needs to know. The encryption mode is
+      not. It describes the string below it, not the one above.
+    -->
+    <string name="backup_class_de">Startup data</string>
+    <string name="backup_class_external_data">Files on shared storage</string>
+    <string name="backup_class_external_media">Media on shared storage</string>
+    <string name="backup_size_measuring">Checking size…</string>
+    <string name="backup_size_empty">Empty</string>
+    <string name="backup_size_unknown">Size unknown</string>
+    <string name="backup_destination">Saving to %1$s</string>
+    <string name="backup_destination_pending">Finding the backup folder…</string>
+    <string name="backup_change_destination">Change</string>
+    <string name="backup_destination_not_persistable">Thor cannot keep access to that folder. Pick another one.</string>
+    <!--
+      Deliberately not "starting soon": jobs run on one chain, and a job appended behind one that
+      fails is cancelled without ever running. This says where the job is, not what will happen.
+    -->
+    <string name="backup_queued">Waiting behind another backup or restore.</string>
+    <string name="backup_passphrase">Passphrase</string>
+    <string name="backup_passphrase_confirm">Confirm passphrase</string>
+    <string name="backup_passphrase_warning">Thor cannot recover this passphrase. Without it, this backup cannot be restored.</string>
+    <string name="backup_remember_passphrase">Remember it on this device</string>
+    <string name="backup_use_different_passphrase">Use a different passphrase</string>
+    <string name="backup_start">Back up</string>
+    <!--
+      The consequence a deterministic file name has and nothing else on the sheet names: an archive is
+      <package>-<versionCode>.thorbak, so backing the same app up twice at the same version always
+      collides.
+
+      This used to read "can replace the backup you already have", because the three destinations
+      genuinely disagreed: MediaStore de-duplicates to "name (1)", a SAF provider usually does, and a
+      legacy Downloads write renamed straight over the old file. AppArchiveStoreImpl now picks a
+      non-colliding name on that third backend too (nonCollidingArchiveName), so "kept alongside" is
+      the behaviour Thor itself produces everywhere.
+
+      The hedge survives, narrowed to the one case Thor does not control: a folder the user chose is
+      the provider's to manage, and DocumentsContract.renameDocument onto an existing name is the
+      provider's decision. Promising "never replaces" would be a claim Thor cannot honour there.
+
+      Stated before the button rather than as an "are you sure?", which is the branch's rule for
+      destructive actions: name the consequence, do not ask the user to confirm a sentence they have
+      not been given.
+    -->
+    <string name="backup_overwrite_notice">Thor names a backup after the app and its version, so backing this app up again at the same version reuses that name. Thor keeps both by numbering the newer one, though a folder you chose yourself may replace the older file instead.</string>
+    <!--
+      Shown when every data class is unticked. Its second sentence is the whole of C1: the restore gate
+      refuses an empty selection before it looks at the installer, so an installer-only archive is a
+      file Thor can write and can never read back. The sheet used to offer exactly that.
+    -->
+    <string name="backup_nothing_selected">Choose at least one thing to back up. The installer on its own cannot be restored.</string>
+    <string name="backup_done">Backup saved.</string>
+    <string name="backup_failed">Backup failed: %1$s</string>
+    <string name="backup_failed_unknown">it stopped without saying why</string>
+    <!--
+      The backup counterpart of restore_failed_partial, and deliberately not a copy of it: a backup
+      reads the app's data and writes somewhere else, so there is no half-written app to warn about.
+      What the user needs is the other half — that no archive was left behind either. That is true by
+      construction rather than by hope: AppArchiveStoreImpl writes to <name>.part and only publishes on
+      success, discards the partial on failure, and sweeps orphaned ones at the next launch.
+    -->
+    <string name="backup_failed_nothing_saved">No backup file was saved. The app\'s own data was not touched — backing up only reads it.</string>
+    <!--
+      The pre-flight failures: the enqueue returned no id, or something between the passphrase recall
+      and the enqueue threw. Both are decided before a job exists.
+    -->
+    <string name="backup_failed_not_started">Nothing was started, so no backup was saved.</string>
+    <!--
+      Cancelled without ever running — the chain case, matching restore_cancelled. Every job is appended
+      to one chain and WorkManager cancels the dependents of a job that fails, so a backup queued behind
+      a failing one is cancelled before its work is ever called. Reported as its own outcome rather than
+      as a failure: "Backup failed" over a backup Thor never attempted is a sentence the user cannot act
+      on, and the action here is simply to try again.
+    -->
+    <string name="backup_cancelled">Thor did not run this backup — the job ahead of it in the queue failed, so this one was cancelled before it started. No backup was saved. Try again.</string>
+    <string name="backup_cancelled_after_start">This backup was cancelled after it had already started.</string>
+    <!--
+      Its own string rather than restore_interrupted_dismiss, which is named and commented for the §8.5
+      breadcrumb banner. Identical text today; rewording one must not silently reword the other.
+    -->
+    <string name="backup_outcome_dismiss">Got it</string>
+
+    <string name="restore_title">Restore a backup</string>
+    <string name="restore_pick_prompt">Choose a Thor backup file (.thorbak) to see what it holds.</string>
+    <string name="restore_pick_file">Choose a file</string>
+    <string name="restore_pick_another">Choose a different file</string>
+    <!--
+      PluralsCandidate fires on the %2$d. It is a version code — an identifier the app displays
+      alongside the version name — so there is no quantity to agree with and no plural form to pick.
+    -->
+    <string name="restore_archive_version" tools:ignore="PluralsCandidate">Version %1$s (%2$d)</string>
+    <string name="restore_archive_created">Backed up %1$s</string>
+    <string name="restore_will_install_first">This app is not installed. Thor will install it from the backup first.</string>
+    <plurals name="restore_include_obb">
+        <item quantity="one">Also restore game data (%1$d file)</item>
+        <item quantity="other">Also restore game data (%1$d files)</item>
+    </plurals>
+    <string name="restore_unlock">Unlock</string>
+    <string name="restore_unlocked">Unlocked with the saved passphrase.</string>
+    <string name="restore_confirm_replace">I understand this replaces the app\'s current data. Anything not in this backup is deleted.</string>
+    <string name="restore_start">Restore</string>
+    <string name="restore_back">Back</string>
+    <string name="restore_done">Restore finished. Open the app to check it works.</string>
+    <!--
+      Heading for the sentences a *successful* run still has to report — game data that could not be
+      placed, an archive that turned out to hold none, a breadcrumb Thor could not write. The data
+      landed, so this is not phrased as a failure: a user told "restore failed" runs it again, which
+      deletes and rewrites data that is already correct.
+    -->
+    <string name="restore_done_warnings">Some parts did not finish:</string>
+    <string name="restore_failed">Restore failed: %1$s</string>
+    <!--
+      Its own string rather than backup_failed_unknown, which the backup sheet also renders. Identical
+      text today; the two surfaces must be able to diverge without one silently editing the other.
+    -->
+    <string name="restore_failed_unknown">it stopped without saying why</string>
+    <!--
+      The four sentences ArchiveRestoreViewModel used to hold as Kotlin literals. They live here for the
+      reason every other string on this screen does: a literal in a view model is invisible to lint and
+      to the translation pipeline, so it would have been the only English left once strings_backup.xml
+      is translated, with nothing to point at it.
+
+      Two shapes, and the difference is where each is drawn. The two below are whole sentences shown on
+      their own — one in the screen's error block, one as the passphrase field's supporting text — so
+      they are capitalised and stopped. The two after them are fragments interpolated into
+      restore_failed above ("Restore failed: %1$s"), so they carry neither.
+    -->
+    <string name="restore_error_unreadable_file">Thor could not read that file. If it is on a card or a cloud folder, check it is still available and try again.</string>
+    <!--
+      Split out of restore_error_unreadable_file, which used to answer for both. The picker shows every
+      file on the device, so choosing something that is not a backup is the ordinary mistake, and the
+      two failures send the user opposite ways: this one says pick a different file, the other says
+      this file is fine, try it again. One sentence for both was wrong for whichever one happened.
+    -->
+    <string name="restore_error_not_an_archive">That file is not a Thor backup. Choose a .thorbak file.</string>
+    <string name="restore_error_wrong_passphrase">That passphrase does not open this backup.</string>
+    <!--
+      Not "wrong passphrase": this is the check itself failing, and a throw is no evidence about what
+      was typed. Says what to do instead of guessing at a cause it does not know.
+    -->
+    <string name="restore_error_unlock_check_failed">Thor could not check that passphrase. Try again.</string>
+    <string name="restore_failed_passphrase_lost">Thor no longer has the passphrase for this backup — unlock it again</string>
+    <string name="restore_failed_salt_unreadable">this archive\'s salt could not be read</string>
+    <!--
+      The damage sentence. Shown only where RestoreFinish.workerRan is true — a failed WorkInfo, or a
+      cancel this screen saw run — and never as the second line of a failure decided before the
+      enqueue. Where it does apply it must never say "nothing was changed": a restore deletes each
+      class before it writes it, and on the install-first path it may have installed the app before it
+      failed, so the honest instruction is to go and look. Its last sentence tells the user to run a
+      destructive operation again, which is the reason the condition on it is load-bearing.
+    -->
+    <string name="restore_failed_partial">This stopped part-way, so the app\'s data may be incomplete — and if Thor installed the app from this backup, it is still installed. Restoring again is the fix.</string>
+    <!--
+      The pre-flight failures: Thor no longer holds the passphrase, the archive's salt will not decode,
+      or the enqueue threw. All three are decided before a job exists, so the device is untouched and
+      the string above would be false. Deliberately does not say "try again" — the reason above it says
+      what to do, and two instructions in two lines contradict each other.
+    -->
+    <string name="restore_failed_not_started">Nothing was started, so nothing on this device changed.</string>
+    <!--
+      Cancelled without ever running: jobs share one chain, WorkManager cancels the dependents of a job
+      that fails, and a dependent's work is never called. This is the only cancel string that gets to
+      say "nothing was changed", and it is true only because of that. (restore_failed_not_started above
+      says the same of a failure decided before the enqueue.) The sibling below covers a cancel that
+      arrived after the worker had started.
+    -->
+    <string name="restore_cancelled">Thor did not run this restore — the job ahead of it in the queue failed, so this one was cancelled before it started. Nothing was changed. Try again.</string>
+    <!--
+      Cancelled after the job had been started, which this screen knows because it observed the RUNNING
+      state — written as WorkManager hands the job to a built worker. Rendered above
+      restore_failed_partial: the outcome differs from a failure, the damage does not.
+    -->
+    <string name="restore_cancelled_after_start">This restore was cancelled after it had already started.</string>
+    <string name="restore_interrupted">The restore of %1$s did not finish. That app\'s data may be incomplete — restoring it again is the fix.</string>
+    <string name="restore_interrupted_dismiss">Got it</string>
+    <!--
+      The outcome card's dismiss, split out from restore_interrupted_dismiss above. That one belongs to
+      the §8.5 breadcrumb banner, which is what its name and its neighbours say; the outcome card had
+      borrowed it. Same text, two owners, so either can be reworded on its own.
+    -->
+    <string name="restore_outcome_dismiss">Got it</string>
+    <string name="restore_refused_signer_mismatch">This backup was made from an app signed by a different developer. Restoring it would hand one app another\'s data, so Thor will not do it.</string>
+    <string name="restore_refused_signer_unverifiable">Thor could not read the installed app\'s signature, so it cannot check that this backup belongs to it.</string>
+    <string name="restore_refused_app_absent">This app is not installed and this backup holds no installer to add it from.</string>
+    <string name="restore_refused_class_missing">This backup does not hold one of the things selected.</string>
+    <string name="restore_refused_nothing_selected">Nothing is selected.</string>
+    <string name="restore_refused_schema_too_new">This backup was made by a newer version of Thor. Update Thor to restore it.</string>
+    <string name="restore_refused_invalid_schema_version">This backup does not say what format it is in. The file is damaged, or it was not written by Thor.</string>
+    <string name="restore_refused_invalid_package_name">This backup names an app in a way Thor will not accept. The file is damaged, or it was not written by Thor.</string>
+    <string name="restore_refused_invalid_user_id">This backup names a user profile Thor will not accept. The file is damaged, or it was not written by Thor.</string>
+    <string name="restore_warning_version_older">The installed app is older than this backup. Apps can crash on data from a newer version — update the app first if it does.</string>
+    <string name="restore_warning_ce_without_de">Startup data is in this backup but not selected. Some apps need both, and may behave as though half-migrated.</string>
+    <string name="restore_settings_desc">Read a .thorbak file and put an app\'s data back.</string>
+    <!--
+      The Settings section heading, covering both halves: the row under it restores, and Task 18 adds
+      the saved-passphrase row to the same section. Not action_backup ("Back up"), which is a button
+      label on an app — a heading that reads as a verb over a row that reads as a different verb.
+    -->
+    <string name="backup_and_restore">Backup &amp; restore</string>
+
+    <!--
+      §5.4's surface. Separate strings from the backup sheet's rather than shared ones: the sheet is
+      talking about the archive it is about to write ("this backup"), and this screen is talking about
+      a device-wide setting that applies to every future one. One string cannot be true in both places
+      without going vague in both.
+    -->
+    <string name="passphrase_settings_title">Backup passphrase</string>
+    <string name="passphrase_settings_desc">Choose, change or remove the passphrase Thor remembers.</string>
+    <string name="passphrase_settings_stored">A passphrase is saved on this device.</string>
+    <string name="passphrase_settings_warning">Thor cannot recover this passphrase. Without it, a backup made with it cannot be restored.</string>
+    <!--
+      The consequence a user cannot see and would otherwise assume the opposite of. Changing a stored
+      passphrase re-encrypts nothing: each archive's key is derived from the passphrase it was written
+      with, so every existing .thorbak still opens only with that one. Stated where the choice is made,
+      because after it is made there is nothing to be done about it.
+    -->
+    <string name="passphrase_settings_no_reencrypt">Changing it does not change any backup you already made. Each one still opens only with the passphrase it was made with.</string>
+    <string name="passphrase_settings_save">Save</string>
+    <string name="passphrase_settings_forget">Forget it</string>
+    <string name="passphrase_settings_saved">Saved on this device.</string>
+    <!--
+      The confirmation body has to carry the scope of the loss, because the button label cannot: what
+      goes is the ability to open every .thorbak already written under that passphrase, not merely the
+      copy this device is holding. The consequence is then spelled out as something the user will have
+      to do (type it again) rather than left at "it cannot be recovered", so a user who does still know
+      their passphrase can see this is survivable and proceed.
+    -->
+    <string name="passphrase_forget_confirm_title">Forget this passphrase?</string>
+    <string name="passphrase_forget_confirm_desc">Thor will stop remembering it on this device. It cannot be recovered — you will have to type it again for every backup you make, and for every backup you already made with it.</string>
+    <!--
+      Load-bearing, not decorative: without it lint fails the build with
+      `Error: Formatting %d followed by words ("characters") … [PluralsCandidate]`.
+
+      Kept because the argument is always MIN_PASSPHRASE_LENGTH, a compile-time constant — so this
+      string renders one number and only ever that number, and no plural form can vary. It is NOT
+      kept on the grounds that "characters" is uncounted: lint names that noun and it is right to,
+      and values-ar (on the translation list, where 8 takes a different form from 1 and 2) would
+      otherwise be a real problem. Do not lean on restore_archive_version's precedent here; that one
+      is exempt because a version code is not a count at all, which is a different argument.
+
+      If MIN_PASSPHRASE_LENGTH ever becomes user-configurable or varies by build, this reasoning
+      expires with it and the string becomes a genuine <plurals>.
+    -->
+    <string name="passphrase_error_too_short" tools:ignore="PluralsCandidate">Use at least %1$d characters.</string>
+    <string name="passphrase_error_mismatch">The two passphrases do not match.</string>
+    <!--
+      Deliberately not phrased as a failure of the backup: the vault is a convenience cache, and an
+      archive is protected by the passphrase itself, never by whether this device remembered it.
+    -->
+    <string name="passphrase_error_store_failed">Thor could not save the passphrase on this device. The backup will still work — you will just have to type it each time.</string>
+</resources>

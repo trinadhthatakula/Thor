@@ -420,6 +420,8 @@ dependencies {
     implementation(libs.dhizuku.api)
     implementation(libs.bundles.coil)
     implementation(libs.bundles.koin)
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.koin.androidx.workmanager)
 
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)

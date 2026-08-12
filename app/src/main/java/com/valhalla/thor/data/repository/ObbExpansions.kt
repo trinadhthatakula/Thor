@@ -17,10 +17,27 @@ internal fun expansionEntryName(packageName: String, leaf: String): String =
     "${expansionDirFor(packageName)}/$leaf"
 
 /**
+ * `NAME_MAX`, which is 255 on every filesystem an OBB can be written to.
+ *
+ * Counted in characters rather than bytes, which makes the bound *looser* than the kernel's for a
+ * non-ASCII name and is the right direction: this rule exists to stop an absurd name, not to
+ * second-guess what a real volume accepted.
+ */
+private const val MAX_OBB_LEAF_NAME_CHARS = 255
+
+/**
  * A file name Thor is willing to create inside `Android/obb/<pkg>/`.
  *
- * Stricter than [isSafeEntryFileName] by three rules, each paying for itself:
+ * Stricter than [isSafeEntryFileName] by four rules, each paying for itself:
  *
+ *  - **At most [MAX_OBB_LEAF_NAME_CHARS] characters**, so this rejects nothing that could ever have
+ *    been read off a device — a name this long can only have come from a hand-written manifest,
+ *    since `cp` answers `ENAMETOOLONG` before it creates one. It is here because the leaf is the
+ *    one attacker-controlled string that reaches a user-visible *message*: a placement failure
+ *    becomes `"<leaf> could not be copied into place"`, that becomes a restore warning, and warnings
+ *    are handed to WorkManager as `Data`, which throws above 10 KB. A 10 KB leaf therefore turned a
+ *    restore that had already succeeded into one reported as failed — and telling the user a restore
+ *    failed sends them to run it again, over data that is already correct.
  *  - **The `.obb` extension**, because that is what the platform's own expansion loader looks for,
  *    and because it keeps a hostile archive from dropping an arbitrarily-typed file into a
  *    world-readable directory.
@@ -41,6 +58,7 @@ internal fun expansionEntryName(packageName: String, leaf: String): String =
  */
 internal fun isSafeObbLeafName(name: String): Boolean =
     name.isNotBlank() &&
+        name.length <= MAX_OBB_LEAF_NAME_CHARS &&
         name != "." &&
         name != ".." &&
         !name.contains('/') &&

@@ -79,6 +79,7 @@ import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
+import com.valhalla.thor.domain.usecase.ObserveInterruptedRestoreUseCase
 import com.valhalla.thor.presentation.main.toDestination
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLanguage
@@ -92,6 +93,9 @@ import org.koin.compose.koinInject
 @Composable
 fun SettingsScreen(
     onNavigateToExtensionManager: () -> Unit,
+    // Not defaulted, so the one call site has to supply it. A default would leave a Restore row that
+    // navigates nowhere, and nothing would fail to compile.
+    onNavigateToRestore: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -687,6 +691,86 @@ fun SettingsScreen(
                 enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setAddFreezerToLauncher(it) }
             )
+        }
+
+        // ── BACKUP & RESTORE ────────────────────────────────────────────────
+        // Root/Shizuku/Dhizuku only: there is no unprivileged path to another app's data, so an
+        // unprivileged user offered this would reach a screen whose only content is a refusal.
+        if (hasPrivilege) {
+            Spacer(Modifier.height(32.dp))
+
+            SettingsSectionLabel(stringResource(R.string.backup_and_restore))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(8.dp)
+            ) {
+                // §8.5's notice, where a user who is not looking for it will still see it. Injected
+                // here rather than threaded through SettingsViewModel: it is one flow that no other
+                // part of Settings needs, and putting it in the view model that owns every preference
+                // would make a backup concern part of that class's surface.
+                //
+                // The use case, not `ArchiveBreadcrumbStore.observe()` directly. A live observation of
+                // the raw breadcrumb is *wrong* on this surface: the breadcrumb is written at the start
+                // of the destructive phase, `ArchiveRestore` is registered as a detail pane, and on an
+                // expanded window this section is composed beside it — so a raw observe() renders "did
+                // not finish … restore it again" next to a progress bar reporting normal progress. The
+                // use case holds the notice back while a restore for that app is live, and still takes
+                // it down the moment "Got it" over there clears the breadcrumb. Both of its inputs read
+                // off the main thread.
+                val observeInterrupted = koinInject<ObserveInterruptedRestoreUseCase>()
+                val interrupted by remember(observeInterrupted) { observeInterrupted() }
+                    .collectAsStateWithLifecycle(initialValue = null)
+                // Not dismissible here on purpose: the row beneath it leads to the screen that can
+                // clear it, and a dismiss in two places is two chances to lose the notice.
+                interrupted?.let { crumb ->
+                    Text(
+                        text = stringResource(R.string.restore_interrupted, crumb.appLabel),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                    )
+                }
+                SettingsClickRow(
+                    icon = R.drawable.settings_backup_restore,
+                    title = stringResource(R.string.restore_title),
+                    subtitle = stringResource(R.string.restore_settings_desc),
+                    onClick = onNavigateToRestore
+                )
+
+                // §5.4. The only place "remember it on this device" — offered as a checkbox in the
+                // backup sheet — can be undone, and the only place a stored passphrase can be replaced
+                // without making a backup to do it.
+                var showPassphrase by remember { mutableStateOf(false) }
+
+                SettingsClickRow(
+                    icon = R.drawable.round_key,
+                    title = stringResource(R.string.passphrase_settings_title),
+                    subtitle = stringResource(R.string.passphrase_settings_desc),
+                    onClick = { showPassphrase = true }
+                )
+
+                // Hosted at its row, which is the exception in this composable and not the
+                // convention. The three other overlays here — the unfreeze-all AlertDialog, the
+                // language sheet and the support sheet — all sit at the screen root with only their
+                // trigger down among the rows: the dialog before this scrolling Column opens, the two
+                // sheets after it closes. This one is the first that keeps its state and its host
+                // beside the row they belong to.
+                //
+                // (Written without line numbers on purpose. The first draft of this comment cited
+                // three, and editing the comment itself moved one of them — and asserted a shared
+                // "after the Column closes" that was only ever true of two of the three.)
+                //
+                // Still correct where it is: a ModalBottomSheet draws in its own window over the
+                // whole screen no matter where it is composed, so being inside this Column costs it
+                // nothing.
+                if (showPassphrase) {
+                    PassphraseSettingsSheet(onDismiss = { showPassphrase = false })
+                }
+            }
         }
 
         // ── EXTENSIONS ──────────────────────────────────────────────────────

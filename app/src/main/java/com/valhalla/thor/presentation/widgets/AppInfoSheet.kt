@@ -65,6 +65,7 @@ import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.appList.AppInfoDetailBody
 import com.valhalla.thor.presentation.appList.AppInfoDetailsViewModel
 import com.valhalla.thor.presentation.appList.ExportBottomSheet
+import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import kotlinx.coroutines.flow.first
@@ -195,6 +196,7 @@ fun AppInfoSheet(
     var showClearDataConfirmation by remember { mutableStateOf(false) }
     var showFreezeConfirmation by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
+    var showBackupSheet by remember { mutableStateOf(false) }
 
     val paneTitleText = appInfo.appName ?: appInfo.packageName
 
@@ -280,6 +282,7 @@ fun AppInfoSheet(
                     },
                     onShare = { onAppAction(AppClickAction.Share(appInfo)) },
                     onExport = { showExportSheet = true },
+                    onBackup = { showBackupSheet = true },
                     // Details no longer leaves for another screen — it brings the body up in place,
                     // which matters because dragging is not an option for every user. The sheet's
                     // own semantics expand action covers assistive tech; this covers everyone else.
@@ -362,6 +365,17 @@ fun AppInfoSheet(
 
     if (showExportSheet) {
         ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
+    }
+
+    // This sheet stays up behind it, as it already does for the export sheet: the job runs in a
+    // foreground service, so closing a sheet is not what stops it, and leaving the host up puts the
+    // user back on the app they were looking at.
+    if (showBackupSheet) {
+        AppBackupSheet(
+            packageName = appInfo.packageName,
+            appLabel = appInfo.appName ?: appInfo.packageName,
+            onDismiss = { showBackupSheet = false }
+        )
     }
 
     if (showClearDataConfirmation) {

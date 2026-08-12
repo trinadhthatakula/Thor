@@ -14,6 +14,7 @@ import coil3.request.crossfade
 import com.rosan.dhizuku.api.Dhizuku
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
+import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -27,6 +28,7 @@ import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.koinLogLevel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,7 +40,9 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
+import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.annotation.KoinApplication
+import org.koin.core.qualifier.named
 import org.koin.plugin.module.dsl.startKoin
 
 @KoinApplication
@@ -182,6 +186,17 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val localeManager: LocaleManager by inject()
     private val autoFreezeManager: AutoFreezeManager by inject()
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager by inject()
+    private val archiveOrphanSweeper: ArchiveOrphanSweeper by inject()
+
+    /**
+     * The sweep's dispatcher, injected rather than hardcoded even here.
+     *
+     * [appScope] runs on `Dispatchers.Main.immediate`, and the sweeper blocks on whoever calls it —
+     * the same convention as `FileArchiveBreadcrumbStore` and `RestoreAppArchiveUseCase`. Left on
+     * Main, a launch after a killed backup would `deleteRecursively()` a multi-gigabyte bundle tree on
+     * the UI thread.
+     */
+    private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
 
     // Retained, cancellable application-lifetime scope. A SupervisorJob keeps one failing
     // child from cancelling the others, and holding the reference lets us cancel it in
@@ -206,6 +221,10 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         startKoin<ThorApplication> {
             androidContext(this@ThorApplication)
             androidLogger(Logger.koinLogLevel)
+            // Constructor injection for @KoinWorker workers. Reads Context out of the root scope,
+            // so it has to follow androidContext(). Also performs WorkManager.initialize(), which
+            // is why the manifest removes the androidx.startup initializer.
+            workManagerFactory()
         }
 
         Bypass.setLogger { message, throwable ->
@@ -266,6 +285,19 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
                 if (throwable is CancellationException) throw throwable
                 Logger.e("ThorApp", "Startup preference sync failed", throwable)
             }
+
+            // §10. After the locale block, not before: nothing here is on the path to first frame,
+            // and it touches the filesystem. Deliberately not awaited and deliberately not fatal — a
+            // launch that cannot delete a stale temp file is still a launch. The interruption warning
+            // the report may carry is the restore screen's to show; Application has no UI, so the
+            // report here is a log line and the breadcrumb is left standing for Task 17 to clear.
+            runCatching { withContext(ioDispatcher) { archiveOrphanSweeper.sweep() } }
+                .onFailure { throwable ->
+                    // Same rethrow as above: runCatching swallows CancellationException, and
+                    // appScope.cancel() in onTerminate must not be logged as a sweep failure.
+                    if (throwable is CancellationException) throw throwable
+                    Logger.e("ThorApp", "archive orphan sweep failed", throwable)
+                }
         }
 
         // Below API 33 nothing else notices a language change: the platform has no per-app locale to

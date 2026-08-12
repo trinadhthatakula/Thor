@@ -47,6 +47,12 @@
          enqueued, draws under the shade (layer 7 vs 17). Requested normally from Settings;
          never self-granted. Inert below API 33. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- WorkManager's own manifest declares the base FOREGROUND_SERVICE permission but leaves the
+         type to the app. Without the type permission AND the type attribute below, setForeground()
+         throws MissingForegroundServiceTypeException on targetSdk 34+. dataSync honestly describes
+         work that moves bytes; a bulk freeze sweep would need a different type and is not on this
+         seam — see the spec, section 9.4. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:name=".ThorApplication"
@@ -70,6 +76,61 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Opening a .thorbak. The path constraint is load-bearing, not decoration:
+                 PortableInstallerActivity already claims content: + application/octet-stream and
+                 application/zip with no path constraint at all, which is what providers report for a
+                 .thorbak — so a filter without one would put a second Thor entry in the chooser for
+                 every zip and every unknown binary on the device.
+
+                 Two layers, the same pair the installer's extension filter below uses and for the
+                 same reasons:
+                   (1) android:pathSuffix (API 31+) is a literal endsWith, so it matches any dot
+                       count. Silently ignored on API 28-30.
+                   (2) SIMPLE_GLOB pathPattern for API 28-30, whose ".*" latches onto the FIRST
+                       occurrence of the next literal with NO backtracking. ".*\.thorbak" therefore
+                       matches only single-dot names — and Thor's own file name is
+                       "<packageName>-<versionCode>.thorbak", which always has at least two dots, so
+                       that one pattern alone would match nothing Thor ever writes. Hence a ladder of
+                       one pattern per dot count.
+
+                 The ladder is lowercase-only, and that is deliberate rather than an oversight: every
+                 archive extension this manifest claims (.apk, .xapk, .apks, .apkm, .apkp) gives
+                 uppercase a pathSuffix and exactly one one-dot pathPattern, on the grounds that
+                 nothing produces a multi-dot uppercase name. Adding five UPPERCASE rungs here would
+                 make this the one block in the file that does — for a file name Thor never writes,
+                 since it lowercases its own. Change all six or change none.
+
+                 Two known limitations, both shared with that filter:
+                   - Intent matching tests Uri.getPath(), so this fires for providers whose document
+                     URI ends in the file name (com.android.externalstorage.documents) and not for
+                     those whose URI is an opaque id (the Downloads provider).
+                   - host="*" matches any NON-EMPTY authority, and a file:// URI has an empty one, so
+                     in practice only content: reaches here. It is declared because lint's
+                     AppLinkUrlError makes a host mandatory once any path attribute is present, and
+                     file:// URIs have been unusable across app boundaries since API 24 anyway.
+                 Restore from Settings is unaffected by either. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+
+                <data android:pathSuffix=".thorbak" />
+                <data android:pathSuffix=".THORBAK" />
+                <data android:pathPattern=".*\\.thorbak" />
+                <data android:pathPattern=".*\\.THORBAK" />
+                <data android:pathPattern=".*\\..*\\.thorbak" />
+                <data android:pathPattern=".*\\..*\\..*\\.thorbak" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.thorbak" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.thorbak" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.thorbak" />
             </intent-filter>
         </activity>
 
@@ -327,6 +388,27 @@
             android:authorities="${applicationId}.extensionops"
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
+
+        <!-- Type overlay onto the service work-runtime declares. tools:node="merge" so this adds the
+             attribute rather than replacing the library's declaration. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <!-- koin-androidx-workmanager's AAR manifest is empty, so it does NOT remove this itself.
+             workManagerFactory() below calls WorkManager.initialize() directly; leaving the startup
+             initializer in place means two initializers for one WorkManager. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
 
     </application>
 
