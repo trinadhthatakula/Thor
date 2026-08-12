@@ -54,7 +54,7 @@ Read these before Task 1. Each is a decision made at plan time that the spec lef
 
 7. **The new privileged operations go on two narrow ports, not onto `SystemRepository`.** §6 requires the probe to run on *the same privileged surface* as the work, which reads like "add the methods to `SystemRepository`". Doing that breaks the build in two places that have nothing to do with backup: `FreezeAppUseCaseTest.kt:33` and `BulkFreezeWorkerTest.kt:121` each hand-write a `RecordingSystemRepository` implementing the interface in full, so every added member is a compile error in both. Instead `AppDataProbe` (Task 6, the two read-only questions) is **implemented by `SystemRepositoryImpl` itself** — so §6's property holds: the probe and the work run through the same object, the same `runGatewayAction`, the same active gateway — while `AppDataArchiveGateway` (Task 9) carries the archive-specific surface that was never system-wide to begin with. Neither widens an interface a test double already implements.
 
-8. **Progress is published to an in-memory registry, never through `setProgress` (§9.2 taken literally).** Every `setProgress` call is a row written to WorkManager's SQLite database, and WorkManager throttles observers to roughly one update a second; a gigabyte copied in 1 MiB chunks would attempt a thousand writes on the hot path. `JobRegistry` (Task 8) holds a `StateFlow` per job id and the ViewModel collects it directly. The consequence is that progress does not survive process death — which costs nothing, because an archive job's key lives in that same process (`ArchiveKeyHolder`) and so a killed job cannot resume either. WorkManager's own persisted `WorkInfo.State` stays the source of truth for *running / succeeded / failed*.
+8. **Progress is published to an in-memory registry, never through `setProgress` (§9.2 taken literally).** Every `setProgress` call is a row written to WorkManager's SQLite database, and WorkManager does **not** coalesce the observer emissions behind those rows; a gigabyte copied in 1 MiB chunks would attempt a thousand writes on the hot path, each with an emission behind it. (This line originally claimed WorkManager throttles observers to roughly one update a second. It does not — that guarantee was invented. The 1/s in this feature is Thor's own, on `ThorJobWorker`'s notification publish.) `JobRegistry` (Task 8) holds a `StateFlow` per job id and the ViewModel collects it directly. The consequence is that progress does not survive process death — which costs nothing, because an archive job's key lives in that same process (`ArchiveKeyHolder`) and so a killed job cannot resume either. WorkManager's own persisted `WorkInfo.State` stays the source of truth for *running / succeeded / failed*.
 
 9. **One work chain for every archive job, `APPEND_OR_REPLACE` (§9.3).** The unique work name deliberately excludes the target, so jobs *serialise* and peak disk stays at one storage class however many backups the user queues. Per-target dedup — the double-tap defence — moves to `jobTag(kind, target)` and `getWorkInfosByTag`, which is also how the UI reattaches to a running job after a rotation. `APPEND_OR_REPLACE` rather than `APPEND` so one failed or cancelled job cannot wedge the chain permanently.
 
@@ -2818,7 +2818,7 @@ Spec §9. This is the reusable half of the WorkManager decision: the owner's req
 
 **Two spec rules that shape everything below — get them wrong and the code looks fine:**
 
-- **§9.2: progress does not go through `Data`.** `setProgress` is an SQLite write per call, so WorkManager throttles it to roughly 1/s. Progress goes to an in-memory `JobRegistry` the UI observes directly. `Data` is used only for the worker's **input** (package name, class ids, salt — none of it secret) and for one **failure output** string.
+- **§9.2: progress does not go through `Data`.** `setProgress` is an SQLite write per call and WorkManager does not coalesce the resulting observer emissions. (An earlier version of this line said WorkManager throttles it to roughly 1/s; it does not.) Progress goes to an in-memory `JobRegistry` the UI observes directly. `Data` is used only for the worker's **input** (package name, class ids, salt — none of it secret) and for one **failure output** string.
 - **§9.3: one chain, `APPEND_OR_REPLACE`.** The unique work name does **not** contain the target. All archive jobs share one name so they *serialise*, which is what keeps peak disk at one storage class no matter how many the user starts. `APPEND_OR_REPLACE` rather than `APPEND` so a previously failed or cancelled job cannot wedge the chain forever.
 
 **Files:**
@@ -3014,8 +3014,8 @@ import org.junit.Test
 
 /**
  * Progress lives here rather than in WorkManager's `Data` (§9.2): `setProgress` is an SQLite write
- * per call, throttled to roughly 1/s, so a byte-level bar routed through it is both slow and a write
- * amplifier on a job already saturating the disk.
+ * per call, and WorkManager does not coalesce the observer emissions behind those writes, so a
+ * byte-level bar routed through it is a write amplifier on a job already saturating the disk.
  */
 class JobRegistryTest {
 
@@ -3177,9 +3177,9 @@ import org.koin.core.annotation.Single
 /**
  * Where a running job's progress lives: in memory, for the life of the process.
  *
- * **Not `setProgress`.** Every `setProgress` call is a write to WorkManager's SQLite database, so
- * WorkManager throttles observers to roughly one update a second — a backup that copies a gigabyte in
- * 1 MiB chunks would try to write a thousand rows. §9.2 puts progress here instead: the worker
+ * **Not `setProgress`.** Every `setProgress` call is a write to WorkManager's SQLite database, and a
+ * backup that copies a gigabyte in 1 MiB chunks would write a thousand rows — with an observer
+ * emission behind each one, because WorkManager does **not** coalesce them. §9.2 puts progress here instead: the worker
  * publishes, the ViewModel collects the same `StateFlow`, and nothing touches the disk.
  *
  * The cost of that choice is that progress does not survive process death. That is acceptable because
@@ -3468,7 +3468,7 @@ abstract class ThorJobWorker(
      * Report progress to the UI and the notification.
      *
      * `setProgress` is deliberately absent — see [JobRegistry]. Calling it here would put an SQLite
-     * write on the copy loop's hot path and cap observed updates at roughly one a second.
+     * write on the copy loop's hot path, one per emission, since WorkManager coalesces none of them.
      */
     protected fun publish(progress: ThorJobProgress) {
         registry.publish(id, progress)

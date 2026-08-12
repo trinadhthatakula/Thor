@@ -1,9 +1,11 @@
 # App backup and restore — design
 
 **Date:** 2026-08-10
-**Status:** design approved in conversation, not yet built.
+**Status:** **BUILT** — merged to `dev` 2026-08-12 as PR #379 (`940480ef`). Desk-verified only: the
+21 device checks in the tracker are unrun, so this is on `dev` but must not ship to users yet.
 **Scope:** row 23 of `docs/follow-ups/README.md` — GH#51 phase 2, "app **data** backup". Phase 1
-(APK/`.apks`/`.xapk` export) already shipped; #164's OBB half is in flight as PR #376.
+(APK/`.apks`/`.xapk` export) already shipped; #164's OBB half merged as PR #376 (`91100e58`), with
+its hardware follow-up in PR #378 (`0fd72541`).
 **Tracker:** `docs/follow-ups/app-data-backup-and-xapk-export.md`
 
 ---
@@ -407,7 +409,14 @@ The spec sketches how the APK/XAPK export batch would sit on this seam; it does 
 
 WorkManager's `Data` is written to its own SQLite database. Putting the passphrase or the derived
 key there writes the secret to disk in the clear — disqualifying. And `setProgress` is an SQLite
-write per call, so even non-secret progress is throttled to roughly 1/s or to class boundaries.
+write per call, which is the second reason progress does not travel that way: it goes to an
+in-memory `JobRegistry` instead, so there is no per-update disk write left to coarsen.
+
+What Thor does coarsen is the **notification**, and only that: at most one update per second, plus
+an immediate one whenever the stage changes, so a phase boundary is never held back by the timer.
+`JobRegistry` is updated on **every** `publish` call — it is a `StateFlow` the sheet collects, and
+throttling it would cost the screen the accuracy it exists to show. WorkManager promises no
+throttling of its own; it coalesces nothing.
 
 ### 9.3 What WorkManager is and is not doing here
 

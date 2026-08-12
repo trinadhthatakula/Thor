@@ -375,6 +375,17 @@ Each was raised, verified, and deliberately kept. Filing them would invite a reg
   on. Still the decision after the #379 review: a child coroutine's failure now reaches `onFailure`
   because `launchGuarded` runs `block` through `coroutineScope`, which *reports* it at the call site.
   A scope-level handler would have swallowed it instead, which is the opposite trade.
+- **`signerSha256` reads `apkContentsSigners` only, never `signingCertificateHistory`.** Deliberate;
+  the rationale is on `AppDataArchiveGatewayImpl.signerSha256` itself. An archive taken before a signing-key
+  rotation is refused with `SIGNER_MISMATCH` after the rotation, and **that is the check working**.
+  Consulting the history would let a rotated key match an older archive, which is the one thing the
+  check exists to stop, so **do not implement rotation-history matching** — the "fix" inverts the
+  anti-exfiltration guard.
+- **`AppArchiveStoreImpl.openArchive`'s broad `catch (e: Exception)` has no `CancellationException`
+  rethrow arm**, unlike three sibling sites in the same file. Harmless, and re-raising it is
+  file-local consistency only: the whole `try` sits inside `withContext(ioDispatcher)`, which
+  discards the block's value and rethrows the job's own cancellation on exit, so a cancelled backup
+  never reaches the caller as `NoDestination`. Adding the arm changes no observable behaviour.
 
 ### Two durable traps this branch paid for
 
