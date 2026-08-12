@@ -427,6 +427,37 @@ class StagedInstallTest {
     }
 
     @Test
+    fun `the integrity guard runs inside a subshell`() {
+        // Same class of defect as obbProbeCommand's, caught before it had a victim: a top-level
+        // `exit` in a script that reaches the root gateway ends Odin's shared `su` session instead
+        // of the script. Both of this function's callers currently spawn a fresh process per
+        // command, so this is defence against a future third caller, not a live bug — which is
+        // precisely why nothing would have reddened when someone added one.
+        val script = integrityGuardedInstall(
+            listOf("/sdcard/x/base.apk" to "aa".repeat(32)),
+            "pm install --user 0 -r -g '/sdcard/x/base.apk'"
+        ).trim()
+
+        assertTrue(script, script.startsWith("("))
+        assertTrue(script, script.endsWith(")"))
+
+        // Both sides in one test: a wrap that dropped the guard or the install would satisfy the
+        // two assertions above while producing a script that verifies nothing or installs nothing.
+        assertTrue(script, script.contains("sha256sum"))
+        assertTrue(script, script.contains("exit $INTEGRITY_CHECK_EXIT_CODE"))
+        assertTrue(script, script.contains("pm install --user 0 -r -g '/sdcard/x/base.apk'"))
+
+        // And the `exit` has to be *interior*. startsWith/endsWith alone still passes if a branch
+        // is appended after the closing paren with a paren of its own.
+        val open = script.indexOf('(')
+        val close = script.lastIndexOf(')')
+        assertEquals(script, 0, open)
+        assertEquals(script, script.length - 1, close)
+        assertTrue(script, script.indexOf("exit $INTEGRITY_CHECK_EXIT_CODE") in (open + 1) until close)
+        assertTrue(script, script.indexOf("pm install") in (open + 1) until close)
+    }
+
+    @Test
     fun `a path holding a quote cannot end the guard's own argument`() {
         // The staging dir name is ours, but the file names inside come from the picked archive.
         val script = integrityGuardedInstall(

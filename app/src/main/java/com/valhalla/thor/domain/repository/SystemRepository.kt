@@ -49,7 +49,27 @@ interface SystemRepository {
     suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit>
     suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit>
 
-    // Raw shell execution via the active privilege gateway (used by extensions).
+    /**
+     * Raw shell execution via the active privilege gateway (used by extensions).
+     *
+     * **A multi-line [command] that can `exit` must wrap itself in `( … )`.** This is the seam every
+     * command builder in the app crosses, and it is the one place the rule can be stated once.
+     *
+     * The transports are not alike and the difference is invisible from the call site. Shizuku and
+     * Dhizuku spawn a fresh `sh` per command, so a top-level `exit` only ends a process that was
+     * about to end anyway. Root does not: `RootSystemGateway` writes into Odin's single long-lived
+     * `su` session, which every privileged command in the app shares. A top-level `exit` there kills
+     * that session mid-script — libsu never appends its end marker, so it cannot read the real exit
+     * code and falls back to 1, and the *next*, unrelated privileged command fails with "Root shell
+     * unavailable".
+     *
+     * Both halves of that are silent. The caller sees a plausible non-zero exit code, and the damage
+     * lands on whatever runs next. `ObbProbeParser.obbProbeCommand` shipped with six bare `exit 0`s
+     * and presented as "OBB detection is broken for most apps"; the fix was one pair of parentheses.
+     * `RootSystemGateway.installViaSession` and `integrityGuardedInstall` are the wrap to copy.
+     *
+     * @return the exit code and combined output, or a failure when no privileged shell is available.
+     */
     suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>>
 
     /**
