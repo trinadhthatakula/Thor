@@ -100,6 +100,14 @@
       breadcrumb banner. Identical text today; rewording one must not silently reword the other.
     -->
     <string name="backup_outcome_dismiss">Got it</string>
+    <!--
+      One word, because it is the label the sheet's running frame is built around: while a job is live
+      the sheet shows the bar and this button and nothing else. It dismisses the sheet, which is safe
+      for the reason the sentence below states — the job is a foreground service and the sheet is only
+      watching it.
+    -->
+    <string name="backup_background">Background</string>
+    <string name="backup_background_desc">This keeps running if you close it. The notification shows how far it has got.</string>
 
     <string name="restore_title">Restore a backup</string>
     <string name="restore_pick_prompt">Choose a Thor backup file (.thorbak) to see what it holds.</string>
