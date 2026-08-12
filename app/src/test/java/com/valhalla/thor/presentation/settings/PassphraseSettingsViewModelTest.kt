@@ -13,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -87,13 +86,40 @@ class PassphraseSettingsViewModelTest {
 
     /**
      * A store that fails with something other than the `IOException`
-     * `DataStorePassphraseVaultStore.write` swallows, so the throw escapes `PassphraseVault.remember`
-     * — which wraps only the *Keystore* call in a `try` — and then escapes `save`'s `try` as well.
+     * `DataStorePassphraseVaultStore.write` swallows, so the throw reaches `PassphraseVault.remember`'s
+     * store-write guard rather than being absorbed underneath it.
+     *
+     * **[isSet] reads [state] rather than answering the constant `flowOf(false)` it used to.** The
+     * constant made this double lie about the interface it implements: `isSet` means "is a blob
+     * stored", and a double that answers `false` no matter what was written cannot distinguish a
+     * store that refused from one that accepted. `read()` now answers from the same place, so the two
+     * halves of the double agree with each other.
+     *
+     * [write] throws **before** assigning, in that order deliberately: assigning first and then
+     * throwing would flip [isSet] on a write that failed, which is the state the vault must never
+     * report and therefore the state this double must never manufacture.
+     *
+     * **What this does not do, stated because a previous comment here claimed the opposite.** It does
+     * not make `a store that throws leaves the vault reporting nothing remembered` sensitive to
+     * `PassphraseVault.remember`'s implementation, and no change to this double can.
+     * `PassphraseVault.isRemembered` is `get() = store.isSet`; this view model writes `remembered`
+     * from exactly one place, the `init` collector; and a store whose [write] always throws before
+     * assigning leaves [state] null forever. So `remembered` is false under every implementation of
+     * `remember`, and that test's assertion is a statement about this double, not about the vault.
+     * Measured: deleting `remember`'s store-write `try/catch` kills nothing in this file, before or
+     * after this change. The guard is pinned where it lives — `PassphraseVaultTest.a store that
+     * throws is reported as false, not thrown` asserts the returned `false` directly, and that one
+     * does die. What the test below is still worth keeping for is the mutant its own body names:
+     * `save()` writing `remembered = true` beside the collector, which nothing else here catches.
      */
     private class ThrowingVaultStore : PassphraseVaultStore {
-        override val isSet: Flow<Boolean> = flowOf(false)
-        override suspend fun read(): String? = null
-        override suspend fun write(value: String?): Unit = throw IllegalStateException("store is gone")
+        private val state = MutableStateFlow<String?>(null)
+
+        override val isSet: Flow<Boolean> = state.map { it != null }
+        override suspend fun read(): String? = state.value
+        override suspend fun write(value: String?) {
+            throw IllegalStateException("store is gone")
+        }
     }
 
     /** A Keystore that is not there: never created, or invalidated by an enrolment change. */
@@ -353,9 +379,18 @@ class PassphraseSettingsViewModelTest {
         // bare `viewModelScope.launch` to leak: an uncaught throw out of one is a dead process, which
         // is not a way to tell a user their passphrase was not cached.
         //
-        // The escape half is still under test, inverted: `runTest` collects anything that reaches the
-        // global exception handler and rethrows it at the end of this body, so a `remember` that lets
-        // the store's `IllegalStateException` out again fails this test rather than passing quietly.
+        // This comment used to claim the escape half was still under test here — that `runTest` would
+        // collect the throw at the global handler and rethrow it, so a `remember` that let the store's
+        // `IllegalStateException` out again would fail this test. It does not. `launchGuarded` catches
+        // every non-cancellation `Exception` and routes it to `onFailure`, which this view model
+        // defines as the same `STORE_FAILED` this test already asserts, so nothing ever reaches the
+        // global handler and the two implementations are indistinguishable from here. Deleting
+        // `PassphraseVault.remember`'s store-write guard leaves this test green — measured, not
+        // reasoned. That guard is pinned where it lives, by `PassphraseVaultTest.a store that throws is
+        // reported as false, not thrown`, which asserts the returned `false` directly.
+        //
+        // What this test does pin is the reporting: `launchGuarded` absorbing the failure into
+        // *silence* rather than into `STORE_FAILED` fails here, and so does a `busy` left standing.
         val vm = PassphraseSettingsViewModel(
             PassphraseVault(ThrowingVaultStore(), PlainKeyProvider())
         )
@@ -377,10 +412,16 @@ class PassphraseSettingsViewModelTest {
 
     @Test
     fun `a store that throws leaves the vault reporting nothing remembered`() = runTest(dispatcher) {
-        // The other consequence of turning that throw into a `false`, and the one the sheet renders:
-        // `remembered` is collected from the vault, so a write that never landed must not flip it. A
-        // `remember` that returned true before checking would leave the sheet offering to recall a
-        // passphrase no launch can produce.
+        // `remembered` is collected from the vault, so a write that never landed must not flip it.
+        //
+        // Read the scope of that carefully — this comment used to name the early-`true` mutant of
+        // `PassphraseVault.remember` as the thing it catches, and it does not catch it. `remembered`
+        // has one writer, the `init` collector over `store.isSet`, and `ThrowingVaultStore` never
+        // assigns, so this assertion holds under every `remember` there is. See that double's KDoc.
+        //
+        // What it does catch, and what nothing else in this file catches, is a `save()` that writes
+        // `remembered = true` beside the collector instead of leaving the flag to it — the second
+        // writer the view model's own class KDoc forbids by name.
         val vm = PassphraseSettingsViewModel(
             PassphraseVault(ThrowingVaultStore(), PlainKeyProvider())
         )
