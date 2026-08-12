@@ -183,11 +183,24 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                 // Still probing. A spinner, never the refusal panel — see AppBackupUiState.supported.
                 state.supported == null -> CircularProgressIndicator()
 
-                state.supported == false -> Text(
-                    text = stringResource(R.string.backup_unsupported),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                state.supported == false -> Column(
+                    // 8.dp, not the parent's 16.dp: these are two halves of one answer — what Thor
+                    // cannot do now, and what it will be able to do — so they read as one block.
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.backup_unsupported),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // `primary`, so the roadmap line does not read as more of the same refusal. This
+                    // is the only surface that shows it — see the comment on the string.
+                    Text(
+                        text = stringResource(R.string.backup_partial_soon),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
                 // The form is *gone* while a job runs, not disabled. Six checkboxes, the destination
                 // and its picker, two passphrase fields and a second Back up button used to sit above
