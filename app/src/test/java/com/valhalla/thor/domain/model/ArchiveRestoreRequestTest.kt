@@ -28,8 +28,13 @@ class ArchiveRestoreRequestTest {
         // between here and there to catch it.
         // `Set<Class<*>>` spelled out: inferred, the three elements give `Set<Class<out Serializable>>`,
         // and `in` against a `Class<Any>` then cannot fix the `contains` type parameter.
+        //
+        // `javaObjectType`, not `java`: the comparison is against `value.javaClass`, which is always a
+        // boxed `java.lang.Boolean`. `Boolean::class.java` is the *primitive* `boolean.class` and
+        // matches nothing here, so a test written that way fails for a reason unrelated to what it is
+        // asserting. Naming `java.lang.Boolean` directly says the same thing but warns on every build.
         val allowed: Set<Class<*>> =
-            setOf(String::class.java, java.lang.Boolean::class.java, Array<String>::class.java)
+            setOf(String::class.java, Boolean::class.javaObjectType, Array<String>::class.java)
         request.toMap().forEach { (key, value) ->
             assertTrue("$key is a ${value.javaClass}", value.javaClass in allowed)
         }

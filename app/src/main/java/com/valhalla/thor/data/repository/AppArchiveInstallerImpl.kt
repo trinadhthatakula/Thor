@@ -232,7 +232,7 @@ class AppArchiveInstallerImpl(
         // A binder failure, or a ROM refusing the call outright. **Not** package-visibility
         // filtering: the platform's contract there is to behave as though the package does not
         // exist, so a filtered package throws `NameNotFoundException` and lands in `Absent` above —
-        // `InstallerLabelResolverImpl.kt:40` catches it the same way. That is safe here, because a
+        // `InstallerLabelResolverImpl.labelFor` catches it the same way. That is safe here, because a
         // filtered package reads `Absent` on *both* sides and [installLanded] scores that false.
         // Logged because it silently costs the caller the difference between `Failed` and a data
         // restore.

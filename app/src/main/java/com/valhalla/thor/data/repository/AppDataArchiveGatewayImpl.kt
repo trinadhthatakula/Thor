@@ -262,8 +262,14 @@ internal class AppDataArchiveGatewayImpl(
             // delete calls above will have run. `NonCancellable` ensures the deletion completes even
             // while cancellation is in progress. The `!committed` guard prevents deleting a file that
             // was successfully produced and is about to be returned to the caller.
+            //
+            // `NonCancellable + ioDispatcher`, not `NonCancellable` alone: a bare `NonCancellable`
+            // replaces the Job and *keeps the caller's dispatcher*, which for this function is whatever
+            // the caller was on — every other filesystem call in here names [ioDispatcher] explicitly
+            // because the function body does not run on it. Composing the two keeps the "cannot be
+            // cancelled" property and puts the blocking delete where the sibling deletes already go.
             if (!committed) {
-                withContext(NonCancellable) { out.delete() }
+                withContext(NonCancellable + ioDispatcher) { out.delete() }
             }
         }
     }

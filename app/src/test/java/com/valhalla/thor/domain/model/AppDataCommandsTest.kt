@@ -245,6 +245,14 @@ class AppDataCommandsTest {
         val cls = Class.forName("com.valhalla.thor.domain.model.AppDataCommandsKt")
         val hostile = "/data/user/0/it's"
         val checked = mutableListOf<String>()
+        // What the sweep is *supposed* to reach, derived from the class rather than remembered as a
+        // number. `$` excludes the synthetic statics Kotlin emits for lambdas: a `joinToString(transform)`
+        // inside any function whose name contains "Command" compiles to `…Command$lambda$N`, and the
+        // sweep would invoke that instead of a builder and fail on an assertion about nothing.
+        val builders = cls.declaredMethods
+            .filter { Modifier.isStatic(it.modifiers) && it.name.contains("Command") && '$' !in it.name }
+            .map { it.name }
+            .sorted()
 
         for (method in cls.declaredMethods) {
             // `contains`, not `endsWith`: Kotlin may append a module suffix to an internal name.
@@ -273,7 +281,14 @@ class AppDataCommandsTest {
             assertNull(method.name, method.invoke(null, *args.toTypedArray()))
         }
 
-        // A reflective sweep that matched nothing is a green test proving nothing.
-        assertTrue("only checked $checked", checked.size >= 5)
+        // Every `continue` above is a way for a builder to leave the sweep silently — a first parameter
+        // that is no longer a String, a parameter type the arg mapper does not know. A bare floor stays
+        // green through that, so the reached set is compared to the declared set instead.
+        assertEquals(builders, checked.sorted())
+        // ...and that comparison is itself vacuous if the filter stops matching (builders renamed away
+        // from "Command", say): empty equals empty. Re-derive this number by breaking the sweep on
+        // purpose and reading the *expected* side of the assertion above — `javap` on a class file
+        // under `app/build` will happily answer from a stale flavour's output and undercount.
+        assertTrue("only checked $checked", checked.size >= 10)
     }
 }

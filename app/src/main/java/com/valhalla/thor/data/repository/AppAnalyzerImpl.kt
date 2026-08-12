@@ -29,8 +29,15 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.UUID
 
-/** Sub-directory of cacheDir holding staged installer inputs. */
-private const val STAGING_DIR_NAME = "staged_installs"
+/**
+ * Sub-directory of cacheDir holding staged installer inputs.
+ *
+ * Not `STAGING_DIR_NAME`: `com.valhalla.thor.domain.model.STAGING_DIR_NAME` is a public top-level
+ * constant naming a *different* directory (`.thorbak-staging`, inside an app's own data root, where a
+ * restore extracts before the swap). A file-private declaration of that name would win over an import
+ * of the public one in this file without a warning, so the two are spelled apart.
+ */
+private const val INSTALL_STAGING_DIR_NAME = "staged_installs"
 
 @Single(binds = [AppAnalyzer::class])
 class AppAnalyzerImpl(
@@ -43,7 +50,7 @@ class AppAnalyzerImpl(
         // Random, unpredictable temp names (CWE-377): avoids collisions between
         // concurrent analyses and predictable cache paths.
         val token = UUID.randomUUID()
-        val stagingDir = File(context.cacheDir, STAGING_DIR_NAME).apply { mkdirs() }
+        val stagingDir = File(context.cacheDir, INSTALL_STAGING_DIR_NAME).apply { mkdirs() }
         // The staged file outlives analyze() now, so a process death between the analysis and
         // the install (or the dismissal) would strand a full copy of the input — hundreds of MB
         // for an XAPK. Nothing else ever revisits this directory, so the sweep happens on the

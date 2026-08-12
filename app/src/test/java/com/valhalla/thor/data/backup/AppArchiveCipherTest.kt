@@ -130,7 +130,13 @@ class AppArchiveCipherTest {
         val (bytes, stats) = encrypt(ByteArray(4096) { 3 })
         bytes[bytes.size / 2] = (bytes[bytes.size / 2].toInt() xor 0x01).toByte()
 
-        assertThrows(ArchiveIntegrityException::class.java) { decrypt(bytes, stats.chunkCount) }
+        val ex = assertThrows(ArchiveIntegrityException::class.java) { decrypt(bytes, stats.chunkCount) }
+
+        // The GCM tag is what must refuse this. Four different faults in this class all throw
+        // `ArchiveIntegrityException`, so a type-only assertion here passes just as happily when the
+        // frame is refused for its declared length or for ending early — neither of which would say
+        // anything about authentication.
+        assertMessageContains(ex, "chunk 0 failed authentication")
     }
 
     @Test
@@ -176,9 +182,14 @@ class AppArchiveCipherTest {
     fun `a stream truncated inside a frame is detected`() {
         val (bytes, stats) = encrypt(ByteArray(2048) { 5 })
 
-        assertThrows(ArchiveIntegrityException::class.java) {
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
             decrypt(bytes.copyOf(bytes.size - 4), stats.chunkCount)
         }
+
+        // The frame's own length prefix survives and still declares the full body, so the read of the
+        // body is what runs short — a *different* branch from "ended before chunk N", which fires when
+        // the four-byte prefix itself cannot be read. Naming it keeps this the test that covers it.
+        assertMessageContains(ex, "chunk 0 ended early")
     }
 
     @Test
@@ -204,7 +215,12 @@ class AppArchiveCipherTest {
         val second = bytes.copyOfRange(frameLength, frameLength * 2)
         val swapped = second + first + bytes.copyOfRange(frameLength * 2, bytes.size)
 
-        assertThrows(ArchiveIntegrityException::class.java) { decrypt(swapped, stats.chunkCount) }
+        val ex = assertThrows(ArchiveIntegrityException::class.java) { decrypt(swapped, stats.chunkCount) }
+
+        // Chunk 0, because the frame that was moved into position 0 is the one presented under the
+        // wrong index. Both frames are whole and both declare their real length, so nothing but the
+        // AEAD can object — a type-only assertion would not have shown that.
+        assertMessageContains(ex, "chunk 0 failed authentication")
     }
 
     @Test
@@ -213,9 +229,14 @@ class AppArchiveCipherTest {
         // a swap that would otherwise restore device-encrypted data into the CE directory.
         val (bytes, stats) = encrypt(ByteArray(128) { 8 })
 
-        assertThrows(ArchiveIntegrityException::class.java) {
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
             decrypt(bytes, stats.chunkCount, name = "de.tar.gz.enc")
         }
+
+        // The bytes are untouched and well-formed; only the AAD's name differs. Authentication is
+        // therefore the only branch that can fire, and naming it is what distinguishes this test from
+        // one that would pass on any malformed input at all.
+        assertMessageContains(ex, "chunk 0 failed authentication")
     }
 
     @Test

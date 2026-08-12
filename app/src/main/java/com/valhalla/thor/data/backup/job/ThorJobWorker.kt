@@ -98,10 +98,13 @@ abstract class ThorJobWorker(
             // covers cancellation and any throw that fires before the concrete worker's own take().
             // If take() already ran, drop() is a no-op (ConcurrentHashMap.remove on an absent key).
             // The path where the job is cancelled between put() and WorkManager starting doWork()
-            // cannot be covered here: doWork never runs, so neither does this finally. An explicit
-            // user cancel goes through ThorJobLauncher.cancel, which drops first; a job cancelled by
-            // the chain (WorkManager cancels the dependents of a failed prerequisite) reaches neither,
-            // and is covered by ArchiveKeyHolder's own expiry.
+            // cannot be covered here: doWork never runs, so neither does this finally.
+            // ThorJobLauncher.cancel would drop the key first and close that window, but **nothing
+            // calls it today** — the only user-facing cancel is the notification's action, built from
+            // WorkManager.createCancelPendingIntent, which goes straight to WorkManager. So both the
+            // pre-start cancel and a chain cancel (WorkManager cancels the dependents of a failed
+            // prerequisite) reach neither this finally nor the launcher, and are covered by
+            // ArchiveKeyHolder's own expiry.
             keyHolder.drop(id.toString())
             //
             // notification: always runs; idempotent. On the happy path WorkManager already cancelled

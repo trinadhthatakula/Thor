@@ -13,10 +13,13 @@ import org.koin.core.annotation.Single
 /**
  * Where a running job's progress lives: in memory, for the life of the process.
  *
- * **Not `setProgress`.** Every `setProgress` call is a write to WorkManager's SQLite database, so
- * WorkManager throttles observers to roughly one update a second — a backup that copies a gigabyte in
- * 1 MiB chunks would try to write a thousand rows. §9.2 puts progress here instead: the worker
- * publishes, the ViewModel collects the same `StateFlow`, and nothing touches the disk.
+ * **Not `setProgress`.** Every `setProgress` call is a write to WorkManager's SQLite database, and a
+ * backup that copies a gigabyte in 1 MiB chunks would write a thousand rows — with an observer
+ * emission behind each one, because WorkManager does **not** coalesce them. (An earlier version of
+ * this comment claimed WorkManager throttles observers to about one update a second. It does not;
+ * that guarantee was invented, and the throttling in this feature is Thor's own, in
+ * `ThorJobWorker`'s notification publish.) §9.2 puts progress here instead: the worker publishes, the
+ * ViewModel collects the same `StateFlow`, and nothing touches the disk.
  *
  * The cost of that choice is that progress does not survive process death. That is acceptable because
  * a killed archive job cannot resume anyway ([ArchiveKeyHolder] holds its key in this same process),

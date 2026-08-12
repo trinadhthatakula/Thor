@@ -35,7 +35,7 @@ class DataArchiveCapabilityCache(
         // and we'd return false immediately, even on a rooted device, until both the privilege probe
         // and the first DataStore emission have landed. `isReady` is set exactly once that has
         // happened, distinguishing "not probed yet" from "probed, nothing available". The same fix
-        // lives in BulkFreezeRunner.kt:368 for the same snapshot-read bug.
+        // lives in `BulkFreezeRunner.launch`'s privilege gate for the same snapshot-read bug.
         val state = privilegeState.state.first { it.isReady }
         // No surface to probe through. Shelling out would raise a `su` prompt on a device where the
         // user granted nothing — and the answer is derived, not measured, so it is not cached.
