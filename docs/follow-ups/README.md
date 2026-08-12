@@ -172,11 +172,14 @@ detail?"* Every row appears in both — this section adds an order, not new work
 **Read the bands, not the exact numbers.** The gap between 3 and 5 is noise; the gap between band A
 and band C is not.
 
-**Bands A and B are built, and #23 is built but has never run on a device — start at #24.** #23 is
-reviewed and open as **PR #379** into `dev` (six review slices, six fixers, a five-lens re-review,
-zero blockers, 1467 tests) — but *"has run on a device"* is the bar for closing #51, and 21 checks say
-it has not, so **do not close #51 on that merge**. Alongside it, **PR #378** fixes the `.xapk` OBB
-probe that the deferred device checks on #164's second half let through. Rows 24 and 25 are the same
+**Bands A and B are built, and #23 is merged but has never run on a device — start at #24.** #23
+merged into `dev` 2026-08-12 as **PR #379** (`940480ef`; six review slices, six fixers, a five-lens
+re-review, an adjudicated automated review — 13 findings, 9 refuted, 0 blockers — and 1473 tests).
+**Merged is not shipped**: the 21 device checks in the linked doc are unrun, so nothing here reaches
+users until a backup has been taken *and* restored on hardware. Alongside it, **PR #378**
+(`0fd72541`) fixes the `.xapk` OBB probe that the deferred device checks on #164's second half let
+through. GH#51 itself needs no action — its author closed it as `not_planned` on 2026-08-04, before
+either merge, so the old *"do not close #51"* guard is moot. Rows 24 and 25 are the same
 Room migration described twice, so they are sequenced together or neither. Every numbered row from 1
 to 22 has shipped except band A #10, which is half done and waiting on a device diagnostic. ~~The one thing band B leaves behind is
 the **release-notes line** retracting band A #1's capability removal, which is due on the `master`
@@ -228,7 +231,7 @@ argument, not the status. **None of it has run on a device.**
 
 | # | Item | Kind | Effort | Why here |
 |:-:|---|---|---|---|
-| 23 | [#51 phase 2 — app **data** backup](app-data-backup-and-xapk-export.md) | feature | 5–8 d | ✅ **built, desk-verified, zero device checks run.** `.thorbak` = a zip holding `thorbak.json` + `app.xapk` + one AES-256-GCM member per storage class, on a reusable WorkManager foreground-job seam. ⚠️ **Two things block a `store` release**: the Play Console **Foreground Service declaration** for `FOREGROUND_SERVICE_DATA_SYNC` (demo bulk APK export, *not* backup — Play cannot root a device), and the device checks in the linked doc. **Reviewed 2026-08-12** — six slices, six fixers, then a five-lens re-review with an adversarial verifier per finding: **1362 → 1467 tests**, 2 Criticals fixed (both were ways to produce an *unrestorable* backup, both caused by nothing on the branch writing an archive and then restoring it), **0 blockers** at the end. ⚠️ The one thing the review could not reach is the one that matters: `ThorJobLauncher` → WorkManager → privileged shell, the region that actually replaces app data, is exercised by **no test in this repo** and cannot be on the JVM. **Merge on the review; do not ship until a backup has been restored on hardware** |
+| 23 | [#51 phase 2 — app **data** backup](app-data-backup-and-xapk-export.md) | feature | 5–8 d | ✅ **MERGED to `dev` 2026-08-12 as PR #379 (`940480ef`) — desk-verified, zero device checks run.** `.thorbak` = a zip holding `thorbak.json` + `app.xapk` + one AES-256-GCM member per storage class, on a reusable WorkManager foreground-job seam. ⚠️ **Two things block a `store` release**: the Play Console **Foreground Service declaration** for `FOREGROUND_SERVICE_DATA_SYNC` (demo bulk APK export, *not* backup — Play cannot root a device), and the device checks in the linked doc. **Reviewed 2026-08-12** — six slices, six fixers, then a five-lens re-review with an adversarial verifier per finding: **1362 → 1467 tests**, 2 Criticals fixed (both were ways to produce an *unrestorable* backup, both caused by nothing on the branch writing an archive and then restoring it), **0 blockers** at the end. ⚠️ The one thing the review could not reach is the one that matters: `ThorJobLauncher` → WorkManager → privileged shell, the region that actually replaces app data, is exercised by **no test in this repo** and cannot be on the JVM. **Merged on the review; do not ship until a backup has been restored on hardware** |
 | 24 | [#178 — app tagging + per-app notes](../feature-request-roadmap.md) | feature | 3–5 d | **Demand is no longer zero** — two users, one thread. Notes and tags are one Room migration, so build them together or neither |
 | 25 | Change history + update history | feature | medium–large | Room has no event table and `AppEntity` overwrites the version on every scan, so *both* need the same new table. Do them as one piece of work |
 | 26 | [`BulkFreezeRunner` concurrency tests](bulk-freeze-runner-concurrency-tests.md) | tests | medium | Still blocked: 3 of 4 collaborators need a seam before the runner can be built in a JVM test |
