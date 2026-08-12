@@ -51,8 +51,8 @@ untested is what happens *after* you pass them, on your device, on your ROM.
   App Info screen reporting how much of it there is.
 * 🐛 **The `.xapk` chip stopped refusing apps it should have accepted** — a fix for two stacked
   defects found on hardware two days after the feature merged.
-* ⚙️ **Settings is eight sections with a search box**, and opens a second pane on a tablet or an
-  unfolded phone.
+* ⚙️ **Settings now has eight sections and a search box**, and opens a second pane on a tablet or
+  an unfolded phone.
 * 👂 **Every settings switch is readable by a screen reader.** All twelve announced as a button
   with no on/off state before this release.
 

@@ -2,6 +2,6 @@
 
 • 🎮 Games with extra data now export and install as a single .xapk, game data included.
 
-• ⚙️ Settings is eight sections with a search box, and opens two panes on a tablet or an unfolded phone.
+• ⚙️ Settings now has eight sections and a search box, and opens two panes on a tablet or an unfolded phone.
 
 • 🔑 Thor can remember your backup passphrase, or forget it when you ask.

@@ -12,4 +12,4 @@
 
 • 🎮 **Games with extra data** export and install as a single `.xapk`, game data included.
 
-• ⚙️ **Settings is eight sections** now, with a search box, and two panes on a tablet or an unfolded phone.
+• ⚙️ **Settings now has eight sections** and a search box, plus two panes on a tablet or an unfolded phone.
