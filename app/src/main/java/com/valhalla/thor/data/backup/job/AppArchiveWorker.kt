@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleCacheDir
 import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveRestoreDecision
+import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BACKUP_PACKAGE_KEY
 import com.valhalla.thor.domain.model.BundleFormat
@@ -271,7 +272,7 @@ internal class ArchiveRestoreWorker(
             val allowed = decision as? ArchiveRestoreDecision.Allowed
                 ?: return@use fail(
                     "this backup can no longer be restored: " +
-                        (decision as ArchiveRestoreDecision.Refused).reason
+                        refusalReason((decision as ArchiveRestoreDecision.Refused).reason)
                 )
             // Not in the brief; see the report. The gate ran twice — once on the confirm screen and
             // again here — and this run can produce warnings the first never showed, because the app
@@ -428,4 +429,70 @@ internal fun obbNotice(placement: ObbPlacement?): String? = when (placement) {
     is ObbPlacement.Placed -> null
     ObbPlacement.NotNeeded ->
         "the app installer in this backup carries no game data, so none was placed"
+}
+
+/**
+ * Why the gate refused, in words, for the sentence the restore screen shows when the job stops.
+ *
+ * This site used to concatenate [ArchiveRestoreRefusal] itself. Enums have no `toString` override, so
+ * what the user read was `SIGNER_MISMATCH` — a Kotlin identifier, in a sentence, at the one moment
+ * they are being told their restore did not happen.
+ *
+ * Three things about the fix are worth stating, because each of them is a claim someone will want to
+ * check:
+ *
+ * **The sentences are English literals, and that is the design here, not an oversight.** The screen
+ * already translates all nine through `ArchiveRestoreScreen.refusalLabel`, and this is deliberately
+ * not that mapping reused. The worker's channel is `JOB_ERROR_KEY` in a `Data`, which the screen
+ * renders as it arrives; every other failure sentence this file produces — [wrongKeyReason],
+ * [restoreFailureReason], [obbNotice], the `fail(...)` literals in both workers — is an untranslated
+ * literal for the same reason. Reaching `refusalLabel` would mean a `Context` and `getString`, which
+ * takes this function off the JVM test classpath, and that is the thing the top-level shape exists to
+ * protect. The cost is real and is written down here rather than argued away: nine sentences now say
+ * roughly what nine strings say, in two files, and they can drift.
+ *
+ * **Six of the nine arms should never be seen.** `ArchiveRestoreUiState.canStart` requires
+ * `refusal == null` from this same gate over this same header and class set, and the worker's
+ * package-name equality check runs before the gate. What can genuinely change between the confirm
+ * screen and the job running is the *installed app* — so `SIGNER_MISMATCH`, `SIGNER_UNVERIFIABLE` and
+ * `DATA_ONLY_AND_APP_ABSENT` are the reachable three. The other six are worded anyway: "unreachable"
+ * is a reading of two call paths, not a property the compiler holds, and the failure mode of being
+ * wrong about it is precisely the identifier-in-a-sentence this function was added to remove.
+ *
+ * **Exhaustive on purpose.** A tenth refusal must not compile until someone has decided what it says.
+ * A `when` over an enum with no `else` is the only thing that forces that, and it is the sole reason
+ * this is a `when` rather than a map. Note that `task-15-review.md`'s hard-constraint row 4 recorded
+ * this property as already satisfied by *the worker*, in a build where the worker contained no `when`
+ * at all and printed the constant; it is satisfied now, here, and the row has been corrected.
+ */
+internal fun refusalReason(refusal: ArchiveRestoreRefusal): String = when (refusal) {
+    ArchiveRestoreRefusal.SIGNER_MISMATCH ->
+        "the installed app is signed by a different developer than the one this backup came from"
+
+    ArchiveRestoreRefusal.SIGNER_UNVERIFIABLE ->
+        "the installed app's signature could not be read, so Thor could not check that this backup " +
+            "belongs to it"
+
+    ArchiveRestoreRefusal.DATA_ONLY_AND_APP_ABSENT ->
+        "the app is no longer installed and this backup holds no installer to add it back from"
+
+    ArchiveRestoreRefusal.CLASS_NOT_IN_ARCHIVE ->
+        "this backup does not hold one of the things that were selected"
+
+    ArchiveRestoreRefusal.NOTHING_SELECTED ->
+        "nothing was selected to restore"
+
+    ArchiveRestoreRefusal.SCHEMA_TOO_NEW ->
+        "it was made by a newer version of Thor"
+
+    ArchiveRestoreRefusal.INVALID_SCHEMA_VERSION ->
+        "it does not say what format it is in, so the file is damaged or was not written by Thor"
+
+    ArchiveRestoreRefusal.INVALID_PACKAGE_NAME ->
+        "it names an app in a way Thor will not accept, so the file is damaged or was not written by " +
+            "Thor"
+
+    ArchiveRestoreRefusal.INVALID_USER_ID ->
+        "it names a user profile Thor will not accept, so the file is damaged or was not written by " +
+            "Thor"
 }

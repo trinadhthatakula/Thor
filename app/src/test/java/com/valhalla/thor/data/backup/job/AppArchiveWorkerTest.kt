@@ -6,6 +6,7 @@ package com.valhalla.thor.data.backup.job
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveKdf
+import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import com.valhalla.thor.domain.model.ObbPlacement
@@ -199,6 +200,97 @@ class AppArchiveWorkerTest {
             "the app installer in this backup carries no game data, so none was placed",
             obbNotice(ObbPlacement.NotNeeded),
         )
+    }
+
+    // endregion
+
+    // region refusalReason
+
+    /**
+     * The defect itself: the worker concatenated the enum, so the sentence a user read ended in
+     * `SIGNER_MISMATCH`.
+     *
+     * Asserted as "no arm may contain its own constant name" rather than one spot check, because the
+     * regression is per-arm — a tenth arm added as `refusal.name`, or one arm left as a `TODO`, is the
+     * same defect back in a place a single-arm assertion does not look. `values()` grows with the enum;
+     * a hand-listed set would not.
+     */
+    @Test
+    fun `no refusal reports itself as a Kotlin identifier`() {
+        ArchiveRestoreRefusal.entries.forEach { refusal ->
+            val reason = refusalReason(refusal)
+
+            assertTrue(
+                "${refusal.name} is reported as its own constant: $reason",
+                !reason.contains(refusal.name),
+            )
+            assertTrue("${refusal.name} has no sentence", reason.isNotBlank())
+        }
+    }
+
+    /**
+     * Nine arms, nine different sentences.
+     *
+     * Distinctness is the property with teeth. A `when` stays exhaustive — the compiler sees to that —
+     * while a new arm is bolted onto an existing one's branch, and the result is a user told the wrong
+     * reason rather than an untranslated one, which is worse. `SIGNER_MISMATCH` and
+     * `SIGNER_UNVERIFIABLE` are the pair that invites it: both are about a signature, and only one of
+     * them means the backup belongs to someone else.
+     */
+    @Test
+    fun `each refusal has its own sentence`() {
+        val reasons = ArchiveRestoreRefusal.entries.map(::refusalReason)
+
+        assertEquals(ArchiveRestoreRefusal.entries.size, reasons.toSet().size)
+    }
+
+    /**
+     * The three arms that can actually be reached.
+     *
+     * `ArchiveRestoreUiState.canStart` requires `refusal == null` from this same gate over this same
+     * header and class set, so a user cannot press Restore into a refusal. What the re-gate inside the
+     * worker exists to catch is the app changing underneath the job — updated, replaced, or removed
+     * while it waited in the chain — and those are the three below. They are named individually
+     * because they are the ones a user will really see, and the loop above would let all three say
+     * "this backup cannot be restored" and still pass.
+     */
+    @Test
+    fun `the three reachable refusals say which of them happened`() {
+        assertTrue(
+            refusalReason(ArchiveRestoreRefusal.SIGNER_MISMATCH).contains("different developer")
+        )
+        assertTrue(
+            refusalReason(ArchiveRestoreRefusal.SIGNER_UNVERIFIABLE)
+                .contains("signature could not be read")
+        )
+        assertTrue(
+            refusalReason(ArchiveRestoreRefusal.DATA_ONLY_AND_APP_ABSENT)
+                .contains("no longer installed")
+        )
+    }
+
+    /**
+     * Reads as the second half of the worker's sentence, not as a fragment.
+     *
+     * The call site is `"this backup can no longer be restored: " + refusalReason(...)`, and that is
+     * the whole of what the user sees. An arm written as a standalone sentence — leading capital,
+     * trailing full stop, the way the screen's `restore_refused_*` strings are correctly written for
+     * *their* surface — produces "this backup can no longer be restored: Nothing is selected." here.
+     * The two surfaces need different casing for the same fact, which is the concrete reason this
+     * function is not the screen's map reused.
+     */
+    @Test
+    fun `every sentence is a clause, not a standalone sentence`() {
+        ArchiveRestoreRefusal.entries.forEach { refusal ->
+            val reason = refusalReason(refusal)
+
+            assertEquals(
+                "${refusal.name} starts with a capital: $reason",
+                reason.first().lowercaseChar(),
+                reason.first(),
+            )
+            assertTrue("${refusal.name} ends with a full stop: $reason", !reason.endsWith("."))
+        }
     }
 
     // endregion
