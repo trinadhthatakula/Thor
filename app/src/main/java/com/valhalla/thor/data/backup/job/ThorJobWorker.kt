@@ -140,7 +140,10 @@ abstract class ThorJobWorker(
      * without it, a gigabyte-scale copy publishing at 1 MiB chunks would fire ~1000 IPCs per job.
      *
      * `setProgress` is deliberately absent — see [JobRegistry]. Calling it here would put an SQLite
-     * write on the copy loop's hot path and cap observed updates at roughly one a second.
+     * write on the copy loop's hot path, one per published chunk. That cost is the whole argument.
+     * An earlier version of this sentence added that it would also cap observed updates at roughly
+     * one a second; WorkManager makes no such promise and that guarantee was invented. The one-a-
+     * second rate in this feature is the paragraph above — Thor's own, on the notification IPC.
      *
      * The throttle is on [SystemClock.elapsedRealtime], the monotonic clock, and not on wall time.
      * An NTP correction or a user setting the clock back mid-job makes a wall-clock delta negative,

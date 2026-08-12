@@ -18,8 +18,12 @@ import org.junit.Test
 
 /**
  * Progress lives here rather than in WorkManager's `Data` (§9.2): `setProgress` is an SQLite write
- * per call, throttled to roughly 1/s, so a byte-level bar routed through it is both slow and a write
- * amplifier on a job already saturating the disk.
+ * per call, so a byte-level bar routed through it is a write amplifier on a job already saturating
+ * the disk.
+ *
+ * This used to read "throttled to roughly 1/s" as well, matching the same invented claim
+ * [JobRegistry]'s own KDoc now retracts. WorkManager does not throttle observers; the 1/s in this
+ * feature is `ThorJobWorker`'s notification publish, which is Thor's code.
  */
 class JobRegistryTest {
 
