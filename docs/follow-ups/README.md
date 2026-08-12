@@ -172,10 +172,13 @@ detail?"* Every row appears in both — this section adds an order, not new work
 **Read the bands, not the exact numbers.** The gap between 3 and 5 is noise; the gap between band A
 and band C is not.
 
-**Bands A and B are built, and #23 is built but has never run on a device — start at #24.** Rows 24
-and 25 are the same Room migration described twice, so they are sequenced together or neither. Every
-numbered row from 1 to 22 has shipped except band
-A #10, which is half done and waiting on a device diagnostic. ~~The one thing band B leaves behind is
+**Bands A and B are built, and #23 is built but has never run on a device — start at #24.** #23 is
+reviewed and open as **PR #379** into `dev` (six review slices, six fixers, a five-lens re-review,
+zero blockers, 1467 tests) — but *"has run on a device"* is the bar for closing #51, and 21 checks say
+it has not, so **do not close #51 on that merge**. Alongside it, **PR #378** fixes the `.xapk` OBB
+probe that the deferred device checks on #164's second half let through. Rows 24 and 25 are the same
+Room migration described twice, so they are sequenced together or neither. Every numbered row from 1
+to 22 has shipped except band A #10, which is half done and waiting on a device diagnostic. ~~The one thing band B leaves behind is
 the **release-notes line** retracting band A #1's capability removal, which is due on the `master`
 merge~~ — ✅ **that shipped**: `release-notes/v1.94.1/github.md:17` opens with a *"Correction to the
 v1.94.0 release notes"* section, so the unnumbered row at the head of this band is complete and band B
