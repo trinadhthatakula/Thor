@@ -99,7 +99,7 @@ class ArchiveOrphanSweeperTest {
     }
 
     @Test
-    fun `the read-copy of an opened archive is deleted by its exact name`() = runTest {
+    fun `the legacy read-copy an older build left behind is deleted`() = runTest {
         val (cache, _) = cacheWith()
         val copy = File(cache, UriArchiveSourceFactory.COPY_FILE_NAME).apply { writeText("zip") }
         val keep = File(cache, "image_cache.bin").apply { writeText("keep me") }
@@ -111,13 +111,47 @@ class ArchiveOrphanSweeperTest {
         val report = sweeper.sweep()
 
         assertEquals(false, copy.exists())
-        // Coil, Room and the bundle builder all keep files in cacheDir. A pattern sweep here would
+        // Coil, Room and the bundle builder all keep files in cacheDir. A wildcard sweep here would
         // delete another subsystem's working set.
         assertTrue(keep.exists())
         // Round-1 review m5: this row used to claim it caught a `sweepReadCopy` that mis-reports its
         // count, while asserting only on the file system — the report went unread, so the claim was
         // its sibling's. Reading the count here makes the claim true of this test.
         assertEquals(1, report.stagedFilesRemoved)
+    }
+
+    /**
+     * The regression `UriArchiveSourceFactory`'s per-open naming created and this sweep did not
+     * follow: the copy is named with `createTempFile`, so it is `thorbak_read_copy_<digits>.zip` and
+     * never the fixed name the sweep matched by equality. One killed restore of a 4 GB archive left
+     * 4 GB in cache that nothing would ever delete.
+     *
+     * The names here are literals rather than reads of the factory's private constants, deliberately:
+     * a test that derived them from the same source as the implementation would follow a rename, and
+     * a rename is precisely what strands the copies an *older* build wrote.
+     */
+    @Test
+    fun `a uniquely named read-copy is swept and an unrelated cache file is not`() = runTest {
+        val (cache, _) = cacheWith()
+        val unique = File(cache, "thorbak_read_copy_5514329087.zip").apply { writeText("four gigabytes, pretend") }
+        val second = File(cache, "thorbak_read_copy_881.zip").apply { writeText("and another") }
+        // Every shape that shares part of the spelling but is not one of Thor's copies.
+        val decoy = File(cache, "thorbak_read_copy_notes.txt").apply { writeText("keep me") }
+        val prefixOnly = File(cache, "thorbak_read_copies.zip").apply { writeText("keep me") }
+        val unrelated = File(cache, "coil_disk_cache.bin").apply { writeText("keep me") }
+        val sweeper = ArchiveOrphanSweeper(
+            PartialArchiveLedger(temp.newFolder("files3b")), FakeStore(emptySet()), FakeBreadcrumbs(null), cache,
+            temp.newFolder("ext3b"),
+        )
+
+        val report = sweeper.sweep()
+
+        assertEquals(false, unique.exists())
+        assertEquals(false, second.exists())
+        assertTrue(decoy.exists())
+        assertTrue(prefixOnly.exists())
+        assertTrue(unrelated.exists())
+        assertEquals(2, report.stagedFilesRemoved)
     }
 
     @Test

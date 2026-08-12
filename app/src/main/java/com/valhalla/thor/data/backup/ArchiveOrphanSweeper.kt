@@ -27,15 +27,21 @@ import java.io.File
  * 3. **The staged expansion files** under `externalCacheDir` — the other half of the same killed
  *    build, and for a large game the *bigger* half. They are not under `cacheDir` at all (see
  *    [ObbExportStagingDir]), so target 2 does not reach them.
- * 4. **The read-copy** [UriArchiveSourceFactory] may leave in `cacheDir` — deleted by its exact name.
- *    `cacheDir` itself is shared with Coil, Room and the bundle builder; a pattern sweep there would
- *    delete another subsystem's working set.
+ * 4. **The read-copies** [UriArchiveSourceFactory] may leave in `cacheDir` — matched by
+ *    [UriArchiveSourceFactory.Companion.isReadCopyName]. Not by exact name: the factory now names one
+ *    per `open` with `createTempFile`, so an exact-equality sweep matches only the legacy name and
+ *    walks past every multi-gigabyte copy a current build stranded. `cacheDir` itself is shared with
+ *    Coil, Room and the bundle builder, so the predicate is deliberately narrow rather than a
+ *    wildcard — it is prefix-and-suffix on a spelling nothing else in this app writes, and every
+ *    other entry in that directory is left alone.
  * 5. **`.part` containers in the user's folder** — only the names [PartialArchiveLedger] recorded, and
  *    a name is forgotten only once the file is gone.
  *
  * Resist reading that list as "and that is everything this feature can leak". It is not: a killed
  * **restore** strands the same order of magnitude in `externalCacheDir/obb_in/<pkg>`
- * (`ObbInstaller.OBB_INSTALL_STAGING_DIR`), which is not a target here. That is deliberate rather
+ * (`OBB_INSTALL_STAGING_DIR`, a file-level `internal const val` in `ObbInstaller.kt` — not a member
+ * of the class, which is what the pointer here used to say), which is not a target here. That is
+ * deliberate rather
  * than overlooked. `obb_in` is shared with the already-shipped portable installer, so a wholesale
  * delete at launch would reach a subtree that path may be using; and `ObbInstaller` opens each
  * placement by deleting `obb_in/<pkg>` — **that package's subtree only, not the tree** — so a
@@ -121,9 +127,22 @@ class ArchiveOrphanSweeper(
         return if (dir.exists() && dir.deleteRecursively()) 1 else 0
     }
 
+    /**
+     * Every read-copy in `cacheDir`, not one fixed name.
+     *
+     * [UriArchiveSourceFactory] names its fallback copy per `open` so two overlapping opens cannot
+     * truncate each other's zip. The name is therefore unknown here, and matching it by equality —
+     * which is what this did — swept the legacy name and nothing else, leaving a copy the size of the
+     * whole archive behind after every killed restore.
+     *
+     * The listing is `cacheDir`'s own children only. It does not recurse, and
+     * [UriArchiveSourceFactory.Companion.isReadCopyName] decides every deletion, so Coil's and Room's
+     * directories are walked past rather than opened.
+     */
     private fun sweepReadCopy(): Int {
-        val copy = File(cacheDir, UriArchiveSourceFactory.COPY_FILE_NAME)
-        return if (copy.exists() && copy.delete()) 1 else 0
+        val children = cacheDir.listFiles() ?: return 0
+        // `&&` short-circuits, so `delete()` is reached only for a name the predicate claimed.
+        return children.count { UriArchiveSourceFactory.isReadCopyName(it.name) && it.delete() }
     }
 
     /**
