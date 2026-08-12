@@ -320,7 +320,9 @@ internal class ArchiveRestoreViewModel(
      * recomposition can both call this with the URI already open, and re-reading would restart the
      * gate under the user; but the screen's own file picker calls it with a *different* URI, and a
      * flat "already opened" guard turned "choose a file" into a button that did nothing for the rest
-     * of the screen's life once the first pick failed.
+     * of the screen's life once the first pick failed. Re-picking the *same* file after a failure is
+     * the remaining half of that: see [forgetUriIfStill], which releases the URI on the two paths
+     * whose own advice is to try it again.
      *
      * Refused while a job is running: switching archives under a live watcher would leave job A's
      * progress on job B's screen.
@@ -364,6 +366,7 @@ internal class ArchiveRestoreViewModel(
             // source factory or the header reader left a screen that span until the user backed out of
             // it. Reported as the file being unopenable, which is what a throw on this path means.
             onFailure = {
+                forgetUriIfStill(uriString)
                 _uiState.update {
                     it.copy(
                         loading = false,
@@ -390,6 +393,7 @@ internal class ArchiveRestoreViewModel(
                     return@launchGuarded
                 }
                 ArchiveOpenOutcome.Unreadable -> {
+                    forgetUriIfStill(uriString)
                     _uiState.update {
                         it.copy(
                             loading = false,
@@ -435,6 +439,26 @@ internal class ArchiveRestoreViewModel(
             watchForExistingJob(header.packageName)
             tryRememberedPassphrase(header)
         }
+    }
+
+    /**
+     * Release the remembered URI so [open] will look at that file again — but only if it is still the
+     * file [open] is remembering.
+     *
+     * Only the two "try this one again" failures call this. `FILE_UNREADABLE` means the file may be a
+     * perfectly good backup that a full cache volume or an offline provider could not be copied out
+     * of, and [ArchiveRestoreReason] says as much; without this, [open]'s same-file guard turned the
+     * one file the user wanted into a picker that did nothing. The two `NOT_AN_ARCHIVE` paths
+     * deliberately do not call it: there the advice is to pick a *different* file, re-reading would
+     * print the same sentence that is already on screen, and any different URI resets the field
+     * anyway.
+     *
+     * Guarded on equality rather than nulled outright. [open] does not cancel a call already in
+     * flight, so a slow failure for file A must not clear a URI that a later `open(B)` has since
+     * stored — that would let a second `open(B)` re-enter and restart the gate under a loaded header.
+     */
+    private fun forgetUriIfStill(uriString: String) {
+        if (this.uriString == uriString) this.uriString = null
     }
 
     fun toggleClass(dataClass: DataClass) {

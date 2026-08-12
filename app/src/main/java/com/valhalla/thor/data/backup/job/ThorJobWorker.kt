@@ -85,7 +85,9 @@ abstract class ThorJobWorker(
             throw e
         } catch (e: Exception) {
             Logger.e(TAG, "${kind.id} failed", e)
-            Result.failure(workDataOf(JOB_ERROR_KEY to (e.message ?: "unknown error")))
+            Result.failure(
+                workDataOf(JOB_ERROR_KEY to (e.message?.boundedForJobData() ?: "unknown error"))
+            )
         } finally {
             // Runs on every exit: normal return, Result.failure, exception from runJob(),
             // cancellation during runJob(), and cancellation during setForeground/getForegroundInfo().
@@ -129,7 +131,8 @@ abstract class ThorJobWorker(
      * orphan it — the comment would vanish from `publish` in the IDE and in Dokka and read as this
      * function's preamble instead.
      */
-    protected fun fail(reason: String): Result = Result.failure(workDataOf(JOB_ERROR_KEY to reason))
+    protected fun fail(reason: String): Result =
+        Result.failure(workDataOf(JOB_ERROR_KEY to reason.boundedForJobData()))
 
     /**
      * Report progress to the UI and the notification.
@@ -160,3 +163,36 @@ abstract class ThorJobWorker(
         }
     }
 }
+
+/**
+ * The most of one sentence Thor will hand to WorkManager.
+ *
+ * Generous on purpose — no real message on any of these paths is close to it — because the number is
+ * a ceiling, not a style rule. Four bounded warnings plus their keys is around 2 KB against `Data`'s
+ * 10 KB, which leaves the whole budget's worth of headroom for a message nobody predicted.
+ */
+internal const val MAX_JOB_MESSAGE_CHARS = 512
+
+/**
+ * Cap a sentence before it becomes `Data`.
+ *
+ * `Data.Builder.build()` **throws** `IllegalStateException` above `Data.MAX_DATA_BYTES` (10 KB)
+ * rather than truncating — it serialises eagerly for that reason, "so we catch Data objects that are
+ * too large at build() instead of later" — and every message this feature reports travels that way.
+ * Two of the three writers take a string that is only bounded by the thing that produced it:
+ * `Throwable.message` in [ThorJobWorker.doWork]'s catch, and the warning list on a *successful*
+ * restore. The second is the one that costs something: an overflow there is thrown out of `runJob`,
+ * caught as a failure, and a restore that had already finished is reported to the user as failed —
+ * which sends them to run it again over data that is already correct.
+ *
+ * The one input that could actually reach 10 KB has been bounded at its source (`isSafeObbLeafName`
+ * now caps the leaf name that a placement warning quotes). This is the second line: it keeps the
+ * guarantee at the boundary where `Data`'s rule lives, so a future message assembled from a shell
+ * error, a file listing or a stack trace cannot re-open the hole somewhere upstream.
+ *
+ * Top-level rather than a method on [ThorJobWorker] so a JVM test can reach it — nothing inside a
+ * `CoroutineWorker` is reachable without an Android runtime, and this module has no Robolectric. The
+ * same reason `wrongKeyReason` is top-level.
+ */
+internal fun String.boundedForJobData(): String =
+    if (length <= MAX_JOB_MESSAGE_CHARS) this else take(MAX_JOB_MESSAGE_CHARS - 1) + "…"

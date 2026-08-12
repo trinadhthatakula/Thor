@@ -130,7 +130,17 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
         // No takePersistableUriPermission: OpenDocument's grant lasts for this task, which is all the
         // worker needs, and asking for persistence Thor never uses would be a permission held for
         // nothing.
-        if (uri != null) viewModel.open(uri.toString())
+        if (uri != null) {
+            // The previous file's answers are not this file's. `open()` says exactly that and clears
+            // every field it owns, but this one is composition state it cannot reach, so the prompt
+            // came back pre-filled with the *previous* archive's text — masked, so indistinguishable
+            // from something the user typed here — with Unlock already enabled, and spent a full
+            // 210,000-iteration derivation to answer "wrong passphrase". Unconditional on purpose:
+            // `open()` returns early for an unchanged URI, so re-picking the same file clears the
+            // field too, which is the same "start this file again" the rest of that path means.
+            passphrase = ""
+            viewModel.open(uri.toString())
+        }
     }
 
     Column(

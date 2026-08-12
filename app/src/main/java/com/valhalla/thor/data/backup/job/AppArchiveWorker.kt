@@ -314,9 +314,21 @@ internal class ArchiveRestoreWorker(
                     // Carried out on the *success* result, not only logged. These are the sentences a
                     // restore finished in spite of — game data that could not be placed, a breadcrumb
                     // that could not be written — and a user whose game now starts and crashes has no
-                    // other way to learn why. `Data` caps at 10 KB; the use case produces at most
-                    // three short sentences.
-                    Result.success(workDataOf(JOB_WARNINGS_KEY to warnings.toTypedArray()))
+                    // other way to learn why.
+                    //
+                    // Bounded on the way out, and this is the one `Data` write where that matters.
+                    // The count is structurally capped at four, but "short" was an assumption about
+                    // the *contents*, and two of the four quote an OBB leaf name that came out of an
+                    // archive the user merely picked. Above 10 KB `workDataOf` throws, the throw
+                    // leaves `runJob`, and a restore that had already succeeded would be reported as
+                    // failed — over data that is already correct.
+                    Result.success(
+                        workDataOf(
+                            JOB_WARNINGS_KEY to warnings
+                                .map { it.boundedForJobData() }
+                                .toTypedArray()
+                        )
+                    )
                 }
 
                 is ArchiveRestoreOutcome.Failed -> fail(restoreFailureReason(outcome))

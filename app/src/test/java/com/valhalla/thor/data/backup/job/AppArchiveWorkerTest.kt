@@ -15,6 +15,7 @@ import java.util.Base64
 import javax.crypto.SecretKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,9 +23,11 @@ import org.junit.Test
  * The reporting decisions `ArchiveRestoreWorker` makes, pinned where they can be.
  *
  * The worker itself is a `CoroutineWorker` and there is no Robolectric and no `work-testing` on this
- * module's test classpath, so nothing that constructs one can run here. That is exactly why the three
+ * module's test classpath, so nothing that constructs one can run here. That is exactly why the four
  * functions under test are top-level: every judgement about *what the user is told* lives outside the
  * class, and only the WorkManager wiring — which no JVM test could cover either way — is inside it.
+ * The fourth, [boundedForJobData], lives in `ThorJobWorker.kt` for the same reason and is covered here
+ * because this is where the reporting decisions are pinned.
  */
 class AppArchiveWorkerTest {
 
@@ -291,6 +294,52 @@ class AppArchiveWorkerTest {
             )
             assertTrue("${refusal.name} ends with a full stop: $reason", !reason.endsWith("."))
         }
+    }
+
+    // endregion
+
+    // region boundedForJobData
+
+    @Test
+    fun `a sentence short enough to send is returned untouched`() {
+        // Identity, not merely equality: nothing on the ordinary path should allocate, and every
+        // reason this feature actually produces is an order of magnitude under the bound.
+        val reason = "the backup could not be written to the folder you chose"
+        assertSame(reason, reason.boundedForJobData())
+        assertSame("", "".boundedForJobData())
+
+        val longest = "x".repeat(MAX_JOB_MESSAGE_CHARS)
+        assertSame(longest, longest.boundedForJobData())
+    }
+
+    @Test
+    fun `a sentence too long to send is cut to the bound, marked, and never grows`() {
+        // The reason the bound exists: `Data.Builder.build()` throws above `Data.MAX_DATA_BYTES`
+        // rather than truncating, and on the restore-success path that throw turns a restore that
+        // already finished into one reported as failed. The assertion that matters is the *ceiling* —
+        // a marker appended past the limit would defeat the whole point.
+        val huge = "y".repeat(10_000)
+        val bounded = huge.boundedForJobData()
+
+        assertEquals(MAX_JOB_MESSAGE_CHARS, bounded.length)
+        assertTrue(bounded.endsWith("…"))
+        assertTrue(bounded.startsWith("yyy"))
+
+        // One over, which is the only interesting input near the edge.
+        val justOver = "z".repeat(MAX_JOB_MESSAGE_CHARS + 1)
+        assertEquals(MAX_JOB_MESSAGE_CHARS, justOver.boundedForJobData().length)
+    }
+
+    @Test
+    fun `four bounded warnings stay well inside what Data will accept`() {
+        // The arithmetic the bound is chosen for. `RestoreAppArchiveUseCase` produces at most three
+        // warnings plus an OBB notice, and `Data` refuses a payload over 10,240 bytes *in total* —
+        // keys, values and framing. This is the headroom claim in `boundedForJobData`'s own KDoc,
+        // pinned so a later raise of the bound has to face it.
+        val worst = List(4) { "w".repeat(10_000).boundedForJobData() }
+
+        assertEquals(4 * MAX_JOB_MESSAGE_CHARS, worst.sumOf { it.length })
+        assertTrue(worst.sumOf { it.length } * 2 < 10_240)
     }
 
     // endregion

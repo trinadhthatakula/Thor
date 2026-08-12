@@ -171,13 +171,40 @@ class ArchiveRestoreViewModelTest {
      * [FakeSources] cannot express either half of what the second file test needs: it ignores the URI
      * it is handed, so a view model that re-reads the *wrong* file and one that reads the right one
      * look identical through it, and it counts nothing, so "opened once" is unobservable.
+     *
+     * @param failure what a URI with no entry in [byUri] produced. Defaulted to the transient failure
+     *   because that is what "this URI is not one of the two" means for the file tests; the re-pick
+     *   tests set it, because which of the two failures happened is the whole of what they are about.
      */
-    private class CountingSources(private val byUri: Map<String, FakeSource>) : ArchiveSourceFactory {
+    /**
+     * Unreadable once, then openable — the transient failure `FILE_UNREADABLE` exists to name.
+     *
+     * [FakeSources] cannot express it: both of its answers are fixed at construction, so a view model
+     * that looks at a file again after a failed open and one that refuses to look at it ever again are
+     * indistinguishable through it.
+     */
+    private class FlakySources(private val source: FakeSource) : ArchiveSourceFactory {
+        var opens = 0
+            private set
+
+        override suspend fun open(uriString: String): ArchiveOpenOutcome {
+            opens++
+            return if (opens == 1) {
+                ArchiveOpenOutcome.Unreadable
+            } else {
+                ArchiveOpenOutcome.Opened(source)
+            }
+        }
+    }
+
+    private class CountingSources(
+        private val byUri: Map<String, FakeSource>,
+        private val failure: ArchiveOpenOutcome = ArchiveOpenOutcome.Unreadable,
+    ) : ArchiveSourceFactory {
         val opens = mutableListOf<String>()
         override suspend fun open(uriString: String): ArchiveOpenOutcome {
             opens += uriString
-            return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) }
-                ?: ArchiveOpenOutcome.Unreadable
+            return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) } ?: failure
         }
     }
 
@@ -494,6 +521,56 @@ class ArchiveRestoreViewModelTest {
             )
             assertEquals(false, vm.uiState.value.loading)
         }
+
+    @Test
+    fun `a file that could not be read can be picked again`() = runTest(dispatcher) {
+        // The other side of the message above. `FILE_UNREADABLE` says the file may be a perfectly good
+        // backup that a full cache volume or an offline provider could not be copied out of, and
+        // `ArchiveRestoreReason` states the advice is to try the same one again — so the one thing
+        // that must work is exactly what `open`'s same-file guard was refusing. The guard is there to
+        // stop a recomposition restarting the gate under a *loaded* header; after a failure there is no
+        // header to protect, and the picker did nothing for the only file the user wanted.
+        val sources = FlakySources(FakeSource(header().encode()))
+        val vm = viewModel(sources = sources)
+
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+        assertEquals(
+            ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
+            vm.uiState.value.error,
+        )
+        assertNull(vm.uiState.value.header)
+
+        // The same document, picked again once the transient cause has cleared.
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(2, sources.opens)
+        assertNull(vm.uiState.value.error)
+        assertEquals("com.example.game", vm.uiState.value.header?.packageName)
+    }
+
+    @Test
+    fun `a file that is not an archive is not re-read when it is picked again`() = runTest(dispatcher) {
+        // The deliberate other half: `NOT_AN_ARCHIVE` points the user at a *different* file, so
+        // re-reading this one would spend a header read to print the sentence already on screen. Only
+        // the two "try it again" paths release the remembered URI, and pinning that keeps the release
+        // from being widened into an unconditional reset — which would let a slow failure for file A
+        // clear a URI that a later `open(B)` had already stored.
+        val sources = CountingSources(emptyMap(), failure = ArchiveOpenOutcome.NotAnArchive)
+        val vm = viewModel(sources = sources)
+
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            ArchiveRestoreMessage.Known(ArchiveRestoreReason.NOT_AN_ARCHIVE),
+            vm.uiState.value.error,
+        )
+        assertEquals(listOf(URI), sources.opens)
+    }
 
     @Test
     fun `an incapable privilege state is reported and nothing can start`() = runTest(dispatcher) {

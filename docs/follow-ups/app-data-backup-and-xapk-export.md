@@ -276,6 +276,52 @@ The re-review returned **0 blockers**, and its refutations are the more useful h
 "the fix wave broke this" attributions, **six did not survive verification**. Reviewer attribution on
 this branch should not be trusted without a `merge-base --is-ancestor` check.
 
+### The automated review pass on PR #379, and what it was worth
+
+CodeRabbit posted **13 inline findings**, one rated 🔴 Critical. Each was verified against the code
+and the survivors were then handed to an adversarial checker whose job was to refute them. **Nine did
+not survive**, including the Critical and including the one finding that would have blocked the
+merge — "secrets are written to WorkManager `Data`". Both were mechanism claims that were true in the
+abstract and unreachable in this code.
+
+Four were fixed, and the useful pattern is that **three of the four were fixed differently from the
+way they were reported**:
+
+- **The checkbox rows had no accessible name** (`CheckRow`, seven call sites including the
+  confirm-replace acknowledgement). The row now carries `toggleable(role = Role.Checkbox)` and the
+  checkbox takes `onCheckedChange = null`, matching `FixStoreSheet`. ⚠️ **The posted fix would have
+  introduced a second defect**: `Checkbox` applies `minimumInteractiveComponentSize()` *only while it
+  owns the click*, so handing the click to the row gives up the 48dp target and `toggleable` enforces
+  no minimum of its own — the three rows with no `detail` would have shrunk to ~28dp. Hence the
+  `heightIn(min = 48.dp)`. The finding's "the touch target is the checkbox alone" clause was false,
+  and it was false in the direction that damaged the remedy.
+- **A failed open could not be retried on the same file.** `open()` stored the URI before reading the
+  header, so every later pick of that file hit the same-file guard. Released now by
+  `forgetUriIfStill`, on the two `FILE_UNREADABLE` paths only — the ones whose own advice is "try
+  that one again". ⚠️ The posted fix nulled the field unconditionally, which is unsafe: `open(B)` does
+  not cancel `open(A)`, so a late A-failure would clear a URI B had already stored. Both arms are now
+  pinned by tests.
+- **The passphrase field survived picking a second archive**, pre-filled and with Unlock enabled.
+  Cleared at the picker callback. The finding filed this under Security & Privacy, which is wrong and
+  the screen's own comment says why — a Kotlin `String` cannot be zeroed, so clearing the field drops
+  a reference and nothing more. It is a UI-consistency defect: a full 210,000-iteration derivation
+  spent to answer "wrong passphrase" for text the user never typed for this file.
+- **An unbounded string could overflow WorkManager's 10 KB `Data`.** `Data.Builder.build()` throws
+  rather than truncating, and the site that matters is the *success* result: an overflow there is
+  caught as a failure, so **a restore that had already completed would be reported as failed** — which
+  sends the user to run it again over data that is already correct. The finding named two write sites
+  and missed the busiest one (`fail()`, which every failure in both workers routes through) and the
+  actual root cause: `isSafeObbLeafName` had **no length bound**, and that leaf is quoted into a
+  placement warning from a manifest the doc's own threat model calls attacker-controlled. Fixed at the
+  source (`NAME_MAX`, 255) *and* at the boundary (`boundedForJobData`, top-level so a JVM test can
+  reach it).
+
+The residue of the Critical was real and small: two comments promised `onFailure` covered "either
+collector" while the guard reached only one of them. Closed by running `block` through
+`coroutineScope`, which makes the comments true rather than narrowing them — one word, no observable
+behaviour change today, and the next `launch` added inside a guarded block does not have to know any
+of this.
+
 ### Still open — small, and none of them user-facing
 
 - [ ] **`ArchiveRoundTripTest`'s gateway still discards the `compressed` flag.** The restore-side
@@ -293,6 +339,14 @@ this branch should not be trusted without a `merge-base --is-ancestor` check.
       so collapsing the field to a constant `false` would go unobserved. Pre-existing, one line to
       close: `assertEquals(true, withObb.uiState.value.obbOffered)` beside the existing `restoreObb`
       assertion.
+- [ ] **Five checkbox/switch rows outside this branch have the accessible-name defect `CheckRow`
+      just lost.** Found while adjudicating that finding, and it is the reason its severity came down:
+      this branch was matching the app-wide status quo, not regressing against a convention.
+      `SettingsScreen.kt:1197`, `FreezerSettingsSheet.kt:306`, `PermissionManagerScreen.kt:508`,
+      `FreezerScreen.kt:242`, `AppList.kt:530` — each a live `onCheckedChange` beside a sibling text
+      `Column`, so a screen reader gets an unnamed control announced *before* the words that name it.
+      `FixStoreSheet` and now `CheckRow` are the two that do it correctly. Mechanical, but check each
+      for the `minimumInteractiveComponentSize()` trap before copying the shape across.
 - [ ] **A repo-wide sweep for line-number citations in committed comments.** Two were found and fixed
       on this branch (`ObbInstaller.kt`, `AppArchiveInstallerImpl.kt`); nobody has checked the rest of
       the tree. A **commit SHA** in a comment is fine and must be left alone — a SHA does not rot. It
@@ -318,7 +372,9 @@ Each was raised, verified, and deliberately kept. Filing them would invite a reg
   *before* the bundle is consulted, so admitting one is a reordering that changes the meaning of every
   existing archive.
 - **No global `CoroutineExceptionHandler`** — it would silence reporting this feature is already thin
-  on.
+  on. Still the decision after the #379 review: a child coroutine's failure now reaches `onFailure`
+  because `launchGuarded` runs `block` through `coroutineScope`, which *reports* it at the call site.
+  A scope-level handler would have swallowed it instead, which is the opposite trade.
 
 ### Two durable traps this branch paid for
 

@@ -197,6 +197,31 @@ class ObbExpansionsTest {
     }
 
     @Test
+    fun `a leaf name longer than the kernel would ever have created is refused`() {
+        // Not a filesystem worry — `cp` answers ENAMETOOLONG without any help. The rule is here
+        // because this leaf is the one attacker-controlled string that reaches a *message*: a
+        // placement failure quotes it, that becomes a restore warning, and warnings travel to the UI
+        // inside WorkManager's `Data`, which throws above 10 KB instead of truncating. A manifest
+        // declaring a 10 KB leaf therefore made a restore that had already succeeded report itself as
+        // failed — and "it failed" sends the user to run it again over data that is already correct.
+        //
+        // 255 is NAME_MAX, so the bound refuses nothing that could exist on a real volume.
+        assertTrue(isSafeObbLeafName("a".repeat(251) + ".obb"))
+        assertFalse(isSafeObbLeafName("a".repeat(252) + ".obb"))
+
+        // And the point of putting it in the shared predicate: an over-long leaf resolves to nothing,
+        // so it never reaches a shell command or a warning in the first place.
+        val absurd = "a".repeat(10_000) + ".obb"
+        assertTrue(
+            resolveExpansions(
+                pkg,
+                declared("Android/obb/$pkg/$absurd"),
+                listOf("Android/obb/$pkg/$absurd")
+            ).isEmpty()
+        )
+    }
+
+    @Test
     fun `packing needs two copies of the apks but only one of the obb`() {
         // The APKs are copied out of /data/app into the staging dir and then deflated into the
         // final zip, so both exist at once. The OBB is streamed from external storage straight

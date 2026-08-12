@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -38,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -474,11 +477,33 @@ internal fun CheckRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        // `toggleable` on the row rather than a live checkbox beside a label, matching
+        // `FixStoreSheet`. The two together are one toggle but two semantics nodes: the checkbox
+        // carries a role and a state and no name, and the label is static text next to it, so a
+        // screen reader announces "not checked, checkbox" *before* the words that say what it is.
+        // Merging them makes the announcement "internal app data, 12 MB, checkbox, not checked".
+        // Worth being careful with, because one of the seven rows this serves is the
+        // confirm-replace acknowledgement on the restore screen.
+        //
+        // `heightIn` is not decoration. `Checkbox` applies `minimumInteractiveComponentSize()` only
+        // while it owns the click, so handing the click to the row gives up that 48dp guarantee —
+        // and `toggleable` enforces no minimum of its own. Without this the three rows that pass a
+        // null `detail` would shrink to a single line of `bodyMedium`, trading an unlabelled control
+        // for one too small to hit.
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                onValueChange = onCheckedChange,
+                role = Role.Checkbox
+            )
+            .heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        // Null: the row above owns the click. A live handler here would be the second node again.
+        Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
         Column(modifier = Modifier.weight(1f)) {
             Text(text = label, style = MaterialTheme.typography.bodyMedium)
             detail?.let {

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -25,6 +26,17 @@ import kotlinx.coroutines.launch
  * screen usable — a refusal panel, a cleared spinner, a failure banner — and only passes nothing
  * where there is genuinely nothing to say.
  *
+ * [block] is run through [coroutineScope] rather than called directly, and that is what makes the
+ * guard cover a coroutine started with `launch` *inside* it. Called directly, a child's failure is
+ * reported to `viewModelScope` instead: the parent would see only the [CancellationException] that
+ * the child's failure raises in it, rethrow it below, and the real exception would go on to
+ * `viewModelScope`'s `SupervisorJob`, which declines it, and from there to the thread's default
+ * handler — past [onFailure], and past the two watchers that start their progress collector with an
+ * inner `launch` and document `onFailure` as covering "either collector". Neither of those two
+ * children can throw today, so this is a latent hole rather than a live one; it is closed here
+ * because the comments at those call sites promise it is closed, and because the next `launch` added
+ * inside a `block` should not have to know this.
+ *
  * There is deliberately no log line here. `android.util.Log` is not mocked in this module's JVM
  * tests (no `testOptions.unitTests.isReturnDefaultValues`), so a log call would throw inside the very
  * guard that exists to stop throws, in every test that drives one of these view models.
@@ -38,7 +50,7 @@ internal fun ViewModel.launchGuarded(
     block: suspend CoroutineScope.() -> Unit,
 ): Job = viewModelScope.launch {
     try {
-        block()
+        coroutineScope(block)
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (failure: Exception) {
