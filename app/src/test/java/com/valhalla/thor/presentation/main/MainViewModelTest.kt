@@ -6,10 +6,13 @@ package com.valhalla.thor.presentation.main
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
+import com.valhalla.thor.data.backup.job.JobSheetTarget
+import com.valhalla.thor.data.backup.job.JobSheetTargets
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
@@ -111,6 +114,10 @@ class MainViewModelTest {
         // to: with the op held, an unmeasured clear is described without mentioning permissions. The
         // one test that cares about the ungranted branch passes false.
         usageAccess: Boolean = true,
+        // A real one, not a fake: `JobSheetTargets` is a plain in-memory holder with no Android type
+        // on it, so a test can drive a notification tap by calling `requestOpen` on the same instance
+        // the view model is watching. Defaulted so the tests that predate it read unchanged.
+        sheetTargets: JobSheetTargets = JobSheetTargets(),
     ): MainViewModel {
         val vm = MainViewModel(
             manageAppUseCase = ManageAppUseCase(system),
@@ -124,6 +131,7 @@ class MainViewModelTest {
             freezerRepository = freezer,
             backupRunner = runner,
             usageAccessGate = FakeUsageAccessGate(usageAccess),
+            jobSheetTargets = sheetTargets,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
@@ -932,5 +940,117 @@ class MainViewModelTest {
             listOf("forceStopApp:com.a", "forceStopApp:com.b", "forceStopApp:com.c", "forceStopApp:com.d"),
             system.calls
         )
+    }
+
+    // --- Job sheets ---------------------------------------------------------------------------
+    //
+    // A tap on a running job's notification has to end with that job's sheet on screen. The tap
+    // itself lands in a trampoline activity that needs an Android runtime, so what is pinned here is
+    // the half that does not: a request published to `JobSheetTargets` becomes sheet state, the right
+    // one, and it is not lost if it arrives before the view model exists.
+
+    @Test
+    fun `a restore request opens the restore sheet on that archive`() = runTest {
+        val targets = JobSheetTargets()
+        targets.set(JobSheetTarget.Restore("content://docs/tree/1/thor.thorbak"))
+        val vm = viewModel(sheetTargets = targets)
+
+        targets.requestOpen(ThorJobKind.ARCHIVE_RESTORE)
+        advanceUntilIdle()
+
+        assertEquals(
+            RestoreSheetState("content://docs/tree/1/thor.thorbak"),
+            vm.uiState.value.restoreSheet
+        )
+        // Not the other sheet. Two nullable fields driven by one `when`, so a mis-mapped arm would
+        // put a restore's URI behind a backup sheet with no package name to show.
+        assertNull(vm.uiState.value.backupSheet)
+    }
+
+    @Test
+    fun `a backup request opens the backup sheet with the label the worker resolved`() = runTest {
+        val targets = JobSheetTargets()
+        targets.set(JobSheetTarget.Backup("com.supercell.clashofclans", "Clash of Clans"))
+        val vm = viewModel(sheetTargets = targets)
+
+        targets.requestOpen(ThorJobKind.ARCHIVE_BACKUP)
+        advanceUntilIdle()
+
+        // The label is carried, not re-derived: `AppBackupViewModel.start` writes what it is handed
+        // straight into its own state, so a package name arriving here is a package name on screen.
+        assertEquals(
+            BackupSheetState("com.supercell.clashofclans", "Clash of Clans"),
+            vm.uiState.value.backupSheet
+        )
+        assertNull(vm.uiState.value.restoreSheet)
+    }
+
+    @Test
+    fun `a request made before the view model exists is not lost`() = runTest {
+        val targets = JobSheetTargets()
+        targets.set(JobSheetTarget.Restore("content://docs/tree/1/thor.thorbak"))
+
+        // The ordinary case, not an edge case: the tap is what brings Thor forward, so the request is
+        // published while nothing is collecting. `JobSheetTargets` conflates rather than dropping —
+        // a `replay = 0` SharedFlow here would send this to no one and the tap would do nothing.
+        targets.requestOpen(ThorJobKind.ARCHIVE_RESTORE)
+
+        val vm = viewModel(sheetTargets = targets)
+        advanceUntilIdle()
+
+        assertEquals(
+            RestoreSheetState("content://docs/tree/1/thor.thorbak"),
+            vm.uiState.value.restoreSheet
+        )
+    }
+
+    @Test
+    fun `a tap on a job that is no longer live opens nothing`() = runTest {
+        val targets = JobSheetTargets()
+        val vm = viewModel(sheetTargets = targets)
+
+        // Nothing was ever published, or the worker's `finally` has already cleared it. The
+        // trampoline reads the false and resumes the app without a sheet; here the point is that no
+        // *empty* sheet is opened in its place.
+        assertFalse(targets.requestOpen(ThorJobKind.ARCHIVE_RESTORE))
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.restoreSheet)
+        assertNull(vm.uiState.value.backupSheet)
+    }
+
+    @Test
+    fun `dismissing a sheet closes it and leaves the other alone`() = runTest {
+        val targets = JobSheetTargets()
+        val vm = viewModel(sheetTargets = targets)
+
+        vm.openRestoreSheet("content://docs/tree/1/thor.thorbak")
+        targets.set(JobSheetTarget.Backup("com.a", "App A"))
+        targets.requestOpen(ThorJobKind.ARCHIVE_BACKUP)
+        advanceUntilIdle()
+
+        vm.dismissRestoreSheet()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.restoreSheet)
+        assertEquals(BackupSheetState("com.a", "App A"), vm.uiState.value.backupSheet)
+
+        vm.dismissBackupSheet()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.backupSheet)
+    }
+
+    @Test
+    fun `the Settings row opens the sheet with no archive chosen`() = runTest {
+        val vm = viewModel()
+
+        vm.openRestoreSheet()
+        advanceUntilIdle()
+
+        // Open, and open on the file picker. The outer null means "closed", so this has to be a
+        // present state holding a null URI — collapsing the two would make the Settings row and a
+        // dismissed sheet indistinguishable.
+        assertEquals(RestoreSheetState(null), vm.uiState.value.restoreSheet)
     }
 }

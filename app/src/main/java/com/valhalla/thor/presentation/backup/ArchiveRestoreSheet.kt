@@ -10,10 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,12 +18,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ArchiveRestoreWarning
@@ -72,7 +74,7 @@ private fun warningLabel(warning: ArchiveRestoreWarning): Int = when (warning) {
  * The `R` half of [ArchiveRestoreMessage], kept here beside [refusalLabel] and [warningLabel] so
  * `ArchiveRestoreViewModel` holds no Android resource ids and stays JVM-testable.
  *
- * Two arms, because the screen draws two kinds of sentence: one this feature wrote and translates, and
+ * Two arms, because the sheet draws two kinds of sentence: one this feature wrote and translates, and
  * one produced below it that arrives already worded. The distinction is deliberate rather than a
  * fallback — see [ArchiveRestoreMessage].
  */
@@ -97,33 +99,43 @@ private fun reasonLabel(reason: ArchiveRestoreReason): Int = when (reason) {
 /**
  * §10's restore entry point.
  *
+ * A [ModalBottomSheet], and the sibling of [AppBackupSheet] rather than a screen: the two halves of
+ * one feature were a sheet and a full-screen route, so backing up an app kept the user where they
+ * were while restoring one navigated them into the Settings tab and back out again. It is hosted at
+ * `MainScreen`'s overlay level, over whatever tab is showing, for the same reason the backup sheet is
+ * hosted at its call site — a restore outlives the surface that started it, and the notification tap
+ * that brings the user back must be able to put it in front of them from any tab.
+ *
  * @param uriString null when the user arrived from Settings and has yet to pick a file. Not defaulted:
  *   a defaulted parameter here would let a call site silently forget the VIEW-delivered URI, and the
- *   only symptom would be a screen that always asks for a file.
+ *   only symptom would be a sheet that always asks for a file.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
-    // The default owner, which here is the `NavEntry` for `ThorRoute.ArchiveRestore` — `MainScreen`
-    // installs `rememberViewModelStoreNavEntryDecorator()` on every back stack it builds, so the
-    // nearest `LocalViewModelStoreOwner` at this call site is the entry, not the Activity. That store
-    // is created when the route is pushed and cleared when it is popped, which is exactly how a visit
-    // to this screen ends, and `ThorRoute.ArchiveRestore` carries `uriString` as part of its key, so
-    // two archives are two keys, two entries and two stores. Both of the things a composition-scoped
-    // owner would have been protecting against are therefore already impossible.
+internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
+    // Scoped to this composable, which is now the same shape `AppBackupSheet` is and for the same
+    // reason. This used to be a `NavEntry` for `ThorRoute.ArchiveRestore`, whose store was created
+    // when the route was pushed, cleared when it was popped, and keyed by the route's own
+    // `uriString` — so the default owner was already per-archive and per-visit. As a sheet it is a
+    // conditional composable inside whichever tab is showing, at one call site reused for every
+    // archive, so the default owner is that tab's entry and outlives it: the next archive's sheet
+    // would get the previous archive's view model back, with its parsed header, its unlocked key and
+    // its ticked confirmation still in place.
     //
-    // This deliberately does **not** copy `AppBackupSheet`, whose `rememberViewModelStoreOwner()` is
-    // correct for a reason this screen does not share: that sheet is a conditional composable inside
-    // another entry's composition, at one call site reused for every app, so its default owner really
-    // does outlive it and really would hand app B's sheet app A's view model. A screen that *is* an
-    // entry does not meet that condition. Scoping here instead bought a risk — the owner keys on the
-    // composite key hash, so a pane-count change (unfolding, resizing a split window) could plausibly
-    // re-key it and reset the screen to "Choose a file", losing the parsed header, the unlocked
-    // passphrase and the ticked confirmation.
-    //
-    // A restore already running survives either way: `runningJobFor` re-attaches to it.
-    val viewModel = koinViewModel<ArchiveRestoreViewModel>()
+    // What this costs is bounded, and it is worth stating because the reasoning ran the other way
+    // while this was a screen. Losing the view model on dismiss drops an unlock — 210,000 PBKDF2
+    // iterations — but the controls that would ask for it again are all inside
+    // `if (state.refusal == null && !state.running)`, so a sheet reopened over a *live* restore
+    // renders the header and the progress bar and never asks: `watchForExistingJob` re-attaches to
+    // the job, exactly as `runningJobFor` did before.
+    val viewModel = koinViewModel<ArchiveRestoreViewModel>(
+        viewModelStoreOwner = rememberViewModelStoreOwner()
+    )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var passphrase by remember { mutableStateOf("") }
+    // Keyed on `uriString`, not bare: the sheet stays composed across a change of archive delivered
+    // from outside (a second `.thorbak` opened while it is up), and `open()` clears every field it
+    // owns but cannot reach this one — the same defect the picker callback below documents.
+    var passphrase by remember(uriString) { mutableStateOf("") }
 
     LaunchedEffect(uriString) { uriString?.let(viewModel::open) }
 
@@ -144,11 +156,65 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
         }
     }
 
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        // No partial detent, unlike `AppBackupSheet`'s default state. This sheet's tall frame is a
+        // form of up to a dozen controls that ends in a destructive button, and the two rows a user
+        // has to reach before pressing it — *Replaces what the app has now* and the unlock — are the
+        // last two. A half-height sheet would show the archive's header and hide the consent.
+        sheetState = rememberBottomSheetState(
+            initialValue = SheetValue.Hidden,
+            enabledValues = setOf(SheetValue.Expanded, SheetValue.Hidden)
+        ),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
+        tonalElevation = 0.dp
+    ) {
+        RestoreSheetBody(
+            state = state,
+            viewModel = viewModel,
+            passphrase = passphrase,
+            onPassphraseChange = { passphrase = it },
+            // */* rather than THORBAK_MIME: providers report a .thorbak as octet-stream, zip or
+            // nothing at all depending on which one is answering, and a narrow filter greys out the
+            // file the user is looking straight at.
+            onPickFile = { picker.launch(arrayOf("*/*")) },
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/**
+ * Everything inside the sheet.
+ *
+ * Split out from [ArchiveRestoreSheet] rather than nested in it so that the sheet's own chrome — the
+ * detents, the shape, the dismissal — reads as five lines instead of being the outermost of eight
+ * indents. The view model is passed down rather than resolved again here: `koinViewModel` at a second
+ * call site would build a second one against whichever owner is nearest, which is the whole thing the
+ * scoping comment above is about.
+ *
+ * @param onPickFile opens the SAF picker the sheet owns. A callback rather than the launcher itself,
+ *   because the any-MIME filter is a decision about which files a provider is allowed to grey out and
+ *   belongs with the callback that handles the result. (Spelled out rather than quoted: the wildcard
+ *   pair ends with the two characters that close a KDoc block, and writing it here truncated the
+ *   comment and produced fifteen "expecting a top level declaration" errors.)
+ */
+@Composable
+private fun RestoreSheetBody(
+    state: ArchiveRestoreUiState,
+    viewModel: ArchiveRestoreViewModel,
+    passphrase: String,
+    onPassphraseChange: (String) -> Unit,
+    onPickFile: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
@@ -204,10 +270,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // */* rather than THORBAK_MIME: providers report a .thorbak as octet-stream, zip or
-            // nothing at all depending on which one is answering, and a narrow filter greys out the
-            // file the user is looking straight at.
-            OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) {
+            OutlinedButton(onClick = onPickFile) {
                 Text(stringResource(R.string.restore_pick_file))
             }
         } else {
@@ -265,7 +328,12 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                     val member = header.member(dataClass) ?: return@forEach
                     CheckRow(
                         checked = dataClass in state.selected,
-                        enabled = !state.running,
+                        // `true`, not `!state.running`. The enclosing `if` already answers that, so a
+                        // condition here would be a control that cannot be reached in its disabled
+                        // state — and reads to the next person as if the row greys out mid-restore
+                        // when in fact it is gone. Every `enabled` below is constant for the same
+                        // reason; the guard is the `if`, once, at the top.
+                        enabled = true,
                         label = stringResource(dataClassLabel(dataClass)),
                         // `Known`, and only `Known`: an archive records the byte count it actually
                         // packed, so there is no tri-state to render here. Routed through `sizeLabel`
@@ -282,7 +350,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                 val obbCount = header.appBundle?.obbCount ?: 0
                 CheckRow(
                     checked = state.restoreObb,
-                    enabled = !state.running,
+                    enabled = true, // see the CheckRow above
                     label = pluralStringResource(R.plurals.restore_include_obb, obbCount, obbCount),
                     detail = null,
                     onCheckedChange = viewModel::setRestoreObb
@@ -307,7 +375,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
 
             // Where the rows above were, so the bar appears in the space the controls vacated instead
             // of below everything they left behind.
-            if (state.running) RestoreRunning(state = state)
+            if (state.running) RestoreRunning(state = state, onBackground = onDismiss)
 
             // `!state.running` as well as an absent refusal: the passphrase field, the confirmation and
             // the Restore button are all decisions the job has already taken. The progress bar this
@@ -317,7 +385,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                 if (state.passphraseNeeded) {
                     OutlinedTextField(
                         value = passphrase,
-                        onValueChange = { passphrase = it },
+                        onValueChange = onPassphraseChange,
                         label = { Text(stringResource(R.string.backup_passphrase)) },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
@@ -331,14 +399,15 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                             // Dropped as soon as it is handed over. A String cannot be zeroed, so the
                             // most this can do is stop holding a live reference to one — which is
                             // still the difference between a passphrase that survives until GC and
-                            // one that survives until the screen closes.
-                            passphrase = ""
+                            // one that survives until the sheet closes.
+                            onPassphraseChange("")
                         },
-                        // `!state.loading` as well as `!state.running`: the derivation behind this
-                        // button takes 210,000 PBKDF2 iterations, and the view model refuses a second
-                        // submission while one is in flight. The button has to say so — a control that
-                        // silently discards a tap is the thing that makes a user tap it again.
-                        enabled = passphrase.isNotEmpty() && !state.running && !state.loading,
+                        // `!state.loading`: the derivation behind this button takes 210,000 PBKDF2
+                        // iterations, and the view model refuses a second submission while one is in
+                        // flight. The button has to say so — a control that silently discards a tap is
+                        // the thing that makes a user tap it again. No `!state.running` beside it: the
+                        // enclosing `if` has already established that.
+                        enabled = passphrase.isNotEmpty() && !state.loading,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(stringResource(R.string.restore_unlock))
@@ -351,10 +420,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(
-                            onClick = viewModel::useDifferentPassphrase,
-                            enabled = !state.running
-                        ) {
+                        TextButton(onClick = viewModel::useDifferentPassphrase) {
                             Text(stringResource(R.string.backup_use_different_passphrase))
                         }
                     }
@@ -362,7 +428,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
 
                 CheckRow(
                     checked = state.confirmed,
-                    enabled = !state.running,
+                    enabled = true, // the enclosing `if` is the guard
                     // "Replaces", not "restores". A merge is what a user assumes, and it is not what
                     // happens: whatever the app holds now for a selected class is deleted.
                     label = stringResource(R.string.restore_confirm_replace),
@@ -386,36 +452,41 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
             if (!state.running && state.finished !is RestoreFinish.Succeeded) {
                 // The way back out of a file that turned out to be the wrong one. Without it the
                 // "choose a file" button is gone for good the moment a header loads, and a user who
-                // picked the wrong backup has to leave the screen to pick another.
+                // picked the wrong backup has to close the sheet to pick another.
                 //
                 // Withdrawn after a *successful* restore, which is the one moment the wrong-file case
                 // cannot apply: the dialog over this column says "Restore finished. Open the app to
                 // check it works", and offering "Choose a different file" behind it puts a destructive
                 // operation one tap from an app that is now correct. Dismissing the outcome brings it
                 // back, so nothing is lost — the user just has to acknowledge the result first.
-                TextButton(onClick = { picker.launch(arrayOf("*/*")) }) {
+                TextButton(onClick = onPickFile) {
                     Text(stringResource(R.string.restore_pick_another))
                 }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.restore_back))
-        }
+        // No Back button at the foot of the column any more. A sheet is dismissed by its scrim, its
+        // drag handle and the system back gesture, all three of which this one honours, so a fourth
+        // affordance would be a button whose only job is to duplicate them — and the one moment
+        // leaving needs explaining is a live restore, which `RestoreRunning` now says in words.
     }
 }
 
 /**
- * What the screen shows while a restore is live: the bar, and what it is working on.
+ * What the sheet shows while a restore is live: the bar, what it is working on, and a way to leave.
  *
- * No Background button, unlike `BackupRunning`'s sheet — this is a screen, so there is nothing to
- * dismiss, and the Back button at the bottom of the column is already the way out. Leaving is safe for
- * the same reason it is there: the job is a WorkManager foreground service with its own notification,
- * and `runningJobFor` re-attaches this screen to it on the way back in.
+ * The Background button is the same one `BackupRunning` carries, and for the same reason — the job is
+ * a WorkManager foreground service, so dismissing this drops the sheet's *watcher* and nothing else.
+ * Reopening finds the same job again through `runningJobFor`, either from Settings or by tapping the
+ * ongoing notification, and that notification carries the progress meanwhile.
+ *
+ * No Cancel button, deliberately: the notification already carries one built from
+ * `WorkManager.createCancelPendingIntent`, and a second cancel on a surface that is about to be
+ * dismissed is a control whose result the user would not be watching. It matters more here than on the
+ * backup side — cancelling a restore part-way is what leaves an app's data half-written.
  */
 @Composable
-private fun RestoreRunning(state: ArchiveRestoreUiState) {
+private fun RestoreRunning(state: ArchiveRestoreUiState, onBackground: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         val percent = state.progress?.percent
         if (percent == null) {
@@ -445,6 +516,19 @@ private fun RestoreRunning(state: ArchiveRestoreUiState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        // Above the button rather than below it, matching `BackupRunning`: it is the sentence that
+        // makes the button's one word mean something, and a caption under a button is read after it
+        // has been pressed. `backup_background_desc` verbatim rather than a restore-specific copy —
+        // it describes what dismissing does, which is the same on both sides, and a second string
+        // saying it would be a second thing to translate and a second thing to drift.
+        Text(
+            text = stringResource(R.string.backup_background_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(onClick = onBackground, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.backup_background))
+        }
     }
 }
 
@@ -454,10 +538,19 @@ private fun RestoreRunning(state: ArchiveRestoreUiState) {
  * A dialog rather than the card at the foot of the column it used to be, because of how tall the column
  * is: the title, the archive's three header lines, up to four class rows, the game-data row, the unlock
  * row, the confirmation row, the bar and the Restore button all sit above it. The sentence saying
- * whether an app's data came back therefore arrived below the fold, on the one screen where the user is
+ * whether an app's data came back therefore arrived below the fold, on the one surface where the user is
  * watching for exactly that — and a restore finishes minutes after the tap that started it, so it is
- * also the one event here the user is not already looking at the bottom of the screen for. It has to
+ * also the one event here the user is not already looking at the bottom of the column for. It has to
  * interrupt rather than wait to be found.
+ *
+ * A dialog *over a sheet*, now that this is one, and it survives the move unchanged because a `Dialog`
+ * is its own window: it renders above the sheet rather than inside its scroll.
+ *
+ * What the move does change is the case where the user takes the Background button. Dismissing drops
+ * this sheet's watcher, so a restore that finishes afterwards reports nowhere — the same trade the
+ * backup sheet's Background button already makes, and the reason §8.5's breadcrumb rather than this
+ * dialog is what covers a restore whose outcome nobody read: an interrupted one leaves the notice in
+ * Settings behind it.
  *
  * All three outcomes, not only the success that prompted this. A failure was equally invisible, and one
  * container for one decision is what keeps the five sentences [RestoreOutcome] documents from drifting
@@ -474,7 +567,7 @@ private fun RestoreOutcomeDialog(finish: RestoreFinish, onDismiss: () -> Unit) {
         text = { RestoreOutcome(finish = finish) },
         confirmButton = {
             // `restore_outcome_dismiss`, not `restore_interrupted_dismiss`: that one is named and
-            // commented for the §8.5 breadcrumb banner at the top of this screen. Same word today, two
+            // commented for the §8.5 breadcrumb banner at the top of this sheet. Same word today, two
             // owners, so rewording the breadcrumb's button cannot silently reword this one.
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.restore_outcome_dismiss))

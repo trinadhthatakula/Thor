@@ -41,6 +41,7 @@ abstract class ThorJobWorker(
     private val notifications: ThorJobNotifications,
     private val registry: JobRegistry,
     private val keyHolder: ArchiveKeyHolder,
+    private val sheetTargets: JobSheetTargets,
 ) : CoroutineWorker(appContext, params) {
 
     protected abstract val kind: ThorJobKind
@@ -48,11 +49,26 @@ abstract class ThorJobWorker(
     /** Shown before the job knows anything about sizes. */
     protected abstract val initialLabel: String
 
+    /**
+     * Which sheet this job's notification reopens, or null if its input `Data` did not carry enough to
+     * say. Read once at the top of [doWork]; a subclass that learns more later calls [retargetSheet].
+     */
+    protected abstract val sheetTarget: JobSheetTarget?
+
     protected abstract suspend fun runJob(): Result
 
     // Throttle state — one ThorJobWorker instance per WorkManager execution, so fields are safe.
     private var lastNotifyMs = 0L
     private var lastNotifyStage: ThorJobStage? = null
+
+    /**
+     * The target actually published, which is not always [sheetTarget].
+     *
+     * [retargetSheet] replaces it, and the `finally` clears *this* rather than [sheetTarget] — clearing
+     * the initial value would leave the improved one live after the job ended, and its notification is
+     * gone by then, so nothing would ever remove it.
+     */
+    private var publishedTarget: JobSheetTarget? = null
 
     final override suspend fun getForegroundInfo(): ForegroundInfo =
         notifications.foregroundInfo(
@@ -63,6 +79,10 @@ abstract class ThorJobWorker(
 
     final override suspend fun doWork(): Result {
         return try {
+            // Before setForeground, so the notification cannot be tapped before the target it points
+            // at exists. Inside the try so the finally below is the single owner of removing it.
+            sheetTarget?.let(::retargetSheet)
+
             // setForeground is inside the outer try so that a CancellationException from it —
             // or from getForegroundInfo() — still reaches finally and all three cleanups run.
             // On API 31+ a foreground service cannot be started from the background; the inner
@@ -113,7 +133,24 @@ abstract class ThorJobWorker(
             // the id it owns via setForeground — this is a no-op there and the actual cleanup on
             // both the setForeground-failed path and the cancellation-during-setForeground path.
             notifications.cancel(kind)
+            //
+            // sheetTarget: compare-and-remove, so a successor that has already published its own
+            // target keeps it. Must follow nothing in particular, but must not be skipped on the
+            // cancellation path — a cancelled job's notification is gone, so a target left behind
+            // would be reopened by a *future* notification of the same kind, showing the wrong app.
+            publishedTarget?.let(sheetTargets::clearIfStill)
         }
+    }
+
+    /**
+     * Republish this job's sheet target after learning something better than its input `Data` carried.
+     *
+     * A backup's `Data` holds only the package name, so the sheet a tap opens would be titled with an
+     * application id until the worker resolves the real label. This is how it stops being.
+     */
+    protected fun retargetSheet(target: JobSheetTarget) {
+        publishedTarget = target
+        sheetTargets.set(target)
     }
 
     /**

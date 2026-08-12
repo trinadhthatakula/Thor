@@ -128,7 +128,12 @@
     <string name="restore_unlocked">Unlocked with the saved passphrase.</string>
     <string name="restore_confirm_replace">I understand this replaces the app\'s current data. Anything not in this backup is deleted.</string>
     <string name="restore_start">Restore</string>
-    <string name="restore_back">Back</string>
+    <!--
+      No `restore_back` any more. The restore surface is a bottom sheet, dismissed by its scrim, its
+      drag handle or the back gesture, and its own Background button is what covers leaving a live
+      run — so the button this named had nothing left to do. Deleted rather than left in place because
+      lint's UnusedResources is fatal in this build; there were no translations to strand.
+    -->
     <string name="restore_done">Restore finished. Open the app to check it works.</string>
     <!--
       Heading for the sentences a *successful* run still has to report — game data that could not be

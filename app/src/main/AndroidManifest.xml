@@ -373,6 +373,17 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- Where a tap on a running backup/restore notification lands: it asks the UI to reopen that
+             job's sheet, then resumes Thor's task. Deliberately WITHOUT the taskAffinity="" and
+             singleInstance above — those keep FreezerLaunchActivity out of Thor's task, and resuming
+             that task is this activity's entire purpose. -->
+        <activity
+            android:name=".presentation.launcher.JobSheetLaunchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Stormbringer bridge: lets the (LSPosed) launcher hook ask Thor to unsuspend a frozen
              app on launch. exported so the hook's process can reach it; access is bounded to
              Freezer packages inside the provider (the caller runs in the launcher, so it can't be

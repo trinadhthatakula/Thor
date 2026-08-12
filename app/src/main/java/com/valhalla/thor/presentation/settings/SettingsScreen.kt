@@ -94,8 +94,11 @@ import org.koin.compose.koinInject
 fun SettingsScreen(
     onNavigateToExtensionManager: () -> Unit,
     // Not defaulted, so the one call site has to supply it. A default would leave a Restore row that
-    // navigates nowhere, and nothing would fail to compile.
-    onNavigateToRestore: () -> Unit,
+    // does nothing, and nothing would fail to compile.
+    //
+    // `onOpen`, not `onNavigateTo`: restore is a bottom sheet hosted by `MainScreen` over whatever
+    // section is showing. Nothing is pushed and this screen stays composed underneath.
+    onOpenRestore: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -715,12 +718,17 @@ fun SettingsScreen(
                 //
                 // The use case, not `ArchiveBreadcrumbStore.observe()` directly. A live observation of
                 // the raw breadcrumb is *wrong* on this surface: the breadcrumb is written at the start
-                // of the destructive phase, `ArchiveRestore` is registered as a detail pane, and on an
-                // expanded window this section is composed beside it — so a raw observe() renders "did
-                // not finish … restore it again" next to a progress bar reporting normal progress. The
-                // use case holds the notice back while a restore for that app is live, and still takes
-                // it down the moment "Got it" over there clears the breadcrumb. Both of its inputs read
-                // off the main thread.
+                // of the destructive phase, and the restore sheet is hosted by `MainScreen` over
+                // whatever section is showing — so this row stays composed, on every window size,
+                // underneath the restore it describes, and a raw observe() would render "did not finish
+                // … restore it again" beneath a progress bar reporting normal progress. The use case
+                // holds the notice back while a restore for that app is live, and still takes it down
+                // the moment "Got it" in the sheet clears the breadcrumb. Both of its inputs read off
+                // the main thread.
+                //
+                // This was true of the old restore *screen* only in theory and by a different argument
+                // (a detail pane beside a composed list pane, which is not the layout it got). Being a
+                // sheet is what makes the overlap unconditional.
                 val observeInterrupted = koinInject<ObserveInterruptedRestoreUseCase>()
                 val interrupted by remember(observeInterrupted) { observeInterrupted() }
                     .collectAsStateWithLifecycle(initialValue = null)
@@ -738,7 +746,7 @@ fun SettingsScreen(
                     icon = R.drawable.settings_backup_restore,
                     title = stringResource(R.string.restore_title),
                     subtitle = stringResource(R.string.restore_settings_desc),
-                    onClick = onNavigateToRestore
+                    onClick = onOpenRestore
                 )
 
                 // §5.4. The only place "remember it on this device" — offered as a checkbox in the
