@@ -313,6 +313,25 @@ internal class ArchiveRestoreViewModel(
      */
     private var opening: Job? = null
 
+    /**
+     * Which pick the state currently belongs to. Incremented by every accepted [open].
+     *
+     * [opening]'s cancel is not enough on its own, because cancellation is cooperative and the work
+     * being cancelled is blocking I/O this class does not own. Two ways a dead read still writes:
+     * a `ContentResolver` copy or a PBKDF2 loop that finishes its blocking block before noticing,
+     * and — the reachable one — a read that fails for a *real* reason at the moment it is cancelled.
+     * The original exception wins over the cancellation, so `onFailure` runs, and it wrote
+     * `loading = false` plus a `FILE_UNREADABLE` for archive A over archive B's fresh spinner. That
+     * is worse than a stale sentence: `loading = false` re-enables both pick buttons while B is
+     * still being read, which re-opens the very door [opening] closes.
+     *
+     * So the cancel stops the *work* and this stops the *writes*. Checked with [updateForOpen] at
+     * every state write derived from a file, which is the whole of [open]'s block, its `onFailure`,
+     * and [tryRememberedPassphrase] — the last one matters most, because it is what would hand
+     * archive A's unlocked passphrase to a screen showing archive B.
+     */
+    private var openGeneration = 0
+
     init {
         // Not gated on a file being picked: the Settings entry point arrives with no URI, and after a
         // crash that is exactly how the user gets here.
@@ -358,6 +377,9 @@ internal class ArchiveRestoreViewModel(
         // [opening]. `launchGuarded` rethrows CancellationException instead of routing it to
         // `onFailure`, so the cancelled read cannot write a failure over the new one's state.
         opening?.cancel()
+        // Claimed before the reset below, so every write from here on is tagged with this pick and any
+        // write still coming from the one before it is already stale. See [openGeneration].
+        val generation = ++openGeneration
         _uiState.update {
             it.copy(
                 loading = true,
@@ -386,7 +408,7 @@ internal class ArchiveRestoreViewModel(
             // it. Reported as the file being unopenable, which is what a throw on this path means.
             onFailure = {
                 forgetUriIfStill(uriString)
-                _uiState.update {
+                updateForOpen(generation) {
                     it.copy(
                         loading = false,
                         error = ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
@@ -394,6 +416,9 @@ internal class ArchiveRestoreViewModel(
                 }
             }
         ) {
+            // The one write here that is *not* file-derived, and so not generation-guarded: whether the
+            // device can restore private data at all is a property of the privilege state, identical for
+            // every archive, and the cache behind it answers the same for both reads.
             val supported = capability.isSupported()
             _uiState.update { it.copy(supported = supported) }
 
@@ -403,7 +428,7 @@ internal class ArchiveRestoreViewModel(
             val source = when (val opened = sources.open(uriString)) {
                 is ArchiveOpenOutcome.Opened -> opened.source
                 ArchiveOpenOutcome.NotAnArchive -> {
-                    _uiState.update {
+                    updateForOpen(generation) {
                         it.copy(
                             loading = false,
                             error = ArchiveRestoreMessage.Known(ArchiveRestoreReason.NOT_AN_ARCHIVE),
@@ -413,7 +438,7 @@ internal class ArchiveRestoreViewModel(
                 }
                 ArchiveOpenOutcome.Unreadable -> {
                     forgetUriIfStill(uriString)
-                    _uiState.update {
+                    updateForOpen(generation) {
                         it.copy(
                             loading = false,
                             error = ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
@@ -431,7 +456,7 @@ internal class ArchiveRestoreViewModel(
                 is ArchiveHeaderOutcome.NotAnArchive -> {
                     // `FromBelow`: this sentence names the archive entry that was missing, which is
                     // detail only the reader has. An id here would throw it away.
-                    _uiState.update {
+                    updateForOpen(generation) {
                         it.copy(
                             loading = false,
                             error = ArchiveRestoreMessage.FromBelow(outcome.reason),
@@ -442,8 +467,11 @@ internal class ArchiveRestoreViewModel(
             }
 
             installed = installedFacts(header.packageName)
+            // `installed` is a plain field, so the line above is the one write here that no generation
+            // check can undo — bail rather than let a stale read leave its facts behind a live header.
+            if (generation != openGeneration) return@launchGuarded
             val obbCount = header.appBundle?.obbCount ?: 0
-            _uiState.update { state ->
+            updateForOpen(generation) { state ->
                 state.copy(
                     loading = false,
                     fileName = source.displayName,
@@ -456,7 +484,7 @@ internal class ArchiveRestoreViewModel(
             }
             evaluate()
             watchForExistingJob(header.packageName)
-            tryRememberedPassphrase(header)
+            tryRememberedPassphrase(header, generation)
         }
     }
 
@@ -472,12 +500,28 @@ internal class ArchiveRestoreViewModel(
      * print the same sentence that is already on screen, and any different URI resets the field
      * anyway.
      *
-     * Guarded on equality rather than nulled outright. [open] does not cancel a call already in
-     * flight, so a slow failure for file A must not clear a URI that a later `open(B)` has since
-     * stored — that would let a second `open(B)` re-enter and restart the gate under a loaded header.
+     * Guarded on equality rather than nulled outright: a slow failure for file A must not clear a URI
+     * that a later `open(B)` has since stored, which would let a second `open(B)` re-enter and restart
+     * the gate under a loaded header. [open] does now cancel the read it replaces, so the ordinary
+     * version of that race is gone — but cancellation is cooperative and this guard costs one
+     * comparison, so it stays as the backstop for a failure that lands anyway. See [openGeneration].
      */
     private fun forgetUriIfStill(uriString: String) {
         if (this.uriString == uriString) this.uriString = null
+    }
+
+    /**
+     * Write file-derived state, but only if [generation] is still the pick the user is looking at.
+     *
+     * See [openGeneration]. A no-op is the correct answer for a stale generation: the read that owns
+     * the screen now has already written, or is about to, everything this one would have said.
+     */
+    private inline fun updateForOpen(
+        generation: Int,
+        block: (ArchiveRestoreUiState) -> ArchiveRestoreUiState,
+    ) {
+        if (generation != openGeneration) return
+        _uiState.update(block)
     }
 
     fun toggleClass(dataClass: DataClass) {
@@ -743,7 +787,12 @@ internal class ArchiveRestoreViewModel(
         }
     }
 
-    private suspend fun tryRememberedPassphrase(header: ArchiveHeader) {
+    /**
+     * @param generation the pick this unlock belongs to, checked before every write. The derivation is
+     *   210,000 PBKDF2 iterations, so this is the longest window on the screen for the user to pick a
+     *   different file — and the only one whose stale write would hand a *key* to the wrong archive.
+     */
+    private suspend fun tryRememberedPassphrase(header: ArchiveHeader, generation: Int) {
         // First, and ahead of the vault: this gates the *prompt* as much as the derivation. Asking for
         // a passphrase beside a refusal suggests the passphrase is what went wrong, and there is no
         // passphrase that makes a signer mismatch restorable. The refusals that a later selection
@@ -753,27 +802,35 @@ internal class ArchiveRestoreViewModel(
 
         val stored = vault.recall()
         if (stored == null) {
-            _uiState.update { it.copy(passphraseNeeded = true) }
+            updateForOpen(generation) { it.copy(passphraseNeeded = true) }
             return
         }
 
         when (openArchive.unlock(header, stored)) {
             is ArchiveUnlockOutcome.Unlocked -> {
+                // Generation checked before the key is parked, not just before the flag: `passphrase` is
+                // what `restore()` hands the worker, so a stale write here is the one that would send
+                // archive A's key with archive B's request. Zeroed rather than dropped — this array came
+                // from the vault and nothing else holds it.
+                if (generation != openGeneration) {
+                    stored.fill(' ')
+                    return
+                }
                 wipePassphrase()
                 passphrase = stored
-                _uiState.update { it.copy(unlocked = true, passphraseNeeded = false) }
+                updateForOpen(generation) { it.copy(unlocked = true, passphraseNeeded = false) }
             }
             // §5.4: the vault is a cache. This archive was made with a different passphrase, which is
             // an ordinary state and says nothing about the archive's health — so prompt, silently.
             // `stored` is this class's own array, from `recall()`; nothing else holds it.
             is ArchiveUnlockOutcome.WrongPassphrase -> {
                 stored.fill(' ')
-                _uiState.update { it.copy(passphraseNeeded = true) }
+                updateForOpen(generation) { it.copy(passphraseNeeded = true) }
             }
 
             is ArchiveUnlockOutcome.Unsupported -> {
                 stored.fill(' ')
-                _uiState.update { it.copy(passphraseNeeded = true) }
+                updateForOpen(generation) { it.copy(passphraseNeeded = true) }
             }
         }
     }

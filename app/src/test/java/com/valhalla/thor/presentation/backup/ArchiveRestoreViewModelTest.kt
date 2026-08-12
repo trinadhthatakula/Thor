@@ -44,11 +44,13 @@ import com.valhalla.thor.domain.usecase.ReadInstalledAppFactsUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +61,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -225,6 +228,36 @@ class ArchiveRestoreViewModelTest {
         override suspend fun open(uriString: String): ArchiveOpenOutcome {
             opens += uriString
             delays[uriString]?.let { delay(it) }
+            return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) }
+                ?: ArchiveOpenOutcome.Unreadable
+        }
+    }
+
+    /**
+     * A source whose read for [throwFor] blocks in a way cancellation cannot interrupt, then throws.
+     *
+     * This models the one late write the cancel in `open` cannot stop, and it is not a contrivance:
+     * the real factory copies through a `ContentResolver`, and a blocking read already inside its
+     * `withContext` block finishes before it notices the job is gone. When that block fails for a
+     * *real* reason the original exception wins over the cancellation, so `onFailure` runs — for an
+     * archive the user has already replaced.
+     *
+     * `NonCancellable` is what makes it deterministic on the JVM. Every ordinary suspension point
+     * throws `CancellationException` on resume, which would mean the throw below is never reached and
+     * the test would pass against the bug it is here to catch.
+     */
+    private class LateFailingSources(
+        private val byUri: Map<String, FakeSource>,
+        private val throwFor: String,
+        private val delayMillis: Long = 1_000L,
+    ) : ArchiveSourceFactory {
+        val opens = mutableListOf<String>()
+        override suspend fun open(uriString: String): ArchiveOpenOutcome {
+            opens += uriString
+            if (uriString == throwFor) {
+                withContext(NonCancellable) { delay(delayMillis) }
+                throw IOException("the provider went away mid-read")
+            }
             return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) }
                 ?: ArchiveOpenOutcome.Unreadable
         }
@@ -501,6 +534,39 @@ class ArchiveRestoreViewModelTest {
             // Not a leftover of the cancelled read either: the spinner it turned on is the one thing a
             // cancelled coroutine cannot turn off itself, and the replacement read owns it now.
             assertFalse(vm.uiState.value.loading)
+        }
+
+    @Test
+    fun `a replaced read that fails anyway cannot put its error on the new file's screen`() =
+        runTest(dispatcher) {
+            // The half of the race cancelling does not reach. Cancellation is cooperative, and the work
+            // being cancelled here is blocking I/O this class does not own; when that work fails for a
+            // real reason the original exception wins over the cancellation, so `onFailure` still runs.
+            // Unguarded, it wrote `loading = false` and FILE_UNREADABLE for the archive the user already
+            // replaced — a wrong error, and worse, a `loading = false` that re-enables both pick buttons
+            // while the new file is still being read, which re-opens the door the cancel just shut.
+            val other = "content://com.example.docs/document/2"
+            val sources = LateFailingSources(
+                byUri = mapOf(
+                    other to FakeSource(
+                        header(packageName = "com.example.other", versionCode = 5L).encode(),
+                        displayName = "com.example.other-5.thorbak",
+                    )
+                ),
+                throwFor = URI,
+            )
+            val vm = viewModel(sources = sources)
+
+            vm.open(URI)
+            testScheduler.advanceTimeBy(1)
+            vm.open(other)
+            testScheduler.advanceUntilIdle()
+
+            val state = vm.uiState.value
+            assertNull(state.error)
+            assertEquals("com.example.other", state.header?.packageName)
+            assertEquals("com.example.other-5.thorbak", state.fileName)
+            assertFalse(state.loading)
         }
 
     @Test
