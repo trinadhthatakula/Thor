@@ -466,10 +466,15 @@ internal class ArchiveRestoreViewModel(
                 }
             }
 
-            installed = installedFacts(header.packageName)
-            // `installed` is a plain field, so the line above is the one write here that no generation
-            // check can undo — bail rather than let a stale read leave its facts behind a live header.
+            // Into a local, then the guard, then the field. `installed` is a plain field rather than
+            // state, so [updateForOpen] cannot cover it and a write to it is not undone by bailing
+            // afterwards — which is what an earlier version of this did. A dead read that publishes its
+            // facts leaves the gate comparing the live header against the *previous* archive's app:
+            // [evaluate] reads this field on every selection change, so the next `toggleClass` decides
+            // signer and version against facts belonging to a file the user already replaced.
+            val facts = installedFacts(header.packageName)
             if (generation != openGeneration) return@launchGuarded
+            installed = facts
             val obbCount = header.appBundle?.obbCount ?: 0
             updateForOpen(generation) { state ->
                 state.copy(

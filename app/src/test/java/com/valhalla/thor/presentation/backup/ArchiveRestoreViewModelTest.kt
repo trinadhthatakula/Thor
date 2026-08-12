@@ -133,6 +133,7 @@ class ArchiveRestoreViewModelTest {
 
     private companion object {
         const val SIGNER = "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"
+        const val OTHER_SIGNER = "CDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCD"
         const val URI = "content://com.example.docs/document/1"
     }
 
@@ -294,7 +295,12 @@ class ArchiveRestoreViewModelTest {
      * follow-up row to hoist one shared double — deliberately not done mid-plan, because it would
      * reopen two already-green test files.
      */
-    private class FakeArchiveGateway(private val signer: String?) : AppDataArchiveGateway {
+    private class FakeArchiveGateway(
+        private val signer: String?,
+        private val signersByPackage: Map<String, String?> = emptyMap(),
+        private val slowSignerFor: String? = null,
+        private val slowSignerMillis: Long = 1_000L,
+    ) : AppDataArchiveGateway {
         override suspend fun thorUserId(): Int = 0
         override suspend fun externalStorageDir(): String = "/storage/emulated/0"
         override suspend fun stagingFile(name: String): File = File("/tmp/$name")
@@ -328,7 +334,21 @@ class ArchiveRestoreViewModelTest {
         override suspend fun relabelClass(packageName: String, dataClass: DataClass): Boolean = false
 
         override suspend fun appUid(packageName: String): Int? = null
-        override suspend fun signerSha256(packageName: String): String? = signer
+
+        /**
+         * `getOrElse`, not `?:` — an entry mapped explicitly to `null` means "this package is
+         * unsigned", which `?:` would swallow back into the default.
+         *
+         * [slowSignerFor] parks the lookup under [NonCancellable] so it survives the cancellation
+         * of the open it belongs to. An ordinary `delay` would throw on resume and the caller would
+         * never reach the line under test.
+         */
+        override suspend fun signerSha256(packageName: String): String? {
+            if (packageName == slowSignerFor) {
+                withContext(NonCancellable) { delay(slowSignerMillis) }
+            }
+            return signersByPackage.getOrElse(packageName) { signer }
+        }
     }
 
     private class FakeVaultStore(initial: String? = null) : PassphraseVaultStore {
@@ -435,6 +455,7 @@ class ArchiveRestoreViewModelTest {
         breadcrumbs: ArchiveBreadcrumbStore = FakeBreadcrumbs(),
         registry: JobRegistry = JobRegistry(),
         sources: ArchiveSourceFactory = FakeSources(FakeSource(head?.encode())),
+        gateway: AppDataArchiveGateway = FakeArchiveGateway(signer),
     ) = ArchiveRestoreViewModel(
         sources = sources,
         openArchive = OpenArchiveUseCase(cipher, dispatcher),
@@ -449,7 +470,7 @@ class ArchiveRestoreViewModelTest {
         capability = DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState)),
         installedFacts = ReadInstalledAppFactsUseCase(
             appRepository = FakeAppRepository(installedApps),
-            gateway = FakeArchiveGateway(signer),
+            gateway = gateway,
         ),
         vault = PassphraseVault(vaultStore, PlainKeyProvider()),
         launcher = launcher,
@@ -567,6 +588,69 @@ class ArchiveRestoreViewModelTest {
             assertEquals("com.example.other", state.header?.packageName)
             assertEquals("com.example.other-5.thorbak", state.fileName)
             assertFalse(state.loading)
+        }
+
+    @Test
+    fun `a replaced read cannot leave its app's signer behind the new file's header`() =
+        runTest(dispatcher) {
+            // The third late write, and the only one that survives every guard the other two use.
+            // `installed` is a plain field, not part of the state, so `updateForOpen` does not cover it
+            // and there is nothing for a stale generation to decline to write. Ordered wrongly — read,
+            // assign, *then* check the generation — the first file's app facts land after the second
+            // file's read has finished, and the gate spends the rest of the screen's life comparing the
+            // header on screen against the app the previous archive belonged to.
+            //
+            // The assertion is deliberately after a `toggleClass`, not straight after the opens: the
+            // second read runs its own `evaluate()` before the first one resumes, so the state right
+            // after `advanceUntilIdle` looks correct either way. Only the next selection change re-reads
+            // the corrupted field — which is exactly the shape of the bug on a device, where the user
+            // picks a file, picks another, and then unticks a class.
+            //
+            // `NonCancellable` in the gateway for the same reason `LateFailingSources` needs it: an
+            // ordinary `delay` throws on resume into a cancelled coroutine, so the write under test
+            // would never be reached and the test would pass against the bug.
+            val other = "content://com.example.docs/document/2"
+            val sources = CountingSources(
+                byUri = mapOf(
+                    URI to FakeSource(header().encode()),
+                    other to FakeSource(
+                        header(
+                            packageName = "com.example.other",
+                            versionCode = 5L,
+                            signer = OTHER_SIGNER,
+                        ).encode(),
+                        displayName = "com.example.other-5.thorbak",
+                    ),
+                ),
+            )
+            val vm = viewModel(
+                installedApps = listOf(
+                    AppInfo(packageName = "com.example.game", appName = "Game", versionCode = 100L),
+                    AppInfo(packageName = "com.example.other", appName = "Other", versionCode = 5L),
+                ),
+                sources = sources,
+                gateway = FakeArchiveGateway(
+                    signer = SIGNER,
+                    signersByPackage = mapOf(
+                        "com.example.game" to SIGNER,
+                        "com.example.other" to OTHER_SIGNER,
+                    ),
+                    slowSignerFor = "com.example.game",
+                ),
+            )
+
+            vm.open(URI)
+            testScheduler.advanceTimeBy(1)
+            vm.open(other)
+            testScheduler.advanceUntilIdle()
+
+            vm.toggleClass(DataClass.DE)
+
+            val state = vm.uiState.value
+            assertEquals("com.example.other", state.header?.packageName)
+            // Not SIGNER_MISMATCH: the app on screen is signed with exactly what its header declares.
+            // That refusal here would mean the gate is holding `com.example.game`'s signer.
+            assertNull(state.refusal)
         }
 
     @Test
