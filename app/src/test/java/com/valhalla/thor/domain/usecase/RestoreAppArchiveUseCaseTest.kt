@@ -187,13 +187,22 @@ class RestoreAppArchiveUseCaseTest {
         }
     }
 
-    /** @param writes false stands in for a full or unwritable `filesDir`. */
-    private class RecordingBreadcrumbs(private val writes: Boolean = true) : ArchiveBreadcrumbStore {
+    /**
+     * @param writes false stands in for a full or unwritable `filesDir`.
+     * @param calls the *shared* log, when a test needs this store's writes interleaved with the
+     *   installer's and the gateway's. [history] on its own cannot answer "before or after the
+     *   install", because both orders leave the same entry in it.
+     */
+    private class RecordingBreadcrumbs(
+        private val writes: Boolean = true,
+        private val calls: MutableList<String>? = null,
+    ) : ArchiveBreadcrumbStore {
         var current: ArchiveBreadcrumb? = null
         val history = mutableListOf<String>()
 
         override suspend fun write(packageName: String, appLabel: String): Boolean {
             history += "write"
+            calls?.plusAssign("breadcrumb")
             if (!writes) return false
             current = ArchiveBreadcrumb(packageName, appLabel, startedAt = 1L)
             return true
@@ -373,6 +382,97 @@ class RestoreAppArchiveUseCaseTest {
         assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
         assertEquals(listOf("install"), calls)
         assertNull(crumbs.current)
+    }
+
+    @Test
+    fun `an install-first restore records that it started before it installs anything`() = runTest {
+        // §8.5's window, and the reason this is an ordering assertion rather than a presence one:
+        // both orders leave the same breadcrumb behind on a restore that completes. The case that
+        // separates them is the one no test can run — the process is killed between the install
+        // returning and the marker being written — and on that path the user is left holding a
+        // freshly installed app with no data in it while nothing anywhere says a restore was
+        // interrupted. The marker has to be on disk before the irreversible step, not after it.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs(calls = calls)
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), crumbs)(
+            source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
+        )
+
+        assertTrue(
+            "the breadcrumb must be written before the install, not after it: $calls",
+            calls.indexOf("breadcrumb") in 0..<calls.indexOf("install"),
+        )
+    }
+
+    @Test
+    fun `a restore that is not install-first still writes the breadcrumb exactly once`() = runTest {
+        // The other half of making the write idempotent. The install branch is skipped entirely here,
+        // so the marker goes down at the first class swap — and it must go down once, because a
+        // second write would restamp `startedAt` and make an interrupted restore look newer than it is.
+        val (header, source) = archive(listOf(DataClass.CE, DataClass.DE))
+        val crumbs = RecordingBreadcrumbs()
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), crumbs)(
+            source, header, key, listOf(DataClass.CE, DataClass.DE),
+            installFirst = false, restoreObb = false,
+        )
+
+        assertEquals(listOf("write", "clear"), crumbs.history)
+    }
+
+    @Test
+    fun `an install that outright failed leaves no breadcrumb either`() = runTest {
+        // The marker now goes down *before* the install, so every pre-data failure has to take it
+        // back off. Without that, a refused install would announce an interrupted restore on the next
+        // launch over a device in exactly the state it started in.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(
+            FakeGateway(),
+            FakeInstaller(outcome = ArchiveInstallOutcome.Failed("no room on device"), calls = calls),
+            crumbs,
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertNull(crumbs.current)
+        assertEquals(listOf("write", "clear"), crumbs.history)
+    }
+
+    @Test
+    fun `a signer that does not match leaves no breadcrumb`() = runTest {
+        // Same rule, the other pre-data exit: an install landed, but no data was ever written and the
+        // job returns a reason the user is shown. §8.5 answers for restores that never returned.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(
+            FakeGateway(signer = "00".repeat(32)),
+            FakeInstaller(calls = calls),
+            crumbs,
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertNull(crumbs.current)
+    }
+
+    @Test
+    fun `a restore that never marked itself does not clear another app's breadcrumb`() = runTest {
+        // The store holds one breadcrumb for the whole device. This restore fails before it reaches
+        // its own irreversible step, so it has nothing to take back — and an unguarded clear here
+        // would delete the record of a *different* app's genuinely interrupted restore, silencing the
+        // §8.5 notice for an app this run never touched.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val other = ArchiveBreadcrumb("com.example.other", "Other", startedAt = 1L)
+        val crumbs = RecordingBreadcrumbs().apply { current = other }
+
+        val outcome = useCase(FakeGateway(uid = null), FakeInstaller(calls = calls), crumbs)(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertEquals(other, crumbs.current)
     }
 
     @Test

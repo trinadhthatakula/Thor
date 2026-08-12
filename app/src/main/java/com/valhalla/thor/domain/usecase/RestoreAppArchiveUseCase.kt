@@ -37,8 +37,9 @@ sealed interface ArchiveRestoreOutcome {
      *   install-first restore even though game data *was* placed there — `installBundle` places OBB
      *   inside the install, and `ArchiveInstallOutcome.InstalledWithoutGameData` is the only signal
      *   that path produces. Also null when the archive holds no bundle, or the user did not ask for
-     *   game data. **Nothing reads this field yet**: `AppArchiveWorker` forwards [warnings] alone, so
-     *   a failed placement reaches the user as a warning and a successful one is not reported at all.
+     *   game data. `AppArchiveWorker` logs every arm of it and turns exactly one — the arm no
+     *   [warnings] entry already covers — into a sentence for the user; a failed placement is a
+     *   warning raised here, and a plain success stays quiet.
      */
     data class Completed(
         val classesRestored: List<DataClass>,
@@ -148,6 +149,45 @@ internal class RestoreAppArchiveUseCase(
         val staging =
             if (installFirst || restoreObb) extractBundle(source, header) else BundleStaging.None
         val bundle = (staging as? BundleStaging.Staged)?.file
+
+        // §8.5's marker, written once at whichever irreversible step comes first.
+        //
+        // Idempotent because there are two of those and only one runs per restore: the install on an
+        // install-first restore, the first class swap otherwise. Writing it at the *later* of the two
+        // left a window — install completes, process is killed, no breadcrumb — in which the user is
+        // holding a freshly installed app with no data in it and nothing anywhere says so.
+        var breadcrumbWritten = false
+        suspend fun markRestoreStarted() {
+            if (breadcrumbWritten) return
+            breadcrumbWritten = true
+            if (!breadcrumbs.write(pkg, appLabel)) {
+                // The notice is the only thing that would tell the user a kill mid-restore left this
+                // app half-done. It cannot be made to work from here, but proceeding without saying
+                // so is the silence §8.5 exists to prevent.
+                Logger.e(TAG, "the restore breadcrumb could not be written; proceeding without it")
+                warnings += "Thor could not record that this restore started, " +
+                    "so it will not be able to report it if the restore is interrupted"
+            }
+        }
+
+        /**
+         * A failure that returns a reason, from a point where no data has been written yet.
+         *
+         * The marker answers for a restore that **never returned** — a process kill, a cancel with the
+         * screen gone. A path that returns a reason has already told the user through the job's own
+         * outcome, so leaving the marker standing would add a second, vaguer notice on the next launch
+         * about damage that is not there. It stands past a return in exactly one case, and that case
+         * has its own function: [failWithBreadcrumbKept], for a failure after a class was swapped.
+         *
+         * Guarded on [breadcrumbWritten] rather than clearing unconditionally: the store holds one
+         * breadcrumb for the whole device, so a restore that never wrote one and clears anyway would
+         * delete the record of a *different* app's genuinely interrupted restore.
+         */
+        suspend fun failBeforeAnyDataWasWritten(reason: String): ArchiveRestoreOutcome.Failed {
+            if (breadcrumbWritten) breadcrumbs.clear()
+            return ArchiveRestoreOutcome.Failed(reason, restored)
+        }
+
         try {
             // "There is no bundle" is several different situations and they are kept apart. Collapsing
             // them is how "restore game data, left on, over a data-only archive" became a whole failed
@@ -178,6 +218,11 @@ internal class RestoreAppArchiveUseCase(
                         "its game data too, so it was not left out"
                 }
                 onProgress(ThorJobProgress(ThorJobStage.INSTALLING, appLabel))
+                // Before the install, not after it. An install that lands and is then interrupted
+                // leaves the app on the device with no data in it, which is exactly the half-done
+                // state §8.5 announces — and the announcement is only possible if the marker was
+                // already on disk when the process died.
+                markRestoreStarted()
                 when (val outcome = installer.installBundle(bundle!!, pkg)) {
                     ArchiveInstallOutcome.Installed -> Unit
 
@@ -189,15 +234,14 @@ internal class RestoreAppArchiveUseCase(
                         warnings += "the game data could not be placed: ${outcome.reason}"
 
                     is ArchiveInstallOutcome.Failed ->
-                        return ArchiveRestoreOutcome.Failed(outcome.reason, restored)
+                        return failBeforeAnyDataWasWritten(outcome.reason)
 
                     // Never folded into `Failed`. `session.commit()` is fire-and-forget, so an install
                     // Thor could not confirm may well have succeeded — and writing data into a package
                     // whose install is unconfirmed is how someone's data ends up inside a
                     // half-installed app.
-                    ArchiveInstallOutcome.Unconfirmed -> return ArchiveRestoreOutcome.Failed(
-                        "Thor could not confirm $appLabel finished installing, so it wrote no data",
-                        restored,
+                    ArchiveInstallOutcome.Unconfirmed -> return failBeforeAnyDataWasWritten(
+                        "Thor could not confirm $appLabel finished installing, so it wrote no data"
                     )
                 }
                 // The gate could not check an absent app's signer (Task 11), so this is the only place
@@ -215,28 +259,22 @@ internal class RestoreAppArchiveUseCase(
                 // `installLanded` makes on an unreadable install stamp.
                 val signer = gateway.signerSha256(pkg)
                 if (signer == null || !signer.equals(header.signerSha256, ignoreCase = true)) {
-                    return ArchiveRestoreOutcome.Failed(
-                        "the app that installed is not signed by the key this archive was made from",
-                        restored,
+                    return failBeforeAnyDataWasWritten(
+                        "the app that installed is not signed by the key this archive was made from"
                     )
                 }
             }
 
             // After the install, never from the archive: a reinstalled app has a new uid (§8.2).
             val uid = gateway.appUid(pkg)
-                ?: return ArchiveRestoreOutcome.Failed(
-                    "Thor could not read $appLabel's user id, so it wrote no data", restored
+                ?: return failBeforeAnyDataWasWritten(
+                    "Thor could not read $appLabel's user id, so it wrote no data"
                 )
 
             gateway.forceStop(pkg)
-            if (!breadcrumbs.write(pkg, appLabel)) {
-                // The notice is the only thing that would tell the user a kill mid-swap left this
-                // app's data half-replaced. It cannot be made to work from here, but proceeding
-                // without saying so is the silence §8.5 exists to prevent.
-                Logger.e(TAG, "the restore breadcrumb could not be written; proceeding without it")
-                warnings += "Thor could not record that this restore started, " +
-                    "so it will not be able to report it if the restore is interrupted"
-            }
+            // A no-op on an install-first restore, which marked itself before the install. On every
+            // other restore this is the first irreversible step and the marker goes down here.
+            markRestoreStarted()
 
             val totalBytes = classes.sumOf { header.member(it)?.plainBytes ?: 0L }
             var doneBytes = 0L
@@ -284,8 +322,8 @@ internal class RestoreAppArchiveUseCase(
                 gateway.forceStop(pkg)
                 breadcrumbs.clear()
                 // The real placement rather than a hard-coded `NotNeeded`, which would say nothing
-                // happened when something did. What the *user* is told about it is the warning added
-                // just above; see `Completed.obb` for why the field itself reaches no one yet.
+                // happened when something did. A *failure* reaches the user as the warning added just
+                // above; the other arms are the worker's to report, from this field.
                 return ArchiveRestoreOutcome.Completed(restored, warnings, placement)
             }
 
