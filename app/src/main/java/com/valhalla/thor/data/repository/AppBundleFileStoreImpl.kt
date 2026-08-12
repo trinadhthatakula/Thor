@@ -27,6 +27,23 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
+ * The subdirectory of public Downloads that every write Thor makes lands in.
+ *
+ * One name with four write sites across two files — this store's MediaStore and legacy paths, and
+ * [AppArchiveStoreImpl]'s — so it is defined once. It had drifted: the two archive backends wrote to
+ * Downloads **root** while `AppArchiveStore.currentTargetLabel()`, which resolves through this store,
+ * told the user *"Downloads/Thor"*. The label was right about the convention and wrong about where the
+ * file went, which is the worst way round for the one caption naming a folder the user then has to
+ * find.
+ *
+ * A `const val` on purpose, so it is inlined and nothing has to load a file facade to read it: the
+ * relative path is assembled inside the functions that need it, never in a top-level `val`. A
+ * top-level `val` touching `Environment` would run on the JVM the moment a test called any other
+ * top-level member of the same file, and `AppArchiveStoreImpl.kt` has three that are JVM-tested.
+ */
+internal const val THOR_DOWNLOADS_SUBDIR = "Thor"
+
+/**
  * Android-backed [AppBundleFileStore]: writes bundles to public Downloads
  * (MediaStore on Q+, legacy external storage otherwise) or a user-picked SAF
  * tree, and builds FileProvider content URIs for sharing. All the framework
@@ -100,7 +117,7 @@ class AppBundleFileStoreImpl(
     @RequiresApi(Build.VERSION_CODES.Q)
     private suspend fun writeToDownloadsMediaStore(source: File, mime: String): String {
         val resolver = context.contentResolver
-        val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Thor/"
+        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$THOR_DOWNLOADS_SUBDIR/"
         // MediaStore.insert appends " (1)" instead of overwriting, so delete any same-named
         // entry first. RELATIVE_PATH must match exactly, including the trailing slash.
         val selection =
@@ -137,7 +154,8 @@ class AppBundleFileStoreImpl(
     private suspend fun writeToDownloadsLegacy(source: File): String {
         @Suppress("DEPRECATION")
         val dir = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Thor"
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            THOR_DOWNLOADS_SUBDIR
         )
         if (!dir.exists()) dir.mkdirs()
         val dest = File(dir, source.name)
