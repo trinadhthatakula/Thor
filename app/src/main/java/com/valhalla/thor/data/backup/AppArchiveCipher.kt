@@ -53,13 +53,25 @@ open class ArchiveIntegrityException(message: String, cause: Throwable? = null) 
  * A subtype of [ArchiveIntegrityException] so existing catch-blocks cover it, but distinct so the
  * UI layer can show "wrong passphrase" rather than "your backup is damaged".
  *
- * Thrown by callers when [AppArchiveCipher.verify] returns false — not by [AppArchiveCipher] itself,
- * since [AppArchiveCipher.decryptMember] cannot distinguish a wrong passphrase from a corrupt frame.
+ * **Nothing throws it today.** [AppArchiveCipher] cannot — [AppArchiveCipher.decryptMember] cannot
+ * tell a wrong passphrase from a corrupt frame — and the one production caller that checks the
+ * verifier, `OpenArchiveUseCase.unlock`, returns `ArchiveUnlockOutcome.WrongPassphrase` instead,
+ * which reaches the same user-facing wording without an exception. This type is kept for a caller
+ * that throws rather than returns after [AppArchiveCipher.verify] says false: such a caller must not
+ * have to invent its own type and slip past every `catch (e: ArchiveIntegrityException)` the restore
+ * path already has.
  */
 class ArchivePassphraseException(message: String, cause: Throwable? = null) :
     ArchiveIntegrityException(message, cause)
 
-/** What one encrypted member turned out to be, for the header. */
+/**
+ * What one encrypted member turned out to be.
+ *
+ * [plainBytes] and [chunkCount] are the two the header records — they are `ArchiveMember`'s fields.
+ * [cipherBytes] is **not** on the wire; no header field carries it. It exists for the frame
+ * accounting in `AppArchiveCipherTest`, which is the only place the length prefixes and the tags are
+ * checked to add up to the bytes actually written.
+ */
 data class MemberStats(
     val plainBytes: Long,
     val cipherBytes: Long,
@@ -92,8 +104,21 @@ class AppArchiveCipher {
     fun newNonce(): ByteArray = ByteArray(MEMBER_NONCE_BYTES).also(random::nextBytes)
 
     /**
-     * @param iterations exposed only so tests can derive keys without spending minutes in PBKDF2.
-     *   Production callers pass nothing and get [KDF_ITERATIONS].
+     * Derive an archive's key from [passphrase] and that archive's own [salt].
+     *
+     * @param passphrase **not cleared here.** The caller owns it and may still need it — the vault
+     *   remembers it after a successful unlock. Only the [PBEKeySpec]'s internal copy is cleared.
+     * @param iterations **the archive's number, not Thor's.** This parameter is the format's
+     *   compatibility hinge, not a test affordance: `OpenArchiveUseCase.unlock` is a production caller
+     *   and it passes `header.kdf.iterations`, read straight out of an untrusted `thorbak.json`, so an
+     *   archive written by a Thor whose [KDF_ITERATIONS] differs from this build's still opens. That
+     *   is precisely why `MAX_KDF_ITERATIONS` exists — `unlock` refuses anything outside
+     *   `0 < n <= MAX_KDF_ITERATIONS` before reaching here, because a header-supplied two billion is a
+     *   derivation that never returns inside a worker. **Anything re-deriving a key for an archive it
+     *   holds a header for must pass that header's count**; taking the default there produces a
+     *   different key for every archive not written at today's number, and the failure surfaces as
+     *   "this archive is damaged" rather than as a wrong passphrase. Tests pass it too, to avoid
+     *   spending minutes in PBKDF2 — but that is the smaller of its two jobs.
      */
     fun deriveKey(
         passphrase: CharArray,
@@ -285,12 +310,22 @@ class AppArchiveCipher {
             (header[3].toInt() and 0xFF)
     }
 
-    /** Read until [into] is full or the stream ends; returns how many bytes landed. */
+    /**
+     * Read until [into] is full or the stream ends; returns how many bytes landed.
+     *
+     * `read <= 0`, not `read < 0`. A zero-length read is neither EOF nor progress: `InputStream`'s
+     * contract only permits it when the requested length is zero, which the loop condition already
+     * rules out, so a provider that returns 0 anyway — and `content://` streams do — would spin here
+     * forever. That is a **hang**, with a foreground notification already showing and no exception to
+     * find in a bug report, which is strictly worse to diagnose than a crash. Treating it as the end
+     * of the stream turns it into a short count, and every caller compares the count it got against
+     * the count it asked for and raises [ArchiveIntegrityException].
+     */
     private fun fill(input: InputStream, into: ByteArray): Int {
         var total = 0
         while (total < into.size) {
             val read = input.read(into, total, into.size - total)
-            if (read < 0) break
+            if (read <= 0) break
             total += read
         }
         return total

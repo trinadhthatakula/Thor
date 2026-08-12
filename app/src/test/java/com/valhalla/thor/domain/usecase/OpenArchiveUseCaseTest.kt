@@ -102,6 +102,26 @@ class OpenArchiveUseCaseTest {
     }
 
     @Test
+    fun `a header entry of exactly MAX_HEADER_BYTES is read, not refused`() = runTest {
+        // The other side of the same ceiling. The refusal above sits at the limit **plus one** and
+        // stays red however far the comparison is loosened, so on its own it pins nothing about where
+        // the line is: `raw.size >= MAX_HEADER_BYTES` passes it too, and rejects a header of exactly
+        // the limit. The padding rides in an unknown field, which the decoder is configured to ignore
+        // precisely so a v1 reader survives a v2 document — so the header still decodes to the one
+        // that was encoded.
+        val expected = header()
+        val body = expected.encode()
+        val head = "{\n    \"padding\": \""
+        val tail = "\"," + body.substring(1)
+        val json = head + "x".repeat(MAX_HEADER_BYTES - head.length - tail.length) + tail
+        assertEquals(MAX_HEADER_BYTES, json.toByteArray().size)
+
+        val outcome = useCase.readHeader(FakeSource(mapOf(THORBAK_HEADER_ENTRY to json.toByteArray())))
+
+        assertEquals(expected, (outcome as ArchiveHeaderOutcome.Read).header)
+    }
+
+    @Test
     fun `the header is read without a passphrase`() = runTest {
         // §8.1: the restore screen shows package, version, date and classes held *before* it asks for
         // anything. If reading the header needed the key, the gate could not run first.
@@ -139,7 +159,43 @@ class OpenArchiveUseCaseTest {
         // never returns; it runs on the IO dispatcher and hangs the restore worker indefinitely.
         val outcome = useCase.unlock(header().copy(kdf = ArchiveKdf(iterations = MAX_KDF_ITERATIONS + 1, salt = "AAAA")), "x".toCharArray())
 
-        assertTrue(outcome.toString(), outcome is ArchiveUnlockOutcome.Unsupported)
+        // The **reason**, not just `Unsupported`. The salt here is deliberately unusable, so removing
+        // the iteration ceiling altogether still returns `Unsupported` — for the salt, one check
+        // later. Only the wording says which guard fired.
+        val unsupported = outcome as ArchiveUnlockOutcome.Unsupported
+        assertTrue(unsupported.reason, unsupported.reason.contains("key-derivation rounds"))
+    }
+
+    @Test
+    fun `an iteration count of exactly MAX_KDF_ITERATIONS is not refused for being too high`() =
+        runTest {
+            // The accept side of that ceiling, which nothing pinned: `iterations >= MAX_KDF_ITERATIONS`
+            // passes the refusal test above and locks out an archive written at exactly the limit.
+            //
+            // The derivation is never run — four million rounds of PBKDF2 in a unit test is minutes —
+            // and it does not need to be. `unlock` checks the iteration range **first**, so a header
+            // that is unusable for a later reason proves the ceiling let it through: the reason comes
+            // back naming the salt, not the rounds. Reinstate the off-by-one and this fails, because
+            // the iteration message arrives instead.
+            val atLimit = ArchiveKdf(iterations = MAX_KDF_ITERATIONS, salt = "not base64 !!")
+
+            val outcome = useCase.unlock(header().copy(kdf = atLimit), "x".toCharArray())
+
+            val unsupported = outcome as ArchiveUnlockOutcome.Unsupported
+            assertTrue(unsupported.reason, unsupported.reason.contains("salt"))
+            assertTrue(unsupported.reason, !unsupported.reason.contains("key-derivation rounds"))
+        }
+
+    @Test
+    fun `an iteration count of one is derived rather than refused`() = runTest {
+        // The bottom of the same range, and the reason it is `iterations <= 0` rather than a minimum:
+        // the ceiling exists to stop a hang, and Thor is not in the business of refusing a weakly
+        // derived archive the user already owns. One round is cheap, so this one really derives.
+        val weak = header(iterations = 1)
+
+        val outcome = useCase.unlock(weak, "correct horse".toCharArray())
+
+        assertTrue(outcome.toString(), outcome is ArchiveUnlockOutcome.Unlocked)
     }
 
     @Test

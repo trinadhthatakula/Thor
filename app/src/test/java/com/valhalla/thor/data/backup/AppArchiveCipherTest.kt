@@ -7,6 +7,8 @@ import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import com.valhalla.thor.domain.model.KDF_SALT_BYTES
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.InputStream
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 import org.junit.Assert.assertArrayEquals
@@ -45,11 +47,32 @@ class AppArchiveCipherTest {
         chunkCount: Int,
         name: String = member,
         k: SecretKey = key(),
+        memberNonce: ByteArray = nonce,
     ): ByteArray {
         val out = ByteArrayOutputStream()
-        cipher.decryptMember(name, ByteArrayInputStream(bytes), out, k, nonce, chunkCount)
+        cipher.decryptMember(name, ByteArrayInputStream(bytes), out, k, memberNonce, chunkCount)
         return out.toByteArray()
     }
+
+    /**
+     * The **message**, not just the type.
+     *
+     * Nearly everything `decryptMember` refuses is an [ArchiveIntegrityException], so the type alone
+     * cannot say *which* check fired. Several of the tests below reach the same type through two
+     * different guards, and it is the wording that distinguishes "this header is malformed" from
+     * "this ciphertext is damaged" — and that notices when one of the two guards is deleted.
+     */
+    private fun assertMessageContains(ex: Throwable, needle: String) =
+        assertTrue("message was \"${ex.message}\"", ex.message?.contains(needle) == true)
+
+    /** A hand-built frame: 4-byte big-endian declared length, then whatever bytes follow it. */
+    private fun frame(declaredLength: Int, payload: ByteArray): ByteArray =
+        byteArrayOf(
+            ((declaredLength ushr 24) and 0xFF).toByte(),
+            ((declaredLength ushr 16) and 0xFF).toByte(),
+            ((declaredLength ushr 8) and 0xFF).toByte(),
+            (declaredLength and 0xFF).toByte(),
+        ) + payload
 
     @Test
     fun `a multi-chunk member round trips byte for byte`() {
@@ -125,6 +148,31 @@ class AppArchiveCipherTest {
     }
 
     @Test
+    fun `a member truncated at a frame boundary with its chunk count rewritten to match is detected`() {
+        // The attack `chunkCount` alone does **not** close, and the reason the AAD carries a
+        // final-chunk bit at all. `thorbak.json` is plaintext and sits outside the AEAD envelope, so
+        // the count is editable by anyone who can edit the container: cut the last frame off a member,
+        // drop `chunkCount` to match, and every surviving frame still authenticates at its own index
+        // under its own name. What refuses it is the bit — chunk 0 was sealed as "not the last" and is
+        // being presented as the last.
+        //
+        // The test above removes the same 520 bytes but leaves `chunkCount` at 2, so it is refused by
+        // the frame loop and says nothing about the bit. Erase the bit from `aad()` (both call sites
+        // move together, which is why no round-trip test can see it) and this member decrypts and
+        // authenticates perfectly as a silently short plaintext, which restore then writes over the
+        // user's real data — the exact failure mode the ban on `CipherInputStream` exists to prevent,
+        // reached through the unauthenticated header instead of through the stream.
+        val (bytes, stats) = encrypt(ByteArray(CHUNK_PLAINTEXT_BYTES + 500) { 1 })
+        assertEquals(2, stats.chunkCount)
+        val cut = bytes.copyOf(bytes.size - 520)
+
+        val ex = assertThrows(ArchiveIntegrityException::class.java) { decrypt(cut, 1) }
+
+        // Chunk 0 itself is what fails, not a missing chunk 1: the frame is whole and present.
+        assertMessageContains(ex, "chunk 0 failed authentication")
+    }
+
+    @Test
     fun `a stream truncated inside a frame is detected`() {
         val (bytes, stats) = encrypt(ByteArray(2048) { 5 })
 
@@ -137,9 +185,13 @@ class AppArchiveCipherTest {
     fun `a stream carrying more chunks than the header declares is detected`() {
         val (bytes, stats) = encrypt(ByteArray(64) { 2 })
 
-        assertThrows(ArchiveIntegrityException::class.java) {
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
             decrypt(bytes + bytes, stats.chunkCount)
         }
+
+        // The trailing-bytes check at the end of `decryptMember`, named so this stays the test that
+        // covers it: the chunk-count tests below deliberately no longer travel through it.
+        assertMessageContains(ex, "carries more data")
     }
 
     @Test
@@ -176,10 +228,128 @@ class AppArchiveCipherTest {
     }
 
     @Test
-    fun `a declared chunk count of zero is refused`() {
-        val (bytes, _) = encrypt(ByteArray(16))
+    fun `a declared chunk count of zero is refused by the guard that names it`() {
+        // Deliberately an **empty** stream. This test used to hand `decryptMember` a real one-frame
+        // member, which the trailing-bytes check refuses on its own — so the `chunkCount <= 0` guard
+        // the test is named for was never what fired, and the guard sat unpinned behind a green test.
+        // With nothing to read, the frame loop never runs and the trailing-bytes check sees EOF, so
+        // the guard is the only thing left that can refuse this.
+        val ex = assertThrows(ArchiveIntegrityException::class.java) { decrypt(ByteArray(0), 0) }
 
-        assertThrows(ArchiveIntegrityException::class.java) { decrypt(bytes, 0) }
+        assertMessageContains(ex, "declares 0 chunks")
+    }
+
+    @Test
+    fun `a negative chunk count is refused`() {
+        // The other half of `<= 0`. `chunkCount` is a plain `Int` decoded from an unauthenticated
+        // `thorbak.json`, so a negative one is a value a corrupt or hostile header really can carry.
+        val ex = assertThrows(ArchiveIntegrityException::class.java) { decrypt(ByteArray(0), -1) }
+
+        assertMessageContains(ex, "declares -1 chunks")
+    }
+
+    @Test
+    fun `a nonce longer than the format's is refused, not copied past the end of the IV`() {
+        // This guard is the **only** thing on the untrusted-header path. The nonce is Base64-decoded
+        // straight out of `thorbak.json` by `RestoreAppArchiveUseCase`, which checks that it decodes
+        // and nothing else. Remove this and `iv()`'s `nonce.copyInto(iv)` throws
+        // ArrayIndexOutOfBoundsException — neither a GeneralSecurityException (so `decryptMember`'s
+        // own catch misses it) nor an IOException (so both catches at the call site miss it) — and it
+        // escapes `RestoreAppArchiveUseCase.invoke`, costing the caller the per-class report that
+        // tells the user what was and was not restored.
+        val (bytes, stats) = encrypt(ByteArray(64) { 6 })
+        val overlong = ByteArray(MEMBER_NONCE_BYTES + 5) { it.toByte() }
+
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
+            decrypt(bytes, stats.chunkCount, memberNonce = overlong)
+        }
+
+        assertMessageContains(ex, "nonce is 13 bytes")
+    }
+
+    @Test
+    fun `a nonce shorter than the format's is refused by the guard, not by a failed tag`() {
+        // The wording is the whole test. A short nonce still builds a 12-byte IV — `copyInto` leaves
+        // the rest zero — so without the guard decryption runs to `doFinal` and fails the tag, which
+        // is an ArchiveIntegrityException too. Only the message separates "this header is malformed"
+        // from "this ciphertext is damaged", and only the message notices the guard going away.
+        val (bytes, stats) = encrypt(ByteArray(64) { 6 })
+
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
+            decrypt(bytes, stats.chunkCount, memberNonce = ByteArray(4) { it.toByte() })
+        }
+
+        assertMessageContains(ex, "nonce is 4 bytes")
+    }
+
+    @Test
+    fun `a frame declaring less than a tag's worth of bytes is refused before it is decrypted`() {
+        // 15 = one below the 16-byte tag: a frame that cannot hold even its own tag. Without the
+        // bound those 15 bytes are read and handed to `doFinal`, which reports them as a failed tag —
+        // same exception type, wrong cause, and a bound whose deletion no test notices.
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
+            decrypt(frame(15, ByteArray(15)), 1)
+        }
+
+        assertMessageContains(ex, "declares 15 bytes")
+    }
+
+    @Test
+    fun `a frame declaring more than a chunk plus its tag is refused before it is allocated`() {
+        // Refused on the declared number, before `ByteArray(length)` is allocated from it — which is
+        // what keeps a header claiming a two-gigabyte frame from being an OOM instead of a message.
+        val tooLong = CHUNK_PLAINTEXT_BYTES + 16 + 1
+
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
+            decrypt(frame(tooLong, ByteArray(64)), 1)
+        }
+
+        assertMessageContains(ex, "declares $tooLong bytes")
+    }
+
+    @Test
+    fun `the frame-length bound accepts both of its own limits`() {
+        // The two tests above fire one byte outside each end; nothing pinned that the ends themselves
+        // are *inside*. Both are lengths a member Thor writes today actually carries — an empty class
+        // is a frame of exactly 16, a full chunk a frame of exactly CHUNK_PLAINTEXT_BYTES + 16 — so
+        // tightening either comparison by one makes real archives unreadable.
+        val (smallest, smallestStats) = encrypt(ByteArray(0))
+        val (largest, largestStats) = encrypt(ByteArray(CHUNK_PLAINTEXT_BYTES))
+
+        assertEquals(4 + 16, smallest.size)
+        assertEquals(4 + CHUNK_PLAINTEXT_BYTES + 16, largest.size)
+        assertEquals(0, decrypt(smallest, smallestStats.chunkCount).size)
+        assertEquals(CHUNK_PLAINTEXT_BYTES, decrypt(largest, largestStats.chunkCount).size)
+    }
+
+    @Test
+    fun `a stream that answers every read with zero is not read forever`() {
+        // A stream that returns 0 rather than blocking or reporting EOF breaks `InputStream`'s
+        // contract, and `content://` streams have been seen to do it. `fill` must treat it as the end
+        // of the stream; the alternative is an unbounded spin — a **hang**, behind a foreground
+        // notification, with no exception anywhere to point at it, which is worse to diagnose than a
+        // crash. The call counter is what makes that a failing test rather than a build that never
+        // finishes: without the guard `fill` asks again immediately and the stream raises a plain
+        // IOException, which is not an ArchiveIntegrityException.
+        val stuck = object : InputStream() {
+            var calls = 0
+                private set
+
+            override fun read(): Int = 0
+
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                calls++
+                if (calls > 1_000) throw IOException("fill kept reading past a zero-length read")
+                return 0
+            }
+        }
+
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
+            cipher.decryptMember(member, stuck, ByteArrayOutputStream(), key(), nonce, 1)
+        }
+
+        assertMessageContains(ex, "ended before chunk 0")
+        assertEquals("fill must stop at the first zero-length read", 1, stuck.calls)
     }
 
     @Test
