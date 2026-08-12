@@ -53,10 +53,19 @@ class ThorJobNotifications(private val context: Context) {
     /**
      * Post or refresh the progress notification.
      *
-     * Returns early when notifications are globally disabled — the foreground service still runs,
-     * surfaced in the system's Task Manager row rather than the shade; the cancel PendingIntent
-     * WorkManager built keeps working on that surface. This early return is a cheap IPC guard, not a
-     * gate on POST_NOTIFICATIONS specifically.
+     * Returns early when notifications are globally disabled. That is a cheap IPC guard — posting to
+     * a blocked channel is a no-op anyway — and it is **not** a gate on `POST_NOTIFICATIONS`
+     * specifically.
+     *
+     * Be exact about what the user is left with on that path, because the sentence this replaced was
+     * wrong in both halves. The system's Task Manager row is an **API 33+** surface; Thor's minSdk is
+     * 28, so on API 28–32 a job whose notification is blocked has no user-visible surface at all —
+     * no indication it is running, and no way to stop it short of force-stopping Thor. And the row
+     * that does exist on 33+ renders the app and a **Stop** button; it does not render a
+     * notification's actions, so the cancel `PendingIntent` [build] attaches does not reach it. Its
+     * Stop force-stops the process, which runs none of [ThorJobWorker]'s `finally` — no registry
+     * clear, no key drop, no notification cancel. §8.5's breadcrumb is what covers that for a
+     * restore; a backup relies on the launch sweep.
      *
      * `POST_NOTIFICATIONS` can be revoked while the job runs. If a revocation races a [notify] call,
      * the resulting [SecurityException] is caught so that a revoked permission does not fail the backup.
@@ -97,7 +106,9 @@ class ThorJobNotifications(private val context: Context) {
             val percent = progress.percent
             if (percent == null) setProgress(0, 0, true) else setProgress(100, percent, false)
             // createCancelPendingIntent needs no receiver of Thor's own, and it cancels the work
-            // rather than just dismissing the notification.
+            // rather than just dismissing the notification. It is a live cancel of a running job:
+            // ThorJobLauncher.cancel is not the only route to a CANCELLED WorkInfo, and both
+            // watchers' `workerRan` arms exist for the state this action can leave behind.
             addAction(
                 0,
                 context.getString(android.R.string.cancel),
@@ -110,6 +121,14 @@ class ThorJobNotifications(private val context: Context) {
         ThorJobKind.ARCHIVE_RESTORE -> R.string.job_restoring
     }
 
+    /**
+     * One id per [ThorJobKind], which means two jobs of the same kind would share a notification.
+     *
+     * Safe only because `THOR_JOB_CHAIN` carries no target: every archive job is appended to one
+     * chain, so at most one runs at a time. The day someone puts the target into the unique name to
+     * get parallelism — `jobTag(kind, target)` already exists and is the obvious source — this
+     * silently collapses two jobs onto one row, and the first to finish cancels the second's.
+     */
     private fun notificationId(kind: ThorJobKind) = BASE_NOTIFICATION_ID + kind.ordinal
 
     private fun ensureChannel() {

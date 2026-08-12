@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.backup.job
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
@@ -137,10 +138,15 @@ abstract class ThorJobWorker(
      *
      * `setProgress` is deliberately absent — see [JobRegistry]. Calling it here would put an SQLite
      * write on the copy loop's hot path and cap observed updates at roughly one a second.
+     *
+     * The throttle is on [SystemClock.elapsedRealtime], the monotonic clock, and not on wall time.
+     * An NTP correction or a user setting the clock back mid-job makes a wall-clock delta negative,
+     * and a negative delta never clears the interval — the shade would then stop updating for the
+     * rest of a multi-gigabyte backup, recovering only at the next stage change.
      */
     protected fun publish(progress: ThorJobProgress) {
         registry.publish(id, progress)
-        val now = System.currentTimeMillis()
+        val now = SystemClock.elapsedRealtime()
         if (now - lastNotifyMs >= NOTIFICATION_INTERVAL_MS || progress.stage != lastNotifyStage) {
             lastNotifyMs = now
             lastNotifyStage = progress.stage

@@ -14,6 +14,8 @@ import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BACKUP_PACKAGE_KEY
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
+import com.valhalla.thor.domain.model.KDF_ITERATIONS
+import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.RESTORE_PACKAGE_KEY
 import com.valhalla.thor.domain.model.ThorJobKind
@@ -67,12 +69,18 @@ internal class ArchiveBackupWorker(
     /**
      * The package name, not the label.
      *
-     * `getForegroundInfo()` runs before `doWork` and cannot afford a `PackageManager` round trip on
-     * the path that has to promote the service within a few seconds. The first `publish()` from the
-     * use case replaces it with the label, well before a user reads the shade — but only because
-     * `runJob` resolves the `AppInfo` and hands `appLabel` down. Without that parameter the use case
-     * publishes `request.packageName`, then the `.xapk` file name, then a `DataClass` id, and the
-     * shade shows `com.supercell.clashofclans` for the whole job. See the `backup(…)` call below.
+     * `getForegroundInfo()` is on the path that has to promote the service within a few seconds —
+     * `ThorJobWorker.doWork` opens with `setForeground(getForegroundInfo())` — and a `PackageManager`
+     * round trip does not belong there. **WorkManager itself never calls it for this work**: it
+     * invokes `getForegroundInfoAsync()` from `WorkForegroundRunnable` only for an expedited
+     * `WorkSpec`, and neither request `ThorJobLauncher` builds calls `setExpedited`. The deadline is
+     * real; the call order the comment here used to assert was not.
+     *
+     * The first `publish()` from the use case replaces this with the label, well before a user reads
+     * the shade — but only because `runJob` resolves the `AppInfo` and hands `appLabel` down. Without
+     * that parameter the use case publishes `request.packageName`, then the `.xapk` file name, then a
+     * `DataClass` id, and the shade shows `com.supercell.clashofclans` for the whole job. See the
+     * `backup(…)` call below.
      */
     override val initialLabel: String
         get() = inputData.getString(BACKUP_PACKAGE_KEY).orEmpty()
@@ -153,16 +161,22 @@ internal class ArchiveBackupWorker(
      * `ObbInstaller.usableBytes` and `AppBundleBuilderImpl`, and the reason #373's cache-clear bug is
      * the cautionary tale attached to obeying that hint.
      *
-     * The **larger** of the two candidate volumes on purpose. `AppDataArchiveGatewayImpl.stagingFile`
-     * picks internal cache and falls back to external, and this cannot see which it chose;
-     * over-reporting costs a `tar` that fails and is retried, while under-reporting would skip a class
-     * the device could have held. Zero from both is "unmeasurable", which the rule fails open on.
+     * **`cacheDir` alone, and never the larger of two volumes.** `AppDataArchiveGatewayImpl.stagingRoot`
+     * resolves `File(context.cacheDir, AppDataArchiveStagingDir.NAME)` and has no external fallback —
+     * that is a §14 limitation held on purpose, because a staged tar is plaintext app data and
+     * external cache is world-readable on some device configurations. Measuring the *larger* of the
+     * two therefore reported another volume's free space for a write that only ever lands on this
+     * one, which is precisely how §7.4's gate is defeated: on a phone with a roomy SD card and a full
+     * internal partition it passes every class and the `tar` fills the device.
+     *
+     * Nor is over-reporting cheap. `ThorJobWorker` forbids `Result.retry()` outright — the key is in
+     * process memory and a retry cannot succeed — so a `tar` that runs out of space ends the backup
+     * after however many gigabytes it had already written.
+     *
+     * Zero is "unmeasurable", which the rule deliberately fails open on.
      */
     @Suppress("UsableSpace")
-    private fun usableStagingBytes(): Long = maxOf(
-        applicationContext.cacheDir?.usableSpace ?: 0L,
-        applicationContext.externalCacheDir?.usableSpace ?: 0L,
-    )
+    private fun usableStagingBytes(): Long = applicationContext.cacheDir?.usableSpace ?: 0L
 }
 
 /**
@@ -203,6 +217,13 @@ internal class ArchiveRestoreWorker(
             ?: return fail("Thor could not open that backup file")
 
         return source.use {
+            // Exhaustive on purpose, and left exhaustive on purpose. `ArchiveHeaderOutcome` has two
+            // arms today and the review asked whether a third — an `Unreadable` distinct from
+            // `NotAnArchive` — should be added. It is not added here: the type and its only producer
+            // are `OpenArchiveUseCase`'s, outside this slice, and adding an `else ->` here *first*
+            // would trade the compiler error that forces this site to be revisited for silence. This
+            // `when` failing to compile is the mechanism by which a new arm gets a considered
+            // sentence rather than a default one, so it stays the way it is until the arm exists.
             val header = when (val read = openArchive.readHeader(source)) {
                 is ArchiveHeaderOutcome.Read -> read.header
                 is ArchiveHeaderOutcome.NotAnArchive -> return@use fail(read.reason)
@@ -212,6 +233,10 @@ internal class ArchiveRestoreWorker(
             if (header.packageName != request.packageName) {
                 return@use fail("that backup file is not ${request.packageName}'s any more")
             }
+            // Before a byte is decrypted, because the key in hand may be the wrong one — see
+            // [unsupportedKdfReason]. `header.kdf.iterations` is the archive's number; the key
+            // `ThorJobLauncher` derived used this build's.
+            unsupportedKdfReason(header.kdf.iterations)?.let { return@use fail(it) }
 
             // Resolved once and handed to the use case below, which would otherwise ask the
             // repository for the same package a second line later. `null` is "not installed", which
@@ -264,25 +289,119 @@ internal class ArchiveRestoreWorker(
                 }
             ) {
                 is ArchiveRestoreOutcome.Completed -> {
-                    outcome.warnings.forEach { Logger.w(TAG, it) }
+                    // The only reader of `Completed.obb` in the app — its KDoc used to say nothing
+                    // read it. Logged in full at every arm, and turned into a sentence only for the
+                    // arm no other channel covers; see [obbNotice].
+                    outcome.obb?.let { Logger.i(TAG, "game data placement: $it") }
+                    val warnings = outcome.warnings + listOfNotNull(obbNotice(outcome.obb))
+                    warnings.forEach { Logger.w(TAG, it) }
                     // Carried out on the *success* result, not only logged. These are the sentences a
                     // restore finished in spite of — game data that could not be placed, a breadcrumb
                     // that could not be written — and a user whose game now starts and crashes has no
                     // other way to learn why. `Data` caps at 10 KB; the use case produces at most
                     // three short sentences.
-                    Result.success(workDataOf(JOB_WARNINGS_KEY to outcome.warnings.toTypedArray()))
+                    Result.success(workDataOf(JOB_WARNINGS_KEY to warnings.toTypedArray()))
                 }
 
-                is ArchiveRestoreOutcome.Failed -> fail(
-                    if (outcome.classesRestored.isEmpty()) {
-                        outcome.reason
-                    } else {
-                        // Partial is not failure-with-nothing-done, and a user who is told only
-                        // "failed" will not know their app is now holding half-restored data.
-                        "${outcome.reason} (${outcome.classesRestored.joinToString { c -> c.id }} was already replaced)"
-                    }
-                )
+                is ArchiveRestoreOutcome.Failed -> fail(restoreFailureReason(outcome))
             }
         }
     }
+}
+
+/**
+ * Why this build cannot restore an archive whose KDF count is not its own — or null when it can.
+ *
+ * The divergence this closes is real and silent. `ThorJobLauncher.startRestore` derives the job's key
+ * with `AppArchiveCipher.deriveKey(passphrase, salt)` — **no iteration count**, so the default
+ * [KDF_ITERATIONS], this build's number. `OpenArchiveUseCase.unlock` passes `header.kdf.iterations`,
+ * the archive's own. For any archive not written at today's count the two derive different keys from
+ * the same passphrase, so the confirm screen unlocks it, the job starts, and then every member fails
+ * its GCM tag. What the user reads is that the backup is damaged. It is not; the build is.
+ *
+ * The worker cannot repair that by re-deriving: it never sees a passphrase, which is the whole reason
+ * the key travels through `ArchiveKeyHolder` (§9.2). Refusing before anything is written, and saying
+ * which number the archive wants, is the whole of what this layer can do — and it is strictly better
+ * than the alternative, because "damaged archive" sends someone to check their file and their storage
+ * rather than their Thor version. The complete fix is an `iterations` parameter on
+ * `ArchiveJobLauncher.startRestore`, carried from the header the restore screen already holds; that
+ * port and its caller are outside this slice and are recorded as a hand-off.
+ *
+ * Nothing this build writes can trip this: `BackupAppArchiveUseCase` stamps the header with the same
+ * [KDF_ITERATIONS] the launcher derives at. It fires for an archive from a Thor whose constant
+ * differed — which is exactly the compatibility `deriveKey`'s `iterations` parameter exists to
+ * provide and which this path, alone, does not honour.
+ *
+ * Top-level rather than a method so a JVM test can reach it: nothing inside a `CoroutineWorker` is
+ * reachable without an Android runtime, and this module has no Robolectric.
+ */
+internal fun unsupportedKdfReason(iterations: Int): String? =
+    if (iterations == KDF_ITERATIONS) {
+        null
+    } else {
+        "this backup was written with a different key setting ($iterations rounds, not " +
+            "$KDF_ITERATIONS), and this version of Thor cannot restore it"
+    }
+
+/**
+ * The sentence a failed restore reports, including what it may have destroyed.
+ *
+ * Three facts, and the third is the one that was being dropped:
+ *  - [ArchiveRestoreOutcome.Failed.reason], always.
+ *  - [ArchiveRestoreOutcome.Failed.classesRestored] — a partial restore is not "nothing happened",
+ *    and a user told only "failed" does not know their app is now holding another day's data.
+ *  - [ArchiveRestoreOutcome.Failed.classPossiblyCleared] — populated by `RestoreAppArchiveUseCase` on
+ *    a `SwapFailed`, and until now read by nobody. `swapStagedEntriesCommand` deletes the class root's
+ *    entries and *then* moves the staged ones in, so a single non-zero exit spans "the guard stopped
+ *    it before anything was deleted" and "the delete ran and the move did not". The second of those
+ *    is the app's data gone with nothing in its place, §8.3 has no undo rung, and the user is the only
+ *    one who can act on it — by restoring again, or by not launching the app until they have. Saying
+ *    nothing tells them less than the truth at the one moment the truth is that their data may be gone.
+ *
+ * Deliberately hedged rather than asserted. Thor does not know which of the two states it is in, and
+ * a sentence that claimed the data *was* cleared would be wrong roughly as often as it was right.
+ *
+ * Top-level for the same reason as [unsupportedKdfReason]: this is the only way it can be tested.
+ */
+internal fun restoreFailureReason(outcome: ArchiveRestoreOutcome.Failed): String = buildString {
+    append(outcome.reason)
+    if (outcome.classesRestored.isNotEmpty()) {
+        append(" (")
+        append(outcome.classesRestored.joinToString { dataClass -> dataClass.id })
+        append(" was already replaced)")
+    }
+    val cleared = outcome.classPossiblyCleared
+    if (cleared != null) {
+        append(". Thor could not tell whether ")
+        append(cleared.id)
+        append(" was left as it was or emptied, so check the app before you use it")
+    }
+}
+
+/**
+ * What to tell the user about [ObbPlacement], or null when another channel already says it.
+ *
+ * This is the reader `ArchiveRestoreOutcome.Completed.obb` did not have. Arm by arm:
+ *  - `null` — no placement ran. An install-first restore (`installBundle` places game data inside the
+ *    install), a data-only archive, or the user did not ask for it. Nothing to report.
+ *  - [ObbPlacement.Failed] — `RestoreAppArchiveUseCase` has **already** added "the game data could not
+ *    be placed: …" to `warnings`, with the same reason. A second sentence here would print it twice.
+ *  - [ObbPlacement.Placed] — game data landed, which is the restore working. It reaches the user as
+ *    the log line at the call site and nothing more: the screen renders this array under
+ *    `R.string.restore_done_warnings`, "Some parts did not finish:", and good news does not belong
+ *    under that heading.
+ *  - [ObbPlacement.NotNeeded] — the one arm no channel covers. The user ticked "restore game data",
+ *    the archive *did* carry an installer, and it turned out to hold no expansion files. The existing
+ *    "this archive holds no game data" warning is not this case: it is raised earlier and only when
+ *    there is no bundle at all. Without this line the checkbox silently does nothing.
+ *
+ * Exhaustive on [ObbPlacement] on purpose — a fourth arm should not compile until someone has decided
+ * what it says.
+ */
+internal fun obbNotice(placement: ObbPlacement?): String? = when (placement) {
+    null -> null
+    is ObbPlacement.Failed -> null
+    is ObbPlacement.Placed -> null
+    ObbPlacement.NotNeeded ->
+        "the app installer in this backup carries no game data, so none was placed"
 }

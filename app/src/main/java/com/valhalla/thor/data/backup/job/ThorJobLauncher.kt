@@ -6,6 +6,7 @@ package com.valhalla.thor.data.backup.job
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -21,9 +22,15 @@ import com.valhalla.thor.domain.repository.ArchiveJobLauncher
 import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.util.Logger
 import java.util.UUID
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executor
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
@@ -152,13 +159,19 @@ class ThorJobLauncher(
     /**
      * Cancel a job this launcher started, dropping its key **first**.
      *
-     * **No call sites as of Task 17, and deliberately not on [ArchiveJobLauncher].** Three pieces of
-     * copy are written on the premise that nothing in Thor cancels a live restore — `RestoreFinish`,
-     * `ArchiveRestoreScreen.RestoreOutcome`, and `restore_cancelled` in `strings_backup.xml`, whose
-     * "nothing was changed" is earned only because the cancels users actually see are chain
-     * dependents that never ran. **Adding a caller means revisiting all three**, starting with the
-     * `workerRan` flag the restore screen reads. It is kept because it is the only place that gets the
-     * key-drop-before-cancel order right, and a future caller writing its own would get it wrong.
+     * **No Kotlin call sites, and deliberately not on [ArchiveJobLauncher] — but not the only route
+     * to a cancelled job.** Every ongoing progress notification carries the `PendingIntent`
+     * `WorkManager.createCancelPendingIntent` builds (see [ThorJobNotifications]), so a user can
+     * cancel a *running* backup or restore from the shade without any of this class being involved.
+     * The comment that used to sit here said the opposite, and said three pieces of copy rested on
+     * it; they do not. Both watchers split their cancelled arm on whether they saw the job RUNNING
+     * — `RestoreFinish.Cancelled.workerRan`, `BackupFinish.Cancelled.workerRan` — and the arm that
+     * ran renders the damage sentence rather than "nothing was changed". §8.5's breadcrumb is the
+     * second, independent report: nothing on the cancellation path clears it, so a cancel that lands
+     * mid-swap is still announced at the next launch.
+     *
+     * This is kept because it is the only place that gets the key-drop-before-cancel order right, and
+     * a future caller writing its own would get it wrong.
      *
      * The order is the whole point. `ThorJobWorker`'s `finally` drops the key on every path its
      * `doWork` can reach, but a job cancelled between [ArchiveKeyHolder.put] and WorkManager actually
@@ -183,11 +196,82 @@ class ThorJobLauncher(
             .onFailure { Logger.e(TAG, "could not cancel $jobId", it) }
     }
 
-    /** Drops the key if the enqueue itself throws — otherwise key material sits in memory for a job that will never run. */
-    private inline fun enqueue(id: UUID, block: () -> Unit): UUID? =
-        runCatching { block(); id }.getOrElse {
-            Logger.e(TAG, "enqueue failed", it)
-            keys.drop(id.toString())
-            null
+    /**
+     * Enqueue, **wait for WorkManager to say it worked**, and hand back the id — or drop the key and
+     * hand back null.
+     *
+     * The wait is the point. `WorkContinuation.enqueue()` does its real work on WorkManager's task
+     * executor and reports the result on the returned [Operation]; catching only what is thrown
+     * synchronously catches argument validation and nothing else. A `WorkSpec` insert that fails, a
+     * corrupt WorkManager database, an internal executor that rejects the task — all of those arrive
+     * as a failed [Operation] and used to be invisible here, so this returned an id for a row that
+     * does not exist.
+     *
+     * What that cost downstream is worth naming, because no consumer can fix it: `getWorkInfoByIdFlow`
+     * emits null forever for an id with no row, [status] maps null to [ThorJobStatus.Gone], and both
+     * watchers correctly treat a first-and-only `Gone` as "not started yet" rather than as terminal.
+     * The screen then sits on a progress bar for a job that will never exist, with no timeout
+     * anywhere. This is the one hole underneath that rule, and it is created here.
+     */
+    private suspend fun enqueue(id: UUID, block: () -> Operation): UUID? {
+        val operation = try {
+            block()
+        } catch (e: Exception) {
+            return abandon(id, "enqueue was refused", e)
         }
+        return try {
+            operation.awaitSuccess()
+            id
+        } catch (e: CancellationException) {
+            // Only the *wait* was cancelled; the work is already with WorkManager and the worker that
+            // will take this key is real. Dropping it here would fail that job for the one reason it
+            // must never fail for.
+            throw e
+        } catch (e: Exception) {
+            abandon(id, "enqueue failed", e)
+        }
+    }
+
+    /** Key material must not sit in memory for a job that will never run. */
+    private fun abandon(id: UUID, what: String, cause: Throwable): UUID? {
+        Logger.e(TAG, what, cause)
+        keys.drop(id.toString())
+        return null
+    }
+}
+
+/**
+ * [Operation.getResult] as a suspending call.
+ *
+ * WorkManager ships `Operation.await()` and it would do exactly this — but it is a
+ * `public suspend inline fun` whose body calls `androidx.concurrent.futures.await`, and
+ * `concurrent-futures-ktx` is a **runtime**-scope dependency of `work-runtime`. The inliner needs
+ * that declaration at compile time, so the shipped extension is not reachable from here without
+ * adding a dependency for one call site.
+ *
+ * The listener runs on whichever thread completed the future — a direct [Executor] — because all it
+ * does is resume a continuation. No cancellation is propagated to the future: by the time this is
+ * awaited the enqueue is already in flight, and cancelling the wait must not be mistaken for
+ * cancelling the work. A `resume` on a continuation that was cancelled meanwhile is a no-op.
+ *
+ * Top-level and `private` to this file for the same reason the class is `@Single`: it is one
+ * launcher's plumbing, not a general-purpose adapter.
+ */
+private suspend fun Operation.awaitSuccess(): Operation.State.SUCCESS {
+    val future = result
+    return suspendCancellableCoroutine { continuation ->
+        future.addListener(
+            {
+                try {
+                    continuation.resume(future.get())
+                } catch (e: ExecutionException) {
+                    // The future wraps the real failure; the cause is what says what went wrong.
+                    continuation.resumeWithException(e.cause ?: e)
+                } catch (e: Exception) {
+                    continuation.resumeWithException(e)
+                }
+            },
+            Executor { it.run() },
+        )
+    }
 }
