@@ -10,7 +10,6 @@
     <string name="settings">Paramètres</string>
     <string name="settings_desc">Page de paramètres pour modifier les options de l\'application</string>
     <string name="config_engine_v">Moteur de configuration • v%1$s</string>
-    <string name="general">GÉNÉRAL</string>
     <string name="show_reinstall_card">Afficher la carte de réinstallation</string>
     <string name="show_reinstall_card_desc">Afficher le rappel Fix Store sur l\'écran d\'accueil</string>
     <string name="show_installer_tile">Afficher la tuile d\'installation</string>
@@ -22,21 +21,17 @@
     <string name="show_extensions_tile_desc">Afficher les extensions sur l\'écran d\'accueil</string>
     <string name="default_tab">Onglet par défaut</string>
     <string name="default_tab_desc">L\'écran que Thor ouvre au lancement</string>
-    <string name="appearance">APPARENCE</string>
     <string name="theme">Thème</string>
     <string name="theme_desc">Style d\'interface visuelle</string>
     <string name="amoled_mode">Mode AMOLED</string>
     <string name="amoled_desc">Arrière-plan noir pur</string>
     <string name="dynamic_colors">Couleurs dynamiques</string>
     <string name="dynamic_colors_desc">Intégration Material You</string>
-    <string name="security">SÉCURITÉ</string>
     <string name="biometric_lock">Verrouillage biométrique</string>
     <string name="biometric_lock_desc">Exiger une authentification au lancement</string>
     <string name="biometric_not_available">Biométrie non enregistrée ou indisponible</string>
-    <string name="work_mode">MODE DE TRAVAIL</string>
     <string name="active_engine">Moteur actif</string>
     <string name="active_engine_desc">Passer d\'un fournisseur à l\'autre</string>
-    <string name="about">À PROPOS</string>
     <string name="version">Version</string>
     <string name="release_candidate">Version candidate</string>
     <string name="source_code">CODE SOURCE</string>
@@ -533,7 +528,6 @@
     <string name="failed_to_load_permissions">Échec du chargement des autorisations</string>
     <string name="permission_status_updated">Statut de l\'autorisation mis à jour</string>
     <string name="failed_to_modify_permission">Échec de la modification de l\'autorisation</string>
-    <string name="permissions">AUTORISATIONS</string>
     <string name="usage_access">Accès aux données d\'utilisation</string>
     <string name="usage_access_granted_subtitle">Accordé — permet le tri par taille d\'application</string>
     <string name="usage_access_needed_subtitle">Nécessaire pour lire la taille des applications pour le tri par Taille</string>
@@ -640,5 +634,34 @@
     <string name="export_list_failed">Impossible d\'enregistrer la liste</string>
     <string name="clear_all_caches_requires_usage_access">Shizuku ne peut pas vider le cache de toutes les applications sans l\'accès aux données d\'utilisation. Android doit savoir combien d\'octets libérer, et seule cette autorisation permet de mesurer la taille du cache. Accordez l\'accès aux données d\'utilisation à Thor dans les Paramètres, puis réessayez.</string>
     <string name="clear_all_caches_unsupported_dhizuku">Dhizuku ne peut pas vider les caches. Il n\'a pas de shell pour exécuter le nettoyage de cache d\'Android, et l\'API propriétaire de l\'appareil n\'offre aucun équivalent. Passez en mode Root ou Shizuku.</string>
+
+    <!-- Écran de paramètres par catégories — voir values/strings_settings.xml -->
+    <string name="settings_category_appearance">Apparence</string>
+    <string name="settings_category_home">Écran d\'accueil</string>
+    <string name="settings_category_installing">Installation et partage</string>
+    <string name="settings_category_security">Sécurité</string>
+    <string name="settings_category_about">À propos et soutien</string>
+    <string name="settings_search_hint">Rechercher dans les paramètres…</string>
+    <string name="settings_search_no_results">Aucun paramètre ne correspond à « %1$s ».</string>
+    <string name="settings_search_result_in">dans %1$s</string>
+    <string name="cd_settings_search_clear">Effacer la recherche</string>
+    <string name="cd_back">Retour</string>
+    <string name="settings_select_category">Choisissez une catégorie pour voir ses paramètres</string>
+    <string name="settings_engine_none">Aucun</string>
+    <string name="app_language_desc">La langue des écrans de Thor</string>
+    <string name="theme_light">Clair</string>
+    <string name="theme_dark">Sombre</string>
+    <string name="theme_system">Système</string>
+    <string name="settings_summary_opens_on">Ouvre sur %1$s</string>
+    <string name="settings_summary_auto_freeze_on">Gel automatique activé</string>
+    <string name="settings_summary_auto_freeze_off">Gel automatique désactivé</string>
+    <string name="settings_summary_suspend_mode">Mode suspension</string>
+    <string name="settings_summary_auto_reinstall_on">Réinstallation automatique activée</string>
+    <string name="settings_summary_auto_reinstall_off">Réinstallation automatique désactivée</string>
+    <string name="settings_summary_app_lock_on">Verrouillage activé</string>
+    <string name="settings_summary_app_lock_off">Verrouillage désactivé</string>
+    <string name="settings_summary_restore_interrupted">Une restauration ne s\'est pas terminée</string>
+    <string name="settings_summary_backup">Restaurer une archive ou changer la phrase secrète</string>
+    <string name="settings_summary_unprivileged">Nécessite Root, Shizuku ou Dhizuku</string>
 
 </resources>

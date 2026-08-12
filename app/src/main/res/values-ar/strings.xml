@@ -10,7 +10,6 @@
     <string name="settings">الإعدادات</string>
     <string name="settings_desc">صفحة الإعدادات لتغيير إعدادات التطبيق</string>
     <string name="config_engine_v">محرك التكوين • إصدار %1$s</string>
-    <string name="general">عام</string>
     <string name="show_reinstall_card">إظهار بطاقة إعادة التثبيت</string>
     <string name="show_reinstall_card_desc">إظهار تذكير إصلاح المتجر على الشاشة الرئيسية</string>
     <string name="show_installer_tile">إظهار مربع المثبِّت</string>
@@ -22,21 +21,17 @@
     <string name="show_extensions_tile_desc">إظهار الإضافات على الشاشة الرئيسية</string>
     <string name="default_tab">علامة التبويب الافتراضية</string>
     <string name="default_tab_desc">الشاشة التي يفتحها Thor عند التشغيل</string>
-    <string name="appearance">المظهر</string>
     <string name="theme">المظهر</string>
     <string name="theme_desc">نمط الواجهة المرئية</string>
     <string name="amoled_mode">وضع AMOLED</string>
     <string name="amoled_desc">خلفية سوداء نقية</string>
     <string name="dynamic_colors">ألوان ديناميكية</string>
     <string name="dynamic_colors_desc">تكامل Material You</string>
-    <string name="security">الأمان</string>
     <string name="biometric_lock">قفل القياسات الحيوية</string>
     <string name="biometric_lock_desc">يتطلب المصادقة عند التشغيل</string>
     <string name="biometric_not_available">المقاييس الحيوية غير مسجلة أو غير متوفرة</string>
-    <string name="work_mode">وضع العمل</string>
     <string name="active_engine">المحرك النشط</string>
     <string name="active_engine_desc">التبديل بين الموفرين المتاحين</string>
-    <string name="about">حول</string>
     <string name="version">الإصدار</string>
     <string name="release_candidate">نسخة مرشحة</string>
     <string name="source_code">كود المصدر</string>
@@ -571,7 +566,6 @@
     <string name="failed_to_load_permissions">فشل تحميل الأذونات</string>
     <string name="permission_status_updated">تم تحديث حالة الإذن</string>
     <string name="failed_to_modify_permission">فشل تعديل الإذن</string>
-    <string name="permissions">الأذونات</string>
     <string name="usage_access">الوصول إلى بيانات الاستخدام</string>
     <string name="usage_access_granted_subtitle">تم المنح — يتيح فرز التطبيقات حسب الحجم</string>
     <string name="usage_access_needed_subtitle">مطلوب لقراءة أحجام التطبيقات للفرز حسب الحجم</string>
@@ -691,5 +685,34 @@
     <string name="export_list_failed">تعذّر حفظ القائمة</string>
     <string name="clear_all_caches_requires_usage_access">لا يستطيع Shizuku مسح ذاكرة التخزين المؤقت لكل التطبيقات بدون إذن الوصول إلى الاستخدام. يجب إخبار Android بعدد البايتات المطلوب تحريرها، وهذا الإذن وحده هو ما يمكنه قياس حجم ذاكرة التخزين المؤقت. امنح Thor إذن الوصول إلى الاستخدام من الإعدادات ثم أعد المحاولة.</string>
     <string name="clear_all_caches_unsupported_dhizuku">لا يستطيع Dhizuku مسح ذاكرة التخزين المؤقت. ليست لديه صدفة (shell) لتشغيل أداة تقليص ذاكرة التخزين المؤقت في Android، ولا تتضمن واجهة مالك الجهاز أي بديل لها. بدّل إلى وضع Root أو Shizuku.</string>
+
+    <!-- شاشة الإعدادات المقسّمة إلى فئات — راجع values/strings_settings.xml -->
+    <string name="settings_category_appearance">المظهر</string>
+    <string name="settings_category_home">الشاشة الرئيسية</string>
+    <string name="settings_category_installing">التثبيت والمشاركة</string>
+    <string name="settings_category_security">الأمان</string>
+    <string name="settings_category_about">حول التطبيق والدعم</string>
+    <string name="settings_search_hint">ابحث في الإعدادات…</string>
+    <string name="settings_search_no_results">لا يوجد إعداد يطابق ”%1$s“.</string>
+    <string name="settings_search_result_in">في %1$s</string>
+    <string name="cd_settings_search_clear">مسح البحث</string>
+    <string name="cd_back">رجوع</string>
+    <string name="settings_select_category">اختر فئة لعرض إعداداتها</string>
+    <string name="settings_engine_none">لا يوجد</string>
+    <string name="app_language_desc">لغة شاشات Thor نفسها</string>
+    <string name="theme_light">فاتح</string>
+    <string name="theme_dark">داكن</string>
+    <string name="theme_system">النظام</string>
+    <string name="settings_summary_opens_on">يفتح على %1$s</string>
+    <string name="settings_summary_auto_freeze_on">التجميد التلقائي مفعّل</string>
+    <string name="settings_summary_auto_freeze_off">التجميد التلقائي معطّل</string>
+    <string name="settings_summary_suspend_mode">وضع التعليق</string>
+    <string name="settings_summary_auto_reinstall_on">إعادة التثبيت التلقائية مفعّلة</string>
+    <string name="settings_summary_auto_reinstall_off">إعادة التثبيت التلقائية معطّلة</string>
+    <string name="settings_summary_app_lock_on">قفل التطبيق مفعّل</string>
+    <string name="settings_summary_app_lock_off">قفل التطبيق معطّل</string>
+    <string name="settings_summary_restore_interrupted">لم تكتمل إحدى عمليات الاستعادة</string>
+    <string name="settings_summary_backup">استعادة أرشيف أو تغيير عبارة المرور</string>
+    <string name="settings_summary_unprivileged">يتطلب Root أو Shizuku أو Dhizuku</string>
 
 </resources>

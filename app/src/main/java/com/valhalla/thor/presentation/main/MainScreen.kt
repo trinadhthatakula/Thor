@@ -87,7 +87,12 @@ import com.valhalla.asgard.navigation.AsgardNavItem
 import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
+import com.valhalla.thor.presentation.settings.SettingsCategory
+import com.valhalla.thor.presentation.settings.SettingsCategoryScreen
+import com.valhalla.thor.presentation.settings.SettingsDetailPlaceholder
+import com.valhalla.thor.presentation.settings.SettingsRowId
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.settings.SettingsViewModel
 import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.backup.ArchiveRestoreSheet
 import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
@@ -137,6 +142,13 @@ fun MainScreen(
     homeViewModel: HomeViewModel = koinViewModel(),
     appListViewModel: AppListViewModel = koinViewModel(),
     freezerViewModel: FreezerViewModel = koinViewModel(),
+    // Hoisted here rather than resolved inside the two settings entries, and this is load-bearing
+    // rather than tidiness. Each nav entry is wrapped in rememberViewModelStoreNavEntryDecorator
+    // below, so it owns a ViewModelStore: a koinViewModel<SettingsViewModel>() default on both the
+    // index and a category screen resolves to *two* instances. That is two privilege probes — which
+    // can spawn `su` — and two divergent copies of the PackageManager-backed any-file-opener state,
+    // one of which is showing on the index while the other is the one the switch writes to.
+    settingsViewModel: SettingsViewModel = koinViewModel(),
     onExit: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
@@ -240,8 +252,14 @@ fun MainScreen(
         }
     }
 
+    // A settings category keeps the bar, unlike every other non-root route. Those are focused tasks
+    // you finish and leave (a permission editor, an extension browser); a settings category is one
+    // tap deep in a hierarchy that is only two deep, and taking the nav bar away for it would make
+    // "Appearance → Apps tab" a two-tap trip through an animation. It also keeps the bottom inset
+    // identical between the index and a category, which is what lets both use the same padding.
     val showBottomBar = currentBackStack.lastOrNull()?.let {
-        it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer || it == ThorRoute.Settings
+        it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer ||
+                it == ThorRoute.Settings || it is ThorRoute.SettingsCategory
     } ?: true
 
     // System Back Press Handler: 
@@ -515,13 +533,80 @@ fun MainScreen(
                     )
                 }
 
-                entry<ThorRoute.Settings> {
-                    SettingsScreen(
-                        onNavigateToExtensionManager = {
-                            settingsBackStack.add(ThorRoute.ExtensionManager)
-                        },
-                        onOpenRestore = { mainViewModel.openRestoreSheet() }
+                entry<ThorRoute.Settings>(
+                    metadata = ListDetailSceneStrategy.listPane(
+                        detailPlaceholder = { SettingsDetailPlaceholder() }
                     )
+                ) {
+                    SettingsScreen(
+                        viewModel = settingsViewModel,
+                        // Gated on the pane directive, never on isWideScreen — the two are in scope
+                        // four lines apart above and the comment there exists because this mistake
+                        // has been made once already. On a 600-839 dp window isWideScreen is true
+                        // while maxHorizontalPartitions is still 1, so the index would mark a row as
+                        // selected while occupying the whole window and showing none of it.
+                        selectedCategory = if (hasDetailPane) {
+                            (settingsBackStack.lastOrNull() as? ThorRoute.SettingsCategory)
+                                ?.let { SettingsCategory.fromId(it.id) }
+                        } else {
+                            null
+                        },
+                        onOpenCategory = { category, focus ->
+                            val route = ThorRoute.SettingsCategory(category.id, focus?.name)
+                            // Replace, don't stack. Picking a second category is ordinary use of a
+                            // two-pane layout — the list stays put and the right-hand side changes —
+                            // and stacking would make Back walk every category visited on the way in
+                            // before it reaches the index. The hierarchy is two deep by design
+                            // (Option C's depth limit); a settings back stack four entries tall means
+                            // the index is no longer one Back away, which is the property the split
+                            // was for.
+                            if (settingsBackStack.lastOrNull() is ThorRoute.SettingsCategory) {
+                                settingsBackStack[settingsBackStack.lastIndex] = route
+                            } else {
+                                settingsBackStack.add(route)
+                            }
+                        }
+                    )
+                }
+
+                entry<ThorRoute.SettingsCategory>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) { route ->
+                    val popSelf = {
+                        if (settingsBackStack.size > 1) {
+                            settingsBackStack.removeLastOrNull()
+                        }
+                        Unit
+                    }
+                    // Resolved here rather than in the route, because a route holds data and this is
+                    // a question only the current build can answer. A persisted back stack outlives
+                    // an app update (see ThorRoute.SettingsCategory), so `id` can name a category
+                    // this build merged away — null, and the entry shows nothing and pops itself,
+                    // which lands the user on the index rather than on a blank screen.
+                    //
+                    // Unqualified `SettingsCategory` is the settings *enum*; the route of the same
+                    // name is nested in ThorRoute and is spelled with that prefix everywhere here.
+                    val category = remember(route.id) { SettingsCategory.fromId(route.id) }
+                    if (category == null) {
+                        LaunchedEffect(route) { popSelf() }
+                    } else {
+                        SettingsCategoryScreen(
+                            category = category,
+                            // Same tolerance for the same reason: a row renamed between the save and
+                            // the restore is simply no focus, not a crash and not a wrong row.
+                            focus = remember(route.focus) {
+                                route.focus?.let { name ->
+                                    SettingsRowId.entries.firstOrNull { it.name == name }
+                                }
+                            },
+                            viewModel = settingsViewModel,
+                            onBack = popSelf,
+                            onOpenRestore = { mainViewModel.openRestoreSheet() },
+                            onNavigateToExtensionManager = {
+                                settingsBackStack.add(ThorRoute.ExtensionManager)
+                            }
+                        )
+                    }
                 }
 
                 // A shim, and the only thing left of the restore *route*. Restore is a sheet now
