@@ -21,6 +21,7 @@ import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.RESTORE_PACKAGE_KEY
+import com.valhalla.thor.domain.model.RESTORE_URI_KEY
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.captureName
 import com.valhalla.thor.domain.model.evaluateArchiveRestoreGate
@@ -68,7 +69,8 @@ internal class ArchiveBackupWorker(
     private val bundleBuilder: AppBundleBuilder,
     private val systemRepository: SystemRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
-) : ThorJobWorker(appContext, params, notifications, registry, keys) {
+    sheetTargets: JobSheetTargets,
+) : ThorJobWorker(appContext, params, notifications, registry, keys, sheetTargets) {
 
     override val kind = ThorJobKind.ARCHIVE_BACKUP
 
@@ -91,6 +93,18 @@ internal class ArchiveBackupWorker(
     override val initialLabel: String
         get() = inputData.getString(BACKUP_PACKAGE_KEY).orEmpty()
 
+    /**
+     * Same package name, same reason as [initialLabel]: this is read on the way into `doWork()`, ahead
+     * of `setForeground`, so it cannot afford a `PackageManager` round trip. `runJob` replaces it with
+     * the real label as soon as it has one — see the `retargetSheet` call below. Until then a tap on
+     * the notification opens a sheet headed with the application id, which is what `initialLabel`
+     * already puts in the shade beside it.
+     */
+    override val sheetTarget: JobSheetTarget?
+        get() = inputData.getString(BACKUP_PACKAGE_KEY)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { JobSheetTarget.Backup(packageName = it, appLabel = it) }
+
     override suspend fun runJob(): Result {
         val request = ArchiveBackupRequest.fromMap(inputData.keyValueMap)
             ?: return fail("this backup's request could not be read")
@@ -99,6 +113,16 @@ internal class ArchiveBackupWorker(
             ?: return fail("this backup's key is no longer in memory — start it again")
         val appInfo = appRepository.getAppDetails(request.packageName)
             ?: return fail("${request.packageName} is not installed")
+
+        // The label is now known, so the sheet a notification tap opens can be headed with it instead
+        // of `com.supercell.clashofclans`. `AppBackupViewModel.start` writes what it is handed straight
+        // into state and never looks the name up itself, so this is the only place that can fix it.
+        retargetSheet(
+            JobSheetTarget.Backup(
+                packageName = request.packageName,
+                appLabel = appInfo.appName ?: request.packageName,
+            )
+        )
 
         var bundle: File? = null
         return try {
@@ -209,12 +233,26 @@ internal class ArchiveRestoreWorker(
     private val appRepository: AppRepository,
     private val installedFacts: ReadInstalledAppFactsUseCase,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
-) : ThorJobWorker(appContext, params, notifications, registry, keys) {
+    sheetTargets: JobSheetTargets,
+) : ThorJobWorker(appContext, params, notifications, registry, keys, sheetTargets) {
 
     override val kind = ThorJobKind.ARCHIVE_RESTORE
 
     override val initialLabel: String
         get() = inputData.getString(RESTORE_PACKAGE_KEY).orEmpty()
+
+    /**
+     * The archive URI, which is all the restore sheet needs — it re-opens the file and re-reads the
+     * header for itself, exactly as it would after the picker. Unlike the backup side there is nothing
+     * better to learn later, so no `retargetSheet` call follows.
+     *
+     * The URI is a task-scoped SAF grant, so this is only ever handed to a sheet inside the same
+     * process and the same task. It is never persisted anywhere — see [JobSheetTargets].
+     */
+    override val sheetTarget: JobSheetTarget?
+        get() = inputData.getString(RESTORE_URI_KEY)
+            ?.takeIf { it.isNotBlank() }
+            ?.let(JobSheetTarget::Restore)
 
     override suspend fun runJob(): Result {
         val request = ArchiveRestoreRequest.fromMap(inputData.keyValueMap)

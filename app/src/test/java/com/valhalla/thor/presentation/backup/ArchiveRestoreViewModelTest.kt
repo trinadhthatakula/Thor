@@ -44,11 +44,14 @@ import com.valhalla.thor.domain.usecase.ReadInstalledAppFactsUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,6 +61,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -129,6 +133,7 @@ class ArchiveRestoreViewModelTest {
 
     private companion object {
         const val SIGNER = "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"
+        const val OTHER_SIGNER = "CDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCD"
         const val URI = "content://com.example.docs/document/1"
     }
 
@@ -208,6 +213,57 @@ class ArchiveRestoreViewModelTest {
         }
     }
 
+    /**
+     * Like [CountingSources], but the file named in [delays] takes that long to hand back.
+     *
+     * Needed because [CountingSources] answers instantly, so two reads always finish in launch order
+     * and the desync `open` guards against cannot happen through it. The bug is specifically a read
+     * that *started* earlier finishing *later*: a big archive picked first, a small one picked while
+     * it loads. Only a source that suspends can put the two in that order.
+     */
+    private class DelayedSources(
+        private val byUri: Map<String, FakeSource>,
+        private val delays: Map<String, Long> = emptyMap(),
+    ) : ArchiveSourceFactory {
+        val opens = mutableListOf<String>()
+        override suspend fun open(uriString: String): ArchiveOpenOutcome {
+            opens += uriString
+            delays[uriString]?.let { delay(it) }
+            return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) }
+                ?: ArchiveOpenOutcome.Unreadable
+        }
+    }
+
+    /**
+     * A source whose read for [throwFor] blocks in a way cancellation cannot interrupt, then throws.
+     *
+     * This models the one late write the cancel in `open` cannot stop, and it is not a contrivance:
+     * the real factory copies through a `ContentResolver`, and a blocking read already inside its
+     * `withContext` block finishes before it notices the job is gone. When that block fails for a
+     * *real* reason the original exception wins over the cancellation, so `onFailure` runs — for an
+     * archive the user has already replaced.
+     *
+     * `NonCancellable` is what makes it deterministic on the JVM. Every ordinary suspension point
+     * throws `CancellationException` on resume, which would mean the throw below is never reached and
+     * the test would pass against the bug it is here to catch.
+     */
+    private class LateFailingSources(
+        private val byUri: Map<String, FakeSource>,
+        private val throwFor: String,
+        private val delayMillis: Long = 1_000L,
+    ) : ArchiveSourceFactory {
+        val opens = mutableListOf<String>()
+        override suspend fun open(uriString: String): ArchiveOpenOutcome {
+            opens += uriString
+            if (uriString == throwFor) {
+                withContext(NonCancellable) { delay(delayMillis) }
+                throw IOException("the provider went away mid-read")
+            }
+            return byUri[uriString]?.let { ArchiveOpenOutcome.Opened(it) }
+                ?: ArchiveOpenOutcome.Unreadable
+        }
+    }
+
     private class FakeProbe(val capable: Boolean = true) : AppDataProbe {
         var probes = 0
 
@@ -239,7 +295,12 @@ class ArchiveRestoreViewModelTest {
      * follow-up row to hoist one shared double — deliberately not done mid-plan, because it would
      * reopen two already-green test files.
      */
-    private class FakeArchiveGateway(private val signer: String?) : AppDataArchiveGateway {
+    private class FakeArchiveGateway(
+        private val signer: String?,
+        private val signersByPackage: Map<String, String?> = emptyMap(),
+        private val slowSignerFor: String? = null,
+        private val slowSignerMillis: Long = 1_000L,
+    ) : AppDataArchiveGateway {
         override suspend fun thorUserId(): Int = 0
         override suspend fun externalStorageDir(): String = "/storage/emulated/0"
         override suspend fun stagingFile(name: String): File = File("/tmp/$name")
@@ -273,7 +334,21 @@ class ArchiveRestoreViewModelTest {
         override suspend fun relabelClass(packageName: String, dataClass: DataClass): Boolean = false
 
         override suspend fun appUid(packageName: String): Int? = null
-        override suspend fun signerSha256(packageName: String): String? = signer
+
+        /**
+         * `getOrElse`, not `?:` — an entry mapped explicitly to `null` means "this package is
+         * unsigned", which `?:` would swallow back into the default.
+         *
+         * [slowSignerFor] parks the lookup under [NonCancellable] so it survives the cancellation
+         * of the open it belongs to. An ordinary `delay` would throw on resume and the caller would
+         * never reach the line under test.
+         */
+        override suspend fun signerSha256(packageName: String): String? {
+            if (packageName == slowSignerFor) {
+                withContext(NonCancellable) { delay(slowSignerMillis) }
+            }
+            return signersByPackage.getOrElse(packageName) { signer }
+        }
     }
 
     private class FakeVaultStore(initial: String? = null) : PassphraseVaultStore {
@@ -380,6 +455,7 @@ class ArchiveRestoreViewModelTest {
         breadcrumbs: ArchiveBreadcrumbStore = FakeBreadcrumbs(),
         registry: JobRegistry = JobRegistry(),
         sources: ArchiveSourceFactory = FakeSources(FakeSource(head?.encode())),
+        gateway: AppDataArchiveGateway = FakeArchiveGateway(signer),
     ) = ArchiveRestoreViewModel(
         sources = sources,
         openArchive = OpenArchiveUseCase(cipher, dispatcher),
@@ -394,7 +470,7 @@ class ArchiveRestoreViewModelTest {
         capability = DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState)),
         installedFacts = ReadInstalledAppFactsUseCase(
             appRepository = FakeAppRepository(installedApps),
-            gateway = FakeArchiveGateway(signer),
+            gateway = gateway,
         ),
         vault = PassphraseVault(vaultStore, PlainKeyProvider()),
         launcher = launcher,
@@ -438,6 +514,143 @@ class ArchiveRestoreViewModelTest {
             assertEquals(listOf(URI, other), sources.opens)
             assertEquals("com.example.other", vm.uiState.value.header?.packageName)
             assertEquals("com.example.other-5.thorbak", vm.uiState.value.fileName)
+        }
+
+    @Test
+    fun `a file picked while a slower one is still loading leaves nothing of the first behind`() =
+        runTest(dispatcher) {
+            // The screen keeps the picked URI in a field and everything else in the state, so two
+            // overlapping reads split its identity: the field is always the newest pick, while the
+            // header and every answer derived from it belong to whichever read finished *last*. Here
+            // the first file is the slow one, so without the cancel the sheet ends up describing the
+            // first archive while the request it would build carries the second one's URI — a wrong
+            // request with nothing on screen to reveal it. `AppArchiveWorker` refuses that on the
+            // package mismatch, so it is not a data-loss path, but the user is told a restore may have
+            // left their data incomplete for a job that never started.
+            //
+            // `advanceTimeBy(1)` first: the read has to be genuinely in flight for this to be the
+            // reported race rather than two calls in one frame. Both URIs therefore appear in `opens`
+            // — the first read is cancelled, not skipped.
+            val other = "content://com.example.docs/document/2"
+            val sources = DelayedSources(
+                byUri = mapOf(
+                    URI to FakeSource(header().encode()),
+                    other to FakeSource(
+                        header(packageName = "com.example.other", versionCode = 5L).encode(),
+                        displayName = "com.example.other-5.thorbak",
+                    ),
+                ),
+                delays = mapOf(URI to 1_000L),
+            )
+            val vm = viewModel(sources = sources)
+
+            vm.open(URI)
+            testScheduler.advanceTimeBy(1)
+            vm.open(other)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(listOf(URI, other), sources.opens)
+            assertEquals("com.example.other", vm.uiState.value.header?.packageName)
+            assertEquals("com.example.other-5.thorbak", vm.uiState.value.fileName)
+            // Not a leftover of the cancelled read either: the spinner it turned on is the one thing a
+            // cancelled coroutine cannot turn off itself, and the replacement read owns it now.
+            assertFalse(vm.uiState.value.loading)
+        }
+
+    @Test
+    fun `a replaced read that fails anyway cannot put its error on the new file's screen`() =
+        runTest(dispatcher) {
+            // The half of the race cancelling does not reach. Cancellation is cooperative, and the work
+            // being cancelled here is blocking I/O this class does not own; when that work fails for a
+            // real reason the original exception wins over the cancellation, so `onFailure` still runs.
+            // Unguarded, it wrote `loading = false` and FILE_UNREADABLE for the archive the user already
+            // replaced — a wrong error, and worse, a `loading = false` that re-enables both pick buttons
+            // while the new file is still being read, which re-opens the door the cancel just shut.
+            val other = "content://com.example.docs/document/2"
+            val sources = LateFailingSources(
+                byUri = mapOf(
+                    other to FakeSource(
+                        header(packageName = "com.example.other", versionCode = 5L).encode(),
+                        displayName = "com.example.other-5.thorbak",
+                    )
+                ),
+                throwFor = URI,
+            )
+            val vm = viewModel(sources = sources)
+
+            vm.open(URI)
+            testScheduler.advanceTimeBy(1)
+            vm.open(other)
+            testScheduler.advanceUntilIdle()
+
+            val state = vm.uiState.value
+            assertNull(state.error)
+            assertEquals("com.example.other", state.header?.packageName)
+            assertEquals("com.example.other-5.thorbak", state.fileName)
+            assertFalse(state.loading)
+        }
+
+    @Test
+    fun `a replaced read cannot leave its app's signer behind the new file's header`() =
+        runTest(dispatcher) {
+            // The third late write, and the only one that survives every guard the other two use.
+            // `installed` is a plain field, not part of the state, so `updateForOpen` does not cover it
+            // and there is nothing for a stale generation to decline to write. Ordered wrongly — read,
+            // assign, *then* check the generation — the first file's app facts land after the second
+            // file's read has finished, and the gate spends the rest of the screen's life comparing the
+            // header on screen against the app the previous archive belonged to.
+            //
+            // The assertion is deliberately after a `toggleClass`, not straight after the opens: the
+            // second read runs its own `evaluate()` before the first one resumes, so the state right
+            // after `advanceUntilIdle` looks correct either way. Only the next selection change re-reads
+            // the corrupted field — which is exactly the shape of the bug on a device, where the user
+            // picks a file, picks another, and then unticks a class.
+            //
+            // `NonCancellable` in the gateway for the same reason `LateFailingSources` needs it: an
+            // ordinary `delay` throws on resume into a cancelled coroutine, so the write under test
+            // would never be reached and the test would pass against the bug.
+            val other = "content://com.example.docs/document/2"
+            val sources = CountingSources(
+                byUri = mapOf(
+                    URI to FakeSource(header().encode()),
+                    other to FakeSource(
+                        header(
+                            packageName = "com.example.other",
+                            versionCode = 5L,
+                            signer = OTHER_SIGNER,
+                        ).encode(),
+                        displayName = "com.example.other-5.thorbak",
+                    ),
+                ),
+            )
+            val vm = viewModel(
+                installedApps = listOf(
+                    AppInfo(packageName = "com.example.game", appName = "Game", versionCode = 100L),
+                    AppInfo(packageName = "com.example.other", appName = "Other", versionCode = 5L),
+                ),
+                sources = sources,
+                gateway = FakeArchiveGateway(
+                    signer = SIGNER,
+                    signersByPackage = mapOf(
+                        "com.example.game" to SIGNER,
+                        "com.example.other" to OTHER_SIGNER,
+                    ),
+                    slowSignerFor = "com.example.game",
+                ),
+            )
+
+            vm.open(URI)
+            testScheduler.advanceTimeBy(1)
+            vm.open(other)
+            testScheduler.advanceUntilIdle()
+
+            vm.toggleClass(DataClass.DE)
+
+            val state = vm.uiState.value
+            assertEquals("com.example.other", state.header?.packageName)
+            // Not SIGNER_MISMATCH: the app on screen is signed with exactly what its header declares.
+            // That refusal here would mean the gate is holding `com.example.game`'s signer.
+            assertNull(state.refusal)
         }
 
     @Test

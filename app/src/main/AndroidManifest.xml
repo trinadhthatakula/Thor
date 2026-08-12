@@ -373,6 +373,28 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- Where a tap on a running backup/restore notification lands: it asks the UI to reopen that
+             job's sheet, then resumes Thor's task.
+
+             taskAffinity="" is load-bearing, not copied decoration. excludeFromRecents applies to the
+             task this activity *roots*, so without it a tap made while no Thor task exists (the user
+             exited with back, or swiped Thor away, while the foreground service kept the job running)
+             roots a recents-excluded task with Thor's own affinity — and the launcher-shaped resume then
+             lands HomeActivity inside that same task. Nothing re-derives the task's base intent
+             afterwards, so Thor stays missing from Recents for the life of the task and is reachable
+             only from the launcher icon. Its own task is throwaway; the NEW_TASK launcher intent still
+             finds and resumes Thor's by affinity, which is what FreezerLaunchActivity above relies on.
+
+             No launchMode, unlike FreezerLaunchActivity: singleInstance there keeps one tile tap from
+             stacking on another, and noHistory already finishes this one inside onCreate. -->
+        <activity
+            android:name=".presentation.launcher.JobSheetLaunchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Stormbringer bridge: lets the (LSPosed) launcher hook ask Thor to unsuspend a frozen
              app on launch. exported so the hook's process can reach it; access is bounded to
              Freezer packages inside the provider (the caller runs in the launcher, so it can't be

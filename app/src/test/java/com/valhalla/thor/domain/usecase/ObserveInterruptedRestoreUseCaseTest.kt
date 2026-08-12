@@ -55,9 +55,9 @@ class ObserveInterruptedRestoreUseCaseTest {
 
     @Test
     fun `nothing is reported while a restore for that app is live`() = runTest {
-        // N1. The user starts a restore in the detail pane, the worker writes the breadcrumb on its way
-        // into the destructive phase, and the Settings section composed beside it must not announce
-        // that the restore "did not finish" over a progress bar reporting normal progress.
+        // N1. The user starts a restore in the sheet, the worker writes the breadcrumb on its way into
+        // the destructive phase, and the Settings section composed underneath it must not announce that
+        // the restore "did not finish" beneath a progress bar reporting normal progress.
         val breadcrumbs = FakeBreadcrumbs(crumb)
         val launcher = FakeLauncher(running = mapOf(crumb.packageName to MutableStateFlow(jobId)))
         val useCase = ObserveInterruptedRestoreUseCase(breadcrumbs, launcher)
@@ -124,9 +124,9 @@ class ObserveInterruptedRestoreUseCaseTest {
     }
 
     @Test
-    fun `Got it on the restore screen takes the notice off the pane beside it`() = runTest {
-        // I2, at this seam, and it must not regress: `ArchiveRestore` is a detail pane, so the screen
-        // that clears the breadcrumb and the section that shows the notice are composed together.
+    fun `Got it in the restore sheet takes the notice off the section behind it`() = runTest {
+        // I2, at this seam, and it must not regress: the restore sheet is hosted above the section, so
+        // the surface that clears the breadcrumb and the row that shows the notice are composed together.
         val breadcrumbs = FakeBreadcrumbs(crumb)
         val useCase = ObserveInterruptedRestoreUseCase(breadcrumbs, FakeLauncher())
         val seen = mutableListOf<ArchiveBreadcrumb?>()

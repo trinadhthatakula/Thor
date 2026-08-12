@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
+import com.valhalla.thor.data.backup.job.JobSheetTarget
+import com.valhalla.thor.data.backup.job.JobSheetTargets
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
@@ -174,12 +176,42 @@ sealed interface CacheClearState {
     data class Done(val freedBytes: Long?, val hasUsageAccess: Boolean) : CacheClearState
 }
 
+/**
+ * The restore sheet, or null when it is closed.
+ *
+ * A nullable field holding a type with a nullable field, on purpose: the *outer* null means the sheet
+ * is not open, and [uriString] being null means it is open with no archive chosen yet, so the sheet
+ * shows its file picker. Collapsing the two would make "open the restore sheet" and "open the restore
+ * sheet on this file" indistinguishable, which is the difference between the Settings row and a
+ * notification tap.
+ */
+data class RestoreSheetState(val uriString: String? = null)
+
+/**
+ * The backup sheet hosted by `MainScreen`, or null when it is closed.
+ *
+ * Only ever opened by a notification tap. The in-app route to a backup is the sheet the app-info
+ * surfaces host themselves, which owns its own visibility — so this is a *second* host, and the two
+ * can be composed at once if the user backgrounds Thor with a backup sheet open and then taps the
+ * notification. Both watch the same job through `runningJobFor`, so the stacked pair shows the same
+ * progress twice rather than disagreeing; dismissing the top one leaves the original underneath.
+ * Lifting all backup-sheet hosting up here would fix the cosmetics at the cost of threading a
+ * `MainViewModel` call through `onAppAction` on both app-info surfaces, which is not worth it for a
+ * duplicate that requires leaving the sheet open on the way to the shade.
+ *
+ * [appLabel] must be the app's real name: `AppBackupViewModel.start` writes what it is handed straight
+ * into its state and never resolves it.
+ */
+data class BackupSheetState(val packageName: String, val appLabel: String)
+
 data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val fixStoreSelection: FixStoreSelection? = null, // Fix Store picker, null when closed
     val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
     val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
     val cacheClear: CacheClearState? = null, // Whole-device cache clear, null when idle
+    val restoreSheet: RestoreSheetState? = null, // Archive restore sheet, null when closed
+    val backupSheet: BackupSheetState? = null, // Archive backup sheet reopened from a notification
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
     val hasShownSupportDeveloperPrompt: Boolean = true,
     val showSupportDeveloperPrompt: Boolean = false,
@@ -199,6 +231,9 @@ class MainViewModel(
     // its Settings deep-link, which would put an Android type in this ViewModel's constructor and
     // take it off the JVM test classpath.
     private val usageAccessGate: UsageAccessGate,
+    // Where a tap on a running job's notification arrives. A plain in-memory holder, so it costs
+    // nothing to observe and stays on the JVM test classpath.
+    private val jobSheetTargets: JobSheetTargets,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -210,6 +245,9 @@ class MainViewModel(
     )
 
     private var pendingSupportPrompt = false
+
+    /** Whether [openRestoreSheetForLaunchUri] has already fired for this ViewModel. See it for why here. */
+    private var launchRestoreUriConsumed = false
 
     // Declared *above* `init`, and it has to stay there.
     //
@@ -226,6 +264,7 @@ class MainViewModel(
     init {
         observePreferences()
         observeBackupRun()
+        observeJobSheetRequests()
     }
 
     private fun observePreferences() {
@@ -288,6 +327,75 @@ class MainViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Reopen the sheet a job notification was tapped on.
+     *
+     * From `init` for the same reason as [observeBackupRun]: the tap is what brings Thor forward, so
+     * this instance is routinely *younger* than the request. `JobSheetTargets` conflates rather than
+     * drops, so a request made before the ViewModel existed is still waiting here — which is the whole
+     * point on the app-lock path, where the trampoline runs minutes before `MainScreen` composes.
+     *
+     * Touches only [_uiState] and the constructor parameter, both live before `init` runs. See the
+     * comment on `_effect` for why that sentence has to be checked and not assumed.
+     */
+    private fun observeJobSheetRequests() {
+        viewModelScope.launch {
+            jobSheetTargets.requests.collect { target ->
+                _uiState.update { state ->
+                    when (target) {
+                        is JobSheetTarget.Backup -> state.copy(
+                            backupSheet = BackupSheetState(target.packageName, target.appLabel)
+                        )
+                        is JobSheetTarget.Restore -> state.copy(
+                            restoreSheet = RestoreSheetState(target.uriString)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Open the restore sheet, on [uriString] if there is one and on its file picker if not.
+     *
+     * The Settings row and `HomeActivity`'s incoming-`.thorbak` intent both land here. It is not a
+     * navigation call any more: the sheet is hosted over whatever tab is showing, so nothing switches
+     * section on the way in.
+     */
+    fun openRestoreSheet(uriString: String? = null) {
+        _uiState.update { it.copy(restoreSheet = RestoreSheetState(uriString)) }
+    }
+
+    /**
+     * Open the restore sheet on the `.thorbak` this launch was opened on, at most once.
+     *
+     * The latch belongs here rather than in a `rememberSaveable` in `MainScreen`, and that is a
+     * correctness point, not tidiness: it has to have **the same lifetime as the sheet state it
+     * guards**. `restoreSheet` lives on this ViewModel, which survives a rotation and dies with the
+     * process; a `rememberSaveable` latch survives *both*. So the pair disagreed exactly once — kill the
+     * process while it is backgrounded, return through Recents, and the activity is recreated with the
+     * same VIEW intent and a still-valid task-scoped read grant, but the saved latch said "already
+     * handled" while the fresh ViewModel had no sheet. The archive the user opened Thor on was dropped
+     * with nothing on screen to say so. Sharing one lifetime makes the two answers agree by
+     * construction: rotation keeps both, process death clears both and the sheet reopens.
+     *
+     * Being on the ViewModel is also what makes the no-reopen-after-dismiss half testable, which the
+     * `rememberSaveable` never was.
+     */
+    fun openRestoreSheetForLaunchUri(uriString: String) {
+        if (launchRestoreUriConsumed) return
+        launchRestoreUriConsumed = true
+        openRestoreSheet(uriString)
+    }
+
+    fun dismissRestoreSheet() {
+        _uiState.update { it.copy(restoreSheet = null) }
+    }
+
+    fun dismissBackupSheet() {
+        _uiState.update { it.copy(backupSheet = null) }
     }
 
     fun markSupportDeveloperPromptShown() {

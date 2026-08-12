@@ -241,12 +241,26 @@ class AppArchiveStoreImpl(
         return false
     }
 
-    @Suppress("DEPRECATION") // See openInLegacyDownloads: this branch only runs below API 29.
     private fun deleteInLegacyDownloads(name: String): Boolean {
-        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val file = File(dir, name)
+        val file = File(legacyArchiveDir(), name)
         return file.isFile && file.delete()
     }
+
+    /**
+     * `Downloads/Thor` as a plain `File`, for the two below-API-29 backends.
+     *
+     * One function rather than the folder named twice, because the two callers have to agree or the
+     * feature breaks quietly: [openInLegacyDownloads] creates the `.part` in this directory and
+     * [deleteInLegacyDownloads] is the launch-time sweep that removes it. A sweeper pointed one level
+     * up finds nothing, reports false for every orphan, and leaves both the file and its ledger entry
+     * behind forever.
+     */
+    @Suppress("DEPRECATION") // getExternalStoragePublicDirectory: deprecated at 29, and both callers
+    // are below-29 branches. minSdk is 28, which is the whole reason those branches exist.
+    private fun legacyArchiveDir(): File = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        THOR_DOWNLOADS_SUBDIR,
+    )
 
     /**
      * Records [name] as an unpublished container and returns the callback that forgets it again.
@@ -288,7 +302,14 @@ class AppArchiveStoreImpl(
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, fileName)
             put(MediaStore.Downloads.MIME_TYPE, THORBAK_MIME)
-            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            // Downloads/Thor, not Downloads. This was the bare `DIRECTORY_DOWNLOADS`, which put the
+            // archive in the root of the user's Downloads while `currentTargetLabel()` — resolved by
+            // `AppBundleFileStoreImpl`, which has always written to the subfolder — told them
+            // "Downloads/Thor". See THOR_DOWNLOADS_SUBDIR.
+            put(
+                MediaStore.Downloads.RELATIVE_PATH,
+                "${Environment.DIRECTORY_DOWNLOADS}/$THOR_DOWNLOADS_SUBDIR/",
+            )
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
@@ -389,10 +410,11 @@ class AppArchiveStoreImpl(
      * collide by design. [nonCollidingArchiveName] is what stops a second backup of the same version
      * from silently deleting the first, which is the behaviour the other two backends already had.
      */
-    @Suppress("DEPRECATION") // getExternalStoragePublicDirectory: deprecated at 29, and this branch
-    // only runs below 29. minSdk is 28, which is the whole reason the branch exists.
     private suspend fun openInLegacyDownloads(requestedName: String): ArchiveDestination? {
-        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val dir = legacyArchiveDir()
+        // `mkdirs`, and it now matters: Downloads itself always exists, but `Downloads/Thor` may not,
+        // and a null return here is reported to the user as "choose a folder" rather than as a failed
+        // backup. `AppBundleFileStoreImpl.writeToDownloadsLegacy` creates the same directory.
         if (!dir.isDirectory && !dir.mkdirs()) return null
         // Chosen before the partial is created, so the partial is named after the name this archive
         // will actually publish under and the two cannot drift apart.

@@ -15,6 +15,12 @@
 
     <string name="action_backup">Back up</string>
     <string name="backup_unsupported">Thor cannot read another app\'s private data with the access it has right now. This needs root, or Shizuku started from root.</string>
+    <!--
+      Kept separate from backup_unsupported rather than appended to it, because that string is shared
+      with ArchiveRestoreSheet — where the blocker is *writing* private data, and a note about what
+      backup will support is off topic. Only AppBackupSheet renders this one.
+    -->
+    <string name="backup_partial_soon">Coming in Thor 2.0: partial backups without root — the app itself and its files on shared storage, though not its private data.</string>
     <string name="backup_include_bundle">Include the app installer</string>
     <string name="backup_include_bundle_desc">Lets this backup reinstall the app if it is gone.</string>
     <string name="backup_class_ce">App data</string>
@@ -100,6 +106,14 @@
       breadcrumb banner. Identical text today; rewording one must not silently reword the other.
     -->
     <string name="backup_outcome_dismiss">Got it</string>
+    <!--
+      One word, because it is the label the sheet's running frame is built around: while a job is live
+      the sheet shows the bar and this button and nothing else. It dismisses the sheet, which is safe
+      for the reason the sentence below states — the job is a foreground service and the sheet is only
+      watching it.
+    -->
+    <string name="backup_background">Background</string>
+    <string name="backup_background_desc">This keeps running if you close it. The notification shows how far it has got.</string>
 
     <string name="restore_title">Restore a backup</string>
     <string name="restore_pick_prompt">Choose a Thor backup file (.thorbak) to see what it holds.</string>
@@ -120,7 +134,12 @@
     <string name="restore_unlocked">Unlocked with the saved passphrase.</string>
     <string name="restore_confirm_replace">I understand this replaces the app\'s current data. Anything not in this backup is deleted.</string>
     <string name="restore_start">Restore</string>
-    <string name="restore_back">Back</string>
+    <!--
+      No `restore_back` any more. The restore surface is a bottom sheet, dismissed by its scrim, its
+      drag handle or the back gesture, and its own Background button is what covers leaving a live
+      run — so the button this named had nothing left to do. Deleted rather than left in place because
+      lint's UnusedResources is fatal in this build; there were no translations to strand.
+    -->
     <string name="restore_done">Restore finished. Open the app to check it works.</string>
     <!--
       Heading for the sentences a *successful* run still has to report — game data that could not be

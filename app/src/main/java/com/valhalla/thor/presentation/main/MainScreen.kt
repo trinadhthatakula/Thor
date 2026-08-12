@@ -88,7 +88,8 @@ import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
-import com.valhalla.thor.presentation.backup.ArchiveRestoreScreen
+import com.valhalla.thor.presentation.backup.AppBackupSheet
+import com.valhalla.thor.presentation.backup.ArchiveRestoreSheet
 import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
@@ -176,18 +177,16 @@ fun MainScreen(
 
     val currentBackStack = backStacks[activeTab] ?: homeBackStack
 
-    // Consumed once. rememberSaveable, not remember: after a rotation the route is already on the
-    // back stack, and re-adding it would stack a second copy of the restore screen behind the first.
-    // Settings is the host tab because that is where the Settings entry point pushes the same route —
-    // one tab owns restore, so there is one place a half-finished one is found again.
-    var restoreUriConsumed by rememberSaveable { mutableStateOf(false) }
+    // Consumed once, and the once is counted on `MainViewModel` — NOT in a `rememberSaveable` here.
+    // A saveable latch outlives the sheet state it guards, so after process death it would say
+    // "already handled" to a fresh ViewModel that has no sheet, and the archive Thor was opened on
+    // would be dropped silently. See MainViewModel.openRestoreSheetForLaunchUri.
+    //
+    // No tab switch any more. This used to jump to Settings and push a route there, because the
+    // restore *screen* had to live in some tab's back stack; the sheet is hosted above all four, so
+    // the tab the user opened Thor on is left alone.
     LaunchedEffect(pendingRestoreUri) {
-        val uri = pendingRestoreUri
-        if (uri != null && !restoreUriConsumed) {
-            restoreUriConsumed = true
-            activeDestination = AppDestinations.SETTINGS
-            settingsBackStack.add(ThorRoute.ArchiveRestore(uri))
-        }
+        pendingRestoreUri?.let(mainViewModel::openRestoreSheetForLaunchUri)
     }
 
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
@@ -521,23 +520,23 @@ fun MainScreen(
                         onNavigateToExtensionManager = {
                             settingsBackStack.add(ThorRoute.ExtensionManager)
                         },
-                        onNavigateToRestore = {
-                            settingsBackStack.add(ThorRoute.ArchiveRestore())
-                        }
+                        onOpenRestore = { mainViewModel.openRestoreSheet() }
                     )
                 }
 
-                entry<ThorRoute.ArchiveRestore>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) { route ->
-                    ArchiveRestoreScreen(
-                        uriString = route.uriString,
-                        onBack = {
-                            if (currentBackStack.size > 1) {
-                                currentBackStack.removeLastOrNull()
-                            }
+                // A shim, and the only thing left of the restore *route*. Restore is a sheet now
+                // (hosted in GLOBAL OVERLAYS below), so nothing pushes this — but a back stack saved
+                // by the previous build can still hold it: `rememberNavBackStack` state is persisted
+                // for task restoration, which survives an app update. Deleting the route outright
+                // would make that stack fail to deserialise, so the entry stays for one release and
+                // forwards to the sheet instead of rendering anything.
+                entry<ThorRoute.ArchiveRestore> { route ->
+                    LaunchedEffect(route) {
+                        if (currentBackStack.size > 1) {
+                            currentBackStack.removeLastOrNull()
                         }
-                    )
+                        mainViewModel.openRestoreSheet(route.uriString)
+                    }
                 }
 
                 entry<ThorRoute.ExtensionManager>(
@@ -792,6 +791,30 @@ fun MainScreen(
                             ?.let { Formatter.formatShortFileSize(context, it) },
                         onConfirm = { mainViewModel.confirmClearAllCaches() },
                         onDismiss = { mainViewModel.dismissCacheClear() }
+                    )
+                }
+
+                // Restore is a sheet, and it is hosted here rather than in a tab's back stack because
+                // a restore outlives the section it was started from: the Settings row, an incoming
+                // `.thorbak`, and a tap on a running restore's notification all open the same one,
+                // and switching tabs mid-restore must not tear it down. This is also what makes the
+                // suppression in ObserveInterruptedRestoreUseCase load-bearing — the Settings section
+                // really is composed underneath, so it must not announce the restore that is on
+                // screen above it.
+                state.restoreSheet?.let { restore ->
+                    ArchiveRestoreSheet(
+                        uriString = restore.uriString,
+                        onDismiss = { mainViewModel.dismissRestoreSheet() }
+                    )
+                }
+
+                // Only ever opened by a notification tap — see [BackupSheetState]. The in-app route
+                // is the copy the app-info surfaces host themselves.
+                state.backupSheet?.let { backup ->
+                    AppBackupSheet(
+                        packageName = backup.packageName,
+                        appLabel = backup.appLabel,
+                        onDismiss = { mainViewModel.dismissBackupSheet() }
                     )
                 }
 

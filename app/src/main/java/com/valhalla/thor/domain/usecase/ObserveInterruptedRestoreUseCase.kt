@@ -24,12 +24,19 @@ import org.koin.core.annotation.Factory
  * *"did not finish … restoring it again is the fix"*, and a live restore is neither finished nor a
  * reason to start a second one. §8.5 defines the notice as what *survives* to the next launch.
  *
- * This is not a hypothetical ordering. `ArchiveRestore` is registered as a `detailPane()`, so on an
- * expanded window the user starts a restore in the right-hand pane while the Settings section is
- * composed on the left; the breadcrumb write lands mid-restore, and without this filter the left pane
- * announces failure beside a progress bar reporting normal progress. `ArchiveRestoreViewModel` avoids
- * it by construction — it reads the breadcrumb once, in `init`, so a restore's own breadcrumb never
- * appears on the screen writing it — and this is the same guarantee for every other reader.
+ * This is not a hypothetical ordering, and it is no longer even window-size dependent. Restore is a
+ * bottom sheet hosted by `MainScreen`, so the Settings section carrying this notice stays composed
+ * *underneath* every restore, on every device: the breadcrumb write lands mid-restore and without this
+ * filter the row behind the sheet announces failure while the sheet in front of it reports normal
+ * progress. `ArchiveRestoreViewModel` avoids that by construction — it reads the breadcrumb once, in
+ * `init`, so a restore's own breadcrumb never appears on the surface writing it — and this is the same
+ * guarantee for every other reader.
+ *
+ * The argument used to rest on `ArchiveRestore` being registered as a `detailPane()` and therefore
+ * sitting beside a composed Settings pane on an expanded window. That was wrong about the layout — the
+ * route rendered in the detail pane with an *empty* list pane, so nothing was beside it. The
+ * suppression was load-bearing anyway, on the ordinary "reopen Settings during a restore" path, and
+ * hosting the sheet above the section is what makes it unconditional.
  *
  * The suppression is per package, not global: an interrupted restore of A is still worth reporting
  * while a restore of B runs, and those are different rows in the notice's own history.

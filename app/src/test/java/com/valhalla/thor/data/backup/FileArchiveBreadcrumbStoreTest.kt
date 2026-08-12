@@ -163,10 +163,9 @@ class FileArchiveBreadcrumbStoreTest {
 
     @Test
     fun `observe re-emits when the breadcrumb is cleared underneath a collector`() = runTest {
-        // The I2 case. `ArchiveRestore` is a detail pane, so on an expanded window the Settings
-        // banner and the restore screen are composed at the same time: the user acknowledges the
-        // notice over there, and a Settings banner that read once would go on naming an app whose
-        // breadcrumb no longer exists.
+        // The I2 case. The restore sheet is hosted above the Settings section, so its banner and the
+        // sheet are composed at the same time: the user acknowledges the notice in the sheet, and a
+        // Settings banner that read once would go on naming an app whose breadcrumb no longer exists.
         val store = store()
         store.write("com.example.app", "Example")
         val seen = mutableListOf<ArchiveBreadcrumb?>()

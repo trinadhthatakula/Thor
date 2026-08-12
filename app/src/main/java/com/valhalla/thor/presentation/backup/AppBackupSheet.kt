@@ -55,9 +55,19 @@ import com.valhalla.thor.domain.model.labelKind
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.settings.PassphraseError
 import com.valhalla.thor.presentation.settings.passphraseErrorText
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+
+/**
+ * How long the success frame stays up before the sheet closes itself.
+ *
+ * Long enough to read *"Backup saved."* and register it, short enough not to be a dialog the user has
+ * to dismiss. Not a preference and not animated against: if it is ever tuned, the thing to preserve is
+ * that "Got it" is always faster than waiting.
+ */
+private const val SUCCESS_LINGER_MS = 3_000L
 
 /**
  * The user-facing name of a storage class.
@@ -164,17 +174,64 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                 fontWeight = FontWeight.Bold
             )
 
-            when (state.supported) {
+            // A `when` on conditions rather than on `state.supported`: the sheet has five frames and
+            // only the first two are about support. The order is the order they happen in, and it
+            // settles the one pair that can overlap — `running` outranks a `finished` left over from a
+            // previous job, which the reattach collector in `start()` can pick up before `watch`
+            // clears the banner.
+            when {
                 // Still probing. A spinner, never the refusal panel — see AppBackupUiState.supported.
-                null -> CircularProgressIndicator()
+                state.supported == null -> CircularProgressIndicator()
 
-                false -> Text(
-                    text = stringResource(R.string.backup_unsupported),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                state.supported == false -> Column(
+                    // 8.dp, not the parent's 16.dp: these are two halves of one answer — what Thor
+                    // cannot do now, and what it will be able to do — so they read as one block.
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.backup_unsupported),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // `primary`, so the roadmap line does not read as more of the same refusal. This
+                    // is the only surface that shows it — see the comment on the string.
+                    Text(
+                        text = stringResource(R.string.backup_partial_soon),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
-                true -> {
+                // The form is *gone* while a job runs, not disabled. Six checkboxes, the destination
+                // and its picker, two passphrase fields and a second Back up button used to sit above
+                // the bar with `enabled = false` on each — a form the user can read, cannot use, and
+                // has to scroll past to reach the one thing that is moving.
+                state.running -> BackupRunning(state = state, onBackground = onDismiss)
+
+                // The last frame. `Succeeded` is a `data object`, so it is named rather than smart-cast
+                // out of `state.finished` — which is read through a delegated `state` and would not
+                // smart-cast anyway.
+                state.finished is BackupFinish.Succeeded -> {
+                    // Three seconds, then the sheet closes itself: the archive is written, and the form
+                    // underneath has nothing left to offer except writing it again. Keyed on `Unit`, so
+                    // the timer belongs to this frame — "Got it" removes the frame and cancels the
+                    // timer with it, rather than leaving a dismiss to fire later at whatever the sheet
+                    // has become by then.
+                    LaunchedEffect(Unit) {
+                        delay(SUCCESS_LINGER_MS)
+                        onDismiss()
+                    }
+                    // `onDismiss`, not `viewModel::dismissResult`. Clearing the banner is the right
+                    // thing for a *failure*, which puts the user back on a form they may want to retry
+                    // from; a success has no such form, so this button skips the wait rather than
+                    // returning anywhere.
+                    BackupOutcome(finish = BackupFinish.Succeeded, onDismiss = onDismiss)
+                }
+
+                // Idle, and supported. Every `enabled = !state.running` below is now provably true —
+                // kept rather than simplified to `true`, because the guard is what makes each control
+                // safe on its own if this frame is ever widened again.
+                else -> {
                     CheckRow(
                         checked = state.includeBundle,
                         enabled = !state.running,
@@ -311,37 +368,6 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                         }
                     }
 
-                    if (state.running) {
-                        val percent = state.progress?.percent
-                        if (percent == null) {
-                            // Indeterminate, never a determinate bar pinned at 0 — see the view-model
-                            // test that names this.
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        } else {
-                            LinearProgressIndicator(
-                                progress = { percent / 100f },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                        if (state.queued) {
-                            // Says where the job is, and stops there. Every job is appended to one
-                            // chain, and a dependent whose prerequisite fails is cancelled — so
-                            // "starting soon" would be a promise WorkManager has not made.
-                            Text(
-                                text = stringResource(R.string.backup_queued),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        state.progress?.let {
-                            Text(
-                                text = it.label,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
                     Button(
                         onClick = {
                             viewModel.beginBackup(passphrase.toCharArray(), rememberIt)
@@ -352,11 +378,72 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                         Text(stringResource(R.string.backup_start))
                     }
 
+                    // Failures and cancels only — the success arm above claims `Succeeded` before this
+                    // frame is reached. Left under the form on purpose: a failed backup is one the user
+                    // may want to retry, and the reason it failed belongs next to the controls that
+                    // would change the retry.
                     state.finished?.let { finish ->
                         BackupOutcome(finish = finish, onDismiss = viewModel::dismissResult)
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * What the sheet is while a job is live: the bar, what it is doing, and a way to leave.
+ *
+ * The Background button is honest about what it does because of where the work runs. The job is a
+ * WorkManager foreground service, so dismissing the sheet drops this sheet's *watcher* and nothing
+ * else — `AppInfoSheet` already says as much about the export sheet it hosts the same way. Reopening
+ * finds the same job again through `runningJobFor`, and the ongoing notification carries the progress
+ * meanwhile, which is what makes leaving a real option rather than an abandonment.
+ *
+ * No Cancel button here, deliberately: the notification already carries one built from
+ * `WorkManager.createCancelPendingIntent`, and a second cancel affordance on a surface that is about
+ * to be dismissed is a control whose result the user would not be watching.
+ */
+@Composable
+private fun BackupRunning(state: AppBackupUiState, onBackground: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val percent = state.progress?.percent
+        if (percent == null) {
+            // Indeterminate, never a determinate bar pinned at 0 — see the view-model test that names
+            // this.
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        } else {
+            LinearProgressIndicator(
+                progress = { percent / 100f },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (state.queued) {
+            // Says where the job is, and stops there. Every job is appended to one chain, and a
+            // dependent whose prerequisite fails is cancelled — so "starting soon" would be a promise
+            // WorkManager has not made.
+            Text(
+                text = stringResource(R.string.backup_queued),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        state.progress?.let {
+            Text(
+                text = it.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        // Above the button rather than below it: it is the sentence that makes the button's one word
+        // mean something, and a caption under a button is read after it has been pressed.
+        Text(
+            text = stringResource(R.string.backup_background_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(onClick = onBackground, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.backup_background))
         }
     }
 }

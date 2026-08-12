@@ -4,7 +4,9 @@
 package com.valhalla.thor.data.backup.job
 
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationChannelCompat
@@ -15,6 +17,7 @@ import androidx.work.WorkManager
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
+import com.valhalla.thor.presentation.launcher.JobSheetLaunchActivity
 import com.valhalla.thor.util.Logger
 import java.util.UUID
 import org.koin.core.annotation.Single
@@ -26,6 +29,39 @@ class ThorJobNotifications(private val context: Context) {
 
     // Hoisted out of the per-tick path — each from() call is a system service lookup.
     private val notificationManager = NotificationManagerCompat.from(context)
+
+    /**
+     * The tap targets, built once per kind rather than per tick.
+     *
+     * [build] runs up to once a second for the whole of a multi-gigabyte job, and
+     * `PendingIntent.getActivity` is an IPC to ActivityManager. Eager and immutable rather than a lazy
+     * cache because two IPCs at construction cost less than reasoning about a map mutated from a
+     * worker thread — and the only thing that constructs `ThorJobNotifications` is a worker Koin builds
+     * when WorkManager actually runs a job, so this is never on the launch path. (Not the trampoline,
+     * which an earlier version of this sentence also listed: `JobSheetLaunchActivity` resolves
+     * `JobSheetTargets` and nothing else, so it pays for none of this.)
+     *
+     * Naming a `presentation` class from `data` is the one upward reference here, and it is the
+     * existing shape for this: `AnyFileOpenerManager` names `PortableInstallerActivity` for the same
+     * reason — an `Intent` needs a component, and the component is an Activity. The alternative is a
+     * `SystemGateway`-style interface whose only implementation returns one class literal.
+     */
+    private val contentIntents: Map<ThorJobKind, PendingIntent> =
+        ThorJobKind.entries.associateWith { kind ->
+            PendingIntent.getActivity(
+                context,
+                // The notification id doubles as the request code, so the two kinds get distinct
+                // PendingIntents instead of one overwriting the other's extras. Request code 0 is
+                // BulkResultNotifier's; these start at BASE_NOTIFICATION_ID.
+                notificationId(kind),
+                Intent(context, JobSheetLaunchActivity::class.java)
+                    .putExtra(JobSheetLaunchActivity.EXTRA_JOB_KIND, kind.id),
+                // IMMUTABLE: nothing outside Thor has any business filling in this intent, and API 31+
+                // requires one of the two to be named explicitly. UPDATE_CURRENT so a rebuilt intent
+                // replaces the extras of a notification the system is still showing.
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
 
     init {
         // Channel creation is idempotent; calling it once here avoids an IPC on every notification
@@ -102,6 +138,10 @@ class ThorJobNotifications(private val context: Context) {
             setOngoing(true)
             setOnlyAlertOnce(true)
             setSilent(true)
+            // Reopens the sheet this job belongs to. Not setAutoCancel(true) with it: the job is still
+            // running after the tap, and the row is this job's only surface — dismissing it on tap
+            // would leave a foreground service with nothing showing for it.
+            setContentIntent(contentIntents.getValue(kind))
             // An unknown total is an indeterminate bar, never a bar sitting at 0%.
             val percent = progress.percent
             if (percent == null) setProgress(0, 0, true) else setProgress(100, percent, false)

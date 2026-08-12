@@ -39,6 +39,18 @@ enum class ThorJobKind(val id: String) {
     ARCHIVE_RESTORE("archive-restore"),
 }
 
+/**
+ * The reverse of [ThorJobKind.id], for the one place a kind crosses a process boundary: the `Intent`
+ * extra a job notification's tap carries.
+ *
+ * Matches on [ThorJobKind.id] rather than `name` or `ordinal` on purpose. An ordinal is silently
+ * wrong the day someone reorders the enum, and a `PendingIntent` outlives the code that made it —
+ * `FLAG_UPDATE_CURRENT` replaces the extras of a live one, but a notification the system is still
+ * showing across an app update is holding whatever the *old* build wrote. Returns null for anything
+ * unrecognised, which the caller reads as "just open the app".
+ */
+fun jobKindFromId(id: String?): ThorJobKind? = ThorJobKind.entries.firstOrNull { it.id == id }
+
 enum class ThorJobStage {
     PREPARING,
     MEASURING,
