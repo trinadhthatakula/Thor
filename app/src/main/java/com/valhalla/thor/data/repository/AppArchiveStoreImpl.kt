@@ -48,6 +48,53 @@ fun partialName(fileName: String): String = fileName + PARTIAL_SUFFIX
 fun publishedName(fileName: String): String = fileName.removeSuffix(PARTIAL_SUFFIX)
 
 /**
+ * How many numbered variants [nonCollidingArchiveName] will try before giving up.
+ *
+ * A bound rather than a `while (true)`: [taken] talks to the file system, and a provider that answers
+ * "yes" to everything — a full volume reporting every name as existing, a stubbed test double — would
+ * otherwise spin forever inside a backup the user is watching. A thousand backups of one app at one
+ * version code is not a state to keep searching past.
+ */
+private const val MAX_NAME_ATTEMPTS = 999
+
+/**
+ * [fileName], or the first ` (n)` variant of it that nothing in the destination already carries.
+ *
+ * Archive names are deterministic — `<package>-<versionCode>.thorbak` — so backing one app up twice at
+ * the same version always collides, and the three backends used to disagree about what that means:
+ * MediaStore de-duplicates, a SAF provider usually does, and `File.renameTo` on legacy Downloads
+ * **replaces the old file without a word**. This is what makes the third one agree with the other two.
+ *
+ * The counter goes *before* the extension, never after. `x.thorbak (1)` would not end in
+ * `.thorbak`, so the restore picker — which filters on exactly that — would hide the file it had just
+ * written, and [isSweepableOrphanName]'s "not a finished archive" clause would stop protecting it.
+ *
+ * Both the finished name and its partial are tested for each candidate, because a `.part` sitting in
+ * the folder is a backup that is being written right now: handing a second job the same partial name
+ * would have it open the first one's stream target and truncate it.
+ *
+ * @param taken answers "does the destination already hold something under this name". A predicate
+ *   rather than a `File`, so the rule is testable without a file system and reusable by a backend that
+ *   has no `File` to offer.
+ * @return null when every candidate up to [MAX_NAME_ATTEMPTS] is taken. Null means "do not write",
+ *   never "write over one of them".
+ */
+internal fun nonCollidingArchiveName(fileName: String, taken: (String) -> Boolean): String? {
+    fun free(candidate: String) = !taken(candidate) && !taken(partialName(candidate))
+    if (free(fileName)) return fileName
+    val extension = ".$THORBAK_EXTENSION"
+    // `removeSuffix` on a name that does not carry it returns the name unchanged, which would then
+    // have an extension appended that the caller never asked for.
+    val stem = if (fileName.endsWith(extension)) fileName.removeSuffix(extension) else fileName
+    val suffix = if (fileName.endsWith(extension)) extension else ""
+    for (n in 1..MAX_NAME_ATTEMPTS) {
+        val candidate = "$stem ($n)$suffix"
+        if (free(candidate)) return candidate
+    }
+    return null
+}
+
+/**
  * True when [name] is a name the launch-time orphan sweep may delete.
  *
  * §10's rule is "exact names, never a wildcard", and the names come from [PartialArchiveLedger] — a
@@ -337,12 +384,19 @@ class AppArchiveStoreImpl(
     /**
      * API 28's Downloads directory as a plain `File`. `renameTo` within one volume is atomic, which
      * is the same guarantee the other two backends reach by other means.
+     *
+     * It is also the one backend that will happily rename **over** an existing file, and archive names
+     * collide by design. [nonCollidingArchiveName] is what stops a second backup of the same version
+     * from silently deleting the first, which is the behaviour the other two backends already had.
      */
     @Suppress("DEPRECATION") // getExternalStoragePublicDirectory: deprecated at 29, and this branch
     // only runs below 29. minSdk is 28, which is the whole reason the branch exists.
-    private suspend fun openInLegacyDownloads(fileName: String): ArchiveDestination? {
+    private suspend fun openInLegacyDownloads(requestedName: String): ArchiveDestination? {
         val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         if (!dir.isDirectory && !dir.mkdirs()) return null
+        // Chosen before the partial is created, so the partial is named after the name this archive
+        // will actually publish under and the two cannot drift apart.
+        val fileName = nonCollidingArchiveName(requestedName) { File(dir, it).exists() } ?: return null
         val partial = File(dir, partialName(fileName))
         val stream = FileOutputStream(partial)
         val forget = rememberPartial(partial.name)
@@ -358,7 +412,11 @@ class AppArchiveStoreImpl(
 
 /**
  * The half of [ArchiveDestination] that is identical across all three backends: close exactly once,
- * publish or discard exactly once, and never do both.
+ * settle exactly once, and never leave a partial behind.
+ *
+ * "Settle once" is not "publish or discard, never both": a [publish] whose [onPublish] fails discards
+ * what it could not publish, because that is the one path where the partial is still on disk and the
+ * ledger entry naming it is about to be dropped.
  *
  * Closing before publishing is not tidiness — it is what flushes the stream. Publishing while a
  * buffered chunk is still in memory produces an archive that passes every check except its own chunk
@@ -391,13 +449,25 @@ internal abstract class BaseDestination(
         if (settled) return false
         settled = true
         output.close()
-        // `finally`, so a rename that throws still clears the ledger entry: at that point the partial
-        // is settled either way, and the failure is reported by the caller, not by a stale name.
-        return try {
-            onPublish()
+        // Assigned inside the `try` so a throw leaves it false: a rename that threw published nothing,
+        // exactly like a rename that returned false.
+        var published = false
+        try {
+            published = onPublish()
         } finally {
+            // A publish that did not happen leaves the partial on disk under the partial name, and the
+            // ledger entry that names it is about to be forgotten a line below — so it has to go here
+            // or nothing will ever name it again. `settled` is already true, so the caller's trailing
+            // `discard()` will not do this; and the sizes involved are whole app data trees.
+            if (!published) {
+                runCatching { onDiscard() }
+                    .onFailure { Logger.e(TAG, "could not delete the partial a failed publish left", it) }
+            }
+            // Still unconditional: after the discard above, the partial is settled either way, and the
+            // failure is reported by the caller rather than by a name the sweep chases forever.
             onSettled()
         }
+        return published
     }
 
     /**

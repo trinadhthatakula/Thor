@@ -10,6 +10,7 @@ import java.io.IOException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -107,6 +108,86 @@ class ArchiveDestinationTest {
         assertTrue(isSweepableOrphanName("Thor-com.example.game-42.thorbak.part (1)"))
     }
 
+    // ── nonCollidingArchiveName ──────────────────────────────────────────────────────────────────
+    //
+    // Archive names are deterministic, so a second backup of one app at one version always collides.
+    // MediaStore and most SAF providers number the newcomer; `File.renameTo` on legacy Downloads
+    // silently deletes the older backup. These pin the rule that makes the third one agree.
+
+    @Test
+    fun `a free name is used unchanged`() {
+        assertEquals(
+            "com.example.game-42.thorbak",
+            nonCollidingArchiveName("com.example.game-42.thorbak") { false },
+        )
+    }
+
+    @Test
+    fun `an existing backup is never written over`() {
+        val existing = setOf("com.example.game-42.thorbak")
+
+        assertEquals(
+            "com.example.game-42 (1).thorbak",
+            nonCollidingArchiveName("com.example.game-42.thorbak") { it in existing },
+        )
+    }
+
+    @Test
+    fun `the counter goes before the extension`() {
+        // Load-bearing, not cosmetic. `x.thorbak (1)` does not end in `.thorbak`, so the restore
+        // picker — which filters on exactly that — would hide the archive Thor had just written, and
+        // isSweepableOrphanName's "not a finished archive" clause would stop protecting it.
+        val taken = setOf("com.example.game-42.thorbak")
+        val chosen = nonCollidingArchiveName("com.example.game-42.thorbak") { it in taken }!!
+
+        assertTrue(chosen.endsWith(".$THORBAK_EXTENSION"))
+        assertFalse(isSweepableOrphanName(chosen))
+        assertTrue(isSweepableOrphanName(partialName(chosen)))
+    }
+
+    @Test
+    fun `a partial in the folder is a collision too`() {
+        // A `.part` is a backup being written right now. Reusing its name would hand the second job
+        // the first one's file and truncate it — the exact data loss this function exists to stop,
+        // moved from the finished archive onto the one still being written.
+        val taken = setOf(partialName("com.example.game-42.thorbak"))
+
+        assertEquals(
+            "com.example.game-42 (1).thorbak",
+            nonCollidingArchiveName("com.example.game-42.thorbak") { it in taken },
+        )
+    }
+
+    @Test
+    fun `numbering keeps counting past the first taken variant`() {
+        val taken = setOf(
+            "com.example.game-42.thorbak",
+            "com.example.game-42 (1).thorbak",
+            "com.example.game-42 (2).thorbak",
+        )
+
+        assertEquals(
+            "com.example.game-42 (3).thorbak",
+            nonCollidingArchiveName("com.example.game-42.thorbak") { it in taken },
+        )
+    }
+
+    @Test
+    fun `a destination that claims every name yields no name at all`() {
+        // Null means "do not write", never "write over one of them" — and it terminates, which a
+        // `while (true)` against a provider answering yes to everything would not.
+        assertNull(nonCollidingArchiveName("com.example.game-42.thorbak") { true })
+    }
+
+    @Test
+    fun `a name without the archive extension keeps the shape it arrived with`() {
+        // Defensive: `removeSuffix` on a name that never carried the suffix returns it unchanged, so
+        // a naive implementation appends a `.thorbak` the caller never asked for.
+        val taken = setOf("notes")
+
+        assertEquals("notes (1)", nonCollidingArchiveName("notes") { it in taken })
+    }
+
     // ── BaseDestination ──────────────────────────────────────────────────────────────────────────
 
     /**
@@ -163,5 +244,80 @@ class ArchiveDestinationTest {
         runCatching { destination.publish() }
 
         assertEquals(1, settled)
+    }
+
+    /**
+     * The counterpart to `publishing settles the ledger entry`, and the reason "settle once" is not
+     * "publish or discard, never both".
+     *
+     * `renameTo` returns false and `renameDocument` returns null on a failure neither of them throws
+     * for. The partial is then still on disk, under the partial name, and the very next line forgets
+     * the ledger entry that is the only record of that name — so without the discard the file becomes
+     * unreachable to every future sweep. It is a whole app data tree; on a big game that is gigabytes.
+     */
+    @Test
+    fun `a publish that fails deletes the partial before the ledger forgets it`() = runTest {
+        var settled = 0
+        var discarded = 0
+        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
+            override fun onPublish(): Boolean = false
+            override fun onDiscard() {
+                discarded++
+            }
+        }
+
+        assertFalse(destination.publish())
+
+        assertEquals("the partial a failed publish left was not deleted", 1, discarded)
+        assertEquals(1, settled)
+        // The caller's shape is `try { … publish() } finally { discard() }`, and the failed publish
+        // already settled. The trailing discard must not delete a second time or settle again.
+        destination.discard()
+        assertEquals(1, discarded)
+        assertEquals(1, settled)
+    }
+
+    @Test
+    fun `a publish that throws deletes the partial too`() = runTest {
+        // A throw published no less than a `false` did, and leaves the same file behind.
+        var discarded = 0
+        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = {}) {
+            override fun onPublish(): Boolean = throw IOException("the provider went away")
+            override fun onDiscard() {
+                discarded++
+            }
+        }
+
+        runCatching { destination.publish() }
+
+        assertEquals(1, discarded)
+    }
+
+    @Test
+    fun `a delete that fails on top of a failed publish does not replace the failure`() = runTest {
+        // Cleanup runs where something has already gone wrong. A provider that refuses the delete as
+        // well must still let publish() return its own answer — `false` — rather than throwing an
+        // IOException about the cleanup out of a function the caller reads as "did it save?".
+        var settled = 0
+        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
+            override fun onPublish(): Boolean = false
+            override fun onDiscard() = throw IOException("the provider refused the delete too")
+        }
+
+        assertFalse(destination.publish())
+        assertEquals(1, settled)
+    }
+
+    @Test
+    fun `a successful publish never discards`() = runTest {
+        // The other direction of the same rule, pinned separately from `publishing settles the ledger
+        // entry`: the discard added for the failure path must not fire on the path that succeeded, or
+        // every backup would delete the archive it had just written.
+        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = {}) {
+            override fun onPublish(): Boolean = true
+            override fun onDiscard() = error("a published destination must never discard")
+        }
+
+        assertTrue(destination.publish())
     }
 }

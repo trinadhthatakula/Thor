@@ -209,9 +209,9 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
 
                     // Beside the destination, because the destination is what it is about: the file
                     // name is derived from the app and its version code, so a second backup of the
-                    // same version lands on the first one. What that does depends on which of the
-                    // three backends is answering — `renameTo` on legacy Downloads replaces it
-                    // outright — and the user was previously told none of it.
+                    // same version asks for a name the first one already has. Every backend Thor
+                    // names the file for now numbers the newer one instead of replacing the older;
+                    // the one case left is a SAF folder, where the provider decides.
                     Text(
                         text = stringResource(R.string.backup_overwrite_notice),
                         style = MaterialTheme.typography.bodySmall,

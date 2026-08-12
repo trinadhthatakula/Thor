@@ -47,15 +47,23 @@
     <!--
       The consequence a deterministic file name has and nothing else on the sheet names: an archive is
       <package>-<versionCode>.thorbak, so backing the same app up twice at the same version always
-      collides. "Can replace" rather than "will replace" because the three destinations genuinely
-      disagree — a legacy Downloads write renames over the old file, MediaStore usually de-duplicates
-      to "name (1)", and a SAF provider may do either or fail the publish. Saying "will" would be false
-      on two of the three, and saying nothing leaves the API 28 user's previous backup to vanish
-      silently. Stated before the button rather than as an "are you sure?", which is the branch's rule
-      for destructive actions: name the consequence, do not ask the user to confirm a sentence they
-      have not been given.
+      collides.
+
+      This used to read "can replace the backup you already have", because the three destinations
+      genuinely disagreed: MediaStore de-duplicates to "name (1)", a SAF provider usually does, and a
+      legacy Downloads write renamed straight over the old file. AppArchiveStoreImpl now picks a
+      non-colliding name on that third backend too (nonCollidingArchiveName), so "kept alongside" is
+      the behaviour Thor itself produces everywhere.
+
+      The hedge survives, narrowed to the one case Thor does not control: a folder the user chose is
+      the provider's to manage, and DocumentsContract.renameDocument onto an existing name is the
+      provider's decision. Promising "never replaces" would be a claim Thor cannot honour there.
+
+      Stated before the button rather than as an "are you sure?", which is the branch's rule for
+      destructive actions: name the consequence, do not ask the user to confirm a sentence they have
+      not been given.
     -->
-    <string name="backup_overwrite_notice">Thor names a backup after the app and its version, so backing this app up again at the same version can replace the backup you already have.</string>
+    <string name="backup_overwrite_notice">Thor names a backup after the app and its version, so backing this app up again at the same version reuses that name. Thor keeps both by numbering the newer one, though a folder you chose yourself may replace the older file instead.</string>
     <!--
       Shown when every data class is unticked. Its second sentence is the whole of C1: the restore gate
       refuses an empty selection before it looks at the installer, so an installer-only archive is a
@@ -138,7 +146,14 @@
       they are capitalised and stopped. The two after them are fragments interpolated into
       restore_failed above ("Restore failed: %1$s"), so they carry neither.
     -->
-    <string name="restore_error_unreadable_file">Thor could not open that file.</string>
+    <string name="restore_error_unreadable_file">Thor could not read that file. If it is on a card or a cloud folder, check it is still available and try again.</string>
+    <!--
+      Split out of restore_error_unreadable_file, which used to answer for both. The picker shows every
+      file on the device, so choosing something that is not a backup is the ordinary mistake, and the
+      two failures send the user opposite ways: this one says pick a different file, the other says
+      this file is fine, try it again. One sentence for both was wrong for whichever one happened.
+    -->
+    <string name="restore_error_not_an_archive">That file is not a Thor backup. Choose a .thorbak file.</string>
     <string name="restore_error_wrong_passphrase">That passphrase does not open this backup.</string>
     <!--
       Not "wrong passphrase": this is the check itself failing, and a throw is no evidence about what
