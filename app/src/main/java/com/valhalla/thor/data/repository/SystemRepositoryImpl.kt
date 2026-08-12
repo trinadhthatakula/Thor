@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -311,10 +312,27 @@ class SystemRepositoryImpl(
                 }
             )
 
-        return executeShellCommand(command).fold(
+        val verdict = executeShellCommand(command).fold(
             onSuccess = { (exitCode, output) -> parseObbProbe(exitCode, output) },
             onFailure = { ObbProbe.Undetermined(it.message ?: "no privileged shell is available") }
         )
+        // The verdict is the only thing a user or a bug report can see about this, and until now it
+        // reached them as a UI state with the reason thrown away — "Thor can't read this app's game
+        // data" for a shell failure, a truncated reply and a genuinely unreadable directory alike.
+        // One line at the single exit, on the reason string the sealed type already carries, is what
+        // makes an Undetermined on a device answerable rather than guessable. Logged for every
+        // verdict, not just the bad one: "we probed and got None" and "we never probed" are the two
+        // states a silent log cannot tell apart.
+        Logger.d(
+            "SystemRepo",
+            "obb probe for $packageName: " + when (verdict) {
+                is ObbProbe.None -> "None"
+                is ObbProbe.Present ->
+                    "Present(${verdict.files.size} obb, ${verdict.otherEntryCount} other)"
+                is ObbProbe.Undetermined -> "Undetermined(${verdict.reason})"
+            }
+        )
+        return verdict
     }
 
     private companion object {

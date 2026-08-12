@@ -85,6 +85,50 @@ class ObbProbeParserTest {
     }
 
     @Test
+    fun `the probe script runs entirely inside a subshell`() {
+        // The regression test for the bug the owner reported. Under root this script is written
+        // into Odin's single long-lived `su` session, so a bare top-level `exit 0` killed that
+        // session: libsu's end-marker never ran, the exit code came back as 1, and parseObbProbe
+        // refused the reply before reading the THOR_NODIR sitting on stdout. "This app has no game
+        // data" — the ~70% case — was delivered as "could not determine", and the next unrelated
+        // root command failed too.
+        val command = obbProbeCommand("/storage/emulated/0", "com.example.game")!!.trim()
+
+        assertTrue(command, command.startsWith("("))
+        assertTrue(command, command.endsWith(")"))
+
+        // Both sides, in the same test: a wrap that swallowed a branch would pass the two
+        // assertions above while producing a script that answers nothing. The absent branch and
+        // the readable branch are the two the whole feature turns on.
+        assertTrue(command, command.contains("echo $SENTINEL_NODIR; exit 0; }"))
+        assertTrue(command, command.contains("stat -c '${PREFIX_OBB}%s %n'"))
+    }
+
+    @Test
+    fun `every exit in the probe script sits inside the subshell`() {
+        // startsWith("(") / endsWith(")") alone would still pass if someone appended a seventh
+        // branch after the closing paren and then a trailing `)` of their own. This pins each
+        // `exit` to the interior, and pins the count so that adding a branch is a decision someone
+        // has to make deliberately rather than by copying the line above it.
+        val command = obbProbeCommand("/storage/emulated/0", "com.example.game")!!.trim()
+
+        val open = command.indexOf('(')
+        val close = command.lastIndexOf(')')
+        assertEquals(command, 0, open)
+        assertEquals(command, command.length - 1, close)
+
+        var found = 0
+        var at = command.indexOf("exit ")
+        while (at >= 0) {
+            assertTrue("an exit at $at is outside the subshell: $command", at in (open + 1) until close)
+            found++
+            at = command.indexOf("exit ", at + 1)
+        }
+        // NOPRIV, package-dir SYMLINK, NODIR, leaf SYMLINK, BADNAME, STATFAIL.
+        assertEquals(command, 6, found)
+    }
+
+    @Test
     fun `the stat call in the command fails closed`() {
         val command = obbProbeCommand("/storage/emulated/0", "com.example.game")!!
 

@@ -502,7 +502,7 @@
     <string name="export_explain_apk">Thor guarda esta aplicación como un único archivo de instalación (.apk) en la carpeta de abajo. Úsala para hacer una copia de seguridad o reinstalarla más tarde.</string>
     <string name="export_explain_apks">Esta aplicación consta de varias partes divididas, que se agrupan en un único paquete (.apks) en la carpeta de abajo. Reinstálala en cualquier momento con el instalador de Thor.</string>
     <string name="export_explain_xapk">Thor empaqueta las partes de esta app en un único .xapk en la carpeta de abajo, un formato que otros instaladores también entienden. Los datos del juego (archivos OBB) se incluyen cuando el modo de acceso actual de Thor puede leerlos.</string>
-    <string name="export_xapk_unavailable">Thor no puede leer los datos del juego de esta app ahora mismo; normalmente eso significa que hace falta root o Shizuku. Un .xapk sin ellos instalaría un juego que no funciona.</string>
+    <string name="export_xapk_no_game_data">Thor no puede leer los datos del juego de esta app ahora mismo; normalmente eso significa que hace falta root o Shizuku. El .xapk se creará igualmente, sin ellos.</string>
     <string name="export_obb_included">Incluye %1$s de datos del juego.</string>
     <string name="export_obb_partial">Algunos elementos de la carpeta de datos de esta app no son archivos de expansión y no se incluirán.</string>
     <string name="export_format">Formato</string>

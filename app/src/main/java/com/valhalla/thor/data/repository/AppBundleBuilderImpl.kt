@@ -128,26 +128,26 @@ class AppBundleBuilderImpl(
                 // because the XAPK manifest has to carry this number.
                 val totalApkSize = apkFiles.sumOf { it.length() }
 
-                // Only .xapk carries expansions. The export sheet disables the .xapk chip on an
-                // Undetermined probe, so in practice this format is not even selectable then — but
-                // that gate is in the UI, and this is the only place that knows whether the bundle
-                // it is about to write is complete. Treating Undetermined as "no expansions" would
-                // make a lost privilege between rendering the chip and pressing Export produce a
-                // silently OBB-less .xapk, which is GH#164 reached from a new direction. So it
-                // fails instead, and the chip becomes defence in depth rather than the whole
-                // defence. (`autoFor` never returns XAPK, so no caller reaches this by default.)
+                // Only .xapk carries expansions, so only .xapk pays for the probe.
                 val probe = if (format == BundleFormat.XAPK) {
                     systemRepository.probeObb(appInfo.packageName)
                 } else {
                     ObbProbe.None
                 }
-                if (probe is ObbProbe.Undetermined) {
-                    throw IOException(
-                        "whether this app has game data could not be determined, so a .xapk " +
-                            "might be incomplete"
-                    )
-                }
-                val obbFiles = (probe as? ObbProbe.Present)?.files.orEmpty()
+                // An Undetermined probe used to throw here, and the export sheet disabled the .xapk
+                // chip to match: a verdict of "we could not tell" refused the whole format. That is
+                // fail-closed on *unknowability*, and it turned the ordinary case into an error —
+                // most apps have no expansion files at all, so most of the time the answer we could
+                // not read was "there is nothing to read". Per the owner we proceed instead: an
+                // .xapk built for an app that has no game data is a correct .xapk, and one built
+                // for an app that does is no worse than the .apk export the user would otherwise
+                // fall back to.
+                //
+                // The line this draws is between *unknown* and *known lost*, and only the second
+                // half of it moved. `requireStagedExpansions` below still throws, because Present
+                // means the probe measured real files and a copy that then fails is data we know we
+                // are dropping. That is GH#164, and it stays fatal.
+                val obbFiles = expansionsToPack(format, probe)
 
                 // Every failure below throws rather than returning a Result: this whole block is
                 // inside the try, so a `return@withContext Result.failure(...)` is an ordinary
@@ -179,10 +179,10 @@ class AppBundleBuilderImpl(
                                 "${Formatter.formatShortFileSize(context, shortfall)} more is needed"
                         )
                     }
-                    stageExpansions(appInfo.packageName, obbFiles, obbStagingDir)
-                        ?: throw IOException(
-                            "this app's game data could not be read, so the .xapk would be incomplete"
-                        )
+                    requireStagedExpansions(
+                        requested = obbFiles,
+                        staged = stageExpansions(appInfo.packageName, obbFiles, obbStagingDir)
+                    )
                 }
 
                 // Source path *and* staged name together: stagedApkNames renames a leaf collision,
@@ -578,6 +578,57 @@ internal fun obbCopyCommand(
     // the read just as effectively as a link at the leaf, and passes a test aimed at the leaf.
     return "[ ! -L '$sourceDir' ] && [ ! -L '$source' ] && " +
         "cp -f '$source' '$destPath' && chmod 644 '$destPath'"
+}
+
+/**
+ * Which expansion files this bundle should try to pack — the probe verdict turned into a list.
+ *
+ * Three inputs, one list, and the interesting arm is [ObbProbe.Undetermined] → empty. It reads like
+ * the mistake the tri-state exists to prevent, so it is worth being explicit about why it is not:
+ *
+ *  - [ObbProbe.Present] is the only verdict that names files, so it is the only one that can
+ *    produce a non-empty list.
+ *  - [ObbProbe.None] means the probe looked and found nothing.
+ *  - [ObbProbe.Undetermined] means the probe could not look. Packing nothing is the *only* thing
+ *    this function can do with that; what changed is that the export no longer refuses instead.
+ *
+ * The verdicts stay distinguishable — `Undetermined` is still not `None`, the sheet still says so,
+ * and `SystemRepositoryImpl.probeObb` logs the reason — they just no longer have distinct *blocking*
+ * consequences. The fatal case moved to [requireStagedExpansions], which fires when the probe did
+ * name files and the copy then failed: that is loss we can prove, and it is still an error.
+ *
+ * [format] is read rather than assumed. `.apks` has no expansion convention, and `zipSourcesFor`
+ * already drops expansions for it — this makes the same rule true one step earlier, so an `.apks`
+ * export never stages a byte it will not ship.
+ */
+internal fun expansionsToPack(format: BundleFormat, probe: ObbProbe): List<ObbFile> =
+    if (format != BundleFormat.XAPK) {
+        emptyList()
+    } else {
+        (probe as? ObbProbe.Present)?.files.orEmpty()
+    }
+
+/**
+ * The staged expansions, or a failed export — the one place where not having the game data is still
+ * fatal.
+ *
+ * [requested] is [expansionsToPack]'s output, so a non-empty list means the probe *measured* those
+ * files: it read their names and their sizes off the device. `stageExpansions` returning null after
+ * that is not "there was nothing there", it is "we could not copy what we saw", and writing the
+ * .xapk anyway hands the user an archive that installs a game which then cannot start. That is
+ * GH#164, and it is exactly the case an Undetermined probe is *not*.
+ *
+ * Empty [requested] short-circuits, so the caller does not have to prove it only calls this on the
+ * path where there was something to stage.
+ */
+internal fun requireStagedExpansions(
+    requested: List<ObbFile>,
+    staged: List<ZipSource>?
+): List<ZipSource> {
+    if (requested.isEmpty()) return emptyList()
+    return staged ?: throw IOException(
+        "this app's game data could not be read, so the .xapk would be incomplete"
+    )
 }
 
 /**

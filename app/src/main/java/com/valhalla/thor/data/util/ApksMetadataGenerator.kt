@@ -98,13 +98,28 @@ class ApksMetadataGenerator {
         @SerialName("icon") val icon: String? = null,
         @SerialName("split_apks") val splitApks: List<XapkSplitApk> = emptyList(),
         /**
-         * Null, never an empty list.
+         * An empty list, never null — so an OBB-less `.xapk` carries `"expansions":[]`.
          *
-         * `xapkJson` sets `encodeDefaults = true`, so a defaulted `emptyList()` would write
-         * `"expansions":[]` into every OBB-less `.xapk`. `explicitNulls = false` drops a null
-         * instead, leaving bundles for apps without expansion files byte-for-byte as they were.
+         * This was the other way round, on the reasoning that leaving the key out kept those
+         * bundles byte-identical to what shipped before the feature existed. The reasoning was
+         * sound and the conclusion was still the riskier of the two, because it optimised for
+         * Thor's diff rather than for the readers:
+         *
+         *  - `[]` is the only encoding that survives a null check, a truthiness check and a type
+         *    check simultaneously, which is the union of what the reference `.xapk` installers
+         *    actually do. APK Extractor emits it; **nothing** emits `null`.
+         *  - `expansions` is optional in every parser read for this, so an absent key is *also*
+         *    accepted — but "accepted by the five we read" is a weaker claim than "the shape the
+         *    ecosystem already produces".
+         *  - Thor's own reader (`BundleAnalysis`) declares it non-null with an `emptyList()`
+         *    default, so `[]` parses there with no change.
+         *
+         * `xapkJson` sets `encodeDefaults = true`, which is what makes the default *emit* rather
+         * than vanish; see the comment on `xapkJson` for why that config is not negotiable. The
+         * `.apks` manifest goes through the plain `Json` (`encodeDefaults = false`), so its bytes
+         * are unchanged — a value equal to its declared default is still dropped there.
          */
-        @SerialName("expansions") val expansions: List<XapkExpansion>? = null
+        @SerialName("expansions") val expansions: List<XapkExpansion> = emptyList()
     )
 
     fun generateJson(appInfo: AppInfo) = Json.encodeToString(
@@ -143,8 +158,8 @@ class ApksMetadataGenerator {
      * [iconName] must name an entry the builder actually writes at the zip root; pass null when it
      * wrote none, so the field is left out rather than pointing a reader at a missing entry.
      * [staged] is the same contract for the APKs — see [xapkManifest].
-     * [expansions] is what the builder actually packed into `Android/obb/<pkg>/`; an empty list
-     * leaves the key out of the JSON altogether rather than writing `"expansions":[]`.
+     * [expansions] is what the builder actually packed into `Android/obb/<pkg>/`; an empty list is
+     * written as `"expansions":[]` rather than omitted — see [XapkManifest.expansions].
      */
     fun generateManifestJson(
         appInfo: AppInfo,
@@ -199,9 +214,9 @@ class ApksMetadataGenerator {
             versionCode = appInfo.versionCode.toString(),
             versionName = appInfo.versionName ?: "",
             splitApks = splitApks,
-            // takeIf, not the list itself: see XapkManifest.expansions. An empty list here would
-            // be encoded as `"expansions":[]` by xapkJson's encodeDefaults.
-            expansions = expansions.takeIf { it.isNotEmpty() }
+            // The list itself, empty or not. There used to be a `takeIf { it.isNotEmpty() }` here
+            // to null it out; see XapkManifest.expansions for why `[]` is the better wire shape.
+            expansions = expansions
         )
     }
 

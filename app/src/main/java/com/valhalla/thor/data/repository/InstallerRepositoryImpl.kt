@@ -1111,6 +1111,16 @@ internal fun writeEntriesWithinBudget(
  * got their own bytes hashed and then confirmed. The guard covered the microseconds and missed the
  * span it was written for.
  *
+ * The whole script is wrapped in `( … )` so the abort ends the *subshell*. Today both callers hand
+ * this to `ShizukuHelper.execute` / `DhizukuHelper.execute`, which spawn a fresh `sh` per command,
+ * so a bare `exit` would only end a process that was about to end anyway. That is a property of the
+ * current callers, not of this function, and it is exactly the assumption that broke
+ * `obbProbeCommand`: routed through the root gateway instead, the same shape kills Odin's single
+ * long-lived `su` session mid-script — libsu never appends its end marker, the real exit code is
+ * lost, and the *next* unrelated privileged command fails too. A script that ends its own subshell
+ * is safe on every transport, so the transport stops being something a caller has to know.
+ * `RootSystemGateway.installViaSession` is the same wrap for the same reason.
+ *
  * @param digests staged absolute path to its expected lowercase SHA-256 hex.
  */
 internal fun integrityGuardedInstall(
@@ -1123,6 +1133,7 @@ internal fun integrityGuardedInstall(
     require(digests.isNotEmpty()) { "refusing to build an unguarded privileged install" }
 
     val sb = StringBuilder()
+    sb.append("(\n")
     for ((path, expected) in digests) {
         sb.append("H=$(sha256sum ").append(path.escapeForShell())
             .append(" 2>/dev/null | cut -d' ' -f1)\n")
@@ -1130,6 +1141,10 @@ internal fun integrityGuardedInstall(
             .append("echo 'staged APK failed its integrity check' 1>&2; ")
             .append("exit ").append(INTEGRITY_CHECK_EXIT_CODE).append("; fi\n")
     }
-    sb.append(installCommand)
+    sb.append(installCommand).append("\n")
+    // The subshell's status is the install's status, so the caller's `result.first == 0` still reads
+    // `pm`'s exit code and a failed hash still surfaces as INTEGRITY_CHECK_EXIT_CODE. Nothing may be
+    // appended after this line.
+    sb.append(")\n")
     return sb.toString()
 }

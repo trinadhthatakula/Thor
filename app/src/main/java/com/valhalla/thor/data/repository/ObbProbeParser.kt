@@ -114,6 +114,9 @@ private val PACKAGE_NAME = Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*")
  *    directory is tested the same way before the loop starts: a `-L` test only ever examines a path's
  *    **final component**, so guarding the leaves does nothing about a link one level up.
  *  - **[SENTINEL_END] is printed last** so a truncated reply is detectable.
+ *  - **The whole script runs inside a subshell**, so the six `exit 0`s below end the *subshell*
+ *    rather than the shell that is running it. See the comment at the `(` for why that is not a
+ *    style choice.
  *
  * [externalStorageDir] comes from `Environment.getExternalStorageDirectory().absolutePath` rather
  * than a hardcoded `/storage/emulated/0` — but Thor runs against a single `thorUserId` (see
@@ -129,6 +132,21 @@ internal fun obbProbeCommand(externalStorageDir: String, packageName: String): S
     val parent = "$externalStorageDir/Android/obb"
     val dir = "$parent/$packageName"
     return buildString {
+        // Run the whole thing in a subshell so our `exit` codes exit the SUBSHELL, not the shell
+        // that is running the script. Under root that shell is Odin's single long-lived `su`
+        // session — every privileged command in the app goes through it — so a top-level `exit`
+        // kills it before libsu appends its end-marker, leaving it unable to read the real exit
+        // code (it falls back to 1) and breaking the *next* root command too.
+        //
+        // That failure is invisible from here and reads as a bug somewhere else entirely:
+        // `parseObbProbe` refuses a non-zero exit before it ever looks at the sentinel, so the
+        // commonest verdict of all — [SENTINEL_NODIR], "this app has no game data" — came back as
+        // `Undetermined("the privileged shell exited with code 1")`. The one branch below with no
+        // `exit` is the successful listing, which is why apps that *did* have an OBB worked and the
+        // ~70% that do not failed. Under Shizuku/Dhizuku the script gets a fresh `sh` per command
+        // and the wrap costs nothing; `RootSystemGateway.installViaSession` is the same wrap for
+        // the same reason and is the pattern to copy.
+        append("(\n")
         append("ls -1 '").append(parent).append("' >/dev/null 2>&1 || { echo ")
         append(SENTINEL_NOPRIV).append("; exit 0; }\n")
         // The directory itself, before the leaves: `for f in '<dir>'/*` expands *through* a
@@ -168,6 +186,10 @@ internal fun obbProbeCommand(externalStorageDir: String, packageName: String): S
         append("done\n")
         append("echo \"THOR_OTHER \$n\"\n")
         append("echo ").append(SENTINEL_END).append("\n")
+        // Closes the subshell opened at the top. Nothing may be appended after this line: an `exit`
+        // outside the parentheses is the defect this wrap exists to prevent, and
+        // `ObbProbeParserTest` asserts the script ends here for exactly that reason.
+        append(")\n")
     }
 }
 
@@ -179,9 +201,16 @@ internal fun isUsablePackageName(value: String): Boolean = PACKAGE_NAME.matches(
  *
  * The order of the checks is the contract, in two parts.
  *
- * All four early sentinels are tested before `THOR_END`, because each of their branches `exit 0`
- * without ever reaching the `echo THOR_END` at the bottom of the script. Only the listing path prints
- * the sentinel, so only the listing path may require it.
+ * All **five** early sentinels — [SENTINEL_NOPRIV], [SENTINEL_BADNAME], [SENTINEL_STATFAIL],
+ * [SENTINEL_SYMLINK], [SENTINEL_NODIR] — are tested before `THOR_END`, because each of their
+ * branches `exit 0` without ever reaching the `echo THOR_END` at the bottom of the script. (Six
+ * `exit 0`s, five sentinels: [SENTINEL_SYMLINK] has a branch for the package directory and another
+ * for a leaf.) Only the listing path prints the sentinel, so only the listing path may require it.
+ *
+ * Those `exit`s are *early returns from a subshell*, which is the only shape that is safe here —
+ * see the `(` in [obbProbeCommand]. Bare, they ended the caller's shell instead, and under root
+ * that shell is shared with the rest of the app. This KDoc used to describe them as bare and
+ * intentional, and miscounted them; both are fixed rather than merely reworded.
  *
  * `THOR_NODIR` is then the one sentinel that is not believed on sight, because it is the only one
  * whose verdict is [ObbProbe.None] — every other reading of a corrupt reply fails closed, so only
