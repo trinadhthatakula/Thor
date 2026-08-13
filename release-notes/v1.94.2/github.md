@@ -264,7 +264,7 @@ unconfirmed — and it opened with `if (!isConnected) return`. That guard was pu
 against the artifact Gradle actually resolves (billing 9.1.0), a query on a disconnected client
 does not fail; it **rebinds**:
 
-```
+```text
 BillingClientImpl.queryPurchasesAsync -> submits Callable zzbp
 zzbp.call()      -> BillingClientImpl.zzay(this, zzdq.zzb())   // synthetic accessor
 zzay(impl, long) -> impl.zzbx(long)
