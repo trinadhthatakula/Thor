@@ -133,6 +133,19 @@ class BillingProcessorImpl(
                             showToast(context.getString(R.string.billing_purchase_pending))
                     }
                 }
+            } else if (billingResult.responseCode ==
+                BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED
+            ) {
+                // Play is refusing the flow because a purchase for this product already exists and
+                // is not being handed over — which is what it answers when an earlier
+                // acknowledgement never landed. So of all of Play's codes this is the one that most
+                // reliably means "you owe Play an acknowledgement, right now". `purchases` is null
+                // on this path, so asking is the only way to reach the token.
+                //
+                // No toast: "Billing error: 7" tells the user they did something wrong when they did
+                // not, and the sweep produces its own feedback — it publishes `_activeSubscription`,
+                // which is what makes the support sheet render the tier as the active plan.
+                queryActiveSubscriptions()
             } else if (billingResult.responseCode != BillingClient.BillingResponseCode.USER_CANCELED) {
                 showToast(context.getString(R.string.billing_error) + ": " + billingResult.responseCode)
             }
@@ -398,8 +411,30 @@ class BillingProcessorImpl(
         }
     }
 
+    /**
+     * Sweeps every subscription Play knows about and acknowledges whatever is still unacknowledged.
+     *
+     * **Deliberately not guarded on [isConnected].** It used to be, and that guard was pure loss:
+     * `queryPurchasesAsync` rebuilds a dropped binding itself before doing anything else. Verified
+     * against the artifact Gradle resolves (`com.android.billingclient:billing:9.1.0`):
+     *
+     * ```
+     * BillingClientImpl.queryPurchasesAsync -> submits Callable zzbp
+     * zzbp.call()       -> BillingClientImpl.zzay(this, zzdq.zzb())        // synthetic accessor
+     * zzay(impl, long)  -> impl.zzbx(long)
+     * zzbx(long)        -> zzby() ; zzaI(int).get(timeout) ; Math.pow + Thread.sleep
+     * ```
+     *
+     * `zzbx` is the same blocking rebind-with-backoff helper that already sits at the head of the
+     * acknowledgement worker (`zzaJ` -> `zzbx(J)`), which is exactly why [acknowledgePurchase] and
+     * [queryProducts] are unguarded. This is equally the money path — it is the only backstop for a
+     * purchase whose `onPurchasesUpdated` never arrived, and Google refunds anything left
+     * unacknowledged after three days — so returning early instead of letting the library rebind
+     * meant a resume with a dropped binding swept nothing at all. A client that really is dead
+     * answers `SERVICE_DISCONNECTED` through the `else` below, which is strictly more than never
+     * asking.
+     */
     private fun queryActiveSubscriptions() {
-        if (!isConnected) return
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.SUBS)
             .build()
@@ -453,11 +488,12 @@ class BillingProcessorImpl(
      * the backstop.
      */
     private fun acknowledgePurchase(purchase: Purchase, showThankYou: Boolean) {
+        val token = purchase.purchaseToken
         // Also the loop guard: a sweep racing an in-flight acknowledgement still reads
         // isAcknowledged == false.
-        if (!acknowledgingTokens.add(purchase.purchaseToken)) return
+        if (!acknowledgingTokens.add(token)) return
         val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
-            .setPurchaseToken(purchase.purchaseToken)
+            .setPurchaseToken(token)
             .build()
         scope.launch {
             var attempt = 0
@@ -485,11 +521,22 @@ class BillingProcessorImpl(
                     )
                     // Release the token so the next sweep can try again rather than skipping it
                     // for the rest of the process.
-                    acknowledgingTokens.remove(purchase.purchaseToken)
+                    acknowledgingTokens.remove(token)
                     return@launch
                 }
                 delay(billingRetryDelayMillis(attempt - 1))
             }
+        }.invokeOnCompletion { cause ->
+            // The token is claimed above, outside the coroutine, so any path that ends the coroutine
+            // without reaching one of its own two exits has to hand it back — otherwise it stays
+            // claimed and every later sweep skips this purchase for the life of the process, which
+            // Google turns into a refund. Two such paths exist: the `CancellationException` rethrow
+            // above, and a `launch` on an already-cancelled scope, whose body never runs at all — so
+            // a `try`/`finally` inside the body would not cover the second one and this does.
+            //
+            // `cause == null` means the body reached an exit and has already decided: the token is
+            // kept on success (see [acknowledgingTokens]) and released once the attempts are spent.
+            if (cause != null) acknowledgingTokens.remove(token)
         }
     }
 
@@ -566,8 +613,15 @@ class BillingProcessorImpl(
         // at most a *queued* startConnection — never a synchronous bindService on the main thread.
         // BillingReconnectLadder.onResume is arithmetic; scheduleReconnect only launches.
         scope.launch {
+            // Unconditional, and ahead of the branch: the sweep no longer needs a live binding (see
+            // [queryActiveSubscriptions] — `queryPurchasesAsync` rebinds underneath it), and it is
+            // the one call here that can cost real money. Inside the `isConnected` branch it was
+            // skipped on precisely the resumes that most needed it: past the ladder's 5 attempts
+            // `onResume()` answers Exhausted, and any resume within the 30 s cooldown answers
+            // TooSoon, so `scheduleReconnect` returned having done nothing and no sweep ran again
+            // for the rest of the process.
+            queryActiveSubscriptions()
             if (isConnected) {
-                queryActiveSubscriptions()
                 // The catalogue can fail on its own, without the binding ever dropping. Binding is
                 // local IPC and needs no network; `queryProductDetails` is a network call, so first
                 // launch in airplane mode gives OK from onBillingSetupFinished and
@@ -594,6 +648,9 @@ class BillingProcessorImpl(
                 if (catalogRefresh.shouldFetch(_products.value.isEmpty())) queryProducts()
                 return@launch
             }
+            // Still worth re-arming now that the sweep above no longer depends on it:
+            // `_isBillingAvailable` and `_products` are written only from `onBillingSetupFinished`,
+            // and the library's own rebind never calls that (see `enableAutoServiceReconnection`).
             scheduleReconnect(reconnect.onResume())
         }
     }
@@ -660,7 +717,18 @@ class BillingProcessorImpl(
     }
 
     private companion object {
-        /** ~1 + 2 + 4 s of retries before the next sweep takes over. */
-        const val MAX_ACKNOWLEDGE_ATTEMPTS = 4
+        /**
+         * ~1 + 2 + 4 + 8 + 16 s of backoff — plus each attempt's own in-library rebind and timeout
+         * (`zzbx` blocks; see [queryActiveSubscriptions]) — before the next sweep takes over.
+         *
+         * Was 4, which spent the entire budget in about seven seconds. The failure this exists for
+         * is a flaky or absent network in the seconds after the user comes back from the Play sheet
+         * — a lift, a tunnel, a handover between Wi-Fi and mobile data — and seven seconds outlasts
+         * none of those. Each extra attempt costs one sleeping coroutine; what it buys back is a
+         * subscription Google would otherwise refund. The backstop past the last attempt is still
+         * the sweep, which now runs on every resume whether or not the binding survived (see
+         * [refreshPurchases]).
+         */
+        const val MAX_ACKNOWLEDGE_ATTEMPTS = 6
     }
 }
