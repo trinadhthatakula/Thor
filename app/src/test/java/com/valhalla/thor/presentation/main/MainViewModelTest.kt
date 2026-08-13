@@ -119,12 +119,15 @@ class MainViewModelTest {
         // on it, so a test can drive a notification tap by calling `requestOpen` on the same instance
         // the view model is watching. Defaulted so the tests that predate it read unchanged.
         sheetTargets: JobSheetTargets = JobSheetTargets(),
+        // Only the two stop-reporting tests pass one: they need to act from *inside* the share loop,
+        // which is the one moment a test body cannot otherwise reach. See FakeAppBundleBuilder.onBuild.
+        bundleBuilder: FakeAppBundleBuilder = FakeAppBundleBuilder(),
     ): MainViewModel {
         val vm = MainViewModel(
             manageAppUseCase = ManageAppUseCase(system),
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             shareAppUseCase = ShareAppUseCase(
-                FakeAppBundleBuilder(),
+                bundleBuilder,
                 FakeAppBundleFileStore(),
                 mainDispatcherRule.dispatcher
             ),
@@ -268,9 +271,52 @@ class MainViewModelTest {
 
         // Reusing the freeze filter for unfreeze is the tempting simplification, and it would strand
         // every blocked app that is already frozen — the exact state a user needs a way out of.
-        assertEquals(listOf("setAppDisabled:com.blocked:false"), system.calls)
+        //
+        // Both dimensions, unconditionally: this app is only *disabled*, so the unsuspend is redundant
+        // and asked for anyway. See the round-trip test below for what reading the flags instead costs.
+        assertEquals(
+            listOf("setAppSuspended:com.blocked:false", "setAppDisabled:com.blocked:false"),
+            system.calls
+        )
         assertEquals(1, vm.uiState.value.freezeLoggerState.total)
     }
+
+    @Test
+    fun `apps suspended by a bulk freeze are actually unsuspended by the bulk unfreeze after it`() =
+        runTest {
+            val vm = viewModel()
+            // One selection, held across both actions — which is what the UI does, and the whole
+            // point: nothing patches `isSuspended` on these objects when the freeze suspends them, so
+            // by the second action the flags are stale and still read "active".
+            val selection = listOf(userApp("com.a"), userApp("com.b"))
+
+            vm.onMultiAppAction(MultiAppAction.Freeze(selection, useSuspend = true))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("setAppSuspended:com.a:true", "setAppSuspended:com.b:true"),
+                system.calls
+            )
+            system.calls.clear()
+
+            vm.onMultiAppAction(MultiAppAction.UnFreeze(selection))
+            advanceUntilIdle()
+
+            // The regression: reading the stale flags made `restoreApp` plan nothing, return success
+            // for both apps, and report "Unfroze 2" over two apps still showing the system's "app
+            // paused" dialog. The suspend-then-unsuspend round trip is the primary way suspend mode
+            // gets used, so the failure was reachable in two taps.
+            assertEquals(
+                "the unsuspend has to be asked for, not inferred from a snapshot the freeze never patched",
+                listOf(
+                    "setAppSuspended:com.a:false", "setAppDisabled:com.a:false",
+                    "setAppSuspended:com.b:false", "setAppDisabled:com.b:false",
+                ),
+                system.calls
+            )
+            val state = vm.uiState.value.freezeLoggerState
+            assertEquals(2, state.processed)
+            assertEquals(0, state.failed)
+        }
 
     @Test
     fun `the freeze counter reports every failure and still finishes the run`() = runTest {
@@ -940,6 +986,74 @@ class MainViewModelTest {
         assertEquals(
             listOf("forceStopApp:com.a", "forceStopApp:com.b", "forceStopApp:com.c", "forceStopApp:com.d"),
             system.calls
+        )
+    }
+
+    @Test
+    fun `a stop that arrives during the last app does not report a stopped batch`() = runTest {
+        val vm = viewModel()
+        // The last app is the only one that can tell `processed < apps.size` apart from
+        // `stopRequested`: the flag is read *after* the loop, so a stop arriving while the final call
+        // is in flight sets it with every app already done.
+        system.onCall = { if (it == "forceStopApp:com.b") vm.requestStopBatch() }
+
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+
+        // Nothing was skipped, so nothing may say it was — "Stopped: 2 of 2" is a complete run
+        // describing itself as an interrupted one, and the user's next question is what got lost.
+        assertEquals(listOf("forceStopApp:com.a", "forceStopApp:com.b"), system.calls)
+        assertFalse(
+            "a batch that finished every app reported itself stopped",
+            vm.uiState.value.loggerState.logs.any {
+                it is UiText.StringResource && it.resId == R.string.log_stopped
+            }
+        )
+    }
+
+    @Test
+    fun `a stop that skipped apps reports how many were done`() = runTest {
+        val vm = viewModel()
+        system.onCall = { if (it == "forceStopApp:com.a") vm.requestStopBatch() }
+
+        vm.onMultiAppAction(
+            MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"), userApp("com.c")))
+        )
+        advanceUntilIdle()
+
+        // The other half of the gate: two apps really were skipped, and the count has to be the one
+        // the loop reached, not the size of the selection.
+        assertEquals(listOf("forceStopApp:com.a"), system.calls)
+        assertTrue(
+            vm.uiState.value.loggerState.logs.contains(
+                UiText.StringResource(R.string.log_stopped, 1, 3)
+            )
+        )
+    }
+
+    @Test
+    fun `a stop during the last shared app does not report a stopped batch either`() = runTest {
+        // The share branch keeps its own copy of the batch loop, so it needs its own pin. Driven from
+        // the bundle builder rather than the system fake because sharing never reaches the privilege
+        // layer — it stages files.
+        // Assigned after construction because the builder is a constructor argument of the thing it
+        // has to call back into.
+        var stopper: MainViewModel? = null
+        val builder = FakeAppBundleBuilder { app ->
+            if (app.packageName == "com.b") stopper?.requestStopBatch()
+        }
+        val vm = viewModel(bundleBuilder = builder)
+        stopper = vm
+
+        vm.onMultiAppAction(MultiAppAction.Share(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+
+        // Both bundles fail here (no device), so the logger stays up to be read instead of being
+        // dismissed for a share sheet — which is what makes this assertion possible at all.
+        assertFalse(
+            vm.uiState.value.loggerState.logs.any {
+                it is UiText.StringResource && it.resId == R.string.log_stopped
+            }
         )
     }
 

@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.domain.model
 
+import com.valhalla.thor.data.backup.job.ThorJobNotifications
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -18,6 +19,23 @@ class ThorJobTest {
         // avoid.
         assertEquals(false, THOR_JOB_CHAIN.contains("com.example"))
         assertEquals(false, ThorJobKind.entries.any { THOR_JOB_CHAIN.contains(it.id) })
+    }
+
+    @Test
+    fun `the sweep chain is a different name from the byte-mover chain`() {
+        // Two chains is the whole point: a five-second freeze sweep must not queue behind an
+        // hour-long capture. Collapsing them back to one name is a one-character mistake that would
+        // show up only as "why is Thor taking so long to freeze an app", on a device, under load.
+        assertNotEquals(THOR_JOB_CHAIN, THOR_SWEEP_CHAIN)
+    }
+
+    @Test
+    fun `the sweep chain name does not depend on the target either`() {
+        // Same reason as the byte-mover chain, minus the disk argument: sweeps serialise so two of
+        // them cannot race on the same package, and because Odin's root channel is one FIFO `su`
+        // session that would interleave them anyway.
+        assertEquals(false, THOR_SWEEP_CHAIN.contains("com.example"))
+        assertEquals(false, ThorJobKind.entries.any { THOR_SWEEP_CHAIN.contains(it.id) })
     }
 
     @Test
@@ -46,6 +64,22 @@ class ThorJobTest {
 
         assertEquals(ids.size, ids.toSet().size)
         for (a in ids) for (b in ids) if (a != b) assertEquals(false, a.startsWith(b))
+    }
+
+    @Test
+    fun `the ongoing and outcome notification id blocks cannot overlap`() {
+        // Both blocks are BASE + kind.ordinal, so they collide the moment the enum grows past the gap
+        // between them — and the symptom is that a job's outcome row is posted under the id of some
+        // *other* kind's progress row, which the other job's `finally` then cancels.
+        //
+        // Reading two `const val`s does not load ThorJobNotifications: a const is inlined at the call
+        // site, so this stays a JVM test even though the class it names needs a Context and a
+        // NotificationManager. Nothing else in that file is reachable from here.
+        assertEquals(
+            true,
+            ThorJobNotifications.BASE_RESULT_NOTIFICATION_ID - ThorJobNotifications.BASE_NOTIFICATION_ID
+                    >= ThorJobKind.entries.size,
+        )
     }
 
     @Test

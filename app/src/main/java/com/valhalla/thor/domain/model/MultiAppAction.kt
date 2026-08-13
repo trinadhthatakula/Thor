@@ -16,7 +16,15 @@ sealed interface MultiAppAction {
     data class Kill(val appList: List<AppInfo>) : MultiAppAction
 
     data class ClearCache(val appList: List<AppInfo>) : MultiAppAction
-    data class ClearData(val appList: List<AppInfo>) : MultiAppAction
     data class Suspend(val appList: List<AppInfo>) : MultiAppAction
     data class UnSuspend(val appList: List<AppInfo>) : MultiAppAction
+
+    // There is deliberately no `ClearData` here. One existed, with a handler in MainViewModel, a
+    // "this cannot be undone" confirmation in AffirmationDialog and translated batch copy in five
+    // locales — and no button anywhere in the app ever constructed it. Nothing was reachable; the
+    // three pieces only made it look reachable, which is worse than absent, because a plan drawn up
+    // from this file would have sized it as an existing feature to migrate rather than as a
+    // destructive one to design. Single-app clear data is a real feature and unaffected: see
+    // [AppClickAction.ClearData]. If bulk clear data is wanted, it wants a deliberate design pass
+    // for the irreversible-over-N-apps case, not the resurrection of this stub.
 }

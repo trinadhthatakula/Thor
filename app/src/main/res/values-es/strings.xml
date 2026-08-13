@@ -399,7 +399,6 @@
     <string name="log_uninstalling_batch">Desinstalando aplicaciones</string>
     <string name="log_suspending_batch">Suspendiendo aplicaciones</string>
     <string name="log_unsuspending_batch">Reanudando aplicaciones</string>
-    <string name="log_clearing_data_batch">Limpiando datos</string>
     <string name="log_sharing_batch">Compartiendo aplicaciones</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_batch_preparing">[%1$d/%2$d] Preparando %3$s…</string>
@@ -420,6 +419,7 @@
     <string name="filter_all">Todas</string>
     <string name="error_debuggable_app">La aplicación es depurable (probablemente discrepancia de firma)</string>
     <string name="error_unsafe_skipped">Omitido: La aplicación del sistema es INSEGURA / falló la verificación de seguridad</string>
+    <string name="error_self_skipped">Omitido: Thor no puede hacerse esto a sí mismo</string>
     <string name="error_parse_package">Error al analizar el paquete.</string>
     <string name="error_downgrade_privilege">La degradación solo es compatible con acceso privilegiado (Root, Shizuku o Dhizuku).</string>
 

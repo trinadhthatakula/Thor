@@ -10,6 +10,8 @@ import com.valhalla.thor.domain.model.APP_LIST_MIME
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.InstalledAppsPermission
@@ -40,6 +42,7 @@ import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
+import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -158,6 +161,22 @@ class AppListViewModel(
     private var refreshIndicatorJob: Job? = null
     private var permissionIndexJob: Job? = null
     private var permissionRefreshJob: Job? = null
+
+    /**
+     * The one list export in flight, save or share.
+     *
+     * Both destinations are guarded by the same handle on purpose: they are one feature with two
+     * endings, and the share half stages through a directory that is wiped on entry
+     * (`AppBundleFileStoreImpl.stageText`). Two overlapping runs therefore do not merely write the
+     * same file twice — the second one can delete the first one's staged file after the Uri for it
+     * has already been handed out.
+     *
+     * A duplicate tap is dropped rather than reported. The work is a `buildString` and one write,
+     * so the window is a few frames wide; a toast saying "already exporting" would appear and
+     * disappear faster than it could be read, and would be the only message on this screen that
+     * describes Thor's internals rather than the user's apps.
+     */
+    private var listExportJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
@@ -675,43 +694,81 @@ class AppListViewModel(
                     }
                     _events.send(
                         AppListEvent.ShowMessage(
-                            if (failures == 0) {
-                                UiText.PluralsResource(
-                                    R.plurals.tile_freeze_success,
-                                    action.appList.size
+                            bulkResultMessage(
+                                BulkResult(
+                                    op = BulkOp.FREEZE,
+                                    total = action.appList.size,
+                                    succeeded = succeededPackages.size,
+                                    failed = failures,
                                 )
-                            } else {
-                                UiText.StringResource(
-                                    R.string.tile_freeze_partial_failure,
-                                    succeededPackages.size,
-                                    action.appList.size,
-                                    failures
-                                )
-                            }
+                            )
                         )
                     )
                 }
 
                 is MultiAppAction.UnFreeze -> {
-                    val packageNames = action.appList.map { it.packageName }.toSet()
-                    action.appList.forEach {
-                        manageAppUseCase.setAppDisabled(it.packageName, false)
+                    // Only the packages that actually came back successful, for both halves of the
+                    // report. This used to discard every result, mark the whole selection
+                    // `enabled = true` and then send an unconditional success plural for
+                    // `appList.size` — so a batch where nothing was unfrozen said "Unfroze 12 apps"
+                    // and drew twelve thawed rows to match. The freeze branch above always counted
+                    // properly; only this direction did not.
+                    //
+                    // `forceUnfreeze`, not `setAppDisabled(_, false)` and not
+                    // `restoreApp(_, app.enabled, app.isSuspended)`:
+                    //
+                    //  - `setAppDisabled` clears one of the two dimensions a frozen app can be
+                    //    frozen in. An app suspended from any other surface — the Freezer's suspend
+                    //    mode, `MainViewModel.performCountedFreeze(useSuspend = true)`, the QS tile,
+                    //    an extension — comes back still suspended, and the report above now says so
+                    //    *precisely*: it counts the enable that succeeded while the user still can't
+                    //    open the app.
+                    //  - `restoreApp` reads the flags, and the flags here are stale by construction.
+                    //    `isSuspended` is patched in exactly one place in this ViewModel
+                    //    ([toggleFreezerMembership]) and never on a bulk path, so it only moves on a
+                    //    full rescan. A snapshot that still calls a just-suspended app active makes
+                    //    `restorePlanFor` plan nothing, and `restoreApp` then returns success having
+                    //    made zero privileged calls — the same lie this branch was just fixed to stop
+                    //    telling, re-entering through the choice of API. FreezerViewModel documents
+                    //    this trap twice for the same reason.
+                    //
+                    // `forceUnfreeze` asks unconditionally, which is what its KDoc is for ("bulk
+                    // 'unfreeze all' when per-app state isn't known"). The cost is one redundant
+                    // unsuspend per already-active app; root and Shizuku answer that from the flag
+                    // alone and Dhizuku pays one `pm unsuspend`. A redundant call is the cheaper of
+                    // the two mistakes.
+                    val succeededPackages = mutableSetOf<String>()
+                    action.appList.forEach { app ->
+                        if (manageAppUseCase.forceUnfreeze(app.packageName).isSuccess) {
+                            succeededPackages.add(app.packageName)
+                        }
                     }
                     _rawState.update { state ->
+                        // Both dimensions, because forceUnfreeze cleared both. Patching only
+                        // `enabled` would leave a thawed app drawn as suspended until the next
+                        // rescan, and would leave the next unfreeze reading that stale flag.
                         state.copy(
                             allUserApps = state.allUserApps.map {
-                                if (it.packageName in packageNames) it.copy(enabled = true) else it
+                                if (it.packageName in succeededPackages) {
+                                    it.copy(enabled = true, isSuspended = false)
+                                } else it
                             },
                             allSystemApps = state.allSystemApps.map {
-                                if (it.packageName in packageNames) it.copy(enabled = true) else it
+                                if (it.packageName in succeededPackages) {
+                                    it.copy(enabled = true, isSuspended = false)
+                                } else it
                             }
                         )
                     }
                     _events.send(
                         AppListEvent.ShowMessage(
-                            UiText.PluralsResource(
-                                R.plurals.unfrozen_count_success,
-                                action.appList.size
+                            bulkResultMessage(
+                                BulkResult(
+                                    op = BulkOp.UNFREEZE,
+                                    total = action.appList.size,
+                                    succeeded = succeededPackages.size,
+                                    failed = action.appList.size - succeededPackages.size,
+                                )
                             )
                         )
                     )
@@ -833,7 +890,8 @@ class AppListViewModel(
             }
             return
         }
-        viewModelScope.launch {
+        if (listExportJob?.isActive == true) return
+        listExportJob = viewModelScope.launch {
             exportAppListUseCase(apps)
                 .onSuccess {
                     _events.send(
@@ -862,7 +920,8 @@ class AppListViewModel(
             }
             return
         }
-        viewModelScope.launch {
+        if (listExportJob?.isActive == true) return
+        listExportJob = viewModelScope.launch {
             exportAppListUseCase.shareUri(apps)
                 .onSuccess { _events.send(AppListEvent.ShareList(it, APP_LIST_MIME)) }
                 .onFailure { e ->

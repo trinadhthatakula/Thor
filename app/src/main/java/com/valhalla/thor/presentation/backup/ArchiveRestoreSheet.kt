@@ -47,6 +47,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ArchiveRestoreWarning
 import com.valhalla.thor.domain.model.DataClassSize
+import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import java.text.DateFormat
 import java.util.Date
 import org.koin.androidx.compose.koinViewModel
@@ -141,6 +142,11 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
     var passphrase by remember(uriString) { mutableStateOf("") }
 
     LaunchedEffect(uriString) { uriString?.let(viewModel::open) }
+
+    // A restore that runs with notifications off is worse off than a backup: it rewrites an app's
+    // data, and the only report that it finished — or failed partway — is the one this permission
+    // gates. Asked on the transition, so a refused or replaced enqueue never prompts.
+    RequestNotificationsWhenJobStarts(jobActive = state.running || state.queued)
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         // No takePersistableUriPermission: OpenDocument's grant lasts for this task, which is all the

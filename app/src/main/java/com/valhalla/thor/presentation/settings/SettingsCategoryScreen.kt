@@ -3,15 +3,8 @@
 
 package com.valhalla.thor.presentation.settings
 
-import android.Manifest
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Build
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -62,8 +55,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -79,6 +70,7 @@ import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.usecase.ObserveInterruptedRestoreUseCase
+import com.valhalla.thor.presentation.common.rememberNotificationPermissionRequest
 import com.valhalla.thor.presentation.main.toDestination
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLanguage
@@ -166,59 +158,21 @@ fun SettingsCategoryScreen(
     val usageAccessManager = koinInject<UsageAccessManager>()
     val lifecycleOwner = LocalLifecycleOwner.current
     var usageGranted by remember { mutableStateOf(usageAccessManager.isGranted()) }
-    var notificationsGranted by remember {
-        mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
-    }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 usageGranted = usageAccessManager.isGranted()
-                notificationsGranted =
-                    NotificationManagerCompat.from(context).areNotificationsEnabled()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Registering the launcher inside the version check is safe: SDK_INT is constant for the
-    // process, so the conditional group is stable across recompositions. It also keeps every
-    // POST_NOTIFICATIONS reference inside the check, which is what lint's InlinedApi wants.
-    val requestNotificationPermission: (() -> Unit)? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val activity = remember(context) { context.findActivity() }
-            val notificationPermissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestPermission()
-            ) { _ ->
-                // Re-read instead of trusting `granted`. The switch reflects
-                // areNotificationsEnabled(), which is also false when the permission is held but the
-                // user muted the app's notifications; trusting `granted` flipped the switch on and
-                // the next ON_RESUME flipped it back off.
-                val enabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
-                notificationsGranted = enabled
-                // RequestPermission returns immediately without showing a dialog once the user has
-                // denied twice, which would leave this row a permanent dead end.
-                // shouldShowRequestPermissionRationale distinguishes that (and the "granted but
-                // muted" case, both false) from a plain first denial (true, where re-tapping the row
-                // still shows the dialog). Where the dialog can no longer help, deep-link to system
-                // settings like the usage-access row above. Thor never self-grants this.
-                val canAskAgain = activity?.let {
-                    ActivityCompat.shouldShowRequestPermissionRationale(
-                        it,
-                        Manifest.permission.POST_NOTIFICATIONS
-                    )
-                } ?: false
-                if (!enabled && !canAskAgain) {
-                    runCatching { context.startActivity(appNotificationSettingsIntent(context)) }
-                }
-            }
-            val request = {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-            request
-        } else {
-            null
-        }
+    // The whole flow — the launcher, the re-read that must not trust `granted`, the resume observer,
+    // and the two-denials dead end — now lives in one composable shared with the job sheets, which is
+    // the second caller it was extracted for. `deepLinkWhenBlocked = true` because the user tapped
+    // this row: doing nothing here would leave a switch that snaps back with no explanation.
+    val notifications = rememberNotificationPermissionRequest(deepLinkWhenBlocked = true)
 
     if (showUnfreezeConfirmation) {
         AlertDialog(
@@ -548,28 +502,28 @@ fun SettingsCategoryScreen(
                     SettingsRowId.NOTIFICATION_ACCESS -> SettingsSwitchRow(
                         icon = R.drawable.frozen,
                         title = stringResource(R.string.notification_access),
-                        subtitle = if (notificationsGranted) {
+                        subtitle = if (notifications.isEnabled) {
                             stringResource(R.string.notification_access_granted_subtitle)
                         } else {
                             stringResource(R.string.notification_access_needed_subtitle)
                         },
-                        checked = notificationsGranted,
+                        checked = notifications.isEnabled,
                         highlighted = lit,
                         onCheckedChange = {
-                            if (!notificationsGranted && requestNotificationPermission != null) {
-                                // 33+: only the system dialog can grant this. Thor never self-grants
-                                // it even when it holds root/Shizuku — the dialog grants the
-                                // identical capability, and Dhizuku cannot self-grant at all.
-                                requestNotificationPermission()
+                            if (!notifications.isEnabled && notifications.canRequest) {
+                                // 33+: the system dialog. A privileged user will usually never see
+                                // this row switched off — `SelfPermissionGranter` grants
+                                // POST_NOTIFICATIONS as soon as root or Shizuku is live — but the
+                                // dialog is still the route for everyone else, and for a privileged
+                                // user who has muted Thor app-wide, which no `pm grant` can undo.
+                                notifications.request()
                             } else {
                                 // 28-32 there is no runtime permission to request, and on 33+ there
                                 // is no dialog that *withdraws* one — requesting again while granted
                                 // returns granted without showing anything. Either way the app-level
                                 // toggle is the only lever, so the on→off tap deep-links to it
                                 // instead of doing nothing and letting the switch snap back.
-                                runCatching {
-                                    context.startActivity(appNotificationSettingsIntent(context))
-                                }
+                                notifications.openNotificationSettings()
                             }
                         }
                     )
@@ -858,22 +812,4 @@ private fun LanguageBottomSheet(
             }
         }
     }
-}
-
-/**
- * The system's per-app notification settings screen — the only place a user can undo a permanent
- * POST_NOTIFICATIONS denial or re-enable app-wide notifications.
- */
-private fun appNotificationSettingsIntent(context: Context): Intent =
-    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-
-/**
- * Unwrap [LocalContext] to the hosting Activity. Compose hands out a ContextWrapper in some hosts,
- * and `shouldShowRequestPermissionRationale` needs the real Activity.
- */
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }

@@ -346,6 +346,26 @@ class FreezeAppUseCaseTest {
         assertEquals(emptyList<String>(), repository.lookups)
     }
 
+    @Test
+    fun `a state-aware restore told the app is active makes no call and still succeeds`() = runTest {
+        // The trap that decides which of these two primitives a *bulk* path may use, pinned here
+        // because it is invisible at the call site: `restoreApp` plans from the flags it is handed,
+        // so flags saying "active" plan nothing, and planning nothing reports `success`.
+        //
+        // That is correct for a single app whose flags were just read, and a lie for a batch, because
+        // no bulk path patches `isSuspended` on the list it is iterating: not
+        // `MainViewModel.performCountedFreeze` (it updates the logger counters and never refreshes
+        // the lists), not `AppListViewModel`'s bulk branch, not the QS tile. So freeze-with-suspend
+        // followed by unfreeze over the same selection hands this method a stale snapshot, and every
+        // app comes back counted as unfrozen while all of them are still suspended.
+        //
+        // Both bulk paths call `forceUnfreeze` instead, and the test above is what they get for it.
+        // If this test goes red because `restoreApp` started asking the system what the flags are,
+        // that choice is worth revisiting — this is the only reason for it.
+        assertTrue(manage.restoreApp(PKG, enabled = true, isSuspended = false).isSuccess)
+        assertEquals(emptyList<String>(), system.calls)
+    }
+
     // --- The batch paths must not report twice -----------------------------------------------
 
     @Test
