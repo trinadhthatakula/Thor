@@ -98,8 +98,8 @@ class JobPhaseTest {
 
     @Test
     fun `a Gone before the job was ever seen alive is ignored`() {
-        // The launcher does not await enqueue(), so WorkManager writes the row on its own executor
-        // after the id comes back and after this reduction has already seen a null WorkInfo. Settling
+        // A null `WorkInfo` is "no row for this id" as much as it is "the row was pruned" — an id
+        // recovered from `runningJobFor` and pruned in between reads exactly like a fresh one. Settling
         // here would take the bar down a frame after the tap and invite a duplicate enqueue.
         val phase = JobPhase(running = true).reduce(ThorJobStatus.Gone)
 

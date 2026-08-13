@@ -110,10 +110,11 @@ fun JobPhase.reduce(status: ThorJobStatus): JobPhase = when (status) {
     // start it" rather than "Thor tried and failed".
     ThorJobStatus.Cancelled -> settle(JobFinish.Cancelled(workerRan = seenRunning))
 
-    // `Gone` is a null `WorkInfo`, and a row that has not been written yet is null too: the launcher
-    // does not await `enqueue()`, so WorkManager writes the row on its own executor after the id has
-    // been handed back and this collector has already subscribed. Both readings arrive as the same
-    // value and only the order tells them apart.
+    // `Gone` is a null `WorkInfo`, and null is what "no row for this id" looks like as well as "the
+    // row was pruned". `enqueueUniqueJob` awaits the `Operation`, so an id handed back normally does
+    // have a row — but an enqueue that fails *after* the caller stopped waiting, and an id recovered
+    // from `runningJobFor` that WorkManager prunes in between, both produce a leading null. Nothing in
+    // the value distinguishes them from a terminal one; only the order does.
     //
     // After the job has been seen alive: the record went away underneath a live watcher. Terminal, but
     // with no outcome to report — hence `settle(null)` rather than a `Failed`.
