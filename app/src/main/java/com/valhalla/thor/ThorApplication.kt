@@ -15,6 +15,7 @@ import com.rosan.dhizuku.api.Dhizuku
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
+import com.valhalla.thor.data.permission.SelfPermissionGranter
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -189,6 +190,17 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val archiveOrphanSweeper: ArchiveOrphanSweeper by inject()
 
     /**
+     * Resolved here because a Koin `@Single` nobody injects is never constructed, so its observer
+     * would never start — the same reason [autoFreezeManager] is resolved eagerly.
+     *
+     * Constructing it resolves `PrivilegeStateProvider`, which brings the first privilege probe
+     * forward from "when the first ViewModel is built" to `onCreate`. That is milliseconds on the
+     * path this app already takes (`MainScreen` composes immediately) and the probe launches into
+     * `PrivilegeManager`'s own scope rather than blocking here.
+     */
+    private val selfPermissionGranter: SelfPermissionGranter by inject()
+
+    /**
      * The sweep's dispatcher, injected rather than hardcoded even here.
      *
      * [appScope] runs on `Dispatchers.Main.immediate`, and the sweeper blocks on whoever calls it —
@@ -250,6 +262,11 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         }
 
         autoFreezeManager.startObserving()
+
+        // After the Dhizuku init above, not before: that call is what lets the Dhizuku rung of the
+        // privilege probe answer truthfully on a first run, and this observer acts on the probe's
+        // result. Nothing here blocks — it launches a collector and returns.
+        selfPermissionGranter.startObserving()
 
         appScope.launch {
             runCatching {

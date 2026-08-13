@@ -131,9 +131,12 @@ fun AppListScreen(
         }
     }
 
-    // com.android.permission.GET_INSTALLED_APPS — an ordinary runtime permission, so an ordinary
-    // RequestPermission contract. No privilege path: Thor never self-grants the permission that
-    // decides how much of the device it is allowed to see.
+    // com.android.permission.GET_INSTALLED_APPS — an ordinary runtime permission on the ROMs that
+    // define it, so an ordinary RequestPermission contract. This is the route for an unprivileged
+    // user: a user who has already granted root or Shizuku will normally never reach it, because
+    // SelfPermissionGranter takes every declared runtime permission as soon as a gateway is live —
+    // asking someone to approve in a weaker form what they have already approved in a stronger one
+    // is the ask this dialog exists to avoid, not to repeat.
     //
     // The result boolean is deliberately ignored and the truth re-read instead, the same way the
     // notification row does it in SettingsScreen. This permission is three-state on the ROMs that

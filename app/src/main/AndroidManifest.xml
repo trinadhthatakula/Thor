@@ -44,8 +44,10 @@
         tools:ignore="ProtectedPermissions" />
     <!-- Bulk-freeze results from the QS tile and launcher shortcuts, neither of which has a
          usable foreground surface: a Toast is dropped by checkCanEnqueueToast and, even when
-         enqueued, draws under the shade (layer 7 vs 17). Requested normally from Settings;
-         never self-granted. Inert below API 33. -->
+         enqueued, draws under the shade (layer 7 vs 17). Requested from Settings, from a job that
+         starts without it, or — for a user who has already handed Thor root or Shizuku — taken
+         silently by SelfPermissionGranter, since privilege is the stronger form of the same answer.
+         Inert below API 33, where an app-wide mute is the only state and no `pm` verb reaches it. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- WorkManager's own manifest declares the base FOREGROUND_SERVICE permission but leaves the
          type to the app. Without the type permission AND the type attribute below, setForeground()

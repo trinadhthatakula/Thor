@@ -53,6 +53,7 @@ import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.SizeLabelKind
 import com.valhalla.thor.domain.model.labelKind
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import com.valhalla.thor.presentation.settings.PassphraseError
 import com.valhalla.thor.presentation.settings.passphraseErrorText
 import kotlinx.coroutines.delay
@@ -111,6 +112,11 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
     val context = LocalContext.current
 
     LaunchedEffect(packageName) { viewModel.start(packageName, appLabel) }
+
+    // "Back up in the background" is the point of the worker, and the notification is the only thing
+    // that comes back once this sheet is gone — so the permission is asked for when the job is
+    // accepted, not when the sheet opens.
+    RequestNotificationsWhenJobStarts(jobActive = state.running || state.queued)
 
     var passphrase by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
