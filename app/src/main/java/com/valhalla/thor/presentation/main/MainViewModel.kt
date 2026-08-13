@@ -926,7 +926,10 @@ class MainViewModel(
                             }
                         }
 
-                        if (stopRequested) {
+                        // `processed <`, not `stopRequested` alone — see the same gate at the end of
+                        // [performLoggedMultiAction] for why. A Stop tapped while the last
+                        // `shareAppUseCase` runs would otherwise report "Stopped: 20 of 20".
+                        if (processed < action.appList.size) {
                             addLog(UiText.StringResource(R.string.log_stopped, processed, action.appList.size))
                         }
                         if (uris.isNotEmpty()) {
@@ -982,8 +985,24 @@ class MainViewModel(
                     if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
                     else manageAppUseCase.setAppDisabled(app.packageName, true)
                 } else {
-                    // State-aware restore: clears suspend AND disable, incl. mixed state.
-                    manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
+                    // `forceUnfreeze`, not the state-aware `restoreApp(_, app.enabled,
+                    // app.isSuspended)` this used to call. Both clear suspend AND disable; the
+                    // difference is that `restoreApp` decides which halves to attempt from the flags,
+                    // and on this path the flags are stale by construction.
+                    //
+                    // Nothing patches `isSuspended` on an app list after a bulk freeze — not this
+                    // function (it updates only the logger counters and never refreshes the lists on
+                    // completion), not `AppListViewModel`'s bulk branch, not the QS tile. So the
+                    // freeze-then-unfreeze round trip that is the *primary* way suspend mode gets
+                    // used — `useSuspend = true` above, then Unfreeze over the same selection —
+                    // hands `restorePlanFor` a snapshot that still calls every app active. It plans
+                    // nothing, returns `Result.success`, and this loop counts a success for each app
+                    // while all of them are still suspended: "Unfroze 12" over 12 paused apps.
+                    //
+                    // FreezerViewModel already documents this trap twice and answers it the same way.
+                    // The cost is one redundant unsuspend per already-active app, which root and
+                    // Shizuku answer from the flag alone.
+                    manageAppUseCase.forceUnfreeze(app.packageName)
                 }
                 processed++
                 if (result.isFailure) failed++
@@ -1153,7 +1172,15 @@ class MainViewModel(
             }
         }
 
-        if (stopRequested) {
+        // `processed <`, not `stopRequested` alone. The flag is checked between apps, so a Stop
+        // tapped while the *last* app's call is in flight sets it after the loop has already run
+        // every app — and reporting on the flag then says "Stopped: 20 of 20", a stop that skipped
+        // nothing, which reads as though something was lost. The count is the only thing that knows
+        // whether the loop broke early.
+        //
+        // Six bulk actions come through here (kill, clear cache, uninstall, reinstall, suspend,
+        // unsuspend) and the share branch keeps its own copy of this loop; both now gate the same way.
+        if (processed < apps.size) {
             addLog(UiText.StringResource(R.string.log_stopped, processed, apps.size))
         }
         finishLogger()

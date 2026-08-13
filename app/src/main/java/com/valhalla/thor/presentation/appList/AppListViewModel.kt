@@ -708,24 +708,55 @@ class AppListViewModel(
 
                 is MultiAppAction.UnFreeze -> {
                     // Only the packages that actually came back successful, for both halves of the
-                    // report. This used to discard every `setAppDisabled` result, mark the whole
-                    // selection `enabled = true` and then send an unconditional success plural for
+                    // report. This used to discard every result, mark the whole selection
+                    // `enabled = true` and then send an unconditional success plural for
                     // `appList.size` — so a batch where nothing was unfrozen said "Unfroze 12 apps"
                     // and drew twelve thawed rows to match. The freeze branch above always counted
                     // properly; only this direction did not.
+                    //
+                    // `forceUnfreeze`, not `setAppDisabled(_, false)` and not
+                    // `restoreApp(_, app.enabled, app.isSuspended)`:
+                    //
+                    //  - `setAppDisabled` clears one of the two dimensions a frozen app can be
+                    //    frozen in. An app suspended from any other surface — the Freezer's suspend
+                    //    mode, `MainViewModel.performCountedFreeze(useSuspend = true)`, the QS tile,
+                    //    an extension — comes back still suspended, and the report above now says so
+                    //    *precisely*: it counts the enable that succeeded while the user still can't
+                    //    open the app.
+                    //  - `restoreApp` reads the flags, and the flags here are stale by construction.
+                    //    `isSuspended` is patched in exactly one place in this ViewModel
+                    //    ([toggleFreezerMembership]) and never on a bulk path, so it only moves on a
+                    //    full rescan. A snapshot that still calls a just-suspended app active makes
+                    //    `restorePlanFor` plan nothing, and `restoreApp` then returns success having
+                    //    made zero privileged calls — the same lie this branch was just fixed to stop
+                    //    telling, re-entering through the choice of API. FreezerViewModel documents
+                    //    this trap twice for the same reason.
+                    //
+                    // `forceUnfreeze` asks unconditionally, which is what its KDoc is for ("bulk
+                    // 'unfreeze all' when per-app state isn't known"). The cost is one redundant
+                    // unsuspend per already-active app; root and Shizuku answer that from the flag
+                    // alone and Dhizuku pays one `pm unsuspend`. A redundant call is the cheaper of
+                    // the two mistakes.
                     val succeededPackages = mutableSetOf<String>()
                     action.appList.forEach { app ->
-                        if (manageAppUseCase.setAppDisabled(app.packageName, false).isSuccess) {
+                        if (manageAppUseCase.forceUnfreeze(app.packageName).isSuccess) {
                             succeededPackages.add(app.packageName)
                         }
                     }
                     _rawState.update { state ->
+                        // Both dimensions, because forceUnfreeze cleared both. Patching only
+                        // `enabled` would leave a thawed app drawn as suspended until the next
+                        // rescan, and would leave the next unfreeze reading that stale flag.
                         state.copy(
                             allUserApps = state.allUserApps.map {
-                                if (it.packageName in succeededPackages) it.copy(enabled = true) else it
+                                if (it.packageName in succeededPackages) {
+                                    it.copy(enabled = true, isSuspended = false)
+                                } else it
                             },
                             allSystemApps = state.allSystemApps.map {
-                                if (it.packageName in succeededPackages) it.copy(enabled = true) else it
+                                if (it.packageName in succeededPackages) {
+                                    it.copy(enabled = true, isSuspended = false)
+                                } else it
                             }
                         )
                     }
