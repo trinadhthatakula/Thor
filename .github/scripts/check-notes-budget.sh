@@ -38,14 +38,31 @@
 # wrapper-units is the size of the caption scaffolding the workflow wraps
 # around telegram.md. It is NOT a constant - it contains the ref name and the
 # actor - so release-rung.yml measures it per run and passes the result here
-# rather than passing its declared floor. On the ladder's own three refs:
-#   dev rung:        149 (own actor) / 152 (bot actor)
+# rather than passing its declared floor. The caption that is really SENT costs,
+# on the ladder's own three refs:
+#   dev rung:        160 (own actor) / 163 (bot actor)
 #   beta rung:       145 (own actor) / 148 (bot actor)
 #   production rung: 146 (own actor) / 149 (bot actor)
-# but a workflow_dispatch from a long branch name measures 176, because the dev
-# figure above is for a three-character ref. The 160 default here is for
-# invoking the script by hand: a conservative round number that covers all three
-# rungs from their own branches, not a claim about any particular run.
+# but a workflow_dispatch from a long branch name measures 187, because the dev
+# figure above is for a three-character ref.
+#
+# What the workflow PASSES is not that number. At gate time fastlane has not
+# written track.txt yet, so the measurement substitutes the longest label any
+# rung can emit - dev's two-track 'Closed + Internal Testing' - on every rung.
+# Pessimistic on purpose, and it means the values arriving here are 160/163 on
+# dev (exact, since that label is dev's own), 158/161 on beta and 161/164 on
+# production.
+#
+# Hence the 164 default, which exists only for invoking the script by hand: it
+# is the largest wrapper the ladder can pass, so a hand run is never LOOSER than
+# the release that follows it. It was 160 back when the longest label was
+# 'Internal Testing' and 160 was exactly what all three rungs ended up using;
+# adding the two-track label raised the gate on every rung and left that default
+# 4 units light on production - a hand-run pass for a caption the release would
+# refuse, i.e. the discovery this pre-flight exists to move earlier, moved back
+# again. test-caption-wrapper.sh pins both the table above and this default
+# against a fresh measurement, because this is the second copy of that table and
+# the first one drifted the moment the label changed.
 set -euo pipefail
 
 required=()
@@ -78,7 +95,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 version_name="${1:?usage: check-notes-budget.sh [--require <file>]... <version-name> [wrapper-units]}"
-wrapper_units="${2:-160}"
+wrapper_units="${2:-164}"
 
 TELEGRAM_CAP=1024
 PLAYSTORE_CAP=500

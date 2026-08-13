@@ -21,13 +21,14 @@ there is no arithmetic on the version number anywhere in the routing.
 
 | merge | workflow | Play | GitHub | Telegram |
 |---|---|---|---|---|
-| `<feature>` → `dev` | `1-dev-publish.yml` | **uploads** to `alpha` (Closed testing) | pre-release `v<name>-dev-<run>` | yes |
+| `<feature>` → `dev` | `1-dev-publish.yml` | **uploads** to `alpha` (Closed testing), then assigns that same release to `internal` | pre-release `v<name>-dev-<run>` | yes |
 | `dev` → `master` | `2-master-promote.yml` | promotes `alpha` → `beta` (Open testing) | pre-release `v<name>-beta-<run>` | no |
 | `master` → `production` | `3-production-promote.yml` | promotes `beta` → `production` | **release** `v<name>` (Latest) | yes |
 
 Only `1-dev-publish.yml` uploads an artifact. Play allows one upload per version code per app —
 not per track — so a second uploader is what produced `Version code NNNN has already been used`.
-The other two rungs move that same upload up a track.
+The other two rungs move that same upload up a track, and the `internal` mirror is not a second
+upload either: it assigns the release `alpha` already holds. Two tracks, one upload.
 
 Every rung still builds the APKs from its own commit: the GitHub assets, the Telegram broadcast
 and reproducibility all need an APK built from the tree being released. Only the Play artifact is
@@ -55,9 +56,9 @@ push with none fails before it builds.
 Sizes are checked pre-flight by `.github/scripts/check-notes-budget.sh`:
 
 - `telegram.md` — the **assembled** caption must fit 1024 UTF-16 units. The wrapper the workflow
-  adds measured 145–152 units on the ladder's own three branches (it varies by rung and actor);
-  `check-notes-budget.sh` defaults to 160. Telegram *rejects* an oversized caption rather than
-  truncating it.
+  adds measures 145–163 units on the ladder's own three branches (it varies by rung and actor);
+  `check-notes-budget.sh` defaults to 164, the most the ladder can ever pass it. Telegram *rejects*
+  an oversized caption rather than truncating it.
 - `playstore.txt` — at most 500 characters (Play's own limit; the checker fails above 500, not at
   it).
 
@@ -67,12 +68,19 @@ Run it yourself before opening the release PR:
 .github/scripts/check-notes-budget.sh 1.94.1
 ```
 
-The 160 default is a hand-run convenience, **not a universal ceiling**: the wrapper contains the
-ref name, so a `workflow_dispatch` from a long-named branch costs more — this branch measured 176.
-It covers `dev`, `master` and `production` with room to spare, which is what the ladder uses; if
-you are releasing from anything else, pass the measured wrapper size as a second argument. On the
-ladder itself the workflow measures the wrapper per run and passes the real number, so the default
-never decides a real release.
+The 164 default is a hand-run convenience, **not a universal ceiling**: the wrapper contains the
+ref name, so a `workflow_dispatch` from a long-named branch costs more — this branch measured 187.
+It is the largest number the three rungs can pass, chosen so a hand run is never *looser* than the
+release that follows; if you are releasing from anything else, pass the measured wrapper size as a
+second argument. On the ladder itself the workflow measures the wrapper per run and passes the real
+number, so the default never decides a real release.
+
+⚠️ It has **no room to spare** — it used to, and stopped. The gate cannot know the track yet
+(fastlane writes `track.txt` during the build), so it substitutes the longest label any rung emits,
+which is now the dev rung's two-track `Closed + Internal Testing`. That raised what CI passes on
+every rung — to 161/164 on `production` — so a default of 160 would now pass captions the release
+itself refuses. If a track label ever gets longer, this default moves with it;
+`test-caption-wrapper.sh` fails if it does not.
 
 ---
 
@@ -146,13 +154,13 @@ Use the `v` form; the fallback exists only for old directories.
 ### 2️⃣ `telegram.md` — the broadcast
 
 * **Format**: punchy markdown, emoji-led bullets, mobile-first.
-* **Size**: **under ~860 UTF-16 code units.** ⚠️ **Exceeding this broadcasts nothing — see the trap
+* **Size**: **under 860 UTF-16 code units.** ⚠️ **Exceeding this broadcasts nothing — see the trap
   below.** Measure UTF-16 units, not characters: most emoji count as **2**. The wrapper the
-  workflow adds is 145–152 units on the ladder's own three branches (it varies by rung and by actor),
-  but it **contains the branch name**, so a `workflow_dispatch` from a long-named branch measures
-  176 — which is why `release-rung.yml` measures it per run rather than assuming a constant.
-  `check-notes-budget.sh` defaults to 160 when you run it by hand — run it without a second argument
-  for a conservative pre-flight check.
+  workflow adds is 145–163 units on the ladder's own three branches (it varies by rung and by actor;
+  `dev` is the dearest because its caption names two tracks), but it **contains the branch name**, so
+  a `workflow_dispatch` from a long-named branch measures 187 — which is why `release-rung.yml`
+  measures it per run rather than assuming a constant. `check-notes-budget.sh` defaults to 164 when
+  you run it by hand — run it without a second argument for a conservative pre-flight check.
 * **Line breaks**: **MANDATORY** blank line between bullets, or Telegram's mobile client squeezes
   the whole thing into a dense block.
 
@@ -187,12 +195,14 @@ Redirecting that to `/dev/null` — which both sends in `telegram-release.yml` u
 reverts it to `--fail` and throws away the only line that says why. Do not add a `> /dev/null`.
 
 Either way the discovery lands *during* the release, which is why the budget is checked pre-flight
-instead. `release-rung.yml` prepends a header that costs **145–152 UTF-16 units on the ladder's own
+instead. `release-rung.yml` prepends a header that costs **145–163 UTF-16 units on the ladder's own
 three branches** (it varies by rung and by actor, and it counts the blank line that joins it to
-`telegram.md`), which is where the ~860 budget comes from. **152 is not a ceiling** — the header
-contains the branch name, so a `workflow_dispatch` from a long-named branch costs more; this branch
-measures 176. That is why `release-rung.yml` measures the header per run instead of assuming a
-constant, and why a file sized to exactly ~860 can pass on `dev` and be refused on a dispatch.
+`telegram.md`). The 860 budget is `1024 - 164`, and 164 is what the *gate* passes on `production`:
+it cannot know the track yet, so it prices every rung at the longest label — `dev`'s two-track
+`Closed + Internal Testing`. **163 is not a ceiling** — the header contains the branch name, so a
+`workflow_dispatch` from a long-named branch costs more; this branch measures 187. That is why
+`release-rung.yml` measures the header per run instead of assuming a constant, and why a file sized
+to exactly 860 can pass on `dev` and be refused on a dispatch.
 `telegram-release.yml` uses a shorter header and also appends a GitHub-link footer. For reference:
 v1.93.1 was 695 units (fine); v1.93.0 was 1008 (**already over the budget when it shipped**).
 

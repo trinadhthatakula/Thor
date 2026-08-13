@@ -234,9 +234,15 @@ jobs:
           # That longest label is now the dev rung's own 'Closed + Internal
           # Testing', because dev uploads to alpha and mirrors onto internal. So
           # the substitution is EXACT on the one rung that uploads, and
-          # pessimistic by 11-15 units on the two that promote - the safe
+          # pessimistic by 13 units on beta and 15 on production - the safe
           # direction, and the direction that matters least, since those rungs
-          # publish an already-broadcast version code.
+          # publish an already-broadcast version code. (On dev it is 11 units
+          # pessimistic in one case only: a FAILED mirror, which falls back to
+          # announcing plain 'Closed Testing'.)
+          #
+          # Consequence worth carrying: this raised what the gate passes on every
+          # rung, up to 161/164 on production, so check-notes-budget.sh's
+          # hand-run default moved 160 -> 164 to stay no looser than CI.
           #
           # Deriving the label from inputs.rung instead would be exact
           # everywhere, and is rejected on purpose - it would be a fourth place
