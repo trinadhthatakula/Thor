@@ -512,7 +512,7 @@
     <string name="export_job_queued">En attente de la fin d\'une autre tâche.</string>
     <string name="export_job_preparing">Préparation de %1$s</string>
     <string name="export_job_packaging">Empaquetage de %1$s en .%2$s</string>
-    <string name="export_job_writing">Écriture dans %1$s</string>
+    <string name="export_job_cleanup_busy">Thor termine le nettoyage de sa session précédente. Réessayez l\'export dans un instant.</string>
     <string name="export_job_saved">%1$s exportée vers %2$s</string>
     <string name="export_job_stopped">L\'exportation s\'est arrêtée avant la fin. Rien n\'a été enregistré.</string>
     <string name="export_failed_not_started">L\'exportation n\'a pas démarré, donc rien n\'a été enregistré.</string>

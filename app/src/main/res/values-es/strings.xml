@@ -512,7 +512,7 @@
     <string name="export_job_queued">Esperando a que termine otra tarea.</string>
     <string name="export_job_preparing">Preparando %1$s</string>
     <string name="export_job_packaging">Empaquetando %1$s como .%2$s</string>
-    <string name="export_job_writing">Escribiendo en %1$s</string>
+    <string name="export_job_cleanup_busy">Thor aún está limpiando lo que quedó de la última sesión. Inténtalo de nuevo en un momento.</string>
     <string name="export_job_saved">%1$s se exportó a %2$s</string>
     <string name="export_job_stopped">La exportación se detuvo antes de terminar. No se guardó nada.</string>
     <string name="export_failed_not_started">La exportación no llegó a empezar, así que no se guardó nada.</string>

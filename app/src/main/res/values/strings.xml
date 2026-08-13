@@ -232,7 +232,7 @@
     <string name="export_job_queued">Waiting behind another job.</string>
     <string name="export_job_preparing">Getting %1$s ready</string>
     <string name="export_job_packaging">Packaging %1$s as .%2$s</string>
-    <string name="export_job_writing">Writing to %1$s</string>
+    <string name="export_job_cleanup_busy">Thor is still tidying up from its last run. Try the export again in a moment.</string>
     <string name="export_job_saved">%1$s exported to %2$s</string>
     <!-- The armed fallback for a stop that returns no Result at all: WorkManager discards a
          cancelled worker's Result, so a worded failure cannot travel that way. Any path that *can*

@@ -504,7 +504,7 @@
     <string name="export_job_queued">正在等待另一项任务完成。</string>
     <string name="export_job_preparing">正在准备 %1$s</string>
     <string name="export_job_packaging">正在将 %1$s 打包为 .%2$s</string>
-    <string name="export_job_writing">正在写入 %1$s</string>
+    <string name="export_job_cleanup_busy">Thor 仍在清理上次运行遗留的文件。请稍后重试导出。</string>
     <string name="export_job_saved">%1$s 已导出到 %2$s</string>
     <string name="export_job_stopped">导出未完成便已停止，未保存任何内容。</string>
     <string name="export_failed_not_started">导出尚未开始，未保存任何内容。</string>

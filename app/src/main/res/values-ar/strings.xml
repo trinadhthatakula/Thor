@@ -546,7 +546,7 @@
     <string name="export_job_queued">في انتظار انتهاء مهمة أخرى.</string>
     <string name="export_job_preparing">جارٍ تجهيز %1$s</string>
     <string name="export_job_packaging">جارٍ تحزيم %1$s بصيغة ‎.%2$s</string>
-    <string name="export_job_writing">جارٍ الكتابة إلى %1$s</string>
+    <string name="export_job_cleanup_busy">لا يزال ثور ينظّف مخلفات التشغيل السابق. أعد محاولة التصدير بعد قليل.</string>
     <string name="export_job_saved">تم تصدير %1$s إلى %2$s</string>
     <string name="export_job_stopped">توقّف التصدير قبل أن يكتمل. لم يتم حفظ أي شيء.</string>
     <string name="export_failed_not_started">لم يبدأ التصدير، لذلك لم يتم حفظ أي شيء.</string>
