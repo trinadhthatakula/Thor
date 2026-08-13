@@ -28,6 +28,8 @@ list "merged" branches will happily offer it up. It is a live release lane.
                    ▼            ▼                ▼
               Play alpha    Play beta      Play production
              (closed test)  (open test)      (everyone)
+                   │
+                   └─▶ Play internal  (same release, mirrored — no second upload)
 ```
 
 ---
@@ -51,7 +53,7 @@ there is no arithmetic on the version number anywhere in the routing.
 
 | Merge | Workflow | Play | GitHub | Telegram |
 |---|---|---|---|---|
-| `<topic>` → `dev` | [`1-dev-publish.yml`](../.github/workflows/1-dev-publish.yml) | **uploads** to `alpha` (Closed testing) | pre-release `v<name>-dev-<run>` | ✅ |
+| `<topic>` → `dev` | [`1-dev-publish.yml`](../.github/workflows/1-dev-publish.yml) | **uploads** to `alpha` (Closed testing), then mirrors onto `internal` | pre-release `v<name>-dev-<run>` | ✅ |
 | `dev` → `master` | [`2-master-promote.yml`](../.github/workflows/2-master-promote.yml) | promotes `alpha` → `beta` (Open testing) | pre-release `v<name>-beta-<run>` | ❌ |
 | `master` → `production` | [`3-production-promote.yml`](../.github/workflows/3-production-promote.yml) | promotes `beta` → `production` | **release** `v<name>` (Latest) | ✅ |
 
@@ -61,10 +63,35 @@ declare. **If a rung needs to behave differently, add an input — do not fork t
 
 ### Rung 1 — `dev`
 
-Builds both flavours, uploads the `store` AAB to Play's `alpha` track, publishes a GitHub
-pre-release with the APKs attached, and broadcasts to the Telegram testers' channel.
+Builds both flavours, uploads the `store` AAB to Play's `alpha` track, **mirrors that same release
+onto `internal`**, publishes a GitHub pre-release with the APKs attached, and broadcasts to the
+Telegram testers' channel.
 
-This is the only rung that puts bytes into Play.
+This is the only rung that puts bytes into Play — the mirror moves none.
+
+#### The mirror onto `internal`
+
+One build, two test tracks, one upload. `alpha` is uploaded first and the mirror runs only after it
+succeeds, because the upload is the single step in the ladder that **cannot be repeated** (Play
+allows one upload per version code per app). The table lives in
+[`ThorRelease::MIRROR_TRACKS`](../fastlane/lib/thor_release.rb); it is deliberately *not* an entry
+in `PROMOTION_EDGES`, which exists to forbid rungs that skip a step.
+
+Three things are worth knowing before touching it:
+
+- **The obvious implementation silently does nothing.** Passing `track: 'internal'` with
+  `version_code:` and both artifact skips set writes no release and still reports success —
+  `supply` decides whether to touch a track from whether it uploaded new binaries, and with both
+  skips set that list is empty. `track_promote_to` from a track that already holds the code is the
+  path that actually assigns it. (Verified against the pinned fastlane 2.237.0.)
+- **The mirror leaves `alpha` alone.** `promote_track` copies the source release object onto another
+  track name; there is no cross-track deactivation path in 2.237.0 at all.
+- **A failed mirror does not fail the build.** The bytes are already on `alpha` and cannot be
+  uploaded again, so aborting would cost the GitHub release and the Telegram broadcast for a build
+  that did publish. It logs a `::warning::` instead, and `track.txt` is rewritten from what
+  *actually* succeeded — so the Telegram caption says "Closed Testing" rather than claiming a track
+  the build never reached. If you see that warning, assign the release to `internal` in the Play
+  Console; do not re-run the rung.
 
 ### Rung 2 — `master`
 
@@ -93,7 +120,9 @@ Version code 1940 has already been used. Try another version code.
 
 The previous design had two branches building and uploading, which meant every release was one
 mis-timed merge away from that error. The ladder removes the possibility rather than working around
-it: `dev` uploads, and the other two rungs move that same upload up a track.
+it: `dev` uploads, and every other track — `internal` by mirror, `beta` and `production` by
+promotion — is reached by *assigning that same release*, never by uploading it again. Two tracks on
+the dev rung is therefore still one upload, which is the only number this rule cares about.
 
 The invariant is enforced in three independent places, so breaking it takes three mistakes:
 
@@ -200,6 +229,7 @@ bypass. It is the one and only exception to "never push directly to `dev`".
 | Channel | Source | Notes |
 |---|---|---|
 | Play — Closed testing | `dev` rung upload | testers opted in via the Play link |
+| Play — Internal testing | `dev` rung mirror | the same release as Closed testing, assigned not re-uploaded |
 | Play — Open testing | `master` rung promotion | |
 | Play — Production | `production` rung promotion | |
 | GitHub Releases | every rung | only the production rung is not a pre-release |

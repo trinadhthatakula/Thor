@@ -9,6 +9,10 @@
 # The ladder: dev uploads to alpha, master promotes alpha -> beta, production
 # promotes beta -> production. Exactly one branch ever uploads, which is what
 # makes Play's per-app (not per-track) version-code uniqueness a non-issue.
+#
+# The dev rung then MIRRORS its upload onto internal - the same release object
+# on a second track, with no second upload. That leaves the "exactly one branch
+# uploads" invariant untouched: mirroring moves no bytes.
 module ThorRelease
   class Error < StandardError; end
 
@@ -26,6 +30,23 @@ module ThorRelease
     'production' => 'beta'
   }.freeze
 
+  # uploaded track => the further tracks that same version code is assigned to
+  # once the upload has succeeded, without uploading it again.
+  #
+  # Deliberately NOT an entry in PROMOTION_EDGES. That map encodes the ladder's
+  # one-rung-at-a-time invariant, and internal sits below alpha, so an
+  # 'internal' => 'alpha' edge there would mean source_track_for('internal')
+  # starts answering - teaching the promote lanes a downward edge in the map
+  # whose whole purpose is to forbid unreviewed jumps. Mirroring is a different
+  # operation with a different guarantee, so it gets its own table.
+  #
+  # Every target must also be an UPLOAD_TRACK: the mirror is performed with
+  # track_promote_to, which creates a track by an unrecognised name just as
+  # readily as an upload does.
+  MIRROR_TRACKS = {
+    'alpha' => %w[internal].freeze
+  }.freeze
+
   def self.validate_upload_track!(track)
     normalised = track.to_s.strip
     unless UPLOAD_TRACKS.include?(normalised)
@@ -33,6 +54,28 @@ module ThorRelease
                    'beta and production are promotion-only: exactly one branch uploads to Play.'
     end
     normalised
+  end
+
+  # The extra tracks an upload to `track` is mirrored onto. An unmirrored track
+  # answers [] rather than raising: most tracks have no mirror, and "no mirror"
+  # is a normal answer, not a misconfiguration.
+  def self.mirror_tracks_for(track)
+    normalised = track.to_s.strip
+    targets = Array(MIRROR_TRACKS[normalised])
+
+    targets.each do |target|
+      if target == normalised
+        raise Error, "#{normalised} is listed as a mirror of itself - a mirror must name a different track."
+      end
+
+      unless UPLOAD_TRACKS.include?(target)
+        raise Error, "mirror target #{target.inspect} for #{normalised.inspect} is not in " \
+                     "UPLOAD_TRACKS (#{UPLOAD_TRACKS.join(', ')}). Mirroring uses track_promote_to, " \
+                     'which would create a phantom track by that name rather than fail.'
+      end
+    end
+
+    targets
   end
 
   def self.source_track_for(destination)

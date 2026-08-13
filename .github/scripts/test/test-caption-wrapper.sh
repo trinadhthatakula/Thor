@@ -24,7 +24,12 @@
 #      the wrapper contains the ref name, the table's refs are the ladder's own
 #      short ones, and the whole reason the gate measures per run is that a
 #      dispatch from a long branch costs more. Pinning the cited number keeps
-#      that counter-example honest rather than leaving it as prose.
+#      that counter-example honest rather than leaving it as prose, and
+#   6. check-notes-budget.sh's copy of that table agrees, and its hand-run
+#      default is at least as large as the biggest wrapper the ladder can pass
+#      it. 1-5 pinned only release-rung.yml, so the second copy drifted the
+#      first time the numbers moved; and a default below what CI passes turns
+#      the hand-run pre-flight into a false green.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 assertions=0
@@ -104,9 +109,10 @@ def header(title, ref, actor, track, status):
 
 
 # 3 - the documented table still holds. Track labels come from the rung's own
-# destination: dev uploads to alpha, and the promote lanes name their target.
+# destination: dev uploads to alpha and mirrors onto internal, so it names both,
+# and the promote lanes name their single target.
 RUNGS = {
-    "dev": ("1-dev-publish.yml", "dev", "Closed Testing"),
+    "dev": ("1-dev-publish.yml", "dev", "Closed + Internal Testing"),
     "beta": ("2-master-promote.yml", "master", "Open Testing"),
     "production": ("3-production-promote.yml", "production", "Production"),
 }
@@ -155,6 +161,59 @@ if cited:
         check(cited_units > ceiling,
               f"the cited long-ref figure {cited_units} is not above the per-rung table's maximum {ceiling} - "
               "the table would then read as a ceiling, which is the misreading this pins against")
+
+# 6 - check-notes-budget.sh holds a SECOND copy of that table, and the default
+# the table justifies. Nothing pinned it until now, and it drifted at the first
+# opportunity: when the track label grew to name two tracks, release-rung.yml's
+# copy was updated and this one silently kept the old numbers. The default is
+# worse than a stale comment - it is the figure a HAND run actually uses, so if
+# it sits below what the ladder passes, a hand run green-lights a caption the
+# release then refuses, which is the discovery this whole pre-flight exists to
+# move earlier.
+budget_text = (root / ".github" / "scripts" / "check-notes-budget.sh").read_text()
+
+
+def rung_inputs(fname):
+    doc = yaml.safe_load((wf_dir / fname).read_text())
+    job = next(iter((doc.get("jobs") or {}).values()))
+    return job.get("with") or {}
+
+
+budget_doc = dict(
+    (m.group(1), (int(m.group(2)), int(m.group(3))))
+    for m in re.finditer(
+        r"^#\s+(dev|beta|production) rung:\s+(\d+) \(own actor\) / (\d+) \(bot actor\)$",
+        budget_text, re.M)
+)
+check(budget_doc == documented,
+      f"check-notes-budget.sh documents {budget_doc} but release-rung.yml documents {documented} - "
+      "the two copies of the per-rung table have drifted")
+
+default_m = re.search(r'^wrapper_units="\$\{2:-(\d+)\}"$', budget_text, re.M)
+check(default_m is not None, "check-notes-budget.sh has no parseable wrapper-units default to pin")
+if default_m and placeholder:
+    default_units = int(default_m.group(1))
+    # Measured with the PLACEHOLDER label, not each rung's real one: what the
+    # gate passes is what a hand run has to match, and the gate prices every
+    # rung at the longest label because track.txt does not exist yet.
+    gate_max = max(
+        header(rung_inputs(fname)["title_prefix"], ref, actor,
+               placeholder.group(1), rung_inputs(fname)["caption_status"])
+        for fname, ref, _ in RUNGS.values()
+        for actor in ("trinadhthatakula", "github-actions[bot]")
+    )
+    check(default_units >= gate_max,
+          f"check-notes-budget.sh defaults to {default_units} units, but the ladder passes it up to "
+          f"{gate_max} - a hand run would be looser than the release that follows it")
+
+# The long-ref counter-example is cited in that header too, a third copy.
+budget_long = re.search(r"long branch name measures (\d+)", budget_text)
+check(budget_long is not None,
+      "check-notes-budget.sh no longer cites a long-ref measurement - a third copy of it moved")
+if budget_long and cited:
+    check(int(budget_long.group(1)) == int(cited.group(3)),
+          f"check-notes-budget.sh cites {budget_long.group(1)} units for a long ref, "
+          f"release-rung.yml cites {cited.group(3)}")
 
 if checked == 0:
     sys.exit("  nothing was checked - the test is vacuous")
