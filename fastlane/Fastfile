@@ -244,9 +244,19 @@ platform :android do
         # not recoverable at all. The caller rewrites track.txt from the return
         # value, so the announcement names only the tracks that really worked.
         UI.error("❌ Could not mirror v#{version_code} onto [#{target}]: #{e.message}")
-        puts "::warning title=Play mirror failed::v#{version_code} was uploaded to '#{source}' " \
-             "but NOT assigned to '#{target}'. The upload itself succeeded and must not be " \
-             "repeated — assign the release to '#{target}' in the Play Console instead."
+        # $stdout.puts, NOT puts. Inside a Fastfile `puts` is not Kernel#puts:
+        # fast_file.rb defines its own, which runs the puts ACTION and prints
+        # through UI.message - and UI.message prefixes every line with
+        # "[HH:MM:SS]: " unless FASTLANE_HIDE_TIMESTAMP is set, which this repo
+        # does not set. GitHub only parses a workflow command at the START of a
+        # line, so a bare `puts` here produces no annotation at all: the one
+        # notice telling a human that a published release needs a manual Play
+        # Console step would decay into an ordinary log line, in the middle of a
+        # green build. An explicit receiver bypasses the override.
+        $stdout.puts "::warning title=Play mirror failed::v#{version_code} was uploaded to " \
+                     "'#{source}' but NOT assigned to '#{target}'. The upload itself succeeded " \
+                     "and must not be repeated — assign the release to '#{target}' in the Play " \
+                     "Console instead."
       end
     end
 
