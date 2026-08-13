@@ -11,6 +11,7 @@ import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.google.common.util.concurrent.ListenableFuture
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
@@ -231,9 +232,10 @@ class ThorJobLauncher(
  *
  * @param chainName the unique work name — `THOR_JOB_CHAIN` for anything that moves bytes,
  *   `THOR_SWEEP_CHAIN` for a privilege sweep. See their docs for why that split exists.
- * @param onAbandoned run only when the request will never execute. **Not** run when the *wait* is
- *   cancelled: the work is with WorkManager by then and is going to run, so releasing anything it
- *   depends on would fail a live job.
+ * @param onAbandoned run only when the request will never execute, and at most once. Not run *because*
+ *   the wait was cancelled — the work is with WorkManager by then and is going to run, so releasing
+ *   anything it depends on would fail a live job. It is still run if the enqueue then fails, which can
+ *   happen after the caller has stopped waiting; see the cancellation branch.
  */
 internal suspend fun enqueueUniqueJob(
     context: Context,
@@ -262,6 +264,16 @@ internal suspend fun enqueueUniqueJob(
         // Only the *wait* was cancelled; the work is already with WorkManager and the worker that will
         // take this job's key is real. Dropping it here would fail that job for the one reason it must
         // never fail for.
+        //
+        // But "nobody is waiting" is not "nothing can still go wrong": the enqueue resolves on
+        // WorkManager's own executor, so it can fail *after* this frame is gone, and then no worker ever
+        // runs and neither `catch` below is there to see it. The future outlives the coroutine, so keep
+        // watching it for that one outcome. Without this the key sits in the holder until its own
+        // hour-long expiry (see [ArchiveKeyHolder.KEY_LIFETIME_MS]) with nothing left that could consume
+        // it — bounded and self-clearing, but an hour of held key material for a job that does not exist.
+        operation.result.whenFailed { cause ->
+            abandon("enqueue failed after the wait was cancelled", cause)
+        }
         throw e
     } catch (e: Exception) {
         abandon("enqueue failed", e)
@@ -302,4 +314,39 @@ private suspend fun Operation.awaitSuccess(): Operation.State.SUCCESS {
             Executor { it.run() },
         )
     }
+}
+
+/**
+ * Run [handle] if this future has already failed or fails later — once, and never on success.
+ *
+ * The counterpart to [awaitSuccess] for a caller that has stopped waiting. A `ListenableFuture` runs each
+ * listener at most once and runs it immediately if it is already done, so both the "failed while nobody
+ * was looking" and "failed before we registered" orders are covered without a guard flag here.
+ *
+ * **Only a genuine failure counts.** An [ExecutionException] is WorkManager saying the enqueue did not
+ * land, and its `cause` is the reason. A cancelled future or an interrupted listener says nothing about
+ * whether the `WorkSpec` was written, so this stays silent for those and lets the key expire on its own
+ * timer: releasing a key a live worker still needs is the worse of the two failures.
+ *
+ * `internal` rather than private to this file, unlike [awaitSuccess], because it is the only part of the
+ * cancellation path a JVM test can reach — [enqueueUniqueJob] itself needs `WorkManager.getInstance`, and
+ * there is no `work-testing` or Robolectric on this project's test classpath.
+ */
+internal fun ListenableFuture<*>.whenFailed(handle: (Throwable) -> Unit) {
+    addListener(
+        {
+            // Nothing may be thrown from here: the executor below runs this on whichever thread completed
+            // the future, which is WorkManager's, and it is not expecting our exceptions.
+            val cause = try {
+                get()
+                null
+            } catch (e: ExecutionException) {
+                e.cause ?: e
+            } catch (_: Exception) {
+                null
+            }
+            if (cause != null) handle(cause)
+        },
+        Executor { it.run() },
+    )
 }
