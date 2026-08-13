@@ -495,12 +495,24 @@
     <string name="export_format">格式</string>
     <string name="export_save_to">保存至</string>
     <string name="export_change">更改</string>
-    <string name="export_in_progress">正在导出…</string>
     <string name="export_saved">已保存至 %1$s</string>
     <string name="export_failed">导出失败：%1$s</string>
     <string name="export_failed_unknown">未知错误</string>
     <string name="export_dest_downloads">下载/Thor</string>
     <string name="export_dest_selected">选定文件夹</string>
+    <string name="export_job_queued">正在等待另一项任务完成。</string>
+    <string name="export_job_preparing">正在准备 %1$s</string>
+    <string name="export_job_packaging">正在将 %1$s 打包为 .%2$s</string>
+    <string name="export_job_cleanup_busy">Thor 仍在清理上次运行遗留的文件。请稍后重试导出。</string>
+    <string name="export_job_saved">%1$s 已导出到 %2$s</string>
+    <string name="export_job_background">后台运行</string>
+    <string name="export_job_background_desc">关闭此界面后导出仍会继续。通知会显示进度。</string>
+    <string name="export_job_done">已导出。</string>
+    <string name="export_job_stopped">导出未完成便已停止，未保存任何内容。</string>
+    <string name="export_failed_not_started">导出尚未开始，未保存任何内容。</string>
+    <string name="export_job_app_gone">%1$s 已不再安装，因此没有可导出的内容。</string>
+    <string name="export_job_folder_gone">Thor 无法再写入该文件夹，请重新选择。</string>
+    <string name="export_job_unreadable">Thor 无法读取要导出的内容。</string>
 
     <string name="action_export_selected">导出</string>
     <string name="export_bulk_confirm_title">导出所选应用？</string>

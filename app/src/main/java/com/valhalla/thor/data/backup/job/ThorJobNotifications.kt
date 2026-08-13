@@ -203,6 +203,7 @@ class ThorJobNotifications(private val context: Context) {
     private fun titleFor(kind: ThorJobKind) = when (kind) {
         ThorJobKind.ARCHIVE_BACKUP -> R.string.job_backing_up
         ThorJobKind.ARCHIVE_RESTORE -> R.string.job_restoring
+        ThorJobKind.APP_EXPORT -> R.string.job_exporting
     }
 
     /**
@@ -217,9 +218,14 @@ class ThorJobNotifications(private val context: Context) {
      * monochrome layer at 200dp, drawn with the safe-zone padding that format requires; scaled into a
      * 24dp status bar slot it renders as a speck. A notification small icon has to be a 24dp asset
      * drawn for 24dp.
+     *
+     * An export gets `arrow_downward` rather than the archive symbol, because in the shade the icon
+     * is the only thing distinguishing two of Thor's rows before either is expanded — and a user who
+     * started an export and a backup should be able to tell which one is still going.
      */
     private fun iconFor(kind: ThorJobKind) = when (kind) {
         ThorJobKind.ARCHIVE_BACKUP, ThorJobKind.ARCHIVE_RESTORE -> R.drawable.settings_backup_restore
+        ThorJobKind.APP_EXPORT -> R.drawable.arrow_downward
     }
 
     /**

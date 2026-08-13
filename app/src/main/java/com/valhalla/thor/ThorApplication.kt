@@ -15,6 +15,7 @@ import com.rosan.dhizuku.api.Dhizuku
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
+import com.valhalla.thor.data.backup.job.LaunchSweepBarrier
 import com.valhalla.thor.data.permission.SelfPermissionGranter
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
@@ -190,6 +191,14 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val archiveOrphanSweeper: ArchiveOrphanSweeper by inject()
 
     /**
+     * Released once the sweep below is over, and the only thing standing between a re-run export and
+     * the sweep deleting its staging tree. Resolved here rather than injected into the worker alone,
+     * because a barrier only works if both halves hold the *same* instance — which is what `@Single`
+     * guarantees and what a worker-side `LaunchSweepBarrier()` would silently not.
+     */
+    private val launchSweepBarrier: LaunchSweepBarrier by inject()
+
+    /**
      * Resolved here because a Koin `@Single` nobody injects is never constructed, so its observer
      * would never start — the same reason [autoFreezeManager] is resolved eagerly.
      *
@@ -308,13 +317,24 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
             // launch that cannot delete a stale temp file is still a launch. The interruption warning
             // the report may carry is the restore screen's to show; Application has no UI, so the
             // report here is a log line and the breadcrumb is left standing for Task 17 to clear.
-            runCatching { withContext(ioDispatcher) { archiveOrphanSweeper.sweep() } }
-                .onFailure { throwable ->
-                    // Same rethrow as above: runCatching swallows CancellationException, and
-                    // appScope.cancel() in onTerminate must not be logged as a sweep failure.
-                    if (throwable is CancellationException) throw throwable
-                    Logger.e("ThorApp", "archive orphan sweep failed", throwable)
-                }
+            try {
+                runCatching { withContext(ioDispatcher) { archiveOrphanSweeper.sweep() } }
+                    .onFailure { throwable ->
+                        // Same rethrow as above: runCatching swallows CancellationException, and
+                        // appScope.cancel() in onTerminate must not be logged as a sweep failure.
+                        if (throwable is CancellationException) throw throwable
+                        Logger.e("ThorApp", "archive orphan sweep failed", throwable)
+                    }
+            } finally {
+                // AppExportWorker blocks on this before it stages anything, because the sweep above
+                // deletes `externalCacheDir/obb_out` wholesale and a worker WorkManager re-ran at
+                // process start is writing into that very tree. See LaunchSweepBarrier.
+                //
+                // In a `finally`, so the release survives a sweep that threw and a scope that was
+                // cancelled: neither is a reason to leave an export pinned on "Preparing" until the
+                // barrier's own timeout, and a sweep that failed has still stopped deleting.
+                launchSweepBarrier.markSwept()
+            }
         }
 
         // Below API 33 nothing else notices a language change: the platform has no per-app locale to

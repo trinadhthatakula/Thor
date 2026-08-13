@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.jobTag
 import com.valhalla.thor.domain.repository.ArchiveJobLauncher
 import com.valhalla.thor.domain.repository.ThorJobStatus
+import com.valhalla.thor.domain.repository.ThorJobWatcher
 import com.valhalla.thor.util.Logger
 import java.util.UUID
 import java.util.concurrent.ExecutionException
@@ -47,7 +48,11 @@ private const val TAG = "ThorJobLauncher"
  * to show while it runs. It is also the only way the worker never sees a passphrase: the derived key
  * goes into [ArchiveKeyHolder] under the request's id and the passphrase stays with the caller.
  */
-@Single(binds = [ArchiveJobLauncher::class])
+// ThorJobWatcher is listed explicitly even though ArchiveJobLauncher extends it: Koin binds exactly
+// the types named here and does not walk a supertype chain, so `ExportJobLauncherImpl`'s delegate
+// parameter would be an unresolvable dependency — and with `strictSafety` on, that fails the *build*
+// rather than the first injection.
+@Single(binds = [ArchiveJobLauncher::class, ThorJobWatcher::class])
 class ThorJobLauncher(
     private val context: Context,
     private val keys: ArchiveKeyHolder,

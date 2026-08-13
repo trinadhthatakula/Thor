@@ -503,12 +503,24 @@
     <string name="export_format">Formato</string>
     <string name="export_save_to">Guardar en</string>
     <string name="export_change">Cambiar</string>
-    <string name="export_in_progress">Exportando…</string>
     <string name="export_saved">Guardado en %1$s</string>
     <string name="export_failed">Error de exportación: %1$s</string>
     <string name="export_failed_unknown">error desconocido</string>
     <string name="export_dest_downloads">Descargas/Thor</string>
     <string name="export_dest_selected">Carpeta seleccionada</string>
+    <string name="export_job_queued">Esperando a que termine otra tarea.</string>
+    <string name="export_job_preparing">Preparando %1$s</string>
+    <string name="export_job_packaging">Empaquetando %1$s como .%2$s</string>
+    <string name="export_job_cleanup_busy">Thor aún está limpiando lo que quedó de la última sesión. Inténtalo de nuevo en un momento.</string>
+    <string name="export_job_saved">%1$s se exportó a %2$s</string>
+    <string name="export_job_background">Segundo plano</string>
+    <string name="export_job_background_desc">La exportación sigue si cierras esto. Su notificación muestra cuánto lleva hecho.</string>
+    <string name="export_job_done">Exportado.</string>
+    <string name="export_job_stopped">La exportación se detuvo antes de terminar. No se guardó nada.</string>
+    <string name="export_failed_not_started">La exportación no llegó a empezar, así que no se guardó nada.</string>
+    <string name="export_job_app_gone">%1$s ya no está instalada, así que no había nada que exportar.</string>
+    <string name="export_job_folder_gone">Thor ya no puede escribir en esa carpeta. Vuelve a elegirla.</string>
+    <string name="export_job_unreadable">Thor no pudo leer qué se debía exportar.</string>
 
     <string name="action_export_selected">Exportar</string>
     <string name="export_bulk_confirm_title">¿Exportar las aplicaciones seleccionadas?</string>

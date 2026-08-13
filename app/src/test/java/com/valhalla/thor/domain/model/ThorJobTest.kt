@@ -83,6 +83,30 @@ class ThorJobTest {
     }
 
     @Test
+    fun `each kind keeps the notification id it shipped with`() {
+        // BASE + ordinal is both the notification id and the PendingIntent request code, and a
+        // PendingIntent outlives the code that built it — a row the system is still showing across an
+        // app update is holding whatever the *old* build wrote. So reordering this enum hands a live
+        // notification the request code of a different job, and nothing about that is visible at
+        // build time, in a test that only checks the block gap, or on the developer's device.
+        //
+        // Pinned as literal ordinals rather than as "APP_EXPORT is last", because the failure being
+        // guarded is renumbering, and only the numbers state it.
+        assertEquals(0, ThorJobKind.ARCHIVE_BACKUP.ordinal)
+        assertEquals(1, ThorJobKind.ARCHIVE_RESTORE.ordinal)
+        assertEquals(2, ThorJobKind.APP_EXPORT.ordinal)
+
+        assertEquals(
+            1102,
+            ThorJobNotifications.BASE_NOTIFICATION_ID + ThorJobKind.APP_EXPORT.ordinal,
+        )
+        assertEquals(
+            1202,
+            ThorJobNotifications.BASE_RESULT_NOTIFICATION_ID + ThorJobKind.APP_EXPORT.ordinal,
+        )
+    }
+
+    @Test
     fun `an unknown total reports no percentage rather than zero`() {
         // Same tri-state rule as DataClassSize and ObbProbe: "not known" is not "none". A bar pinned
         // at 0% for a job that is running reads as broken.
