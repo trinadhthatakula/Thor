@@ -378,7 +378,7 @@ and proving them is device-only.
 |---|---|
 | `THOR_SWEEP_CHAIN` has no producers | The whole sweep half of the seam is dead code awaiting the bulk-actions work. |
 | The cross-chain `su` argument | Two chains let a sweep run beside a restore, which the KDoc's own FIFO-session reasoning argues against. Unresolved. |
-| Notifications gate silently | A job runs and shows **nothing** when notifications are off; on API 28–32 there is no surface at all. |
+| Notifications gate silently — **narrowed, not closed** | `update` and `postResult` still return early when notifications are off, so a job in that state has no surface. Two things now make that state unlikely rather than fixable: `SelfPermissionGranter` takes `POST_NOTIFICATIONS` as soon as root or Shizuku is live, and `RequestNotificationsWhenJobStarts` asks when a job is accepted without it (both sheets). Neither reaches an **app-wide mute**, which is the only off state below API 33 and no `pm` verb or app-op can undo — only Settings. So a muted user on 28–32 still gets a silent job, by design. |
 | `getStopReason()` unread | A system-killed FGS is reported to the user as an ordinary cancel. |
 | Four stale comments | They claim the enqueue is not awaited. It is. |
 | `ArchiveRestoreRequest` carries no `Data`-schema KDoc | Its twin does; the rule is enforced by that one comment. |
