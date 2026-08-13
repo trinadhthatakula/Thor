@@ -69,10 +69,16 @@ class ExportViewModel(
         attachedTo = packageName
         launchGuarded {
             launcher.runningJobFor(ThorJobKind.APP_EXPORT, packageName).collect { id ->
-                // `watching == null` rather than unconditionally: this flow re-emits the same id, and
-                // re-watching would restart the collector — and with it the `finished = null` clear in
-                // [watch] — over a job that has already reported its outcome.
-                if (id != null && watching == null) watch(id)
+                // Guarded rather than unconditional: this flow re-emits the same id, and re-watching
+                // would restart the collector — and with it the `finished = null` clear in [watch] —
+                // over a job that has already reported its outcome.
+                //
+                // Liveness, not nullness. [watch]'s `onFailure` settles the phase but cannot null the
+                // field its own `launchGuarded` is still being assigned into, so a collector that
+                // throws parks a *completed* Job here; `== null` would then refuse to reattach for the
+                // rest of this sheet's life. A live watcher keeps `isActive` true, so every state that
+                // has one behaves exactly as before.
+                if (id != null && watching?.isActive != true) watch(id)
             }
         }
     }
