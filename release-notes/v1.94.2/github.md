@@ -1,8 +1,14 @@
 # Thor v1.94.2 Release Notes
 
-Seven merges since **v1.94.1**, and two of them are features large enough that this release is
+Ten merges since **v1.94.1**, and two of them are features large enough that this release is
 really about them: **app backup and restore** (#51 phase 2) and **game data inside a `.xapk`**
 (#164). A third, the Settings rewrite, is the first structural change that screen has had.
+
+Three more landed late, and none of them is a feature. The batch actions stopped claiming work they
+had not done (#385), a subscription is now confirmed on the paths where Thor previously never asked
+(#386), and an export no longer deletes the file it is replacing before the replacement exists
+(#387). They are grouped under *What's Changed* below rather than buried in Internal, because each
+one is a thing the app was getting wrong in front of the user.
 
 Read the next section before installing. One of those two features ships deliberately unfinished,
 and the notes say so rather than letting the first person to try it find out.
@@ -18,7 +24,7 @@ This is not a hedge added to the copy at the end. It is what the work actually l
 
 * Nothing that replaces an app's data has ever run inside a test. That region is a WorkManager job
   driving privileged shell commands against another app's data directory, and there is no JVM seam
-  anywhere in it. The 1,523 unit tests in this release cover the container format, the key
+  anywhere in it. The 1,548 unit tests in this release cover the container format, the key
   derivation, the gates, the sizing arithmetic and the view models — **none of them writes to a real
   app's data directory, because none of them can.**
 * Both Critical defects the review found were the same shape — *the backup cannot be restored* —
@@ -55,6 +61,19 @@ untested is what happens *after* you pass them, on your device, on your ROM.
   an unfolded phone.
 * 👂 **Every settings switch is readable by a screen reader.** All twelve announced as a button
   with no on/off state before this release.
+* 🧊 **Unfreeze now clears both halves of frozen.** An app frozen by being *paused* came back
+  still paused, while the confirmation counted it as unfrozen.
+* 🔢 **A batch reports what actually happened.** Bulk unfreeze said "Unfrozen 12 apps" whether
+  twelve, one or none of them came back — and a run that reached the end could still sign off with
+  a "Stopped" line.
+* 🛑 **Thor skips itself in a Kill or Uninstall batch.** "Select all → Uninstall" reached Thor
+  itself, and with root or Shizuku it succeeded.
+* ⏹ **Bulk share can be stopped**, and hands over whatever it had already prepared.
+* 💳 **A subscription gets confirmed on paths where Thor never asked.** The backstop for a purchase
+  whose callback never arrives was being skipped in precisely the state it exists for.
+* 📤 **A failed export no longer costs you the file it was replacing.**
+* 🔐 **A privileged Thor grants its own permissions** instead of asking you to approve something it
+  can already do.
 
 ---
 
@@ -184,6 +203,136 @@ Pinned by nine JVM tests over the catalogue (the exhaustive `when` proves every 
 branch, and says nothing about whether every category reaches a row) and seven instrumented tests
 over the switch row. Verified by hand on a Pixel 10 Pro Fold at 851 dp unfolded and 411 dp folded.
 
+### 🔢 The batch actions stop claiming work they did not do (#385)
+
+This began as groundwork for moving the bulk actions onto the job seam, and turned into a set of
+corrections that had to land first. Moving a batch that lies onto a background worker only makes the
+lie harder to see.
+
+**Unfreeze was clearing half of frozen.** An app can be frozen two ways — disabled, or *suspended*
+(what the Freezer's suspend mode, the quick-settings tile and extensions use). Both bulk unfreeze
+paths only re-enabled. So an app frozen by being paused came back still paused, still unusable, and
+its row was redrawn as unfrozen anyway. The Freezer's group unfreeze was worse than a partial fix:
+it planned the work from the app's *last known* flags, and for a paused app that plan came out empty
+— **it made no privileged call at all and returned success.** Both paths now always ask the system to
+unpause before re-enabling, instead of deciding from stale state.
+
+**The counts were unconditional.** Bulk unfreeze reported `Unfrozen %d apps` over the size of the
+selection, and marked every selected row as enabled, *whatever the system had actually answered* —
+so a run in which every app failed (privilege lost mid-batch, a ROM that refuses) was reported to
+the user as twelve successes. It now reports `Unfroze 3/12 apps (9 failed)`, and only the apps that
+really came back are redrawn.
+
+**A finished batch could describe itself as interrupted.** Tapping Stop while the last app was being
+processed produced "Stopped — 20 of 20 apps were processed." The gate tested whether a stop had been
+*requested* rather than whether anything was actually left undone. A completed destructive batch
+reporting itself as stopped is an invitation to run it again, so this touches all six batches that
+share the progress log — force-stop, clear cache, uninstall, reinstall, pause, unpause — plus bulk
+share.
+
+**Thor no longer force-stops or uninstalls itself.** Thor is in its own app list, so "select all →
+Kill" was two taps from killing the process running the batch: the remaining apps were abandoned
+silently and the progress log vanished with no report of where it had got to. "Select all →
+Uninstall" reached Thor too, and with root or Shizuku it *worked* — you could uninstall the app you
+were using, from inside it. Both now skip Thor and say so in the log.
+
+**Bulk share got a Stop button.** It is the slowest batch in the app — it builds an installable
+bundle per app — and it was the only one without a way out, so a 50-app share had to be waited out
+or force-stopped. Stopping now still hands the share sheet everything already prepared.
+
+**A second tap no longer eats the first run's file.** Export list and Share list both stage through
+one folder that is wiped when a run starts, so tapping again while a run was live could delete the
+file the first run had just handed to the share sheet. The second tap is now ignored.
+
+**The background-work notification switch was renamed** from "Backup and restore" to "Background
+jobs", because bulk actions are going to share it and nobody should end up silencing more than they
+agreed to. The channel id is unchanged, so this renames the existing switch rather than adding a
+second one — and, disclosed rather than glossed: **that rename is English-only for now.** The
+running notification also stops using the snowflake, which is Thor's *frozen app* icon, so every
+backup in progress had been advertising itself as a freeze.
+
+### 💳 Subscriptions: the sweep that was skipped exactly when it was needed (#386)
+
+Supporters' subscriptions were being refunded again after the v1.94.0 fix. First, what did *not*
+happen: nothing regressed. The acknowledgement path is byte-identical on `production`, `master` and
+`dev`, and last changed at versionCode 1933 — before v1.94.0 shipped. These are gaps that fix did
+not reach.
+
+Google refunds a purchase Thor fails to acknowledge within three days. The backstop for that is a
+sweep that asks Play for every subscription it knows about and confirms whatever is still
+unconfirmed — and it opened with `if (!isConnected) return`. That guard was pure loss. Verified
+against the artifact Gradle actually resolves (billing 9.1.0), a query on a disconnected client
+does not fail; it **rebinds**:
+
+```
+BillingClientImpl.queryPurchasesAsync -> submits Callable zzbp
+zzbp.call()      -> BillingClientImpl.zzay(this, zzdq.zzb())   // synthetic accessor
+zzay(impl, long) -> impl.zzbx(long)
+zzbx(long)       -> zzby() ; zzaI(int).get(timeout) ; Math.pow + Thread.sleep
+```
+
+`zzbx` is the same helper already sitting at the head of the acknowledgement call — which is exactly
+why acknowledging was deliberately left unguarded. The sweep belonged in that set and had been left
+out of it. Asking a disconnected client rebuilds the binding; returning early guarantees nothing is
+swept.
+
+Resuming the app compounded it, because the sweep ran only inside the connected branch. Past the
+reconnect ladder's five attempts a resume answers *exhausted*, and any resume inside the 30-second
+cooldown answers *too soon* — in both cases the reconnect was a no-op, so **a resume with a dropped
+binding swept nothing for the remaining life of the process.** The sweep now runs on every resume
+regardless.
+
+Three more on the same path:
+
+* **Response code 7 now triggers a sweep instead of a toast.** Play answers `ITEM_ALREADY_OWNED`
+  when a purchase exists and is not being handed over — which is what it does when an earlier
+  acknowledgement never landed, making it the single code most likely to mean *you owe Play a
+  confirmation right now*. The purchase list is null on that path, so asking is the only route to
+  the token. The toast went too: "Billing error: 7" blamed the buyer for something they did not do.
+* **A cancelled attempt releases its purchase.** The token is claimed before the coroutine starts,
+  and two paths ended it without reaching either exit — so a stranded token made every later sweep
+  skip that purchase for the life of the process, which is the refund this code exists to prevent.
+* **Retries 4 → 6.** Four attempts spent the entire budget in about seven seconds. The failure they
+  exist for is a flaky network in the seconds after you return from the Play sheet — a lift, a
+  tunnel, a Wi-Fi handover — and seven seconds outlasts none of them.
+
+**Stated plainly, because this is the second attempt at the same bug:** this narrows the window, it
+does not close it. A buyer whose process dies mid-confirmation and who never reopens Thor inside
+Play's three days is still refunded, because the sweep only runs while the app is open. Closing that
+needs acknowledgement from a server Thor does not have, and is filed rather than claimed. This file
+is also **on no test classpath by construction** — the billing library is a Play-flavour-only
+dependency and the unit tests run against the FOSS flavour — so it is verified against bytecode and
+by hand, not by a test and not yet on a device.
+
+### 🔐 A privileged Thor stops asking, and an export stops deleting (#387)
+
+Three unrelated corrections that were finished in time to ride this release.
+
+**Thor grants its own permissions when it can.** Once it has root, Shizuku or Dhizuku, asking you to
+approve a runtime permission is asking permission to do something it can already do to itself, so it
+now grants what it has declared. Notification state is read through the same question the notifier
+itself asks rather than a permission check, because those two answers diverge the moment someone
+turns notifications off in system settings without revoking the permission. Nine JVM tests over the
+model.
+
+**A job that starts without notification access now asks for it**, at the moment the job starts,
+from the sheet that started it. A backup or restore running without it produces no progress
+notification at all, which is indistinguishable from nothing having happened.
+
+**An export no longer deletes the old file before the new one exists.** Exporting over an existing
+file removed it first, so an export that failed or was interrupted left you with neither. Each
+backend now stages its bytes and settles once: the document picker writes a `.part` and renames over
+the replaced file at the end; the media store resolves the replaced row **before** inserting,
+because it de-duplicates a colliding display name at insert time rather than replacing it; the
+legacy Downloads path renames within one volume. The accepted cost, stated rather than hidden: an
+export killed mid-write leaves a `.part` file in the destination folder instead of a truncated one
+under the real name, and nothing sweeps it.
+
+**Verification, across all three late merges:** #385 and #387 are covered by unit tests wherever a
+JVM seam exists, and #386 has none available to it at all. **None of the three has been on a
+device.** The parts that most want a device are exactly the parts no JVM test can stand in for — the
+privileged gateways, the platform file APIs, and a real Play billing connection.
+
 ---
 
 ## 🔧 Internal
@@ -198,6 +347,26 @@ over the switch row. Verified by hand on a Pixel 10 Pro Fold at 851 dp unfolded 
 * Localisation: the OBB export copy was retracted and rewritten across all five locales
   (`25e6b10e`), the Arabic app name is kept as "Thor" rather than transliterated (`e9095478`), and
   the Chinese export explainer no longer opens a sentence with a bare file extension (`6948d0c0`).
+  The one new string in #385 — the line saying Thor skipped itself — **was translated into the other
+  four locales without a native reader**, and is the weakest copy in this release. Corrections
+  welcome.
+* **The job seam was generalised so something that is not an archive can use it** (#385): the
+  encryption-key handling moved out of the shared base class into the two archive jobs, job-watching
+  became its own interface, and enqueue-and-confirm became one shared function. It also gained an
+  opt-out of the foreground service, defaulting to on so backups and restores are untouched, and a
+  second queue so a future sweep does not have to wait behind a large backup. **Neither the second
+  queue nor the after-the-fact completion notification has a single producer yet** — they are
+  built-ahead, not shipped features, and are listed here so that the gap is on the record rather
+  than in a commit message.
+* **The half-built "clear data for several apps" path was deleted** rather than left to be
+  discovered, along with its "this cannot be undone" confirmation and its batch wording in five
+  languages (#385). Bulk freeze moved onto the same shared reporting helper the other freeze
+  surfaces use.
+* A backup or restore whose queueing fails *after* the screen has stopped waiting for it now drops
+  the derived encryption key from memory immediately, instead of leaving it to expire (#385).
+* `docs/workers/README.md` records which **two** operations actually
+  run on WorkManager and what the other twelve are, because the naming misleads in both directions
+  (#387). It states four gaps rather than hiding them.
 
 ⚠️ **Tag naming, for anyone following a compare link:** only a *production* release mints a plain
 `v<version>` tag. `v1.94.1` never reached production, so that tag does not exist and the compare
@@ -208,6 +377,10 @@ link below uses it.
 
 ## 🛠 Commits Log (`v1.94.1-dev-12...dev`)
 
+* `7b930c58` — #387 grant our own permissions, ask for notifications when a job starts, and stop
+  deleting an export before its replacement exists
+* `0ef6732d` — #386 stop the guard that skipped the sweep Play refunds you for missing
+* `bf4dff26` — #385 make the batch actions tell the truth, and generalise the job seam
 * `e210768f` — #383 Settings: eight doors, and a second pane on wide windows
 * `4c5edad9` — #381 both archive surfaces are sheets, and a job notification reopens its own
 * `d3315c3f` — #380 finish the throttle retraction the source got and the docs did not

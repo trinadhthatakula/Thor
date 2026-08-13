@@ -4,12 +4,16 @@
 
 **New:**
 
-• 💾 **Back up an app and its data** into one encrypted `.thorbak` — app data, startup data, files and media on shared storage, and the installer, each chosen separately.
+• 💾 **Back up an app and its data** into one encrypted `.thorbak` — app data, startup data, shared storage and the installer, each chosen separately.
 
-• ♻️ **Restore it later.** Every check is shown before anything is replaced, and Thor says what it touched if it stops part-way.
+• ♻️ **Restore it later.** Every check is shown before anything is replaced, and Thor says what it touched if it stops.
 
 • 🔑 **A passphrase Thor can remember**, or forget when you ask. It cannot be recovered.
 
-• 🎮 **Games with extra data** export and install as a single `.xapk`, game data included.
+• 🎮 **Games with extra data** export and install as one `.xapk`.
 
-• ⚙️ **Settings now has eight sections** and a search box, plus two panes on a tablet or an unfolded phone.
+• ⚙️ **Settings now has eight sections**, a search box, and two panes on a tablet.
+
+• 🧊 **Unfreeze now unpauses too**, and batches report what worked.
+
+• 💳 **Subscriptions confirm more reliably.**
