@@ -141,7 +141,9 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
 
     // The job's only surface once this sheet is gone is a notification, and `ThorJobNotifications`
     // returns early when notifications are off — so an export started in that state runs invisibly and
-    // finishes invisibly. Asked at the moment the job is accepted, not when the button is pressed.
+    // finishes invisibly. Asked as soon as the sheet commits to an export: `start` sets `running`
+    // before the enqueue resolves, so this fires on the tap rather than on acceptance. Prompting for an
+    // enqueue that then fails costs a dialog and nothing else.
     RequestNotificationsWhenJobStarts(jobActive = phase.running)
 
     // There used to be a LaunchedEffect here that forced the selection off XAPK whenever the probe

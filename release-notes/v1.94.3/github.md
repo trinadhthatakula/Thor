@@ -115,10 +115,11 @@ Three notes stated rather than glossed:
 * **A stopped export reports nothing from the worker.** WorkManager stops workers for its own
   reasons and then re-runs them, so a shade row saying "nothing was saved" would be a lie told at the
   exact moment the export was about to succeed. A genuine cancel is worded by the screen.
-* **This is also the feature that unblocks a `store` release.** Play requires a video declaration for
-  `FOREGROUND_SERVICE_DATA_SYNC`, and a reviewer can only verify what they can reproduce on a stock
-  device. Backup and restore need root or Shizuku on every path. Export needs neither, which is why
-  it is the surface the declaration will show.
+* **This is also the feature the blocked `store` release was waiting for.** Play requires a video
+  declaration for `FOREGROUND_SERVICE_DATA_SYNC`, and a reviewer can only verify what they can
+  reproduce on a stock device. Backup and restore need root or Shizuku on every path. Export needs
+  neither, which is why it is the surface the declaration will show. It does not lift the block by
+  itself — the video still has to be recorded on a stock device and the declaration submitted.
 
 Under the hood this is the third job on the seam (`3fa28f75`, `193d893e`, `b56143c6`), and it is the
 first that genuinely survives a process death: the archive jobs hold their key in memory and refuse a
