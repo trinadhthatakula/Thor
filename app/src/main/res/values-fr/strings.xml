@@ -399,7 +399,6 @@
     <string name="log_uninstalling_batch">Désinstallation des applications</string>
     <string name="log_suspending_batch">Suspension des applications</string>
     <string name="log_unsuspending_batch">Rétablissement des applications</string>
-    <string name="log_clearing_data_batch">Effacement des données</string>
     <string name="log_sharing_batch">Partage des applications</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_batch_preparing">[%1$d/%2$d] Préparation de %3$s…</string>
@@ -420,6 +419,7 @@
     <string name="filter_all">Tout</string>
     <string name="error_debuggable_app">L\'application est débogable (probablement une incompatibilité de signature)</string>
     <string name="error_unsafe_skipped">Ignoré : L\'application système est DANGEREUSE / échec de la vérification de sécurité</string>
+    <string name="error_self_skipped">Ignoré : Thor ne peut pas se l\'appliquer à lui-même</string>
     <string name="error_parse_package">Échec de l\'analyse du paquet.</string>
     <string name="error_downgrade_privilege">La rétrogradation n\'est prise en charge qu\'avec un accès privilégié (Root, Shizuku ou Dhizuku).</string>
 

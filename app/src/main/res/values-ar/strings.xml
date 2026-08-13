@@ -433,7 +433,6 @@
     <string name="log_uninstalling_batch">جارٍ إلغاء تثبيت التطبيقات</string>
     <string name="log_suspending_batch">جارٍ تعليق التطبيقات</string>
     <string name="log_unsuspending_batch">جارٍ إلغاء تعليق التطبيقات</string>
-    <string name="log_clearing_data_batch">جارٍ مسح البيانات</string>
     <string name="log_sharing_batch">جارٍ مشاركة التطبيقات</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_batch_preparing">[%1$d/%2$d] جارٍ تجهيز %3$s…</string>
@@ -454,6 +453,7 @@
     <string name="filter_all">الكل</string>
     <string name="error_debuggable_app">التطبيق قابل للتصحيح (من المحتمل عدم تطابق التوقيع)</string>
     <string name="error_unsafe_skipped">تم التخطي: تطبيق النظام غير آمن / فشل فحص الأمان</string>
+    <string name="error_self_skipped">تم التخطي: لا يمكن لـ Thor تنفيذ ذلك على نفسه</string>
     <string name="error_parse_package">فشل في تحليل الحزمة.</string>
     <string name="error_downgrade_privilege">خفض الإصدار مدعوم فقط مع الوصول المميز (Root أو Shizuku أو Dhizuku).</string>
 

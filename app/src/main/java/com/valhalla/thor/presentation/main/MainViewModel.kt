@@ -826,7 +826,19 @@ class MainViewModel(
                     UiText.StringResource(R.string.log_killing_batch),
                     action.appList
                 ) {
-                    manageAppUseCase.forceStop(it.packageName)
+                    // Thor is in its own app list, so "select all -> Kill" is two taps and the
+                    // batch would reach the process running it. Force-stopping that process does
+                    // not stop the batch cleanly — it takes the ViewModel, the logger and the
+                    // remaining apps with it, and the user is left with a partly-killed selection
+                    // and no report of where it stopped. `fixStoreCandidates` already excludes
+                    // Thor from its computed target list for the same reason; this is the same
+                    // exclusion on a list the user assembled by hand, so it is reported rather
+                    // than filtered silently.
+                    if (it.packageName == BuildConfig.APPLICATION_ID) {
+                        Result.failure(UiTextException(UiText.StringResource(R.string.error_self_skipped)))
+                    } else {
+                        manageAppUseCase.forceStop(it.packageName)
+                    }
                 }
 
                 // Root-only, like every per-package clear. The freed byte counts are discarded here
@@ -845,7 +857,10 @@ class MainViewModel(
                     UiText.StringResource(R.string.log_uninstalling_batch),
                     action.appList
                 ) { appInfo ->
-                    if (appInfo.freezeTier == FreezeTier.BLOCKED) {
+                    if (appInfo.packageName == BuildConfig.APPLICATION_ID) {
+                        // Same reasoning as the Kill branch, with a worse ending: this one succeeds.
+                        Result.failure(UiTextException(UiText.StringResource(R.string.error_self_skipped)))
+                    } else if (appInfo.freezeTier == FreezeTier.BLOCKED) {
                         Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                     } else {
                         val result = manageAppUseCase.uninstallApp(appInfo.packageName)
@@ -870,22 +885,32 @@ class MainViewModel(
                     manageAppUseCase.setAppSuspended(it.packageName, false)
                 }
 
-                is MultiAppAction.ClearData -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_clearing_data_batch),
-                    action.appList
-                ) {
-                    manageAppUseCase.clearAppData(it.packageName)
-                }
-
                 is MultiAppAction.Share -> {
                     viewModelScope.launch {
-                        startLogger(UiText.StringResource(R.string.log_sharing_batch))
+                        // `canStop` and the break below are what every other batch has had since
+                        // `performLoggedMultiAction` grew them. This loop is hand-rolled — it
+                        // collects Uris rather than counting successes, which is why it never went
+                        // through the shared helper — and the Stop button was simply never wired
+                        // to it. Preparing 50 installer bundles is the slowest batch Thor has, so
+                        // it was the one batch most likely to be stopped and the only one that
+                        // could not be.
+                        startLogger(
+                            UiText.StringResource(R.string.log_sharing_batch),
+                            canStop = action.appList.size > 1
+                        )
                         val uris = mutableListOf<android.net.Uri>()
+                        var processed = 0
 
                         withContext(ioDispatcher) {
-                            action.appList.forEachIndexed { index, app ->
+                            for ((index, app) in action.appList.withIndex()) {
+                                // Between apps, never during one — same contract as
+                                // `performLoggedMultiAction`. Whatever is already staged is still
+                                // shared; stopping declines to prepare the rest, it does not
+                                // discard the work already done.
+                                if (stopRequested) break
                                 addLog(UiText.StringResource(R.string.log_batch_preparing, index + 1, action.appList.size, app.appName ?: ""))
                                 val result = shareAppUseCase(app)
+                                processed++
                                 if (result.isSuccess) {
                                     uris.add(result.getOrThrow())
                                     addLog(UiText.StringResource(R.string.log_ready))
@@ -901,6 +926,9 @@ class MainViewModel(
                             }
                         }
 
+                        if (stopRequested) {
+                            addLog(UiText.StringResource(R.string.log_stopped, processed, action.appList.size))
+                        }
                         if (uris.isNotEmpty()) {
                             dismissLogger()
                             _effect.send(MainSideEffect.ShareApps(uris))
