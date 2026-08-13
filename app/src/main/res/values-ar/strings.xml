@@ -537,7 +537,6 @@
     <string name="export_format">الصيغة</string>
     <string name="export_save_to">حفظ في</string>
     <string name="export_change">تغيير</string>
-    <string name="export_in_progress">جاري التصدير…</string>
     <string name="export_saved">تم الحفظ في %1$s</string>
     <string name="export_failed">فشل التصدير: %1$s</string>
     <string name="export_failed_unknown">خطأ غير معروف</string>
@@ -548,6 +547,9 @@
     <string name="export_job_packaging">جارٍ تحزيم %1$s بصيغة ‎.%2$s</string>
     <string name="export_job_cleanup_busy">لا يزال ثور ينظّف مخلفات التشغيل السابق. أعد محاولة التصدير بعد قليل.</string>
     <string name="export_job_saved">تم تصدير %1$s إلى %2$s</string>
+    <string name="export_job_background">في الخلفية</string>
+    <string name="export_job_background_desc">يستمر التصدير حتى لو أغلقت هذه النافذة. يعرض الإشعار مدى تقدّمه.</string>
+    <string name="export_job_done">تم التصدير.</string>
     <string name="export_job_stopped">توقّف التصدير قبل أن يكتمل. لم يتم حفظ أي شيء.</string>
     <string name="export_failed_not_started">لم يبدأ التصدير، لذلك لم يتم حفظ أي شيء.</string>
     <string name="export_job_app_gone">لم يعد %1$s مثبتًا، لذلك لم يكن هناك ما يمكن تصديره.</string>

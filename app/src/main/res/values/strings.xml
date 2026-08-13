@@ -215,7 +215,6 @@
     <string name="export_format">Format</string>
     <string name="export_save_to">Save to</string>
     <string name="export_change">Change</string>
-    <string name="export_in_progress">Exporting…</string>
     <string name="export_saved">Saved to %1$s</string>
     <string name="export_failed">Export failed: %1$s</string>
     <string name="export_failed_unknown">unknown error</string>
@@ -234,6 +233,16 @@
     <string name="export_job_packaging">Packaging %1$s as .%2$s</string>
     <string name="export_job_cleanup_busy">Thor is still tidying up from its last run. Try the export again in a moment.</string>
     <string name="export_job_saved">%1$s exported to %2$s</string>
+    <!-- The Background button and the sentence that makes its one word mean something. Separate from
+         backup_background/_desc, which say the same thing about a different job: those live in
+         strings_backup.xml under a file-level MissingTranslation ignore, so borrowing them would put
+         an untranslated button in a translated sheet. -->
+    <string name="export_job_background">Background</string>
+    <string name="export_job_background_desc">The export keeps running if you close this. Its notification shows how far it has got.</string>
+    <!-- On screen only, and only for the three seconds before the sheet closes itself. The
+         destination is not repeated here — the notification is where export_job_saved names it, and
+         the sheet the user is still looking at is the one surface that does not need telling. -->
+    <string name="export_job_done">Exported.</string>
     <!-- The armed fallback for a stop that returns no Result at all: WorkManager discards a
          cancelled worker's Result, so a worded failure cannot travel that way. Any path that *can*
          word itself replaces this before returning. -->

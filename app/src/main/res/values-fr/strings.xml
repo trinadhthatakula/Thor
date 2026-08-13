@@ -503,7 +503,6 @@
     <string name="export_format">Format</string>
     <string name="export_save_to">Enregistrer sous</string>
     <string name="export_change">Modifier</string>
-    <string name="export_in_progress">Exportation en cours…</string>
     <string name="export_saved">Enregistré dans %1$s</string>
     <string name="export_failed">Échec de l\'exportation : %1$s</string>
     <string name="export_failed_unknown">erreur inconnue</string>
@@ -514,6 +513,9 @@
     <string name="export_job_packaging">Empaquetage de %1$s en .%2$s</string>
     <string name="export_job_cleanup_busy">Thor termine le nettoyage de sa session précédente. Réessayez l\'export dans un instant.</string>
     <string name="export_job_saved">%1$s exportée vers %2$s</string>
+    <string name="export_job_background">Arrière-plan</string>
+    <string name="export_job_background_desc">L\'exportation continue si vous fermez cette fenêtre. Sa notification indique où elle en est.</string>
+    <string name="export_job_done">Exportation terminée.</string>
     <string name="export_job_stopped">L\'exportation s\'est arrêtée avant la fin. Rien n\'a été enregistré.</string>
     <string name="export_failed_not_started">L\'exportation n\'a pas démarré, donc rien n\'a été enregistré.</string>
     <string name="export_job_app_gone">%1$s n\'est plus installée : il n\'y avait rien à exporter.</string>
