@@ -32,6 +32,19 @@ sealed interface ThorJobStatus {
      * paths, and a UI that keys "did it fail?" off a non-null reason reports those as nothing at all.
      */
     data class Failed(val reason: String?) : ThorJobStatus
+
+    /**
+     * **Carries nothing, and cannot be made to.** The obvious want for a bulk sweep is
+     * `Cancelled(done, total)` — "stopped after 7 of 20" is the only useful thing to say about a
+     * stopped batch. It is not reachable from here: WorkManager's `WorkerWrapper` records CANCELLED
+     * and discards the worker's returned `Result`, so there is no output `Data` on this state to read
+     * counts out of. A worker that carefully assembled them would be handing them to something that
+     * throws them away.
+     *
+     * The route that works is `ThorJobWorker.noteResult`, which posts from the worker's own `finally`
+     * and so runs on the cancellation path. Partial counts are reported *beside* this status, never
+     * through it.
+     */
     data object Cancelled : ThorJobStatus
 
     /** No such job — WorkManager prunes finished work, so this is the normal answer for an old id. */
@@ -39,13 +52,39 @@ sealed interface ThorJobStatus {
 }
 
 /**
+ * Watch a Thor job. Says nothing about what kind of job it is or how it was started.
+ *
+ * Split out of [ArchiveJobLauncher] because *watching* is the half with no archive in it: both members
+ * take a [UUID] or a [ThorJobKind] and neither mentions a passphrase, a salt or a request. A bulk
+ * sweep launcher implements this and its own `start…`, and every screen that only needs to follow a
+ * job — a progress row, a reattach after rotation — depends on this rather than on a launcher whose
+ * other half it cannot use.
+ *
+ * A port for the same reason [ArchiveJobLauncher] is: the implementation calls
+ * `WorkManager.getInstance(context)`, which would put every consumer beyond the reach of a JVM test.
+ */
+interface ThorJobWatcher {
+
+    fun status(jobId: UUID): Flow<ThorJobStatus>
+
+    /**
+     * The id of an unfinished job for this kind and target, or null.
+     *
+     * How a screen reattaches after a rotation and how a second tap is refused. Backed by
+     * `jobTag(kind, target)`, since a chain name carries no target.
+     */
+    fun runningJobFor(kind: ThorJobKind, target: String): Flow<UUID?>
+}
+
+/**
  * Start an archive job and watch it.
  *
  * A port because the implementation calls `WorkManager.getInstance(context)`, which would put every
  * consumer beyond the reach of a JVM test — the same reason `AppShortcutController` exists next to
- * `FreezerShortcutManager`. The whole surface is "enqueue this, and tell me how it goes".
+ * `FreezerShortcutManager`. The whole surface is "enqueue this, and tell me how it goes"; the second
+ * half of that sentence is [ThorJobWatcher] and is not archive-specific.
  */
-interface ArchiveJobLauncher {
+interface ArchiveJobLauncher : ThorJobWatcher {
 
     /** @param passphrase not cleared here; the caller owns it. @return the job id, or null if it could not be enqueued. */
     suspend fun startBackup(request: ArchiveBackupRequest, passphrase: CharArray): UUID?
@@ -65,14 +104,4 @@ interface ArchiveJobLauncher {
         salt: ByteArray,
         iterations: Int,
     ): UUID?
-
-    fun status(jobId: UUID): Flow<ThorJobStatus>
-
-    /**
-     * The id of an unfinished job for this kind and target, or null.
-     *
-     * How a screen reattaches after a rotation and how a second tap is refused. Backed by
-     * `jobTag(kind, target)`, since every job shares one chain name.
-     */
-    fun runningJobFor(kind: ThorJobKind, target: String): Flow<UUID?>
 }

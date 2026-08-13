@@ -5,6 +5,7 @@ package com.valhalla.thor.data.backup.job
 
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Operation
 import androidx.work.WorkInfo
@@ -79,13 +80,7 @@ class ThorJobLauncher(
         // Before enqueue, not after: the worker can start the instant enqueue returns, and a worker
         // that starts before its key is in the holder fails for the one reason it must never fail for.
         keys.put(work.id.toString(), key)
-        return enqueue(work.id) {
-            WorkManager.getInstance(context).beginUniqueWork(
-                THOR_JOB_CHAIN,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
-                work,
-            ).enqueue()
-        }
+        return enqueueUniqueJob(context, THOR_JOB_CHAIN, work, ::abandonKey)
     }
 
     /**
@@ -122,13 +117,7 @@ class ThorJobLauncher(
             .build()
 
         keys.put(work.id.toString(), key)
-        return enqueue(work.id) {
-            WorkManager.getInstance(context).beginUniqueWork(
-                THOR_JOB_CHAIN,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
-                work,
-            ).enqueue()
-        }
+        return enqueueUniqueJob(context, THOR_JOB_CHAIN, work, ::abandonKey)
     }
 
     /**
@@ -207,46 +196,75 @@ class ThorJobLauncher(
     }
 
     /**
-     * Enqueue, **wait for WorkManager to say it worked**, and hand back the id — or drop the key and
-     * hand back null.
+     * The cleanup [enqueueUniqueJob] performs when a request never made it into the database.
      *
-     * The wait is the point. `WorkContinuation.enqueue()` does its real work on WorkManager's task
-     * executor and reports the result on the returned [Operation]; catching only what is thrown
-     * synchronously catches argument validation and nothing else. A `WorkSpec` insert that fails, a
-     * corrupt WorkManager database, an internal executor that rejects the task — all of those arrive
-     * as a failed [Operation] and used to be invisible here, so this returned an id for a row that
-     * does not exist.
-     *
-     * What that cost downstream is worth naming, because no consumer can fix it: `getWorkInfoByIdFlow`
-     * emits null forever for an id with no row, [status] maps null to [ThorJobStatus.Gone], and both
-     * watchers correctly treat a first-and-only `Gone` as "not started yet" rather than as terminal.
-     * The screen then sits on a progress bar for a job that will never exist, with no timeout
-     * anywhere. This is the one hole underneath that rule, and it is created here.
+     * Key material must not sit in memory for a job that will never run. A sweep launcher passes
+     * something else here, or nothing at all — which is why the generic function takes it as a
+     * parameter rather than knowing about keys.
      */
-    private suspend fun enqueue(id: UUID, block: () -> Operation): UUID? {
-        val operation = try {
-            block()
-        } catch (e: Exception) {
-            return abandon(id, "enqueue was refused", e)
-        }
-        return try {
-            operation.awaitSuccess()
-            id
-        } catch (e: CancellationException) {
-            // Only the *wait* was cancelled; the work is already with WorkManager and the worker that
-            // will take this key is real. Dropping it here would fail that job for the one reason it
-            // must never fail for.
-            throw e
-        } catch (e: Exception) {
-            abandon(id, "enqueue failed", e)
-        }
+    private fun abandonKey(id: UUID) {
+        keys.drop(id.toString())
+    }
+}
+
+/**
+ * Enqueue one request on a unique chain, **wait for WorkManager to say it worked**, and hand back the
+ * id — or run [onAbandoned] and hand back null.
+ *
+ * The wait is the point. `WorkContinuation.enqueue()` does its real work on WorkManager's task
+ * executor and reports the result on the returned [Operation]; catching only what is thrown
+ * synchronously catches argument validation and nothing else. A `WorkSpec` insert that fails, a
+ * corrupt WorkManager database, an internal executor that rejects the task — all of those arrive as a
+ * failed [Operation] and were once invisible here, so this returned an id for a row that does not
+ * exist.
+ *
+ * What that cost downstream is worth naming, because no consumer can fix it: `getWorkInfoByIdFlow`
+ * emits null forever for an id with no row, [ThorJobLauncher.status] maps null to
+ * [ThorJobStatus.Gone], and both watchers correctly treat a first-and-only `Gone` as "not started
+ * yet" rather than as terminal. The screen then sits on a progress bar for a job that will never
+ * exist, with no timeout anywhere. This is the one hole underneath that rule, and it is created here.
+ *
+ * **Top-level and `internal` so the next launcher shares this and not a copy of it.** It was a private
+ * method on [ThorJobLauncher] while archives were the only jobs; the awaited-[Operation] handling
+ * above is the part a second launcher would reimplement badly, and the only thing that actually
+ * differed between the two archive call sites was the chain name.
+ *
+ * @param chainName the unique work name — `THOR_JOB_CHAIN` for anything that moves bytes,
+ *   `THOR_SWEEP_CHAIN` for a privilege sweep. See their docs for why that split exists.
+ * @param onAbandoned run only when the request will never execute. **Not** run when the *wait* is
+ *   cancelled: the work is with WorkManager by then and is going to run, so releasing anything it
+ *   depends on would fail a live job.
+ */
+internal suspend fun enqueueUniqueJob(
+    context: Context,
+    chainName: String,
+    work: OneTimeWorkRequest,
+    onAbandoned: (UUID) -> Unit = {},
+): UUID? {
+    val id = work.id
+    fun abandon(what: String, cause: Throwable): UUID? {
+        Logger.e(TAG, "$what on $chainName", cause)
+        onAbandoned(id)
+        return null
     }
 
-    /** Key material must not sit in memory for a job that will never run. */
-    private fun abandon(id: UUID, what: String, cause: Throwable): UUID? {
-        Logger.e(TAG, what, cause)
-        keys.drop(id.toString())
-        return null
+    val operation = try {
+        WorkManager.getInstance(context)
+            .beginUniqueWork(chainName, ExistingWorkPolicy.APPEND_OR_REPLACE, work)
+            .enqueue()
+    } catch (e: Exception) {
+        return abandon("enqueue was refused", e)
+    }
+    return try {
+        operation.awaitSuccess()
+        id
+    } catch (e: CancellationException) {
+        // Only the *wait* was cancelled; the work is already with WorkManager and the worker that will
+        // take this job's key is real. Dropping it here would fail that job for the one reason it must
+        // never fail for.
+        throw e
+    } catch (e: Exception) {
+        abandon("enqueue failed", e)
     }
 }
 

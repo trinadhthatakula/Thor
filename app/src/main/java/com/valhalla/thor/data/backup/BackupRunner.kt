@@ -38,10 +38,21 @@ import java.io.IOException
  *
  * The point of the @Single is the scope: exporting 200 apps outlives the sheet that started it,
  * the ViewModel behind that sheet and often the Activity behind *that*. A process-lifetime
- * [SupervisorJob] scope survives all three **without a foreground service** — Thor declares no
- * `FOREGROUND_SERVICE` permission, and a `dataSync` FSU is mandatory-typed on API 34+, time-capped
- * on 35+ and comes with a whole new class of start-not-allowed crashes. This is the same shape
+ * [SupervisorJob] scope survives all three **without a foreground service**, which is the same shape
  * `BulkFreezeRunner` already uses for exactly this problem.
+ *
+ * The reason given here used to be that Thor declares no `FOREGROUND_SERVICE` permission. **That is
+ * false, and was false when it was written.** The merged manifest carries the base permission from
+ * `work-runtime`'s own manifest, Thor declares `FOREGROUND_SERVICE_DATA_SYNC` explicitly, and it
+ * overlays `androidx.work.impl.foreground.SystemForegroundService` with `android:foregroundServiceType`
+ * `dataSync` — because the archive job seam next door runs as a foreground service and would throw
+ * `MissingForegroundServiceTypeException` without it.
+ *
+ * What survives is the rest of the argument, which never needed that claim: a `dataSync` FSU is
+ * mandatory-typed on API 34+, time-capped on 35+, and cannot be started from the background on 31+
+ * without risking `ForegroundServiceStartNotAllowedException`. A process-lifetime scope has none of
+ * those failure modes. It also does not have the FSU's wakelock or process priority — the trade this
+ * class makes, and the reason an archive capture makes the opposite one.
  */
 @Single
 class BackupRunner(

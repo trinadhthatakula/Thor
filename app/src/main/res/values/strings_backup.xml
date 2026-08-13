@@ -10,8 +10,15 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="job_backing_up">Backing up</string>
     <string name="job_restoring">Restoring</string>
-    <string name="job_channel_name">Backup and restore</string>
-    <string name="job_channel_description">Progress for backups and restores running in the background</string>
+    <!--
+      Named for the channel's scope, not for the feature that opened it. A user silencing this is
+      silencing every long-running job Thor reports — bulk actions are meant to join backups on it —
+      and a switch labelled "Backup and restore" would not have told them that. The channel id is
+      unchanged ("thor.jobs"), so renaming it here renames the existing switch rather than creating a
+      second one; a channel's name is updatable, its importance is not once the user has touched it.
+    -->
+    <string name="job_channel_name">Background jobs</string>
+    <string name="job_channel_description">Progress for backups, restores and bulk actions running in the background</string>
 
     <string name="action_backup">Back up</string>
     <string name="backup_unsupported">Thor cannot read another app\'s private data with the access it has right now. This needs root, or Shizuku started from root.</string>
