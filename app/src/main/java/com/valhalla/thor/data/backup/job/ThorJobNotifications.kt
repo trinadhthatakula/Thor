@@ -119,6 +119,51 @@ class ThorJobNotifications(private val context: Context) {
     }
 
     /**
+     * Leave a one-line outcome in the shade after a job ends.
+     *
+     * The gap this closes is that the ongoing row is the *only* surface a background job has, and
+     * [ThorJobWorker]'s `finally` removes it. A job that finished while Thor was not on screen
+     * therefore reported to nobody: `ThorJobStatus.Succeeded` is observed by a live ViewModel and by
+     * nothing else, so the shade simply went quiet and the user is left to guess.
+     *
+     * It matters most on the path that has no other reporter at all. **WorkManager discards a
+     * cancelled worker's `Result`** — `WorkerWrapper` records CANCELLED and drops the output `Data` —
+     * so a sweep stopped halfway cannot report "7 of 20 done" through `Result.success(...)`. Calling
+     * this before returning is the one way those counts survive.
+     *
+     * Transient and quiet by construction: [TIMEOUT_MS] so a stale outcome does not sit in the shade
+     * for a day, `setAutoCancel` so a tap clears it, and the same IMPORTANCE_LOW channel as the
+     * progress row, so it neither makes a sound nor peeks. It reuses that channel rather than
+     * `BulkResultNotifier`'s deliberately — a user who silenced *"Background jobs"* has said they do
+     * not want to hear about jobs, and routing the ending around that switch would be a way of
+     * ignoring them.
+     *
+     * Guarded exactly like [update]: this can be called from a `finally`, where an uncaught
+     * [SecurityException] from a permission revoked mid-job would replace the job's real outcome.
+     */
+    fun postResult(kind: ThorJobKind, message: String) {
+        if (!notificationManager.areNotificationsEnabled()) return
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(iconFor(kind))
+            .setContentTitle(message)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setTimeoutAfter(TIMEOUT_MS)
+            // The same target as the progress row: whatever sheet this kind of job belongs to. By the
+            // time a user taps it, `JobSheetTargets` has been cleared for the finished job — so this
+            // opens the app rather than that sheet. Acceptable, and better than no target at all.
+            .setContentIntent(contentIntents.getValue(kind))
+            .build()
+        try {
+            notificationManager.notify(resultNotificationId(kind), notification)
+        } catch (e: SecurityException) {
+            Logger.e(TAG, "${kind.id}: result notify() denied after revocation", e)
+        }
+    }
+
+    /**
      * Cancel the notification for [kind].
      *
      * On the happy path WorkManager cancels the id it owns via setForeground when the job finishes.
@@ -131,8 +176,7 @@ class ThorJobNotifications(private val context: Context) {
 
     private fun build(kind: ThorJobKind, progress: ThorJobProgress, jobId: UUID) =
         NotificationCompat.Builder(context, CHANNEL_ID).apply {
-            // BulkResultNotifier uses R.drawable.frozen; no ic_thor_notification exists in this build.
-            setSmallIcon(R.drawable.frozen)
+            setSmallIcon(iconFor(kind))
             setContentTitle(context.getString(titleFor(kind)))
             setContentText(progress.label)
             setOngoing(true)
@@ -162,14 +206,46 @@ class ThorJobNotifications(private val context: Context) {
     }
 
     /**
+     * The shade's small icon, per kind.
+     *
+     * Both archive kinds get `settings_backup_restore`, which is what that Material symbol is for.
+     * This used to be `R.drawable.frozen` for every job — a snowflake, borrowed from
+     * `BulkResultNotifier` where it means *frozen app*, sitting on top of a backup. It was never a
+     * deliberate choice: the comment beside it said only that no dedicated icon existed.
+     *
+     * `thor_mono` is not a candidate despite being the obvious one. It is the adaptive icon's
+     * monochrome layer at 200dp, drawn with the safe-zone padding that format requires; scaled into a
+     * 24dp status bar slot it renders as a speck. A notification small icon has to be a 24dp asset
+     * drawn for 24dp.
+     */
+    private fun iconFor(kind: ThorJobKind) = when (kind) {
+        ThorJobKind.ARCHIVE_BACKUP, ThorJobKind.ARCHIVE_RESTORE -> R.drawable.settings_backup_restore
+    }
+
+    /**
      * One id per [ThorJobKind], which means two jobs of the same kind would share a notification.
      *
-     * Safe only because `THOR_JOB_CHAIN` carries no target: every archive job is appended to one
-     * chain, so at most one runs at a time. The day someone puts the target into the unique name to
-     * get parallelism — `jobTag(kind, target)` already exists and is the obvious source — this
+     * Safe because of an invariant that spans this file and `ThorJob.kt`: **each kind belongs to
+     * exactly one unique work name, and each of those chains is serial.** Archive kinds are appended
+     * to `THOR_JOB_CHAIN`, sweep kinds to `THOR_SWEEP_CHAIN`; two chains means an archive and a sweep
+     * can now run at once, but they are different kinds and so hold different ids. Two jobs of the
+     * *same* kind still cannot overlap, because they are on the same chain.
+     *
+     * What breaks it is putting one kind on both chains, or putting the target into a unique name to
+     * get parallelism — `jobTag(kind, target)` already exists and is the obvious source. Either
      * silently collapses two jobs onto one row, and the first to finish cancels the second's.
      */
     private fun notificationId(kind: ThorJobKind) = BASE_NOTIFICATION_ID + kind.ordinal
+
+    /**
+     * The id of the transient outcome row, kept in a second block so it cannot collide with the
+     * ongoing row it outlives.
+     *
+     * It has to be a different id: [ThorJobWorker]'s `finally` calls [cancel] for the ongoing
+     * notification on every terminal path, so an outcome posted under the same id would be cancelled
+     * within microseconds of being posted — by the very cleanup that is supposed to follow it.
+     */
+    private fun resultNotificationId(kind: ThorJobKind) = BASE_RESULT_NOTIFICATION_ID + kind.ordinal
 
     private fun ensureChannel() {
         notificationManager.createNotificationChannel(
@@ -186,5 +262,14 @@ class ThorJobNotifications(private val context: Context) {
 
         /** `BulkResultNotifier` owns 1001. */
         const val BASE_NOTIFICATION_ID = 1100
+
+        /**
+         * The outcome rows. 100 ids of headroom above [BASE_NOTIFICATION_ID], so the two blocks
+         * cannot meet until [ThorJobKind] has a hundred entries.
+         */
+        const val BASE_RESULT_NOTIFICATION_ID = 1200
+
+        /** How long an outcome row stays before the system removes it. `BulkResultNotifier`'s figure. */
+        private const val TIMEOUT_MS = 10_000L
     }
 }

@@ -549,15 +549,29 @@ class FakePreferenceRepository(
 // disk — so this one fails loudly rather than quietly, and a share test that reaches it reports the
 // real reason instead of a confusing null.
 
-class FakeAppBundleBuilder : AppBundleBuilder {
+class FakeAppBundleBuilder(
+    /**
+     * Run at the top of every [build], before it fails.
+     *
+     * The seam for a test that has to act *during* a batch rather than before or after it — tapping
+     * Stop, say, which a view model only observes between apps. Nothing else can reach that moment:
+     * the loop runs to completion inside one `withContext`, so a test body regains control only once
+     * every app has had its turn.
+     *
+     * Defaulted, so the tests that predate it read unchanged.
+     */
+    private val onBuild: (AppInfo) -> Unit = {},
+) : AppBundleBuilder {
     // No default values on the override — Kotlin takes them from the interface.
     override suspend fun build(
         appInfo: AppInfo,
         cacheSubDir: String,
         format: BundleFormat,
         fileName: String?
-    ): Result<File> =
-        Result.failure(UnsupportedOperationException("bundle building needs a device"))
+    ): Result<File> {
+        onBuild(appInfo)
+        return Result.failure(UnsupportedOperationException("bundle building needs a device"))
+    }
 }
 
 /**

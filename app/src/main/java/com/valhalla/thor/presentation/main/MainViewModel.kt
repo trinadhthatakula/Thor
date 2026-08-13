@@ -826,7 +826,19 @@ class MainViewModel(
                     UiText.StringResource(R.string.log_killing_batch),
                     action.appList
                 ) {
-                    manageAppUseCase.forceStop(it.packageName)
+                    // Thor is in its own app list, so "select all -> Kill" is two taps and the
+                    // batch would reach the process running it. Force-stopping that process does
+                    // not stop the batch cleanly — it takes the ViewModel, the logger and the
+                    // remaining apps with it, and the user is left with a partly-killed selection
+                    // and no report of where it stopped. `fixStoreCandidates` already excludes
+                    // Thor from its computed target list for the same reason; this is the same
+                    // exclusion on a list the user assembled by hand, so it is reported rather
+                    // than filtered silently.
+                    if (it.packageName == BuildConfig.APPLICATION_ID) {
+                        Result.failure(UiTextException(UiText.StringResource(R.string.error_self_skipped)))
+                    } else {
+                        manageAppUseCase.forceStop(it.packageName)
+                    }
                 }
 
                 // Root-only, like every per-package clear. The freed byte counts are discarded here
@@ -845,7 +857,10 @@ class MainViewModel(
                     UiText.StringResource(R.string.log_uninstalling_batch),
                     action.appList
                 ) { appInfo ->
-                    if (appInfo.freezeTier == FreezeTier.BLOCKED) {
+                    if (appInfo.packageName == BuildConfig.APPLICATION_ID) {
+                        // Same reasoning as the Kill branch, with a worse ending: this one succeeds.
+                        Result.failure(UiTextException(UiText.StringResource(R.string.error_self_skipped)))
+                    } else if (appInfo.freezeTier == FreezeTier.BLOCKED) {
                         Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                     } else {
                         val result = manageAppUseCase.uninstallApp(appInfo.packageName)
@@ -870,22 +885,32 @@ class MainViewModel(
                     manageAppUseCase.setAppSuspended(it.packageName, false)
                 }
 
-                is MultiAppAction.ClearData -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_clearing_data_batch),
-                    action.appList
-                ) {
-                    manageAppUseCase.clearAppData(it.packageName)
-                }
-
                 is MultiAppAction.Share -> {
                     viewModelScope.launch {
-                        startLogger(UiText.StringResource(R.string.log_sharing_batch))
+                        // `canStop` and the break below are what every other batch has had since
+                        // `performLoggedMultiAction` grew them. This loop is hand-rolled — it
+                        // collects Uris rather than counting successes, which is why it never went
+                        // through the shared helper — and the Stop button was simply never wired
+                        // to it. Preparing 50 installer bundles is the slowest batch Thor has, so
+                        // it was the one batch most likely to be stopped and the only one that
+                        // could not be.
+                        startLogger(
+                            UiText.StringResource(R.string.log_sharing_batch),
+                            canStop = action.appList.size > 1
+                        )
                         val uris = mutableListOf<android.net.Uri>()
+                        var processed = 0
 
                         withContext(ioDispatcher) {
-                            action.appList.forEachIndexed { index, app ->
+                            for ((index, app) in action.appList.withIndex()) {
+                                // Between apps, never during one — same contract as
+                                // `performLoggedMultiAction`. Whatever is already staged is still
+                                // shared; stopping declines to prepare the rest, it does not
+                                // discard the work already done.
+                                if (stopRequested) break
                                 addLog(UiText.StringResource(R.string.log_batch_preparing, index + 1, action.appList.size, app.appName ?: ""))
                                 val result = shareAppUseCase(app)
+                                processed++
                                 if (result.isSuccess) {
                                     uris.add(result.getOrThrow())
                                     addLog(UiText.StringResource(R.string.log_ready))
@@ -901,6 +926,12 @@ class MainViewModel(
                             }
                         }
 
+                        // `processed <`, not `stopRequested` alone — see the same gate at the end of
+                        // [performLoggedMultiAction] for why. A Stop tapped while the last
+                        // `shareAppUseCase` runs would otherwise report "Stopped: 20 of 20".
+                        if (processed < action.appList.size) {
+                            addLog(UiText.StringResource(R.string.log_stopped, processed, action.appList.size))
+                        }
                         if (uris.isNotEmpty()) {
                             dismissLogger()
                             _effect.send(MainSideEffect.ShareApps(uris))
@@ -954,8 +985,24 @@ class MainViewModel(
                     if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
                     else manageAppUseCase.setAppDisabled(app.packageName, true)
                 } else {
-                    // State-aware restore: clears suspend AND disable, incl. mixed state.
-                    manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
+                    // `forceUnfreeze`, not the state-aware `restoreApp(_, app.enabled,
+                    // app.isSuspended)` this used to call. Both clear suspend AND disable; the
+                    // difference is that `restoreApp` decides which halves to attempt from the flags,
+                    // and on this path the flags are stale by construction.
+                    //
+                    // Nothing patches `isSuspended` on an app list after a bulk freeze — not this
+                    // function (it updates only the logger counters and never refreshes the lists on
+                    // completion), not `AppListViewModel`'s bulk branch, not the QS tile. So the
+                    // freeze-then-unfreeze round trip that is the *primary* way suspend mode gets
+                    // used — `useSuspend = true` above, then Unfreeze over the same selection —
+                    // hands `restorePlanFor` a snapshot that still calls every app active. It plans
+                    // nothing, returns `Result.success`, and this loop counts a success for each app
+                    // while all of them are still suspended: "Unfroze 12" over 12 paused apps.
+                    //
+                    // FreezerViewModel already documents this trap twice and answers it the same way.
+                    // The cost is one redundant unsuspend per already-active app, which root and
+                    // Shizuku answer from the flag alone.
+                    manageAppUseCase.forceUnfreeze(app.packageName)
                 }
                 processed++
                 if (result.isFailure) failed++
@@ -1125,7 +1172,15 @@ class MainViewModel(
             }
         }
 
-        if (stopRequested) {
+        // `processed <`, not `stopRequested` alone. The flag is checked between apps, so a Stop
+        // tapped while the *last* app's call is in flight sets it after the loop has already run
+        // every app — and reporting on the flag then says "Stopped: 20 of 20", a stop that skipped
+        // nothing, which reads as though something was lost. The count is the only thing that knows
+        // whether the loop broke early.
+        //
+        // Six bulk actions come through here (kill, clear cache, uninstall, reinstall, suspend,
+        // unsuspend) and the share branch keeps its own copy of this loop; both now gate the same way.
+        if (processed < apps.size) {
             addLog(UiText.StringResource(R.string.log_stopped, processed, apps.size))
         }
         finishLogger()

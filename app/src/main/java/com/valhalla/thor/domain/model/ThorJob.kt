@@ -4,7 +4,7 @@
 package com.valhalla.thor.domain.model
 
 /**
- * The one unique work name every archive job shares.
+ * The one unique work name every job that **moves bytes** shares: archives today, exports next.
  *
  * Deliberately does **not** name the target. With `ExistingWorkPolicy.APPEND_OR_REPLACE` this makes
  * runs *serialise*, which is what holds peak disk at one storage class however many backups the user
@@ -12,8 +12,32 @@ package com.valhalla.thor.domain.model
  *
  * `APPEND_OR_REPLACE` rather than `APPEND` because the chain must not be wedged by a job that failed
  * or was cancelled — replace is the escape hatch that keeps the queue usable.
+ *
+ * **The argument above is about disk, so it does not reach a privilege sweep.** A freeze, a suspend, a
+ * force-stop and an uninstall write no bytes; putting them on this name would queue a five-second
+ * sweep behind an hour-long backup for a reason that does not apply to it. They use
+ * [THOR_SWEEP_CHAIN] instead.
  */
 const val THOR_JOB_CHAIN = "thor.job.chain"
+
+/**
+ * The unique work name every **privilege sweep** shares — bulk freeze, unfreeze, force-stop, cache
+ * clear, reinstall.
+ *
+ * Separate from [THOR_JOB_CHAIN] so a sweep is not queued behind a multi-gigabyte capture, and so a
+ * capture is not delayed by a queue of sweeps. Same `APPEND_OR_REPLACE` policy, for the same
+ * anti-wedging reason.
+ *
+ * Sweeps still serialise *among themselves*, and not on disk grounds:
+ *
+ * - Two sweeps over overlapping selections race on the same packages. A freeze landing between
+ *   another sweep's `getApplicationInfo` and its `setAppDisabled` is a decision made on state that
+ *   has already changed.
+ * - Odin's root channel is one long-lived FIFO `su` session, so two "concurrent" root sweeps
+ *   interleave into that single session anyway. The parallelism would be a fiction bought at the
+ *   price of the race above.
+ */
+const val THOR_SWEEP_CHAIN = "thor.sweep.chain"
 
 /** Set on a failed job's output `Data` so the UI can say what went wrong instead of "failed". */
 const val JOB_ERROR_KEY = "thor.job.error"
@@ -33,6 +57,12 @@ const val JOB_WARNINGS_KEY = "thor.job.warnings"
  *
  * Two for now. Exports and bulk actions are meant to join them — that is why nothing in this file or
  * in `ThorJobWorker` mentions archives.
+ *
+ * **Append only. Never insert or reorder.** `ThorJobNotifications` derives a notification id from
+ * `BASE_NOTIFICATION_ID + ordinal`, and that same number is the `PendingIntent` request code for the
+ * row's tap target. Inserting a kind renumbers every kind after it, which hands a live notification
+ * the request code of a different job. [jobKindFromId] is deliberately immune to this — the tap extra
+ * travels as [id], not as an ordinal — but the id arithmetic is not.
  */
 enum class ThorJobKind(val id: String) {
     ARCHIVE_BACKUP("archive-backup"),
@@ -58,6 +88,16 @@ enum class ThorJobStage {
     WRITING,
     INSTALLING,
     RESTORING,
+
+    /**
+     * A sweep working through its selection — freezing, clearing, force-stopping.
+     *
+     * One stage for the whole loop rather than one per operation, because a sweep's interesting
+     * quantity is *which app of how many*, and that is [ThorJobProgress.label] and its counts. The
+     * stage exists to distinguish the loop from [PREPARING] and [FINISHING] on either side of it; the
+     * operation is already in the notification title.
+     */
+    ACTING,
     FINISHING,
 }
 

@@ -70,9 +70,26 @@ internal class ArchiveBackupWorker(
     private val systemRepository: SystemRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
     sheetTargets: JobSheetTargets,
-) : ThorJobWorker(appContext, params, notifications, registry, keys, sheetTargets) {
+) : ThorJobWorker(appContext, params, notifications, registry, sheetTargets) {
 
     override val kind = ThorJobKind.ARCHIVE_BACKUP
+
+    /**
+     * Drop the derived key on every path `doWork` can reach.
+     *
+     * Was the base class's job while [ArchiveKeyHolder] was a constructor parameter of it; it is this
+     * worker's now, because holding key material is a property of archive jobs and not of Thor's jobs.
+     * The guarantees it rested on are unchanged — the base calls this from its `finally`, so it still
+     * covers cancellation and any throw that fires before [runJob]'s own `take`, and it is still a
+     * no-op afterwards (`ConcurrentHashMap.remove` on an absent key).
+     *
+     * The window it does **not** cover is unchanged too: a job cancelled between
+     * [ArchiveKeyHolder.put] and WorkManager starting `doWork` never reaches any `finally`, so nothing
+     * here runs. That branch is closed by [ArchiveKeyHolder]'s own expiry.
+     */
+    override fun onJobFinished() {
+        keys.drop(id.toString())
+    }
 
     /**
      * The package name, not the label.
@@ -234,9 +251,14 @@ internal class ArchiveRestoreWorker(
     private val installedFacts: ReadInstalledAppFactsUseCase,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
     sheetTargets: JobSheetTargets,
-) : ThorJobWorker(appContext, params, notifications, registry, keys, sheetTargets) {
+) : ThorJobWorker(appContext, params, notifications, registry, sheetTargets) {
 
     override val kind = ThorJobKind.ARCHIVE_RESTORE
+
+    /** Same contract and same uncovered window as [ArchiveBackupWorker.onJobFinished]. */
+    override fun onJobFinished() {
+        keys.drop(id.toString())
+    }
 
     override val initialLabel: String
         get() = inputData.getString(RESTORE_PACKAGE_KEY).orEmpty()

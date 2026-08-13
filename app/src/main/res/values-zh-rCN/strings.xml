@@ -391,7 +391,6 @@
     <string name="log_uninstalling_batch">正在批量卸载应用</string>
     <string name="log_suspending_batch">正在批量暂停应用</string>
     <string name="log_unsuspending_batch">正在批量取消暂停应用</string>
-    <string name="log_clearing_data_batch">正在批量清除数据</string>
     <string name="log_sharing_batch">正在批量分享应用</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_batch_preparing">[%1$d/%2$d] 正在准备 %3$s…</string>
@@ -412,6 +411,7 @@
     <string name="filter_all">全部</string>
     <string name="error_debuggable_app">应用可调试（签名可能不匹配）</string>
     <string name="error_unsafe_skipped">已跳过：系统应用不安全 / 安全检查失败</string>
+    <string name="error_self_skipped">已跳过：Thor 无法对自身执行此操作</string>
     <string name="error_parse_package">解析包失败。</string>
     <string name="error_downgrade_privilege">降级仅支持特权访问（Root、Shizuku 或 Dhizuku）。</string>
 

@@ -5,8 +5,11 @@ package com.valhalla.thor.presentation.appList
 
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.InstalledAppsPermission
+import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
@@ -33,6 +36,7 @@ import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -458,6 +462,101 @@ class AppListViewModelTest {
             "the watchlist entry is the only route back to a still-frozen app",
             freezer.contains("a")
         )
+    }
+
+    // --- Bulk unfreeze ----------------------------------------------------------------------
+
+    /**
+     * The bulk direction had two independent ways to report a thaw that never happened, and fixing
+     * one of them made the other one worse.
+     *
+     * It used to discard every result, mark the whole selection enabled and send an unconditional
+     * success plural. Counting properly fixed the arithmetic and left the deeper problem: with
+     * `setAppDisabled` it counted an enable that succeeded on an app that was *suspended*, so the
+     * report became precisely accurate about a call that did not unfreeze anything. Both halves have
+     * to hold at once — the right call, and only the apps it worked for.
+     */
+    @Test
+    fun `a bulk unfreeze clears both freeze dimensions for every app`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        appRepository.apps.value = listOf(
+            userApp("a", enabled = false),
+            userApp("b", enabled = true, isSuspended = true),
+        )
+        runCurrent()
+        system.calls.clear()
+
+        vm.performMultiAction(
+            MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false), userApp("b", isSuspended = true)))
+        )
+        runCurrent()
+
+        // Asked for unconditionally rather than planned from the flags: `isSuspended` is patched on
+        // exactly one path in this view model and never on a bulk one, so a snapshot is the wrong
+        // thing to plan from. `b` needs the unsuspend and `a` does not; both are asked anyway.
+        assertEquals(
+            listOf(
+                "setAppSuspended:a:false", "setAppDisabled:a:false",
+                "setAppSuspended:b:false", "setAppDisabled:b:false",
+            ),
+            system.calls
+        )
+    }
+
+    @Test
+    fun `a bulk unfreeze stops the rows reading as suspended, not just as disabled`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("a", enabled = false, isSuspended = true))
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false, isSuspended = true))))
+        runCurrent()
+
+        // Patching only `enabled` would leave a thawed app drawn as suspended until the next rescan —
+        // and would leave the *next* unfreeze reading that stale flag, which is the trap this whole
+        // section exists for.
+        val app = vm.uiState.value.allUserApps.first { it.packageName == "a" }
+        assertTrue("enabled again", app.enabled)
+        assertFalse("and not suspended", app.isSuspended)
+    }
+
+    @Test
+    fun `a bulk unfreeze counts only the apps that came back and leaves the rest frozen`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(
+            userApp("a", enabled = false),
+            userApp("b", enabled = false),
+        )
+        runCurrent()
+        events.clear()
+        // The enable is the second half of forceUnfreeze, so failing it fails the whole restore for
+        // that app while the other one succeeds — the mixed outcome the report has to survive.
+        system.failWith("setAppDisabled:b:false", IllegalStateException("no privilege"))
+
+        vm.performMultiAction(
+            MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false), userApp("b", enabled = false)))
+        )
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                AppListEvent.ShowMessage(
+                    bulkResultMessage(
+                        BulkResult(op = BulkOp.UNFREEZE, total = 2, succeeded = 1, failed = 1)
+                    )
+                )
+            ),
+            events
+        )
+        // And the row for the app that stayed frozen must still say so, or the only affordance for
+        // retrying it is gone.
+        assertFalse(vm.uiState.value.allUserApps.first { it.packageName == "b" }.enabled)
+        assertTrue(vm.uiState.value.allUserApps.first { it.packageName == "a" }.enabled)
     }
 
     // --- GET_INSTALLED_APPS banner ---------------------------------------------------------

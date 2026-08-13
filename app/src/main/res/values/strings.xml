@@ -591,7 +591,6 @@
     <string name="log_uninstalling_batch">Uninstalling Apps</string>
     <string name="log_suspending_batch">Suspending Apps</string>
     <string name="log_unsuspending_batch">Unsuspending Apps</string>
-    <string name="log_clearing_data_batch">Clearing Data</string>
     <string name="log_sharing_batch">Sharing Apps</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_batch_preparing">[%1$d/%2$d] Preparing %3$s…</string>
@@ -612,6 +611,7 @@
     <string name="filter_all">All</string>
     <string name="error_debuggable_app">App is Debuggable (Signature mismatch likely)</string>
     <string name="error_unsafe_skipped">Skipped: System app is UNSAFE / safety check failed</string>
+    <string name="error_self_skipped">Skipped: Thor cannot do this to itself</string>
     <string name="error_parse_package">Failed to parse package.</string>
     <string name="error_downgrade_privilege">Downgrade is only supported with privileged access (Root, Shizuku, or Dhizuku).</string>
 
