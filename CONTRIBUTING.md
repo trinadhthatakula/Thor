@@ -58,6 +58,9 @@ Thor is built using modern Android development practices. Please read the archit
 * **Root Operations**: [Odin](https://github.com/trinadhthatakula/Odin), an in-house Kotlin fork of
   libsu, consumed as `com.trinadhthatakula:odin` from Maven Central.
 * **Hidden API Bypass**: Custom internal `:bypass` module.
+* **Background Work**: WorkManager, but only for two operations — see
+  [docs/workers/README.md](docs/workers/README.md) for which ones, what the job seam requires of a new
+  job kind, and why every bulk action is a plain coroutine instead.
 
 ### Useful Build Commands
 * **Assemble Debug APK (FOSS)**: `./gradlew assembleFossDebug`
