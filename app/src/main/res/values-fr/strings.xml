@@ -509,6 +509,16 @@
     <string name="export_failed_unknown">erreur inconnue</string>
     <string name="export_dest_downloads">Téléchargements/Thor</string>
     <string name="export_dest_selected">Dossier sélectionné</string>
+    <string name="export_job_queued">En attente de la fin d\'une autre tâche.</string>
+    <string name="export_job_preparing">Préparation de %1$s</string>
+    <string name="export_job_packaging">Empaquetage de %1$s en .%2$s</string>
+    <string name="export_job_writing">Écriture dans %1$s</string>
+    <string name="export_job_saved">%1$s exportée vers %2$s</string>
+    <string name="export_job_stopped">L\'exportation s\'est arrêtée avant la fin. Rien n\'a été enregistré.</string>
+    <string name="export_failed_not_started">L\'exportation n\'a pas démarré, donc rien n\'a été enregistré.</string>
+    <string name="export_job_app_gone">%1$s n\'est plus installée : il n\'y avait rien à exporter.</string>
+    <string name="export_job_folder_gone">Thor ne peut plus écrire dans ce dossier. Choisissez-le à nouveau.</string>
+    <string name="export_job_unreadable">Thor n\'a pas pu lire ce qui devait être exporté.</string>
 
     <string name="action_export_selected">Exporter</string>
     <string name="export_bulk_confirm_title">Exporter les applications sélectionnées ?</string>

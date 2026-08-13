@@ -222,6 +222,27 @@
     <string name="export_dest_downloads">Downloads/Thor</string>
     <string name="export_dest_selected">Selected folder</string>
 
+    <!-- Export as a background job. The sheet hands the work to a Worker and can then be dismissed,
+         so every sentence below has to stand on its own in a notification with no sheet behind it:
+         each one names the app or the folder rather than relying on what the user was looking at.
+
+         export_job_saved is the outcome row on the success path. It is the only report a user who
+         backgrounded the export ever sees — ThorJobWorker's `finally` removes the ongoing row — so
+         it names both the app and where the file actually landed. -->
+    <string name="export_job_queued">Waiting behind another job.</string>
+    <string name="export_job_preparing">Getting %1$s ready</string>
+    <string name="export_job_packaging">Packaging %1$s as .%2$s</string>
+    <string name="export_job_writing">Writing to %1$s</string>
+    <string name="export_job_saved">%1$s exported to %2$s</string>
+    <!-- The armed fallback for a stop that returns no Result at all: WorkManager discards a
+         cancelled worker's Result, so a worded failure cannot travel that way. Any path that *can*
+         word itself replaces this before returning. -->
+    <string name="export_job_stopped">Export stopped before it finished. Nothing was saved.</string>
+    <string name="export_failed_not_started">The export didn\'t start, so nothing was saved.</string>
+    <string name="export_job_app_gone">%1$s isn\'t installed any more, so there was nothing to export.</string>
+    <string name="export_job_folder_gone">Thor can\'t write to that folder any more. Pick the folder again.</string>
+    <string name="export_job_unreadable">Thor couldn\'t read what to export.</string>
+
     <!-- Bulk export (multi-select toolbox). Scope is deliberately "the apps you picked", never
          "back up everything": the count-bearing strings below all read as composites of two
          independent counts, so none of them is a <plurals> candidate. -->
