@@ -55,18 +55,33 @@ const val JOB_WARNINGS_KEY = "thor.job.warnings"
 /**
  * The long-running jobs Thor runs through WorkManager.
  *
- * Two for now. Exports and bulk actions are meant to join them — that is why nothing in this file or
- * in `ThorJobWorker` mentions archives.
+ * Three. Bulk actions are meant to join them — that is why nothing in this file or in
+ * `ThorJobWorker` mentions archives.
  *
  * **Append only. Never insert or reorder.** `ThorJobNotifications` derives a notification id from
  * `BASE_NOTIFICATION_ID + ordinal`, and that same number is the `PendingIntent` request code for the
  * row's tap target. Inserting a kind renumbers every kind after it, which hands a live notification
  * the request code of a different job. [jobKindFromId] is deliberately immune to this — the tap extra
  * travels as [id], not as an ordinal — but the id arithmetic is not.
+ *
+ * [APP_EXPORT] is appended rather than slotted next to the archive kinds it reads like a sibling of,
+ * for exactly that reason: it takes ids 1102/1202, and putting it second would have moved
+ * `ARCHIVE_RESTORE` from 1101 to 1102 — silently, and only visibly on a device holding a live restore
+ * notification across the update.
  */
 enum class ThorJobKind(val id: String) {
     ARCHIVE_BACKUP("archive-backup"),
     ARCHIVE_RESTORE("archive-restore"),
+
+    /**
+     * A single app packaged as `.apk`/`.apks`/`.xapk` and written to Downloads or a picked folder.
+     *
+     * The one job on this seam that is honestly durable across process death. Both archive kinds hold
+     * their key in memory (`ArchiveKeyHolder`) and so fail by design on a re-run; an export's whole
+     * input is four short strings, and the SAF grant it may carry is persisted, so WorkManager's free
+     * re-run of an interrupted worker actually produces the file the user asked for.
+     */
+    APP_EXPORT("app-export"),
 }
 
 /**
