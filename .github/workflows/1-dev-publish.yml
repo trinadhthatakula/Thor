@@ -1,8 +1,12 @@
-name: 1. Dev — publish to Play alpha
+name: 1. Dev — publish to Play alpha + internal
 
 # Rung 1 of 3. This is the ONLY workflow in the repo that uploads an artifact
 # to Play. master and production promote what this uploaded; they never upload.
 # That is what gives every version code exactly one uploader.
+#
+# It lands on two tracks from that one upload: distribute_dev uploads to alpha
+# and then assigns the same release to internal (ThorRelease::MIRROR_TRACKS).
+# Two tracks, still one upload - see docs/branching-and-releases.md.
 on:
   push:
     branches: [ "dev" ]

@@ -129,6 +129,81 @@ class TestPromotionEdges < Minitest::Test
   def test_unknown_destination_is_rejected
     assert_raises(ThorRelease::Error) { ThorRelease.source_track_for('nonsense') }
   end
+
+  # Mirroring must NOT have taught this map a downward edge. If internal ever
+  # answers here, the promote lanes have gained a path that skips a rung, which
+  # is the one thing PROMOTION_EDGES exists to forbid.
+  def test_internal_is_not_a_promotion_destination
+    assert_raises(ThorRelease::Error) { ThorRelease.source_track_for('internal') }
+  end
+end
+
+class TestMirrorTracks < Minitest::Test
+  # The dev rung uploads once, to alpha, and the same release is then assigned
+  # to internal without a second upload.
+  def test_alpha_mirrors_onto_internal
+    assert_equal %w[internal], ThorRelease.mirror_tracks_for('alpha')
+  end
+
+  def test_strips_whitespace
+    assert_equal %w[internal], ThorRelease.mirror_tracks_for("  alpha\n")
+  end
+
+  # "No mirror" is the normal answer for every other track, and must not raise:
+  # prepare_release_artifacts asks this on every upload.
+  def test_internal_has_no_mirror
+    assert_empty ThorRelease.mirror_tracks_for('internal')
+  end
+
+  def test_promotion_only_tracks_have_no_mirror
+    assert_empty ThorRelease.mirror_tracks_for('beta')
+    assert_empty ThorRelease.mirror_tracks_for('production')
+  end
+
+  def test_unknown_track_has_no_mirror
+    assert_empty ThorRelease.mirror_tracks_for('nonsense')
+    assert_empty ThorRelease.mirror_tracks_for(nil)
+  end
+
+  # Every mirror target must be uploadable. Mirroring uses track_promote_to,
+  # which invents a track by an unrecognised name exactly as an upload does, so
+  # a typo in the table has to be a red build rather than a phantom track that
+  # testers never see.
+  def test_every_target_is_an_upload_track
+    ThorRelease::MIRROR_TRACKS.each_value do |targets|
+      targets.each { |t| assert_includes ThorRelease::UPLOAD_TRACKS, t }
+    end
+  end
+
+  # A mirror names a different track by definition; self-mirroring is a config
+  # typo that would otherwise ask Play to promote alpha onto alpha.
+  def test_a_self_mirror_is_rejected
+    with_mirror_tracks('alpha' => %w[alpha]) do
+      assert_raises(ThorRelease::Error) { ThorRelease.mirror_tracks_for('alpha') }
+    end
+  end
+
+  def test_a_non_uploadable_target_is_rejected
+    with_mirror_tracks('alpha' => %w[beta]) do
+      assert_raises(ThorRelease::Error) { ThorRelease.mirror_tracks_for('alpha') }
+    end
+  end
+
+  private
+
+  # Swaps the table so the guards can be exercised on a bad one without shipping
+  # a test-only hook in thor_release.rb. remove_const before const_set keeps
+  # Ruby from warning about reassigning a constant, and the ensure puts the real
+  # table back even when the assertion inside fails.
+  def with_mirror_tracks(table)
+    original = ThorRelease::MIRROR_TRACKS
+    ThorRelease.send(:remove_const, :MIRROR_TRACKS)
+    ThorRelease.const_set(:MIRROR_TRACKS, table.freeze)
+    yield
+  ensure
+    ThorRelease.send(:remove_const, :MIRROR_TRACKS)
+    ThorRelease.const_set(:MIRROR_TRACKS, original)
+  end
 end
 
 class TestCodePresenceAssertion < Minitest::Test

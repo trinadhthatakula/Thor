@@ -1,7 +1,8 @@
 name: Release rung
 
-# One workflow, three rungs. dev uploads to Play alpha; master promotes
-# alpha -> beta; production promotes beta -> production. Exactly one branch
+# One workflow, three rungs. dev uploads to Play alpha and mirrors that same
+# release onto internal; master promotes alpha -> beta; production promotes
+# beta -> production. The mirror uploads nothing, so exactly one branch
 # ever uploads an artifact, which is what makes Play's per-app (not per-track)
 # version-code uniqueness a non-issue rather than an error to handle.
 #
@@ -67,17 +68,23 @@ on:
       # the actor, counting the "\n\n" that joins it to telegram.md:
       #
       #                  trinadhthatakula   github-actions[bot]
-      #     dev                 149                152
+      #     dev                 160                163
       #     beta                145                148
       #     production          146                149
       #
-      # 152 is the maximum of those, so 160 reads like eight units of margin. It
-      # is not. That 152 is the DEV rung, whose ref is three characters, so 160
-      # tolerated an 11-character ref - and 'production' is already 10. A
-      # workflow_dispatch of the dev rung from feat/release-ladder-phase-2
-      # assembles a real wrapper of 176 against the assumed 160, and with
-      # v1.94.0's 847-unit telegram.md the true caption is 1023/1024: it passed
-      # by one unit rather than by design.
+      # dev is the long one because it is the only rung that reaches two tracks:
+      # it uploads to alpha and mirrors onto internal, so its caption says
+      # 'Closed + Internal Testing' where the others name a single track.
+      #
+      # 163 is the maximum of those, so the 160 floor is no longer even a floor
+      # on the dev rung - the measurement always wins there. Nor was it ever the
+      # margin it looked like: that maximum belongs to the rung whose ref is
+      # three characters, so 160 only ever tolerated an 11-character ref, and
+      # 'production' is already 10. A workflow_dispatch of the dev rung from
+      # feat/release-ladder-phase-2 assembles a real wrapper of 187 against the
+      # assumed 160 - and against v1.94.0's 847-unit telegram.md that is
+      # 1034/1024, a caption Telegram would refuse outright. The floor cannot see
+      # any of that; only the per-run measurement can.
       #
       # The floor stays because it costs nothing and keeps the gate no weaker
       # than it was; the per-run measurement is what makes it correct. Only an
@@ -224,22 +231,25 @@ jobs:
           # caption that would have fitted; under-estimating spends the Play
           # upload first and finds out from Telegram.
           #
-          # 'Internal Testing' is two units longer than the 'Closed Testing'
-          # the dev rung actually gets, and that is not free: a dispatch from
-          # feat/release-ladder-phase-2 measures 178 where the true caption is
-          # 1023/1024, so today's notes would be refused from a long-named
-          # branch. Deriving the label from inputs.rung instead would be exact,
-          # and is rejected on purpose - it would be a fourth place encoding
-          # which track a rung uploads to, and the comment below records that
-          # this caption already once told users the wrong track for months
-          # after a lane moved. A gate that is two units pessimistic is worth
-          # more than a mapping that can go quietly stale.
+          # That longest label is now the dev rung's own 'Closed + Internal
+          # Testing', because dev uploads to alpha and mirrors onto internal. So
+          # the substitution is EXACT on the one rung that uploads, and
+          # pessimistic by 11-15 units on the two that promote - the safe
+          # direction, and the direction that matters least, since those rungs
+          # publish an already-broadcast version code.
+          #
+          # Deriving the label from inputs.rung instead would be exact
+          # everywhere, and is rejected on purpose - it would be a fourth place
+          # encoding which track a rung uploads to, and the comment below
+          # records that this caption already once told users the wrong track for
+          # months after a lane moved. A gate that is pessimistic on the promote
+          # rungs is worth more than a mapping that can go quietly stale.
           #
           # The format string is byte-identical to the one that assembles the
           # real caption below, and test-caption-wrapper.sh pins the two
           # together - a reworded header that changed only one of them would
           # otherwise make this measurement quietly wrong.
-          HEADER=$(printf "🚀 *Thor (Valhalla) %s*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: %s" "$TITLE_PREFIX" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "Internal Testing" "$CAPTION_STATUS")
+          HEADER=$(printf "🚀 *Thor (Valhalla) %s*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: %s" "$TITLE_PREFIX" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "Closed + Internal Testing" "$CAPTION_STATUS")
           # + 2 for the blank line that joins the header to telegram.md.
           MEASURED=$(printf '%s' "$HEADER" | python3 -c 'import sys; print(len(sys.stdin.buffer.read().decode("utf-8").encode("utf-16-le")) // 2 + 2)')
           if [ "$MEASURED" -gt "$WRAPPER" ]; then
@@ -419,14 +429,21 @@ jobs:
           # be the literal "Internal Testing" and stayed that way after the lane moved, which nothing
           # in the repo could catch — there is no actionlint or shellcheck over .github/workflows.
           # The default arm prints whatever key it got instead of inventing a friendly name for it.
+          #
+          # The dev rung writes a '+'-joined value ("alpha+internal") because it uploads to one track
+          # and mirrors onto another, and it writes it AFTER the mirror, from what actually
+          # succeeded — so a mirror that failed reads back as plain "alpha" and is announced as
+          # exactly that. Each combination needs its own arm: the default arm would broadcast the
+          # raw key to users without an error or a warning.
           TRACK=$(cat track.txt 2>/dev/null || echo "")
           case "$TRACK" in
-            internal)   TRACK_LABEL="Internal Testing" ;;
-            alpha)      TRACK_LABEL="Closed Testing" ;;
-            beta)       TRACK_LABEL="Open Testing" ;;
-            production) TRACK_LABEL="Production" ;;
-            "")         TRACK_LABEL="unknown" ;;
-            *)          TRACK_LABEL="$TRACK" ;;
+            internal)       TRACK_LABEL="Internal Testing" ;;
+            alpha)          TRACK_LABEL="Closed Testing" ;;
+            alpha+internal) TRACK_LABEL="Closed + Internal Testing" ;;
+            beta)           TRACK_LABEL="Open Testing" ;;
+            production)     TRACK_LABEL="Production" ;;
+            "")             TRACK_LABEL="unknown" ;;
+            *)              TRACK_LABEL="$TRACK" ;;
           esac
 
           # "& GitHub" was a lie of ordering: Create GitHub Release is a later step in this job, so

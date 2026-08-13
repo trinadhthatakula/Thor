@@ -104,9 +104,10 @@ def header(title, ref, actor, track, status):
 
 
 # 3 - the documented table still holds. Track labels come from the rung's own
-# destination: dev uploads to alpha, and the promote lanes name their target.
+# destination: dev uploads to alpha and mirrors onto internal, so it names both,
+# and the promote lanes name their single target.
 RUNGS = {
-    "dev": ("1-dev-publish.yml", "dev", "Closed Testing"),
+    "dev": ("1-dev-publish.yml", "dev", "Closed + Internal Testing"),
     "beta": ("2-master-promote.yml", "master", "Open Testing"),
     "production": ("3-production-promote.yml", "production", "Production"),
 }
