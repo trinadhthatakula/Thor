@@ -26,6 +26,21 @@ platform :android do
     # rather than fail.
     track = ThorRelease.validate_upload_track!(track) if upload_to_store
 
+    # Resolve the mirror table HERE rather than at the mirror call site, for the
+    # same reason that guard is here: mirror_tracks_for can raise, and by the
+    # mirror call site the Play upload has already happened. A raise there would
+    # skip Prepare Release Notes, and with it the Telegram broadcast and the
+    # GitHub release, leaving a version code live on Play that can never be
+    # re-uploaded and was never announced - the exact outcome the per-target
+    # rescue further down exists to prevent.
+    #
+    # This is depth, not a live hole: the only values reaching it are already
+    # narrowed to UPLOAD_TRACKS by the line above, MIRROR_TRACKS is frozen, and
+    # both of its guards are pinned by tests that run on every PR. It can only
+    # fire on a bad source edit - so resolve it before anything publishes, where
+    # a bad source edit costs a red build instead of a silent, unannounced one.
+    mirror_targets = upload_to_store ? ThorRelease.mirror_tracks_for(track) : []
+
     # 1. PREPARATION
     fastlane_dir = Dir.pwd
     project_root = File.expand_path("..", fastlane_dir)
@@ -148,7 +163,8 @@ platform :android do
       # upload and never before it: the upload is the one step in the whole
       # ladder that cannot be repeated, so nothing optional gets to run ahead of
       # it. A mirror that fails leaves a correct, complete release on `track`.
-      mirrored = mirror_to_additional_tracks(source: track, version_code: final_version_code)
+      mirrored = mirror_to_additional_tracks(targets: mirror_targets, source: track,
+                                             version_code: final_version_code)
 
       # Rewrite track.txt from what actually happened. The write above records
       # intent (it happens before the build), and the Telegram caption reads
@@ -185,8 +201,10 @@ platform :android do
   # take the build off alpha. That the ladder's own promotions all happen to go
   # upward is a Thor invariant, enforced by ThorRelease::PROMOTION_EDGES, which
   # this deliberately does not use.
-  def mirror_to_additional_tracks(source:, version_code:)
-    targets = ThorRelease.mirror_tracks_for(source)
+  # targets is passed in rather than looked up here on purpose - see the comment
+  # at the resolution site in prepare_release_artifacts. Nothing in this method
+  # may raise before the per-target rescue below.
+  def mirror_to_additional_tracks(targets:, source:, version_code:)
     return [] if targets.empty?
 
     mirrored = []
