@@ -3,9 +3,7 @@
  * Header navigation. Reads HEADER_LINKS so a route rename lands here and in the
  * footer at once.
  *
- * No hamburger and no disclosure widget: five links fit on a phone if they wrap,
- * and a menu button would be the second piece of client JavaScript on a site
- * whose argument is that it runs almost none.
+ * Provides aligned, sticky navigation with theme controls (Light, Dark, AMOLED).
  */
 import { HEADER_LINKS, SITE } from '../lib/site.ts'
 import ThemeToggle from './ThemeToggle.astro'
@@ -15,7 +13,14 @@ const path = Astro.url.pathname.replace(/(.)\/$/, '$1')
 ---
 <header class="site-header">
   <nav class="nav" aria-label="Primary">
-    <a class="wordmark" href="/">{SITE.name}</a>
+    <div class="nav-brand">
+      <a class="wordmark" href="/" aria-label={`${SITE.name} home`}>
+        <svg class="brand-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+        </svg>
+        <span class="brand-name">{SITE.name}</span>
+      </a>
+    </div>
 
     <ul class="nav-links">
       {
@@ -29,62 +34,135 @@ const path = Astro.url.pathname.replace(/(.)\/$/, '$1')
       }
     </ul>
 
-    <ThemeToggle />
+    <div class="nav-actions">
+      <ThemeToggle />
+    </div>
   </nav>
 </header>
 
 <style>
   .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
     border-bottom: 1px solid var(--outline-variant);
     background: var(--surface);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
   .nav {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
     gap: var(--space-s);
     max-width: var(--content-max);
     margin-inline: auto;
-    padding: var(--space-xs) var(--space-s);
+    padding: var(--space-2xs) var(--gutter);
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
   }
 
   .wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3xs);
     font-family: var(--font-mono);
     font-weight: var(--weight-title-medium);
     font-size: var(--text-title-medium);
     letter-spacing: 0.02em;
     color: var(--on-surface);
     text-decoration: none;
-    margin-inline-end: auto;
+    transition: color var(--motion-duration-fast) ease;
+  }
+
+  .wordmark:hover {
+    color: var(--primary);
+  }
+
+  .brand-icon {
+    color: var(--primary);
+    flex-shrink: 0;
   }
 
   .nav-links {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-s);
+    align-items: center;
+    gap: var(--space-2xs);
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
+  .nav-links li {
+    display: flex;
+    align-items: center;
+  }
+
   .nav-links a {
+    display: inline-flex;
+    align-items: center;
     font-family: var(--font-mono);
     font-size: var(--text-label-large);
     color: var(--on-surface-variant);
     text-decoration: none;
-    padding-block: var(--space-3xs);
+    padding: var(--space-3xs) var(--space-2xs);
+    border-radius: var(--radius-s);
+    border-bottom: 2px solid transparent;
+    transition: color var(--motion-duration-fast) ease, background var(--motion-duration-fast) ease, border-color var(--motion-duration-fast) ease;
   }
 
   .nav-links a:hover {
     color: var(--on-surface);
+    background: var(--surface-container-high);
   }
 
-  /* The underline, not the colour, is what marks the current page: a colour
-     shift alone is a 1.x:1 difference against its neighbours and disappears for
-     anyone who cannot separate those two greens. */
+  /* The underline, not the colour alone, marks current page for accessible contrast */
   .nav-links a[aria-current='page'] {
     color: var(--primary);
+    background: var(--surface-container);
     border-bottom: 2px solid var(--primary);
+    font-weight: var(--weight-title-medium);
+  }
+
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 48rem) {
+    .nav {
+      flex-wrap: wrap;
+      padding: var(--space-3xs) var(--space-s);
+      gap: var(--space-2xs);
+    }
+
+    .nav-brand {
+      order: 1;
+    }
+
+    .nav-actions {
+      order: 2;
+      margin-inline-start: auto;
+    }
+
+    .nav-links {
+      order: 3;
+      width: 100%;
+      justify-content: center;
+      gap: var(--space-3xs);
+      padding-block-start: var(--space-3xs);
+      border-top: 1px solid var(--surface-container-highest);
+    }
+
+    .nav-links a {
+      font-size: var(--text-label-small);
+      padding: var(--space-3xs) var(--space-3xs);
+    }
   }
 </style>
