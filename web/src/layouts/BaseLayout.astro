@@ -45,6 +45,41 @@ const { title, description, bareTitle = false, noindex = false } = Astro.props
 const pageTitle = bareTitle ? title : `${title} — ${SITE.name}`
 const url = canonical(Astro.url.pathname)
 const ogImage = new URL('/og-image.png', SITE.origin).href
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE.origin}/#website`,
+      url: SITE.origin,
+      name: SITE.name,
+      description: SITE.tagline,
+      inLanguage: 'en',
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${SITE.origin}/#software`,
+      name: 'Thor',
+      operatingSystem: 'Android 8.0+',
+      applicationCategory: 'UtilitiesApplication',
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD',
+      },
+      description: 'Free and open-source Android app manager to freeze, suspend, debloat, and manage system and user applications via Root, Shizuku, or Dhizuku.',
+      url: SITE.origin,
+      downloadUrl: 'https://github.com/trinadhthatakula/Thor/releases/latest',
+      license: 'https://www.gnu.org/licenses/gpl-3.0.html',
+      author: {
+        '@type': 'Person',
+        name: 'Trinadh Thatakula',
+        url: 'https://github.com/trinadhthatakula',
+      },
+    },
+  ],
+}
 ---
 <!doctype html>
 <html lang="en">
@@ -56,6 +91,9 @@ const ogImage = new URL('/og-image.png', SITE.origin).href
     <meta name="description" content={description} />
     <link rel="canonical" href={url} />
     {noindex && <meta name="robots" content="noindex, follow" />}
+
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8faf3" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e0e0e" />
 
     {/* crossorigin is required even same-origin: fonts are always fetched in CORS
         mode, and without it the preload and the @font-face request are two
@@ -74,7 +112,14 @@ const ogImage = new URL('/og-image.png', SITE.origin).href
     <meta property="og:description" content={description} />
     <meta property="og:url" content={url} />
     <meta property="og:image" content={ogImage} />
+
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:url" content={url} />
+
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
 
     <ThemeScript />
   </head>

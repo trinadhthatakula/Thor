@@ -43,7 +43,7 @@ import workMode from '../assets/screenshots/05-settings-work-mode.png'
 | Minimum Android | <Fact name="minSdkAndroidName" /> (API <Fact name="minSdk" />) |
 | Targets | API <Fact name="targetSdk" /> for `targetSdk`, API <Fact name="compileSdk" /> for `compileSdk` |
 | Licence | GPL-3.0-or-later |
-| Languages | English, Arabic, Chinese (Simplified), French, Spanish |
+| Languages | English, Arabic, Chinese (Simplified), French, Polish, Portuguese, Portuguese (Brazil), Spanish |
 | Network access | `foss`: one surface only — the optional Extension Store. `store` also links Google Play Billing |
 | Trackers, ads, telemetry | None |
 
@@ -142,8 +142,17 @@ suspender as a package that does not exist and the paused-app dialog then crashe
 
 <h2 id="installer">App installer</h2>
 
-Thor registers as an installer, so you can share or open a package file from anywhere — a browser, a
-file manager, another app — and Thor's bottom sheet takes over.
+Thor registers as an installer, so opening a package file from anywhere — a browser, a file manager,
+another app — hands it to Thor's bottom sheet. Opening, not sharing: Thor declares no share target,
+so it will not be in a share sheet, and on Android those are two different menus even when they look
+alike.
+
+Thor matches on the type the sending app declares, or, when that type is a wildcard, on a filename
+ending in one of the bundle extensions. A handful of file managers supply neither — Samsung My Files
+is the one that gets reported, handing over a URI with no name in its path. Opening the file from a
+different file manager is the fix. For people who would rather not, Settings carries an off-by-default
+"Show Thor when opening any file" switch; the [FAQ](/faq#apks-samsung-my-files) says what it widens,
+and why being that wide is the reason it is not on already.
 
 <h3 id="bundle-formats">Every bundle format, handled</h3>
 
@@ -218,19 +227,18 @@ Force-stop is momentary: an alarm, a job or a push message brings the app straig
 Suspend are persistent states. Which of the two Thor uses is a single global Freezer setting.
 
 Under the hood, freezing a **user app** disables it. Freezing a **system app** switches it off in
-place as well — the package stays installed and its data stays on disk. Some OEM builds refuse to
-let anything but root disable their own preinstalled packages; where Thor meets that refusal under
-Shizuku or Dhizuku, it falls back to removing the app for your Android user with
-`pm uninstall -k --user N`. The `-k` is the whole point: it is `DELETE_KEEP_DATA`, and the app's data
-directories keep their inodes across the round trip. A runtime permission measured across the same
-round trip came back granted with its flags unchanged — one permission, granted from the shell
-rather than by tapping Allow, on one platform build, and app-ops were never measured, so read it for
-the scope it has. That fallback is reached only where the platform actually refused. Under Root it
-is never reached at all.
+place as well — the package stays installed and its data stays on disk. That is the only mechanic
+Thor has for a freeze, in every privilege mode.
 
-<Callout tone="warning" title="What the fallback does change">
-  <p>Removing an app for your user clears its installed flag, so while it is frozen that way the app reads as not installed for you to anything that asks Android the plain question. Its files are still there, and unfreezing reinstalls the same system APK and reattaches them, but a third-party app that enumerates packages will not see it in the meantime.</p>
-  <p>On API 37 <code>pm uninstall -k --user N</code> on a system app is refused for every caller that is not uid 0, where the identical command succeeded a release earlier. Both non-root modes were measured against it and both get the same refusal: Shizuku's shell uid and Dhizuku's device-owner uid alike. So a Shizuku or Dhizuku user on API 37 whose device also refuses to disable that package cannot freeze it at all. Thor reports the failure rather than doing something else, and passes the platform's own sentence through. Root is unaffected.</p>
+Some OEM builds — Xiaomi's HyperOS is the one that was reported and reproduced — refuse to let
+anything but root disable their own preinstalled packages. Where Thor meets that refusal it stops
+and tells you, and the message distinguishes the two cases that look identical from the outside: a
+device that actively refused, and a failure with no refusal behind it. The second one is Thor's bug
+to fix and says so.
+
+<Callout tone="warning" title="On those devices, Shizuku and Dhizuku can't freeze that app at all">
+  <p>This is a real capability gap and not a wording change. Earlier builds substituted <code>pm uninstall -k --user N</code> here, which takes the package away for your Android user while keeping its data directories on disk. That substitution has been withdrawn. Freezing those apps now needs Root.</p>
+  <p>Why withdraw something that worked: <code>-k</code> keeps the data, but nothing keeps the installed flag, and an app needs that to stay visible to anything managing accounts or sync for it. Swapping a reversible switch-off for a removal is a decision with a different blast radius, and Thor was making it silently — no dialog, no mention of the mechanic, and a success message at the end. The trade is a capability lost on some devices against no device ever losing a package its owner did not agree to lose.</p>
 </Callout>
 
 <h3 id="watchlist">The watchlist</h3>
@@ -333,11 +341,9 @@ bad data file would strand every frozen system app on the device.
 <h3 id="getting-things-back">Getting things back</h3>
 
 - **User app, frozen** — always recoverable, no data loss.
-- **System app, frozen** — switched off in place, so nothing is removed and nothing is lost. On
-  devices that refuse to switch a preinstalled app off, Thor removes it for your Android user with
-  the data kept on disk, and unfreezing reinstalls the same system APK and reattaches it. Under Root
-  that fallback is never used at all; under Shizuku and Dhizuku it is used only where the platform
-  actually refused.
+- **System app, frozen** — switched off in place, so nothing is removed and its data is kept. On
+  devices that refuse to switch a preinstalled app off, there is nothing to get back: the freeze
+  did not happen, Thor said so, and the app was left running. Freezing those needs Root.
 - **System app, debloated** — recoverable with `pm install-existing`, as long as the APK is still on
   the system partition. It is the same file that shipped with your phone, so this is the normal
   case.
@@ -409,8 +415,12 @@ written.
 <h3 id="status-chips">Status at a glance</h3>
 
 Chips and icons mark apps that are frozen, suspended, split-APK installs, debuggable builds, and
-packages UAD flags as bloat. A system app that a freeze removed for your Android user reads as
-frozen rather than as a separate state, because Thor folds the installed flag into the same answer.
+packages UAD flags as bloat. A system app taken away from your Android user reads as frozen rather
+than as a separate state, because Thor folds the installed flag into the same answer. Uninstalling
+or debloating a system app still puts it there, and that is the honest reading of both — the app is
+gone for you and still on the partition. What no longer puts it there is a freeze: that substitution
+was [withdrawn](/features#freeze-suspend-force-stop). A device an older build ran on can still be
+sitting in the state for that reason too, so the chip stays either way.
 
 <h3 id="home-dashboard">Home dashboard</h3>
 
@@ -509,7 +519,7 @@ F-Droid listing is planned. The [download page](/download) has the details for e
 permanently unavailable and opens the donation links in a browser instead. The packaging differs too:
 `foss` takes a `-foss` version-name suffix and an extra ProGuard rules file, while the benchmark
 build type exists only for `store`. The locale filter that used to be one of these is now applied to
-every variant, so both builds carry the same five languages — see the
+every variant, so both builds carry the same eight locales — see the
 [download page](/download#foss-and-store) for why the Play build stopped using per-locale splits. Every
 app-management feature is the same code in both.
 

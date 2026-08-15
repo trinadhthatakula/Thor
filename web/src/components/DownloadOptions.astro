@@ -1,0 +1,222 @@
+---
+/**
+ * Prominent download action cards displayed at the top of the download page.
+ *
+ * Ordered by user preference:
+ * 1. Direct Download (GitHub Releases - Main / Featured option)
+ * 2. Google Play Store
+ * 3. IzzyOnDroid (F-Droid repository)
+ */
+---
+<div class="download-grid" role="region" aria-label="Download options">
+  <!-- Option 1: Direct Download via GitHub (Main Option) -->
+  <div class="download-card download-card--featured">
+    <div class="card-header">
+      <div class="card-badges">
+        <span class="badge badge--recommended">Featured</span>
+        <span class="badge badge--pill">Direct APK</span>
+        <span class="badge badge--pill">FOSS</span>
+      </div>
+      <svg class="card-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path>
+      </svg>
+    </div>
+    <h3 class="card-title">Direct Download</h3>
+    <p class="card-desc">
+      Standalone <code>foss-release.apk</code> without an app store. Direct downloads and release assets from GitHub.
+    </p>
+    <a
+      class="download-btn download-btn--primary"
+      href="https://github.com/trinadhthatakula/Thor/releases/latest"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7 10 12 15 17 10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+      </svg>
+      <span>Get from GitHub</span>
+    </a>
+  </div>
+
+  <!-- Option 2: Google Play Store -->
+  <div class="download-card">
+    <div class="card-header">
+      <div class="card-badges">
+        <span class="badge badge--pill">Google Play</span>
+      </div>
+      <svg class="card-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+        <path d="M3.609 1.814L13.792 12 3.61 22.186a1.99 1.99 0 0 1-.61-1.42V3.234c0-.54.223-1.03.61-1.42zm11.604 11.604l2.585 2.585-11.7 6.649 9.115-9.234zm0-2.836L6.098 1.348l11.7 6.649-2.585 2.585zm1.418 1.418l3.183 1.808c.954.542.954 1.426 0 1.968l-3.183 1.808-2.126-2.126 2.126-2.126z"></path>
+      </svg>
+    </div>
+    <h3 class="card-title">Google Play</h3>
+    <p class="card-desc">
+      Store build with automatic updates handled by Google Play. Includes Google Play Billing support.
+    </p>
+    <a
+      class="download-btn download-btn--secondary"
+      href="https://play.google.com/store/apps/details?id=com.valhalla.thor"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+        <path d="M3.609 1.814L13.792 12 3.61 22.186a1.99 1.99 0 0 1-.61-1.42V3.234c0-.54.223-1.03.61-1.42zm11.604 11.604l2.585 2.585-11.7 6.649 9.115-9.234zm0-2.836L6.098 1.348l11.7 6.649-2.585 2.585zm1.418 1.418l3.183 1.808c.954.542.954 1.426 0 1.968l-3.183 1.808-2.126-2.126 2.126-2.126z"></path>
+      </svg>
+      <span>Get on Google Play</span>
+    </a>
+  </div>
+
+  <!-- Option 3: IzzyOnDroid (F-Droid Repo) -->
+  <div class="download-card">
+    <div class="card-header">
+      <div class="card-badges">
+        <span class="badge badge--pill">F-Droid Repo</span>
+        <span class="badge badge--pill">FOSS</span>
+      </div>
+      <svg class="card-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+        <polyline points="2 17 12 22 22 17"></polyline>
+        <polyline points="2 12 12 17 22 12"></polyline>
+      </svg>
+    </div>
+    <h3 class="card-title">IzzyOnDroid</h3>
+    <p class="card-desc">
+      Verified reproducible FOSS build. Automatic updates through F-Droid clients like Neo Store or Droid-ify.
+    </p>
+    <a
+      class="download-btn download-btn--secondary"
+      href="https://apt.izzysoft.de/fdroid/index/apk/com.valhalla.thor"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.59L8.71 12.3a1 1 0 1 1 1.41-1.41L12 12.76l4.88-4.87a1 1 0 1 1 1.41 1.41z"></path>
+      </svg>
+      <span>Get on IzzyOnDroid</span>
+    </a>
+  </div>
+</div>
+
+<style>
+  .download-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: var(--space-s);
+    margin-block: var(--space-m) var(--space-l);
+  }
+
+  .download-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-container-low);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-l);
+    padding: var(--space-m);
+    transition: background var(--motion-duration-fast) ease, border-color var(--motion-duration-fast) ease;
+  }
+
+  .download-card:hover {
+    background: var(--surface-container);
+    border-color: var(--outline);
+  }
+
+  .download-card--featured {
+    background: var(--surface-container);
+    border-color: var(--outline);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2xs);
+    margin-block-end: var(--space-2xs);
+  }
+
+  .card-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3xs);
+  }
+
+  .badge {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+    font-weight: var(--weight-label-medium);
+    padding: 2px var(--space-2xs);
+    border-radius: var(--radius-full);
+    line-height: 1.2;
+  }
+
+  .badge--recommended {
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+    font-weight: var(--weight-label-large);
+  }
+
+  .badge--pill {
+    background: var(--surface-container-high);
+    color: var(--on-surface-variant);
+    border: 1px solid var(--outline-variant);
+  }
+
+  .card-icon {
+    color: var(--primary);
+    flex-shrink: 0;
+  }
+
+  .card-title {
+    font-family: var(--font-sans);
+    font-size: var(--text-title-medium);
+    font-weight: var(--weight-title-medium);
+    color: var(--on-surface);
+    margin: var(--space-3xs) 0;
+  }
+
+  .card-desc {
+    font-size: var(--text-body-small);
+    color: var(--on-surface-variant);
+    line-height: 1.5;
+    margin-block-end: var(--space-m);
+    flex-grow: 1;
+  }
+
+  .card-desc code {
+    font-size: var(--text-label-small);
+  }
+
+  .download-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2xs);
+    font-family: var(--font-mono);
+    font-size: var(--text-label-large);
+    font-weight: var(--weight-label-large);
+    text-decoration: none;
+    padding: var(--space-2xs) var(--space-s);
+    border-radius: var(--radius-full);
+    transition: filter var(--motion-duration-fast) ease, background var(--motion-duration-fast) ease;
+  }
+
+  .download-btn--primary {
+    background: var(--primary);
+    color: var(--on-primary);
+  }
+
+  .download-btn--primary:hover {
+    filter: brightness(1.08);
+  }
+
+  .download-btn--secondary {
+    background: transparent;
+    color: var(--on-surface);
+    border: 1px solid var(--outline);
+  }
+
+  .download-btn--secondary:hover {
+    background: var(--surface-container-high);
+    color: var(--on-surface);
+  }
+</style>

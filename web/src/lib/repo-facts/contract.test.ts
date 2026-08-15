@@ -26,8 +26,12 @@ describe('repo facts against the real tree', () => {
     expect(facts.versionCode).toBeGreaterThanOrEqual(1000)
   })
 
-  it('suffixes the foss flavour name', () => {
-    expect(facts.fossVersionName).toBe(`${facts.versionName}-foss`)
+  it('does not carry a fossVersionName property', () => {
+    // The foss flavour no longer carries a versionNameSuffix, so both
+    // flavours report the same versionName. Asserted rather than dropped:
+    // re-adding a suffix silently breaks Obtainium's version detection and
+    // F-Droid's Binaries: URL.
+    expect(facts).not.toHaveProperty('fossVersionName')
   })
 
   it('orders the SDK levels', () => {

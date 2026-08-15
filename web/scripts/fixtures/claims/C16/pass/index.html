@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Freezing a system app</title>
+  </head>
+  <body>
+    <main>
+      <h1>Freezing a system app</h1>
+      <p>
+        Thor asks Android to switch the package off and leave it where it is. That is the only
+        thing a freeze does, in every privilege mode, and your app data stays where it is because
+        nothing was taken away to begin with.
+      </p>
+      <p>
+        Some vendors refuse that for their own preinstalled apps. Where they do, Thor tells you the
+        freeze failed and leaves the app alone, which is the honest answer even though it is the
+        less useful one. Earlier builds substituted a removal there, and that was withdrawn: a
+        package taken away that way reads as gone to everything that does not go looking for it,
+        and standing in for a switch-off with something that drastic was never a substitution to
+        make on your behalf without saying so.
+      </p>
+      <p>
+        A freeze does not remove it for your user in any privilege mode, and no earlier build ever
+        did so under Root. A device that an older build ran on can still be sitting in the removed
+        state, which is why the chip reporting it is still worth having on the app list.
+      </p>
+    </main>
+  </body>
+</html>
