@@ -7,7 +7,8 @@ debugging a job that never showed up. For the branch/release side of the repo se
 [`branching-and-releases.md`](../branching-and-releases.md); for deferred work see
 [`follow-ups/README.md`](../follow-ups/README.md).
 
-**Last verified:** 2026-08-14 (UTC) against branch `feat/export-job-seam` @ `b56143c6`. Dates here
+**Last verified:** 2026-08-15 (UTC) against `dev` @ `b1cbfd43` (`feat/export-job-seam` merged as
+#389); the Play declaration note below was refreshed on the same date. Dates here
 are UTC, matching the GitHub timestamps they can be checked against. Every line number below was
 opened, not grepped for; if you move code, move the anchor.
 
@@ -380,15 +381,17 @@ Verifiable, and currently invisible from the build file:
 - **Three permissions Thor never wrote** ship in the APK. `work-runtime-2.11.2.aar`'s own manifest
   declares `WAKE_LOCK`, `ACCESS_NETWORK_STATE`, `FOREGROUND_SERVICE` and `RECEIVE_BOOT_COMPLETED`; Thor
   declares only the last of those itself. All three extras are in the merged manifest.
-- **A Play Console Foreground Service declaration** for `FOREGROUND_SERVICE_DATA_SYNC` now stands
-  between the repo and a `store` release. That overlay lives in `main`
-  (`AndroidManifest.xml:418-421`), so it ships in **both** flavours; `follow-ups/README.md:234` (row 23)
-  already records it as one of two things blocking a `store` release. The declaration is a **video**,
-  with no text field, so what it can show is limited to what a Play reviewer can reproduce on a stock
-  device — which rules out backup and restore, both of which are privileged on every path.
-  **`APP_EXPORT` is the surface that exists to be filmable**: unprivileged, one tap, and honestly
-  described by the picker's "Local processing: import or export" row. Row 23 says "bulk APK export";
-  that predates this work, and single-app export is what ships first.
+- **A Play Console Foreground Service declaration** for `FOREGROUND_SERVICE_DATA_SYNC` stood between
+  the repo and a `store` release, and **Play approved it on 2026-08-15**, filmed against a
+  hand-uploaded 1943. That overlay lives in `main` (`AndroidManifest.xml:418-421`), so it ships in
+  **both** flavours; `follow-ups/README.md:234` (row 23) records it as one of two things blocking a
+  `store` release — the *other* one, a backup restored on real hardware, is still outstanding. The
+  declaration is a **video**, with no text field, so what it can show is limited to what a Play
+  reviewer can reproduce on a stock device — which rules out backup and restore, both of which are
+  privileged on every path. **`APP_EXPORT` is the surface that exists to be filmable**: unprivileged,
+  one tap, and honestly described by the picker's "Local processing: import or export" row. Row 23
+  says "bulk APK export"; that predates this work, and single-app export is what shipped first — and
+  is what the approved video shows.
 - **Thor ships `androidx.work.impl.background.systemjob.SystemJobService`** (merged manifest `:463-468`),
   so the app *does* use JobScheduler — via WorkManager. The "no JobScheduler" claim above is true of
   Thor's own code and false as a statement about the shipped app.
