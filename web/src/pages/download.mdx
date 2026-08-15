@@ -183,8 +183,9 @@ Two others worth knowing, both of them in `app/build.gradle.kts`:
   on-device.
 - **An extra ProGuard file** for the `foss` flavour.
 
-**Locales are no longer one of them.** Both builds now ship the same five — English, Arabic,
-Spanish, French and Chinese — in a single file, and the Play build no longer uses per-locale
+**Locales are no longer one of them.** Both builds now ship the same eight — English, Arabic,
+Spanish, French, Chinese, Portuguese, Brazilian Portuguese and Polish — in a single file, and the
+Play build no longer uses per-locale
 splits. Splitting an app bundle by locale means Play installs only the languages the device's system
 settings ask for, which is exactly the set the in-app language picker is not needed for: choosing
 Français on a phone that never asked for French would have selected resources Play had not

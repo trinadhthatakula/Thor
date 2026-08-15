@@ -6,20 +6,36 @@ package com.valhalla.thor.util
 import java.util.Locale
 
 /**
- * The five translations Thor ships, and the one entry that means "do not override anything".
+ * The eight translations Thor ships, and the one entry that means "do not override anything".
  *
  * This list is the Kotlin-side twin of `res/xml/locales_config.xml`, which is what Android 13+
- * reads to populate its own per-app language screen (Settings → Apps → Thor → Language). The two
- * must agree: a tag here with no `values-<tag>` directory picks a locale with no translation
- * behind it, and a `locales_config` entry missing here is a language the in-app picker cannot
- * reach.
+ * reads to populate its own per-app language screen (Settings → Apps → Thor → Language), and of
+ * `translatedLocales` in `app/build.gradle.kts`, which is the set `localeFilters` keeps. All three
+ * must agree: a tag here with no `values-<tag>` directory picks a locale with no translation behind
+ * it, a `locales_config` entry missing here is a language the in-app picker cannot reach, and a
+ * directory missing from `translatedLocales` is compiled and then filtered straight back out.
  *
- * [tag] is deliberately the *language* subtag alone, with no region, matching what the picker has
- * always persisted. `values-zh-rCN` is the only shipped directory carrying a region, and plain
- * `zh` still resolves to it: since API 24 `ResourcesImpl` resolves the requested locale against
- * the APK's locales with `LocaleList.getFirstMatch`, which expands both sides with likely subtags
- * (`zh` → `zh-Hans`, `zh-CN` → `zh-Hans-CN`) and matches on script. Region-less tags are therefore
- * the right thing to persist, not an oversight to correct.
+ * [tag] is the *language* subtag alone **except where Thor ships more than one variant of a
+ * language**, which today means Portuguese and only Portuguese.
+ *
+ * The region-less default is not an oversight to correct. `values-zh-rCN` carries a region and
+ * plain `zh` still resolves to it: since API 24 `ResourcesImpl` resolves the requested locale
+ * against the APK's locales with likely-subtag expansion (`zh` → `zh-Hans`, `zh-CN` →
+ * `zh-Hans-CN`) and matches on script, so a region adds nothing and only invites a wrong one.
+ *
+ * Portuguese cannot use that spelling, because a region-less request has to *choose* between
+ * `values-pt` and `values-pt-rBR` and the resolver's answer to "which one does `pt` mean" is not
+ * Thor's to assume — CLDR's own answer is Brazil, while the directory a European user needs is the
+ * region-less one. So both Portuguese entries name their region explicitly and neither relies on
+ * the resolver breaking the tie. `pt-PT` selects `values-pt` (the resolver walks the requested
+ * locale's parent chain, `pt-PT` → `pt`, and finds the region-less directory before the Brazilian
+ * one); `pt-BR` selects `values-pt-rBR` on an exact region match. Neither is ambiguous, which is
+ * the whole point.
+ *
+ * [Portuguese] precedes [PortugueseBrazil] deliberately: [languageForTag] falls back to a
+ * language-only match in enum order, so a bare `pt` — from a system language screen, or a
+ * Configuration that resolved to plain Portuguese — lands on European Portuguese, the same
+ * directory such a request actually renders from.
  */
 enum class AppLanguage(val tag: String?) {
     SystemDefault(null),
@@ -27,56 +43,101 @@ enum class AppLanguage(val tag: String?) {
     Chinese("zh"),
     French("fr"),
     Spanish("es"),
-    Arabic("ar");
+    Arabic("ar"),
+    Portuguese("pt-PT"),
+    PortugueseBrazil("pt-BR"),
+    Polish("pl");
+
+    /** The language subtag of [tag], `null` for [SystemDefault]. `he` normalises to `iw` here. */
+    internal val languageSubtag: String? get() = tag?.let { Locale.forLanguageTag(it).language }
+
+    /** The region subtag of [tag], empty for the entries that deliberately carry none. */
+    internal val regionSubtag: String get() = tag?.let { Locale.forLanguageTag(it).country }.orEmpty()
 
     companion object {
         /** Picker order: "System default" first, then the shipped translations. */
         val PICKER_ORDER: List<AppLanguage> = entries.toList()
+
+        /**
+         * The languages Thor ships in more than one regional variant, so the ones where a region
+         * subtag carries meaning rather than noise.
+         *
+         * Derived from [entries] rather than written down, because the whole failure this guards
+         * against is a second variant being added to the enum and a hand-maintained list beside it
+         * not being told.
+         */
+        internal val REGION_SENSITIVE: Set<String> =
+            entries.mapNotNull { it.languageSubtag }
+                .groupingBy { it }.eachCount()
+                .filterValues { it > 1 }
+                .keys
     }
 }
 
 /**
- * Which [AppLanguage] a BCP-47 tag names, matched on the **language subtag only**.
+ * Which [AppLanguage] a BCP-47 tag names — **most specific match first, then language alone**.
  *
  * The tags this has to swallow do not all come from the picker. `LocaleManager.getApplicationLocales`
  * on API 33+ hands back whatever the platform recorded, and `Configuration.getLocales()[0]` hands
  * back a fully resolved locale — so `fr` goes in and `fr-FR`, or `zh-Hans-CN`, comes back out.
- * Comparing whole tags would call those "not French" and "not Chinese".
+ * Matching on whole tags alone would call those "not French" and "not Chinese", which is why the
+ * language-only pass exists and why it has to be the *fallback* rather than the only rule.
+ *
+ * It cannot be the only rule any more. `pt-PT` and `pt-BR` share a language subtag, so a
+ * language-only match answers the same entry for both and a Brazilian user's Settings row would
+ * name European Portuguese while the screen renders Brazilian. The exact-region pass fixes that
+ * without disturbing anything else: no other shipped tag carries a region, so for every one of them
+ * the first pass simply finds nothing and the second decides, exactly as before.
  *
  * An unrecognised language degrades to [AppLanguage.SystemDefault] rather than throwing. That is
  * the conservative direction: it can only ever under-claim, and the one thing the language row
  * must never do is claim a language that is not in effect.
  */
 fun languageForTag(tag: String?): AppLanguage {
-    val language = tag?.takeIf { it.isNotBlank() }
-        ?.let { Locale.forLanguageTag(it).language }
-        ?.takeIf { it.isNotEmpty() }
-        ?: return AppLanguage.SystemDefault
-    return AppLanguage.entries.firstOrNull { it.tag == language } ?: AppLanguage.SystemDefault
+    val locale = localeForTag(tag) ?: return AppLanguage.SystemDefault
+    return AppLanguage.entries.firstOrNull {
+        it.languageSubtag == locale.language && it.regionSubtag == locale.country
+    } ?: AppLanguage.entries.firstOrNull { it.languageSubtag == locale.language }
+    ?: AppLanguage.SystemDefault
 }
 
 /**
  * Whether applying [requestedTag] while [inEffectTag] is already in force would change nothing, so
  * the caller can return without touching the platform.
  *
- * The comparison is on the **language subtag** and nothing else, because the tag that comes back is
- * rarely the tag that went in: `fr` requested against the `fr-FR` the system language screen
+ * The comparison is on the **language subtag**, and on the region only for the languages Thor ships
+ * twice ([AppLanguage.REGION_SENSITIVE], which today is Portuguese alone). The tag that comes back
+ * is rarely the tag that went in: `fr` requested against the `fr-FR` the system language screen
  * recorded, or `zh` against a resolved `zh-Hans-CN`, is the same language, and re-applying it below
  * API 33 would fire [AppLocale.appliedTag] and recreate the visible activity for no change. Both
  * sides go through [localeForTag], so the legacy normalisation applies to each identically — `he`
  * against `iw` is one language, not two.
  *
- * **Not [languageForTag], which is the obvious spelling and the wrong one.** That function degrades
- * anything Thor does not ship to [AppLanguage.SystemDefault], which is the right conservative
- * answer for a row that must not claim a language it is not rendering — but it gives the same
- * answer for "the user asked for no override" and "a language with no translation behind it is
- * applied right now". Comparing those two answers reports agreement between a request to *clear*
- * the override and the override still being there, so the request that exists to undo it returns
- * having done nothing. Comparing subtags keeps `null` distinct from every language while still
- * treating `de` against `de` as the no-op it is.
+ * Region-blindness stops being harmless the moment two directories share a language. `pt-PT`
+ * against an in-effect `pt-BR` is one language and two translations, and calling that request
+ * redundant is how the picker's Português (Brasil) row becomes a tap that does nothing. So for a
+ * region-sensitive language the two sides are resolved through [languageForTag] and compared as
+ * *entries* — which is safe precisely here and nowhere else, because both sides have already been
+ * established to name a language Thor ships, so neither can be the degraded
+ * [AppLanguage.SystemDefault] answer that the paragraph below is about.
+ *
+ * **Not [languageForTag] in the general case, which is the obvious spelling and the wrong one.**
+ * That function degrades anything Thor does not ship to [AppLanguage.SystemDefault], which is the
+ * right conservative answer for a row that must not claim a language it is not rendering — but it
+ * gives the same answer for "the user asked for no override" and "a language with no translation
+ * behind it is applied right now". Comparing those two answers reports agreement between a request
+ * to *clear* the override and the override still being there, so the request that exists to undo it
+ * returns having done nothing. The explicit `null` handling below keeps `null` distinct from every
+ * language while still treating `de` against `de-AT` as the no-op it is.
  */
-fun isRedundantLanguageRequest(requestedTag: String?, inEffectTag: String?): Boolean =
-    localeForTag(requestedTag)?.language == localeForTag(inEffectTag)?.language
+fun isRedundantLanguageRequest(requestedTag: String?, inEffectTag: String?): Boolean {
+    val requested = localeForTag(requestedTag)
+    val inEffect = localeForTag(inEffectTag)
+    if (requested == null || inEffect == null) return requested == null && inEffect == null
+    if (requested.language != inEffect.language) return false
+    if (requested.language !in AppLanguage.REGION_SENSITIVE) return true
+    return languageForTag(requested.toLanguageTag()) == languageForTag(inEffect.toLanguageTag())
+}
 
 /**
  * The [Locale] a persisted preference selects, or `null` for "leave the system locale alone".

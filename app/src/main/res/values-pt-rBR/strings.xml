@@ -1,0 +1,516 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Brazilian Portuguese OVERRIDE, not a second translation.
+
+  values-pt holds European Portuguese in full; this file carries only the strings
+  where Brazilian usage actually differs. Anything absent here resolves through
+  values-pt, because a region folder is layered over its parent language folder —
+  which is also why `pt` must stay in `translatedLocales` alongside `pt-rBR`.
+
+  The recurring divergences, so a reviewer can check consistency at a glance:
+    aplicação → aplicativo     ficheiro → arquivo      ecrã → tela
+    definições → configurações  guardar → salvar        utilizador → usuário
+    partilhar → compartilhar   separador → aba         registo → registro
+    gerir → gerenciar          gestor → gerenciador    eliminar → excluir
+    cópia de segurança → backup            anular → cancelar
+    "está a fazer" → "está fazendo"        "premir" → "tocar"
+-->
+<resources>
+
+    <!-- Navigation -->
+    <string name="apps">Lista de aplicativos</string>
+    <string name="apps_desc">Mostra uma lista de todos os aplicativos disponíveis</string>
+    <string name="freezer_desc">Congelar/descongelar aplicativos por aqui</string>
+    <string name="settings">Configurações</string>
+    <string name="settings_desc">Página de configurações para alterar as opções do aplicativo</string>
+
+    <!-- Settings toggles -->
+    <string name="show_reinstall_card_desc">Mostrar o lembrete Reparar loja na tela inicial</string>
+    <string name="show_installer_tile">Mostrar o bloco do instalador</string>
+    <string name="show_installer_tile_desc">Mostrar \"Instalar de um arquivo\" na tela inicial</string>
+    <string name="any_file_opener">Mostrar o Thor ao abrir qualquer arquivo</string>
+    <string name="any_file_opener_desc">Ative isto apenas se o seu gerenciador de arquivos não abrir APK com o Thor. O Thor passa então a ser oferecido para os arquivos que não consegue identificar — incluindo os que não são APK.</string>
+    <string name="any_file_opener_failed">O Android recusou alterar esta configuração. Nada foi ativado.</string>
+    <string name="show_extensions_tile">Mostrar o bloco de extensões</string>
+    <string name="show_extensions_tile_desc">Mostrar Extensões na tela inicial</string>
+    <string name="auto_reinstall">Reinstalar aplicativos automaticamente</string>
+    <string name="auto_reinstall_desc">Preservar automaticamente a Google Play Store como instalador registrado, para permitir atualizações em segundo plano</string>
+    <string name="default_tab">Aba padrão</string>
+    <string name="default_tab_desc">A tela que o Thor abre ao iniciar</string>
+    <string name="biometric_lock_desc">Exigir autenticação ao iniciar</string>
+    <string name="built_with_precision">CONSTRUÍDO COM PRECISÃO PARA USUÁRIOS AVANÇADOS</string>
+
+    <!-- Language picker -->
+    <string name="app_language">Idioma do aplicativo</string>
+    <string name="app_language_desc">O idioma das telas do próprio Thor</string>
+    <string name="system_default">Padrão do sistema</string>
+    <string name="polish">Polonês</string>
+
+    <!-- Common Actions -->
+    <string name="installed_label">INSTALADO</string>
+    <string name="search_apps">Pesquisar aplicativos…</string>
+
+    <!-- Home -->
+    <string name="reinstall_all_subtitle">%1$d aplicativos %2$s não vieram da Play Store. Reparar?</string>
+    <string name="install_from_file">Instalar de um arquivo</string>
+    <string name="app_distribution">Distribuição dos aplicativos</string>
+    <string name="others">Outros</string>
+    <string name="clear_all_cache">Limpar todo o cache</string>
+    <string name="clear_all_cache_subtitle">Limpar os arquivos em cache de todos os aplicativos para recuperar espaço de armazenamento</string>
+    <string name="clear_all_cache_confirm_desc">É o Android que decide quais caches ele exclui, e ele não deixa o Thor escolher — todos os aplicativos do dispositivo são abrangidos, tanto os do sistema como os seus. Nada mais é tocado: os seus dados, sessões e configurações ficam como estão. Os aplicativos podem abrir um pouco mais devagar da primeira vez, enquanto reconstroem o cache.</string>
+    <string name="clear_all_cache_running">Limpando…</string>
+    <string name="clear_all_cache_running_desc">Percorrendo todos os aplicativos do dispositivo. Pode demorar um instante.</string>
+    <string name="clear_all_cache_done_title">Cache limpo</string>
+    <string name="clear_all_cache_done_size">Liberou %1$s.</string>
+    <string name="clear_all_cache_done_nothing">Não restava nenhum cache para limpar.</string>
+    <string name="clear_all_cache_done_size_unknown">Concluído. O Thor não conseguiu medir quanto espaço isso liberou.</string>
+    <string name="clear_all_cache_done_unmeasured">Concluído. O Thor não conseguiu medir quanto espaço isso liberou — conceda a ele acesso ao uso nas Configurações para ver o valor da próxima vez.</string>
+    <string name="system_apps">Aplicativos do sistema</string>
+    <string name="active">Ativo</string>
+    <string name="frozen">Congelado</string>
+    <string name="suspended">Suspenso</string>
+    <string name="privilege_check_desc">O Thor precisa de acesso Root, Shizuku ou Dhizuku para funcionar corretamente.\n\nConceda o acesso no seu aplicativo de gerenciamento e toque em Atualizar.</string>
+
+    <!-- App List / Freezer -->
+    <string name="system_apps_warning">⚠ Aplicativos do sistema</string>
+    <string name="selected_count">%1$d selecionado(s)</string>
+    <string name="no_matching_apps">Não há aplicativos correspondentes</string>
+    <string name="no_apps_display">Não há aplicativos para mostrar</string>
+    <string name="adjust_filters_hint">Tente ajustar a sua busca ou os filtros</string>
+    <string name="app_source">Origem do aplicativo</string>
+    <string name="grid">Grade</string>
+    <string name="permission_filter_loading">Lendo as permissões…</string>
+
+    <!-- App Info Dialog -->
+    <string name="clear_app_data_title">Limpar os dados do aplicativo?</string>
+    <string name="clear_app_data_desc">Isso exclui permanentemente todos os dados de %1$s. Esta ação não pode ser desfeita.</string>
+    <string name="uninstall_system_app_title">Desinstalar o aplicativo do sistema?</string>
+    <string name="uninstall_system_app_desc">Isso vai desinstalar o aplicativo do sistema para o usuário atual. Continuar?</string>
+    <string name="legacy_extension_title">Extensão antiga detectada</string>
+    <string name="legacy_extension_desc">Uma versão antiga da extensão Stormbringer (escrita incorretamente como \"Strombringer\") está instalada. Remova essa versão para evitar conflitos e instale a extensão Stormbringer atualizada.</string>
+    <string name="uad_load_failed_desc">Não foi possível carregar os metadados de segurança do UAD. A desinstalação de aplicativos do sistema está bloqueada para evitar bootloops ou problemas no dispositivo.</string>
+    <string name="freeze_system_app_title">Congelar o aplicativo do sistema?</string>
+    <string name="freeze_system_app_desc">Congelar um aplicativo do sistema pode causar instabilidade ou bootloops se serviços críticos forem desativados. Continuar?</string>
+    <string name="uad_load_failed_freeze_desc">Não foi possível carregar os metadados de segurança do UAD. O congelamento de aplicativos do sistema está bloqueado para evitar bootloops ou problemas no dispositivo.</string>
+    <string name="freeze_unsafe_desc">Este aplicativo do sistema está classificado como UNSAFE. Congelá-lo tem um risco extremamente alto de deixar o dispositivo em bootloop, por isso o congelamento está bloqueado.</string>
+    <string name="freeze_expert_desc">Este aplicativo do sistema está classificado como EXPERT. Congelá-lo quebra funcionalidades importantes. Tem certeza de que quer continuar?</string>
+    <string name="risk_warning_desc">Isso força o registro do instalador para \"Google Play Store\".\n\nAs atualizações podem falhar se a assinatura não corresponder à versão oficial da loja.</string>
+
+    <!-- App Status -->
+    <string name="status_split">DIVIDIDO</string>
+    <string name="status_frozen">CONGELADO</string>
+    <string name="status_suspended">SUSPENSO</string>
+
+    <!-- App Actions -->
+    <string name="action_share">Compartilhar</string>
+    <string name="action_unsuspend">Remover a suspensão</string>
+    <string name="action_kill">Encerrar</string>
+
+    <!-- Action explainers -->
+    <string name="explain_force_stop_title">Forçar parada</string>
+    <string name="explain_force_stop_body">Encerra o aplicativo e tudo o que ele está executando neste momento. Ele continua instalado e volta a rodar assim que você ou o sistema o abrir. Nada é excluído.</string>
+    <string name="explain_suspend_body">O aplicativo continua na tela inicial, mas não pode ser aberto — tocar nele mostra uma caixa de diálogo do sistema. Isso sobrevive a uma reinicialização, até você remover a suspensão. Nada é excluído.</string>
+    <string name="explain_freeze_body">Desativa completamente o aplicativo: ele some da tela inicial e não pode ser executado de jeito nenhum, nem mesmo em segundo plano. Isso sobrevive a uma reinicialização, até você descongelar. Nada é excluído.</string>
+
+    <!-- Export -->
+    <string name="export_explain_apk">O Thor salva este aplicativo como um único arquivo de instalação (.apk) na pasta abaixo. Use esse arquivo para fazer um backup do aplicativo ou para reinstalá-lo mais tarde.</string>
+    <string name="export_explain_apks">Este aplicativo é distribuído em várias partes divididas, reunidas em um único pacote (.apks) na pasta abaixo. Reinstale quando quiser com o instalador do Thor.</string>
+    <string name="export_explain_xapk">O Thor reúne as partes deste aplicativo em um único .xapk na pasta abaixo, um formato que outros instaladores também entendem. Os dados de jogo (arquivos OBB) são incluídos quando o modo de acesso atual do Thor consegue lê-los.</string>
+    <string name="export_xapk_no_game_data">O Thor não consegue ler os dados de jogo deste aplicativo neste momento — normalmente isso significa que é preciso acesso root ou Shizuku. O .xapk é criado mesmo assim, sem eles.</string>
+    <string name="export_obb_partial">Alguns itens da pasta de dados de jogo deste aplicativo não são arquivos de expansão e não serão incluídos.</string>
+    <string name="export_save_to">Salvar em</string>
+    <string name="export_saved">Salvo em %1$s</string>
+    <string name="export_dest_downloads">Downloads/Thor</string>
+
+    <!-- Export as a background job -->
+    <string name="export_job_queued">Aguardando outra tarefa terminar.</string>
+    <string name="export_job_preparing">Preparando %1$s</string>
+    <string name="export_job_packaging">Empacotando %1$s como .%2$s</string>
+    <string name="export_job_cleanup_busy">O Thor ainda está finalizando a execução anterior. Tente exportar novamente em instantes.</string>
+    <string name="export_job_saved">%1$s exportado para %2$s</string>
+    <string name="export_job_background_desc">A exportação continua se você fechar isto. A notificação dela mostra em que ponto está.</string>
+    <string name="export_job_done">Exportado.</string>
+    <string name="export_job_stopped">A exportação parou antes de terminar. Nada foi salvo.</string>
+    <string name="export_failed_not_started">A exportação não chegou a começar, então nada foi salvo.</string>
+    <string name="export_job_app_gone">%1$s não está mais instalado, então não havia nada para exportar.</string>
+    <string name="export_job_folder_gone">O Thor não consegue mais gravar nessa pasta. Escolha a pasta novamente.</string>
+
+    <!-- Bulk export (multi-select toolbox) -->
+    <string name="export_bulk_confirm_title">Exportar os aplicativos selecionados?</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="one">O Thor salva %1$d arquivo de instalação na sua pasta de exportação — um para cada aplicativo selecionado. Isso pode demorar bastante e exigir bastante espaço livre, então mantenha o Thor aberto até terminar.</item>
+        <item quantity="other">O Thor salva %1$d arquivos de instalação na sua pasta de exportação — um para cada aplicativo selecionado. Isso pode demorar bastante e exigir bastante espaço livre, então mantenha o Thor aberto até terminar.</item>
+    </plurals>
+    <string name="export_bulk_progress">Exportando %1$d de %2$d</string>
+    <string name="export_bulk_finished">%1$d de %2$d aplicativos exportados para %3$s</string>
+    <string name="export_bulk_finished_none">Não foi possível exportar nenhum dos %1$d aplicativos selecionados</string>
+    <string name="export_bulk_index_failed">Os arquivos foram salvos, mas não foi possível gravar a lista que os acompanha</string>
+    <string name="export_bulk_cancelled">Exportação parada — %1$d de %2$d aplicativos foram salvos</string>
+    <string name="export_bulk_failed">A exportação falhou — %1$d de %2$d aplicativos foram salvos</string>
+    <string name="export_bulk_nothing_selected">Selecione pelo menos um aplicativo para exportar</string>
+    <string name="export_bulk_no_space">Não há espaço livre suficiente para exportar. O Thor precisa de cerca de %1$s livres para preparar estes arquivos, mas só há %2$s disponíveis. Libere espaço ou selecione menos aplicativos.</string>
+
+    <!-- Main Screen / Global -->
+    <string name="cannot_launch_app">Não é possível abrir o aplicativo</string>
+    <string name="share_app">Compartilhar aplicativo</string>
+    <string name="kill_app_title">Encerrar o aplicativo?</string>
+    <string name="kill_app_desc">Forçar a parada de %1$s? Isso pode causar perda de dados.</string>
+    <string name="exit_thor_desc">Tem certeza de que quer fechar o aplicativo?</string>
+    <string name="are_you_sure">Tem certeza?</string>
+
+    <!-- Accessibility / Content Descriptions -->
+    <string name="cd_frozen">Congelado</string>
+    <string name="cd_suspended">Suspenso</string>
+    <string name="cd_selected">Selecionado</string>
+    <string name="select_app_details">Selecione um aplicativo para ver os detalhes</string>
+
+    <!-- Permission Manager -->
+    <string name="permissions_read_only_title">Modo somente leitura</string>
+    <string name="permissions_read_only_desc">É necessário acesso elevado (Root, Shizuku ou Dhizuku) para alternar permissões. No momento você está vendo as permissões em modo somente leitura.</string>
+    <string name="permissions_no_found">Este aplicativo não pede nenhuma permissão</string>
+    <string name="permission_state_denied">Negada</string>
+
+    <!-- Usage Access / Size sort -->
+    <string name="usage_access">Acesso ao uso</string>
+    <string name="usage_access_granted_subtitle">Concedido — permite ordenar por tamanho do aplicativo</string>
+    <string name="usage_access_needed_subtitle">Necessário para ler o tamanho dos aplicativos na ordenação por Tamanho</string>
+    <string name="usage_access_needed_title">É necessário acesso ao uso</string>
+    <string name="usage_access_prompt_body">O Thor precisa de acesso ao uso para ler o tamanho dos aplicativos. Ative para o Thor e escolha \"Tamanho\" novamente. Você também pode gerenciar isso em Configurações → Permissões.</string>
+    <string name="open_settings">Abrir as configurações</string>
+    <string name="installed_apps_permission_title">A lista de aplicativos pode estar incompleta</string>
+    <string name="installed_apps_permission_desc">O seu dispositivo restringe os aplicativos que o Thor consegue ver enquanto está em segundo plano. Conceda acesso total à lista de aplicativos instalados para mantê-la completa.</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_no_apps">Sem aplicativos</string>
+    <plurals name="tile_subtitle_format">
+        <item quantity="one">%1$d aplicativo · tocar para congelar</item>
+        <item quantity="other">%1$d aplicativos · tocar para congelar</item>
+    </plurals>
+    <string name="tile_no_apps_toast">Não há aplicativos no Congelador</string>
+    <plurals name="tile_freeze_success">
+        <item quantity="one">%1$d aplicativo congelado</item>
+        <item quantity="other">%1$d aplicativos congelados</item>
+    </plurals>
+    <string name="tile_freeze_partial_failure">%1$d/%2$d aplicativos congelados (%3$d falharam)</string>
+    <string name="tile_freeze_incomplete">%1$d/%2$d aplicativos congelados (%3$d por terminar)</string>
+    <string name="tile_checking">Verificando…</string>
+    <string name="tile_freezing">Congelando…</string>
+
+    <!-- Freezer Settings &amp; Actions -->
+    <string name="freezer_settings">Configurações do Congelador</string>
+    <string name="unfreeze_all_apps">Descongelar todos os aplicativos</string>
+    <string name="unfreeze_all_apps_desc">Ativar todos os aplicativos que estão na lista do Congelador</string>
+    <string name="suspend_instead_of_freeze_desc">Ao congelar (incluindo o congelamento automático), suspender os aplicativos em vez de desativá-los. Os aplicativos suspensos continuam visíveis, mas em pausa.</string>
+    <string name="auto_freeze_desc">Congelar os aplicativos automaticamente quando a tela é bloqueada</string>
+    <string name="skip_routine_freeze_confirmation_desc">Congelar aplicativos do sistema sem perguntar primeiro, exceto quando a lista de remoção os sinaliza. Os marcados como Expert continuam avisando e os inseguros continuam sendo recusados.</string>
+    <string name="add_freezer_to_launcher_desc">Mostrar os aplicativos congelados como atalhos na tela inicial em que você pode tocar para abri-los</string>
+    <string name="add_to_home_screen">Adicionar à tela inicial</string>
+    <string name="shortcut_add_all">Adicionar todos os aplicativos</string>
+    <string name="shortcut_added_named">%1$s adicionado à tela inicial</string>
+    <string name="shortcut_added">Atalho adicionado à tela inicial</string>
+    <string name="pin_all_confirm_title">Adicionar todos os aplicativos à tela inicial?</string>
+    <plurals name="pin_all_confirm_desc">
+        <item quantity="one">Isso adiciona um atalho na tela inicial para o seu %1$d aplicativo congelado e pode lotar a tela inicial. O seu launcher vai pedir que você confirme.</item>
+        <item quantity="other">Isso adiciona um atalho na tela inicial para cada um dos seus %1$d aplicativos congelados e pode lotar a tela inicial. O seu launcher vai pedir que você confirme cada um deles.</item>
+    </plurals>
+    <string name="freezer_launch_failed">Não foi possível abrir este aplicativo</string>
+    <string name="shortcut_no_longer_frozen">Não está mais congelado</string>
+    <string name="unfreeze_all_confirmation_title">Descongelar todos os aplicativos?</string>
+    <string name="unfreeze_all_confirmation_desc">Isso vai descongelar (ativar) todos os aplicativos que estão na lista do Congelador. Tem certeza de que quer continuar?</string>
+    <string name="import_disabled_apps_title">Importar aplicativos desativados</string>
+    <plurals name="import_disabled_apps_desc">
+        <item quantity="one">Há %1$d aplicativo desativado que não está no seu Congelador. Quer adicioná-lo ao Congelador?</item>
+        <item quantity="other">Há %1$d aplicativos desativados que não estão no seu Congelador. Quer adicioná-los ao Congelador?</item>
+    </plurals>
+    <string name="import_disabled_apps_button">Importar aplicativos desativados</string>
+    <string name="no_disabled_apps_found">Não foram encontrados outros aplicativos desativados.</string>
+    <plurals name="added_to_freezer_count_success">
+        <item quantity="one">%1$d aplicativo adicionado ao Congelador</item>
+        <item quantity="other">%1$d aplicativos adicionados ao Congelador</item>
+    </plurals>
+    <string name="freezer_add_warning_title">Adicionar congela o aplicativo na hora</string>
+    <string name="freezer_add_warning_body">Um aplicativo entra no Congelador já congelado — é assim que o Congelador funciona, não é uma falha. Tudo o que você não tiver salvo nele se perde, e ele fica congelado até você descongelar.</string>
+
+    <!-- Extensions -->
+    <string name="manage_extensions">Gerenciar extensões</string>
+    <string name="extension_manager">Gerenciador de extensões</string>
+    <string name="extension_consent_body">As extensões são complementos poderosos que podem alterar o comportamento dos aplicativos e do sistema no seu dispositivo. Nem sempre são feitas por nós — qualquer pessoa pode criar uma. Verificamos e assinamos as extensões que distribuímos, mas este é, por natureza, um terreno arriscado.\n\nAo continuar, você aceita que é o único responsável por aquilo que instala e ativa aqui, e que o Thor e seus desenvolvedores NÃO são responsáveis por qualquer perda de dados, defeito ou dano causado por uma extensão ou por qualquer alteração que você fizer através dela.</string>
+    <string name="extension_consent_math_prompt">Para confirmar que você leu isto, resolva: %1$d + %2$d = ?</string>
+    <string name="extension_security_untrusted">Não confiável (bloqueada)</string>
+    <string name="no_extensions_desc">Instale APKs de extensões do Thor cujo nome comece com \"com.valhalla.thor.ext.\" e que estejam assinados com a mesma chave para carregar regras modulares.</string>
+
+    <!-- Extension store (Browse) -->
+    <string name="extension_store_desc">Baixe extensões do Thor verificadas e assinadas com a chave oficial.</string>
+    <string name="extension_source_only">Somente código-fonte — compile você mesmo</string>
+    <string name="extension_store_empty_desc">Volte mais tarde — o catálogo é atualizado à medida que novas extensões são publicadas.</string>
+    <string name="extension_store_error_desc">Verifique a sua conexão e tente novamente.</string>
+
+    <!-- UiText Messages -->
+    <string name="frozen_success">%1$s congelado</string>
+    <string name="unfrozen_success">%1$s descongelado</string>
+    <string name="added_to_freezer_success">Adicionado ao Congelador</string>
+    <plurals name="unfrozen_count_success">
+        <item quantity="one">%1$d aplicativo descongelado</item>
+        <item quantity="other">%1$d aplicativos descongelados</item>
+    </plurals>
+    <string name="tile_unfreeze_partial_failure">%1$d/%2$d aplicativos descongelados (%3$d falharam)</string>
+    <string name="tile_unfreeze_incomplete">%1$d/%2$d aplicativos descongelados (%3$d por terminar)</string>
+    <string name="failed_to_load_apps">Não foi possível carregar os aplicativos</string>
+    <plurals name="removed_from_freezer_success">
+        <item quantity="one">%1$d aplicativo removido do Congelador</item>
+        <item quantity="other">%1$d aplicativos removidos do Congelador</item>
+    </plurals>
+    <string name="removed_from_freezer_partial_failure">%1$d/%2$d aplicativos removidos do Congelador (%3$d falharam)</string>
+    <string name="killed_success">%1$s encerrado</string>
+    <string name="cache_cleared_success">Cache de %1$s limpo</string>
+    <string name="suspended_success">%1$s suspenso</string>
+    <string name="unsuspended_success">Suspensão de %1$s removida</string>
+    <string name="suspend_owned_by_other_privilege">Não é possível remover a suspensão de %1$s por aqui. Ele foi suspenso por %2$s, e o Android só permite que o mesmo privilégio remova a suspensão. Coloque o Thor nesse modo de privilégio novamente e tente de novo.</string>
+    <string name="freeze_system_app_requires_root">Não é possível congelar %1$s por aqui. Este dispositivo não deixou o Thor desativá-lo, e o Android só permite que o root remova um aplicativo pré-instalado para um usuário. O aplicativo ficou intacto — congelá-lo exige o modo Root do Thor.</string>
+    <string name="freeze_system_app_removal_failed">Não é possível congelar %1$s. Este dispositivo não deixou o Thor desativá-lo, e removê-lo para este usuário também falhou. O Android informou: %2$s</string>
+    <string name="freeze_system_app_disable_refused">Não é possível congelar %1$s. Este dispositivo recusou desativá-lo, então o Thor deixou o aplicativo como estava — removê-lo poderia desconectar você das contas que ele gerencia.</string>
+    <string name="freeze_system_app_disable_failed">Não é possível congelar %1$s. Nada neste dispositivo recusou o pedido, então é mais provável que seja um erro do Thor do que uma restrição. O aplicativo ficou instalado e intacto — relate o problema.</string>
+    <string name="unfreezing_app">Descongelando %1$s…</string>
+    <string name="uninstall_success">%1$s desinstalado</string>
+    <string name="error_app_info_missing">Erro: faltam as informações do aplicativo para esta ação</string>
+    <string name="failed_to_load_app_details">Não foi possível carregar os detalhes do aplicativo</string>
+
+    <!-- App Info Details Screen -->
+    <string name="app_details_title">Detalhes do aplicativo</string>
+    <string name="chip_user">Usuário</string>
+    <string name="dialog_clear_data_desc">Todos os arquivos, configurações e bancos de dados deste aplicativo serão excluídos permanentemente.</string>
+    <string name="uninstall_app_title">Desinstalar o aplicativo?</string>
+    <string name="uninstall_app_desc">Tem certeza de que quer desinstalar %1$s?</string>
+    <string name="action_force_stop">Forçar parada</string>
+    <string name="action_clear_cache">Limpar o cache</string>
+    <string name="info_app_version">Versão do aplicativo</string>
+    <string name="info_shared_data_dir">Diretório de dados compartilhados</string>
+    <string name="info_bloat_description">Por que está sinalizado</string>
+    <string name="section_receivers_title">Receptores de transmissão (%1$d)</string>
+    <string name="section_providers_title">Provedores de conteúdo (%1$d)</string>
+
+    <!-- Freezer entry point / Installer -->
+    <string name="manage_freezer">Gerenciar o Congelador</string>
+    <string name="install_analyzing">Analisando o pacote…</string>
+    <string name="install_downgrade_warning">Isso vai reverter o aplicativo para uma versão anterior.</string>
+    <string name="install_downgrade_code_explainer">O código de versão %1$s é inferior ao %2$s instalado. O Android ordena as atualizações pelo código de versão, não pelo nome da versão — um aplicativo pode parecer mais recente e ainda assim ser uma reversão.</string>
+    <string name="install_update_warning">Isso vai atualizar o aplicativo existente.</string>
+    <string name="install_assembling_progress">Montando: %1$d%%</string>
+    <string name="install_success">Instalado com sucesso</string>
+
+    <!-- Terminal Logs -->
+    <string name="log_initializing">Inicializando…</string>
+    <string name="log_sharing_app">Compartilhando %1$s</string>
+    <string name="log_preparing_files">Preparando os arquivos…</string>
+    <string name="log_files_ready">✔ Arquivos prontos</string>
+    <string name="log_reinstalling_app">Reinstalando %1$s</string>
+    <string name="log_applying_play_store_sig">Aplicando a assinatura da Google Play Store…</string>
+    <string name="log_uninstalling_system_app">Desinstalando o aplicativo do sistema</string>
+    <string name="log_attempting_system_uninstall">Tentando a desinstalação de sistema…</string>
+    <string name="log_scanning_apps">Analisando os aplicativos…</string>
+    <string name="log_no_apps_to_fix">Não foram encontrados aplicativos para reparar.</string>
+    <string name="log_found_apps_to_fix">Encontrados %1$d aplicativos para reparar.</string>
+    <string name="log_reinstalling_batch">Reinstalando aplicativos</string>
+    <string name="log_freezing_batch">Congelando aplicativos</string>
+    <string name="log_unfreezing_batch">Descongelando aplicativos</string>
+    <string name="log_killing_batch">Encerrando aplicativos</string>
+    <string name="log_clearing_cache_batch">Limpando os caches</string>
+    <string name="log_uninstalling_batch">Desinstalando aplicativos</string>
+    <string name="log_suspending_batch">Suspendendo aplicativos</string>
+    <string name="log_unsuspending_batch">Removendo a suspensão dos aplicativos</string>
+    <string name="log_sharing_batch">Compartilhando aplicativos</string>
+    <string name="log_batch_preparing">[%1$d/%2$d] Preparando %3$s…</string>
+
+    <!-- Warnings &amp; UI components -->
+    <string name="warning_unsafe_uninstall">Este aplicativo do sistema está classificado como UNSAFE. Removê-lo tem um risco extremamente alto de deixar o dispositivo em bootloop, por isso a desinstalação está bloqueada.</string>
+    <string name="warning_expert_uninstall">Este aplicativo do sistema está classificado como EXPERT. Removê-lo quebra funcionalidades importantes. Tem certeza de que quer continuar?</string>
+    <string name="no_apps_in_freezer">Não há aplicativos no Congelador</string>
+    <string name="no_matching_apps_freezer">Não há aplicativos correspondentes</string>
+    <string name="add_to_freezer_hint">Toque em + para adicionar aplicativos</string>
+    <string name="filter_all">Todos</string>
+    <string name="error_debuggable_app">O aplicativo é depurável (provável incompatibilidade de assinatura)</string>
+    <string name="error_unsafe_skipped">Ignorado: o aplicativo do sistema é UNSAFE / a verificação de segurança falhou</string>
+    <string name="error_self_skipped">Ignorado: o Thor não pode fazer isso consigo mesmo</string>
+
+    <!-- Support Developer -->
+    <string name="support_developer">Apoiar o desenvolvedor</string>
+    <string name="support_developer_desc_detailed">O Thor é de código aberto e completamente sem anúncios. Se ele tem sido útil para você, considere apoiar o meu trabalho:</string>
+    <string name="become_patreon_desc">Apoiar o desenvolvimento contínuo com uma assinatura mensal</string>
+    <string name="buy_me_a_coffee_desc">Um café pontual, ou uma assinatura mensal</string>
+    <string name="donate_paypal_desc">Enviar uma doação única diretamente</string>
+
+    <!-- Support &amp; Community Dashboard Section -->
+    <string name="support_community_desc">Ajude a manter e a melhorar o Thor apoiando o desenvolvimento ou entrando na nossa comunidade.</string>
+    <string name="thank_you_support_desc">A sua assinatura está ativa. Obrigado por ajudar a apoiar o desenvolvimento do Thor!</string>
+
+    <!-- App lock / biometrics -->
+    <string name="biometric_unavailable_message">O bloqueio do aplicativo está ativo, mas este dispositivo não tem nada com que desbloquear. Configure um bloqueio de tela ou cadastre uma impressão digital nas configurações do sistema e volte — o Thor deixa você entrar.</string>
+    <string name="biometric_unavailable_message_biometric_only">O bloqueio do aplicativo está ativo, mas este dispositivo não tem nenhuma impressão digital cadastrada — e no Android 9 o pedido de desbloqueio não aceita um bloqueio de tela. Cadastre uma impressão digital nas configurações do sistema e volte — o Thor deixa você entrar.</string>
+    <string name="biometric_not_enrolled_toast">Biometria não configurada — configure primeiro um bloqueio de tela ou uma impressão digital</string>
+    <string name="biometric_not_enrolled_toast_biometric_only">Nenhuma impressão digital cadastrada — no Android 9 um bloqueio de tela não desbloqueia o Thor, então cadastre uma primeiro</string>
+    <string name="biometric_lock_unavailable_toast">Não é possível ativar o bloqueio do aplicativo: este dispositivo não tem biometria para desbloquear</string>
+    <string name="biometric_lock_disabled_no_biometric">Bloqueio do aplicativo desativado: este dispositivo não tem biometria para desbloquear</string>
+    <string name="settings_lost_using_defaults">O Thor não conseguiu ler as suas configurações e está usando os padrões — verifique o bloqueio do aplicativo nas Configurações</string>
+    <string name="settings_not_saved">O Thor não conseguiu salvar essa configuração — ela vai voltar ao valor anterior da próxima vez que você abrir o aplicativo</string>
+    <string name="biometric_lock_disable_not_saved">O bloqueio do aplicativo não pode ser usado neste dispositivo, e o Thor não conseguiu salvar isso — vai perguntar de novo da próxima vez que você abrir o aplicativo</string>
+    <string name="biometric_lock_not_saved_still_off">O Thor não conseguiu salvar isso — o bloqueio do aplicativo continua desativado</string>
+    <string name="biometric_lock_not_saved_still_on">O Thor não conseguiu salvar isso — o bloqueio do aplicativo continua ativado</string>
+    <string name="language_not_saved">O Thor não conseguiu salvar a sua escolha de idioma, então ela não foi alterada</string>
+    <string name="open_security_settings">Abrir as configurações de segurança</string>
+
+    <!-- Grid density -->
+    <string name="grid_density">Densidade da grade</string>
+    <string name="grid_density_desc">Quantos aplicativos cabem em uma linha da grade</string>
+    <string name="grid_density_default">Padrão</string>
+
+    <!-- Suspended-app dialog -->
+    <string name="suspended_app_dialog_message">Este aplicativo foi suspenso pelo Thor.</string>
+
+    <!-- Freeze profiles -->
+    <string name="profile_name_too_long">Esse nome é longo demais</string>
+    <string name="no_profiles_yet_desc">Agrupe os aplicativos que você congela junto e congele todos com um só toque</string>
+    <string name="profile_save_selection">Salvar como perfil</string>
+    <string name="profile_delete_title">Excluir \"%1$s\"?</string>
+    <string name="profile_delete_desc">Só o perfil é removido. Os aplicativos que ele contém ficam exatamente como estão — o que estiver congelado continua congelado.</string>
+    <string name="profile_saved">Perfil salvo</string>
+    <string name="profile_deleted">Perfil excluído</string>
+    <string name="bulk_run_failed">Essa execução não chegou ao fim — verifique os aplicativos antes de confiar nela</string>
+    <string name="error_profile_name_taken">Esse nome de perfil já está sendo usado</string>
+    <string name="error_profile_delete_failed">Não foi possível excluir esse perfil</string>
+    <string name="action_delete">Excluir</string>
+    <string name="action_save">Salvar</string>
+    <plurals name="profile_app_count">
+        <item quantity="one">%1$d aplicativo</item>
+        <item quantity="other">%1$d aplicativos</item>
+    </plurals>
+
+    <!-- Fix Store -->
+    <string name="fix_store_desc">O Thor reinstala cada aplicativo para que o Android registre a Play Store como o aplicativo que o instalou. Os seus dados e configurações são mantidos.</string>
+    <string name="fix_store_warning">Um aplicativo cuja assinatura não corresponda à versão da Play Store pode deixar de receber atualizações. Desmarque tudo o que você preferir não mexer.</string>
+    <plurals name="fix_store_confirm">
+        <item quantity="one">Reparar %1$d aplicativo</item>
+        <item quantity="other">Reparar %1$d aplicativos</item>
+    </plurals>
+    <string name="fix_store_installed_by">Instalado por %1$s</string>
+    <string name="fix_store_installer_none">Nenhum instalador registrado</string>
+
+    <!-- Bulk run log / list export -->
+    <string name="log_stopping">Parando depois do aplicativo atual…</string>
+    <string name="log_stopped">Parado — %1$d de %2$d aplicativos foram processados.</string>
+    <string name="export_list_share">Compartilhar lista</string>
+    <string name="export_list_empty">Não há aplicativos nesta lista para exportar</string>
+    <string name="export_list_failed">Não foi possível salvar a lista</string>
+    <string name="clear_all_caches_requires_usage_access">O Shizuku não consegue limpar o cache de todos os aplicativos sem acesso ao uso. É preciso informar ao Android quantos bytes ele deve liberar, e só essa permissão consegue medir quanto cache existe. Conceda acesso ao uso ao Thor nas Configurações e tente novamente.</string>
+
+    <!-- ============ strings_settings.xml ============ -->
+
+    <!-- The eight categories -->
+    <string name="settings_category_appearance">Aparência</string>
+    <string name="settings_category_home">Tela inicial</string>
+    <string name="settings_category_installing">Instalação e compartilhamento</string>
+
+    <!-- Index chrome -->
+    <string name="settings_search_hint">Pesquisar nas configurações…</string>
+    <string name="settings_search_no_results">Nada nas Configurações corresponde a \"%1$s\".</string>
+    <string name="cd_back">Voltar</string>
+    <string name="settings_select_category">Escolha uma categoria para ver as configurações dela</string>
+
+    <!-- Index summary lines -->
+    <string name="settings_summary_restore_interrupted">Uma restauração não terminou</string>
+    <string name="settings_summary_backup">Restaurar um arquivo ou alterar a senha</string>
+    <string name="settings_summary_unprivileged">Requer root, Shizuku ou Dhizuku</string>
+
+    <!-- ============ strings_backup.xml ============ -->
+
+    <!-- Job titles and channel -->
+    <string name="job_backing_up">Criando backup</string>
+    <string name="job_restoring">Restaurando</string>
+    <string name="job_exporting">Exportando</string>
+    <string name="job_channel_description">Progresso de exportações, backups, restaurações e ações em massa em execução em segundo plano</string>
+
+    <!-- Backup -->
+    <string name="action_backup">Backup</string>
+    <string name="backup_unsupported">O Thor não consegue ler os dados privados de outro aplicativo com o acesso que tem neste momento. Isso exige root, ou o Shizuku iniciado a partir do root.</string>
+    <string name="backup_partial_soon">Chegando no Thor 2.0: backups parciais sem root — o próprio aplicativo e os arquivos dele no armazenamento compartilhado, mas não os seus dados privados.</string>
+    <string name="backup_include_bundle">Incluir o instalador do aplicativo</string>
+    <string name="backup_include_bundle_desc">Permite que este backup reinstale o aplicativo se ele desaparecer.</string>
+    <string name="backup_class_ce">Dados do aplicativo</string>
+    <string name="backup_class_de">Dados de inicialização</string>
+    <string name="backup_class_external_data">Arquivos no armazenamento compartilhado</string>
+    <string name="backup_class_external_media">Mídia no armazenamento compartilhado</string>
+    <string name="backup_size_measuring">Verificando o tamanho…</string>
+    <string name="backup_destination">Salvando em %1$s</string>
+    <string name="backup_destination_pending">Procurando a pasta dos backups…</string>
+    <string name="backup_queued">Na fila atrás de outro backup ou restauração.</string>
+    <string name="backup_passphrase">Senha</string>
+    <string name="backup_passphrase_confirm">Confirmar a senha</string>
+    <string name="backup_passphrase_warning">O Thor não consegue recuperar esta senha. Sem ela, este backup não pode ser restaurado.</string>
+    <string name="backup_remember_passphrase">Memorizar neste dispositivo</string>
+    <string name="backup_use_different_passphrase">Usar outra senha</string>
+    <string name="backup_start">Criar backup</string>
+    <string name="backup_overwrite_notice">O Thor dá ao backup o nome do aplicativo e da versão dele, então fazer backup deste aplicativo de novo na mesma versão reutiliza esse nome. O Thor mantém os dois, numerando o mais recente, embora uma pasta que você tenha escolhido possa substituir o arquivo mais antigo.</string>
+    <string name="backup_nothing_selected">Escolha pelo menos um item para incluir no backup. O instalador, sozinho, não pode ser restaurado.</string>
+    <string name="backup_done">Backup salvo.</string>
+    <string name="backup_failed">O backup falhou: %1$s</string>
+    <string name="backup_failed_unknown">parou sem dizer por quê</string>
+    <string name="backup_failed_nothing_saved">Nenhum arquivo de backup foi salvo. Os dados do próprio aplicativo não foram tocados — criar um backup apenas os lê.</string>
+    <string name="backup_failed_not_started">Nada foi iniciado, então nenhum backup foi salvo.</string>
+    <string name="backup_cancelled">O Thor não executou este backup — a tarefa que estava à frente na fila falhou, então este foi cancelado antes de começar. Nenhum backup foi salvo. Tente novamente.</string>
+    <string name="backup_cancelled_after_start">Este backup foi cancelado depois de já ter começado.</string>
+    <string name="backup_background_desc">Isso continua em execução se você fechar esta janela. A notificação mostra em que ponto está.</string>
+
+    <!-- Restore -->
+    <string name="restore_title">Restaurar um backup</string>
+    <string name="restore_pick_prompt">Escolha um arquivo de backup do Thor (.thorbak) para ver o que ele contém.</string>
+    <string name="restore_pick_file">Escolher um arquivo</string>
+    <string name="restore_pick_another">Escolher outro arquivo</string>
+    <string name="restore_archive_created">Backup feito em %1$s</string>
+    <string name="restore_will_install_first">Este aplicativo não está instalado. O Thor vai instalá-lo primeiro a partir do backup.</string>
+    <plurals name="restore_include_obb">
+        <item quantity="one">Restaurar também os dados de jogo (%1$d arquivo)</item>
+        <item quantity="other">Restaurar também os dados de jogo (%1$d arquivos)</item>
+    </plurals>
+    <string name="restore_unlocked">Desbloqueado com a senha salva.</string>
+    <string name="restore_confirm_replace">Entendo que isso substitui os dados atuais do aplicativo. Tudo o que não estiver neste backup é excluído.</string>
+    <string name="restore_done">Restauração concluída. Abra o aplicativo para verificar se funciona.</string>
+    <string name="restore_failed">A restauração falhou: %1$s</string>
+    <string name="restore_failed_unknown">parou sem dizer por quê</string>
+    <string name="restore_error_unreadable_file">O Thor não conseguiu ler esse arquivo. Se ele estiver em um cartão ou em uma pasta na nuvem, verifique se continua disponível e tente novamente.</string>
+    <string name="restore_error_not_an_archive">Esse arquivo não é um backup do Thor. Escolha um arquivo .thorbak.</string>
+    <string name="restore_error_wrong_passphrase">Essa senha não abre este backup.</string>
+    <string name="restore_error_unlock_check_failed">O Thor não conseguiu verificar essa senha. Tente novamente.</string>
+    <string name="restore_failed_passphrase_lost">o Thor não tem mais a senha deste backup — desbloqueie novamente</string>
+    <string name="restore_failed_partial">Isso parou no meio, então os dados do aplicativo podem estar incompletos — e, se o Thor tiver instalado o aplicativo a partir deste backup, ele continua instalado. Restaurar novamente é a solução.</string>
+    <string name="restore_failed_not_started">Nada foi iniciado, então nada neste dispositivo foi alterado.</string>
+    <string name="restore_cancelled">O Thor não executou esta restauração — a tarefa que estava à frente na fila falhou, então ela foi cancelada antes de começar. Nada foi alterado. Tente novamente.</string>
+    <string name="restore_cancelled_after_start">Esta restauração foi cancelada depois de já ter começado.</string>
+    <string name="restore_interrupted">A restauração de %1$s não terminou. Os dados desse aplicativo podem estar incompletos — restaurar novamente é a solução.</string>
+    <string name="restore_refused_signer_mismatch">Este backup foi feito a partir de um aplicativo assinado por outro desenvolvedor. Restaurá-lo entregaria a um aplicativo os dados de outro, por isso o Thor não faz isso.</string>
+    <string name="restore_refused_signer_unverifiable">O Thor não conseguiu ler a assinatura do aplicativo instalado, por isso não pode verificar se este backup pertence a ele.</string>
+    <string name="restore_refused_app_absent">Este aplicativo não está instalado e este backup não contém nenhum instalador com o qual adicioná-lo.</string>
+    <string name="restore_refused_class_missing">Este backup não contém um dos itens selecionados.</string>
+    <string name="restore_refused_nothing_selected">Nada está selecionado.</string>
+    <string name="restore_refused_schema_too_new">Este backup foi feito por uma versão mais recente do Thor. Atualize o Thor para restaurá-lo.</string>
+    <string name="restore_refused_invalid_schema_version">Este backup não indica em que formato está. O arquivo está danificado ou não foi gravado pelo Thor.</string>
+    <string name="restore_refused_invalid_package_name">Este backup nomeia um aplicativo de uma forma que o Thor não aceita. O arquivo está danificado ou não foi gravado pelo Thor.</string>
+    <string name="restore_refused_invalid_user_id">Este backup nomeia um perfil de usuário que o Thor não aceita. O arquivo está danificado ou não foi gravado pelo Thor.</string>
+    <string name="restore_warning_version_older">O aplicativo instalado é mais antigo do que este backup. Aplicativos podem falhar com dados de uma versão mais recente — se isso acontecer, atualize o aplicativo primeiro.</string>
+    <string name="restore_warning_ce_without_de">Os dados de inicialização estão neste backup, mas não estão selecionados. Alguns aplicativos precisam dos dois e podem se comportar como se estivessem migrados pela metade.</string>
+    <string name="restore_settings_desc">Ler um arquivo .thorbak e restaurar os dados de um aplicativo.</string>
+    <string name="backup_and_restore">Backup e restauração</string>
+
+    <!-- Saved passphrase -->
+    <string name="passphrase_settings_title">Senha dos backups</string>
+    <string name="passphrase_settings_desc">Escolher, alterar ou remover a senha que o Thor memoriza.</string>
+    <string name="passphrase_settings_stored">Há uma senha salva neste dispositivo.</string>
+    <string name="passphrase_settings_warning">O Thor não consegue recuperar esta senha. Sem ela, um backup feito com ela não pode ser restaurado.</string>
+    <string name="passphrase_settings_no_reencrypt">Alterá-la não altera nenhum backup que você já tenha feito. Cada um continua abrindo apenas com a senha com que foi feito.</string>
+    <string name="passphrase_settings_save">Salvar</string>
+    <string name="passphrase_settings_forget">Esquecer</string>
+    <string name="passphrase_settings_saved">Salva neste dispositivo.</string>
+    <string name="passphrase_forget_confirm_title">Esquecer esta senha?</string>
+    <string name="passphrase_forget_confirm_desc">O Thor deixa de memorizá-la neste dispositivo. Ela não pode ser recuperada — você vai ter que digitá-la novamente para cada backup que fizer e para cada backup que já fez com ela.</string>
+    <string name="passphrase_error_mismatch">As duas senhas não coincidem.</string>
+    <string name="passphrase_error_store_failed">O Thor não conseguiu salvar a senha neste dispositivo. O backup continua funcionando — você só vai ter que digitá-la a cada vez.</string>
+
+</resources>

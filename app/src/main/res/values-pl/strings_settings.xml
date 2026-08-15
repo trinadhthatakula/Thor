@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ── The eight categories ──────────────────────────────────────────────────────────────
+         Title Case, unlike the SCREAMING CASE section labels they replace: these are screen
+         titles and index rows now, not the small all-caps rubric above a group. `freezer`,
+         `extensions` and `backup_and_restore` are already Title Case and are reused as they are. -->
+    <string name="settings_category_appearance">Wygląd</string>
+    <string name="settings_category_home">Ekran główny</string>
+    <string name="settings_category_installing">Instalowanie i udostępnianie</string>
+    <string name="settings_category_security">Bezpieczeństwo</string>
+    <string name="settings_category_about">Informacje i wsparcie</string>
+
+    <!-- ── Index chrome ──────────────────────────────────────────────────────────────────── -->
+    <string name="settings_search_hint">Szukaj w ustawieniach…</string>
+    <string name="settings_search_no_results">Nic w Ustawieniach nie pasuje do „%1$s”.</string>
+    <string name="settings_search_result_in">w: %1$s</string>
+    <string name="cd_settings_search_clear">Wyczyść wyszukiwanie</string>
+    <string name="cd_back">Wstecz</string>
+
+    <!--
+      The empty right-hand pane on a tablet or an unfolded foldable, before a category is picked.
+      Never shown on a phone, where the index occupies the whole window and opening a category
+      replaces it.
+    -->
+    <string name="settings_select_category">Wybierz kategorię, aby zobaczyć jej ustawienia</string>
+
+    <!--
+      The privilege picker's label for PrivilegeMode.NONE. Present for exhaustiveness only — the
+      picker is built from the engines that probed available, so NONE is never one of its buttons.
+      Worth a real string rather than an empty one: if it ever does render, "None" is a state a
+      user can act on and `mode.name` is not.
+    -->
+    <string name="settings_engine_none">Brak</string>
+
+    <!--
+      The language row's description. It had none: the row's subtitle was the *current language*,
+      which is the value, not what the setting does — so the row was the one entry in Settings that
+      could not say what it was for, and search had nothing static to index it by.
+    -->
+    <string name="app_language_desc">Język ekranów aplikacji Thor</string>
+
+    <!--
+      Theme option labels. These were `ThemeMode.label()` returning hardcoded "Light"/"Dark"/
+      "System" from a domain enum — English in all five locales, on the setting users flip most.
+    -->
+    <string name="theme_light">Jasny</string>
+    <string name="theme_dark">Ciemny</string>
+    <string name="theme_system">Systemowy</string>
+
+    <!-- ── Index summary lines ───────────────────────────────────────────────────────────────
+         Each index row carries a line describing the state behind it, so that the door does not
+         have to be opened to see what is through it. Joined with a middle dot by the caller. -->
+    <string name="settings_summary_opens_on">Otwierany ekran: %1$s</string>
+    <string name="settings_summary_auto_freeze_on">Automatyczne zamrażanie włączone</string>
+    <string name="settings_summary_auto_freeze_off">Automatyczne zamrażanie wyłączone</string>
+    <string name="settings_summary_suspend_mode">Tryb zawieszania</string>
+    <string name="settings_summary_auto_reinstall_on">Automatyczna reinstalacja włączona</string>
+    <string name="settings_summary_auto_reinstall_off">Automatyczna reinstalacja wyłączona</string>
+    <string name="settings_summary_app_lock_on">Blokada aplikacji włączona</string>
+    <string name="settings_summary_app_lock_off">Blokada aplikacji wyłączona</string>
+    <string name="settings_summary_restore_interrupted">Przywracanie nie zostało ukończone</string>
+    <string name="settings_summary_backup">Przywróć archiwum lub zmień hasło</string>
+    <string name="settings_summary_unprivileged">Wymaga uprawnień root, Shizuku lub Dhizuku</string>
+
+</resources>

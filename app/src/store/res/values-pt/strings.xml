@@ -1,0 +1,20 @@
+<resources>
+
+    <!-- Store-only strings: Play Store billing / support UI (store source set). -->
+    <string name="support_tab_play_store">Play Store</string>
+    <string name="support_tab_direct">Direto</string>
+    <string name="rate_play_store_title">Avaliar na Play Store</string>
+    <string name="rate_play_store_desc">Deixe uma avaliação de 5 estrelas para ajudar outras pessoas a descobrir o Thor</string>
+    <string name="explore_other_apps_title">Explorar outras aplicações</string>
+    <string name="explore_other_apps_desc">Veja a minha consola de programador e experimente outras aplicações</string>
+    <string name="billing_error">Erro de faturação</string>
+    <string name="change_support_plan_title">Alterar o plano de apoio?</string>
+    <string name="change_support_plan_desc">Já está a apoiar o programador com um plano ativo. Melhorar ou alterar o plano cancela a subscrição anterior e substitui-a pela nova. Quer continuar?</string>
+    <string name="active_plan">Plano ativo</string>
+    <string name="billing_purchase_pending">Compra pendente — fica ativa assim que o pagamento estiver concluído</string>
+    <string name="billing_price_per_week">%1$s / semana</string>
+    <string name="billing_price_per_month">%1$s / mês</string>
+    <string name="billing_price_per_quarter">%1$s / 3 meses</string>
+    <string name="billing_price_per_half_year">%1$s / 6 meses</string>
+    <string name="billing_price_per_year">%1$s / ano</string>
+</resources>

@@ -78,7 +78,7 @@ class LocalePolicyTest {
     }
 
     /**
-     * Tags are matched on the language subtag alone.
+     * Tags fall back to the language subtag when no shipped entry claims the region.
      *
      * `LocaleManager.getApplicationLocales` on API 33+ and `Configuration.getLocales()[0]` both
      * hand back resolved locales, so what goes in as `fr` comes back as `fr-FR` and `zh` comes back
@@ -93,6 +93,38 @@ class LocalePolicyTest {
         assertEquals(AppLanguage.Spanish, languageForTag("es-419"))
         assertEquals(AppLanguage.Arabic, languageForTag("ar-EG"))
         assertEquals(AppLanguage.English, languageForTag("en-GB"))
+    }
+
+    /**
+     * …and the region decides where Thor ships two translations of one language.
+     *
+     * Portuguese is the first language with two entries, which is what retired the old
+     * language-subtag-only match. Under that rule both `pt-PT` and `pt-BR` answered whichever
+     * Portuguese entry the enum happened to declare first, so a Brazilian user's Settings row named
+     * European Portuguese over a Brazilian screen — the same class of lie
+     * [rowShowsTheRenderedLanguage_notThePreference_whenTheOverrideDidNotTake] exists to stop.
+     */
+    @Test
+    fun theRegionDecidesBetweenTheTwoPortugueseTranslations() {
+        assertEquals(AppLanguage.Portuguese, languageForTag("pt-PT"))
+        assertEquals(AppLanguage.PortugueseBrazil, languageForTag("pt-BR"))
+        assertEquals(AppLanguage.PortugueseBrazil, languageForTag("pt-Latn-BR"))
+    }
+
+    /**
+     * A Portuguese tag Thor does not ship a directory for resolves to the European translation.
+     *
+     * `values-pt` is the region-less directory, so it is what the resolver renders for every
+     * Portuguese locale that is not Brazil — Angola, Mozambique, and a bare `pt` from a system
+     * language screen alike. The row has to name the file the pixels came from, which means the
+     * language-only fallback must land on [AppLanguage.Portuguese] and not on the Brazilian entry.
+     * That is why [AppLanguage.Portuguese] is declared first of the two.
+     */
+    @Test
+    fun anUnshippedPortugueseRegionFallsBackToTheEuropeanTranslation() {
+        assertEquals(AppLanguage.Portuguese, languageForTag("pt"))
+        assertEquals(AppLanguage.Portuguese, languageForTag("pt-AO"))
+        assertEquals(AppLanguage.Portuguese, languageForTag("pt-MZ"))
     }
 
     /** Nothing, blank, or a language Thor does not ship degrades to "System default", never throws. */
@@ -127,19 +159,44 @@ class LocalePolicyTest {
         assertEquals(Locale.ROOT.language, Locale.forLanguageTag("!!").language)
     }
 
-    /** Every shipped tag parses to a locale carrying the language subtag it was written with. */
+    /**
+     * Every shipped tag parses to a locale that spells the same language and region back, and
+     * resolves to the entry it came from.
+     *
+     * The round-trip is the load-bearing half. A tag that parses but resolves to a *different*
+     * entry is precisely the Portuguese failure — and it is invisible unless the assertion runs
+     * over the whole enum, because every other entry gets the right answer either way.
+     */
     @Test
     fun everyShippedTagParses() {
         for (language in AppLanguage.entries) {
             val tag = language.tag ?: continue
             val locale = localeForTag(tag)
-            assertEquals("$language should parse", tag, locale?.language)
+            assertEquals("$language should parse", language.languageSubtag, locale?.language)
+            assertEquals("$language region", language.regionSubtag, locale?.country)
             assertEquals("$language should round-trip", language, languageForTag(tag))
         }
     }
 
     /**
-     * Arabic is right-to-left and the other four are not.
+     * The tags carry a region only where Thor ships two translations of the language.
+     *
+     * A region on any other entry is a request the resolver has to break a tie for, and the tie is
+     * broken by CLDR's likely-subtag data rather than by anything in this repo. `values-zh-rCN` is
+     * the standing proof that a region-less tag reaches a region-qualified directory unaided.
+     */
+    @Test
+    fun onlyTheDoubledLanguagesCarryARegion() {
+        assertEquals(setOf("pt"), AppLanguage.REGION_SENSITIVE)
+        for (language in AppLanguage.entries) {
+            val carriesRegion = language.regionSubtag.isNotEmpty()
+            val isDoubled = language.languageSubtag in AppLanguage.REGION_SENSITIVE
+            assertEquals("$language region-qualified?", isDoubled, carriesRegion)
+        }
+    }
+
+    /**
+     * Arabic is right-to-left and every other shipped translation is not.
      *
      * `AppLocale.wrap` writes `Configuration.screenLayout`'s `SCREENLAYOUT_LAYOUTDIR_*` bits from
      * [isRtl], the same two bits `Configuration.setLayoutDirection` derives from ICU via
@@ -158,7 +215,10 @@ class LocalePolicyTest {
             AppLanguage.Chinese to false,
             AppLanguage.French to false,
             AppLanguage.Spanish to false,
-            AppLanguage.Arabic to true
+            AppLanguage.Arabic to true,
+            AppLanguage.Portuguese to false,
+            AppLanguage.PortugueseBrazil to false,
+            AppLanguage.Polish to false
         )
         for (language in AppLanguage.entries) {
             val locale = localeForTag(language.tag) ?: continue
@@ -260,6 +320,56 @@ class LocalePolicyTest {
     }
 
     /**
+     * Switching between the two Portuguese translations is a real request, not a no-op.
+     *
+     * This is the one place the region-blind comparison actively broke. `pt-PT` and `pt-BR` share a
+     * language subtag, so the old rule reported them as the same request already in force — and
+     * `LocaleManager.applyLocale` returns early on that answer, which turns the picker's
+     * *Português (Brasil)* row into a tap that changes nothing and leaves the row still saying
+     * *Português*.
+     */
+    @Test
+    fun theTwoPortugueseTranslationsAreNotOneAnother() {
+        assertFalse(isRedundantLanguageRequest(requestedTag = "pt-PT", inEffectTag = "pt-BR"))
+        assertFalse(isRedundantLanguageRequest(requestedTag = "pt-BR", inEffectTag = "pt-PT"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "pt-BR", inEffectTag = "pt-BR"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "pt-PT", inEffectTag = "pt-PT"))
+    }
+
+    /**
+     * A region-less `pt` in force means the European translation, so requesting it is redundant and
+     * requesting the Brazilian one is not.
+     *
+     * `pt` reaches Thor from a system language screen and from a Configuration that resolved to
+     * plain Portuguese, and either way `values-pt` is the directory being rendered. Treating it as
+     * "some Portuguese, close enough" in both directions is what would swallow the switch *to*
+     * Brazilian while leaving a pointless activity recreation on the way back.
+     */
+    @Test
+    fun aRegionLessPortugueseInEffectIsTheEuropeanTranslation() {
+        assertTrue(isRedundantLanguageRequest(requestedTag = "pt-PT", inEffectTag = "pt"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "pt", inEffectTag = "pt-PT"))
+        assertFalse(isRedundantLanguageRequest(requestedTag = "pt-BR", inEffectTag = "pt"))
+        assertFalse(isRedundantLanguageRequest(requestedTag = "pt", inEffectTag = "pt-BR"))
+    }
+
+    /**
+     * Region sensitivity is scoped to the doubled languages and does not leak to the rest.
+     *
+     * The rule could as easily have been written as "compare whole tags", and that would have been
+     * wrong in the direction this whole file exists to prevent: `fr` against the `fr-FR` the
+     * platform hands back is one language and one translation, and calling it a change re-applies a
+     * locale and recreates the visible activity for nothing.
+     */
+    @Test
+    fun regionsStillDoNotMatterForTheLanguagesShippedOnce() {
+        assertTrue(isRedundantLanguageRequest(requestedTag = "es", inEffectTag = "es-419"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "ar", inEffectTag = "ar-EG"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "en", inEffectTag = "en-GB"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "pl", inEffectTag = "pl-PL"))
+    }
+
+    /**
      * The picker offers "System default" first, then every shipped translation exactly once.
      *
      * The row and the sheet are now both driven off this list, so a language present in one and
@@ -274,7 +384,7 @@ class LocalePolicyTest {
             AppLanguage.PICKER_ORDER.distinct().size
         )
         assertEquals(
-            listOf(null, "en", "zh", "fr", "es", "ar"),
+            listOf(null, "en", "zh", "fr", "es", "ar", "pt-PT", "pt-BR", "pl"),
             AppLanguage.PICKER_ORDER.map { it.tag }
         )
     }
@@ -415,7 +525,7 @@ class LocalePolicyTest {
      */
     @Test
     fun theStoreThatWinsDependsOnlyOnWhoOwnsTheLocale() {
-        val tags = listOf(null, "en", "fr", "fr-FR", "zh", "ar", "de")
+        val tags = listOf(null, "en", "fr", "fr-FR", "zh", "ar", "de", "pt", "pt-PT", "pt-BR", "pl")
         for (persisted in tags) {
             for (inEffect in tags) {
                 val below33 = startupLocaleSync(persisted, inEffect, platformOwnsLocale = false)

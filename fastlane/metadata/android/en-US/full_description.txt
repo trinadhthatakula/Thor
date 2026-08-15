@@ -38,7 +38,7 @@ Enjoy a beautiful Material 3 interface that adapts to your device.
 • Persistent layout preferences: Grid and list view settings are preserved across restarts.
 • True AMOLED black mode, Light/Dark themes, and Material You dynamic color support.
 • Fingerprint / biometric lock to protect app access.
-• Built-in language switcher supporting English, Spanish, French, Arabic, and Chinese.
+• Built-in language switcher supporting English, Spanish, French, Arabic, Chinese, Portuguese, Brazilian Portuguese, and Polish.
 
 🔒 PRIVACY-FIRST & LIGHTWEIGHT
 • No analytics, no crash reporters, no ads, no trackers — ever.
