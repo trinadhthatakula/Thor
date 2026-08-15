@@ -156,7 +156,7 @@
     <string name="action_freeze">Congelar</string>
     <string name="action_unfreeze">Descongelar</string>
     <string name="action_suspend">Suspender</string>
-    <string name="action_unsuspend">Habilitar</string>
+    <string name="action_unsuspend">Reanudar</string>
     <string name="action_kill">Detener</string>
     <string name="action_cache">Caché</string>
     <string name="action_uninstall">Desinstalar</string>
@@ -164,7 +164,7 @@
 
     <!-- Action explainers -->
     <string name="explain_force_stop_title">Forzar detención</string>
-    <string name="explain_force_stop_body">Cierra la aplicación y todo lo que esté ejecutando ahora mismo. Sigue instalada y arranca de nuevo en cuanto tú o el sistema la abráis. No se borra nada.</string>
+    <string name="explain_force_stop_body">Cierra la aplicación y todo lo que esté ejecutando ahora mismo. Sigue instalada y arranca de nuevo en cuanto la abras tú o el sistema. No se borra nada.</string>
     <string name="explain_suspend_title">Suspender</string>
     <string name="explain_suspend_body">La aplicación sigue en tu lanzador, pero no se puede abrir: al tocarla aparece un diálogo del sistema. Esto se mantiene tras reiniciar, hasta que la reanudes. No se borra nada.</string>
     <string name="explain_freeze_title">Congelar</string>
@@ -308,7 +308,7 @@
     <string name="action_open">Abrir</string>
     <string name="action_force_stop">Forzar detención</string>
     <string name="action_in_freezer">En congelador</string>
-    <string name="action_add_freezer">Añadir congelador</string>
+    <string name="action_add_freezer">Añadir al congelador</string>
     <string name="action_clear_cache">Limpiar caché</string>
     <string name="action_clear_data">Borrar datos</string>
     <string name="info_app_version">Versión de la aplicación</string>
@@ -333,7 +333,7 @@
     <string name="section_services_title">Servicios (%1$d)</string>
     <string name="section_receivers_title">Receptores de transmisión (%1$d)</string>
     <string name="section_providers_title">Proveedores de contenido (%1$d)</string>
-    <string name="cd_collapse">Colapsar</string>
+    <string name="cd_collapse">Contraer</string>
     <string name="cd_expand">Expandir</string>
     <string name="components_none_declared">Ninguno declarado</string>
     <string name="section_native_libs_title">Librerías nativas (.so)</string>
@@ -497,12 +497,12 @@
     <string name="legacy_extension_title">Extensión heredada detectada</string>
     <string name="legacy_extension_desc">Se ha detectado una versión heredada de la extensión Stormbringer (escrita incorrectamente como \"Strombringer\"). Por favor, desinstálala para evitar conflictos e instala la versión actualizada.</string>
     <string name="action_export">Exportar</string>
-    <string name="export_explain_apk">Thor guarda esta aplicación como un único archivo de instalación (.apk) en la carpeta de abajo. Úsala para hacer una copia de seguridad o reinstalarla más tarde.</string>
+    <string name="export_explain_apk">Thor guarda esta aplicación como un único archivo de instalación (.apk) en la carpeta de abajo. Úsalo para hacer una copia de seguridad o reinstalarla más tarde.</string>
     <string name="export_explain_apks">Esta aplicación consta de varias partes divididas, que se agrupan en un único paquete (.apks) en la carpeta de abajo. Reinstálala en cualquier momento con el instalador de Thor.</string>
     <string name="export_explain_xapk">Thor empaqueta las partes de esta app en un único .xapk en la carpeta de abajo, un formato que otros instaladores también entienden. Los datos del juego (archivos OBB) se incluyen cuando el modo de acceso actual de Thor puede leerlos.</string>
     <string name="export_xapk_no_game_data">Thor no puede leer los datos del juego de esta app ahora mismo; normalmente eso significa que hace falta root o Shizuku. El .xapk se creará igualmente, sin ellos.</string>
     <string name="export_obb_included">Incluye %1$s de datos del juego.</string>
-    <string name="export_obb_partial">Algunos elementos de la carpeta de datos de esta app no son archivos de expansión y no se incluirán.</string>
+    <string name="export_obb_partial">Algunos elementos de la carpeta de datos del juego de esta app no son archivos de expansión y no se incluirán.</string>
     <string name="export_format">Formato</string>
     <string name="export_save_to">Guardar en</string>
     <string name="export_change">Cambiar</string>

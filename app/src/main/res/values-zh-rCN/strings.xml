@@ -35,7 +35,7 @@
     <string name="release_candidate">发布候选版</string>
     <string name="source_code">源代码</string>
     <string name="community">社区</string>
-    <string name="kernel_status">内核状态: 已优化</string>
+    <string name="kernel_status">内核状态：已优化</string>
     <string name="built_with_precision">为高级用户精准打造</string>
     <string name="app_language">应用语言</string>
     <string name="select_language">选择语言</string>
@@ -59,7 +59,7 @@
     <string name="close">关闭</string>
     <string name="installed_label">已安装</string>
     <string name="new_version_label">新版本</string>
-    <string name="version_prefix">版本: </string>
+    <string name="version_prefix">版本：</string>
     <string name="error_title">错误</string>
     <string name="refresh">刷新</string>
     <string name="dismiss">关闭</string>
@@ -74,7 +74,7 @@
     <string name="install_from_file_subtitle">安装 APK、XAPK、APKS 或分割包</string>
     <string name="home_extensions_title">扩展</string>
     <string name="app_distribution">应用分布</string>
-    <string name="total_apps">总计: %1$d</string>
+    <string name="total_apps">总计：%1$d</string>
     <string name="others">其他</string>
     <string name="clear_all_cache">清除所有缓存</string>
     <string name="clear_all_cache_subtitle">清除所有应用的缓存文件以回收存储空间</string>
@@ -104,7 +104,7 @@
     <string name="view_mode">视图模式</string>
     <string name="grid">网格</string>
     <string name="list">列表</string>
-    <string name="order">排序:</string>
+    <string name="order">排序：</string>
     <string name="ascending">升序</string>
     <string name="descending">降序</string>
     <string name="filters">过滤器</string>
@@ -223,7 +223,7 @@
     <string name="unfreeze_all_apps_desc">启用目前在冻结列表中的所有应用</string>
     <string name="auto_freeze">自动冻结</string>
     <string name="auto_freeze_desc">屏幕锁定后自动冻结应用</string>
-    <string name="privilege_required_warning">需要权限 (Root、Shizuku 或 Dhizuku)</string>
+    <string name="privilege_required_warning">需要权限（Root、Shizuku 或 Dhizuku）</string>
     <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
     <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
     <string name="import_disabled_apps_title">导入已禁用的应用</string>
@@ -242,8 +242,8 @@
     <string name="manage_extensions_desc">查看和配置已安装的 APK 插件</string>
     <string name="extension_manager">扩展管理器</string>
     <string name="extension_security_verified">已验证</string>
-    <string name="extension_security_debug">调试模式 (未验证)</string>
-    <string name="extension_security_untrusted">不受信任 (已屏蔽)</string>
+    <string name="extension_security_debug">调试模式（未验证）</string>
+    <string name="extension_security_untrusted">不受信任（已屏蔽）</string>
     <string name="get_extensions">获取扩展</string>
     <string name="no_extensions_installed">未安装任何扩展</string>
     <string name="no_extensions_desc">安装包名以 \"com.valhalla.thor.ext.\" 开头并使用相同密钥签名的 Thor 扩展 APK 以加载模块化规则。</string>
@@ -264,7 +264,7 @@
     </plurals>
     <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
     <string name="tile_unfreeze_incomplete">已解冻 %1$d/%2$d 个应用（%3$d 个未完成）</string>
-    <string name="error_format">错误: %1$s</string>
+    <string name="error_format">错误：%1$s</string>
     <string name="failed_to_load_apps">加载应用失败</string>
     <plurals name="removed_from_freezer_success">
         <item quantity="other">已从冻结列表中移除 %1$d 个应用</item>
@@ -300,8 +300,8 @@
     <string name="uninstall_app_desc">确定要卸载 %1$s 吗？</string>
     <string name="action_open">打开</string>
     <string name="action_force_stop">强行停止</string>
-    <string name="action_in_freezer">已冷冻</string>
-    <string name="action_add_freezer">添加冷冻</string>
+    <string name="action_in_freezer">已在冻结室</string>
+    <string name="action_add_freezer">添加至冻结室</string>
     <string name="action_clear_cache">清除缓存</string>
     <string name="action_clear_data">清除数据</string>
     <string name="info_app_version">应用版本</string>
@@ -373,13 +373,13 @@
     <string name="log_sharing_app">正在分享 %1$s</string>
     <string name="log_preparing_files">正在准备文件…</string>
     <string name="log_files_ready">✔ 文件就绪</string>
-    <string name="log_error">✘ 错误: %1$s</string>
+    <string name="log_error">✘ 错误：%1$s</string>
     <string name="log_reinstalling_app">正在重新安装 %1$s</string>
     <string name="log_applying_play_store_sig">正在应用 Google Play 商店签名…</string>
     <string name="log_reinstall_success">✔ 重新安装成功</string>
-    <string name="log_failed_with_msg">✘ 失败: %1$s</string>
+    <string name="log_failed_with_msg">✘ 失败：%1$s</string>
     <string name="log_uninstalling_system_app">正在卸载系统应用</string>
-    <string name="log_target_app">目标: %1$s</string>
+    <string name="log_target_app">目标：%1$s</string>
     <string name="log_uninstall_success">✔ 卸载成功</string>
     <string name="log_priv_uninstall_failed">✘ 特权卸载失败</string>
     <string name="log_attempting_system_uninstall">正在尝试系统卸载…</string>
@@ -399,7 +399,7 @@
     <string name="log_batch_preparing">[%1$d/%2$d] 正在准备 %3$s…</string>
     <string name="log_ready"> -> 就绪</string>
     <string name="log_success"> -> 成功</string>
-    <string name="log_failed"> -> 失败: %1$s</string>
+    <string name="log_failed"> -> 失败：%1$s</string>
 
     <!-- Warnings & UI components -->
     <string name="warning_unsafe_uninstall">此系统应用被归类为“不安全”。移除它有极高的风险导致设备无限重启，因此已阻止卸载。</string>
@@ -538,7 +538,7 @@
     <string name="usage_access_granted_subtitle">已授予 — 启用应用大小排序</string>
     <string name="usage_access_needed_subtitle">读取应用大小以进行按大小排序所需</string>
     <string name="usage_access_needed_title">需要使用情况访问权限</string>
-    <string name="usage_access_prompt_body">Thor 需要使用情况访问权限才能读取应用大小。请为 Thor 启用该权限，然后再次选择\"大小\"。您也可以在\"设置 → 权限\"中进行管理。</string>
+    <string name="usage_access_prompt_body">Thor 需要使用情况访问权限才能读取应用大小。请为 Thor 启用该权限，然后再次选择“大小”。您也可以在“设置 → 权限”中进行管理。</string>
     <string name="notification_access">通知</string>
     <string name="notification_access_granted_subtitle">批量冻结结果将以通知形式显示</string>
     <string name="notification_access_needed_subtitle">允许通知以查看批量冻结结果</string>
@@ -547,8 +547,8 @@
     <string name="installed_apps_permission_desc">您的设备限制了 Thor 在后台运行时可以看到的应用。请授予读取已安装应用列表的完全访问权限，以保持列表完整。</string>
     <string name="installed_apps_permission_grant">授予</string>
     <string name="freeze_mode">冻结模式</string>
-    <string name="suspend_instead_of_freeze">挂起代替冻结</string>
-    <string name="suspend_instead_of_freeze_desc">冻结（包括自动冻结）时挂起应用，而不是禁用它们。挂起的应用仍然可见但处于暂停状态。</string>
+    <string name="suspend_instead_of_freeze">暂停代替冻结</string>
+    <string name="suspend_instead_of_freeze_desc">冻结（包括自动冻结）时暂停应用，而不是禁用它们。被暂停的应用仍然可见，但无法打开。</string>
     <string name="skip_routine_freeze_confirmation">常规冻结不再确认</string>
     <string name="skip_routine_freeze_confirmation_desc">冻结系统应用时不再先询问，除非 UAD 列表已标记该应用。标记为 Expert 的应用仍会警告，不安全的应用仍会被阻止。</string>
     <string name="add_freezer_to_launcher">添加冻结室到启动器</string>
@@ -635,7 +635,7 @@
     <string name="export_list_share">分享列表</string>
     <string name="export_list_empty">此列表中没有可导出的应用</string>
     <string name="export_list_failed">无法保存列表</string>
-    <string name="clear_all_caches_requires_usage_access">没有「使用情况访问权限」，Shizuku 无法清除所有应用的缓存。必须告诉 Android 需要释放多少字节，而只有该权限才能测量缓存的大小。请在系统设置中授予 Thor 使用情况访问权限后重试。</string>
+    <string name="clear_all_caches_requires_usage_access">没有“使用情况访问权限”，Shizuku 无法清除所有应用的缓存。必须告诉 Android 需要释放多少字节，而只有该权限才能测量缓存的大小。请在系统设置中授予 Thor 使用情况访问权限后重试。</string>
     <string name="clear_all_caches_unsupported_dhizuku">Dhizuku 无法清除缓存。它没有可用于执行 Android 缓存清理的 shell，设备所有者 API 也没有对应的接口。请切换到 Root 或 Shizuku 模式。</string>
 
     <!-- 分类式设置页面 — 参见 values/strings_settings.xml -->

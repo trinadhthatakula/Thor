@@ -79,7 +79,7 @@
     <string name="others">أخرى</string>
     <string name="clear_all_cache">مسح جميع الذاكرة المؤقتة</string>
     <string name="clear_all_cache_subtitle">مسح الملفات المؤقتة لجميع التطبيقات لاستعادة مساحة التخزين</string>
-    <string name="clear_all_cache_confirm_desc">أندرويد هو من يقرر أي ذاكرة مؤقتة تُمسح، ولا يتيح لـ Thor الاختيار — تشمل العملية كل تطبيقات الجهاز، تطبيقات النظام وتطبيقاتك على حد سواء. لن يُمسّ أي شيء آخر: بياناتك وتسجيلات دخولك وإعداداتك تبقى كما هي. قد تفتح التطبيقات ببطء بسيط في المرة الأولى بينما تعيد بناء ذاكرتها المؤقتة.</string>
+    <string name="clear_all_cache_confirm_desc">Android هو من يقرر أي ذاكرة مؤقتة تُمسح، ولا يتيح لـ Thor الاختيار — تشمل العملية كل تطبيقات الجهاز، تطبيقات النظام وتطبيقاتك على حد سواء. لن يُمسّ أي شيء آخر: بياناتك وتسجيلات دخولك وإعداداتك تبقى كما هي. قد تفتح التطبيقات ببطء بسيط في المرة الأولى بينما تعيد بناء ذاكرتها المؤقتة.</string>
     <string name="clear_all_cache_running">جارٍ المسح…</string>
     <string name="clear_all_cache_running_desc">جارٍ العمل على كل تطبيقات الجهاز. قد يستغرق ذلك لحظة.</string>
     <string name="clear_all_cache_done_title">تم مسح الذاكرة المؤقتة</string>
@@ -205,23 +205,23 @@
     <string name="tile_no_apps">لا توجد تطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="tile_subtitle_format">
-        <item quantity="zero">%1$d تطبيقات · اضغط للتجميد</item>
-        <item quantity="one">%1$d تطبيقات · اضغط للتجميد</item>
-        <item quantity="two">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="zero">لا توجد تطبيقات · اضغط للتجميد</item>
+        <item quantity="one">تطبيق واحد · اضغط للتجميد</item>
+        <item quantity="two">تطبيقان · اضغط للتجميد</item>
         <item quantity="few">%1$d تطبيقات · اضغط للتجميد</item>
-        <item quantity="many">%1$d تطبيقات · اضغط للتجميد</item>
-        <item quantity="other">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="many">%1$d تطبيقًا · اضغط للتجميد</item>
+        <item quantity="other">%1$d تطبيق · اضغط للتجميد</item>
     </plurals>
     <string name="tile_grant_privilege_toast">امنح صلاحية Root / Shizuku / Dhizuku أولاً</string>
     <string name="tile_no_apps_toast">لا توجد تطبيقات في المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="tile_freeze_success">
-        <item quantity="zero">تم تجميد %1$d تطبيقات</item>
-        <item quantity="one">تم تجميد %1$d تطبيقات</item>
-        <item quantity="two">تم تجميد %1$d تطبيقات</item>
+        <item quantity="zero">لم يتم تجميد أي تطبيق</item>
+        <item quantity="one">تم تجميد تطبيق واحد</item>
+        <item quantity="two">تم تجميد تطبيقين</item>
         <item quantity="few">تم تجميد %1$d تطبيقات</item>
-        <item quantity="many">تم تجميد %1$d تطبيقات</item>
-        <item quantity="other">تم تجميد %1$d تطبيقات</item>
+        <item quantity="many">تم تجميد %1$d تطبيقًا</item>
+        <item quantity="other">تم تجميد %1$d تطبيق</item>
     </plurals>
     <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
     <string name="tile_freeze_incomplete">تم تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
@@ -242,23 +242,23 @@
     <string name="import_disabled_apps_title">استيراد التطبيقات المعطلة</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="import_disabled_apps_desc">
-        <item quantity="zero">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
-        <item quantity="one">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
-        <item quantity="two">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
-        <item quantity="few">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
-        <item quantity="many">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="zero">لا توجد تطبيقات معطلة خارج قائمة المجمد.</item>
+        <item quantity="one">هناك تطبيق واحد معطل غير موجود في قائمة المجمد. هل ترغب في إضافته إلى المجمد؟</item>
+        <item quantity="two">هناك تطبيقان معطلان غير موجودين في قائمة المجمد. هل ترغب في إضافتهما إلى المجمد؟</item>
+        <item quantity="few">هناك %1$d تطبيقات معطلة غير موجودة في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="many">هناك %1$d تطبيقًا معطلًا غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
         <item quantity="other">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
     </plurals>
     <string name="import_disabled_apps_button">استيراد التطبيقات المعطلة</string>
     <string name="no_disabled_apps_found">لم يتم العثور على تطبيقات معطلة أخرى.</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="added_to_freezer_count_success">
-        <item quantity="zero">تمت إضافة %1$d تطبيقات إلى المجمد</item>
-        <item quantity="one">تمت إضافة %1$d تطبيقات إلى المجمد</item>
-        <item quantity="two">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="zero">لم تتم إضافة أي تطبيق إلى المجمد</item>
+        <item quantity="one">تمت إضافة تطبيق واحد إلى المجمد</item>
+        <item quantity="two">تمت إضافة تطبيقين إلى المجمد</item>
         <item quantity="few">تمت إضافة %1$d تطبيقات إلى المجمد</item>
-        <item quantity="many">تمت إضافة %1$d تطبيقات إلى المجمد</item>
-        <item quantity="other">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="many">تمت إضافة %1$d تطبيقًا إلى المجمد</item>
+        <item quantity="other">تمت إضافة %1$d تطبيق إلى المجمد</item>
     </plurals>
     <string name="add_to_freezer">إضافة للمجمد</string>
     <string name="freezer_add_warning_title">الإضافة تُجمّده فورًا</string>
@@ -286,12 +286,12 @@
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="unfrozen_count_success">
-        <item quantity="zero">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="one">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="two">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="zero">لم يتم إلغاء تجميد أي تطبيق</item>
+        <item quantity="one">تم إلغاء تجميد تطبيق واحد</item>
+        <item quantity="two">تم إلغاء تجميد تطبيقين</item>
         <item quantity="few">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="many">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="other">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="many">تم إلغاء تجميد %1$d تطبيقًا</item>
+        <item quantity="other">تم إلغاء تجميد %1$d تطبيق</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
     <string name="tile_unfreeze_incomplete">تم إلغاء تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
@@ -299,12 +299,12 @@
     <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="removed_from_freezer_success">
-        <item quantity="zero">تمت إزالة %1$d تطبيقات من المجمد</item>
-        <item quantity="one">تمت إزالة %1$d تطبيقات من المجمد</item>
-        <item quantity="two">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="zero">لم تتم إزالة أي تطبيق من المجمد</item>
+        <item quantity="one">تمت إزالة تطبيق واحد من المجمد</item>
+        <item quantity="two">تمت إزالة تطبيقين من المجمد</item>
         <item quantity="few">تمت إزالة %1$d تطبيقات من المجمد</item>
-        <item quantity="many">تمت إزالة %1$d تطبيقات من المجمد</item>
-        <item quantity="other">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="many">تمت إزالة %1$d تطبيقًا من المجمد</item>
+        <item quantity="other">تمت إزالة %1$d تطبيق من المجمد</item>
     </plurals>
     <string name="killed_success">تم إنهاء %1$s</string>
     <string name="cache_cleared_success">تم مسح ذاكرة التخزين المؤقت لـ %1$s</string>
@@ -312,7 +312,7 @@
     <string name="data_cleared_success">تم مسح بيانات %1$s</string>
     <string name="suspended_success">تم تعليق %1$s</string>
     <string name="unsuspended_success">تم إلغاء تعليق %1$s</string>
-    <string name="unfreezing_app">جاري إلغاء تجميد %1$s…</string>
+    <string name="unfreezing_app">جارٍ إلغاء تجميد %1$s…</string>
     <string name="uninstall_success">تم إلغاء تثبيت %1$s</string>
     <string name="error_app_info_missing">خطأ: معلومات التطبيق مفقودة للإجراء</string>
     <string name="failed_to_load_app_details">فشل في تحميل تفاصيل التطبيق</string>
@@ -363,7 +363,7 @@
     <string name="section_services_title">الخدمات (%1$d)</string>
     <string name="section_receivers_title">مستقبلات البث (%1$d)</string>
     <string name="section_providers_title">موفرو المحتوى (%1$d)</string>
-    <string name="cd_collapse">طوي</string>
+    <string name="cd_collapse">طي</string>
     <string name="cd_expand">توسيع</string>
     <string name="components_none_declared">لم يتم الإعلان عن أي منها</string>
     <string name="section_native_libs_title">المكتبات الأصلية (.so)</string>
@@ -380,7 +380,7 @@
     <string name="try_again">حاول مجدداً</string>
     <string name="exit">خروج</string>
     <string name="title_thor_installer">مثبت Thor</string>
-    <string name="install_analyzing">جاري تحليل الحزمة…</string>
+    <string name="install_analyzing">جارٍ تحليل الحزمة…</string>
     <string name="install_downgrade_warning">سيؤدي هذا إلى خفض إصدار التطبيق.</string>
     <string name="install_downgrade_code_explainer">رمز الإصدار %1$s أقل من المثبَّت %2$s. يرتّب Android التحديثات حسب رمز الإصدار لا حسب اسم الإصدار، لذا قد يبدو التطبيق أحدث وهو في الواقع خفض للإصدار.</string>
     <string name="install_update_warning">سيؤدي هذا إلى تحديث التطبيق الحالي.</string>
@@ -489,7 +489,7 @@
     <string name="biometric_unavailable_message">قفل التطبيق مُفعَّل، لكن لا يوجد في هذا الجهاز ما يمكن إلغاء القفل به. قم بإعداد قفل شاشة أو تسجيل بصمة من إعدادات النظام ثم عُد — وسيسمح لك Thor بالدخول.</string>
     <string name="biometric_unavailable_message_biometric_only">قفل التطبيق مُفعَّل، لكن لا توجد بصمة مُسجَّلة على هذا الجهاز، وفي Android 9 لا يمكن لطلب إلغاء القفل قبول قفل الشاشة. سجِّل بصمة من إعدادات النظام ثم عُد — وسيسمح لك Thor بالدخول.</string>
     <string name="biometric_not_enrolled_toast">لا توجد بيانات حيوية مُسجَّلة — أعدّ قفل شاشة أو بصمة أولاً</string>
-    <string name="biometric_not_enrolled_toast_biometric_only">لا توجد بصمة مُسجَّلة — في أندرويد 9 لا يفتح قفل الشاشة تطبيق ثور، فسجّل بصمة أولاً</string>
+    <string name="biometric_not_enrolled_toast_biometric_only">لا توجد بصمة مُسجَّلة — في Android 9 لا يفتح قفل الشاشة تطبيق Thor، فسجّل بصمة أولاً</string>
     <string name="biometric_lock_unavailable_toast">لا يمكن تفعيل قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
     <string name="biometric_lock_disabled_no_biometric">تم إيقاف قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
     <string name="settings_lost_using_defaults">تعذّر على Thor قراءة إعداداتك، ويستخدم الآن الإعدادات الافتراضية: تحقّق من قفل التطبيق في الإعدادات</string>
@@ -604,14 +604,14 @@
     <string name="freeze_all_apps">تجميد الكل</string>
     <string name="shortcuts">الاختصارات</string>
     <string name="shortcut_add_all">إضافة جميع التطبيقات</string>
-    <string name="shortcut_added_named">تم إضافة %1$s إلى الشاشة الرئيسية</string>
-    <string name="shortcut_added">تم إضافة الاختصار إلى الشاشة الرئيسية</string>
+    <string name="shortcut_added_named">تمت إضافة %1$s إلى الشاشة الرئيسية</string>
+    <string name="shortcut_added">تمت إضافة الاختصار إلى الشاشة الرئيسية</string>
     <string name="pin_all_confirm_title">إضافة جميع التطبيقات إلى الشاشة الرئيسية؟</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="pin_all_confirm_desc">
-        <item quantity="zero">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
-        <item quantity="one">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
-        <item quantity="two">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
+        <item quantity="zero">لا توجد لديك تطبيقات مجمدة لإضافتها إلى الشاشة الرئيسية.</item>
+        <item quantity="one">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لتطبيقك المجمد الوحيد. ستطلب منك شاشة التشغيل تأكيده.</item>
+        <item quantity="two">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكلا تطبيقيك المجمدين. ستطلب منك شاشة التشغيل تأكيد كل منهما.</item>
         <item quantity="few">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
         <item quantity="many">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
         <item quantity="other">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
@@ -670,12 +670,12 @@
     <string name="action_save">حفظ</string>
     <string name="more_options">المزيد من الخيارات</string>
     <plurals name="profile_app_count">
-        <item quantity="zero">%1$d تطبيقات</item>
-        <item quantity="one">%1$d تطبيق</item>
-        <item quantity="two">%1$d تطبيقان</item>
+        <item quantity="zero">لا توجد تطبيقات</item>
+        <item quantity="one">تطبيق واحد</item>
+        <item quantity="two">تطبيقان</item>
         <item quantity="few">%1$d تطبيقات</item>
         <item quantity="many">%1$d تطبيقًا</item>
-        <item quantity="other">%1$d تطبيقات</item>
+        <item quantity="other">%1$d تطبيق</item>
     </plurals>
     <string name="fix_store_desc">يعيد Thor تثبيت كل تطبيق حتى يسجّل Android متجر Play كالتطبيق الذي ثبّته. تبقى بياناتك وإعداداتك كما هي.</string>
     <string name="fix_store_warning">قد يتوقف تحديث أي تطبيق لا يطابق توقيعه نسخة متجر Play. أزل تحديد ما تفضّل تركه دون تغيير.</string>

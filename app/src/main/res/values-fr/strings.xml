@@ -301,7 +301,7 @@
     <string name="tab_libs_features">Bibliothèques et fonctionnalités</string>
     <string name="chip_system">Système</string>
     <string name="chip_user">Utilisateur</string>
-    <string name="chip_debug">Déboguer</string>
+    <string name="chip_debug">Débogage</string>
     <string name="dialog_clear_data_desc">Tous les fichiers, paramètres et bases de données de cette application seront définitivement supprimés.</string>
     <string name="uninstall_app_title">Désinstaller l\'application ?</string>
     <string name="uninstall_app_desc">Êtes-vous sûr de vouloir désinstaller %1$s ?</string>
@@ -327,7 +327,7 @@
     <string name="info_shared_data_dir">Répertoire de données partagées</string>
     <string name="info_signature_sha256">Empreinte numérique de signature SHA-256</string>
     <string name="info_bloat_description">Pourquoi elle est signalée</string>
-    <string name="no_permissions_found">Aucun permis trouvé</string>
+    <string name="no_permissions_found">Aucune autorisation trouvée</string>
     <string name="search_components_placeholder">Rechercher des composants&#8230;</string>
     <string name="section_activities_title">Activités (%1$d)</string>
     <string name="section_services_title">Services (%1$d)</string>
@@ -351,7 +351,7 @@
     <string name="exit">Quitter</string>
     <string name="title_thor_installer">Installateur Thor</string>
     <string name="install_analyzing">Analyse du paquet…</string>
-    <string name="install_downgrade_warning">Cela va dégrader l\'application.</string>
+    <string name="install_downgrade_warning">Cela va rétrograder l\'application.</string>
     <string name="install_downgrade_code_explainer">Le code de version %1$s est inférieur au %2$s installé. Android ordonne les mises à jour par code de version, et non par nom de version : une application peut sembler plus récente tout en étant une rétrogradation.</string>
     <string name="install_update_warning">Cela va mettre à jour l\'application existante.</string>
     <plurals name="install_permissions">
@@ -429,7 +429,7 @@
     <!-- Support Developer -->
     <string name="support_developer">Soutenir le développeur</string>
     <string name="support_developer_desc">Soutenir le développement continu de Thor</string>
-    <string name="support_developer_desc_detailed">Thor est open source et complètement sans publicité. S\'il vous a été utile, merci de considérer de soutenir mon travail :</string>
+    <string name="support_developer_desc_detailed">Thor est open source et complètement sans publicité. S\'il vous a été utile, merci d\'envisager de soutenir mon travail :</string>
     <string name="sponsor_github_title">Sponsoriser sur GitHub</string>
     <string name="sponsor_github_desc">Ponctuel ou mensuel, au plus près du code</string>
     <string name="become_patreon_title">Devenir Patreon</string>
@@ -442,7 +442,7 @@
     <string name="donate_paypal_desc">Envoyer un don unique directement</string>
 
     <!-- Support & Community Dashboard Section -->
-    <string name="support_community_title">Support &amp; Communauté</string>
+    <string name="support_community_title">Soutien &amp; Communauté</string>
     <string name="support_community_desc">Aidez-nous à maintenir et améliorer Thor en soutenant le développement ou en rejoignant notre communauté.</string>
     <string name="community_github">GitHub</string>
     <string name="community_telegram">Telegram</string>
@@ -499,7 +499,7 @@
     <string name="action_export">Exporter</string>
     <string name="export_explain_apk">Thor enregistre cette application sous forme d\'un fichier d\'installation unique (.apk) dans le dossier ci-dessous. Utilisez-le pour sauvegarder l\'application ou la réinstaller plus tard.</string>
     <string name="export_explain_apks">Cette application est composée de plusieurs parties distinctes, regroupées dans un seul paquet (.apks) dans le dossier ci-dessous. Réinstallez-la à tout moment avec l\'installateur de Thor.</string>
-    <string name="export_explain_xapk">Thor regroupe les parties de cette app dans un seul .xapk dans le dossier ci-dessous, un format que d\'autres installeurs comprennent aussi. Les données de jeu (fichiers OBB) sont incluses lorsque le mode d\'accès actuel de Thor peut les lire.</string>
+    <string name="export_explain_xapk">Thor regroupe les parties de cette app dans un seul .xapk dans le dossier ci-dessous, un format que d\'autres installateurs comprennent aussi. Les données de jeu (fichiers OBB) sont incluses lorsque le mode d\'accès actuel de Thor peut les lire.</string>
     <string name="export_xapk_no_game_data">Thor ne peut pas lire les données de jeu de cette app pour l\'instant — le plus souvent, cela signifie qu\'il faut root ou Shizuku. Le .xapk sera quand même créé, sans elles.</string>
     <string name="export_obb_included">Inclut %1$s de données de jeu.</string>
     <string name="export_obb_partial">Certains éléments du dossier de données de cette app ne sont pas des fichiers d\'extension et ne seront pas inclus.</string>
