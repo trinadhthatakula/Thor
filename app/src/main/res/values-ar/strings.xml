@@ -595,7 +595,7 @@
     <string name="installed_apps_permission_grant">منح</string>
     <string name="freeze_mode">وضع التجميد</string>
     <string name="suspend_instead_of_freeze">التعليق بدلاً من التجميد</string>
-    <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>
+    <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>
     <string name="skip_routine_freeze_confirmation">عدم تأكيد عمليات التجميد المعتادة</string>
     <string name="skip_routine_freeze_confirmation_desc">تجميد تطبيقات النظام دون السؤال أولاً، ما لم تكن قائمة UAD قد وسمتها. التطبيقات المصنفة كـ Expert لا تزال تُحذّر، وغير الآمنة لا يزال تجميدها محظوراً.</string>
     <string name="add_freezer_to_launcher">إضافة المجمد إلى شاشة التشغيل</string>
