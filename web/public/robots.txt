@@ -10,6 +10,8 @@
 User-agent: *
 Allow: /
 Disallow: /styleguide
+Disallow: /follow-ups
+Disallow: /follow-ups-report
 
 # Emitted by @astrojs/sitemap, which filters /styleguide out a second time. This
 # is the one line here that can be silently wrong — a 404 sitemap reads to a
