@@ -73,7 +73,7 @@
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ Aplicativos do sistema</string>
-    <string name="selected_count">%1$d selecionados</string>
+    <string name="selected_count">%1$d selecionado(s)</string>
     <string name="no_matching_apps">Não há aplicativos correspondentes</string>
     <string name="no_apps_display">Não há aplicativos para mostrar</string>
     <string name="adjust_filters_hint">Tente ajustar a sua busca ou os filtros</string>

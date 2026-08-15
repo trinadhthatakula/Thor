@@ -215,7 +215,7 @@
          old key would keep promising a broken install. -->
     <string name="export_xapk_no_game_data">Thor nie może teraz odczytać danych gry tej aplikacji — zwykle znaczy to, że potrzebny jest dostęp root lub Shizuku. Plik .xapk i tak powstanie, tylko bez nich.</string>
     <string name="export_obb_included">Zawiera %1$s danych gry.</string>
-    <string name="export_obb_partial">Część pozycji w folderze danych gry tej aplikacji to nie pliki rozszerzeń i nie zostaną dołączone.</string>
+    <string name="export_obb_partial">Niektóre pozycje w folderze danych gry tej aplikacji to nie pliki rozszerzeń i nie zostaną dołączone.</string>
     <string name="export_format">Format</string>
     <string name="export_save_to">Zapisz w</string>
     <string name="export_change">Zmień</string>
@@ -321,7 +321,7 @@
     <string name="usage_access_granted_subtitle">Przyznany — umożliwia sortowanie po rozmiarze aplikacji</string>
     <string name="usage_access_needed_subtitle">Potrzebny do odczytu rozmiarów aplikacji przy sortowaniu po rozmiarze</string>
     <string name="usage_access_needed_title">Wymagany dostęp do danych o użyciu</string>
-    <string name="usage_access_prompt_body">Thor potrzebuje dostępu do danych o użyciu, aby odczytać rozmiary aplikacji. Włącz go dla aplikacji Thor, a potem wybierz „Rozmiar” ponownie. Możesz też zarządzać tym w Ustawienia → Uprawnienia.</string>
+    <string name="usage_access_prompt_body">Thor potrzebuje dostępu do danych o użyciu, aby odczytać rozmiary aplikacji. Włącz go dla aplikacji Thor, a potem wybierz „Rozmiar” ponownie. Możesz też zarządzać tym w Ustawieniach → Uprawnienia.</string>
     <string name="notification_access">Powiadomienia</string>
     <string name="notification_access_granted_subtitle">Wyniki zbiorczego zamrażania są pokazywane jako powiadomienia</string>
     <string name="notification_access_needed_subtitle">Zezwól na powiadomienia, aby widzieć wyniki zbiorczego zamrażania</string>
@@ -756,7 +756,7 @@
     <string name="profile_saved">Zapisano profil</string>
     <string name="profile_deleted">Usunięto profil</string>
     <string name="profile_nothing_to_do">Nic do zrobienia dla tego profilu</string>
-    <string name="bulk_run_failed">To uruchomienie nie zostało ukończone — sprawdź aplikacje, zanim na nim polegniesz</string>
+    <string name="bulk_run_failed">To uruchomienie nie zostało ukończone — sprawdź aplikacje, zanim zaczniesz na nim polegać</string>
     <string name="error_profile_name_taken">Ta nazwa profilu jest już zajęta</string>
     <string name="error_profile_delete_failed">Nie udało się usunąć tego profilu</string>
     <string name="error_profiles_load_failed">Nie udało się wczytać profili zamrażania</string>

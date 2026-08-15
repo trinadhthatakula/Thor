@@ -117,8 +117,11 @@
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ Aplicações de sistema</string>
-    <!-- No plural noun ("Selected" is invariant), so one/other would be identical — not a plural. -->
-    <string name="selected_count">%1$d selecionadas</string>
+    <!-- "Selected" is invariant in English, but the Portuguese participle agrees in number, so a
+         frozen plural would render "1 selecionadas". "(s)" covers 1 and n in one form, which is
+         what values-es and values-fr already do for this same string. Feminine: the referent is
+         "aplicações". -->
+    <string name="selected_count">%1$d selecionada(s)</string>
     <string name="no_matching_apps">Não há aplicações correspondentes</string>
     <string name="no_apps_display">Não há aplicações para mostrar</string>
     <string name="adjust_filters_hint">Tente ajustar a sua pesquisa ou os filtros</string>
@@ -193,7 +196,7 @@
     <string name="explain_force_stop_title">Forçar a paragem</string>
     <string name="explain_force_stop_body">Termina a aplicação e tudo o que ela está a executar neste momento. Continua instalada e volta a arrancar assim que o utilizador ou o sistema a abrir. Nada é eliminado.</string>
     <string name="explain_suspend_title">Suspender</string>
-    <string name="explain_suspend_body">A aplicação continua no ecrã principal mas não pode ser aberta — tocar nela mostra uma caixa de diálogo do sistema. Isto sobrevive a um reinício, até anular a suspensão. Nada é eliminado.</string>
+    <string name="explain_suspend_body">A aplicação continua no ecrã principal, mas não pode ser aberta — tocar nela mostra uma caixa de diálogo do sistema. Isto sobrevive a um reinício, até anular a suspensão. Nada é eliminado.</string>
     <string name="explain_freeze_title">Congelar</string>
     <string name="explain_freeze_body">Desativa completamente a aplicação: desaparece do ecrã principal e não pode ser executada de todo, nem sequer em segundo plano. Isto sobrevive a um reinício, até a descongelar. Nada é eliminado.</string>
 
@@ -432,7 +435,7 @@
     <string name="extension_install">Instalar</string>
     <string name="extension_update">Atualizar</string>
     <string name="extension_installed">Instalada</string>
-    <string name="extension_source_only">Só código-fonte — compile-a você mesmo</string>
+    <string name="extension_source_only">Só código-fonte — tem de a compilar</string>
     <string name="extension_requires_lsposed">Requer o LSPosed</string>
     <string name="extension_requires_thor">Requer uma versão mais recente do Thor</string>
     <string name="extension_store_empty">Ainda não há extensões disponíveis</string>
