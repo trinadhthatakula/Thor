@@ -39,7 +39,7 @@ four oldest locales (`ar`, `es`, `fr`, `zh-rCN`) predate it and fold the setting
    apostrophe as `\'`.
 
 **Then wire the language up, or it ships and nobody can select it.** A `values-xx` directory alone
-does nothing; four other files have to agree, and the build only catches two of them:
+does nothing; five other places have to agree, and `lintFossDebug` only catches two of them:
 
 | File | What to add |
 |---|---|
@@ -47,9 +47,11 @@ does nothing; four other files have to agree, and the build only catches two of 
 | [`res/xml/locales_config.xml`](app/src/main/res/xml/locales_config.xml) | the **BCP-47 tag** (`pt-BR`, not `pt-rBR`). This is what Android 13+'s own per-app language screen reads. |
 | [`LocalePolicy.kt`](app/src/main/java/com/valhalla/thor/util/LocalePolicy.kt) → `AppLanguage` | an enum entry with its BCP-47 tag. Read the KDoc first — whether the tag carries a region is not a free choice. |
 | [`SettingsCatalog.kt`](app/src/main/java/com/valhalla/thor/presentation/settings/SettingsCatalog.kt) → `labelRes` | the picker's own row label, plus a new `<string>` for the language name **in every locale** (they are exonyms — `values-fr` says "Anglais", not "English"). |
+| [`app/src/store/res/values-<x>/strings.xml`](app/src/store/res) | the 16 billing/support strings of the **store flavour**. They live outside `src/main`, so `lintFossDebug` cannot see them — only `lintStoreRelease` (which is what CI runs) reports them missing. |
 
-`LocalePolicyTest` pins several of these, so run `./gradlew testFossDebugUnitTest` before opening the
-PR.
+`LocalePolicyTest` pins several of these, so before opening the PR run
+`./gradlew :app:testFossDebugUnitTest :app:lintFossDebug :app:lintStoreRelease` — **both** lint
+variants, or the store source set stays unchecked until CI says otherwise.
 
 ### 2. Store Listing Metadata (Fastlane) Translation
 We use Fastlane to deploy the app to the Google Play Store and other stores. Store listings are localized under the [fastlane/metadata/android/](fastlane/metadata/android) directory.
