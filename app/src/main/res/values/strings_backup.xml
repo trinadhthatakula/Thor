@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Backup and restore strings (#51 phase 2). Untranslated for now: these ship
-  English-only and are exempted from MissingTranslation at the file level, the
-  same way values/non-translatable.xml is. Translating them is a follow-up row,
-  not a blocker — see docs/follow-ups/app-data-backup-and-xapk-export.md.
-  Do NOT move these into values/strings.xml until values-ar, values-es,
-  values-fr and values-zh-rCN all carry them, or lint turns fatal.
+  Backup and restore strings (#51 phase 2). These were English-only for a while
+  behind a file-level MissingTranslation exemption; every translated locale now
+  carries them, so the exemption is gone and lint guards this file like any
+  other. Adding a string here therefore obliges you to add it to all seven
+  values-<locale>/strings_backup.xml (and values-pt-rBR only if Brazilian usage
+  differs) — that is the point of removing the marker. The tools namespace stays
+  for the two element-level PluralsCandidate suppressions further down.
 -->
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="job_backing_up">Backing up</string>
     <string name="job_restoring">Restoring</string>
     <!--
