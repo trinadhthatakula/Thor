@@ -1,0 +1,1861 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thor Follow-Ups & Deferred Work Report | Impact × Ease Analysis</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════════════
+     * Thor Design System Tokens (Transcribed from tokens.css & Color.kt)
+     * ══════════════════════════════════════════════════════════════════════════════ */
+    :root {
+      color-scheme: dark;
+      --primary: #f0ffd7;
+      --on-primary: #4c672c;
+      --primary-container: #d5f6ab;
+      --on-primary-container: #445e25;
+
+      --secondary: #c7c4dd;
+      --on-secondary: #3f3e52;
+      --secondary-container: #242436;
+      --on-secondary-container: #a4a1b9;
+
+      --tertiary: #c8bfff;
+      --on-tertiary: #3f3386;
+      --tertiary-container: #baafff;
+      --on-tertiary-container: #35287c;
+
+      --error: #fe7453;
+      --on-error: #450900;
+      --error-container: #881f05;
+      --warning: #f59e0b;
+      --warning-container: #451a03;
+      --success: #34d399;
+      --success-container: #064e3b;
+
+      --background: #0e0e0e;
+      --on-background: #e5e5e5;
+      --surface: #0e0e0e;
+      --on-surface: #e5e5e5;
+      --surface-variant: #262626;
+      --on-surface-variant: #ababab;
+
+      --outline: #757575;
+      --outline-variant: #484848;
+
+      --surface-container-lowest: #000000;
+      --surface-container-low: #131313;
+      --surface-container: #191919;
+      --surface-container-high: #1f1f1f;
+      --surface-container-highest: #262626;
+
+      --font-sans: 'Outfit', ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --font-mono: 'Fira Code', ui-monospace, 'SF Mono', monospace;
+
+      --radius-xs: 4px;
+      --radius-s: 8px;
+      --radius-m: 12px;
+      --radius-l: 16px;
+      --radius-xl: 24px;
+      --radius-full: 9999px;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
+    }
+
+    [data-theme="light"] {
+      color-scheme: light;
+      --primary: #354e15;
+      --on-primary: #ffffff;
+      --primary-container: #4c662b;
+      --on-primary-container: #f0ffd7;
+
+      --secondary: #55624c;
+      --on-secondary: #ffffff;
+      --secondary-container: #d9e7cb;
+      --on-secondary-container: #131f0d;
+
+      --tertiary: #66355d;
+      --on-tertiary: #ffffff;
+      --tertiary-container: #f8d8ee;
+      --on-tertiary-container: #2d112b;
+
+      --error: #ba1a1a;
+      --on-error: #ffffff;
+      --error-container: #ffdad6;
+      --warning: #b45309;
+      --warning-container: #fef3c7;
+      --success: #059669;
+      --success-container: #d1fae5;
+
+      --background: #f8faf3;
+      --on-background: #191c18;
+      --surface: #f8faf3;
+      --on-surface: #191c18;
+      --surface-variant: #edefe8;
+      --on-surface-variant: #43493e;
+
+      --outline: #74796d;
+      --outline-variant: #c3c8bc;
+
+      --surface-container-lowest: #ffffff;
+      --surface-container-low: #f2f4ed;
+      --surface-container: #edefe8;
+      --surface-container-high: #e7e9e2;
+      --surface-container-highest: #e1e3dd;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.1);
+    }
+
+    [data-theme="dark"][data-amoled="true"] {
+      --background: #000000;
+      --surface: #000000;
+      --surface-variant: #000000;
+    }
+
+    /* ── Reset & Base Styles ────────────────────────────────────────────────── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      background-color: var(--background);
+      color: var(--on-surface);
+      font-family: var(--font-sans);
+      font-size: 1rem;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    /* ── Header & Navigation ────────────────────────────────────────────────── */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background-color: var(--surface-container);
+      border-bottom: 1px solid var(--outline-variant);
+      backdrop-filter: blur(12px);
+      padding: 0.75rem 1.5rem;
+    }
+
+    .nav-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .brand-cluster {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-badge {
+      background-color: var(--primary-container);
+      color: var(--on-primary-container);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-s);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--on-surface);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .theme-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-toggle {
+      background-color: var(--surface-container-high);
+      border: 1px solid var(--outline-variant);
+      color: var(--on-surface);
+      padding: 0.4rem 0.75rem;
+      border-radius: var(--radius-m);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+    }
+
+    .btn-toggle:hover {
+      background-color: var(--surface-variant);
+      border-color: var(--outline);
+    }
+
+    .btn-toggle.active {
+      background-color: var(--primary-container);
+      color: var(--on-primary-container);
+      border-color: var(--primary);
+    }
+
+    /* ── Main Layout ────────────────────────────────────────────────────────── */
+    .page-wrapper {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+
+    /* ── Hero Banner ────────────────────────────────────────────────────────── */
+    .hero-section {
+      background: linear-gradient(135deg, var(--surface-container) 0%, var(--surface-container-high) 100%);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-xl);
+      padding: 2.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-section::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(240, 255, 215, 0.08) 0%, rgba(240, 255, 215, 0) 70%);
+      pointer-events: none;
+    }
+
+    .hero-title {
+      font-size: clamp(2rem, 3.5vw, 3rem);
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.75rem;
+      color: var(--primary);
+    }
+
+    .hero-subtitle {
+      font-size: 1.15rem;
+      color: var(--on-surface-variant);
+      max-width: 800px;
+      margin-bottom: 1.75rem;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    .kpi-card {
+      background-color: var(--surface-container-low);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-m);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .kpi-value {
+      font-family: var(--font-mono);
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--on-surface);
+    }
+
+    .kpi-value.accent { color: var(--primary); }
+    .kpi-value.warning { color: var(--warning); }
+    .kpi-value.success { color: var(--success); }
+    .kpi-value.info { color: var(--tertiary); }
+
+    .kpi-label {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--on-surface-variant);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Priority Recommendations / Next Pick ───────────────────────────────── */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+      border-bottom: 1px solid var(--outline-variant);
+      padding-bottom: 0.75rem;
+    }
+
+    .section-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .section-desc {
+      font-size: 0.95rem;
+      color: var(--on-surface-variant);
+    }
+
+    .next-pick-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .action-card {
+      background-color: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-l);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      position: relative;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .action-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--primary);
+      box-shadow: var(--shadow-md);
+    }
+
+    .action-card.rank-1 {
+      border-color: var(--primary);
+      background: linear-gradient(180deg, var(--surface-container-high) 0%, var(--surface-container) 100%);
+    }
+
+    .rank-badge {
+      position: absolute;
+      top: -10px;
+      right: 1.5rem;
+      background-color: var(--primary);
+      color: var(--on-primary);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius-full);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .card-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--on-surface);
+      line-height: 1.3;
+    }
+
+    .card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .meta-chip {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: var(--radius-s);
+      background-color: var(--surface-container-highest);
+      color: var(--on-surface-variant);
+    }
+
+    .meta-chip.impact-high {
+      background-color: var(--primary-container);
+      color: var(--on-primary-container);
+    }
+
+    .meta-chip.ease-high {
+      background-color: var(--secondary-container);
+      color: var(--on-secondary-container);
+    }
+
+    .card-body {
+      font-size: 0.92rem;
+      color: var(--on-surface-variant);
+      line-height: 1.55;
+    }
+
+    .card-footer {
+      margin-top: auto;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--outline-variant);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+    }
+
+    /* ── Interactive 2D Matrix ──────────────────────────────────────────────── */
+    .matrix-container {
+      background-color: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-xl);
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .matrix-layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (min-width: 1024px) {
+      .matrix-layout {
+        grid-template-columns: 1fr 340px;
+      }
+    }
+
+    .quadrant-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 1rem;
+      min-height: 480px;
+      position: relative;
+    }
+
+    .quadrant {
+      background-color: var(--surface-container-low);
+      border: 1px dashed var(--outline-variant);
+      border-radius: var(--radius-m);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      position: relative;
+      transition: background-color 0.2s ease;
+    }
+
+    .quadrant.q1 {
+      border-color: var(--primary);
+      background-color: rgba(240, 255, 215, 0.03);
+    }
+
+    .quadrant-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--outline-variant);
+      padding-bottom: 0.4rem;
+    }
+
+    .quadrant-name {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--on-surface);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .quadrant-badge {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: var(--radius-xs);
+      background-color: var(--surface-container-high);
+      color: var(--on-surface-variant);
+    }
+
+    .quadrant-items {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      overflow-y: auto;
+      max-height: 240px;
+      padding-right: 0.25rem;
+    }
+
+    .matrix-item-pill {
+      background-color: var(--surface-container-high);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-s);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.15s ease;
+    }
+
+    .matrix-item-pill:hover, .matrix-item-pill.selected {
+      background-color: var(--surface-container-highest);
+      border-color: var(--primary);
+      transform: translateX(2px);
+    }
+
+    .matrix-item-title {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .matrix-item-scores {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--primary);
+      white-space: nowrap;
+    }
+
+    .matrix-sidebar {
+      background-color: var(--surface-container-low);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-l);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .sidebar-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .inspector-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    .inspector-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .inspector-key {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--on-surface-variant);
+      text-transform: uppercase;
+    }
+
+    .inspector-val {
+      color: var(--on-surface);
+      font-weight: 500;
+    }
+
+    /* ── Controls & Filter Bar ──────────────────────────────────────────────── */
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      justify-content: space-between;
+      background-color: var(--surface-container);
+      padding: 1rem 1.25rem;
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-l);
+    }
+
+    .search-box {
+      flex: 1;
+      min-width: 260px;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      background-color: var(--surface-container-high);
+      border: 1px solid var(--outline-variant);
+      color: var(--on-surface);
+      padding: 0.5rem 1rem 0.5rem 2.25rem;
+      border-radius: var(--radius-m);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .search-input:focus {
+      border-color: var(--primary);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--on-surface-variant);
+      pointer-events: none;
+    }
+
+    .filter-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .filter-btn {
+      background-color: var(--surface-container-high);
+      border: 1px solid var(--outline-variant);
+      color: var(--on-surface-variant);
+      padding: 0.35rem 0.75rem;
+      border-radius: var(--radius-full);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .filter-btn:hover {
+      color: var(--on-surface);
+      border-color: var(--outline);
+    }
+
+    .filter-btn.active {
+      background-color: var(--primary);
+      color: var(--on-primary);
+      border-color: var(--primary);
+      font-weight: 700;
+    }
+
+    /* ── Table & Accordion Directory ────────────────────────────────────────── */
+    .items-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .detail-card {
+      background-color: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-l);
+      overflow: hidden;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .detail-card:hover {
+      border-color: var(--outline);
+    }
+
+    .detail-card.highlight {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+
+    .card-header-row {
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      cursor: pointer;
+      user-select: none;
+      background-color: var(--surface-container);
+    }
+
+    .card-header-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex: 1;
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-indicator.shipped { background-color: var(--success); box-shadow: 0 0 8px rgba(52, 211, 153, 0.4); }
+    .status-indicator.partial { background-color: var(--warning); box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
+    .status-indicator.open { background-color: var(--primary); box-shadow: 0 0 8px rgba(240, 255, 215, 0.4); }
+    .status-indicator.blocked { background-color: var(--error); box-shadow: 0 0 8px rgba(254, 116, 83, 0.4); }
+    .status-indicator.deferred { background-color: var(--outline); }
+
+    .item-header-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--on-surface);
+    }
+
+    .card-header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    .score-badge-group {
+      display: flex;
+      gap: 0.35rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+    }
+
+    .score-pill {
+      padding: 0.2rem 0.5rem;
+      border-radius: var(--radius-xs);
+      background-color: var(--surface-container-highest);
+      color: var(--on-surface);
+      font-weight: 600;
+    }
+
+    .status-tag {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-full);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .status-tag.shipped { background-color: var(--success-container); color: var(--success); }
+    .status-tag.partial { background-color: var(--warning-container); color: var(--warning); }
+    .status-tag.open { background-color: var(--primary-container); color: var(--on-primary-container); }
+    .status-tag.blocked { background-color: var(--error-container); color: var(--error); }
+    .status-tag.deferred { background-color: var(--surface-variant); color: var(--on-surface-variant); }
+
+    .expand-chevron {
+      color: var(--on-surface-variant);
+      transition: transform 0.2s ease;
+    }
+
+    .detail-card.open .expand-chevron {
+      transform: rotate(180deg);
+    }
+
+    .card-content-pane {
+      display: none;
+      padding: 1.25rem 1.5rem 1.5rem;
+      border-top: 1px solid var(--outline-variant);
+      background-color: var(--surface-container-low);
+      gap: 1.25rem;
+      flex-direction: column;
+    }
+
+    .detail-card.open .card-content-pane {
+      display: flex;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+
+    @media (min-width: 768px) {
+      .content-grid {
+        grid-template-columns: 1.2fr 1fr;
+      }
+    }
+
+    .pane-block {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .pane-heading {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--primary);
+    }
+
+    .pane-text {
+      font-size: 0.92rem;
+      color: var(--on-surface-variant);
+      line-height: 1.6;
+    }
+
+    .file-ref {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background-color: var(--surface-container-high);
+      color: var(--primary);
+      padding: 0.15rem 0.4rem;
+      border-radius: var(--radius-xs);
+      border: 1px solid var(--outline-variant);
+      word-break: break-all;
+    }
+
+    .callout-box {
+      background-color: var(--surface-container-high);
+      border-left: 3px solid var(--primary);
+      padding: 0.75rem 1rem;
+      border-radius: 0 var(--radius-s) var(--radius-s) 0;
+      font-size: 0.88rem;
+      color: var(--on-surface);
+    }
+
+    .callout-box.warning {
+      border-left-color: var(--warning);
+      background-color: rgba(245, 158, 11, 0.06);
+    }
+
+    .callout-box.danger {
+      border-left-color: var(--error);
+      background-color: rgba(254, 116, 83, 0.06);
+    }
+
+    /* ── Risk & Unverified Hardware Register ────────────────────────────────── */
+    .register-table-wrapper {
+      background-color: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-l);
+      overflow-x: auto;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      text-align: left;
+    }
+
+    .data-table th {
+      background-color: var(--surface-container-high);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--on-surface);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.9rem 1.2rem;
+      border-bottom: 1px solid var(--outline);
+    }
+
+    .data-table td {
+      padding: 1rem 1.2rem;
+      border-bottom: 1px solid var(--outline-variant);
+      color: var(--on-surface-variant);
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .data-table tr:hover td {
+      background-color: var(--surface-container-low);
+    }
+
+    /* ── Footer ─────────────────────────────────────────────────────────────── */
+    .page-footer {
+      border-top: 1px solid var(--outline-variant);
+      padding-top: 2rem;
+      text-align: center;
+      color: var(--on-surface-variant);
+      font-size: 0.85rem;
+      font-family: var(--font-mono);
+    }
+
+    /* ── Responsive adjustments ────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .hero-section { padding: 1.5rem; }
+      .quadrant-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, auto); }
+      .card-header-row { flex-direction: column; align-items: flex-start; }
+      .card-header-right { width: 100%; justify-content: space-between; margin-top: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="top-nav">
+    <div class="nav-container">
+      <div class="brand-cluster">
+        <span class="brand-badge">THOR // DOCS</span>
+        <h1 class="brand-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          Follow-Ups Executive Report
+        </h1>
+      </div>
+      <div class="theme-controls">
+        <button class="btn-toggle" id="themeToggle" title="Toggle Theme">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          <span id="themeLabel">Dark</span>
+        </button>
+        <button class="btn-toggle" id="amoledToggle" title="Toggle AMOLED Pure Black">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <span>AMOLED</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="page-wrapper">
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <h2 class="hero-title">Technical Debt, Deferred Work & Roadmap Synthesis</h2>
+      <p class="hero-subtitle">
+        Systematic assessment of 22 documented follow-up investigations and open backlog items in <code>docs/follow-ups/</code>, ranked by <strong>Impact × Ease of Implementation</strong> to guide development and release gates.
+      </p>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-value">22</div>
+          <div class="kpi-label">Follow-Up Docs</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value success">11</div>
+          <div class="kpi-label">Shipped / Closed</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value warning">5</div>
+          <div class="kpi-label">Partially Addressed</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value accent">6</div>
+          <div class="kpi-label">Open / Actionable</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value info">21</div>
+          <div class="kpi-label">Unrun Device Checks</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Priority Recommendations Section -->
+    <section>
+      <div class="section-header">
+        <div>
+          <h3 class="section-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            Top Recommended Action Items (Next Picks)
+          </h3>
+          <p class="section-desc">Ranked by <strong>Impact × Ease</strong>: highest engineering payoff for minimal friction.</p>
+        </div>
+      </div>
+
+      <div class="next-pick-grid">
+        <!-- Pick 1: Home Bento Restore -->
+        <div class="action-card rank-1">
+          <span class="rank-badge">#1 NEXT PICK</span>
+          <div class="card-top">
+            <h4 class="card-title">Home Bento "Restore a Backup" Entry Point</h4>
+          </div>
+          <div class="card-meta">
+            <span class="meta-chip impact-high">Impact: 4.8 / 5.0</span>
+            <span class="meta-chip ease-high">Effort: ≈ 0.5 Days</span>
+            <span class="meta-chip">Zero New Strings</span>
+          </div>
+          <p class="card-body">
+            Restore currently requires 4 taps deep in Settings (6th category) and is completely hidden for unprivileged users. Adding a <code>RESTORE</code> tile to the Home bento unlocks full discoverability for <code>.thorbak</code> archives, reuses existing translated strings in 8 locales, and requires no schema or ViewModel changes.
+          </p>
+          <div class="card-footer">
+            <span>Target: <code>MainScreen.kt</code> / <code>HomeActionRow</code></span>
+            <strong style="color: var(--primary);">Band C #31</strong>
+          </div>
+        </div>
+
+        <!-- Pick 2: Samsung My Files Diagnostic -->
+        <div class="action-card">
+          <span class="rank-badge">#2 QUICK WIN</span>
+          <div class="card-top">
+            <h4 class="card-title">Samsung My Files Intent Diagnostic & Direct MIME</h4>
+          </div>
+          <div class="card-meta">
+            <span class="meta-chip impact-high">Impact: 4.0 / 5.0</span>
+            <span class="meta-chip ease-high">Effort: ≈ 1 Hour</span>
+            <span class="meta-chip">Issue #161</span>
+          </div>
+          <p class="card-body">
+            Band A #10 added an opt-in toggle on <code>AnyFileInstallerAlias</code>. Running one ADB diagnostic command on Samsung hardware to capture the exact MIME type returned by Samsung's MediaStore provider will allow adding a single targeted manifest string, permanently solving APK installs without requiring the broad opt-in toggle.
+          </p>
+          <div class="card-footer">
+            <span>Target: <code>AndroidManifest.xml</code></span>
+            <strong style="color: var(--primary);">Issue #161</strong>
+          </div>
+        </div>
+
+        <!-- Pick 3: Freezer Membership Semantics -->
+        <div class="action-card">
+          <span class="rank-badge">#3 UX CLARITY</span>
+          <div class="card-top">
+            <h4 class="card-title">Differentiate Snowflake Button Action Labels</h4>
+          </div>
+          <div class="card-meta">
+            <span class="meta-chip impact-high">Impact: 3.5 / 5.0</span>
+            <span class="meta-chip ease-high">Effort: ≈ 2 Hours</span>
+            <span class="meta-chip">2 Strings</span>
+          </div>
+          <p class="card-body">
+            The snowflake button currently shares one label across two distinct behaviors: Apps tab removes watchlist row (leaves app frozen), while Freezer tab removes row AND thaws. Adopting Option 1 by setting distinct action labels ("Remove & Restore" on Freezer vs "Remove from Freezer" on Apps) eliminates user surprise.
+          </p>
+          <div class="card-footer">
+            <span>Target: <code>AppActionRow.kt</code></span>
+            <strong style="color: var(--primary);">Tier 3 Follow-Up</strong>
+          </div>
+        </div>
+
+        <!-- Pick 4: Static Analysis :app SyntheticAccessors -->
+        <div class="action-card">
+          <span class="rank-badge">#4 HYGIENE</span>
+          <div class="card-top">
+            <h4 class="card-title">Fix 43 <code>SyntheticAccessor</code> Warnings in <code>:app</code></h4>
+          </div>
+          <div class="card-meta">
+            <span class="meta-chip">Impact: 3.0 / 5.0</span>
+            <span class="meta-chip ease-high">Effort: ≈ 1 Hour</span>
+            <span class="meta-chip">DEX Optimization</span>
+          </div>
+          <p class="card-body">
+            Following the successful fix of 18 <code>SyntheticAccessor</code> warnings in <code>:bypass</code> (Band A #12), widening Companion methods from <code>private</code> to <code>internal</code> across <code>:app</code> eliminates 43 synthetic bytecode bridges, reducing APK method count against the 64K limit.
+          </p>
+          <div class="card-footer">
+            <span>Target: <code>app/src/main/java</code></span>
+            <strong style="color: var(--primary);">Static Analysis</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive 2D Impact vs Ease Matrix -->
+    <section>
+      <div class="section-header">
+        <div>
+          <h3 class="section-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="12" x2="21" y2="12"></line><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+            Impact vs. Ease of Implementation Matrix
+          </h3>
+          <p class="section-desc">Interactive quadrant analysis. Click any item to inspect its technical parameters.</p>
+        </div>
+      </div>
+
+      <div class="matrix-container">
+        <div class="matrix-layout">
+          <!-- 4 Quadrants -->
+          <div class="quadrant-grid">
+            
+            <!-- Q1: High Impact, High Ease (Quick Wins) -->
+            <div class="quadrant q1">
+              <div class="quadrant-header">
+                <span class="quadrant-name" style="color: var(--primary);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  Quadrant I: Quick Wins
+                </span>
+                <span class="quadrant-badge">High Impact · High Ease</span>
+              </div>
+              <div class="quadrant-items">
+                <div class="matrix-item-pill" onclick="inspectItem('home_restore')">
+                  <span class="matrix-item-title">#31 Home Bento Restore Entry</span>
+                  <span class="matrix-item-scores">I: 4.8 · E: 4.8</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('samsung_161')">
+                  <span class="matrix-item-title">#161 Samsung My Files Direct MIME</span>
+                  <span class="matrix-item-scores">I: 4.0 · E: 4.5</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('freezer_semantics')">
+                  <span class="matrix-item-title">Freezer Membership Label Split</span>
+                  <span class="matrix-item-scores">I: 3.5 · E: 4.8</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('freezer_escape')">
+                  <span class="matrix-item-title">Freezer Removal Stuck Escape Hatch</span>
+                  <span class="matrix-item-scores">I: 3.5 · E: 4.0</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('sub_downgrade')">
+                  <span class="matrix-item-title">Subscription Downgrade Mode Fix</span>
+                  <span class="matrix-item-scores">I: 3.5 · E: 4.2</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('synthetic_app')">
+                  <span class="matrix-item-title">Static Analysis: :app Synthetics</span>
+                  <span class="matrix-item-scores">I: 3.0 · E: 4.8</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Q2: High Impact, Low Ease (Strategic Bets) -->
+            <div class="quadrant">
+              <div class="quadrant-header">
+                <span class="quadrant-name" style="color: var(--tertiary);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                  Quadrant II: Major Projects
+                </span>
+                <span class="quadrant-badge">High Impact · Hard/Blocked</span>
+              </div>
+              <div class="quadrant-items">
+                <div class="matrix-item-pill" onclick="inspectItem('backup_ph2')">
+                  <span class="matrix-item-title">#23 App Data Backup (.thorbak)</span>
+                  <span class="matrix-item-scores">I: 5.0 · E: 2.0</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('bulk_backup')">
+                  <span class="matrix-item-title">#32 Bulk Backup/Restore Queue</span>
+                  <span class="matrix-item-scores">I: 4.5 · E: 1.5</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('tagging_notes')">
+                  <span class="matrix-item-title">#24/#178 App Tagging + Notes</span>
+                  <span class="matrix-item-scores">I: 3.5 · E: 3.0</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('change_history')">
+                  <span class="matrix-item-title">#25 Change & Version History Log</span>
+                  <span class="matrix-item-scores">I: 3.5 · E: 3.0</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('abandoned_apps')">
+                  <span class="matrix-item-title">#27 Abandoned App Notifications</span>
+                  <span class="matrix-item-scores">I: 3.5 · E: 3.2</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('freeze_consent')">
+                  <span class="matrix-item-title">Freeze Refusal Consent Escalation</span>
+                  <span class="matrix-item-scores">I: 3.5 · E: 3.0</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Q3: Low Impact, High Ease (Maintenance / Hygiene) -->
+            <div class="quadrant">
+              <div class="quadrant-header">
+                <span class="quadrant-name" style="color: var(--secondary);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                  Quadrant III: Hygiene & Tests
+                </span>
+                <span class="quadrant-badge">Low Impact · High Ease</span>
+              </div>
+              <div class="quadrant-items">
+                <div class="matrix-item-pill" onclick="inspectItem('runner_tests')">
+                  <span class="matrix-item-title">BulkFreezeRunner Concurrency Tests</span>
+                  <span class="matrix-item-scores">I: 3.0 · E: 3.0</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('release_logcat')">
+                  <span class="matrix-item-title">Release Builds Debug Log Toggle</span>
+                  <span class="matrix-item-scores">I: 2.5 · E: 4.2</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('perfetto_trace')">
+                  <span class="matrix-item-title">On-Device Perfetto & Leak Audit</span>
+                  <span class="matrix-item-scores">I: 3.5 · E: 3.5</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('vercel_deploy')">
+                  <span class="matrix-item-title">Vercel Actions Deploy Pipeline</span>
+                  <span class="matrix-item-scores">I: 1.5 · E: 4.0</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Q4: Low Impact, Low Ease (Deferred / Upstream) -->
+            <div class="quadrant">
+              <div class="quadrant-header">
+                <span class="quadrant-name" style="color: var(--on-surface-variant);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+                  Quadrant IV: Deferred / Upstream
+                </span>
+                <span class="quadrant-badge">Hard / Niche / Upstream</span>
+              </div>
+              <div class="quadrant-items">
+                <div class="matrix-item-pill" onclick="inspectItem('odin_root')">
+                  <span class="matrix-item-title">Odin Root Cache Invalidation</span>
+                  <span class="matrix-item-scores">I: 2.0 · E: 2.5</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('app_ops')">
+                  <span class="matrix-item-title">#28 App Ops Permission Revoke</span>
+                  <span class="matrix-item-scores">I: 3.0 · E: 2.0</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('running_apps')">
+                  <span class="matrix-item-title">#55b Background Running Apps Flag</span>
+                  <span class="matrix-item-scores">I: 2.5 · E: 2.0</span>
+                </div>
+                <div class="matrix-item-pill" onclick="inspectItem('app_lock')">
+                  <span class="matrix-item-title">#58 App Lock (Declined)</span>
+                  <span class="matrix-item-scores">I: 3.0 · E: 1.0</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Sidebar Inspector -->
+          <div class="matrix-sidebar">
+            <h4 class="sidebar-title" id="inspectorTitle">Select an Item</h4>
+            <div class="inspector-content" id="inspectorBody">
+              <p style="color: var(--on-surface-variant);">Click on any item pill in the 2D matrix to view detailed metrics, root cause, architectural notes, and exact files touched.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comprehensive Filterable Directory -->
+    <section>
+      <div class="section-header">
+        <div>
+          <h3 class="section-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            Complete Follow-Ups Directory & Status
+          </h3>
+          <p class="section-desc">Search and filter across all 22 follow-up documents and related initiatives.</p>
+        </div>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="filter-bar">
+        <div class="search-box">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="searchInput" class="search-input" placeholder="Search by name, file, issue #, keyword...">
+        </div>
+        <div class="filter-chips">
+          <button class="filter-btn active" data-filter="all">All (22)</button>
+          <button class="filter-btn" data-filter="open">Open (6)</button>
+          <button class="filter-btn" data-filter="partial">Partial (5)</button>
+          <button class="filter-btn" data-filter="shipped">Shipped (11)</button>
+        </div>
+      </div>
+
+      <!-- Items Grid -->
+      <div class="items-grid" id="itemsList">
+        <!-- Rendered by JS below -->
+      </div>
+    </section>
+
+    <!-- Risk & Hardware Device Check Register -->
+    <section>
+      <div class="section-header">
+        <div>
+          <h3 class="section-title" style="color: var(--error);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            Hardware Verification Gap Register
+          </h3>
+          <p class="section-desc">Critical actions verified only on JVM / desk tests that require physical device testing before <code>store</code> release.</p>
+        </div>
+      </div>
+
+      <div class="register-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Feature / Component</th>
+              <th>Desk Status</th>
+              <th>Required Hardware Checks</th>
+              <th>Risk Severity</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>#23 App Data Backup (PR #379)</strong></td>
+              <td><span class="status-tag shipped">Merged (1467 tests)</span></td>
+              <td>21 unrun device checks: Keystore biometric unlock, SELinux staging labels, non-ASCII passphrase UTF-8 surrogate streams, root tar replace.</td>
+              <td><span class="meta-chip impact-high" style="color: var(--error);">High Blocker</span></td>
+            </tr>
+            <tr>
+              <td><strong>#164 .xapk OBB Placement (PR #378)</strong></td>
+              <td><span class="status-tag shipped">Merged to dev</span></td>
+              <td>Verify subshell <code>( ... )</code> wrapper does not kill long-lived Odin root session on physical devices without OBB.</td>
+              <td><span class="meta-chip ease-high">Medium</span></td>
+            </tr>
+            <tr>
+              <td><strong>#161 Samsung My Files Installer</strong></td>
+              <td><span class="status-tag partial">Half Shipped (Alias)</span></td>
+              <td>Run <code>pm query-activities</code> on Samsung OneUI to observe reported ContentProvider MIME type.</td>
+              <td><span class="meta-chip ease-high">Medium</span></td>
+            </tr>
+            <tr>
+              <td><strong>Cross-Privilege Suspend (PR #330)</strong></td>
+              <td><span class="status-tag shipped">Shipped v1.93.2</span></td>
+              <td>Verify <code>dumpsys package</code> suspender parser on Android 15+ (<code>&lt;0&gt;</code> prefix) across Root ⇄ Shizuku transitions.</td>
+              <td><span class="meta-chip ease-high">Medium</span></td>
+            </tr>
+            <tr>
+              <td><strong>Backup Restore Invariants (#20)</strong></td>
+              <td><span class="status-tag shipped">Shipped</span></td>
+              <td>Verify setup-wizard cloud restore does not trigger biometric lockout or suppress disabled apps recovery prompt.</td>
+              <td><span class="meta-chip ease-high">Low (Guarded)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Page Footer -->
+    <footer class="page-footer">
+      <p>Thor Android Debloater & Freezer // System Technical Report // Generated from <code>docs/follow-ups/</code></p>
+    </footer>
+
+  </div>
+
+  <!-- Interactive Logic -->
+  <script>
+    const followUpsData = [
+      {
+        id: "home_restore",
+        title: "#31 Home Bento: Restore a Backup Entry Point",
+        doc: "README.md:251",
+        files: "app/src/main/java/com/valhalla/thor/presentation/main/MainScreen.kt, AppActionRow.kt",
+        status: "open",
+        statusText: "Open (Next Pick)",
+        impact: 4.8,
+        ease: 4.8,
+        effort: "≈ 0.5 Days",
+        category: "ux",
+        summary: "Restore currently requires 4 taps deep in Settings (6th category), completely hidden for unprivileged users holding a .thorbak. Non-Settings routes are broken for Downloads folder.",
+        rootCause: "Restore sheet was only wired inside Settings backup category. Downloads provider opaque IDs fail URI pathPattern match.",
+        solution: "Add a RESTORE tile in Home bento using existing strings (restore_title, settings_backup_restore.xml translated in 8 languages). Connect directly to openRestoreSheet().",
+        hardwareRequired: false
+      },
+      {
+        id: "samsung_161",
+        title: "#161 Samsung My Files: .apks Files Won't Open",
+        doc: "161-apks-not-openable-from-file-managers.md",
+        files: "app/src/main/AndroidManifest.xml, PortableInstaller.kt",
+        status: "partial",
+        statusText: "Partially Addressed",
+        impact: 4.0,
+        ease: 4.5,
+        effort: "1 hr diagnostic + 1 line",
+        category: "bug",
+        summary: "Thor's installer does not appear in Samsung My Files 'Open With' chooser when tapping .apks split packages.",
+        rootCause: "android:host='*' on wildcard intent filters made pathPattern mandatory. Samsung MediaStore URIs contain numeric row IDs without filenames in path.",
+        solution: "Band A #10 added typeless filter behind AnyFileInstallerAlias. Run ADB diagnostic to capture exact MIME type and add direct MIME string to retire the opt-in toggle.",
+        hardwareRequired: true
+      },
+      {
+        id: "backup_ph2",
+        title: "#23 / #51 Phase 2: App Data Backup (.thorbak)",
+        doc: "app-data-backup-and-xapk-export.md",
+        files: "BackupRunner.kt, AppArchiveWorker.kt, ThorJobLauncher.kt",
+        status: "partial",
+        statusText: "Merged to Dev (Desk-Verified)",
+        impact: 5.0,
+        ease: 2.0,
+        effort: "5–8 Days (Merged)",
+        category: "feature",
+        summary: "Headline feature: complete offline AES-256-GCM encrypted backup of APKs and app data directories into .thorbak archives.",
+        rootCause: "Requires root shell for tar extraction of /data/data, WorkManager foreground service, and Keystore key isolation.",
+        solution: "Merged to dev in PR #379 with 1467 unit tests. Play Store DataSync FGS approved. Blocked on 21 unrun hardware checks before release.",
+        hardwareRequired: true
+      },
+      {
+        id: "freezer_semantics",
+        title: "Freezer Membership Toggle Semantics",
+        doc: "freezer-membership-toggle-semantics.md",
+        files: "AppActionRow.kt, FreezerViewModel.kt, AppListViewModel.kt",
+        status: "open",
+        statusText: "Open (Product Decision)",
+        impact: 3.5,
+        ease: 4.8,
+        effort: "≈ 2 Hours",
+        category: "ux",
+        summary: "Snowflake button shares identical icon and label across two tabs with diverging semantics: Apps tab removes watchlist row only; Freezer tab removes row AND thaws.",
+        rootCause: "Both hosts passed identical lambda signature (() -> Unit)? with different use case implementations.",
+        solution: "Option 1 (Recommended): Differentiate labels ('Remove & Restore' on Freezer vs 'Remove from Freezer' on Apps).",
+        hardwareRequired: false
+      },
+      {
+        id: "freezer_escape",
+        title: "Freezer Removal Has No Escape Hatch",
+        doc: "freezer-removal-has-no-escape-hatch.md",
+        files: "FreezerViewModel.kt, FreezerScreen.kt, ScanVerdict.kt",
+        status: "partial",
+        statusText: "Partially Addressed",
+        impact: 3.5,
+        ease: 4.0,
+        effort: "1 Day",
+        category: "ux",
+        summary: "GH#310 invariant 'removing from watchlist always restores' means an app that persistently refuses to thaw cannot be deleted from the watchlist.",
+        rootCause: "Deletion from Room DB is gated on successful restore to prevent orphan disabled apps.",
+        solution: "Option 3 shipped (pruning uninstalled packages via ScanVerdict). Options 1 & 2 ('Remove anyway' confirmation dialog for stuck installed apps) remain open.",
+        hardwareRequired: false
+      },
+      {
+        id: "synthetic_app",
+        title: "Static Analysis: 43 SyntheticAccessors in :app",
+        doc: "static-analysis-switched-off-by-default.md",
+        files: "app/build.gradle.kts, app/src/main/java/**/*.kt",
+        status: "open",
+        statusText: "Open (Hygiene)",
+        impact: 3.0,
+        ease: 4.8,
+        effort: "≈ 1 Hour",
+        category: "quality",
+        summary: "43 SyntheticAccessor warnings in :app main source generate synthetic accessor bridge methods that inflate DEX method count.",
+        rootCause: "Companion methods and nested classes declared private accessed across outer/companion boundaries.",
+        solution: "Widen visibility from private to internal across affected companion methods, matching the fix applied to :bypass in Band A #12.",
+        hardwareRequired: false
+      },
+      {
+        id: "sub_downgrade",
+        title: "Subscription Downgrade Replacement Mode",
+        doc: "subscription-downgrade-replacement-mode.md",
+        files: "BillingProcessorImpl.kt",
+        status: "open",
+        statusText: "Open (Financial UX)",
+        impact: 3.5,
+        ease: 4.2,
+        effort: "≈ 0.5 Days",
+        category: "feature",
+        summary: "BillingProcessor hardcodes CHARGE_PRORATED_PRICE for all subscription tier changes, including downgrades to cheaper support tiers.",
+        rootCause: "launchBillingFlow omitted price comparison between current and target tier.",
+        solution: "Compare priceAmountMicros and assign DEFERRED or WITH_TIME_PRORATION mode conditionally. Verify with Play license tester account.",
+        hardwareRequired: true
+      },
+      {
+        id: "runner_tests",
+        title: "BulkFreezeRunner Concurrency & Virtual Time Tests",
+        doc: "bulk-freeze-runner-concurrency-tests.md",
+        files: "BulkFreezeRunner.kt, AppFreezeStateReader.kt, UadHelper.kt",
+        status: "open",
+        statusText: "Open (Test Debt)",
+        impact: 3.0,
+        ease: 3.0,
+        effort: "2–3 Days",
+        category: "quality",
+        summary: "BulkFreezeRunner is the only stateful concurrent class in Thor and currently lacks JVM unit tests for race conditions, coalescing, and timeouts.",
+        rootCause: "Takes 4 final concrete Android collaborators. PrivilegeStateProvider port solved 1; 3 remaining need read-only ports.",
+        solution: "Extract read-only ports for AppFreezeStateReader, UadHelper, BulkResultNotifier. Write Turbine virtual-time concurrency tests.",
+        hardwareRequired: false
+      },
+      {
+        id: "freeze_consent",
+        title: "Freeze Refusal: 'Remove for User' Consent Path",
+        doc: "freeze-refusal-remove-for-user-consent.md",
+        files: "SystemGateway.kt, FreezePolicy.kt, AppInfoSheet.kt",
+        status: "open",
+        statusText: "Open (Product Call)",
+        impact: 3.5,
+        ease: 3.0,
+        effort: "2–3 Days",
+        category: "feature",
+        summary: "Band A #1 removed silent freeze → uninstall escalation. OEM ROMs (e.g. Xiaomi HyperOS) that refuse pm disable-user now fail visibly, losing debloat capability.",
+        rootCause: "Users want 'remove for user keeping data', but objected to it occurring silently under button labelled Freeze.",
+        solution: "Add removeForUserKeepingData gateway method, host-level confirmation dialogs, and persistent consent flag for headless services.",
+        hardwareRequired: true
+      },
+      {
+        id: "release_logcat",
+        title: "Release Builds Emit No Thor Logcat",
+        doc: "release-builds-emit-no-thor-logcat.md",
+        files: "ThorApplication.kt, Logger.kt",
+        status: "open",
+        statusText: "Open (Observability)",
+        impact: 2.5,
+        ease: 4.2,
+        effort: "≈ 0.5 Days",
+        category: "observability",
+        summary: "Logger.isDebug = BuildConfig.DEBUG gates all 5 log levels (including warnings and errors). Field diagnosis of non-fatal failures is silent.",
+        rootCause: "Privacy defense prevents leaking package lists and shell commands in world-readable logcat.",
+        solution: "Option 3: Add user-toggled 'Enable Debug Logging' switch in Settings that sets Logger.isDebug = true for active session.",
+        hardwareRequired: false
+      },
+      {
+        id: "biometric_lock",
+        title: "Biometric Lock Restore Hard Lockout",
+        doc: "biometric-lock-restores-without-a-capability-check.md",
+        files: "SecurityViewModel.kt, BiometricScreen.kt, HomeActivity.kt",
+        status: "shipped",
+        statusText: "Fixed & Shipped",
+        impact: 4.5,
+        ease: 4.0,
+        effort: "Small (Shipped)",
+        category: "security",
+        summary: "Restoring biometric_lock=true onto a device without enrolled biometric/screen lock caused an unescapable lock/error loop.",
+        rootCause: "SecurityViewModel derived auth state purely from preference without consulting BiometricHelper.canAuthenticate().",
+        solution: "Shipped in PR #292: AuthState.Unavailable with direct security settings deep-link on API 29+; auto-disarms on incapable API 28.",
+        hardwareRequired: true
+      },
+      {
+        id: "datastore_writes",
+        title: "DataStore Writes Are Unguarded",
+        doc: "datastore-writes-are-unguarded.md",
+        files: "PreferenceRepositoryImpl.kt, SecurityViewModel.kt",
+        status: "shipped",
+        statusText: "Fixed & Shipped (Band B #13)",
+        impact: 4.0,
+        ease: 3.5,
+        effort: "Medium (Shipped)",
+        category: "reliability",
+        summary: "29 edit { } blocks across 28 write functions had zero try/catch blocks; IOExceptions crashed Thor from settings toggles.",
+        rootCause: "PR #339 guarded reads but omitted write error handling.",
+        solution: "Shipped in Band B #13: guardedWrite helper, settingsWriteFailed repository latch, and explicit Boolean return for security/locale setters.",
+        hardwareRequired: false
+      },
+      {
+        id: "cross_privilege",
+        title: "Cross-Privilege Suspend Ownership",
+        doc: "cross-privilege-suspend-ownership.md",
+        files: "SuspenderReadback.kt, SystemGateway.kt",
+        status: "shipped",
+        statusText: "Shipped v1.93.2 (Awaiting Device)",
+        impact: 4.0,
+        ease: 3.5,
+        effort: "Medium (Shipped)",
+        category: "security",
+        summary: "App suspended under Root could not be unsuspended under Shizuku/Dhizuku, and Thor reported silent success due to empty failure array.",
+        rootCause: "Android 11+ restricts suspension removal to calling UID. Empty return array misread as success.",
+        solution: "Shipped in PR #330: Read recorded suspender from dumpsys package and execute removal under matching owner or fail with named owner.",
+        hardwareRequired: true
+      },
+      {
+        id: "profile_save",
+        title: "Profile Editor Dismisses Before Save Lands",
+        doc: "profile-editor-dismisses-before-the-save-lands.md",
+        files: "FreezerScreen.kt, FreezerViewModel.kt",
+        status: "shipped",
+        statusText: "Fixed & Shipped (Band B #16)",
+        impact: 3.5,
+        ease: 4.0,
+        effort: "Small (Shipped)",
+        category: "ux",
+        summary: "Creating or editing a freeze profile closed the sheet before Room transaction finished, causing draft loss on name collisions or I/O errors.",
+        rootCause: "Asynchronous repository write dispatched on fire-and-forget basis while sheet dismissed immediately.",
+        solution: "Shipped in Band B #16: Dismiss sheet only on ProfileSaveSucceeded event; keep sheet open with draft intact on failure.",
+        hardwareRequired: false
+      },
+      {
+        id: "last_result",
+        title: "BulkFreezeRunner lastResult Expiry & Invalidation",
+        doc: "freezer-bulk-run-deferred-review-findings.md",
+        files: "BulkFreezeRunner.kt, BulkFreeze.kt, SettingsViewModel.kt",
+        status: "shipped",
+        statusText: "Fixed & Shipped (Band B #22)",
+        impact: 3.0,
+        ease: 4.0,
+        effort: "Medium (Shipped)",
+        category: "ux",
+        summary: "Tile subtitle displayed stale 'Froze N apps' indefinitely across process lifetime and failed to clear on non-runner unfreezes.",
+        rootCause: "Missing TTL expiration and unbounded unfreezeAll in SettingsViewModel.",
+        solution: "Shipped in Band B #22: Monotonic freshParkedResult with 5 min TTL evaluated read-side; unfreezeAll rerouted through runner.",
+        hardwareRequired: false
+      },
+      {
+        id: "watchlist_prompt",
+        title: "Restored Prompt Flag Suppressed Watchlist Recovery",
+        doc: "restored-prompt-flag-suppresses-watchlist-recovery.md",
+        files: "PreferenceRepositoryImpl.kt, backup_rules.xml",
+        status: "shipped",
+        statusText: "Fixed & Shipped",
+        impact: 3.0,
+        ease: 4.5,
+        effort: "Small (Shipped)",
+        category: "reliability",
+        summary: "has_shown_disabled_apps_prompt restored from cloud backup suppressed the import prompt when reinstalling Thor on the same device.",
+        rootCause: "Flag was stored in preferences_pb instead of local device state.",
+        solution: "Moved flag to thor_local_state DataStore, which is excluded from cloud backup rules.",
+        hardwareRequired: true
+      },
+      {
+        id: "perfetto_trace",
+        title: "On-Device Perfetto & LeakCanary Pass",
+        doc: "perfetto-trace-pass.md",
+        files: "ThorApplication.kt, BulkFreezeRunner.kt",
+        status: "open",
+        statusText: "Open (Scheduled Last)",
+        impact: 3.5,
+        ease: 3.5,
+        effort: "1–2 Days Capture/Triage",
+        category: "observability",
+        summary: "Single consolidated trace session on low-end hardware across cold start, app list scroll/refresh, and bulk freeze runs.",
+        rootCause: "Performance optimizations have been theoretically reasoned; real frame timelines need empirical confirmation.",
+        solution: "Explicitly scheduled last after all functional changes merge to measure settled code.",
+        hardwareRequired: true
+      },
+      {
+        id: "odin_root",
+        title: "Odin Root Availability Cache Invalidation",
+        doc: "odin-root-availability-cache.md",
+        files: "Odin (MainShell.kt), PrivilegeManager.kt",
+        status: "open",
+        statusText: "Deferred (Upstream)",
+        impact: 2.0,
+        ease: 2.5,
+        effort: "Upstream in Odin",
+        category: "reliability",
+        summary: "Root revoked mid-session continues reporting as available until app process restart because Odin caches ShellImpl status.",
+        rootCause: "Odin computes isRoot once at construction time.",
+        solution: "Upstream Odin Shell.invalidate() hook on permission-denied exit; Thor then re-probes via PrivilegeManager.",
+        hardwareRequired: true
+      },
+      {
+        id: "vercel_deploy",
+        title: "Deploy Site from GitHub Actions vs Vercel Git",
+        doc: "vercel-actions-deploy.md",
+        files: ".github/workflows/web-deploy.yml, vercel.json",
+        status: "open",
+        statusText: "Deferred (Low Priority)",
+        impact: 1.5,
+        ease: 4.0,
+        effort: "≈ 2 Hours Config",
+        category: "infra",
+        summary: "web-deploy.yml exists but skips; site deploys via Vercel Git integration. Nothing is broken on live production site.",
+        rootCause: "Vercel dashboard handles builds directly; web-ci.yml already gates PRs in git.",
+        solution: "Add Vercel tokens to repo secrets and disconnect Vercel Git integration if unified CI/CD provenance is desired.",
+        hardwareRequired: false
+      },
+      {
+        id: "privilege_perf",
+        title: "PrivilegeManager Cold-Start Profiling",
+        doc: "privilege-manager-cold-start.md",
+        files: "PrivilegeManager.kt, PrivilegeProbeTrace.kt",
+        status: "shipped",
+        statusText: "Closed (8/8 Measured)",
+        impact: 4.0,
+        ease: 5.0,
+        effort: "Complete",
+        category: "performance",
+        summary: "Measured cold-start latency of PrivilegeManager across 8 privilege configurations.",
+        rootCause: "Investigated potential 579 ms spinner latency.",
+        solution: "Closed in PR #306: Proved spinner window never inverts even under 2x core saturation. Retained on disk as benchmark evidence.",
+        hardwareRequired: true
+      },
+      {
+        id: "viewmodel_tests",
+        title: "ViewModel Behavior Coroutine & Turbine Tests",
+        doc: "viewmodel-behavior-tests.md",
+        files: "AppListViewModelTest.kt, ViewModelTestDoubles.kt",
+        status: "shipped",
+        statusText: "Done & Retained",
+        impact: 4.0,
+        ease: 4.0,
+        effort: "Complete",
+        category: "quality",
+        summary: "Created virtual-time test harness for AppListViewModel settle delays and refresh indicator timings using Turbine.",
+        rootCause: "Collaborators lacked DI ports for plain JVM execution.",
+        solution: "Shipped 4 repository ports and 8 virtual-time tests. Retained on disk as reference implementation.",
+        hardwareRequired: false
+      },
+      {
+        id: "reddit_feedback",
+        title: "r/howtomen Community Feedback Wave",
+        doc: "reddit-howtomen-feedback.md",
+        files: "Multiple across app and web",
+        status: "shipped",
+        statusText: "Bands A & B Shipped",
+        impact: 5.0,
+        ease: 3.5,
+        effort: "2 Waves Shipped",
+        category: "feature",
+        summary: "Master triage and implementation of 23 community requests from r/howtomen.",
+        rootCause: "User requests covering safety disclosures, UAD tiers, grid density, CSV export, and installer labels.",
+        solution: "11 rows shipped in Band A (2026-08-07), 10 rows shipped in Band B (2026-08-08). Remaining items filed in Band C.",
+        hardwareRequired: false
+      }
+    ];
+
+    // DOM Elements
+    const itemsList = document.getElementById('itemsList');
+    const searchInput = document.getElementById('searchInput');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    const themeToggle = document.getElementById('themeToggle');
+    const amoledToggle = document.getElementById('amoledToggle');
+    const themeLabel = document.getElementById('themeLabel');
+    const inspectorTitle = document.getElementById('inspectorTitle');
+    const inspectorBody = document.getElementById('inspectorBody');
+
+    let currentFilter = 'all';
+    let searchQuery = '';
+
+    // Render Items
+    function renderItems() {
+      itemsList.innerHTML = '';
+      
+      const filtered = followUpsData.filter(item => {
+        const matchesFilter = (currentFilter === 'all') || 
+                              (currentFilter === 'open' && item.status === 'open') ||
+                              (currentFilter === 'partial' && item.status === 'partial') ||
+                              (currentFilter === 'shipped' && item.status === 'shipped');
+        
+        const q = searchQuery.toLowerCase();
+        const matchesSearch = !q || 
+                              item.title.toLowerCase().includes(q) || 
+                              item.summary.toLowerCase().includes(q) || 
+                              item.files.toLowerCase().includes(q) ||
+                              item.doc.toLowerCase().includes(q);
+
+        return matchesFilter && matchesSearch;
+      });
+
+      if (filtered.length === 0) {
+        itemsList.innerHTML = `<div style="text-align: center; padding: 3rem; color: var(--on-surface-variant); font-family: var(--font-mono);">No follow-ups match your filter.</div>`;
+        return;
+      }
+
+      filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = `detail-card`;
+        card.id = `card_${item.id}`;
+
+        card.innerHTML = `
+          <div class="card-header-row" onclick="toggleCard('${item.id}')">
+            <div class="card-header-left">
+              <span class="status-indicator ${item.status}"></span>
+              <div>
+                <div class="item-header-title">${item.title}</div>
+                <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--on-surface-variant);">${item.doc}</div>
+              </div>
+            </div>
+            <div class="card-header-right">
+              <div class="score-badge-group">
+                <span class="score-pill" title="Impact">I: ${item.impact}</span>
+                <span class="score-pill" title="Ease of Implementation">E: ${item.ease}</span>
+              </div>
+              <span class="status-tag ${item.status}">${item.statusText}</span>
+              <svg class="expand-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </div>
+          <div class="card-content-pane">
+            <div class="content-grid">
+              <div class="pane-block">
+                <span class="pane-heading">Problem & Root Cause</span>
+                <p class="pane-text">${item.summary}</p>
+                <div class="callout-box" style="margin-top: 0.5rem;">
+                  <strong>Root Cause:</strong> ${item.rootCause}
+                </div>
+              </div>
+              <div class="pane-block">
+                <span class="pane-heading">Solution & Engineering State</span>
+                <p class="pane-text">${item.solution}</p>
+                <div style="margin-top: 0.5rem;">
+                  <span class="pane-heading" style="font-size: 0.75rem;">Touched Files:</span>
+                  <div class="file-ref" style="margin-top: 0.2rem;">${item.files}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        itemsList.appendChild(card);
+      });
+    }
+
+    function toggleCard(id) {
+      const card = document.getElementById(`card_${id}`);
+      if (card) {
+        card.classList.toggle('open');
+      }
+    }
+
+    function inspectItem(id) {
+      const item = followUpsData.find(d => d.id === id);
+      if (!item) return;
+
+      inspectorTitle.innerText = item.title;
+      inspectorBody.innerHTML = `
+        <div class="inspector-row">
+          <span class="inspector-key">Status</span>
+          <span class="inspector-val"><span class="status-tag ${item.status}">${item.statusText}</span></span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-key">Scores & Sizing</span>
+          <span class="inspector-val">Impact: <strong>${item.impact}/5.0</strong> · Ease: <strong>${item.ease}/5.0</strong> (${item.effort})</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-key">Source Doc</span>
+          <span class="inspector-val" style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--primary);">${item.doc}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-key">Summary</span>
+          <span class="inspector-val" style="font-size: 0.85rem; line-height: 1.4;">${item.summary}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-key">Actionable Next Step</span>
+          <span class="inspector-val" style="font-size: 0.85rem; line-height: 1.4; color: var(--primary);">${item.solution}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-key">Hardware Check Required?</span>
+          <span class="inspector-val">${item.hardwareRequired ? '⚠️ Yes (Device pass required)' : 'No (JVM / Pure testable)'}</span>
+        </div>
+      `;
+
+      // Highlight corresponding pill
+      document.querySelectorAll('.matrix-item-pill').forEach(p => p.classList.remove('selected'));
+      event.currentTarget.classList.add('selected');
+
+      // Scroll to card in list if visible
+      const card = document.getElementById(`card_${id}`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        card.classList.add('highlight');
+        card.classList.add('open');
+        setTimeout(() => card.classList.remove('highlight'), 2000);
+      }
+    }
+
+    // Event Listeners
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      renderItems();
+    });
+
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        renderItems();
+      });
+    });
+
+    // Theme Toggle
+    themeToggle.addEventListener('click', () => {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      themeLabel.innerText = next === 'dark' ? 'Dark' : 'Light';
+    });
+
+    // AMOLED Toggle
+    amoledToggle.addEventListener('click', () => {
+      const html = document.documentElement;
+      const isAmoled = html.getAttribute('data-amoled') === 'true';
+      if (isAmoled) {
+        html.removeAttribute('data-amoled');
+        amoledToggle.classList.remove('active');
+      } else {
+        html.setAttribute('data-theme', 'dark');
+        html.setAttribute('data-amoled', 'true');
+        amoledToggle.classList.add('active');
+        themeLabel.innerText = 'Dark';
+      }
+    });
+
+    // Initialize
+    renderItems();
+    inspectItem('home_restore');
+  </script>
+</body>
+</html>
