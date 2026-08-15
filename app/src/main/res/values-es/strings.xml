@@ -46,6 +46,9 @@
     <string name="french">Francés</string>
     <string name="spanish">Español</string>
     <string name="arabic">Árabe</string>
+    <string name="portuguese">Portugués</string>
+    <string name="portuguese_brazil">Portugués (Brasil)</string>
+    <string name="polish">Polaco</string>
 
     <!-- Common Actions -->
     <string name="cancel">Cancelar</string>

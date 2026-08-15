@@ -196,7 +196,7 @@ export const claimRules = [
       'and the benchmark build type is created only for store. "One difference" is a claim a ' +
       'reader can falsify by opening one Gradle file. Locales are NOT one of them any more: ' +
       'localeFilters moved from the foss-only variant hook to onVariants {} once ' +
-      'bundle.language.enableSplit was turned off, so both flavours ship the same five. Any page ' +
+      'bundle.language.enableSplit was turned off, so both flavours ship the same eight. Any page ' +
       'still saying the store build keeps every locale is wrong for the opposite reason this rule ' +
       'exists.',
     source:

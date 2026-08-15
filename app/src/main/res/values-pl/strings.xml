@@ -1,0 +1,795 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Navigation -->
+    <string name="home">Start</string>
+    <string name="home_desc">Ekran główny</string>
+    <string name="apps">Aplikacje</string>
+    <string name="apps_desc">Pokazuje listę wszystkich dostępnych aplikacji</string>
+    <string name="freezer">Zamrażarka</string>
+    <string name="freezer_desc">Zamrażaj i odmrażaj aplikacje w tym miejscu</string>
+    <string name="settings">Ustawienia</string>
+    <string name="settings_desc">Ekran ustawień, na którym zmienisz ustawienia aplikacji</string>
+    <string name="config_engine_v">Silnik konfiguracji • v%1$s</string>
+    <!--
+      The SCREAMING CASE section labels that used to head the ten groups of the one-column settings
+      screen — general, appearance, security, work_mode, about, permissions — are gone with it.
+      Settings is eight category rows now, titled in Title Case in strings_settings.xml; the
+      remaining sections whose names survived (freezer, extensions, backup_and_restore) are reused
+      as those titles rather than duplicated.
+    -->
+    <string name="show_reinstall_card">Pokaż kartę reinstalacji</string>
+    <string name="show_reinstall_card_desc">Pokaż przypomnienie o Fix Store na ekranie głównym</string>
+    <string name="show_installer_tile">Pokaż kafelek instalatora</string>
+    <string name="show_installer_tile_desc">Pokaż „Zainstaluj z pliku” na ekranie głównym</string>
+    <string name="any_file_opener">Pokaż aplikację Thor przy otwieraniu dowolnego pliku</string>
+    <string name="any_file_opener_desc">Włącz to tylko wtedy, gdy twój menedżer plików nie otwiera plików APK w aplikacji Thor. Thor będzie wtedy proponowany dla plików, których nie potrafi rozpoznać — w tym takich, które nie są plikami APK.</string>
+    <string name="any_file_opener_failed">Android odmówił zmiany tego ustawienia. Nic nie zostało włączone.</string>
+    <string name="show_extensions_tile">Pokaż kafelek rozszerzeń</string>
+    <string name="show_extensions_tile_desc">Pokaż Rozszerzenia na ekranie głównym</string>
+    <string name="auto_reinstall">Automatyczna reinstalacja aplikacji</string>
+    <string name="auto_reinstall_desc">Automatycznie zachowuj Google Play Store jako zarejestrowany instalator, aby umożliwić aktualizacje w tle</string>
+    <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
+    <string name="default_tab">Domyślna karta</string>
+    <string name="default_tab_desc">Ekran otwierany przez aplikację Thor po uruchomieniu</string>
+    <string name="theme">Motyw</string>
+    <string name="theme_desc">Styl interfejsu</string>
+    <string name="amoled_mode">Tryb AMOLED</string>
+    <string name="amoled_desc">Całkowicie czarne tło</string>
+    <string name="dynamic_colors">Kolory dynamiczne</string>
+    <string name="dynamic_colors_desc">Integracja z Material You</string>
+    <string name="biometric_lock">Blokada biometryczna</string>
+    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia po uruchomieniu</string>
+    <string name="biometric_not_available">Biometria niedostępna lub bez zapisanych danych</string>
+    <string name="active_engine">Aktywny silnik</string>
+    <string name="active_engine_desc">Przełączaj między dostępnymi dostawcami</string>
+    <string name="version">Wersja</string>
+    <string name="release_candidate">Kandydat do wydania</string>
+    <string name="source_code">KOD ŹRÓDŁOWY</string>
+    <string name="community">SPOŁECZNOŚĆ</string>
+    <string name="kernel_status">STATUS_JĄDRA: ZOPTYMALIZOWANY</string>
+    <string name="built_with_precision">ZBUDOWANE Z PRECYZJĄ DLA ZAAWANSOWANYCH UŻYTKOWNIKÓW</string>
+    <string name="app_language">Język aplikacji</string>
+    <string name="select_language">Wybierz język</string>
+    <string name="system_default">Domyślny systemu</string>
+    <string name="english">Angielski</string>
+    <string name="chinese">Chiński</string>
+    <string name="french">Francuski</string>
+    <string name="spanish">Hiszpański</string>
+    <string name="arabic">Arabski</string>
+    <string name="portuguese">Portugalski</string>
+    <string name="portuguese_brazil">Portugalski (Brazylia)</string>
+    <string name="polish">Polski</string>
+
+    <!-- Common Actions -->
+    <string name="cancel">Anuluj</string>
+    <string name="confirm">Potwierdź</string>
+    <string name="proceed">Kontynuuj</string>
+    <string name="yes">Tak</string>
+    <string name="no">Nie</string>
+    <string name="done">Gotowe</string>
+    <string name="close">Zamknij</string>
+    <string name="installed_label">ZAINSTALOWANA</string>
+    <string name="new_version_label">NOWA WERSJA</string>
+    <string name="version_prefix">Wersja: </string>
+    <string name="error_title">Błąd</string>
+    <string name="refresh">Odśwież</string>
+    <string name="dismiss">Odrzuć</string>
+    <!-- Accessibility label for the long-press action on a compact Home tile. TalkBack reads it
+         as "double-tap and hold to show details", so keep it a verb phrase. -->
+    <string name="show_details">Pokaż szczegóły</string>
+    <string name="search_apps">Szukaj aplikacji&#8230;</string>
+    <string name="unknown">Nieznana</string>
+
+    <!-- Home Screen -->
+    <string name="reinstall_all">Reinstaluj wszystkie</string>
+    <string name="reinstall_all_subtitle">Aplikacje (%2$s) spoza Play Store: %1$d. Naprawić je?</string>
+    <string name="install_from_file">Zainstaluj z pliku</string>
+    <string name="install_from_file_subtitle">Instaluj pliki APK, XAPK, APKS lub pakiety split</string>
+    <string name="home_extensions_title">Rozszerzenia</string>
+    <string name="app_distribution">Rozkład aplikacji</string>
+    <string name="total_apps">ŁĄCZNIE: %1$d</string>
+    <string name="others">Inne</string>
+    <string name="clear_all_cache">Wyczyść całą pamięć podręczną</string>
+    <string name="clear_all_cache_subtitle">Wyczyść pliki pamięci podręcznej wszystkich aplikacji, aby odzyskać miejsce w pamięci</string>
+    <string name="clear_all_cache_confirm_desc">To Android decyduje, które pamięci podręczne usunąć, i nie pozwala aplikacji Thor wybierać — obejmuje to każdą aplikację na urządzeniu, systemowe tak samo jak twoje. Nic innego nie zostanie ruszone: dane, zalogowane konta i ustawienia zostają na miejscu. Aplikacje mogą uruchamiać się nieco wolniej za pierwszym razem, gdy będą odbudowywać pamięć podręczną.</string>
+    <string name="clear_all_cache_running">Czyszczenie…</string>
+    <string name="clear_all_cache_running_desc">Przetwarzanie każdej aplikacji na urządzeniu. Może to chwilę potrwać.</string>
+    <string name="clear_all_cache_done_title">Pamięć podręczna wyczyszczona</string>
+    <string name="clear_all_cache_done_size">Zwolniono %1$s.</string>
+    <!-- Shown when the measurement worked and the answer was genuinely zero — a second clear with
+         nothing left to drop. Deliberately not the _unmeasured line: that one asks for a permission
+         this user demonstrably already granted. -->
+    <string name="clear_all_cache_done_nothing">Nie było już nic do wyczyszczenia.</string>
+    <!-- The measurement was available and still came back empty — an app refilled its cache while
+         the clear ran, or the storage service refused the reading. Says nothing about usage access:
+         this line is only ever shown to someone who already has it. -->
+    <string name="clear_all_cache_done_size_unknown">Gotowe. Thor nie mógł zmierzyć, ile to zwolniło.</string>
+    <!-- Shown only when the usage-access op is genuinely missing, which is what makes the advice
+         actionable. Any other unmeasured outcome uses clear_all_cache_done_size_unknown. -->
+    <string name="clear_all_cache_done_unmeasured">Gotowe. Thor nie mógł zmierzyć, ile to zwolniło — przyznaj mu dostęp do danych o użyciu w Ustawieniach, aby następnym razem zobaczyć tę liczbę.</string>
+    <string name="system_apps">Aplikacje systemowe</string>
+    <string name="active">Aktywne</string>
+    <string name="frozen">Zamrożone</string>
+    <string name="suspended">Zawieszone</string>
+    <string name="privilege_check">Sprawdzanie uprawnień</string>
+    <string name="privilege_check_desc">Thor wymaga dostępu Root, Shizuku lub Dhizuku, aby działać poprawnie.\n\nPrzyznaj dostęp w swoim menedżerze i kliknij Odśwież.</string>
+
+    <!-- App List / Freezer -->
+    <string name="system_apps_warning">⚠ Aplikacje systemowe</string>
+    <!-- No plural noun ("Selected" is invariant), so one/other would be identical — not a plural. -->
+    <string name="selected_count">Wybrano: %1$d</string>
+    <string name="no_matching_apps">Nie znaleziono pasujących aplikacji</string>
+    <string name="no_apps_display">Brak aplikacji do wyświetlenia</string>
+    <string name="adjust_filters_hint">Spróbuj zmienić wyszukiwanie lub filtry</string>
+    <string name="configuration">Konfiguracja</string>
+    <string name="app_source">Źródło aplikacji</string>
+    <string name="view_mode">Tryb widoku</string>
+    <string name="grid">Siatka</string>
+    <string name="list">Lista</string>
+    <string name="order">Kolejność:</string>
+    <string name="ascending">Rosnąco</string>
+    <string name="descending">Malejąco</string>
+    <string name="filters">Filtry</string>
+    <string name="sort_by">Sortuj według</string>
+    <!-- One label per SortBy entry. The English values are byte-identical to the strings
+         SortBy.asGeneralName() hardcodes today, so switching to resources changes no en text. -->
+    <string name="sort_by_name">Nazwa</string>
+    <string name="sort_by_size">Rozmiar</string>
+    <string name="sort_by_install_date">Data instalacji</string>
+    <string name="sort_by_last_updated">Ostatnia aktualizacja</string>
+    <string name="sort_by_version_code">Kod wersji</string>
+    <string name="sort_by_version_name">Nazwa wersji</string>
+    <string name="sort_by_target_sdk">Docelowa wersja SDK</string>
+    <string name="sort_by_min_sdk">Minimalna wersja SDK</string>
+    <string name="filter_type_state">Stan</string>
+    <string name="filter_type_source">Źródło instalacji</string>
+    <string name="filter_type_permission">Uprawnienie</string>
+    <string name="permission_filter_loading">Odczytywanie uprawnień…</string>
+    <string name="permission_filter_unavailable">Nie znaleziono grup uprawnień na tym urządzeniu</string>
+    <string name="permission_filter_failed">Nie udało się odczytać uprawnień na tym urządzeniu</string>
+
+    <!-- App Info Dialog -->
+    <string name="clear_app_data_title">Wyczyścić dane aplikacji?</string>
+    <string name="clear_app_data_desc">Spowoduje to trwałe usunięcie wszystkich danych aplikacji %1$s. Tej operacji nie można cofnąć.</string>
+    <string name="clear_all_data">Wyczyść wszystkie dane</string>
+    <string name="uninstall_system_app_title">Odinstalować aplikację systemową?</string>
+    <string name="uninstall_system_app_desc">Spowoduje to odinstalowanie aplikacji systemowej dla bieżącego użytkownika. Kontynuować?</string>
+    <string name="legacy_extension_title">Wykryto stare rozszerzenie</string>
+    <string name="legacy_extension_desc">Zainstalowana jest stara wersja rozszerzenia Stormbringer (z błędną nazwą „Strombringer”). Odinstaluj je, aby uniknąć konfliktów, i zainstaluj zaktualizowane rozszerzenie Stormbringer.</string>
+    <string name="uninstall_blocked">Odinstalowanie zablokowane</string>
+    <string name="uninstall_expert_warning">Ostrzeżenie: odinstalowanie eksperckie</string>
+    <string name="uad_load_failed_desc">Nie udało się wczytać danych bezpieczeństwa UAD. Odinstalowywanie aplikacji systemowych jest zablokowane, aby zapobiec pętlom rozruchu i innym problemom z urządzeniem.</string>
+    <string name="freeze_system_app_title">Zamrozić aplikację systemową?</string>
+    <string name="freeze_system_app_desc">Zamrożenie aplikacji systemowej może spowodować niestabilność systemu lub pętlę rozruchu, jeśli wyłączone zostaną krytyczne usługi. Kontynuować?</string>
+    <string name="freeze_blocked">Zamrażanie zablokowane</string>
+    <string name="freeze_expert_warning">Ostrzeżenie: zamrożenie eksperckie</string>
+    <string name="uad_load_failed_freeze_desc">Nie udało się wczytać danych bezpieczeństwa UAD. Zamrażanie aplikacji systemowych jest zablokowane, aby zapobiec pętlom rozruchu i innym problemom z urządzeniem.</string>
+    <string name="freeze_unsafe_desc">Ta aplikacja systemowa jest sklasyfikowana jako NIEBEZPIECZNA (UNSAFE). Jej zamrożenie niesie skrajnie wysokie ryzyko pętli rozruchu, więc zamrażanie jest zablokowane.</string>
+    <string name="freeze_expert_desc">Ta aplikacja systemowa jest sklasyfikowana jako EKSPERCKA (EXPERT). Jej zamrożenie psuje ważne funkcje. Na pewno chcesz kontynuować?</string>
+    <string name="freeze_anyway">Zamroź mimo to</string>
+    <string name="risk_warning_title">Ostrzeżenie o ryzyku</string>
+    <string name="risk_warning_desc">Wymusza to zapisanie „Google Play Store” jako instalatora.\n\nAktualizacje mogą się nie udać, jeśli podpis nie zgadza się z oficjalną wersją ze sklepu.</string>
+    <string name="fix_store">Fix Store</string>
+
+    <!-- App Status -->
+    <string name="status_split">SPLIT</string>
+    <string name="status_frozen">ZAMROŻONA</string>
+    <string name="status_suspended">ZAWIESZONA</string>
+
+    <!-- App Actions -->
+    <string name="action_share">Udostępnij</string>
+    <string name="action_freeze">Zamroź</string>
+    <string name="action_unfreeze">Odmroź</string>
+    <string name="action_suspend">Zawieś</string>
+    <string name="action_unsuspend">Wznów</string>
+    <string name="action_kill">Zatrzymaj</string>
+    <string name="action_cache">Cache</string>
+    <string name="action_uninstall">Odinstaluj</string>
+    <string name="action_reinstall">Reinstaluj</string>
+
+    <!-- Action explainers. Three actions users routinely confuse; each body answers the same
+         three questions in the same order — what it does, does it survive a reboot, is data lost. -->
+    <string name="explain_force_stop_title">Wymuś zatrzymanie</string>
+    <string name="explain_force_stop_body">Zabija aplikację i wszystko, co właśnie uruchamia. Zostaje zainstalowana i startuje ponownie, gdy tylko ty albo system ją otworzysz. Nic nie jest usuwane.</string>
+    <string name="explain_suspend_title">Zawieś</string>
+    <string name="explain_suspend_body">Aplikacja zostaje na ekranie głównym, ale nie da się jej otworzyć — dotknięcie pokazuje zamiast tego okno systemowe. Przetrwa to ponowne uruchomienie, dopóki jej nie wznowisz. Nic nie jest usuwane.</string>
+    <string name="explain_freeze_title">Zamroź</string>
+    <string name="explain_freeze_body">Wyłącza aplikację całkowicie: znika z ekranu głównego i nie może działać w ogóle, nawet w tle. Przetrwa to ponowne uruchomienie, dopóki jej nie odmrozisz. Nic nie jest usuwane.</string>
+
+    <!-- Export -->
+    <string name="action_export">Eksportuj</string>
+    <string name="export_explain_apk">Thor zapisze tę aplikację jako pojedynczy plik instalacyjny (.apk) w folderze poniżej. Użyj go, aby zrobić kopię aplikacji lub zainstalować ją później ponownie.</string>
+    <string name="export_explain_apks">Ta aplikacja składa się z kilku części split, spakowanych w jeden pakiet (.apks) w folderze poniżej. Zainstalujesz ją ponownie w dowolnej chwili instalatorem aplikacji Thor.</string>
+    <string name="export_explain_xapk">Thor pakuje części tej aplikacji w jeden plik .xapk w folderze poniżej — format, który rozumieją także inne instalatory. Dane gry (pliki OBB) są dołączane, jeśli bieżący tryb dostępu aplikacji Thor potrafi je odczytać.</string>
+    <!-- Shown for every ObbProbe.Undetermined, which is more than a missing privilege: a failed,
+         empty, truncated or malformed reply from a shell Thor *does* have lands here too. So it
+         states what is certainly true (Thor cannot read the data now) and offers the usual cause
+         without asserting it — the same mistake as the explain string this feature retracted.
+
+         Renamed from export_xapk_unavailable, because it no longer describes anything unavailable.
+         The old copy said a .xapk "would install a game that doesn't run", which was a refusal
+         written as a warning: it asserted the app *has* game data, and Undetermined is precisely
+         the verdict that cannot say so. Most apps have none, so most of the time the sentence was
+         false as well as blocking. The rename is deliberate — a translation carried over under the
+         old key would keep promising a broken install. -->
+    <string name="export_xapk_no_game_data">Thor nie może teraz odczytać danych gry tej aplikacji — zwykle znaczy to, że potrzebny jest dostęp root lub Shizuku. Plik .xapk i tak powstanie, tylko bez nich.</string>
+    <string name="export_obb_included">Zawiera %1$s danych gry.</string>
+    <string name="export_obb_partial">Część pozycji w folderze danych gry tej aplikacji to nie pliki rozszerzeń i nie zostaną dołączone.</string>
+    <string name="export_format">Format</string>
+    <string name="export_save_to">Zapisz w</string>
+    <string name="export_change">Zmień</string>
+    <string name="export_saved">Zapisano w %1$s</string>
+    <string name="export_failed">Eksport nie powiódł się: %1$s</string>
+    <string name="export_failed_unknown">nieznany błąd</string>
+    <string name="export_dest_downloads">Downloads/Thor</string>
+    <string name="export_dest_selected">Wybrany folder</string>
+
+    <!-- Export as a background job. The sheet hands the work to a Worker and can then be dismissed,
+         so every sentence below has to stand on its own in a notification with no sheet behind it:
+         each one names the app or the folder rather than relying on what the user was looking at.
+
+         export_job_saved is the outcome row on the success path. It is the only report a user who
+         backgrounded the export ever sees — ThorJobWorker's `finally` removes the ongoing row — so
+         it names both the app and where the file actually landed. -->
+    <string name="export_job_queued">W kolejce za innym zadaniem.</string>
+    <string name="export_job_preparing">Przygotowywanie aplikacji %1$s</string>
+    <string name="export_job_packaging">Pakowanie aplikacji %1$s do pliku .%2$s</string>
+    <string name="export_job_cleanup_busy">Thor wciąż sprząta po poprzednim uruchomieniu. Spróbuj eksportu ponownie za chwilę.</string>
+    <string name="export_job_saved">Wyeksportowano aplikację %1$s do %2$s</string>
+    <!-- The Background button and the sentence that makes its one word mean something. Separate from
+         backup_background/_desc, which say the same thing about a different job: those live in
+         strings_backup.xml under a file-level MissingTranslation ignore, so borrowing them would put
+         an untranslated button in a translated sheet. -->
+    <string name="export_job_background">W tle</string>
+    <string name="export_job_background_desc">Eksport działa dalej, jeśli to zamkniesz. Jego powiadomienie pokazuje postęp.</string>
+    <!-- On screen only, and only for the three seconds before the sheet closes itself. The
+         destination is not repeated here — the notification is where export_job_saved names it, and
+         the sheet the user is still looking at is the one surface that does not need telling. -->
+    <string name="export_job_done">Wyeksportowano.</string>
+    <!-- The armed fallback for a stop that returns no Result at all: WorkManager discards a
+         cancelled worker's Result, so a worded failure cannot travel that way. Any path that *can*
+         word itself replaces this before returning. -->
+    <string name="export_job_stopped">Eksport zatrzymał się przed ukończeniem. Nic nie zostało zapisane.</string>
+    <string name="export_failed_not_started">Eksport się nie rozpoczął, więc nic nie zostało zapisane.</string>
+    <string name="export_job_app_gone">Aplikacja %1$s nie jest już zainstalowana, więc nie było czego eksportować.</string>
+    <string name="export_job_folder_gone">Thor nie może już zapisywać w tym folderze. Wybierz folder ponownie.</string>
+    <string name="export_job_unreadable">Thor nie mógł odczytać tego, co miał wyeksportować.</string>
+
+    <!-- Bulk export (multi-select toolbox). Scope is deliberately "the apps you picked", never
+         "back up everything": the count-bearing strings below all read as composites of two
+         independent counts, so none of them is a <plurals> candidate. -->
+    <string name="action_export_selected">Eksportuj</string>
+    <string name="export_bulk_confirm_title">Wyeksportować wybrane aplikacje?</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="one">Thor zapisze %1$d plik instalacyjny w folderze eksportu — po jednym na każdą wybraną aplikację. Może to potrwać długo i wymagać dużo wolnego miejsca, więc nie zamykaj aplikacji Thor, dopóki nie skończy.</item>
+        <item quantity="few">Thor zapisze %1$d pliki instalacyjne w folderze eksportu — po jednym na każdą wybraną aplikację. Może to potrwać długo i wymagać dużo wolnego miejsca, więc nie zamykaj aplikacji Thor, dopóki nie skończy.</item>
+        <item quantity="many">Thor zapisze %1$d plików instalacyjnych w folderze eksportu — po jednym na każdą wybraną aplikację. Może to potrwać długo i wymagać dużo wolnego miejsca, więc nie zamykaj aplikacji Thor, dopóki nie skończy.</item>
+        <item quantity="other">Thor zapisze %1$d pliku instalacyjnego w folderze eksportu — po jednym na każdą wybraną aplikację. Może to potrwać długo i wymagać dużo wolnego miejsca, więc nie zamykaj aplikacji Thor, dopóki nie skończy.</item>
+    </plurals>
+    <string name="export_bulk_progress">Eksportowanie: %1$d z %2$d</string>
+    <!-- Covers the partial outcome too — "8 of 12" is the normal result, not the exception. -->
+    <string name="export_bulk_finished">Wyeksportowano %1$d z %2$d aplikacji do %3$s</string>
+    <string name="export_bulk_finished_none">Nie udało się wyeksportować żadnej z %1$d wybranych aplikacji</string>
+    <!-- Names no file: the manifest is thor-backup-<timestamp>.json, one per run, so there is no
+         fixed name to quote and the user does not need one to understand what is missing. -->
+    <string name="export_bulk_index_failed">Pliki zostały zapisane, ale nie udało się zapisać listy obok nich</string>
+    <string name="export_bulk_cancelled">Eksport zatrzymany — zapisano %1$d z %2$d aplikacji</string>
+    <string name="export_bulk_failed">Eksport nie powiódł się — zapisano %1$d z %2$d aplikacji</string>
+    <string name="export_bulk_stop">Zatrzymaj eksport</string>
+    <string name="export_bulk_nothing_selected">Wybierz co najmniej jedną aplikację do eksportu</string>
+    <string name="export_bulk_no_space">Za mało wolnego miejsca na eksport. Thor potrzebuje około %1$s wolnego miejsca, aby przygotować te pliki, a dostępne jest tylko %2$s. Zwolnij miejsce lub wybierz mniej aplikacji.</string>
+
+    <!-- Main Screen / Global -->
+    <string name="cannot_launch_app">Nie można uruchomić aplikacji</string>
+    <string name="share_app">Udostępnij aplikację</string>
+    <string name="kill_app_title">Zatrzymać aplikację?</string>
+    <string name="kill_app_desc">Wymusić zatrzymanie aplikacji %1$s? Może to spowodować utratę danych.</string>
+    <string name="exit_thor_title">Zamknąć aplikację Thor?</string>
+    <string name="exit_thor_desc">Czy na pewno chcesz zamknąć aplikację?</string>
+    <string name="are_you_sure">Czy na pewno?</string>
+
+    <!-- Accessibility / Content Descriptions -->
+    <string name="cd_config">Konfiguracja</string>
+    <string name="cd_close">Zamknij</string>
+    <string name="cd_frozen">Zamrożona</string>
+    <string name="cd_suspended">Zawieszona</string>
+    <string name="cd_selected">Wybrana</string>
+    <string name="cd_clear">Wyczyść</string>
+    <string name="select_app_details">Wybierz aplikację, aby zobaczyć szczegóły</string>
+
+    <!-- Permission Manager -->
+    <string name="action_permissions">Uprawnienia</string>
+    <string name="permissions_search">Szukaj uprawnień&#8230;</string>
+    <string name="permissions_read_only_title">Tryb tylko do odczytu</string>
+    <string name="permissions_read_only_desc">Do przełączania uprawnień potrzebny jest podwyższony dostęp (Root, Shizuku lub Dhizuku). W tej chwili przeglądasz uprawnienia w trybie tylko do odczytu.</string>
+    <string name="permissions_sensitive_category">Wrażliwe i uruchomieniowe</string>
+    <string name="permissions_normal_category">Standardowe i zwykłe</string>
+    <string name="permissions_signature_category">Systemowe i podpisu</string>
+    <string name="permissions_no_found">Ta aplikacja nie prosi o żadne uprawnienia</string>
+    <string name="permission_state_granted">Przyznane</string>
+    <string name="permission_state_denied">Odmówione</string>
+    <string name="failed_to_load_permissions">Nie udało się wczytać uprawnień</string>
+    <string name="permission_status_updated">Zaktualizowano stan uprawnienia</string>
+    <string name="failed_to_modify_permission">Nie udało się zmienić uprawnienia</string>
+
+    <!-- Usage Access / Size sort -->
+    <!-- `permissions` (the PERMISSIONS section header) removed with the one-column settings screen;
+         those two rows are in the Security category now. -->
+
+    <string name="usage_access">Dostęp do danych o użyciu</string>
+    <string name="usage_access_granted_subtitle">Przyznany — umożliwia sortowanie po rozmiarze aplikacji</string>
+    <string name="usage_access_needed_subtitle">Potrzebny do odczytu rozmiarów aplikacji przy sortowaniu po rozmiarze</string>
+    <string name="usage_access_needed_title">Wymagany dostęp do danych o użyciu</string>
+    <string name="usage_access_prompt_body">Thor potrzebuje dostępu do danych o użyciu, aby odczytać rozmiary aplikacji. Włącz go dla aplikacji Thor, a potem wybierz „Rozmiar” ponownie. Możesz też zarządzać tym w Ustawienia → Uprawnienia.</string>
+    <string name="notification_access">Powiadomienia</string>
+    <string name="notification_access_granted_subtitle">Wyniki zbiorczego zamrażania są pokazywane jako powiadomienia</string>
+    <string name="notification_access_needed_subtitle">Zezwól na powiadomienia, aby widzieć wyniki zbiorczego zamrażania</string>
+    <string name="open_settings">Otwórz ustawienia</string>
+    <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
+         ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
+         OriginOS and MagicOS. Deliberately worded without naming the permission: on those ROMs the
+         Settings toggle is labelled "read installed app list", not the AOSP permission name. -->
+    <string name="installed_apps_permission_title">Lista aplikacji może być niepełna</string>
+    <string name="installed_apps_permission_desc">Twoje urządzenie ogranicza to, jakie aplikacje widzi Thor, gdy działa w tle. Przyznaj pełny dostęp do listy zainstalowanych aplikacji, aby pozostała kompletna.</string>
+    <string name="installed_apps_permission_grant">Przyznaj</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_no_privilege">Nie przyznano uprawnień</string>
+    <string name="tile_no_apps">Brak aplikacji</string>
+    <plurals name="tile_subtitle_format">
+        <item quantity="one">%1$d aplikacja · dotknij, aby zamrozić</item>
+        <item quantity="few">%1$d aplikacje · dotknij, aby zamrozić</item>
+        <item quantity="many">%1$d aplikacji · dotknij, aby zamrozić</item>
+        <item quantity="other">%1$d aplikacji · dotknij, aby zamrozić</item>
+    </plurals>
+    <string name="tile_grant_privilege_toast">Najpierw przyznaj Root / Shizuku / Dhizuku</string>
+    <string name="tile_no_apps_toast">Brak aplikacji w Zamrażarce</string>
+    <plurals name="tile_freeze_success">
+        <item quantity="one">Zamrożono %1$d aplikację</item>
+        <item quantity="few">Zamrożono %1$d aplikacje</item>
+        <item quantity="many">Zamrożono %1$d aplikacji</item>
+        <item quantity="other">Zamrożono %1$d aplikacji</item>
+    </plurals>
+    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
+    <string name="tile_freeze_partial_failure">Zamrożono %1$d/%2$d aplikacji (nieudane: %3$d)</string>
+    <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
+         fired before these packages resolved. -->
+    <string name="tile_freeze_incomplete">Zamrożono %1$d/%2$d aplikacji (nieukończone: %3$d)</string>
+    <string name="tile_checking">Sprawdzanie…</string>
+    <string name="tile_freezing">Zamrażanie…</string>
+    <string name="channel_bulk_result_name">Wyniki działań zbiorczych</string>
+
+    <!-- Freezer Settings & Actions -->
+    <string name="freezer_settings">Ustawienia Zamrażarki</string>
+    <string name="unfreeze_all">Odmroź wszystkie</string>
+    <string name="unfreeze_all_apps">Odmroź wszystkie aplikacje</string>
+    <string name="unfreeze_all_apps_desc">Włącz wszystkie aplikacje, które są teraz na liście Zamrażarki</string>
+    <string name="auto_freeze">Automatyczne zamrażanie</string>
+    <string name="freeze_mode">Tryb zamrażania</string>
+    <string name="suspend_instead_of_freeze">Zawieszaj zamiast zamrażać</string>
+    <string name="suspend_instead_of_freeze_desc">Przy zamrażaniu (także automatycznym) zawieszaj aplikacje zamiast je wyłączać. Zawieszone aplikacje pozostają widoczne, ale wstrzymane.</string>
+    <string name="auto_freeze_desc">Zamrażaj aplikacje automatycznie, gdy ekran jest zablokowany</string>
+    <string name="skip_routine_freeze_confirmation">Nie potwierdzaj rutynowych zamrożeń</string>
+    <string name="skip_routine_freeze_confirmation_desc">Zamrażaj aplikacje systemowe bez pytania, chyba że oznacza je lista usuwania. Aplikacje oznaczone jako Expert nadal ostrzegają, a niebezpieczne nadal są odrzucane.</string>
+    <string name="add_freezer_to_launcher">Dodaj Zamrażarkę do launchera</string>
+    <string name="add_freezer_to_launcher_desc">Pokazuj zamrożone aplikacje jako skróty na ekranie głównym, które uruchomisz jednym dotknięciem</string>
+    <string name="add_to_home_screen">Dodaj do ekranu głównego</string>
+    <string name="freeze_all_apps">Zamroź wszystkie</string>
+    <string name="shortcuts">Skróty</string>
+    <string name="shortcut_add_all">Dodaj wszystkie aplikacje</string>
+    <string name="shortcut_added_named">Dodano aplikację %1$s do ekranu głównego</string>
+    <string name="shortcut_added">Dodano skrót do ekranu głównego</string>
+    <string name="pin_all_confirm_title">Dodać wszystkie aplikacje do ekranu głównego?</string>
+    <plurals name="pin_all_confirm_desc">
+        <item quantity="one">Doda to skrót na ekranie głównym dla %1$d zamrożonej aplikacji i może zapełnić ekran główny. Launcher poprosi cię o potwierdzenie.</item>
+        <item quantity="few">Doda to skrót na ekranie głównym dla każdej z %1$d zamrożonych aplikacji i może zapełnić ekran główny. Launcher poprosi cię o potwierdzenie każdego z nich.</item>
+        <item quantity="many">Doda to skrót na ekranie głównym dla każdej z %1$d zamrożonych aplikacji i może zapełnić ekran główny. Launcher poprosi cię o potwierdzenie każdego z nich.</item>
+        <item quantity="other">Doda to skrót na ekranie głównym dla każdej z %1$d zamrożonych aplikacji i może zapełnić ekran główny. Launcher poprosi cię o potwierdzenie każdego z nich.</item>
+    </plurals>
+    <string name="freezer_launch_failed">Nie udało się uruchomić tej aplikacji</string>
+    <string name="shortcut_no_longer_frozen">Już nie jest zamrożona</string>
+    <string name="privilege_required_warning">Wymagane uprawnienia (Root, Shizuku lub Dhizuku)</string>
+    <string name="unfreeze_all_confirmation_title">Odmrozić wszystkie aplikacje?</string>
+    <string name="unfreeze_all_confirmation_desc">Spowoduje to odmrożenie (włączenie) wszystkich aplikacji, które są teraz na liście Zamrażarki. Na pewno chcesz kontynuować?</string>
+    <string name="import_disabled_apps_title">Zaimportuj wyłączone aplikacje</string>
+    <plurals name="import_disabled_apps_desc">
+        <item quantity="one">Jest %1$d wyłączona aplikacja, której nie ma w Zamrażarce. Dodać ją do Zamrażarki?</item>
+        <item quantity="few">Są %1$d wyłączone aplikacje, których nie ma w Zamrażarce. Dodać je do Zamrażarki?</item>
+        <item quantity="many">Jest %1$d wyłączonych aplikacji, których nie ma w Zamrażarce. Dodać je do Zamrażarki?</item>
+        <item quantity="other">Jest %1$d wyłączonej aplikacji, której nie ma w Zamrażarce. Dodać ją do Zamrażarki?</item>
+    </plurals>
+    <string name="import_disabled_apps_button">Zaimportuj wyłączone aplikacje</string>
+    <string name="no_disabled_apps_found">Nie znaleziono innych wyłączonych aplikacji.</string>
+    <plurals name="added_to_freezer_count_success">
+        <item quantity="one">Dodano %1$d aplikację do Zamrażarki</item>
+        <item quantity="few">Dodano %1$d aplikacje do Zamrażarki</item>
+        <item quantity="many">Dodano %1$d aplikacji do Zamrażarki</item>
+        <item quantity="other">Dodano %1$d aplikacji do Zamrażarki</item>
+    </plurals>
+    <string name="add_to_freezer">Dodaj do Zamrażarki</string>
+    <!-- Confirmation shown before an app joins the watchlist. Adding freezes immediately — that is
+         the intended behaviour, so the copy states it as the rule rather than apologising for it. -->
+    <string name="freezer_add_warning_title">Dodanie od razu ją zamraża</string>
+    <string name="freezer_add_warning_body">Aplikacja trafia do Zamrażarki już zamrożona — tak działa Zamrażarka, to nie usterka. Wszystko, czego w niej nie zapisałeś, przepada, a ona zostaje zamrożona, dopóki jej nie odmrozisz.</string>
+
+    <!-- Extensions -->
+    <string name="extensions">Rozszerzenia</string>
+    <string name="manage_extensions">Zarządzaj rozszerzeniami</string>
+    <string name="manage_extensions_desc">Przeglądaj i konfiguruj zainstalowane wtyczki APK</string>
+    <string name="easter_egg_promoted">🎉 Ta ukryta funkcja została już udostępniona — wypatruj następnej!</string>
+    <string name="run_extension">Uruchom</string>
+    <string name="installer_play_store">PLAY STORE</string>
+    <string name="installer_fdroid">F-DROID</string>
+    <string name="installer_sideloaded">ZAINSTALOWANA RĘCZNIE</string>
+    <string name="permission_protection_level">Ochrona: %1$s</string>
+    <string name="extension_manager">Menedżer rozszerzeń</string>
+    <string name="extension_consent_title">Zanim przejdziesz dalej</string>
+    <string name="extension_consent_body">Rozszerzenia to potężne dodatki, które mogą zmienić zachowanie aplikacji i systemu na twoim urządzeniu. Nie zawsze pochodzą od nas — każdy może takie zbudować. Weryfikujemy i podpisujemy rozszerzenia, które rozprowadzamy, ale to z natury ryzykowny obszar.\n\nKontynuując, akceptujesz, że tylko ty odpowiadasz za to, co tutaj instalujesz i włączasz, oraz że Thor i jego twórcy NIE ponoszą odpowiedzialności za utratę danych, awarie ani szkody spowodowane przez rozszerzenie lub jakąkolwiek zmianę wprowadzoną za jego pomocą.</string>
+    <string name="extension_consent_math_prompt">Aby potwierdzić, że to przeczytałeś, oblicz: %1$d + %2$d = ?</string>
+    <string name="extension_consent_accept">Rozumiem — kontynuuj</string>
+    <string name="extension_security_verified">Zweryfikowane</string>
+    <string name="extension_security_debug">Tryb debugowania (niezweryfikowane)</string>
+    <string name="extension_security_untrusted">Niezaufane (zablokowane)</string>
+    <string name="get_extensions">Pobierz rozszerzenia</string>
+    <string name="no_extensions_installed">Brak zainstalowanych rozszerzeń</string>
+    <string name="no_extensions_desc">Zainstaluj pliki APK rozszerzeń Thor o nazwach zaczynających się od „com.valhalla.thor.ext.” i podpisane tym samym kluczem, aby wczytać modułowe reguły.</string>
+    <string name="extension_by_author">autor: %1$s</string>
+    <string name="extension_version_prefix">v%1$s</string>
+
+    <!-- Extension store (Browse) -->
+    <string name="extension_store">Sklep z rozszerzeniami</string>
+    <string name="extension_store_desc">Pobieraj zweryfikowane rozszerzenia Thor podpisane oficjalnym kluczem.</string>
+    <string name="extension_browse_store">Przeglądaj sklep</string>
+    <string name="extension_install">Zainstaluj</string>
+    <string name="extension_update">Aktualizuj</string>
+    <string name="extension_installed">Zainstalowane</string>
+    <string name="extension_source_only">Tylko kod źródłowy — zbuduj samodzielnie</string>
+    <string name="extension_requires_lsposed">Wymaga LSPosed</string>
+    <string name="extension_requires_thor">Wymaga nowszej wersji aplikacji Thor</string>
+    <string name="extension_store_empty">Brak dostępnych rozszerzeń</string>
+    <string name="extension_store_empty_desc">Zajrzyj później — katalog jest aktualizowany w miarę publikowania nowych rozszerzeń.</string>
+    <string name="extension_store_error">Nie udało się wczytać sklepu</string>
+    <string name="extension_store_error_desc">Sprawdź połączenie i spróbuj ponownie.</string>
+    <string name="extension_retry">Ponów</string>
+    <string name="extension_install_failed">Weryfikacja nie powiodła się: %1$s</string>
+
+
+    <!-- UiText Messages -->
+    <string name="action_completed_format">Ukończono %1$s: %2$s</string>
+    <string name="frozen_success">Zamrożono aplikację %1$s</string>
+    <string name="unfrozen_success">Odmrożono aplikację %1$s</string>
+    <string name="added_to_freezer_success">Dodano do Zamrażarki</string>
+    <plurals name="unfrozen_count_success">
+        <item quantity="one">Odmrożono %1$d aplikację</item>
+        <item quantity="few">Odmrożono %1$d aplikacje</item>
+        <item quantity="many">Odmrożono %1$d aplikacji</item>
+        <item quantity="other">Odmrożono %1$d aplikacji</item>
+    </plurals>
+    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
+    <string name="tile_unfreeze_partial_failure">Odmrożono %1$d/%2$d aplikacji (nieudane: %3$d)</string>
+    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
+         packages resolved, so they are neither confirmed done nor confirmed failed. -->
+    <string name="tile_unfreeze_incomplete">Odmrożono %1$d/%2$d aplikacji (nieukończone: %3$d)</string>
+    <string name="error_format">Błąd: %1$s</string>
+    <string name="failed_to_load_apps">Nie udało się wczytać aplikacji</string>
+    <plurals name="removed_from_freezer_success">
+        <item quantity="one">Usunięto %1$d aplikację z Zamrażarki</item>
+        <item quantity="few">Usunięto %1$d aplikacje z Zamrażarki</item>
+        <item quantity="many">Usunięto %1$d aplikacji z Zamrażarki</item>
+        <item quantity="other">Usunięto %1$d aplikacji z Zamrażarki</item>
+    </plurals>
+    <!-- %1$d apps left the Freezer out of the %2$d selected; the %3$d that failed to unfreeze
+         keep their watchlist rows so Unfreeze-all can still reach them. Three counts, so not
+         a <plurals>. -->
+    <string name="removed_from_freezer_partial_failure">Usunięto %1$d/%2$d aplikacji z Zamrażarki (nieudane: %3$d)</string>
+    <string name="killed_success">Zatrzymano aplikację %1$s</string>
+    <string name="cache_cleared_success">Wyczyszczono pamięć podręczną aplikacji %1$s</string>
+    <!-- %1$s is the app label, %2$s an already-formatted size ("12 MB"). Used when the freed bytes
+         could be measured; cache_cleared_success is the fallback when they could not. -->
+    <string name="cache_cleared_success_size">Wyczyszczono %2$s pamięci podręcznej aplikacji %1$s</string>
+    <string name="data_cleared_success">Wyczyszczono dane aplikacji %1$s</string>
+    <string name="suspended_success">Zawieszono aplikację %1$s</string>
+    <string name="unsuspended_success">Wznowiono aplikację %1$s</string>
+    <!-- %1$s is an app name, %2$s a comma-separated list of package names that recorded the
+         suspension. Shown when Thor cannot lift a suspension because Android only lets the
+         privilege that applied it remove it (API 30+). -->
+    <string name="suspend_owned_by_other_privilege">Nie można stąd wznowić aplikacji %1$s. Zawieszenie pochodzi od: %2$s, a Android pozwala je zdjąć tylko temu samemu uprawnieniu. Przełącz aplikację Thor z powrotem na ten tryb uprawnień i spróbuj ponownie.</string>
+    <!-- %1$s is an app name. Shown when a preinstalled app cannot be frozen because this device
+         refused to disable it and this build of Android reserves "remove for one user" for uid 0.
+         Deliberately names no privilege mode: both the Shizuku and the Dhizuku gateway raise it,
+         and the refusal is the platform's under either. Root mode is offered because Thor's own
+         Root mode really is uid 0, so it is an instruction rather than a shrug. -->
+    <string name="freeze_system_app_requires_root">Nie można stąd zamrozić aplikacji %1$s. To urządzenie nie pozwoliło aplikacji Thor jej wyłączyć, a Android pozwala usunąć preinstalowaną aplikację dla jednego użytkownika tylko użytkownikowi root. Aplikacja pozostała nietknięta — do jej zamrożenia potrzebny jest tryb Root aplikacji Thor.</string>
+    <!-- %1$s is an app name, %2$s the platform's own words (e.g. "Failure [DELETE_FAILED_INTERNAL_ERROR]"),
+         or "exit code N" when it printed nothing. %2$s is passed through untranslated on purpose:
+         paraphrasing it away into "reflection is blocked or shell lacks permissions" named the
+         wrong cause, which is the defect this string replaces. -->
+    <string name="freeze_system_app_removal_failed">Nie można zamrozić aplikacji %1$s. To urządzenie nie pozwoliło aplikacji Thor jej wyłączyć, a usunięcie jej dla tego użytkownika też się nie powiodło. Android zgłosił: %2$s</string>
+    <!-- %1$s is an app name. Replaces the freeze->uninstall escalation: a refused disable is now a
+         plain failure. The second sentence exists because "it just didn't work" reads as a bug,
+         while "Thor chose not to remove it" is the decision — removing a preinstalled app can sign
+         the user out of every account it manages. Short enough to read in a Toast. -->
+    <string name="freeze_system_app_disable_refused">Nie można zamrozić aplikacji %1$s. To urządzenie odmówiło jej wyłączenia, więc Thor zostawił ją w spokoju — usunięcie jej zamiast tego mogłoby cię wylogować z kont, którymi zarządza.</string>
+    <string name="freeze_system_app_disable_failed">Nie można zamrozić aplikacji %1$s. Nic na tym urządzeniu nie odmówiło wykonania tej operacji, więc jest to raczej błąd aplikacji Thor niż ograniczenie. Aplikacja pozostała zainstalowana i nietknięta — zgłoś to.</string>
+    <string name="unfreezing_app">Odmrażanie aplikacji %1$s…</string>
+    <string name="uninstall_success">Odinstalowano aplikację %1$s</string>
+    <string name="error_app_info_missing">Błąd: brak informacji o aplikacji dla tej operacji</string>
+    <string name="failed_to_load_app_details">Nie udało się wczytać szczegółów aplikacji</string>
+
+    <!-- App Info Details Screen -->
+    <string name="app_details_title">Szczegóły aplikacji</string>
+    <string name="retry_label">Ponów</string>
+    <string name="unknown_error_occurred">Wystąpił nieznany błąd</string>
+    <string name="toast_copied_class_name">Skopiowano nazwę klasy</string>
+    <string name="toast_copy_saved">Skopiowano do schowka</string>
+    <string name="cd_copy_package_name">Kopiuj nazwę pakietu</string>
+    <string name="cd_copy_field">Kopiuj: %1$s</string>
+    <string name="not_available">Brak</string>
+    <string name="tab_overview_title">Ogólne</string>
+    <string name="tab_components">Komponenty</string>
+    <string name="tab_libs_features">Biblioteki i funkcje</string>
+    <string name="chip_system">Systemowa</string>
+    <string name="chip_user">Użytkownika</string>
+    <string name="chip_debug">Debug</string>
+    <string name="dialog_clear_data_desc">Wszystkie pliki, ustawienia i bazy danych tej aplikacji zostaną trwale usunięte.</string>
+    <string name="uninstall_app_title">Odinstalować aplikację?</string>
+    <string name="uninstall_app_desc">Czy na pewno chcesz odinstalować aplikację %1$s?</string>
+    <string name="action_open">Otwórz</string>
+    <string name="action_force_stop">Wymuś zatrzymanie</string>
+    <string name="action_in_freezer">W Zamrażarce</string>
+    <string name="action_add_freezer">Dodaj do Zamrażarki</string>
+    <string name="action_clear_cache">Wyczyść pamięć podręczną</string>
+    <string name="action_clear_data">Wyczyść dane</string>
+    <string name="info_app_version">Wersja aplikacji</string>
+    <string name="info_package_name">Nazwa pakietu</string>
+    <string name="info_sdk_details">Szczegóły SDK</string>
+    <string name="info_sdk_details_format">Docelowe SDK: %1$d   |   Minimalne SDK: %2$d</string>
+    <string name="info_app_size">Rozmiar</string>
+    <string name="info_installer_source">Źródło instalatora</string>
+    <string name="info_install_time">Czas instalacji</string>
+    <string name="info_last_update_time">Czas ostatniej aktualizacji</string>
+    <string name="info_apk_path">Ścieżka źródłowa APK</string>
+    <string name="info_data_dir">Katalog danych</string>
+    <string name="info_obb_dir">Katalog OBB</string>
+    <string name="info_obb_present">%1$s — %2$s danych gry</string>
+    <string name="info_obb_none">Brak danych gry</string>
+    <string name="info_obb_unknown">Nie można teraz sprawdzić</string>
+    <string name="info_shared_data_dir">Katalog danych współdzielonych</string>
+    <string name="info_signature_sha256">Odcisk podpisu SHA-256</string>
+    <!-- Label for the UAD debloat note. The note itself ships in uad_lists.json and is English
+         only, so this card renders in the General tab alone — never in the app-info header. -->
+    <string name="info_bloat_description">Dlaczego jest oznaczona</string>
+    <string name="no_permissions_found">Nie znaleziono uprawnień</string>
+    <string name="search_components_placeholder">Szukaj komponentów&#8230;</string>
+    <string name="section_activities_title">Aktywności (%1$d)</string>
+    <string name="section_services_title">Usługi (%1$d)</string>
+    <string name="section_receivers_title">Odbiorniki rozgłoszeń (%1$d)</string>
+    <string name="section_providers_title">Dostawcy treści (%1$d)</string>
+    <string name="cd_collapse">Zwiń</string>
+    <string name="cd_expand">Rozwiń</string>
+    <string name="components_none_declared">Nie zadeklarowano żadnych</string>
+    <string name="section_native_libs_title">Biblioteki natywne (.so)</string>
+    <string name="no_native_libs_found">Nie znaleziono bibliotek natywnych</string>
+    <string name="section_req_features_title">Wymagane funkcje</string>
+    <string name="no_req_features_found">Nie zażądano żadnych wymaganych funkcji</string>
+    <string name="version_format">v%1$s</string>
+
+    <!-- Hardcoded string replacements -->
+    <string name="manage_freezer">Zarządzaj Zamrażarką</string>
+    <string name="add">Dodaj</string>
+    <string name="unlock_to_continue">Odblokuj, aby kontynuować</string>
+    <string name="auth_failed">Uwierzytelnianie nie powiodło się</string>
+    <string name="try_again">Spróbuj ponownie</string>
+    <string name="exit">Wyjdź</string>
+    <string name="title_thor_installer">Instalator Thor</string>
+    <string name="install_analyzing">Analizowanie pakietu…</string>
+    <string name="install_downgrade_warning">Spowoduje to instalację starszej wersji aplikacji.</string>
+    <!-- %1$s and %2$s are version codes. They are deliberately %s, not %d: %d is localised by
+         java.util.Formatter (Arabic-Indic digits under ar-EG, for example), and these same two
+         numbers are rendered elsewhere on this screen by plain Kotlin interpolation, which is
+         always ASCII. A version code is an opaque identifier the user compares against a store
+         listing or adb output, so keep it ASCII and keep it consistent. -->
+    <string name="install_downgrade_code_explainer">Kod wersji %1$s jest niższy niż zainstalowany %2$s. Android porządkuje aktualizacje według kodu wersji, a nie nazwy wersji — aplikacja może wyglądać na nowszą i mimo to być starszą wersją.</string>
+    <string name="install_update_warning">Spowoduje to aktualizację istniejącej aplikacji.</string>
+    <plurals name="install_permissions">
+        <item quantity="one">Ten pakiet prosi o %1$d uprawnienie. %2$s</item>
+        <item quantity="few">Ten pakiet prosi o %1$d uprawnienia. %2$s</item>
+        <item quantity="many">Ten pakiet prosi o %1$d uprawnień. %2$s</item>
+        <item quantity="other">Ten pakiet prosi o %1$d uprawnienia. %2$s</item>
+    </plurals>
+    <string name="install_mode_normal">Zwykły</string>
+    <string name="install_mode_shizuku">Shizuku</string>
+    <string name="install_mode_dhizuku">Dhizuku</string>
+    <string name="install_mode_root">Root</string>
+    <string name="install_mode_external_short">Zewnętrzny</string>
+    <string name="install_assembling_progress">Składanie: %1$d%%</string>
+    <string name="install_confirm_system_dialog">Potwierdź instalację w oknie systemowym.</string>
+    <string name="install_success">Zainstalowano pomyślnie</string>
+    <string name="install_action_downgrade">Zainstaluj mimo to</string>
+    <string name="install_action_update">Aktualizuj</string>
+    <string name="install_action_install">Zainstaluj</string>
+    <string name="install_word_downgrade">instalacja starszej wersji</string>
+    <string name="install_word_update">aktualizacja</string>
+    <string name="install_word_install">instalacja</string>
+    <string name="install_warning_downgrade">Ostrzeżenie: instalacja starszej wersji może powodować problemy.</string>
+    <string name="sensitive">Wrażliwe</string>
+
+    <!-- Terminal Logs -->
+    <string name="log_initializing">Inicjalizacja…</string>
+    <string name="log_op_complete">\nOperacja ukończona.</string>
+    <string name="log_sharing_app">Udostępnianie aplikacji %1$s</string>
+    <string name="log_preparing_files">Przygotowywanie plików…</string>
+    <string name="log_files_ready">✔ Pliki gotowe</string>
+    <string name="log_error">✘ Błąd: %1$s</string>
+    <string name="log_reinstalling_app">Ponowna instalacja aplikacji %1$s</string>
+    <string name="log_applying_play_store_sig">Nadawanie podpisu Google Play Store…</string>
+    <string name="log_reinstall_success">✔ Ponowna instalacja udana</string>
+    <string name="log_failed_with_msg">✘ Niepowodzenie: %1$s</string>
+    <string name="log_uninstalling_system_app">Odinstalowywanie aplikacji systemowej</string>
+    <string name="log_target_app">Cel: %1$s</string>
+    <string name="log_uninstall_success">✔ Odinstalowanie udane</string>
+    <string name="log_priv_uninstall_failed">✘ Uprzywilejowane odinstalowanie nie powiodło się</string>
+    <string name="log_attempting_system_uninstall">Próba odinstalowania systemowego…</string>
+    <string name="log_scanning_apps">Skanowanie aplikacji…</string>
+    <string name="log_no_apps_to_fix">Nie znaleziono aplikacji wymagających naprawy.</string>
+    <!-- Developer log line, not grammar-sensitive UI — plural form intentionally not used. -->
+    <string name="log_found_apps_to_fix">Znaleziono %1$d aplikacji do naprawy.</string>
+    <string name="log_reinstalling_batch">Ponowna instalacja aplikacji</string>
+    <string name="log_freezing_batch">Zamrażanie aplikacji</string>
+    <string name="log_unfreezing_batch">Odmrażanie aplikacji</string>
+    <string name="log_killing_batch">Zatrzymywanie aplikacji</string>
+    <string name="log_clearing_cache_batch">Czyszczenie pamięci podręcznej</string>
+    <string name="log_uninstalling_batch">Odinstalowywanie aplikacji</string>
+    <string name="log_suspending_batch">Zawieszanie aplikacji</string>
+    <string name="log_unsuspending_batch">Wznawianie aplikacji</string>
+    <string name="log_sharing_batch">Udostępnianie aplikacji</string>
+    <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
+    <string name="log_batch_preparing">[%1$d/%2$d] Przygotowywanie: %3$s…</string>
+    <string name="log_ready"> -> Gotowe</string>
+    <string name="log_success"> -> Sukces</string>
+    <string name="log_failed"> -> Niepowodzenie: %1$s</string>
+
+    <!-- Warnings & UI components -->
+    <string name="warning_unsafe_uninstall">Ta aplikacja systemowa jest sklasyfikowana jako NIEBEZPIECZNA (UNSAFE). Jej usunięcie niesie skrajnie wysokie ryzyko pętli rozruchu, więc odinstalowanie jest zablokowane.</string>
+    <string name="warning_expert_uninstall">Ta aplikacja systemowa jest sklasyfikowana jako EKSPERCKA (EXPERT). Jej usunięcie psuje ważne funkcje. Na pewno chcesz kontynuować?</string>
+    <string name="uninstall_anyway">Odinstaluj mimo to</string>
+    <string name="debloat_recommendation">Zalecenie debloatu</string>
+    <string name="class_name_label">nazwa klasy</string>
+    <string name="value_label">wartość</string>
+    <string name="no_apps_in_freezer">Brak aplikacji w Zamrażarce</string>
+    <string name="no_matching_apps_freezer">Brak pasujących aplikacji</string>
+    <string name="add_to_freezer_hint">Dotknij +, aby dodać aplikacje</string>
+    <string name="filter_all">Wszystkie</string>
+    <string name="error_debuggable_app">Aplikacja jest debugowalna (prawdopodobna niezgodność podpisu)</string>
+    <string name="error_unsafe_skipped">Pominięto: aplikacja systemowa jest NIEBEZPIECZNA (UNSAFE) / kontrola bezpieczeństwa nie powiodła się</string>
+    <string name="error_self_skipped">Pominięto: Thor nie może zrobić tego sam sobie</string>
+    <string name="error_parse_package">Nie udało się przeanalizować pakietu.</string>
+    <string name="error_downgrade_privilege">Instalacja starszej wersji jest obsługiwana tylko z dostępem uprzywilejowanym (Root, Shizuku lub Dhizuku).</string>
+
+    <!-- Support Developer -->
+    <string name="support_developer">Wesprzyj dewelopera</string>
+    <string name="support_developer_desc">Wesprzyj dalszy rozwój aplikacji Thor</string>
+    <string name="support_developer_desc_detailed">Thor jest oprogramowaniem open source i całkowicie bez reklam. Jeśli okazał się przydatny, rozważ wsparcie mojej pracy:</string>
+    <string name="sponsor_github_title">Zostań sponsorem na GitHub</string>
+    <string name="sponsor_github_desc">Jednorazowo lub co miesiąc, tuż obok kodu</string>
+    <string name="become_patreon_title">Zostań patronem na Patreon</string>
+    <string name="become_patreon_desc">Wesprzyj dalszy rozwój miesięczną subskrypcją</string>
+    <string name="support_kofi_title">Wesprzyj na Ko-fi</string>
+    <string name="support_kofi_desc">Postaw kawę raz albo co miesiąc</string>
+    <string name="buy_me_a_coffee_title">Buy Me a Coffee</string>
+    <string name="buy_me_a_coffee_desc">Jednorazowa kawa albo miesięczne członkostwo</string>
+    <string name="donate_paypal_title">Wpłać przez PayPal</string>
+    <string name="donate_paypal_desc">Wyślij jednorazową wpłatę bezpośrednio</string>
+
+    <!-- Support & Community Dashboard Section -->
+    <string name="support_community_title">Wsparcie i społeczność</string>
+    <string name="support_community_desc">Pomóż nam utrzymywać i ulepszać aplikację Thor, wspierając jej rozwój lub dołączając do naszej społeczności.</string>
+    <string name="community_github">GitHub</string>
+    <string name="community_telegram">Telegram</string>
+    <string name="community_play_store">Play Store</string>
+    <string name="thank_you_support">Dziękujemy za wsparcie!</string>
+    <string name="action_remove">Usuń</string>
+    <string name="biometric_unlock_title">Odblokuj aplikację Thor</string>
+    <string name="biometric_unlock_subtitle">Uwierzytelnij się, aby kontynuować</string>
+    <string name="biometric_unavailable_title">To urządzenie nie odblokuje aplikacji Thor</string>
+    <string name="biometric_unavailable_message">Blokada aplikacji jest włączona, ale to urządzenie nie ma czym jej otworzyć. Ustaw blokadę ekranu albo zapisz odcisk palca w ustawieniach systemowych i wróć — Thor cię wpuści.</string>
+    <!-- Android 9 only: its prompt cannot accept a screen lock, so a PIN is not a way back in. -->
+    <string name="biometric_unavailable_message_biometric_only">Blokada aplikacji jest włączona, ale na tym urządzeniu nie ma zapisanego odcisku palca — a w systemie Android 9 monit o odblokowanie nie przyjmuje blokady ekranu. Zapisz odcisk palca w ustawieniach systemowych i wróć — Thor cię wpuści.</string>
+    <!-- Shown when the user taps the app-lock switch on a device with nothing enrolled. -->
+    <string name="biometric_not_enrolled_toast">Brak zapisanej biometrii — najpierw ustaw blokadę ekranu lub odcisk palca</string>
+    <!-- Android 9 only: its prompt cannot accept a screen lock, so only a fingerprint is a way in. -->
+    <string name="biometric_not_enrolled_toast_biometric_only">Brak zapisanego odcisku palca — w systemie Android 9 blokada ekranu nie odblokuje aplikacji Thor, więc najpierw go zapisz</string>
+    <!-- Android 9 with no biometric sensor: nothing the user can enroll will ever open the lock. -->
+    <string name="biometric_lock_unavailable_toast">Nie można włączyć blokady aplikacji: to urządzenie nie ma biometrii, którą można by ją otworzyć</string>
+    <!-- Shown once when Thor turns its own app lock off, because this device can never open it. -->
+    <string name="biometric_lock_disabled_no_biometric">Blokada aplikacji wyłączona: to urządzenie nie ma biometrii, którą można by ją otworzyć</string>
+    <!-- Shown once when the settings file could not be read, so every setting - the app lock included - fell back to its default. -->
+    <string name="settings_lost_using_defaults">Thor nie mógł odczytać twoich ustawień i używa domyślnych — sprawdź blokadę aplikacji w Ustawieniach</string>
+    <!-- The write-side twin of the above: shown once when a setting the user changed could not be saved to disk. -->
+    <string name="settings_not_saved">Thor nie mógł zapisać tego ustawienia — wróci ono do starej wartości przy następnym uruchomieniu aplikacji</string>
+    <!-- The disarm above was attempted but the write was dropped, so the lock is still on disk and will disarm again next launch. -->
+    <string name="biometric_lock_disable_not_saved">Blokady aplikacji nie da się używać na tym urządzeniu, a Thor nie mógł tego zapisać — zapyta ponownie przy następnym uruchomieniu aplikacji</string>
+    <!-- The user turned app lock ON in Settings and the write was dropped. Names which way the lock is actually facing, not just that a write failed. -->
+    <string name="biometric_lock_not_saved_still_off">Thor nie mógł tego zapisać — blokada aplikacji jest nadal wyłączona</string>
+    <!-- The user turned app lock OFF in Settings and the write was dropped. -->
+    <string name="biometric_lock_not_saved_still_on">Thor nie mógł tego zapisać — blokada aplikacji jest nadal włączona</string>
+    <!-- The language write was dropped, so the app was deliberately left in the old language rather than switching for one session. -->
+    <string name="language_not_saved">Thor nie mógł zapisać wyboru języka, więc nie został on zmieniony</string>
+    <string name="open_security_settings">Otwórz ustawienia zabezpieczeń</string>
+    <string name="unlock">Odblokuj</string>
+    <string name="thank_you_support_desc">Twoja subskrypcja jest aktywna. Dziękujemy za wsparcie rozwoju aplikacji Thor!</string>
+
+    <!-- Grid density. Deliberately its own three labels rather than reusing
+         animation_intensity_low/medium/high — two unrelated settings must not share copy. -->
+    <string name="grid_density">Gęstość siatki</string>
+    <string name="grid_density_desc">Ile aplikacji mieści się w wierszu siatki</string>
+    <string name="grid_density_compact">Zwarta</string>
+    <string name="grid_density_default">Domyślna</string>
+    <string name="grid_density_large">Duża</string>
+
+    <!-- Details & Animation Intensity -->
+    <string name="action_details">Szczegóły</string>
+    <string name="animation_intensity">Intensywność animacji</string>
+    <string name="animation_intensity_desc">Steruj animacjami i przejściami nawigacji</string>
+    <string name="animation_intensity_low">Niska</string>
+    <string name="animation_intensity_medium">Średnia</string>
+    <string name="animation_intensity_high">Wysoka</string>
+    <string name="suspended_app_dialog_title">Thor</string>
+    <string name="suspended_app_dialog_message">Ta aplikacja została zawieszona przez aplikację Thor.</string>
+
+    <!-- Freeze profiles -->
+    <string name="freeze_profiles">Profile zamrażania</string>
+    <!-- Short label for the entry point that opens the profiles screen. The empty state itself
+         reuses no_profiles_yet / no_profiles_yet_desc. -->
+    <string name="freeze_profiles_action">Profile zamrażania</string>
+    <string name="profile_new">Nowy profil</string>
+    <string name="profile_edit">Edytuj profil</string>
+    <string name="profile_name_label">Nazwa profilu</string>
+    <string name="profile_name_too_long">Ta nazwa jest za długa</string>
+    <string name="profile_name_duplicate">Profil o tej nazwie już istnieje</string>
+    <string name="no_profiles_yet">Brak profili</string>
+    <string name="no_profiles_yet_desc">Zgrupuj aplikacje, które zamrażasz razem, i zamrażaj je jednym dotknięciem</string>
+    <string name="profile_save_selection">Zapisz jako profil</string>
+    <string name="profile_delete_title">Usunąć „%1$s”?</string>
+    <string name="profile_delete_desc">Usuwany jest tylko profil. Aplikacje w nim pozostają dokładnie takie, jakie są — co jest zamrożone, zostaje zamrożone.</string>
+    <string name="profile_saved">Zapisano profil</string>
+    <string name="profile_deleted">Usunięto profil</string>
+    <string name="profile_nothing_to_do">Nic do zrobienia dla tego profilu</string>
+    <string name="bulk_run_failed">To uruchomienie nie zostało ukończone — sprawdź aplikacje, zanim na nim polegniesz</string>
+    <string name="error_profile_name_taken">Ta nazwa profilu jest już zajęta</string>
+    <string name="error_profile_delete_failed">Nie udało się usunąć tego profilu</string>
+    <string name="error_profiles_load_failed">Nie udało się wczytać profili zamrażania</string>
+    <string name="action_edit">Edytuj</string>
+    <string name="action_delete">Usuń</string>
+    <string name="action_save">Zapisz</string>
+    <string name="more_options">Więcej opcji</string>
+    <plurals name="profile_app_count">
+        <item quantity="one">%1$d aplikacja</item>
+        <item quantity="few">%1$d aplikacje</item>
+        <item quantity="many">%1$d aplikacji</item>
+        <item quantity="other">%1$d aplikacji</item>
+    </plurals>
+    <string name="fix_store_desc">Thor instaluje każdą aplikację ponownie, aby Android zapisał Play Store jako aplikację, która ją zainstalowała. Twoje dane i ustawienia zostają zachowane.</string>
+    <string name="fix_store_warning">Aplikacja, której podpis nie zgadza się z wersją z Play Store, może przestać się aktualizować. Odznacz wszystko, czego wolisz nie ruszać.</string>
+    <plurals name="fix_store_confirm">
+        <item quantity="one">Napraw %1$d aplikację</item>
+        <item quantity="few">Napraw %1$d aplikacje</item>
+        <item quantity="many">Napraw %1$d aplikacji</item>
+        <item quantity="other">Napraw %1$d aplikacji</item>
+    </plurals>
+    <string name="fix_store_installed_by">Zainstalowana przez: %1$s</string>
+    <string name="fix_store_installer_none">Nie zapisano instalatora</string>
+    <string name="select_all">Wybierz wszystkie</string>
+    <string name="select_none">Wyczyść</string>
+    <string name="log_stop">Zatrzymaj</string>
+    <string name="log_stopping">Zatrzymanie po bieżącej aplikacji…</string>
+    <string name="log_stopped">Zatrzymano — przetworzono %1$d z %2$d aplikacji.</string>
+    <string name="export_list">Eksportuj listę</string>
+    <string name="export_list_share">Udostępnij listę</string>
+    <string name="export_list_empty">Na tej liście nie ma aplikacji do eksportu</string>
+    <string name="export_list_failed">Nie udało się zapisać listy</string>
+    <string name="clear_all_caches_requires_usage_access">Shizuku nie może wyczyścić pamięci podręcznej wszystkich aplikacji bez dostępu do danych o użyciu. Androidowi trzeba podać, ile bajtów ma odzyskać, a tylko to uprawnienie pozwala zmierzyć, ile pamięci podręcznej jest. Przyznaj aplikacji Thor dostęp do danych o użyciu w Ustawieniach i spróbuj ponownie.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku nie może czyścić pamięci podręcznej. Nie ma powłoki, w której uruchomiłby androidowe czyszczenie pamięci podręcznej, a API Device Owner nie ma odpowiednika. Przełącz się na Root lub Shizuku.</string>
+
+</resources>

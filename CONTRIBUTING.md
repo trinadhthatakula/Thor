@@ -11,14 +11,45 @@ Here is a guide on how you can contribute to the project.
 We want Thor to be accessible to everyone worldwide. You can help by translating either the **In-App Strings** or the **Store Metadata (Fastlane)**.
 
 ### 1. In-App Strings Translation
-In-app strings are stored in standard Android resources:
-* **Base Strings**: [app/src/main/res/values/strings.xml](app/src/main/res/values/strings.xml)
-* **Localized Strings**: Located under `app/src/main/res/values-<locale-code>/strings.xml` (e.g., [values-es/strings.xml](app/src/main/res/values-es/strings.xml) for Spanish).
+In-app strings are stored in standard Android resources, split across **three** files:
+* **Base Strings**: [values/strings.xml](app/src/main/res/values/strings.xml) (the bulk),
+  [values/strings_settings.xml](app/src/main/res/values/strings_settings.xml) and
+  [values/strings_backup.xml](app/src/main/res/values/strings_backup.xml)
+* **Localized Strings**: the same three file names under `app/src/main/res/values-<locale-code>/`
+  (e.g. [values-pt/](app/src/main/res/values-pt) for Portuguese).
+
+`values/non-translatable.xml` is the one file you should *not* copy — everything in it is marked
+`translatable="false"` on purpose.
+
+The file names carry no meaning to the resource merger: it keys on `name=`, so what matters is that
+the union of your files covers the union of the base ones. Mirror the three-file split anyway — the
+four oldest locales (`ar`, `es`, `fr`, `zh-rCN`) predate it and fold the settings strings into their
+`strings.xml`, which is why their `strings.xml` is longer than the base one.
 
 **How to contribute:**
 1. Identify your target language code (e.g., `hi` for Hindi, `de` for German).
 2. Create the directory `app/src/main/res/values-<locale-code>/` if it doesn't exist.
-3. Copy the base [strings.xml](app/src/main/res/values/strings.xml) to your new folder and translate the text inside the `<string>` tags.
+3. Copy the three base files into it and translate the text inside the `<string>` tags. Every
+   `name=` must survive: lint runs with `warningsAsErrors`, so **one missing string fails the
+   build**, not just your locale.
+4. Get the `<plurals>` categories right for your language — the ones CLDR defines for it, no more
+   and no fewer. Polish needs `one/few/many/other`; Chinese needs only `other`; a category your
+   language does not have is a lint error too.
+5. Leave every `%1$s`, `%1$d` and `\n` exactly as the English has them, and escape a literal
+   apostrophe as `\'`.
+
+**Then wire the language up, or it ships and nobody can select it.** A `values-xx` directory alone
+does nothing; four other files have to agree, and the build only catches two of them:
+
+| File | What to add |
+|---|---|
+| [`app/build.gradle.kts`](app/build.gradle.kts) → `translatedLocales` | the **resource qualifier** (`pt-rBR`, not `pt-BR`). Missing here means the resources are compiled and then filtered straight back out. |
+| [`res/xml/locales_config.xml`](app/src/main/res/xml/locales_config.xml) | the **BCP-47 tag** (`pt-BR`, not `pt-rBR`). This is what Android 13+'s own per-app language screen reads. |
+| [`LocalePolicy.kt`](app/src/main/java/com/valhalla/thor/util/LocalePolicy.kt) → `AppLanguage` | an enum entry with its BCP-47 tag. Read the KDoc first — whether the tag carries a region is not a free choice. |
+| [`SettingsCatalog.kt`](app/src/main/java/com/valhalla/thor/presentation/settings/SettingsCatalog.kt) → `labelRes` | the picker's own row label, plus a new `<string>` for the language name **in every locale** (they are exonyms — `values-fr` says "Anglais", not "English"). |
+
+`LocalePolicyTest` pins several of these, so run `./gradlew testFossDebugUnitTest` before opening the
+PR.
 
 ### 2. Store Listing Metadata (Fastlane) Translation
 We use Fastlane to deploy the app to the Google Play Store and other stores. Store listings are localized under the [fastlane/metadata/android/](fastlane/metadata/android) directory.

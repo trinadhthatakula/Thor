@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="job_backing_up">جارٍ النسخ الاحتياطي</string>
+    <string name="job_restoring">جارٍ الاستعادة</string>
+    <!--
+      Here rather than in values/strings.xml with the rest of the export copy, because this is a job
+      *title* and titleFor() reads all three from one place. It also inherits this file's
+      MissingTranslation exemption, which its two siblings already rely on; the export sentences it
+      appears above are translated, since they live in the enforced file.
+    -->
+    <string name="job_exporting">جارٍ التصدير</string>
+    <!--
+      Named for the channel's scope, not for the feature that opened it. A user silencing this is
+      silencing every long-running job Thor reports — bulk actions are meant to join backups on it —
+      and a switch labelled "Backup and restore" would not have told them that. The channel id is
+      unchanged ("thor.jobs"), so renaming it here renames the existing switch rather than creating a
+      second one; a channel's name is updatable, its importance is not once the user has touched it.
+    -->
+    <string name="job_channel_name">المهام في الخلفية</string>
+    <string name="job_channel_description">تقدّم عمليات التصدير والنسخ الاحتياطي والاستعادة والإجراءات المجمّعة التي تعمل في الخلفية</string>
+
+    <string name="action_backup">نسخ احتياطي</string>
+    <string name="backup_unsupported">لا يستطيع Thor قراءة البيانات الخاصة بتطبيق آخر بالوصول المتاح له حاليًا. يتطلب ذلك Root، أو Shizuku مُشغَّلًا من Root.</string>
+    <!--
+      Kept separate from backup_unsupported rather than appended to it, because that string is shared
+      with ArchiveRestoreSheet — where the blocker is *writing* private data, and a note about what
+      backup will support is off topic. Only AppBackupSheet renders this one.
+    -->
+    <string name="backup_partial_soon">قادم في Thor 2.0: نسخ احتياطي جزئي بدون Root — التطبيق نفسه وملفاته على وحدة التخزين المشتركة، دون بياناته الخاصة.</string>
+    <string name="backup_include_bundle">تضمين مثبِّت التطبيق</string>
+    <string name="backup_include_bundle_desc">يتيح لهذه النسخة الاحتياطية إعادة تثبيت التطبيق إذا اختفى.</string>
+    <string name="backup_class_ce">بيانات التطبيق</string>
+    <!--
+      "Startup data" rather than "Device-encrypted data": the class exists because apps keep
+      first-run and keyset state there, which is what a user needs to know. The encryption mode is
+      not. It describes the string below it, not the one above.
+    -->
+    <string name="backup_class_de">بيانات بدء التشغيل</string>
+    <string name="backup_class_external_data">الملفات على وحدة التخزين المشتركة</string>
+    <string name="backup_class_external_media">الوسائط على وحدة التخزين المشتركة</string>
+    <string name="backup_size_measuring">جارٍ التحقق من الحجم…</string>
+    <string name="backup_size_empty">فارغ</string>
+    <string name="backup_size_unknown">الحجم غير معروف</string>
+    <string name="backup_destination">الحفظ في %1$s</string>
+    <string name="backup_destination_pending">جارٍ البحث عن مجلد النسخ الاحتياطي…</string>
+    <string name="backup_change_destination">تغيير</string>
+    <string name="backup_destination_not_persistable">لا يستطيع Thor الاحتفاظ بالوصول إلى ذلك المجلد. اختر مجلدًا آخر.</string>
+    <!--
+      Deliberately not "starting soon": jobs run on one chain, and a job appended behind one that
+      fails is cancelled without ever running. This says where the job is, not what will happen.
+    -->
+    <string name="backup_queued">في انتظار انتهاء عملية نسخ احتياطي أو استعادة أخرى.</string>
+    <string name="backup_passphrase">عبارة المرور</string>
+    <string name="backup_passphrase_confirm">تأكيد عبارة المرور</string>
+    <string name="backup_passphrase_warning">لا يستطيع Thor استرجاع عبارة المرور هذه. بدونها، لا يمكن استعادة هذه النسخة الاحتياطية.</string>
+    <string name="backup_remember_passphrase">تذكّرها على هذا الجهاز</string>
+    <string name="backup_use_different_passphrase">استخدام عبارة مرور مختلفة</string>
+    <string name="backup_start">نسخ احتياطي</string>
+    <!--
+      The consequence a deterministic file name has and nothing else on the sheet names: an archive is
+      <package>-<versionCode>.thorbak, so backing the same app up twice at the same version always
+      collides.
+
+      This used to read "can replace the backup you already have", because the three destinations
+      genuinely disagreed: MediaStore de-duplicates to "name (1)", a SAF provider usually does, and a
+      legacy Downloads write renamed straight over the old file. AppArchiveStoreImpl now picks a
+      non-colliding name on that third backend too (nonCollidingArchiveName), so "kept alongside" is
+      the behaviour Thor itself produces everywhere.
+
+      The hedge survives, narrowed to the one case Thor does not control: a folder the user chose is
+      the provider's to manage, and DocumentsContract.renameDocument onto an existing name is the
+      provider's decision. Promising "never replaces" would be a claim Thor cannot honour there.
+
+      Stated before the button rather than as an "are you sure?", which is the branch's rule for
+      destructive actions: name the consequence, do not ask the user to confirm a sentence they have
+      not been given.
+    -->
+    <string name="backup_overwrite_notice">يسمّي Thor النسخة الاحتياطية باسم التطبيق وإصداره، لذا فإن نسخ هذا التطبيق احتياطيًا مرة أخرى بالإصدار نفسه يعيد استخدام ذلك الاسم. يحتفظ Thor بالنسختين عبر ترقيم الأحدث، غير أن مجلدًا اخترته بنفسك قد يستبدل الملف الأقدم بدلاً من ذلك.</string>
+    <!--
+      Shown when every data class is unticked. Its second sentence is the whole of C1: the restore gate
+      refuses an empty selection before it looks at the installer, so an installer-only archive is a
+      file Thor can write and can never read back. The sheet used to offer exactly that.
+    -->
+    <string name="backup_nothing_selected">اختر عنصرًا واحدًا على الأقل لنسخه احتياطيًا. لا يمكن استعادة المثبِّت وحده.</string>
+    <string name="backup_done">تم حفظ النسخة الاحتياطية.</string>
+    <string name="backup_failed">فشل النسخ الاحتياطي: %1$s</string>
+    <string name="backup_failed_unknown">توقّف دون بيان السبب</string>
+    <!--
+      The backup counterpart of restore_failed_partial, and deliberately not a copy of it: a backup
+      reads the app's data and writes somewhere else, so there is no half-written app to warn about.
+      What the user needs is the other half — that no archive was left behind either. That is true by
+      construction rather than by hope: AppArchiveStoreImpl writes to <name>.part and only publishes on
+      success, discards the partial on failure, and sweeps orphaned ones at the next launch.
+    -->
+    <string name="backup_failed_nothing_saved">لم يُحفظ أي ملف نسخة احتياطية. لم تُمسّ بيانات التطبيق نفسه — فالنسخ الاحتياطي يقرأها فقط.</string>
+    <!--
+      The pre-flight failures: the enqueue returned no id, or something between the passphrase recall
+      and the enqueue threw. Both are decided before a job exists.
+    -->
+    <string name="backup_failed_not_started">لم يبدأ أي شيء، لذلك لم تُحفظ أي نسخة احتياطية.</string>
+    <!--
+      Cancelled without ever running — the chain case, matching restore_cancelled. Every job is appended
+      to one chain and WorkManager cancels the dependents of a job that fails, so a backup queued behind
+      a failing one is cancelled before its work is ever called. Reported as its own outcome rather than
+      as a failure: "Backup failed" over a backup Thor never attempted is a sentence the user cannot act
+      on, and the action here is simply to try again.
+    -->
+    <string name="backup_cancelled">لم يشغّل Thor هذا النسخ الاحتياطي — فشلت المهمة التي تسبقه في قائمة الانتظار، لذا أُلغي هذا قبل أن يبدأ. لم تُحفظ أي نسخة احتياطية. حاول مرة أخرى.</string>
+    <string name="backup_cancelled_after_start">أُلغي هذا النسخ الاحتياطي بعد أن كان قد بدأ بالفعل.</string>
+    <!--
+      Its own string rather than restore_interrupted_dismiss, which is named and commented for the §8.5
+      breadcrumb banner. Identical text today; rewording one must not silently reword the other.
+    -->
+    <string name="backup_outcome_dismiss">حسنًا</string>
+    <!--
+      One word, because it is the label the sheet's running frame is built around: while a job is live
+      the sheet shows the bar and this button and nothing else. It dismisses the sheet, which is safe
+      for the reason the sentence below states — the job is a foreground service and the sheet is only
+      watching it.
+    -->
+    <string name="backup_background">في الخلفية</string>
+    <string name="backup_background_desc">يستمر هذا العمل حتى لو أغلقته. يعرض الإشعار مدى تقدّمه.</string>
+
+    <string name="restore_title">استعادة نسخة احتياطية</string>
+    <string name="restore_pick_prompt">اختر ملف نسخة احتياطية من Thor ‎(.thorbak) لترى ما يحتويه.</string>
+    <string name="restore_pick_file">اختر ملفًا</string>
+    <string name="restore_pick_another">اختر ملفًا مختلفًا</string>
+    <!--
+      PluralsCandidate fires on the %2$d. It is a version code — an identifier the app displays
+      alongside the version name — so there is no quantity to agree with and no plural form to pick.
+    -->
+    <string name="restore_archive_version">الإصدار %1$s ‎(%2$d)</string>
+    <string name="restore_archive_created">تم النسخ الاحتياطي في %1$s</string>
+    <string name="restore_will_install_first">هذا التطبيق غير مثبَّت. سيثبّته Thor من النسخة الاحتياطية أولًا.</string>
+    <plurals name="restore_include_obb">
+        <item quantity="zero">استعادة بيانات اللعبة أيضًا (%1$d ملف)</item>
+        <item quantity="one">استعادة بيانات اللعبة أيضًا (%1$d ملف)</item>
+        <item quantity="two">استعادة بيانات اللعبة أيضًا (%1$d ملفان)</item>
+        <item quantity="few">استعادة بيانات اللعبة أيضًا (%1$d ملفات)</item>
+        <item quantity="many">استعادة بيانات اللعبة أيضًا (%1$d ملفًا)</item>
+        <item quantity="other">استعادة بيانات اللعبة أيضًا (%1$d ملف)</item>
+    </plurals>
+    <string name="restore_unlock">إلغاء القفل</string>
+    <string name="restore_unlocked">تم إلغاء القفل بعبارة المرور المحفوظة.</string>
+    <string name="restore_confirm_replace">أفهم أن هذا يستبدل البيانات الحالية للتطبيق. يُحذف كل ما ليس في هذه النسخة الاحتياطية.</string>
+    <string name="restore_start">استعادة</string>
+    <!--
+      No `restore_back` any more. The restore surface is a bottom sheet, dismissed by its scrim, its
+      drag handle or the back gesture, and its own Background button is what covers leaving a live
+      run — so the button this named had nothing left to do. Deleted rather than left in place because
+      lint's UnusedResources is fatal in this build; there were no translations to strand.
+    -->
+    <string name="restore_done">انتهت الاستعادة. افتح التطبيق للتأكد من أنه يعمل.</string>
+    <!--
+      Heading for the sentences a *successful* run still has to report — game data that could not be
+      placed, an archive that turned out to hold none, a breadcrumb Thor could not write. The data
+      landed, so this is not phrased as a failure: a user told "restore failed" runs it again, which
+      deletes and rewrites data that is already correct.
+    -->
+    <string name="restore_done_warnings">لم تكتمل بعض الأجزاء:</string>
+    <string name="restore_failed">فشلت الاستعادة: %1$s</string>
+    <!--
+      Its own string rather than backup_failed_unknown, which the backup sheet also renders. Identical
+      text today; the two surfaces must be able to diverge without one silently editing the other.
+    -->
+    <string name="restore_failed_unknown">توقّفت دون بيان السبب</string>
+    <!--
+      The four sentences ArchiveRestoreViewModel used to hold as Kotlin literals. They live here for the
+      reason every other string on this screen does: a literal in a view model is invisible to lint and
+      to the translation pipeline, so it would have been the only English left once strings_backup.xml
+      is translated, with nothing to point at it.
+
+      Two shapes, and the difference is where each is drawn. The two below are whole sentences shown on
+      their own — one in the screen's error block, one as the passphrase field's supporting text — so
+      they are capitalised and stopped. The two after them are fragments interpolated into
+      restore_failed above ("Restore failed: %1$s"), so they carry neither.
+    -->
+    <string name="restore_error_unreadable_file">تعذّر على Thor قراءة ذلك الملف. إذا كان على بطاقة أو في مجلد سحابي، فتحقّق من أنه ما زال متاحًا وحاول مرة أخرى.</string>
+    <!--
+      Split out of restore_error_unreadable_file, which used to answer for both. The picker shows every
+      file on the device, so choosing something that is not a backup is the ordinary mistake, and the
+      two failures send the user opposite ways: this one says pick a different file, the other says
+      this file is fine, try it again. One sentence for both was wrong for whichever one happened.
+    -->
+    <string name="restore_error_not_an_archive">ذلك الملف ليس نسخة احتياطية من Thor. اختر ملف ‎.thorbak.</string>
+    <string name="restore_error_wrong_passphrase">عبارة المرور هذه لا تفتح هذه النسخة الاحتياطية.</string>
+    <!--
+      Not "wrong passphrase": this is the check itself failing, and a throw is no evidence about what
+      was typed. Says what to do instead of guessing at a cause it does not know.
+    -->
+    <string name="restore_error_unlock_check_failed">تعذّر على Thor التحقّق من عبارة المرور هذه. حاول مرة أخرى.</string>
+    <string name="restore_failed_passphrase_lost">لم يعد لدى Thor عبارة المرور لهذه النسخة الاحتياطية — ألغِ قفلها من جديد</string>
+    <string name="restore_failed_salt_unreadable">تعذّرت قراءة قيمة الملح (salt) في هذا الأرشيف</string>
+    <!--
+      The damage sentence. Shown only where RestoreFinish.workerRan is true — a failed WorkInfo, or a
+      cancel this screen saw run — and never as the second line of a failure decided before the
+      enqueue. Where it does apply it must never say "nothing was changed": a restore deletes each
+      class before it writes it, and on the install-first path it may have installed the app before it
+      failed, so the honest instruction is to go and look. Its last sentence tells the user to run a
+      destructive operation again, which is the reason the condition on it is load-bearing.
+    -->
+    <string name="restore_failed_partial">توقّفت العملية في منتصفها، لذا قد تكون بيانات التطبيق ناقصة — وإذا كان Thor قد ثبّت التطبيق من هذه النسخة الاحتياطية، فهو ما زال مثبَّتًا. الحل هو إعادة الاستعادة.</string>
+    <!--
+      The pre-flight failures: Thor no longer holds the passphrase, the archive's salt will not decode,
+      or the enqueue threw. All three are decided before a job exists, so the device is untouched and
+      the string above would be false. Deliberately does not say "try again" — the reason above it says
+      what to do, and two instructions in two lines contradict each other.
+    -->
+    <string name="restore_failed_not_started">لم يبدأ أي شيء، لذلك لم يتغيّر أي شيء على هذا الجهاز.</string>
+    <!--
+      Cancelled without ever running: jobs share one chain, WorkManager cancels the dependents of a job
+      that fails, and a dependent's work is never called. This is the only cancel string that gets to
+      say "nothing was changed", and it is true only because of that. (restore_failed_not_started above
+      says the same of a failure decided before the enqueue.) The sibling below covers a cancel that
+      arrived after the worker had started.
+    -->
+    <string name="restore_cancelled">لم يشغّل Thor هذه الاستعادة — فشلت المهمة التي تسبقها في قائمة الانتظار، لذا أُلغيت هذه قبل أن تبدأ. لم يتغيّر أي شيء. حاول مرة أخرى.</string>
+    <!--
+      Cancelled after the job had been started, which this screen knows because it observed the RUNNING
+      state — written as WorkManager hands the job to a built worker. Rendered above
+      restore_failed_partial: the outcome differs from a failure, the damage does not.
+    -->
+    <string name="restore_cancelled_after_start">أُلغيت هذه الاستعادة بعد أن كانت قد بدأت بالفعل.</string>
+    <string name="restore_interrupted">لم تكتمل استعادة %1$s. قد تكون بيانات ذلك التطبيق ناقصة — والحل هو استعادته من جديد.</string>
+    <string name="restore_interrupted_dismiss">حسنًا</string>
+    <!--
+      The outcome card's dismiss, split out from restore_interrupted_dismiss above. That one belongs to
+      the §8.5 breadcrumb banner, which is what its name and its neighbours say; the outcome card had
+      borrowed it. Same text, two owners, so either can be reworded on its own.
+    -->
+    <string name="restore_outcome_dismiss">حسنًا</string>
+    <string name="restore_refused_signer_mismatch">أُنشئت هذه النسخة الاحتياطية من تطبيق موقّع من مطوّر مختلف. استعادتها تعني تسليم بيانات تطبيق إلى تطبيق آخر، لذا لن يفعل Thor ذلك.</string>
+    <string name="restore_refused_signer_unverifiable">تعذّر على Thor قراءة توقيع التطبيق المثبَّت، لذا لا يمكنه التحقّق من أن هذه النسخة الاحتياطية تخصّه.</string>
+    <string name="restore_refused_app_absent">هذا التطبيق غير مثبَّت، ولا تحتوي هذه النسخة الاحتياطية على مثبِّت لإضافته منه.</string>
+    <string name="restore_refused_class_missing">لا تحتوي هذه النسخة الاحتياطية على أحد العناصر المحددة.</string>
+    <string name="restore_refused_nothing_selected">لم يُحدَّد أي شيء.</string>
+    <string name="restore_refused_schema_too_new">أُنشئت هذه النسخة الاحتياطية بإصدار أحدث من Thor. حدّث Thor لاستعادتها.</string>
+    <string name="restore_refused_invalid_schema_version">لا تُفصح هذه النسخة الاحتياطية عن صيغتها. الملف تالف، أو أن Thor ليس من كتبه.</string>
+    <string name="restore_refused_invalid_package_name">تسمّي هذه النسخة الاحتياطية تطبيقًا بصيغة لا يقبلها Thor. الملف تالف، أو أن Thor ليس من كتبه.</string>
+    <string name="restore_refused_invalid_user_id">تسمّي هذه النسخة الاحتياطية ملف مستخدم لا يقبله Thor. الملف تالف، أو أن Thor ليس من كتبه.</string>
+    <string name="restore_warning_version_older">التطبيق المثبَّت أقدم من هذه النسخة الاحتياطية. قد تتعطّل التطبيقات مع بيانات من إصدار أحدث — حدّث التطبيق أولًا إذا حدث ذلك.</string>
+    <string name="restore_warning_ce_without_de">بيانات بدء التشغيل موجودة في هذه النسخة الاحتياطية لكنها غير محددة. تحتاج بعض التطبيقات إلى الاثنتين معًا، وقد تتصرّف كأنها نُقلت نصف نقل.</string>
+    <string name="restore_settings_desc">اقرأ ملف ‎.thorbak وأعِد بيانات التطبيق إلى مكانها.</string>
+    <!--
+      The Settings section heading, covering both halves: the row under it restores, and Task 18 adds
+      the saved-passphrase row to the same section. Not action_backup ("Back up"), which is a button
+      label on an app — a heading that reads as a verb over a row that reads as a different verb.
+    -->
+    <string name="backup_and_restore">النسخ الاحتياطي والاستعادة</string>
+
+    <!--
+      §5.4's surface. Separate strings from the backup sheet's rather than shared ones: the sheet is
+      talking about the archive it is about to write ("this backup"), and this screen is talking about
+      a device-wide setting that applies to every future one. One string cannot be true in both places
+      without going vague in both.
+    -->
+    <string name="passphrase_settings_title">عبارة مرور النسخ الاحتياطي</string>
+    <string name="passphrase_settings_desc">اختر عبارة المرور التي يتذكّرها Thor أو غيّرها أو أزلها.</string>
+    <string name="passphrase_settings_stored">هناك عبارة مرور محفوظة على هذا الجهاز.</string>
+    <string name="passphrase_settings_warning">لا يستطيع Thor استرجاع عبارة المرور هذه. بدونها، لا يمكن استعادة أي نسخة احتياطية أُنشئت بها.</string>
+    <!--
+      The consequence a user cannot see and would otherwise assume the opposite of. Changing a stored
+      passphrase re-encrypts nothing: each archive's key is derived from the passphrase it was written
+      with, so every existing .thorbak still opens only with that one. Stated where the choice is made,
+      because after it is made there is nothing to be done about it.
+    -->
+    <string name="passphrase_settings_no_reencrypt">تغييرها لا يغيّر أي نسخة احتياطية أنشأتها من قبل. كل واحدة منها لا تزال تُفتح فقط بعبارة المرور التي أُنشئت بها.</string>
+    <string name="passphrase_settings_save">حفظ</string>
+    <string name="passphrase_settings_forget">نسيانها</string>
+    <string name="passphrase_settings_saved">تم الحفظ على هذا الجهاز.</string>
+    <!--
+      The confirmation body has to carry the scope of the loss, because the button label cannot: what
+      goes is the ability to open every .thorbak already written under that passphrase, not merely the
+      copy this device is holding. The consequence is then spelled out as something the user will have
+      to do (type it again) rather than left at "it cannot be recovered", so a user who does still know
+      their passphrase can see this is survivable and proceed.
+    -->
+    <string name="passphrase_forget_confirm_title">نسيان عبارة المرور هذه؟</string>
+    <string name="passphrase_forget_confirm_desc">سيتوقّف Thor عن تذكّرها على هذا الجهاز. لا يمكن استرجاعها — سيتعيّن عليك كتابتها من جديد لكل نسخة احتياطية تنشئها، ولكل نسخة احتياطية سبق أن أنشأتها بها.</string>
+    <!--
+      Load-bearing, not decorative: without it lint fails the build with
+      `Error: Formatting %d followed by words ("characters") … [PluralsCandidate]`.
+
+      Kept because the argument is always MIN_PASSPHRASE_LENGTH, a compile-time constant — so this
+      string renders one number and only ever that number, and no plural form can vary. It is NOT
+      kept on the grounds that "characters" is uncounted: lint names that noun and it is right to,
+      and values-ar (on the translation list, where 8 takes a different form from 1 and 2) would
+      otherwise be a real problem. Do not lean on restore_archive_version's precedent here; that one
+      is exempt because a version code is not a count at all, which is a different argument.
+
+      If MIN_PASSPHRASE_LENGTH ever becomes user-configurable or varies by build, this reasoning
+      expires with it and the string becomes a genuine <plurals>.
+    -->
+    <string name="passphrase_error_too_short">استخدم %1$d أحرف على الأقل.</string>
+    <string name="passphrase_error_mismatch">عبارتا المرور غير متطابقتين.</string>
+    <!--
+      Deliberately not phrased as a failure of the backup: the vault is a convenience cache, and an
+      archive is protected by the passphrase itself, never by whether this device remembered it.
+    -->
+    <string name="passphrase_error_store_failed">تعذّر على Thor حفظ عبارة المرور على هذا الجهاز. سيظل النسخ الاحتياطي يعمل — لكن سيتعيّن عليك كتابتها في كل مرة.</string>
+</resources>

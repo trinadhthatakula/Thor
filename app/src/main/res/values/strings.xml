@@ -56,6 +56,9 @@
     <string name="french">French</string>
     <string name="spanish">Spanish</string>
     <string name="arabic">Arabic</string>
+    <string name="portuguese">Portuguese</string>
+    <string name="portuguese_brazil">Portuguese (Brazil)</string>
+    <string name="polish">Polish</string>
 
     <!-- Common Actions -->
     <string name="cancel">Cancel</string>

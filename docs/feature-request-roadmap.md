@@ -138,7 +138,7 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
      Non-dangerous and ungrouped permissions are left out of the index entirely.
   2. **Chip labels come from the platform,** via `PermissionGroupInfo.loadLabel` — so they are
      already translated into every locale Android supports and read identically to the permission
-     dialogs the user has seen, instead of Thor shipping its own five translations of "Camera".
+     dialogs the user has seen, instead of Thor shipping its own eight translations of "Camera".
   3. **The permission → group table is hardcoded in Thor** (`PlatformPermissionGroups`), because the
      device will not answer the question. Since Android 10 the framework manifest declares *every*
      dangerous platform permission with `permissionGroup="android.permission-group.UNDEFINED"` and
