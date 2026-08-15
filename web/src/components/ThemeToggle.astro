@@ -148,7 +148,9 @@
   .theme-cluster {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-3xs);
+    gap: 2px;
+    height: 32px;
+    box-sizing: border-box;
     background: var(--surface-container-low);
     border: 1px solid var(--outline-variant);
     border-radius: var(--radius-full);
@@ -159,16 +161,19 @@
   .amoled-toggle {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: var(--space-3xs);
+    height: 26px;
+    box-sizing: border-box;
     font-family: var(--font-mono);
     font-size: var(--text-label-small);
     color: var(--on-surface-variant);
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--radius-full);
-    padding: var(--space-3xs) var(--space-xs);
+    padding: 0 var(--space-xs);
     cursor: pointer;
-    line-height: var(--leading-label-small);
+    line-height: 1;
     transition: color var(--motion-duration-fast) ease, background var(--motion-duration-fast) ease, border-color var(--motion-duration-fast) ease;
   }
 
