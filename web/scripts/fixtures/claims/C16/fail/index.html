@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Freezing a system app</title>
+  </head>
+  <body>
+    <main>
+      <h1>Freezing a system app</h1>
+      <!--
+        Accurate copy for two years, and still accurate in the release notes for the version most
+        people are running. That is the whole reason this needs a gate: anyone rewriting a freezing
+        page from an older draft reintroduces it, and it reads as plausible because it was true.
+        One sentence per phrasing, because the engine matches a sentence at a time.
+      -->
+      <p>
+        Thor asks Android to switch the package off and leave it where it is, and your app data
+        stays where it is. Some vendors refuse that for their own preinstalled apps, and where they
+        do, Thor falls back to removing the app so the freeze still happens. A Shizuku freeze
+        switches the app off or removes it for your user, whichever the platform will allow. The
+        command underneath is pm uninstall -k, which is the flag that keeps the data directories.
+      </p>
+      <!--
+        Two shapes the first cut of this rule read straight past. The first is the claim in the
+        past tense with no object pronoun, which is how it survived into the status-chip paragraph
+        of the features page. The second puts an unrelated negation inside the 60-character
+        exemption window, which a bare `not` in the `unless` list treated as a retraction.
+      -->
+      <p>
+        A system app a freeze removed for your Android user is gone from the launcher until you put
+        it back. Where the disable is not exposed, a Shizuku freeze removes it for your user
+        instead.
+      </p>
+    </main>
+  </body>
+</html>
