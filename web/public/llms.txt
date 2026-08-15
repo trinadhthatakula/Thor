@@ -1,0 +1,33 @@
+# Thor App Manager
+
+> Free and open-source Android app manager to freeze, suspend, debloat, and manage system and user packages via Root, Shizuku, or Dhizuku.
+
+## Project Overview
+Thor is an Android application manager built with Kotlin, Jetpack Compose, and Material 3 Design. It provides safe system debloating, application freezing/suspending, split APK installation, and signature-verified extension management across multiple privilege backends.
+
+## Core Capabilities
+- **Safe System App Debloating & Freezing**: Disables system packages (`pm disable`) or uninstalls for user 0 (`pm uninstall -k --user 0`) preserving user data. Reversible at any time via `pm enable` or `pm install-existing`.
+- **Universal Android Debloater (UAD) Integration**: Dynamic safety recommendation chips (Recommended, Advanced, Expert, Unsafe) to prevent system bootloops.
+- **Multiple Work Modes**:
+  - **Root Support**: Direct su execution via Odin root service.
+  - **Shizuku Support**: System privilege execution via wireless debugging / ADB without root.
+  - **Dhizuku Support**: Device owner management without continuous ADB re-arming.
+- **Redesigned App Installer**: Install base APKs and split archives (`.apkm`, `.apks`, `.xapk`).
+- **Extension Manager**: In-app catalog of optional add-ons, each signature-verified and SHA-256 validated before install.
+- **Privacy & Security**: Zero trackers, zero analytics, zero ads. Declares no network permission except for the optional Extensions catalog and Google Play billing in the store flavor.
+
+## Official Distribution Channels
+- **Direct APK (GitHub Releases)**: https://github.com/trinadhthatakula/Thor/releases/latest
+- **Google Play Store**: https://play.google.com/store/apps/details?id=com.valhalla.thor
+- **IzzyOnDroid (F-Droid Repository)**: https://apt.izzysoft.de/fdroid/index/apk/com.valhalla.thor
+
+## Documentation & Links
+- Website: https://thor.trinadhthatakula.com
+- Features Overview: https://thor.trinadhthatakula.com/features
+- Download Guide: https://thor.trinadhthatakula.com/download
+- Frequently Asked Questions: https://thor.trinadhthatakula.com/faq
+- Extension Policy: https://thor.trinadhthatakula.com/extensions-policy
+- Build an Extension: https://thor.trinadhthatakula.com/build-an-extension
+- Source Repository: https://github.com/trinadhthatakula/Thor
+- Telegram Channel: https://t.me/thorAppDev
+- License: GNU General Public License v3.0 (GPL-3.0)
