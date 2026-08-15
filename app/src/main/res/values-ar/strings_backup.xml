@@ -133,9 +133,9 @@
     <string name="restore_archive_created">تم النسخ الاحتياطي في %1$s</string>
     <string name="restore_will_install_first">هذا التطبيق غير مثبَّت. سيثبّته Thor من النسخة الاحتياطية أولًا.</string>
     <plurals name="restore_include_obb">
-        <item quantity="zero">استعادة بيانات اللعبة أيضًا (%1$d ملف)</item>
-        <item quantity="one">استعادة بيانات اللعبة أيضًا (%1$d ملف)</item>
-        <item quantity="two">استعادة بيانات اللعبة أيضًا (%1$d ملفان)</item>
+        <item quantity="zero">استعادة بيانات اللعبة أيضًا</item>
+        <item quantity="one">استعادة بيانات اللعبة أيضًا (ملف واحد)</item>
+        <item quantity="two">استعادة بيانات اللعبة أيضًا (ملفان)</item>
         <item quantity="few">استعادة بيانات اللعبة أيضًا (%1$d ملفات)</item>
         <item quantity="many">استعادة بيانات اللعبة أيضًا (%1$d ملفًا)</item>
         <item quantity="other">استعادة بيانات اللعبة أيضًا (%1$d ملف)</item>
