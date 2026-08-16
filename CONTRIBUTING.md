@@ -53,6 +53,24 @@ does nothing; five other places have to agree, and `lintFossDebug` only catches 
 `./gradlew :app:testFossDebugUnitTest :app:lintFossDebug :app:lintStoreRelease` — **both** lint
 variants, or the store source set stays unchecked until CI says otherwise.
 
+**A green build is not a proofread.** Everything above — name-set parity, placeholder parity, CLDR
+quantity coverage, both lint variants — answers *"is the string present and well-formed?"*. Nothing
+in this repo answers *"is it correct in the language?"*, and the two look identical from CI. All of
+these shipped green:
+
+- an Arabic `<plurals>` whose six quantity forms were byte-identical, so `quantity="one"` rendered
+  *"تم تجميد 1 تطبيقات"* — "froze 1 apps". Correct XML, full CLDR coverage, placeholders intact.
+- Spanish `action_add_freezer` reading "Añadir congelador" — *add a freezer*, not *add to the
+  freezer*.
+- French `no_permissions_found` reading "Aucun permis trouvé" — no *licence* found.
+- Chinese using 冷冻 (*refrigerate*) for the freezer, in a file that says 冻结室 eighteen lines
+  earlier.
+
+Lint is not neutral about this either: its `Typos` check fires on **correct** Portuguese while
+sitting silent on all four of the above. So read the diff in the language, and when you fix
+something, **grep the class rather than the line** — every sweep we have run found sites the review
+had not listed.
+
 ### 2. Store Listing Metadata (Fastlane) Translation
 We use Fastlane to deploy the app to the Google Play Store and other stores. Store listings are localized under the [fastlane/metadata/android/](fastlane/metadata/android) directory.
 
