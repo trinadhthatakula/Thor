@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { findRepoRoot } from './repo-facts/read.ts'
-import { FUNDING_LINKS, PROJECT_LINKS, SITE, canonical } from './site.ts'
+import { FUNDING_LINKS, INDEXNOW, PROJECT_LINKS, SITE, canonical } from './site.ts'
 
 /**
  * Locks the footer's outbound links to the repository's own answers.
@@ -117,5 +117,11 @@ describe('outbound links agree with the repository', () => {
     expect(match, 'astro.config.mjs has no `site`').not.toBeNull()
     expect(match![1].replace(/\/$/, '')).toBe(SITE.origin)
     expect(canonical('/faq')).toBe(`${SITE.origin}/faq`)
+  })
+
+  it('declares a valid IndexNow configuration matching the site origin', () => {
+    expect(INDEXNOW.key).toMatch(/^[0-9a-f]{32}$/)
+    expect(INDEXNOW.keyLocation).toBe(`${SITE.origin}/${INDEXNOW.key}.txt`)
+    expect(INDEXNOW.endpoint).toBe('https://api.indexnow.org/indexnow')
   })
 })
