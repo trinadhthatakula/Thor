@@ -78,3 +78,11 @@ export function canonical(pathname: string): string {
   const clean = pathname !== '/' && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
   return new URL(clean, SITE.origin).href
 }
+
+/** IndexNow protocol configuration for search engine instant indexing (Bing, Copilot, Yandex, etc.). */
+export const INDEXNOW = {
+  key: '8d26c1f17fa3452485521b44614e21a8',
+  keyLocation: `${SITE.origin}/8d26c1f17fa3452485521b44614e21a8.txt`,
+  endpoint: 'https://api.indexnow.org/indexnow',
+} as const
+
