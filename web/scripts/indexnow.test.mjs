@@ -49,20 +49,22 @@ describe('IndexNow protocol implementation', () => {
     expect(result.urlsCount).toBe(1)
   })
 
-  it('handles successful API response (HTTP 200/202)', async () => {
+  it('handles successful API response (HTTP 200/202) and passes signal', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       status: 200,
       statusText: 'OK',
     })
 
+    const customSignal = new AbortController().signal
     const urls = ['https://thor.trinadhthatakula.com/']
-    const result = await submitIndexNow({ urls, fetchFn: mockFetch })
+    const result = await submitIndexNow({ urls, fetchFn: mockFetch, signal: customSignal })
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
     const [endpoint, req] = mockFetch.mock.calls[0]
     expect(endpoint).toBe('https://api.indexnow.org/indexnow')
     expect(req.method).toBe('POST')
     expect(req.headers['Content-Type']).toContain('application/json')
+    expect(req.signal).toBe(customSignal)
 
     const body = JSON.parse(req.body)
     expect(body.key).toBe(INDEXNOW.key)
@@ -70,6 +72,12 @@ describe('IndexNow protocol implementation', () => {
 
     expect(result.ok).toBe(true)
     expect(result.status).toBe(200)
+  })
+
+  it('fails gracefully when key file is missing in target directory', () => {
+    const check = verifyKeyFile(join(WEB_DIR, 'nonexistent_dir'), INDEXNOW.key)
+    expect(check.ok).toBe(false)
+    expect(check.error).toContain('Key file not found')
   })
 
   it('handles API rejection or failure gracefully', async () => {
