@@ -380,7 +380,7 @@ jobs:
       # Submits live URLs to IndexNow protocol on production deploys
       - name: Submit IndexNow
         if: steps.creds.outputs.present == 'true' && steps.target.outputs.env == 'production'
-        run: npm run submit:indexnow || true
+        run: node scripts/submit-indexnow.mjs .vercel/output/static || true
 
       # Replaces the PR comment Vercel's Git integration would have posted.
       # Written with `gh` rather than a third-party action so the deploy path

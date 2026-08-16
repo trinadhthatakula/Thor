@@ -68,6 +68,7 @@ export async function submitIndexNow(options = {}) {
   const endpoint = options.endpoint ?? INDEXNOW.endpoint
   const dryRun = options.dryRun ?? false
   const fetchFn = options.fetchFn ?? globalThis.fetch
+  const signal = options.signal ?? AbortSignal.timeout(10_000)
 
   const payload = buildIndexNowPayload(urls, options)
 
@@ -89,6 +90,7 @@ export async function submitIndexNow(options = {}) {
         'User-Agent': 'Thor-IndexNow-Client/1.0',
       },
       body: JSON.stringify(payload),
+      signal,
     })
 
     // 200 (OK) or 202 (Accepted) indicates success per IndexNow spec
@@ -115,10 +117,10 @@ export async function submitIndexNow(options = {}) {
  */
 async function main() {
   const isDryRun = process.argv.includes('--dry-run')
-  const distDir = dirArg() || join(WEB_DIR, 'dist')
+  const targetDir = dirArg() || join(WEB_DIR, 'dist')
 
-  // Verify key file
-  const keyCheck = verifyKeyFile(existsSync(distDir) ? distDir : join(WEB_DIR, 'public'))
+  // Verify key file in the target build directory
+  const keyCheck = verifyKeyFile(targetDir)
   if (!keyCheck.ok) {
     console.error(`submit-indexnow: ERROR — ${keyCheck.error}`)
     process.exit(1)
