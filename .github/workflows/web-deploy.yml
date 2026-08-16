@@ -376,6 +376,11 @@ jobs:
             echo "$url"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Submits live URLs to IndexNow protocol on production deploys
+      - name: Submit IndexNow
+        if: steps.creds.outputs.present == 'true' && steps.target.outputs.env == 'production'
+        run: npm run submit:indexnow || true
+
       # Replaces the PR comment Vercel's Git integration would have posted.
       # Written with `gh` rather than a third-party action so the deploy path
       # takes no dependency outside GitHub's and Vercel's own tooling.
