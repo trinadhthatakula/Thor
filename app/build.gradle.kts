@@ -399,7 +399,7 @@ dependencies {
     // every behavioural test of a ViewModel or of BulkFreezeRunner has to sleep in wall-clock, which
     // is why docs/follow-ups/{viewmodel-behavior-tests,bulk-freeze-runner-concurrency-tests}.md were
     // filed as blocked. No mocking library: those follow-ups all specify "fake, don't mock", matching
-    // the hand-written fakes the existing suite already uses.
+    // the handwritten fakes the existing suite already uses.
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.junit)
