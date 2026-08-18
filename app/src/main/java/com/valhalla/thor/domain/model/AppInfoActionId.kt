@@ -32,7 +32,7 @@ enum class AppInfoActionId(
     BACKUP(R.string.action_backup, R.drawable.settings_backup_restore, R.string.action_backup_desc),
     DETAILS(R.string.action_details, R.drawable.list_alt, R.string.action_details_desc),
     ADD_TO_HOME(R.string.add_to_home_screen, R.drawable.home, R.string.action_add_to_home_desc),
-    FIX_STORE(R.string.fix_store, R.drawable.apk_install, R.string.fix_store_desc),
+    FIX_STORE(R.string.fix_store, R.drawable.apk_install, R.string.action_fix_store_desc),
     UNINSTALL(R.string.action_uninstall, R.drawable.delete_forever, R.string.action_uninstall_desc);
 
     companion object {
