@@ -136,4 +136,36 @@ class ToUserPreferencesTest {
 
         assertEquals(DefaultTab.HOME, fromTheFuture.toUserPreferences().defaultTab)
     }
+
+    @Test
+    fun `default action order and visibility are present on empty stores`() {
+        val prefs = emptyPreferences().toUserPreferences()
+
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.DEFAULT_ORDER, prefs.appInfoActionsOrder)
+        assertTrue(prefs.hiddenAppInfoActions.isEmpty())
+    }
+
+    @Test
+    fun `custom action order and hidden set are correctly parsed`() {
+        val settings = preferencesOf(
+            Keys.APP_INFO_ACTIONS_ORDER to "SETTINGS,OPEN,CLEAR_CACHE",
+            Keys.HIDDEN_APP_INFO_ACTIONS to setOf("CLEAR_DATA", "UNINSTALL")
+        )
+
+        val prefs = settings.toUserPreferences()
+
+        // First 3 should match custom order, rest appended in default order
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.SETTINGS, prefs.appInfoActionsOrder[0])
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.OPEN, prefs.appInfoActionsOrder[1])
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.CLEAR_CACHE, prefs.appInfoActionsOrder[2])
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.entries.size, prefs.appInfoActionsOrder.size)
+
+        assertEquals(
+            setOf(
+                com.valhalla.thor.domain.model.AppInfoActionId.CLEAR_DATA,
+                com.valhalla.thor.domain.model.AppInfoActionId.UNINSTALL
+            ),
+            prefs.hiddenAppInfoActions
+        )
+    }
 }
