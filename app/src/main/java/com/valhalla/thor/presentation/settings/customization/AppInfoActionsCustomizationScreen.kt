@@ -6,7 +6,6 @@ package com.valhalla.thor.presentation.settings.customization
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,8 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,9 +33,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,17 +45,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.asgard.components.AsgardActionItem
@@ -68,7 +60,6 @@ import com.valhalla.thor.presentation.settings.SettingsIconBox
 import com.valhalla.thor.presentation.settings.SettingsTopBar
 import com.valhalla.thor.presentation.settings.SettingsViewModel
 import org.koin.androidx.compose.koinViewModel
-import kotlin.math.roundToInt
 
 /**
  * Dedicated customization screen allowing users to reorder and toggle AppInfo sheet actions.
@@ -84,13 +75,33 @@ fun AppInfoActionsCustomizationScreen(
     val currentOrder = prefs.appInfoActionsOrder
     val hiddenActions = prefs.hiddenAppInfoActions
 
+    val localActions = remember { mutableStateListOf<AppInfoActionId>() }
+    val listState = rememberLazyListState()
+
     var showResetConfirmation by remember { mutableStateOf(false) }
 
-    // Reorder state tracking
-    var draggingIndex by remember { mutableStateOf<Int?>(null) }
-    var dragAccumulatedY by remember { mutableFloatStateOf(0f) }
+    val reorderState = rememberReorderableLazyListState(
+        listState = listState,
+        onMove = { fromKey, toKey ->
+            val fromIndex = localActions.indexOfFirst { it.name == fromKey }
+            val toIndex = localActions.indexOfFirst { it.name == toKey }
+            if (fromIndex != -1 && toIndex != -1 && fromIndex != toIndex) {
+                val item = localActions.removeAt(fromIndex)
+                localActions.add(toIndex, item)
+            }
+        },
+        onDragCompleted = {
+            viewModel.setAppInfoActionsOrder(localActions.toList())
+        }
+    )
 
-    val listState = rememberLazyListState()
+    // Synchronize local snapshot with repository when not in active drag
+    LaunchedEffect(currentOrder) {
+        if (reorderState.draggingItemKey == null) {
+            localActions.clear()
+            localActions.addAll(currentOrder)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -144,40 +155,37 @@ fun AppInfoActionsCustomizationScreen(
 
                     // Live Preview Section
                     ActionRowPreviewCard(
-                        actions = currentOrder.filterNot { it in hiddenActions }
+                        actions = localActions.filterNot { it in hiddenActions }
                     )
                 }
             }
 
             // Reorderable action items
             itemsIndexed(
-                items = currentOrder,
+                items = localActions,
                 key = { _, action -> action.name }
             ) { index, action ->
                 val isHidden = action in hiddenActions
-                val isBeingDragged = draggingIndex == index
+                val isBeingDragged = reorderState.draggingItemKey == action.name
 
                 val elevation by animateDpAsState(
-                    targetValue = if (isBeingDragged) 8.dp else 0.dp,
+                    targetValue = if (isBeingDragged) 12.dp else 0.dp,
                     label = "item_elevation"
                 )
                 val scale by animateFloatAsState(
-                    targetValue = if (isBeingDragged) 1.02f else 1.0f,
+                    targetValue = if (isBeingDragged) 1.03f else 1.0f,
                     label = "item_scale"
                 )
 
                 Box(
                     modifier = Modifier
-                        .zIndex(if (isBeingDragged) 1f else 0f)
+                        .animateItem()
+                        .zIndex(if (isBeingDragged) 10f else 1f)
                         .graphicsLayer {
                             scaleX = scale
                             scaleY = scale
-                        }
-                        .offset {
                             if (isBeingDragged) {
-                                IntOffset(x = 0, y = dragAccumulatedY.roundToInt())
-                            } else {
-                                IntOffset.Zero
+                                translationY = reorderState.draggingItemOffset
                             }
                         }
                         .shadow(elevation, RoundedCornerShape(24.dp))
@@ -185,51 +193,26 @@ fun AppInfoActionsCustomizationScreen(
                     CustomizableActionItemRow(
                         action = action,
                         index = index,
-                        totalCount = currentOrder.size,
+                        totalCount = localActions.size,
                         isVisible = !isHidden,
                         isBeingDragged = isBeingDragged,
+                        reorderState = reorderState,
                         onVisibilityChanged = { visible ->
                             viewModel.setAppInfoActionVisibility(action, visible)
                         },
                         onMoveUp = {
                             if (index > 0) {
-                                val mutable = currentOrder.toMutableList()
-                                val item = mutable.removeAt(index)
-                                mutable.add(index - 1, item)
-                                viewModel.setAppInfoActionsOrder(mutable)
+                                val item = localActions.removeAt(index)
+                                localActions.add(index - 1, item)
+                                viewModel.setAppInfoActionsOrder(localActions.toList())
                             }
                         },
                         onMoveDown = {
-                            if (index < currentOrder.size - 1) {
-                                val mutable = currentOrder.toMutableList()
-                                val item = mutable.removeAt(index)
-                                mutable.add(index + 1, item)
-                                viewModel.setAppInfoActionsOrder(mutable)
+                            if (index < localActions.size - 1) {
+                                val item = localActions.removeAt(index)
+                                localActions.add(index + 1, item)
+                                viewModel.setAppInfoActionsOrder(localActions.toList())
                             }
-                        },
-                        onDragStart = {
-                            draggingIndex = index
-                            dragAccumulatedY = 0f
-                        },
-                        onDrag = { dragAmount ->
-                            dragAccumulatedY += dragAmount.y
-                            val itemHeightPx = 200f // Approximate threshold in px per item
-                            val currentIndex = draggingIndex ?: return@CustomizableActionItemRow
-                            val targetIndex = (currentIndex + (dragAccumulatedY / itemHeightPx).roundToInt())
-                                .coerceIn(0, currentOrder.size - 1)
-
-                            if (targetIndex != currentIndex) {
-                                val mutable = currentOrder.toMutableList()
-                                val item = mutable.removeAt(currentIndex)
-                                mutable.add(targetIndex, item)
-                                viewModel.setAppInfoActionsOrder(mutable)
-                                draggingIndex = targetIndex
-                                dragAccumulatedY = 0f
-                            }
-                        },
-                        onDragEnd = {
-                            draggingIndex = null
-                            dragAccumulatedY = 0f
                         }
                     )
                 }
@@ -322,12 +305,10 @@ private fun CustomizableActionItemRow(
     totalCount: Int,
     isVisible: Boolean,
     isBeingDragged: Boolean,
+    reorderState: ReorderableLazyListState,
     onVisibilityChanged: (Boolean) -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
-    onDragStart: () -> Unit,
-    onDrag: (androidx.compose.ui.geometry.Offset) -> Unit,
-    onDragEnd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val backgroundColor = if (isBeingDragged) {
@@ -344,20 +325,13 @@ private fun CustomizableActionItemRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Drag Handle
+        // Instant tactile drag handle
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
-                .pointerInput(Unit) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = { onDragStart() },
-                        onDragEnd = { onDragEnd() },
-                        onDragCancel = { onDragEnd() },
-                        onDrag = { _, dragAmount -> onDrag(dragAmount) }
-                    )
-                },
+                .dragHandle(action.name, reorderState),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -397,7 +371,7 @@ private fun CustomizableActionItemRow(
 
         Spacer(Modifier.width(8.dp))
 
-        // Accessibility Move Buttons
+        // Accessibility Move Buttons for screen readers & discrete stepping
         Row(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
