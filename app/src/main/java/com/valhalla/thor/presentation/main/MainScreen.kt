@@ -253,15 +253,11 @@ fun MainScreen(
         }
     }
 
-    // A settings category keeps the bar, unlike every other non-root route. Those are focused tasks
-    // you finish and leave (a permission editor, an extension browser); a settings category is one
-    // tap deep in a hierarchy that is only two deep, and taking the nav bar away for it would make
-    // "Appearance → Apps tab" a two-tap trip through an animation. It also keeps the bottom inset
-    // identical between the index and a category, which is what lets both use the same padding.
+    // Bottom bar is only shown on top-level root tabs (Home, Apps, Freezer, Settings).
+    // All sub-panels and detail screens hide the navigation bar to maximize content area and focus.
     val showBottomBar = currentBackStack.lastOrNull()?.let {
         it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer ||
-                it == ThorRoute.Settings || it is ThorRoute.SettingsCategory ||
-                it == ThorRoute.AppInfoActionsCustomization
+                it == ThorRoute.Settings
     } ?: true
 
     // System Back Press Handler: 

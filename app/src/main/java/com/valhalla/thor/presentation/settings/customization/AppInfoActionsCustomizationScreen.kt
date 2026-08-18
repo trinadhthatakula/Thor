@@ -103,7 +103,7 @@ fun AppInfoActionsCustomizationScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 120.dp),
+            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // Header summary & Preview Card

@@ -229,7 +229,7 @@ fun SettingsCategoryScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 120.dp),
+            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(rows, key = { it.name }) { row ->
