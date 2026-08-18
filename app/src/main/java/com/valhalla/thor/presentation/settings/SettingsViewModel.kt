@@ -374,4 +374,25 @@ class SettingsViewModel(
             preferenceRepository.setAppGridDensity(density)
         }
     }
+
+    fun setAppInfoActionsOrder(order: List<com.valhalla.thor.domain.model.AppInfoActionId>) {
+        viewModelScope.launch {
+            preferenceRepository.setAppInfoActionsOrder(order)
+        }
+    }
+
+    fun setAppInfoActionVisibility(
+        actionId: com.valhalla.thor.domain.model.AppInfoActionId,
+        isVisible: Boolean
+    ) {
+        viewModelScope.launch {
+            preferenceRepository.setAppInfoActionVisibility(actionId, isVisible)
+        }
+    }
+
+    fun resetAppInfoActionsCustomization() {
+        viewModelScope.launch {
+            preferenceRepository.resetAppInfoActionsCustomization()
+        }
+    }
 }

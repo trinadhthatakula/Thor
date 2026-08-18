@@ -40,6 +40,7 @@ enum class SettingsCategory(
 ) {
     APPEARANCE("appearance", R.string.settings_category_appearance, R.drawable.theme_panel),
     HOME("home", R.string.settings_category_home, R.drawable.home),
+    CUSTOMIZATION("customization", R.string.settings_category_customization, R.drawable.dashboard_customize),
     FREEZER("freezer", R.string.freezer, R.drawable.frozen),
     INSTALLING("installing", R.string.settings_category_installing, R.drawable.apk_install),
     SECURITY("security", R.string.settings_category_security, R.drawable.round_key),
@@ -99,6 +100,13 @@ enum class SettingsRowId(
         SettingsCategory.HOME,
         R.string.show_extensions_tile,
         R.string.show_extensions_tile_desc,
+    ),
+
+    // ── Customization ───────────────────────────────────────────────────────────────────────────
+    APP_INFO_ACTIONS(
+        SettingsCategory.CUSTOMIZATION,
+        R.string.customization_app_info_actions,
+        R.string.customization_app_info_actions_desc,
     ),
 
     // ── Freezer ─────────────────────────────────────────────────────────────────────────────────

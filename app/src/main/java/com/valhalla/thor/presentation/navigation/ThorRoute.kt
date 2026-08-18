@@ -58,4 +58,7 @@ sealed interface ThorRoute : NavKey {
     /** @param uriString null when the user came from Settings and still has to pick a file. */
     @Serializable
     data class ArchiveRestore(val uriString: String? = null) : ThorRoute
+
+    @Serializable
+    data object AppInfoActionsCustomization : ThorRoute
 }
