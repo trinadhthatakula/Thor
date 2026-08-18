@@ -27,8 +27,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -124,16 +126,18 @@ fun AppInfoActionsCustomizationScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        TextButton(onClick = { showResetConfirmation = true }) {
+                        FilledIconButton(
+                            onClick = { showResetConfirmation = true },
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier.size(36.dp)
+                        ) {
                             Icon(
                                 painter = painterResource(R.drawable.settings_backup_restore),
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = stringResource(R.string.reset_to_default),
-                                style = MaterialTheme.typography.labelMedium
+                                contentDescription = stringResource(R.string.reset_to_default),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
