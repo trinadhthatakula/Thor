@@ -77,6 +77,10 @@ data class UserPreferences(
     // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
     val exportDirUri: String? = null,
 
+    // AppInfo Sheet Actions Customization (reordered action list and hidden action set)
+    val appInfoActionsOrder: List<AppInfoActionId> = AppInfoActionId.DEFAULT_ORDER,
+    val hiddenAppInfoActions: Set<AppInfoActionId> = emptySet(),
+
     /**
      * True when the values above are Thor's defaults rather than the user's, because the settings
      * store could not be read or had to be thrown away and replaced after corruption.

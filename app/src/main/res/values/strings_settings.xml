@@ -66,5 +66,36 @@
     <string name="settings_summary_restore_interrupted">A restore did not finish</string>
     <string name="settings_summary_backup">Restore an archive, or change the passphrase</string>
     <string name="settings_summary_unprivileged">Needs root, Shizuku or Dhizuku</string>
+    <string name="settings_summary_customization">App info actions and layout options</string>
+
+    <!-- ── Customization Category & Actions ───────────────────────────────────────────── -->
+    <string name="settings_category_customization">Customization</string>
+    <string name="customization_app_info_actions">App info actions</string>
+    <string name="customization_app_info_actions_desc">Reorder and toggle actions in the app bottom sheet</string>
+    <string name="customization_drag_hint">Drag to reorder • Toggle to show or hide</string>
+    <string name="customization_preview_title">Action row preview</string>
+    <string name="reset_to_default">Reset to default</string>
+    <string name="reset_actions_confirm_title">Reset action order?</string>
+    <string name="reset_actions_confirm_desc">This will restore the default order and make all actions visible.</string>
+
+    <string name="action_open_desc">Launch the application</string>
+    <string name="action_settings_desc">Open Android system app settings</string>
+    <string name="action_freeze_desc">Disable or re-enable the application</string>
+    <string name="action_suspend_desc">Suspend or unsuspend package execution</string>
+    <string name="action_force_stop_desc">Kill all running background and foreground processes</string>
+    <string name="action_permissions_desc">View and manage runtime permissions</string>
+    <string name="action_freezer_membership_desc">Toggle presence in the Freezer watchlist</string>
+    <string name="action_clear_cache_desc">Clear cache storage (requires Root access)</string>
+    <string name="action_clear_data_desc">Erase all user data, database, and cache</string>
+    <string name="action_share_desc">Share application APK or store link</string>
+    <string name="action_export_desc">Export APK, APKS or XAPK package</string>
+    <string name="action_backup_desc">Create encrypted data backup archive</string>
+    <string name="action_details_desc">Expand detailed manifest and component inspector</string>
+    <string name="action_add_to_home_desc">Pin shortcut directly to the home screen</string>
+    <string name="action_fix_store_desc">Re-link installer attribution to Google Play Store</string>
+    <string name="action_uninstall_desc">Completely remove application from device</string>
+    <string name="all_actions_hidden">All actions are hidden</string>
+    <string name="cd_move_up">Move up</string>
+    <string name="cd_move_down">Move down</string>
 
 </resources>

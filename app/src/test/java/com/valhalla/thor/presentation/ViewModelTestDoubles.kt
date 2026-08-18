@@ -7,6 +7,7 @@ import android.content.ContextWrapper
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
@@ -543,6 +544,27 @@ class FakePreferenceRepository(
     }
 
     override suspend fun getInstallerArg(): String = ""
+
+    override suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>) {
+        write { it.copy(appInfoActionsOrder = order) }
+    }
+
+    override suspend fun setAppInfoActionVisibility(actionId: AppInfoActionId, isVisible: Boolean) {
+        write {
+            val hidden = it.hiddenAppInfoActions.toMutableSet()
+            if (isVisible) hidden.remove(actionId) else hidden.add(actionId)
+            it.copy(hiddenAppInfoActions = hidden)
+        }
+    }
+
+    override suspend fun resetAppInfoActionsCustomization() {
+        write {
+            it.copy(
+                appInfoActionsOrder = AppInfoActionId.DEFAULT_ORDER,
+                hiddenAppInfoActions = emptySet()
+            )
+        }
+    }
 }
 
 // Building a bundle is out of reach on a plain JVM — it copies an installed package's APKs off

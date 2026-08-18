@@ -97,6 +97,7 @@ import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.backup.ArchiveRestoreSheet
 import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
+import com.valhalla.thor.presentation.settings.customization.AppInfoActionsCustomizationScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
@@ -252,14 +253,11 @@ fun MainScreen(
         }
     }
 
-    // A settings category keeps the bar, unlike every other non-root route. Those are focused tasks
-    // you finish and leave (a permission editor, an extension browser); a settings category is one
-    // tap deep in a hierarchy that is only two deep, and taking the nav bar away for it would make
-    // "Appearance → Apps tab" a two-tap trip through an animation. It also keeps the bottom inset
-    // identical between the index and a category, which is what lets both use the same padding.
+    // Bottom bar is only shown on top-level root tabs (Home, Apps, Freezer, Settings).
+    // All sub-panels and detail screens hide the navigation bar to maximize content area and focus.
     val showBottomBar = currentBackStack.lastOrNull()?.let {
         it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer ||
-                it == ThorRoute.Settings || it is ThorRoute.SettingsCategory
+                it == ThorRoute.Settings
     } ?: true
 
     // System Back Press Handler: 
@@ -612,6 +610,9 @@ fun MainScreen(
                             onOpenRestore = { mainViewModel.openRestoreSheet() },
                             onNavigateToExtensionManager = {
                                 settingsBackStack.add(ThorRoute.ExtensionManager)
+                            },
+                            onNavigateToCustomizeAppInfoActions = {
+                                settingsBackStack.add(ThorRoute.AppInfoActionsCustomization)
                             }
                         )
                     }
@@ -656,6 +657,19 @@ fun MainScreen(
                                 currentBackStack.removeLastOrNull()
                             }
                         }
+                    )
+                }
+
+                entry<ThorRoute.AppInfoActionsCustomization>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) {
+                    AppInfoActionsCustomizationScreen(
+                        onBack = {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
+                        },
+                        viewModel = settingsViewModel
                     )
                 }
 

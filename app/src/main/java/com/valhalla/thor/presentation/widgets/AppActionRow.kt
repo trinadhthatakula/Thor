@@ -30,6 +30,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import org.koin.compose.koinInject
@@ -111,155 +112,153 @@ fun AppActionRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top
     ) {
-        ActionItem(
-            icon = R.drawable.open_in_new,
-            label = stringResource(R.string.action_open),
-            // Always tappable: Launch restores (unsuspends / enables) a frozen or suspended app
-            // before launching. Non-launchable apps fall through to a "can't launch" toast.
-            enabled = true,
-            onClick = onLaunch
-        )
+        val actionsToRender = prefs.appInfoActionsOrder.filterNot { it in prefs.hiddenAppInfoActions }
 
-        ActionItem(
-            icon = R.drawable.settings,
-            label = stringResource(R.string.settings),
-            onClick = onSystemSettings
-        )
-
-        if (hasPrivilege) {
-            val freezeLabel =
-                if (isFrozen) stringResource(R.string.action_unfreeze) else stringResource(R.string.action_freeze)
-            val freezeIcon = if (isFrozen) R.drawable.freeze_off else R.drawable.frozen
-            ActionItem(
-                icon = freezeIcon,
-                label = freezeLabel,
-                longPressLabel = showDetails,
-                onLongPress = { explaining = ActionExplainer.FREEZE },
-                onClick = { onFreezeToggle(!isFrozen) }
-            )
-
-            val suspendLabel =
-                if (isSuspended) stringResource(R.string.action_unsuspend) else stringResource(R.string.action_suspend)
-            val suspendIcon = if (isSuspended) R.drawable.bolt else R.drawable.warning
-            ActionItem(
-                icon = suspendIcon,
-                label = suspendLabel,
-                longPressLabel = showDetails,
-                onLongPress = { explaining = ActionExplainer.SUSPEND },
-                onClick = { onSuspendToggle(!isSuspended) }
-            )
-
-            if (appInfo.enabled) {
-                ActionItem(
-                    icon = R.drawable.force_close,
-                    label = stringResource(R.string.action_force_stop),
-                    longPressLabel = showDetails,
-                    onLongPress = { explaining = ActionExplainer.FORCE_STOP },
-                    onClick = onForceStop
+        actionsToRender.forEach { action ->
+            when (action) {
+                AppInfoActionId.OPEN -> ActionItem(
+                    icon = R.drawable.open_in_new,
+                    label = stringResource(R.string.action_open),
+                    // Always tappable: Launch restores (unsuspends / enables) a frozen or suspended app
+                    // before launching. Non-launchable apps fall through to a "can't launch" toast.
+                    enabled = true,
+                    onClick = onLaunch
                 )
-            }
-        }
 
-        ActionItem(
-            icon = R.drawable.shield,
-            label = stringResource(R.string.action_permissions),
-            onClick = onManagePermissions
-        )
-
-        onToggleFreezerMembership?.let { toggle ->
-            val freezerLabel =
-                if (isInFreezer) stringResource(R.string.action_in_freezer) else stringResource(R.string.action_add_freezer)
-            ActionItem(
-                icon = R.drawable.snowflake,
-                label = freezerLabel,
-                tintColor = if (isInFreezer) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                onClick = toggle
-            )
-        }
-
-        // Root, not hasPrivilege. Clearing *one* app's cache needs
-        // `android.permission.INTERNAL_DELETE_CACHE_FILES`, which is signature-level: it cannot be
-        // granted to `com.android.shell`, so PackageManagerService answers a Shizuku-delegated call
-        // by logging "silently ignoring" and returning nothing. Under Shizuku and Dhizuku this icon
-        // was a button that reported success and did nothing. The whole-device clear on Home still
-        // works for Shizuku — that one goes through `pm trim-caches`, a different permission.
-        if (isRoot) {
-            ActionItem(
-                icon = R.drawable.clear_all,
-                label = stringResource(R.string.action_clear_cache),
-                onClick = onClearCache
-            )
-        }
-        if (hasPrivilege) {
-            ActionItem(
-                icon = R.drawable.delete,
-                label = stringResource(R.string.action_clear_data),
-                onClick = onClearData
-            )
-        }
-
-        ActionItem(
-            icon = R.drawable.share,
-            label = stringResource(R.string.action_share),
-            onClick = onShare
-        )
-
-        ActionItem(
-            icon = R.drawable.storage,
-            label = stringResource(R.string.action_export),
-            onClick = onExport
-        )
-
-        // Gated on privilege *as well as* on the callback: there is no unprivileged path to another
-        // app's data at all, so a host that offers this without a shell would be offering a sheet
-        // whose only possible content is a refusal. Same shape as the Fix Store gate below.
-        if (hasPrivilege) {
-            onBackup?.let { backup ->
-                ActionItem(
-                    icon = R.drawable.settings_backup_restore,
-                    label = stringResource(R.string.action_backup),
-                    onClick = backup
+                AppInfoActionId.SETTINGS -> ActionItem(
+                    icon = R.drawable.settings,
+                    label = stringResource(R.string.settings),
+                    onClick = onSystemSettings
                 )
-            }
-        }
 
-        onOpenDetails?.let { openDetails ->
-            ActionItem(
-                icon = R.drawable.list_alt,
-                label = stringResource(R.string.action_details),
-                onClick = openDetails
-            )
-        }
-
-        if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
-            ActionItem(
-                icon = R.drawable.home,
-                label = stringResource(R.string.add_to_home_screen),
-                onClick = {
-                    shortcutManager.pinAppShortcut(
-                        appInfo.packageName,
-                        appInfo.appName ?: appInfo.packageName
+                AppInfoActionId.FREEZE -> if (hasPrivilege) {
+                    val freezeLabel =
+                        if (isFrozen) stringResource(R.string.action_unfreeze) else stringResource(R.string.action_freeze)
+                    val freezeIcon = if (isFrozen) R.drawable.freeze_off else R.drawable.frozen
+                    ActionItem(
+                        icon = freezeIcon,
+                        label = freezeLabel,
+                        longPressLabel = showDetails,
+                        onLongPress = { explaining = ActionExplainer.FREEZE },
+                        onClick = { onFreezeToggle(!isFrozen) }
                     )
                 }
-            )
-        }
 
-        // Re-point a sideloaded app at the Play Store so it can be updated normally. Pointless for
-        // system apps and for anything Play already owns.
-        if (hasPrivilege && !appInfo.isSystem && appInfo.installerPackageName != PLAY_STORE_PACKAGE) {
-            ActionItem(
-                icon = R.drawable.apk_install,
-                label = stringResource(R.string.fix_store),
-                onClick = onFixStore
-            )
-        }
+                AppInfoActionId.SUSPEND -> if (hasPrivilege) {
+                    val suspendLabel =
+                        if (isSuspended) stringResource(R.string.action_unsuspend) else stringResource(R.string.action_suspend)
+                    val suspendIcon = if (isSuspended) R.drawable.bolt else R.drawable.warning
+                    ActionItem(
+                        icon = suspendIcon,
+                        label = suspendLabel,
+                        longPressLabel = showDetails,
+                        onLongPress = { explaining = ActionExplainer.SUSPEND },
+                        onClick = { onSuspendToggle(!isSuspended) }
+                    )
+                }
 
-        if (appInfo.packageName != BuildConfig.APPLICATION_ID) {
-            ActionItem(
-                icon = R.drawable.delete_forever,
-                label = stringResource(R.string.action_uninstall),
-                onClick = onUninstall
-            )
+                AppInfoActionId.FORCE_STOP -> if (hasPrivilege && appInfo.enabled) {
+                    ActionItem(
+                        icon = R.drawable.force_close,
+                        label = stringResource(R.string.action_force_stop),
+                        longPressLabel = showDetails,
+                        onLongPress = { explaining = ActionExplainer.FORCE_STOP },
+                        onClick = onForceStop
+                    )
+                }
+
+                AppInfoActionId.PERMISSIONS -> ActionItem(
+                    icon = R.drawable.shield,
+                    label = stringResource(R.string.action_permissions),
+                    onClick = onManagePermissions
+                )
+
+                AppInfoActionId.FREEZER_MEMBERSHIP -> onToggleFreezerMembership?.let { toggle ->
+                    val freezerLabel =
+                        if (isInFreezer) stringResource(R.string.action_in_freezer) else stringResource(R.string.action_add_freezer)
+                    ActionItem(
+                        icon = R.drawable.snowflake,
+                        label = freezerLabel,
+                        tintColor = if (isInFreezer) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                        onClick = toggle
+                    )
+                }
+
+                AppInfoActionId.CLEAR_CACHE -> if (isRoot) {
+                    ActionItem(
+                        icon = R.drawable.clear_all,
+                        label = stringResource(R.string.action_clear_cache),
+                        onClick = onClearCache
+                    )
+                }
+
+                AppInfoActionId.CLEAR_DATA -> if (hasPrivilege) {
+                    ActionItem(
+                        icon = R.drawable.delete,
+                        label = stringResource(R.string.action_clear_data),
+                        onClick = onClearData
+                    )
+                }
+
+                AppInfoActionId.SHARE -> ActionItem(
+                    icon = R.drawable.share,
+                    label = stringResource(R.string.action_share),
+                    onClick = onShare
+                )
+
+                AppInfoActionId.EXPORT -> ActionItem(
+                    icon = R.drawable.storage,
+                    label = stringResource(R.string.action_export),
+                    onClick = onExport
+                )
+
+                AppInfoActionId.BACKUP -> if (hasPrivilege) {
+                    onBackup?.let { backup ->
+                        ActionItem(
+                            icon = R.drawable.settings_backup_restore,
+                            label = stringResource(R.string.action_backup),
+                            onClick = backup
+                        )
+                    }
+                }
+
+                AppInfoActionId.DETAILS -> onOpenDetails?.let { openDetails ->
+                    ActionItem(
+                        icon = R.drawable.list_alt,
+                        label = stringResource(R.string.action_details),
+                        onClick = openDetails
+                    )
+                }
+
+                AppInfoActionId.ADD_TO_HOME -> if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
+                    ActionItem(
+                        icon = R.drawable.home,
+                        label = stringResource(R.string.add_to_home_screen),
+                        onClick = {
+                            shortcutManager.pinAppShortcut(
+                                appInfo.packageName,
+                                appInfo.appName ?: appInfo.packageName
+                            )
+                        }
+                    )
+                }
+
+                AppInfoActionId.FIX_STORE -> if (hasPrivilege && !appInfo.isSystem && appInfo.installerPackageName != PLAY_STORE_PACKAGE) {
+                    ActionItem(
+                        icon = R.drawable.apk_install,
+                        label = stringResource(R.string.fix_store),
+                        onClick = onFixStore
+                    )
+                }
+
+                AppInfoActionId.UNINSTALL -> if (appInfo.packageName != BuildConfig.APPLICATION_ID) {
+                    ActionItem(
+                        icon = R.drawable.delete_forever,
+                        label = stringResource(R.string.action_uninstall),
+                        onClick = onUninstall
+                    )
+                }
+            }
         }
     }
 

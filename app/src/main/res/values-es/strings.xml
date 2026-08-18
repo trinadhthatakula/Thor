@@ -678,5 +678,35 @@
     <string name="settings_summary_restore_interrupted">Una restauración no terminó</string>
     <string name="settings_summary_backup">Restaurar un archivo o cambiar la frase de contraseña</string>
     <string name="settings_summary_unprivileged">Requiere Root, Shizuku o Dhizuku</string>
+    <string name="settings_summary_customization">Acciones del panel de la app y opciones de diseño</string>
+
+    <string name="settings_category_customization">Personalización</string>
+    <string name="customization_app_info_actions">Acciones del panel de la app</string>
+    <string name="customization_app_info_actions_desc">Reordenar y activar o desactivar acciones en el panel inferior</string>
+    <string name="customization_drag_hint">Arrastra para reordenar • Activa o desactiva para mostrar u ocultar</string>
+    <string name="customization_preview_title">Vista previa de la barra de acciones</string>
+    <string name="reset_to_default">Restablecer valores predeterminados</string>
+    <string name="reset_actions_confirm_title">¿Restablecer el orden de las acciones?</string>
+    <string name="reset_actions_confirm_desc">Esto restablecerá el orden predeterminado y mostrará todas las acciones.</string>
+
+    <string name="action_open_desc">Iniciar la aplicación</string>
+    <string name="action_settings_desc">Abrir ajustes del sistema Android para la aplicación</string>
+    <string name="action_freeze_desc">Desactivar o volver a activar la aplicación</string>
+    <string name="action_suspend_desc">Suspender o reanudar la ejecución del paquete</string>
+    <string name="action_force_stop_desc">Detener todos los procesos en segundo y primer plano</string>
+    <string name="action_permissions_desc">Ver y gestionar permisos de la aplicación</string>
+    <string name="action_freezer_membership_desc">Añadir o quitar de la lista del Congelador</string>
+    <string name="action_clear_cache_desc">Borrar memoria caché (requiere acceso Root)</string>
+    <string name="action_clear_data_desc">Borrar todos los datos de usuario, base de datos y caché</string>
+    <string name="action_share_desc">Compartir archivo APK o enlace de la tienda</string>
+    <string name="action_export_desc">Exportar paquete APK, APKS o XAPK</string>
+    <string name="action_backup_desc">Crear copia de seguridad cifrada de los datos</string>
+    <string name="action_details_desc">Abrir inspector detallado de manifiesto y componentes</string>
+    <string name="action_add_to_home_desc">Fijar acceso directo en la pantalla de inicio</string>
+    <string name="action_fix_store_desc">Reasignar instalador a Google Play Store</string>
+    <string name="action_uninstall_desc">Desinstalar completamente la aplicación del dispositivo</string>
+    <string name="all_actions_hidden">Todas las acciones están ocultas</string>
+    <string name="cd_move_up">Mover hacia arriba</string>
+    <string name="cd_move_down">Mover hacia abajo</string>
 
 </resources>

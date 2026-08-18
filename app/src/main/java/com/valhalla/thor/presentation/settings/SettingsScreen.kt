@@ -328,6 +328,10 @@ private fun categorySummary(
             )
         )
 
+        SettingsCategory.CUSTOMIZATION -> listOf(
+            stringResource(R.string.settings_summary_customization)
+        )
+
         SettingsCategory.FREEZER -> if (!hasPrivilege) {
             listOf(stringResource(R.string.settings_summary_unprivileged))
         } else {

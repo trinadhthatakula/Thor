@@ -12,11 +12,13 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
@@ -200,6 +202,10 @@ class PreferenceRepositoryImpl(
 
         // Auto Reinstall
         val AUTO_REINSTALL_ENABLED = booleanPreferencesKey("auto_reinstall_enabled")
+
+        // Customization
+        val APP_INFO_ACTIONS_ORDER = stringPreferencesKey("app_info_actions_order")
+        val HIDDEN_APP_INFO_ACTIONS = stringSetPreferencesKey("hidden_app_info_actions")
     }
 
     /** Keys in [localState] — see that store's doc for what earns a place here. */
@@ -411,6 +417,33 @@ class PreferenceRepositoryImpl(
 
     override suspend fun getInstallerArg(): String {
         return if (userPreferences.first().autoReinstallEnabled) " -i com.android.vending" else ""
+    }
+
+    // --- Customization ---
+
+    override suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.APP_INFO_ACTIONS_ORDER] = order.joinToString(",") { action -> action.name }
+        }
+    }
+
+    override suspend fun setAppInfoActionVisibility(actionId: AppInfoActionId, isVisible: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            val currentHidden = it[Keys.HIDDEN_APP_INFO_ACTIONS]?.toMutableSet() ?: mutableSetOf()
+            if (isVisible) {
+                currentHidden.remove(actionId.name)
+            } else {
+                currentHidden.add(actionId.name)
+            }
+            it[Keys.HIDDEN_APP_INFO_ACTIONS] = currentHidden
+        }
+    }
+
+    override suspend fun resetAppInfoActionsCustomization() {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it.remove(Keys.APP_INFO_ACTIONS_ORDER)
+            it.remove(Keys.HIDDEN_APP_INFO_ACTIONS)
+        }
     }
 }
 
@@ -626,6 +659,10 @@ internal fun Preferences.toUserPreferences(
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
         extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
         autoReinstallEnabled = prefs[Keys.AUTO_REINSTALL_ENABLED] ?: false,
-        exportDirUri = prefs[Keys.EXPORT_DIR_URI]
+        exportDirUri = prefs[Keys.EXPORT_DIR_URI],
+        appInfoActionsOrder = AppInfoActionId.fromSavedNamesOrDefault(
+            prefs[Keys.APP_INFO_ACTIONS_ORDER]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+        ),
+        hiddenAppInfoActions = AppInfoActionId.fromSavedHiddenNames(prefs[Keys.HIDDEN_APP_INFO_ACTIONS])
     )
 }

@@ -666,5 +666,35 @@
     <string name="settings_summary_restore_interrupted">有一次恢复未完成</string>
     <string name="settings_summary_backup">恢复存档，或更改密码短语</string>
     <string name="settings_summary_unprivileged">需要 Root、Shizuku 或 Dhizuku</string>
+    <string name="settings_summary_customization">应用详情操作栏与布局选项</string>
+
+    <string name="settings_category_customization">自定义</string>
+    <string name="customization_app_info_actions">应用操作栏</string>
+    <string name="customization_app_info_actions_desc">调整应用底部操作栏中按钮的排序与显示状态</string>
+    <string name="customization_drag_hint">拖拽以重新排序 • 开关以显示或隐藏</string>
+    <string name="customization_preview_title">操作栏预览</string>
+    <string name="reset_to_default">恢复默认设置</string>
+    <string name="reset_actions_confirm_title">重置操作顺序？</string>
+    <string name="reset_actions_confirm_desc">这将恢复默认顺序并显示所有操作选项。</string>
+
+    <string name="action_open_desc">启动应用程序</string>
+    <string name="action_settings_desc">打开 Android 系统应用设置</string>
+    <string name="action_freeze_desc">禁用或重新启用应用程序</string>
+    <string name="action_suspend_desc">挂起或恢复软件包运行</string>
+    <string name="action_force_stop_desc">强制停止所有前台及后台进程</string>
+    <string name="action_permissions_desc">查看与管理应用程序运行时权限</string>
+    <string name="action_freezer_membership_desc">在冻结监控列表中添加或移除</string>
+    <string name="action_clear_cache_desc">清理缓存数据（需要 Root 权限）</string>
+    <string name="action_clear_data_desc">清除所有用户数据、数据库和缓存</string>
+    <string name="action_share_desc">分享 APK 文件或应用商店链接</string>
+    <string name="action_export_desc">导出 APK、APKS 或 XAPK 安装包</string>
+    <string name="action_backup_desc">创建加密的数据备份归档</string>
+    <string name="action_details_desc">打开详细的清单与组件检查器</string>
+    <string name="action_add_to_home_desc">直接将快捷方式固定到主屏幕</string>
+    <string name="action_fix_store_desc">将安装来源归属关联至 Google Play 商店</string>
+    <string name="action_uninstall_desc">从设备上彻底卸载此应用程序</string>
+    <string name="all_actions_hidden">所有操作均已隐藏</string>
+    <string name="cd_move_up">上移</string>
+    <string name="cd_move_down">下移</string>
 
 </resources>

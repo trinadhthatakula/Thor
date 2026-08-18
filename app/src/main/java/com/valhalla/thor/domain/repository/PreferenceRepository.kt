@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
@@ -138,4 +139,9 @@ interface PreferenceRepository {
     // --- Auto Reinstall ---
     suspend fun setAutoReinstallEnabled(enabled: Boolean)
     suspend fun getInstallerArg(): String
+
+    // --- Customization ---
+    suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>)
+    suspend fun setAppInfoActionVisibility(actionId: AppInfoActionId, isVisible: Boolean)
+    suspend fun resetAppInfoActionsCustomization()
 }

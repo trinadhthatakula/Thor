@@ -105,6 +105,7 @@ fun SettingsCategoryScreen(
     onBack: () -> Unit,
     onOpenRestore: () -> Unit,
     onNavigateToExtensionManager: () -> Unit,
+    onNavigateToCustomizeAppInfoActions: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -228,7 +229,7 @@ fun SettingsCategoryScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 120.dp),
+            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(rows, key = { it.name }) { row ->
@@ -355,6 +356,16 @@ fun SettingsCategoryScreen(
                         checked = prefs.showExtensionsTile,
                         highlighted = lit,
                         onCheckedChange = { viewModel.setExtensionsTileVisibility(it) }
+                    )
+
+                    // ── Customization ───────────────────────────────────────────────────────────
+                    SettingsRowId.APP_INFO_ACTIONS -> SettingsClickRow(
+                        icon = R.drawable.dashboard_customize,
+                        title = stringResource(R.string.customization_app_info_actions),
+                        subtitle = stringResource(R.string.customization_app_info_actions_desc),
+                        showChevron = true,
+                        highlighted = lit,
+                        onClick = onNavigateToCustomizeAppInfoActions
                     )
 
                     // ── Freezer ─────────────────────────────────────────────────────────────────
