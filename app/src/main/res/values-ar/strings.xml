@@ -729,5 +729,35 @@
     <string name="settings_summary_restore_interrupted">لم تكتمل إحدى عمليات الاستعادة</string>
     <string name="settings_summary_backup">استعادة أرشيف أو تغيير عبارة المرور</string>
     <string name="settings_summary_unprivileged">يتطلب Root أو Shizuku أو Dhizuku</string>
+    <string name="settings_summary_customization">إجراءات لوحة التطبيق وخيارات التنسيق</string>
+
+    <string name="settings_category_customization">التخصيص</string>
+    <string name="customization_app_info_actions">إجراءات لوحة التطبيق</string>
+    <string name="customization_app_info_actions_desc">إعادة ترتيب وتبديل الإجراءات في اللوحة السفلية للتطبيق</string>
+    <string name="customization_drag_hint">اسحب لإعادة الترتيب • بدّل للإظهار أو الإخفاء</string>
+    <string name="customization_preview_title">معاينة شريط الإجراءات</string>
+    <string name="reset_to_default">إعادة التعيين إلى الافتراضي</string>
+    <string name="reset_actions_confirm_title">إعادة تعيين ترتيب الإجراءات؟</string>
+    <string name="reset_actions_confirm_desc">سيؤدي هذا إلى استعادة الترتيب الافتراضي وإظهار جميع الإجراءات.</string>
+
+    <string name="action_open_desc">تشغيل التطبيق</string>
+    <string name="action_settings_desc">فتح إعدادات النظام للتطبيق في Android</string>
+    <string name="action_freeze_desc">تعطيل أو إعادة تفعيل التطبيق</string>
+    <string name="action_suspend_desc">تعليق أو إلغاء تعليق تشغيل الحزمة</string>
+    <string name="action_force_stop_desc">إيقاف جميع العمليات في الخلفية والواجهة بالقوة</string>
+    <string name="action_permissions_desc">عرض وإدارة أذونات التطبيق</string>
+    <string name="action_freezer_membership_desc">التبديل بين الإضافة والإزالة من قائمة المجمد</string>
+    <string name="action_clear_cache_desc">مسح ذاكرة التخزين المؤقت (يتطلب صلاحية Root)</string>
+    <string name="action_clear_data_desc">محو جميع بيانات المستخدم وقاعدة البيانات وذاكرة التخزين المؤقت</string>
+    <string name="action_share_desc">مشاركة ملف APK أو رابط المتجر</string>
+    <string name="action_export_desc">تصدير حزمة APK أو APKS أو XAPK</string>
+    <string name="action_backup_desc">إنشاء نسخة احتياطية مشفرة للبيانات</string>
+    <string name="action_details_desc">فتح فاحص البيان والمكونات التفصيلي</string>
+    <string name="action_add_to_home_desc">تثبيت اختصار مباشرة على الشاشة الرئيسية</string>
+    <string name="action_fix_store_desc">إعادة ربط مصدر التثبيت بمتجر Google Play</string>
+    <string name="action_uninstall_desc">إلغاء تثبيت التطبيق بالكامل من الجهاز</string>
+    <string name="all_actions_hidden">جميع الإجراءات مخفية</string>
+    <string name="cd_move_up">تحريك لأعلى</string>
+    <string name="cd_move_down">تحريك لأسفل</string>
 
 </resources>

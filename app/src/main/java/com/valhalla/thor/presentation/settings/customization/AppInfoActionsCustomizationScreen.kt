@@ -273,7 +273,7 @@ private fun ActionRowPreviewCard(
 
         if (actions.isEmpty()) {
             Text(
-                text = "All actions are hidden",
+                text = stringResource(R.string.all_actions_hidden),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -383,7 +383,7 @@ private fun CustomizableActionItemRow(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.arrow_upward),
-                        contentDescription = "Move up",
+                        contentDescription = stringResource(R.string.cd_move_up),
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -396,7 +396,7 @@ private fun CustomizableActionItemRow(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.arrow_downward),
-                        contentDescription = "Move down",
+                        contentDescription = stringResource(R.string.cd_move_down),
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )

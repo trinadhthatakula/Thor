@@ -94,5 +94,8 @@
     <string name="action_add_to_home_desc">Pin shortcut directly to the home screen</string>
     <string name="action_fix_store_desc">Re-link installer attribution to Google Play Store</string>
     <string name="action_uninstall_desc">Completely remove application from device</string>
+    <string name="all_actions_hidden">All actions are hidden</string>
+    <string name="cd_move_up">Move up</string>
+    <string name="cd_move_down">Move down</string>
 
 </resources>
