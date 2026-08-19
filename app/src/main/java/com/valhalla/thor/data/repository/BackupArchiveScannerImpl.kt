@@ -36,19 +36,19 @@ class BackupArchiveScannerImpl(
 
     override fun scanBackups(): Flow<List<BackupArchiveItem>> = flow {
         val items = mutableListOf<BackupArchiveItem>()
-        val seenNames = mutableSetOf<String>()
+        val seenUris = mutableSetOf<String>()
 
         // 1. Scan default Downloads/Thor directory
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            items.addAll(queryMediaStoreDownloads(seenNames))
+            items.addAll(queryMediaStoreDownloads(seenUris))
         } else {
-            items.addAll(queryLegacyDownloads(seenNames))
+            items.addAll(queryLegacyDownloads(seenUris))
         }
 
         // 2. Scan custom SAF folder if user configured one
         val customTreeUri = preferences.userPreferences.first().exportDirUri
         if (!customTreeUri.isNullOrBlank()) {
-            items.addAll(queryCustomTree(customTreeUri, seenNames))
+            items.addAll(queryCustomTree(customTreeUri, seenUris))
         }
 
         // Sort descending by date modified
@@ -68,9 +68,8 @@ class BackupArchiveScannerImpl(
                         context.contentResolver.delete(uri, null, null) > 0
                     }
                 } else if (uri.scheme == "file") {
-                    val path = uri.path ?: return@withContext false
-                    val file = File(path)
-                    file.exists() && file.delete()
+                    val f = File(uri.path ?: return@withContext false)
+                    f.delete()
                 } else {
                     false
                 }
@@ -80,7 +79,7 @@ class BackupArchiveScannerImpl(
         }
 
     @RequiresApi(Build.VERSION_CODES.Q)
-    private fun queryMediaStoreDownloads(seenNames: MutableSet<String>): List<BackupArchiveItem> {
+    private fun queryMediaStoreDownloads(seenUris: MutableSet<String>): List<BackupArchiveItem> {
         val results = mutableListOf<BackupArchiveItem>()
         val projection = arrayOf(
             MediaStore.Downloads._ID,
@@ -116,11 +115,12 @@ class BackupArchiveScannerImpl(
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val name = cursor.getString(nameCol) ?: continue
-                    if (name.endsWith(".part") || !seenNames.add(name)) continue
+                    if (name.endsWith(".part")) continue
 
                     val size = cursor.getLong(sizeCol)
                     val date = cursor.getLong(dateCol)
                     val uri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                    if (!seenUris.add(uri.toString())) continue
 
                     parseArchiveItem(id, uri, name, size, date)?.let { results.add(it) }
                 }
@@ -131,7 +131,7 @@ class BackupArchiveScannerImpl(
         return results
     }
 
-    private fun queryLegacyDownloads(seenNames: MutableSet<String>): List<BackupArchiveItem> {
+    private fun queryLegacyDownloads(seenUris: MutableSet<String>): List<BackupArchiveItem> {
         val results = mutableListOf<BackupArchiveItem>()
         val dir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -145,8 +145,8 @@ class BackupArchiveScannerImpl(
         } ?: return results
 
         for (f in files) {
-            if (!seenNames.add(f.name)) continue
             val uri = f.toUri()
+            if (!seenUris.add(uri.toString())) continue
             parseArchiveItem(f.hashCode().toLong(), uri, f.name, f.length(), f.lastModified() / 1000)
                 ?.let { results.add(it) }
         }
@@ -155,7 +155,7 @@ class BackupArchiveScannerImpl(
 
     private fun queryCustomTree(
         treeUriString: String,
-        seenNames: MutableSet<String>,
+        seenUris: MutableSet<String>,
     ): List<BackupArchiveItem> {
         val results = mutableListOf<BackupArchiveItem>()
         try {
@@ -165,8 +165,9 @@ class BackupArchiveScannerImpl(
             for (doc in root.listFiles()) {
                 val name = doc.name ?: continue
                 val lower = name.lowercase()
-                if (lower.endsWith(".part") || !seenNames.add(name)) continue
+                if (lower.endsWith(".part")) continue
                 if (lower.endsWith(".thorbak") || lower.endsWith(".xapk") || lower.endsWith(".apks") || lower.endsWith(".apk")) {
+                    if (!seenUris.add(doc.uri.toString())) continue
                     parseArchiveItem(
                         doc.uri.hashCode().toLong(),
                         doc.uri,

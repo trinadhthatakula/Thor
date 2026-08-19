@@ -197,4 +197,36 @@ class BackupRestoreHubViewModelTest {
         assertEquals(listOf(item), scanner.deletedItems)
         assertTrue(vm.state.value.archives.isEmpty())
     }
+
+    @Test
+    fun refreshArchives_cancelsPreviousScan() = runTest(testDispatcher) {
+        val flow1 = kotlinx.coroutines.flow.MutableSharedFlow<List<BackupArchiveItem>>(replay = 1)
+        val flow2 = kotlinx.coroutines.flow.MutableSharedFlow<List<BackupArchiveItem>>(replay = 1)
+        var flowIndex = 0
+        val dynamicScanner = object : BackupArchiveScanner {
+            override fun scanBackups(): Flow<List<BackupArchiveItem>> {
+                return if (flowIndex++ == 0) flow1 else flow2
+            }
+            override suspend fun deleteArchive(item: BackupArchiveItem) = true
+        }
+
+        val vm = BackupRestoreHubViewModel(dynamicScanner, FakeAppDao())
+        advanceUntilIdle()
+
+        // Trigger a second scan
+        vm.refreshArchives()
+        advanceUntilIdle()
+
+        val item1 = createItem(1, "item1.thorbak", BackupArchiveKind.DATA_BACKUP)
+        val item2 = createItem(2, "item2.thorbak", BackupArchiveKind.DATA_BACKUP)
+
+        flow2.emit(listOf(item2))
+        advanceUntilIdle()
+        assertEquals(listOf(item2), vm.state.value.archives)
+
+        // Stale emission from first scan must not overwrite state
+        flow1.emit(listOf(item1))
+        advanceUntilIdle()
+        assertEquals(listOf(item2), vm.state.value.archives)
+    }
 }
