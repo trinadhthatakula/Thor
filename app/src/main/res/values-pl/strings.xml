@@ -538,7 +538,7 @@
     <string name="action_open">Otwórz</string>
     <string name="action_force_stop">Wymuś zatrzymanie</string>
     <string name="action_add_freezer">Dodaj do Zamrażarki</string>
-    <string name="action_unfreeze_and_remove">Odmroź i usuń</string>
+    <string name="action_unfreeze_and_remove">Odmroź i usuń z Zamrażarki</string>
     <string name="action_remove_from_watchlist">Usuń z listy obserwowanych</string>
     <string name="action_clear_cache">Wyczyść pamięć podręczną</string>
     <string name="action_clear_data">Wyczyść dane</string>
