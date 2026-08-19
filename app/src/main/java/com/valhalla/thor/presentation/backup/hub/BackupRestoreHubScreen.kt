@@ -84,7 +84,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
-import com.valhalla.thor.data.source.local.room.AppEntity
+import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.presentation.home.components.BentoTile
@@ -165,7 +165,7 @@ fun BackupRestoreHubScreen(
                     IconButton(onClick = { viewModel.refreshArchives() }) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.cd_clear),
+                            contentDescription = stringResource(R.string.refresh),
                         )
                     }
                 },
@@ -479,6 +479,8 @@ private fun ArchiveItemCard(
                         uriString = item.uriString,
                         packageName = item.packageName,
                         displayName = item.displayName,
+                        sizeBytes = item.sizeBytes,
+                        lastModifiedEpochSec = item.dateModifiedEpochSec,
                     ),
                     contentDescription = null,
                     modifier = Modifier
@@ -538,8 +540,13 @@ private fun ArchiveItemCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                    val subtitleText = if (formattedDate.isNotBlank()) {
+                        "$formattedSize · $formattedDate"
+                    } else {
+                        formattedSize
+                    }
                     Text(
-                        text = "$formattedSize · $formattedDate",
+                        text = subtitleText,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -743,9 +750,9 @@ private fun TipCard(
 @Composable
 private fun AppPickerBottomSheet(
     searchQuery: String,
-    apps: List<AppEntity>,
+    apps: List<AppInfo>,
     onSearchChange: (String) -> Unit,
-    onAppSelect: (AppEntity) -> Unit,
+    onAppSelect: (AppInfo) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

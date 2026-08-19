@@ -697,3 +697,9 @@ internal fun restoreconCommand(root: String): String? {
     if (!isNormalisedRoot(root)) return null
     return "restorecon -RF '$root'"
 }
+
+/**
+ * Wraps [this] in single quotes and escapes embedded single quotes for POSIX shell argument safety.
+ */
+fun String.escapeShellArg(): String = "'" + replace("'", "'\\''") + "'"
+

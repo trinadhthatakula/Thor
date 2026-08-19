@@ -7,7 +7,7 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
-import com.valhalla.thor.data.source.local.room.AppEntity
+import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.THOR_JOB_CHAIN
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.BackupArchiveItem
@@ -15,11 +15,8 @@ import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
@@ -36,7 +33,7 @@ data class BackupRestoreHubState(
     val activeFilter: BackupHubFilter = BackupHubFilter.ALL,
     val isAppPickerVisible: Boolean = false,
     val appPickerSearchQuery: String = "",
-    val installedApps: List<AppEntity> = emptyList(),
+    val installedApps: List<AppInfo> = emptyList(),
     val archiveToDelete: BackupArchiveItem? = null,
 ) {
     val hasBackups: Boolean get() = archives.any { it.kind == BackupArchiveKind.DATA_BACKUP }
@@ -52,7 +49,7 @@ data class BackupRestoreHubState(
 
     val totalSizeBytes: Long get() = archives.sumOf { it.sizeBytes }
 
-    val filteredInstalledApps: List<AppEntity>
+    val filteredInstalledApps: List<AppInfo>
         get() {
             if (appPickerSearchQuery.isBlank()) return installedApps
             val q = appPickerSearchQuery.trim().lowercase()
@@ -117,8 +114,7 @@ class BackupRestoreHubViewModel(
         viewModelScope.launch {
             appRepository.getAllApps().collect { apps ->
                 val sorted = apps.filter { !it.isSystem }
-                    .map { AppEntity.fromDomain(it) }
-                    .sortedBy { it.appName?.lowercase() ?: it.packageName }
+                    .sortedBy { (it.appName ?: it.packageName).lowercase() }
                 _state.update { it.copy(installedApps = sorted) }
             }
         }

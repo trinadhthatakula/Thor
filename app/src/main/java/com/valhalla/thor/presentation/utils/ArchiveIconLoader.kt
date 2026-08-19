@@ -26,7 +26,9 @@ import coil3.request.Options
 import coil3.request.bitmapConfig
 import coil3.size.pxOrElse
 import com.valhalla.thor.data.repository.BundleZip
+import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.util.Logger
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
@@ -38,6 +40,8 @@ data class ArchiveIconModel(
     val uriString: String,
     val packageName: String?,
     val displayName: String,
+    val sizeBytes: Long = 0L,
+    val lastModifiedEpochSec: Long = 0L,
 )
 
 class ArchiveIconFetcher(
@@ -75,7 +79,7 @@ class ArchiveIconFetcher(
 
             // 2. Check disk cache in cacheDir/archive_icons
             val iconCacheDir = File(context.cacheDir, "archive_icons")
-            val cacheKey = "icon_${model.uriString.hashCode()}_${model.displayName.hashCode()}"
+            val cacheKey = "icon_${model.uriString.hashCode()}_${model.sizeBytes}_${model.lastModifiedEpochSec}"
             val cachedFile = File(iconCacheDir, "$cacheKey.png")
             if (cachedFile.exists() && cachedFile.length() > 0) {
                 val bitmap = BitmapFactory.decodeFile(cachedFile.absolutePath)
@@ -93,7 +97,11 @@ class ArchiveIconFetcher(
 
             // Cache extracted bitmap
             try {
-                if (!iconCacheDir.exists()) iconCacheDir.mkdirs()
+                if (!iconCacheDir.exists()) {
+                    iconCacheDir.mkdirs()
+                } else {
+                    cleanStaleCacheIfNeeded(iconCacheDir)
+                }
                 FileOutputStream(cachedFile).use { out ->
                     extractedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 }
@@ -111,7 +119,17 @@ class ArchiveIconFetcher(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            Logger.w("ArchiveIconFetcher", "Failed to fetch icon for ${model.displayName}: ${e.message}")
             null
+        }
+    }
+
+    private fun cleanStaleCacheIfNeeded(dir: File) {
+        val files = dir.listFiles() ?: return
+        if (files.size > 100) {
+            files.sortedBy { it.lastModified() }
+                .take(files.size - 50)
+                .forEach { it.delete() }
         }
     }
 
@@ -121,45 +139,62 @@ class ArchiveIconFetcher(
         val tempStaging = File(context.cacheDir, "temp_ico_$token")
         var staged = false
 
-        val sourceFile: File = if (uri.scheme == "file" && uri.path != null && File(uri.path!!).canRead()) {
-            File(uri.path!!)
-        } else {
-            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
-            if (input != null) {
-                input.use { src ->
-                    FileOutputStream(tempStaging).use { dst -> src.copyTo(dst) }
-                }
-                staged = true
-                tempStaging
+        val sourceFile: File = try {
+            if (uri.scheme == "file" && uri.path != null && File(uri.path!!).canRead()) {
+                File(uri.path!!)
             } else {
-                val path = uri.path
-                if (!path.isNullOrBlank()) {
-                    val tmpPath = "/data/local/tmp/thor_ico_$token"
-                    val cmd = "cat '$path' > '$tmpPath' 2>/dev/null && chmod 666 '$tmpPath' 2>/dev/null"
-                    val res = systemRepository.executeShellCommand(cmd).getOrNull()
-                    if (res != null && res.first == 0) {
-                        val tmpFile = File(tmpPath)
-                        if (tmpFile.exists() && tmpFile.length() > 0) {
-                            try {
-                                tmpFile.inputStream().use { src ->
-                                    FileOutputStream(tempStaging).use { dst -> src.copyTo(dst) }
+                val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+                if (input != null) {
+                    try {
+                        input.use { src ->
+                            FileOutputStream(tempStaging).use { dst -> src.copyTo(dst) }
+                        }
+                        staged = true
+                        tempStaging
+                    } catch (e: Throwable) {
+                        tempStaging.delete()
+                        throw e
+                    }
+                } else {
+                    val path = uri.path
+                    if (!path.isNullOrBlank()) {
+                        val tmpPath = "/data/local/tmp/thor_ico_$token"
+                        val src = path.escapeShellArg()
+                        val dst = tmpPath.escapeShellArg()
+                        val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
+                        val res = systemRepository.executeShellCommand(cmd).getOrNull()
+                        if (res != null && res.first == 0) {
+                            val tmpFile = File(tmpPath)
+                            if (tmpFile.exists() && tmpFile.length() > 0) {
+                                try {
+                                    tmpFile.inputStream().use { inputStream ->
+                                        FileOutputStream(tempStaging).use { outputStream -> inputStream.copyTo(outputStream) }
+                                    }
+                                    staged = true
+                                    tempStaging
+                                } catch (e: Throwable) {
+                                    tempStaging.delete()
+                                    throw e
+                                } finally {
+                                    systemRepository.executeShellCommand("rm -f $dst")
                                 }
-                                staged = true
-                            } finally {
-                                systemRepository.executeShellCommand("rm -f '$tmpPath'")
+                            } else {
+                                systemRepository.executeShellCommand("rm -f $dst")
+                                return null
                             }
-                            tempStaging
                         } else {
-                            systemRepository.executeShellCommand("rm -f '$tmpPath'")
                             return null
                         }
                     } else {
                         return null
                     }
-                } else {
-                    return null
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            tempStaging.delete()
+            return null
         }
 
         try {
@@ -254,12 +289,12 @@ class ArchiveIconFetcher(
     }
 
     private fun Drawable.toBitmap(options: Options): Bitmap {
-        val intrinsicWidth = intrinsicWidth.coerceAtLeast(1)
-        val intrinsicHeight = intrinsicHeight.coerceAtLeast(1)
-        val targetWidth = options.size.width.pxOrElse { intrinsicWidth }.coerceIn(1, intrinsicWidth)
-        val targetHeight = options.size.height.pxOrElse { intrinsicHeight }.coerceIn(1, intrinsicHeight)
+        val intrinsicW = intrinsicWidth.takeIf { it > 0 } ?: 96
+        val intrinsicH = intrinsicHeight.takeIf { it > 0 } ?: 96
+        val targetWidth = options.size.width.pxOrElse { intrinsicW }.coerceAtLeast(1)
+        val targetHeight = options.size.height.pxOrElse { intrinsicH }.coerceAtLeast(1)
 
-        if (this is BitmapDrawable && targetWidth >= intrinsicWidth && targetHeight >= intrinsicHeight) {
+        if (this is BitmapDrawable && bitmap.width == targetWidth && bitmap.height == targetHeight) {
             return this.bitmap
         }
         val config = if (options.bitmapConfig == Bitmap.Config.HARDWARE) Bitmap.Config.ARGB_8888 else options.bitmapConfig
@@ -288,6 +323,6 @@ class ArchiveIconFetcher(
 
 class ArchiveIconKeyer : Keyer<ArchiveIconModel> {
     override fun key(data: ArchiveIconModel, options: Options): String {
-        return "archive_icon:${data.uriString}:${data.packageName}"
+        return "archive_icon:${data.uriString}:${data.packageName}:${data.sizeBytes}:${data.lastModifiedEpochSec}"
     }
 }

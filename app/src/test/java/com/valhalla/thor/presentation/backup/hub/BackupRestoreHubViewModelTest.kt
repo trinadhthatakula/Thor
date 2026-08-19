@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.presentation.backup.hub
 
-import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.repository.AppRepository
@@ -52,7 +51,7 @@ class BackupRestoreHubViewModelTest {
         override suspend fun getAppDetails(packageName: String): AppInfo? = apps.find { it.packageName == packageName }
         override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? = null
         override suspend fun getApkDetails(apkPath: String): AppInfo? = null
-        override suspend fun updateInstallSizes(sizes: Map<String, Long>) {}
+        override suspend fun updateInstallSizes(sizes: Map<String, Long>) = Unit
     }
 
     @Before
@@ -168,17 +167,14 @@ class BackupRestoreHubViewModelTest {
 
         assertEquals(2, vm.state.value.installedApps.size)
 
-        val entity1 = AppEntity.fromDomain(app1)
-        val entity2 = AppEntity.fromDomain(app2)
-
         vm.updateAppPickerSearch("Spot")
-        assertEquals(listOf(entity1), vm.state.value.filteredInstalledApps)
+        assertEquals(listOf(app1), vm.state.value.filteredInstalledApps)
 
         vm.updateAppPickerSearch("telegram")
-        assertEquals(listOf(entity2), vm.state.value.filteredInstalledApps)
+        assertEquals(listOf(app2), vm.state.value.filteredInstalledApps)
 
         vm.updateAppPickerSearch("org.")
-        assertEquals(listOf(entity2), vm.state.value.filteredInstalledApps)
+        assertEquals(listOf(app2), vm.state.value.filteredInstalledApps)
 
         vm.updateAppPickerSearch("")
         assertEquals(2, vm.state.value.filteredInstalledApps.size)

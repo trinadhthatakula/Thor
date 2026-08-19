@@ -7,6 +7,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.net.toUri
+import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.util.Logger
@@ -132,7 +133,9 @@ class UriArchiveSourceFactory(
                 if (!path.isNullOrBlank()) {
                     val tempToken = java.util.UUID.randomUUID().toString()
                     val tmpPath = "/data/local/tmp/thor_read_$tempToken"
-                    val cmd = "cat '$path' > '$tmpPath' 2>/dev/null && chmod 666 '$tmpPath' 2>/dev/null"
+                    val src = path.escapeShellArg()
+                    val dst = tmpPath.escapeShellArg()
+                    val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
                     val res = systemRepository.executeShellCommand(cmd).getOrNull()
                     if (res != null && res.first == 0) {
                         val tmpFile = File(tmpPath)
@@ -142,10 +145,10 @@ class UriArchiveSourceFactory(
                                     copy.outputStream().use(input::copyTo)
                                 }
                             } finally {
-                                systemRepository.executeShellCommand("rm -f '$tmpPath'")
+                                systemRepository.executeShellCommand("rm -f $dst")
                             }
                         } else {
-                            systemRepository.executeShellCommand("rm -f '$tmpPath'")
+                            systemRepository.executeShellCommand("rm -f $dst")
                         }
                     }
                 }

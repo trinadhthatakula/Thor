@@ -17,6 +17,7 @@ import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.model.StagedPackage
+import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CoroutineDispatcher
@@ -101,7 +102,9 @@ class AppAnalyzerImpl(
                 if (!path.isNullOrBlank()) {
                     val tempToken = UUID.randomUUID().toString()
                     val tmpPath = "/data/local/tmp/thor_staged_$tempToken"
-                    val cmd = "cat '$path' > '$tmpPath' 2>/dev/null && chmod 666 '$tmpPath' 2>/dev/null"
+                    val src = path.escapeShellArg()
+                    val dst = tmpPath.escapeShellArg()
+                    val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
                     val res = systemRepository.executeShellCommand(cmd).getOrNull()
                     if (res != null && res.first == 0) {
                         val tmpFile = File(tmpPath)
@@ -114,10 +117,10 @@ class AppAnalyzerImpl(
                                 }
                                 readMetadata(bundleFile, apkFile, displayName)
                             } finally {
-                                systemRepository.executeShellCommand("rm -f '$tmpPath'")
+                                systemRepository.executeShellCommand("rm -f $dst")
                             }
                         } else {
-                            systemRepository.executeShellCommand("rm -f '$tmpPath'")
+                            systemRepository.executeShellCommand("rm -f $dst")
                             Result.failure(Exception("Could not open the selected file."))
                         }
                     } else {

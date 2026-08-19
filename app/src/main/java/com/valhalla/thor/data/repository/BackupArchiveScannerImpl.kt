@@ -13,6 +13,7 @@ import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
@@ -44,14 +45,16 @@ class BackupArchiveScannerImpl(
 
         // 0. Ensure directory exists and permissions across Downloads/Thor
         val extPath = Environment.getExternalStorageDirectory().absolutePath
+        val thorDir = "$extPath/Download/$THOR_DOWNLOADS_SUBDIR"
         runCatching {
             File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                 THOR_DOWNLOADS_SUBDIR
             ).mkdirs()
         }
+        val safeThorDir = thorDir.escapeShellArg()
         systemRepository.executeShellCommand(
-            "mkdir -p '$extPath/Download/$THOR_DOWNLOADS_SUBDIR' && chmod -R 777 '$extPath/Download/$THOR_DOWNLOADS_SUBDIR' 2>/dev/null"
+            "mkdir -p $safeThorDir && chmod 755 $safeThorDir 2>/dev/null"
         )
 
         // 1. Direct filesystem scan for Downloads/Thor
@@ -102,7 +105,8 @@ class BackupArchiveScannerImpl(
                     val path = uri.path ?: return@withContext false
                     val f = File(path)
                     if (!f.delete()) {
-                        systemRepository.executeShellCommand("rm -f '$path'").getOrNull()?.first == 0
+                        val safePath = path.escapeShellArg()
+                        systemRepository.executeShellCommand("rm -f $safePath").getOrNull()?.first == 0
                     } else {
                         true
                     }
@@ -128,14 +132,15 @@ class BackupArchiveScannerImpl(
         ).distinct()
 
         for (dir in candidateDirs) {
-            val cmd = "stat -c '%s %Y %n' '$dir/'* 2>/dev/null"
+            val safeDir = dir.escapeShellArg()
+            val cmd = "stat -c '%s\t%Y\t%n' $safeDir/* 2>/dev/null"
             val res = systemRepository.executeShellCommand(cmd).getOrNull()
             if (res != null && res.first == 0 && !res.second.isNullOrBlank()) {
                 val lines = res.second!!.lines()
                 for (line in lines) {
                     val trimmed = line.trim()
                     if (trimmed.isBlank()) continue
-                    val parts = trimmed.split(Regex("\\s+"), limit = 3)
+                    val parts = trimmed.split('\t', limit = 3)
                     if (parts.size < 3) continue
                     val size = parts[0].toLongOrNull() ?: continue
                     val mtime = parts[1].toLongOrNull() ?: (System.currentTimeMillis() / 1000)
@@ -149,7 +154,8 @@ class BackupArchiveScannerImpl(
                         val uri = file.toUri()
                         val key = "${lower}:$size"
                         if (!seenUris.add(uri.toString()) || !seenKeys.add(key)) continue
-                        parseArchiveItem(file.hashCode().toLong(), uri, name, size, mtime)?.let {
+                        val id = (fullPath.hashCode().toLong() shl 32) xor (size xor (mtime shl 16))
+                        parseArchiveItem(id, uri, name, size, mtime)?.let {
                             results.add(it)
                         }
                     }
@@ -174,7 +180,6 @@ class BackupArchiveScannerImpl(
             MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.MediaColumns.SIZE,
             MediaStore.MediaColumns.DATE_MODIFIED,
-            MediaStore.MediaColumns.RELATIVE_PATH,
         )
 
         val selection = "(${MediaStore.MediaColumns.DATA} LIKE ? OR ${MediaStore.MediaColumns.DATA} LIKE ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?) AND (${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?)"
@@ -250,7 +255,8 @@ class BackupArchiveScannerImpl(
                     val uri = f.toUri()
                     val key = "${f.name.lowercase()}:${f.length()}"
                     if (!seenUris.add(uri.toString()) || !seenKeys.add(key)) continue
-                    parseArchiveItem(f.hashCode().toLong(), uri, f.name, f.length(), f.lastModified() / 1000)
+                    val id = (f.absolutePath.hashCode().toLong() shl 32) xor (f.length() xor (f.lastModified()))
+                    parseArchiveItem(id, uri, f.name, f.length(), f.lastModified() / 1000)
                         ?.let { results.add(it) }
                 }
             } catch (_: Exception) {
