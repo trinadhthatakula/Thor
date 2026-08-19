@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.backup
 
 import androidx.lifecycle.ViewModel
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
 import com.valhalla.thor.data.backup.PassphraseVault
 import com.valhalla.thor.data.backup.job.JobRegistry
@@ -726,12 +727,8 @@ internal class ArchiveRestoreViewModel(
 
         _uiState.update { it.copy(running = true, queued = false, finished = null) }
         launchGuarded(
-            // `running` is set synchronously above and only this block can clear it, so an unguarded
-            // throw out of `startRestore` left a permanently disabled Restore button with a bar over
-            // it — a state the user cannot leave without killing the app. Reported exactly as the
-            // enqueue-returned-null branch below reports itself, because it is the same fact: no job
-            // exists, so nothing on the device was touched.
             onFailure = {
+                Logger.e("ArchiveRestoreVM", "beginRestore failed synchronously", it)
                 _uiState.update {
                     it.copy(
                         running = false,
@@ -747,12 +744,10 @@ internal class ArchiveRestoreViewModel(
                 classes = state.selected,
                 restoreObb = state.restoreObb,
             )
-            // `header.kdf.iterations`, never the default: this screen is the only place that holds the
-            // archive's own count, and the launcher derives the job's key from what it is given here.
+            Logger.i("ArchiveRestoreVM", "Starting restore: pkg=${request.packageName}, classes=${request.classes}, restoreObb=${request.restoreObb}, uri=${request.uriString}")
             val id = launcher.startRestore(request, key, salt, header.kdf.iterations)
+            Logger.i("ArchiveRestoreVM", "launcher.startRestore returned id=$id")
             if (id == null) {
-                // The enqueue itself threw; `ThorJobLauncher` has already dropped the key. There is no
-                // job, so nothing ran.
                 _uiState.update {
                     it.copy(
                         running = false,
@@ -769,25 +764,21 @@ internal class ArchiveRestoreViewModel(
     /** §8.1 as the screen sees it. Called on open and after every selection change. */
     private fun evaluate() {
         val header = _uiState.value.header ?: return
-        when (val decision = evaluateArchiveRestoreGate(header, installed, _uiState.value.selected)) {
+        val decision = evaluateArchiveRestoreGate(header, installed, _uiState.value.selected)
+        Logger.i("ArchiveRestoreVM", "evaluateArchiveRestoreGate: $decision (installed=$installed, selected=${_uiState.value.selected})")
+        when (decision) {
             is ArchiveRestoreDecision.Allowed -> _uiState.update {
                 val obbCount = header.appBundle?.obbCount ?: 0
                 it.copy(
                     refusal = null,
                     warnings = decision.warnings,
                     installFirst = decision.installFirst,
-                    // Withdrawn on the install-first path, where the install places the game data
-                    // itself and the flag reaches nothing. `restoreObb` is then set to what will
-                    // actually happen, so the request Thor sends matches the app the user gets; on
-                    // every other path the user's own choice is left alone.
                     obbOffered = obbCount > 0 && !decision.installFirst,
                     restoreObb = if (decision.installFirst) obbCount > 0 else it.restoreObb,
                 )
             }
 
             is ArchiveRestoreDecision.Refused -> _uiState.update {
-                // Warnings are cleared with the refusal: a refused restore has no warnings to heed,
-                // and leaving them on screen reads as two problems where there is one.
                 it.copy(refusal = decision.reason, warnings = emptyList(), installFirst = false)
             }
         }

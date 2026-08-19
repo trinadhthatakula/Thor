@@ -20,9 +20,12 @@ import com.valhalla.thor.data.permission.SelfPermissionGranter
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
+import com.valhalla.thor.presentation.utils.ArchiveIconFetcher
+import com.valhalla.thor.presentation.utils.ArchiveIconKeyer
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.LocaleRevision
@@ -174,11 +177,15 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    private val systemRepository: SystemRepository by inject()
+
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
             .components {
                 add(AppIconKeyer())
                 add(AppIconFetcher.Factory(context))
+                add(ArchiveIconKeyer())
+                add(ArchiveIconFetcher.Factory(context, systemRepository))
             }
             .crossfade(true)
             .build()

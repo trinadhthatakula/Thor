@@ -146,118 +146,77 @@ internal class RestoreAppArchiveUseCase(
 
         // The bundle is needed for an install and for OBB, and only then. Extracting it otherwise
         // would cost the app's whole download for nothing.
+        Logger.i(TAG, "Starting restore: pkg=$pkg, classes=$classes, installFirst=$installFirst, restoreObb=$restoreObb")
         val staging =
             if (installFirst || restoreObb) extractBundle(source, header) else BundleStaging.None
+        Logger.i(TAG, "Bundle staging result: $staging")
         val bundle = (staging as? BundleStaging.Staged)?.file
 
         // §8.5's marker, written once at whichever irreversible step comes first.
-        //
-        // Idempotent because there are two of those and only one runs per restore: the install on an
-        // install-first restore, the first class swap otherwise. Writing it at the *later* of the two
-        // left a window — install completes, process is killed, no breadcrumb — in which the user is
-        // holding a freshly installed app with no data in it and nothing anywhere says so.
         var breadcrumbWritten = false
         suspend fun markRestoreStarted() {
             if (breadcrumbWritten) return
             breadcrumbWritten = true
             if (!breadcrumbs.write(pkg, appLabel)) {
-                // The notice is the only thing that would tell the user a kill mid-restore left this
-                // app half-done. It cannot be made to work from here, but proceeding without saying
-                // so is the silence §8.5 exists to prevent.
                 Logger.e(TAG, "the restore breadcrumb could not be written; proceeding without it")
                 warnings += "Thor could not record that this restore started, " +
                     "so it will not be able to report it if the restore is interrupted"
             }
         }
 
-        /**
-         * A failure that returns a reason, from a point where no data has been written yet.
-         *
-         * The marker answers for a restore that **never returned** — a process kill, a cancel with the
-         * screen gone. A path that returns a reason has already told the user through the job's own
-         * outcome, so leaving the marker standing would add a second, vaguer notice on the next launch
-         * about damage that is not there. It stands past a return in exactly one case, and that case
-         * has its own function: [failWithBreadcrumbKept], for a failure after a class was swapped.
-         *
-         * Guarded on [breadcrumbWritten] rather than clearing unconditionally: the store holds one
-         * breadcrumb for the whole device, so a restore that never wrote one and clears anyway would
-         * delete the record of a *different* app's genuinely interrupted restore.
-         */
         suspend fun failBeforeAnyDataWasWritten(reason: String): ArchiveRestoreOutcome.Failed {
+            Logger.e(TAG, "Restore failed before data was written: $reason")
             if (breadcrumbWritten) breadcrumbs.clear()
             return ArchiveRestoreOutcome.Failed(reason, restored)
         }
 
         try {
-            // "There is no bundle" is several different situations and they are kept apart. Collapsing
-            // them is how "restore game data, left on, over a data-only archive" became a whole failed
-            // restore that wrote nothing and blamed the archive.
             if (staging is BundleStaging.Unreadable) {
-                // The header declares one and the container does not deliver it. Both consumers need
-                // those exact bytes, so this stops here — before anything is destroyed.
+                Logger.e(TAG, "Bundle unreadable: ${staging.reason}")
                 return ArchiveRestoreOutcome.Failed(staging.reason, restored)
             }
             if (installFirst && bundle == null) {
+                Logger.e(TAG, "installFirst was true but bundle was null")
                 return ArchiveRestoreOutcome.Failed(
                     "this archive holds only data, so $appLabel cannot be installed from it", restored
                 )
             }
             if (restoreObb && staging is BundleStaging.None) {
-                // Nothing to place is not a failure to place. The data restore goes ahead; the user is
-                // told why no game data appeared rather than being sent back to the checkbox.
                 warnings += "this archive holds no game data, so none was placed"
             }
 
             if (installFirst) {
                 if (!restoreObb && (header.appBundle?.obbCount ?: 0) > 0) {
-                    // `installBundle` writes the bundle's OBB as part of the install; there is no
-                    // install that leaves it behind. Refusing the whole restore over a flag Thor
-                    // cannot honour would be worse than doing it and saying so — and doing it
-                    // silently is the "a control that does nothing" defect this warning replaces.
                     warnings += "this app was installed from the archive, and that install places " +
                         "its game data too, so it was not left out"
                 }
                 onProgress(ThorJobProgress(ThorJobStage.INSTALLING, appLabel))
-                // Before the install, not after it. An install that lands and is then interrupted
-                // leaves the app on the device with no data in it, which is exactly the half-done
-                // state §8.5 announces — and the announcement is only possible if the marker was
-                // already on disk when the process died.
                 markRestoreStarted()
+                Logger.i(TAG, "Installing bundle: ${bundle?.absolutePath} for pkg=$pkg")
                 when (val outcome = installer.installBundle(bundle!!, pkg)) {
-                    ArchiveInstallOutcome.Installed -> Unit
+                    ArchiveInstallOutcome.Installed -> {
+                        Logger.i(TAG, "Bundle installed successfully")
+                    }
 
-                    // The package is installed and current; only its expansions are missing. Stopping
-                    // here would leave the user with an installed, empty app and nothing to do about
-                    // it — so the data restore goes ahead and the reason travels as a warning, because
-                    // a game whose expansions are absent starts and then crashes.
-                    is ArchiveInstallOutcome.InstalledWithoutGameData ->
+                    is ArchiveInstallOutcome.InstalledWithoutGameData -> {
+                        Logger.w(TAG, "Bundle installed without game data: ${outcome.reason}")
                         warnings += "the game data could not be placed: ${outcome.reason}"
+                    }
 
-                    is ArchiveInstallOutcome.Failed ->
+                    is ArchiveInstallOutcome.Failed -> {
+                        Logger.e(TAG, "Bundle install failed: ${outcome.reason}")
                         return failBeforeAnyDataWasWritten(outcome.reason)
+                    }
 
-                    // Never folded into `Failed`. `session.commit()` is fire-and-forget, so an install
-                    // Thor could not confirm may well have succeeded — and writing data into a package
-                    // whose install is unconfirmed is how someone's data ends up inside a
-                    // half-installed app.
-                    ArchiveInstallOutcome.Unconfirmed -> return failBeforeAnyDataWasWritten(
-                        "Thor could not confirm $appLabel finished installing, so it wrote no data"
-                    )
+                    ArchiveInstallOutcome.Unconfirmed -> {
+                        Logger.e(TAG, "Bundle install was unconfirmed")
+                        return failBeforeAnyDataWasWritten(
+                            "Thor could not confirm $appLabel finished installing, so it wrote no data"
+                        )
+                    }
                 }
-                // The gate could not check an absent app's signer (Task 11), so this is the only place
-                // the check can happen for an install-first restore. Skipping it would be a hole
-                // straight through the one refusal §8.1 allows no override for.
-                //
-                // It is also what closes the gap between `header.packageName` — which every path Thor
-                // writes derives from — and whatever package the `.xapk` inside the container actually
-                // declares. Thor does not parse the bundle's manifest; it does not have to. The install
-                // path watches `header.packageName`'s own install stamp across the commit, so a bundle
-                // that installs some *other* package cannot move that stamp and comes back
-                // `Unconfirmed` above; and a bundle that installs this package under a different
-                // signing key is refused here. Both exits happen before a byte of data is written.
-                // Null is "the question could not be answered", never "it matches" — the same refusal
-                // `installLanded` makes on an unreadable install stamp.
                 val signer = gateway.signerSha256(pkg)
+                Logger.i(TAG, "Installed app signer: $signer (expected: ${header.signerSha256})")
                 if (signer == null || !signer.equals(header.signerSha256, ignoreCase = true)) {
                     return failBeforeAnyDataWasWritten(
                         "the app that installed is not signed by the key this archive was made from"
@@ -265,15 +224,16 @@ internal class RestoreAppArchiveUseCase(
                 }
             }
 
-            // After the install, never from the archive: a reinstalled app has a new uid (§8.2).
             val uid = gateway.appUid(pkg)
-                ?: return failBeforeAnyDataWasWritten(
+            Logger.i(TAG, "App UID for $pkg: $uid")
+            if (uid == null) {
+                return failBeforeAnyDataWasWritten(
                     "Thor could not read $appLabel's user id, so it wrote no data"
                 )
+            }
 
+            Logger.d(TAG, "Force stopping $pkg")
             gateway.forceStop(pkg)
-            // A no-op on an install-first restore, which marked itself before the install. On every
-            // other restore this is the first irreversible step and the marker goes down here.
             markRestoreStarted()
 
             val totalBytes = classes.sumOf { header.member(it)?.plainBytes ?: 0L }
@@ -281,102 +241,73 @@ internal class RestoreAppArchiveUseCase(
 
             for (dataClass in classes) {
                 val member = header.member(dataClass)
-                    ?: return failWithBreadcrumbKept(
-                        "this archive has no ${dataClass.id} data", restored
-                    )
+                    ?: run {
+                        Logger.e(TAG, "Missing member for dataClass ${dataClass.id}")
+                        return failWithBreadcrumbKept(
+                            "this archive has no ${dataClass.id} data", restored
+                        )
+                    }
                 onProgress(restoring(appLabel, doneBytes, totalBytes))
+                Logger.i(TAG, "Restoring dataClass: ${dataClass.id} (${member.plainBytes} bytes)")
 
                 when (val outcome = restoreClass(source, dataClass, member, key, pkg, uid)) {
-                    ClassOutcome.Replaced -> Unit
+                    ClassOutcome.Replaced -> {
+                        Logger.i(TAG, "dataClass ${dataClass.id} Replaced successfully")
+                    }
 
-                    // In `restored` before the return: the class root holds the archive's copy, and
-                    // the user is owed that fact even though the app may not be able to read it.
                     is ClassOutcome.ReplacedUnusable -> {
+                        Logger.e(TAG, "dataClass ${dataClass.id} ReplacedUnusable: ${outcome.reason}")
                         restored += dataClass
                         return failWithBreadcrumbKept(outcome.reason, restored)
                     }
 
-                    is ClassOutcome.NotReplaced ->
+                    is ClassOutcome.NotReplaced -> {
+                        Logger.e(TAG, "dataClass ${dataClass.id} NotReplaced: ${outcome.reason}")
                         return failWithBreadcrumbKept(outcome.reason, restored)
+                    }
 
-                    is ClassOutcome.SwapFailed -> return failWithBreadcrumbKept(
-                        outcome.reason, restored, classPossiblyCleared = dataClass
-                    )
+                    is ClassOutcome.SwapFailed -> {
+                        Logger.e(TAG, "dataClass ${dataClass.id} SwapFailed: ${outcome.reason}")
+                        return failWithBreadcrumbKept(
+                            outcome.reason, restored, classPossiblyCleared = dataClass
+                        )
+                    }
                 }
 
                 restored += dataClass
                 doneBytes += member.plainBytes
             }
 
-            // `bundle`, not `header.appBundle`: a data-only archive has nothing staged and nothing to
-            // place, and the warning for that was already recorded above.
             if (restoreObb && !installFirst && bundle != null) {
                 onProgress(restoring(appLabel, doneBytes, totalBytes))
-                // A failed placement is a warning: the data landed, and telling the user the restore
-                // failed sends them to run it again, which destroys and rewrites data that is correct.
+                Logger.i(TAG, "Placing OBB game data...")
                 val placement = installer.placeBundleObb(bundle, pkg)
                 if (placement is ObbPlacement.Failed) {
+                    Logger.e(TAG, "OBB placement failed: ${placement.reason}")
                     warnings += "the game data could not be placed: ${placement.reason}"
                 }
-                // Its own return path, so §8.3 steps 5 and 6 have to be repeated on it.
                 gateway.forceStop(pkg)
                 breadcrumbs.clear()
-                // The real placement rather than a hard-coded `NotNeeded`, which would say nothing
-                // happened when something did. A *failure* reaches the user as the warning added just
-                // above; the other arms are the worker's to report, from this field.
                 return ArchiveRestoreOutcome.Completed(restored, warnings, placement)
             }
 
             onProgress(ThorJobProgress(ThorJobStage.FINISHING, appLabel, totalBytes, totalBytes))
             gateway.forceStop(pkg)
             breadcrumbs.clear()
+            Logger.i(TAG, "Restore completed successfully: classesRestored=$restored, warnings=$warnings")
             return ArchiveRestoreOutcome.Completed(restored, warnings, obb = null)
         } finally {
-            // The bundle is the app's whole download, staged in Thor's *internal* cache. Leaking one
-            // copy per failed or cancelled restore is the same defect `restoreClass`'s `finally`
-            // prevents one level down. This `try` has real suspension points in it — the install and
-            // every gateway call — so unlike a `try` around straight-line code, this `finally` is
-            // genuinely live on the cancellation path.
             bundle?.delete()
         }
     }
 
-    /**
-     * What one class's restore did to the device — not just whether it worked.
-     *
-     * Four arms because the caller has to tell three different things to the user, and a
-     * `String?` could carry only one of them: whether the class root now holds the archive's copy,
-     * whether it was left as it was, and whether Thor cannot say which.
-     */
     private sealed interface ClassOutcome {
-
-        /** The class root holds the archive's copy and the app can read it. */
         data object Replaced : ClassOutcome
-
-        /**
-         * The swap landed and a fixup after it did not, so the class root holds the archive's copy
-         * but the app may not be able to open it. It **did** land — the caller must count it in
-         * [ArchiveRestoreOutcome.Failed.classesRestored].
-         */
         data class ReplacedUnusable(val reason: String) : ClassOutcome
-
-        /** The failure happened before the swap, so this class is exactly as it was. */
         data class NotReplaced(val reason: String) : ClassOutcome
-
-        /**
-         * The swap itself failed. See [ArchiveRestoreOutcome.Failed.classPossiblyCleared]: this is
-         * the one outcome Thor cannot narrow, and the one that can mean the old data is gone.
-         */
         data class SwapFailed(val reason: String) : ClassOutcome
     }
 
-    /**
-     * One class, in §8.3's order.
-     *
-     * The whole member is decrypted **before** [AppDataArchiveGateway.extractInto] runs, and the swap
-     * comes after that. A corrupt archive therefore fails with the original data still in place —
-     * which is the difference between "that archive is bad" and "your data is gone".
-     */
     private suspend fun restoreClass(
         source: ArchiveSource,
         dataClass: DataClass,
@@ -386,14 +317,12 @@ internal class RestoreAppArchiveUseCase(
         uid: Int,
     ): ClassOutcome {
         val staged = gateway.stagingFile("restore-${dataClass.id}.tar")
+        Logger.d(TAG, "restoreClass(${dataClass.id}): staging to ${staged.absolutePath}")
         try {
             val ciphertext = try {
                 source.openEntry(member.fileName)
                     ?: return ClassOutcome.NotReplaced("this archive is missing ${member.fileName}")
             } catch (e: IOException) {
-                // A truncated or damaged container throws here (`ZipException` is an `IOException`)
-                // rather than returning null, and a throw out of `invoke` costs the caller
-                // `classesRestored`.
                 Logger.e(TAG, "could not open ${member.fileName}", e)
                 return ClassOutcome.NotReplaced("this archive could not be read: ${e.message}")
             }
@@ -408,57 +337,46 @@ internal class RestoreAppArchiveUseCase(
                         cipher.decryptMember(member.fileName, input, output, key, nonce, member.chunkCount)
                     }
                 }
+                Logger.d(TAG, "Decrypted ${member.fileName} (${staged.length()} bytes)")
             } catch (e: ArchiveIntegrityException) {
                 Logger.e(TAG, "${member.fileName} failed integrity", e)
                 return ClassOutcome.NotReplaced(
                     "this archive's ${dataClass.id} data is damaged and was not restored"
                 )
             } catch (e: IOException) {
-                // Not an integrity failure and not exotic: running out of room in Thor's internal
-                // cache is *the* expected failure for a multi-gigabyte restore, and neither
-                // `staged.outputStream()` nor `plaintext.write(chunk)` raises anything an
-                // `ArchiveIntegrityException` catch would see. Letting it escape `invoke` would throw
-                // away `classesRestored` with it — and "CE is already replaced" is exactly what
-                // separates an actionable message from a useless one.
                 Logger.e(TAG, "${member.fileName} could not be staged", e)
                 return ClassOutcome.NotReplaced(
                     "${dataClass.id} could not be written to Thor's cache: ${e.message}"
                 )
             }
 
-            // The decrypt above is this use case's one long stretch with no suspension point in it, and
-            // nothing after it observes cancellation on its own: the gateway's `withContext(io)` resumes
-            // *undispatched* when the caller is already on that dispatcher, so it never reaches a
-            // cancellation check. Without this line a restore the user cancelled during the decrypt goes
-            // on to replace the class root anyway. Placed before `extractInto` because that call is
-            // itself destructive — it opens with `rm -rf` on the staging directory.
             currentCoroutineContext().ensureActive()
 
             val compressed = ArchiveCompression.fromId(member.compression) == ArchiveCompression.GZIP
-            // Unpacks into the class root's staging directory, beside the live data and never over
-            // it, so a failure here has replaced nothing.
+            Logger.d(TAG, "Calling extractInto for ${dataClass.id} (compressed=$compressed)")
             if (!gateway.extractInto(packageName, dataClass, staged, compressed)) {
+                Logger.e(TAG, "gateway.extractInto returned false for ${dataClass.id}")
                 return ClassOutcome.NotReplaced("${dataClass.id} could not be unpacked")
             }
-            // Past this line the original is gone.
+            Logger.d(TAG, "Calling swapStaged for ${dataClass.id}")
             if (!gateway.swapStaged(packageName, dataClass)) {
-                // The reason carries the ambiguity as well as the field does, because the reason is
-                // the part every consumer already shows.
+                Logger.e(TAG, "gateway.swapStaged returned false for ${dataClass.id}")
                 return ClassOutcome.SwapFailed(
                     "${dataClass.id} could not be put into place, and Thor cannot tell whether its " +
                         "previous data was already deleted"
                 )
             }
             if (dataClass.isInternal) {
-                // Both of these run *after* the swap: the class root already holds the archive's copy,
-                // so the failure is "restored, and the app may not be able to read it" — never
-                // "not restored". `ReplacedUnusable` is what keeps `classesRestored` honest about it.
+                Logger.d(TAG, "Calling chownClass for ${dataClass.id} (uid=$uid)")
                 if (!gateway.chownClass(packageName, dataClass, uid)) {
+                    Logger.e(TAG, "gateway.chownClass returned false for ${dataClass.id}")
                     return ClassOutcome.ReplacedUnusable(
                         "${dataClass.id} was restored but its ownership could not be set"
                     )
                 }
+                Logger.d(TAG, "Calling relabelClass for ${dataClass.id}")
                 if (!gateway.relabelClass(packageName, dataClass)) {
+                    Logger.e(TAG, "gateway.relabelClass returned false for ${dataClass.id}")
                     return ClassOutcome.ReplacedUnusable(
                         "${dataClass.id} was restored but its security labels could not be set"
                     )
@@ -466,8 +384,6 @@ internal class RestoreAppArchiveUseCase(
             }
             return ClassOutcome.Replaced
         } finally {
-            // Inside the loop, so peak disk is one class. Folding this up into `invoke` is the one
-            // edit that breaks that and nothing else.
             staged.delete()
         }
     }

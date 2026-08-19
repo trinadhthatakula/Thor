@@ -3,9 +3,10 @@
 
 package com.valhalla.thor.presentation.backup.hub
 
-import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppEntity
-import com.valhalla.thor.data.source.local.room.PackageInstallSize
+import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
@@ -42,15 +43,12 @@ class BackupRestoreHubViewModelTest {
         }
     }
 
-    private class FakeAppDao(private val apps: List<AppEntity> = emptyList()) : AppDao {
-        override fun getAllAppsFlow(): Flow<List<AppEntity>> = flowOf(apps)
-        override suspend fun getAllApps(): List<AppEntity> = apps
-        override suspend fun getApp(packageName: String): AppEntity? = apps.find { it.packageName == packageName }
-        override suspend fun insertApps(apps: List<AppEntity>) {}
-        override suspend fun deleteApp(packageName: String) {}
-        override suspend fun getInstallSizes(packages: List<String>): List<PackageInstallSize> = emptyList()
-        override suspend fun updateInstallSize(packageName: String, size: Long?) {}
-        override suspend fun clearAll() {}
+    private class FakeAppRepository(private val apps: List<AppInfo> = emptyList()) : AppRepository {
+        override fun getAllApps(): Flow<List<AppInfo>> = flowOf(apps)
+        override suspend fun getAppDetails(packageName: String): AppInfo? = apps.find { it.packageName == packageName }
+        override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? = null
+        override suspend fun getApkDetails(apkPath: String): AppInfo? = null
+        override suspend fun updateInstallSizes(sizes: Map<String, Long>) {}
     }
 
     @Before
@@ -84,14 +82,14 @@ class BackupRestoreHubViewModelTest {
         val scannerOnlyBackups = FakeScanner(
             listOf(createItem(1, "app.thorbak", BackupArchiveKind.DATA_BACKUP))
         )
-        val vm1 = BackupRestoreHubViewModel(scannerOnlyBackups, FakeAppDao())
+        val vm1 = BackupRestoreHubViewModel(scannerOnlyBackups, FakeAppRepository())
         advanceUntilIdle()
         assertFalse("Only backups present -> no filter chips", vm1.state.value.showFilterChips)
 
         val scannerOnlyBundles = FakeScanner(
             listOf(createItem(2, "app.xapk", BackupArchiveKind.APP_BUNDLE))
         )
-        val vm2 = BackupRestoreHubViewModel(scannerOnlyBundles, FakeAppDao())
+        val vm2 = BackupRestoreHubViewModel(scannerOnlyBundles, FakeAppRepository())
         advanceUntilIdle()
         assertFalse("Only bundles present -> no filter chips", vm2.state.value.showFilterChips)
 
@@ -101,7 +99,7 @@ class BackupRestoreHubViewModelTest {
                 createItem(2, "app.xapk", BackupArchiveKind.APP_BUNDLE),
             )
         )
-        val vm3 = BackupRestoreHubViewModel(scannerBoth, FakeAppDao())
+        val vm3 = BackupRestoreHubViewModel(scannerBoth, FakeAppRepository())
         advanceUntilIdle()
         assertTrue("Both present -> filter chips shown", vm3.state.value.showFilterChips)
     }
@@ -111,7 +109,7 @@ class BackupRestoreHubViewModelTest {
         val backup = createItem(1, "backup.thorbak", BackupArchiveKind.DATA_BACKUP)
         val bundle = createItem(2, "bundle.xapk", BackupArchiveKind.APP_BUNDLE)
         val scanner = FakeScanner(listOf(backup, bundle))
-        val vm = BackupRestoreHubViewModel(scanner, FakeAppDao())
+        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository())
         advanceUntilIdle()
 
         assertEquals(2, vm.state.value.filteredArchives.size)
@@ -126,11 +124,11 @@ class BackupRestoreHubViewModelTest {
         assertEquals(listOf(backup, bundle), vm.state.value.filteredArchives)
     }
 
-    private fun createAppEntity(
+    private fun createAppInfo(
         packageName: String,
         appName: String,
         isSystem: Boolean = false,
-    ) = AppEntity(
+    ) = AppInfo(
         packageName = packageName,
         appName = appName,
         versionName = "1.0",
@@ -158,22 +156,25 @@ class BackupRestoreHubViewModelTest {
 
     @Test
     fun appPickerSearch_filtersAppsByNameAndPackage() = runTest(testDispatcher) {
-        val app1 = createAppEntity(packageName = "com.spotify.music", appName = "Spotify", isSystem = false)
-        val app2 = createAppEntity(packageName = "org.telegram.messenger", appName = "Telegram", isSystem = false)
-        val dao = FakeAppDao(listOf(app1, app2))
-        val vm = BackupRestoreHubViewModel(FakeScanner(), dao)
+        val app1 = createAppInfo(packageName = "com.spotify.music", appName = "Spotify", isSystem = false)
+        val app2 = createAppInfo(packageName = "org.telegram.messenger", appName = "Telegram", isSystem = false)
+        val repo = FakeAppRepository(listOf(app1, app2))
+        val vm = BackupRestoreHubViewModel(FakeScanner(), repo)
         advanceUntilIdle()
 
         assertEquals(2, vm.state.value.installedApps.size)
 
+        val entity1 = AppEntity.fromDomain(app1)
+        val entity2 = AppEntity.fromDomain(app2)
+
         vm.updateAppPickerSearch("Spot")
-        assertEquals(listOf(app1), vm.state.value.filteredInstalledApps)
+        assertEquals(listOf(entity1), vm.state.value.filteredInstalledApps)
 
         vm.updateAppPickerSearch("telegram")
-        assertEquals(listOf(app2), vm.state.value.filteredInstalledApps)
+        assertEquals(listOf(entity2), vm.state.value.filteredInstalledApps)
 
         vm.updateAppPickerSearch("org.")
-        assertEquals(listOf(app2), vm.state.value.filteredInstalledApps)
+        assertEquals(listOf(entity2), vm.state.value.filteredInstalledApps)
 
         vm.updateAppPickerSearch("")
         assertEquals(2, vm.state.value.filteredInstalledApps.size)
@@ -183,7 +184,7 @@ class BackupRestoreHubViewModelTest {
     fun archiveDeletion_removesItemAndRefreshes() = runTest(testDispatcher) {
         val item = createItem(1, "app.thorbak", BackupArchiveKind.DATA_BACKUP)
         val scanner = FakeScanner(listOf(item))
-        val vm = BackupRestoreHubViewModel(scanner, FakeAppDao())
+        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository())
         advanceUntilIdle()
 
         assertEquals(1, vm.state.value.archives.size)
@@ -203,7 +204,7 @@ class BackupRestoreHubViewModelTest {
         val backupItem = createItem(1, "app.thorbak", BackupArchiveKind.DATA_BACKUP)
         val bundleItem = createItem(2, "app.xapk", BackupArchiveKind.APP_BUNDLE)
         val scanner = FakeScanner(listOf(backupItem, bundleItem))
-        val vm = BackupRestoreHubViewModel(scanner, FakeAppDao())
+        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository())
         advanceUntilIdle()
 
         vm.setFilter(BackupHubFilter.DATA_BACKUPS)
@@ -230,7 +231,7 @@ class BackupRestoreHubViewModelTest {
             override suspend fun deleteArchive(item: BackupArchiveItem) = true
         }
 
-        val vm = BackupRestoreHubViewModel(dynamicScanner, FakeAppDao())
+        val vm = BackupRestoreHubViewModel(dynamicScanner, FakeAppRepository())
         advanceUntilIdle()
 
         // Trigger a second scan

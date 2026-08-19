@@ -5,8 +5,8 @@ package com.valhalla.thor.presentation.backup.hub
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppEntity
+import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
@@ -63,7 +63,7 @@ data class BackupRestoreHubState(
 @KoinViewModel
 class BackupRestoreHubViewModel(
     private val scanner: BackupArchiveScanner,
-    private val appDao: AppDao,
+    private val appRepository: AppRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BackupRestoreHubState())
@@ -96,8 +96,9 @@ class BackupRestoreHubViewModel(
 
     private fun loadInstalledApps() {
         viewModelScope.launch {
-            appDao.getAllAppsFlow().collect { apps ->
+            appRepository.getAllApps().collect { apps ->
                 val sorted = apps.filter { !it.isSystem }
+                    .map { AppEntity.fromDomain(it) }
                     .sortedBy { it.appName?.lowercase() ?: it.packageName }
                 _state.update { it.copy(installedApps = sorted) }
             }

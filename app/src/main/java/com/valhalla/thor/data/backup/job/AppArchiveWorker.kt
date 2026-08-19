@@ -278,85 +278,67 @@ internal class ArchiveRestoreWorker(
 
     override suspend fun runJob(): Result {
         val request = ArchiveRestoreRequest.fromMap(inputData.keyValueMap)
-            ?: return fail("this restore's request could not be read")
+            ?: run {
+                Logger.e(TAG, "ArchiveRestoreRequest could not be read from input data")
+                return fail("this restore's request could not be read")
+            }
         val key = keys.take(id.toString())
-            ?: return fail("this restore's key is no longer in memory — start it again")
+            ?: run {
+                Logger.e(TAG, "ArchiveRestoreKey is missing from memory for id $id")
+                return fail("this restore's key is no longer in memory — start it again")
+            }
 
-        // Two failures, two sentences. This job holds no file picker, so neither is an instruction —
-        // but "that file is not a Thor backup" and "Thor could not read that file" send the user to
-        // different places, and the job's reason is what the finished notification shows.
+        Logger.i(TAG, "Running restore job for package=${request.packageName}, classes=${request.classes}, uri=${request.uriString}, restoreObb=${request.restoreObb}")
+
         val source = when (val opened = sources.open(request.uriString)) {
             is ArchiveOpenOutcome.Opened -> opened.source
-            ArchiveOpenOutcome.NotAnArchive ->
+            ArchiveOpenOutcome.NotAnArchive -> {
+                Logger.e(TAG, "Archive source open failed: NotAnArchive")
                 return fail("that file is not a Thor backup")
-            ArchiveOpenOutcome.Unreadable ->
+            }
+            ArchiveOpenOutcome.Unreadable -> {
+                Logger.e(TAG, "Archive source open failed: Unreadable")
                 return fail("Thor could not read that backup file")
+            }
         }
 
         return source.use {
-            // Exhaustive on purpose, and left exhaustive on purpose. `ArchiveHeaderOutcome` has two
-            // arms today and the review asked whether a third — an `Unreadable` distinct from
-            // `NotAnArchive` — should be added. It is not added here: the type and its only producer
-            // are `OpenArchiveUseCase`'s, outside this slice, and adding an `else ->` here *first*
-            // would trade the compiler error that forces this site to be revisited for silence. This
-            // `when` failing to compile is the mechanism by which a new arm gets a considered
-            // sentence rather than a default one, so it stays the way it is until the arm exists.
             val header = when (val read = openArchive.readHeader(source)) {
                 is ArchiveHeaderOutcome.Read -> read.header
-                is ArchiveHeaderOutcome.NotAnArchive -> return@use fail(read.reason)
+                is ArchiveHeaderOutcome.NotAnArchive -> {
+                    Logger.e(TAG, "readHeader failed: ${read.reason}")
+                    return@use fail(read.reason)
+                }
             }
-            // The URI named a different archive than the screen was looking at. A `content://` URI is
-            // a handle to a document, not to bytes.
+            Logger.i(TAG, "Read header: schema=${header.schemaVersion}, classes=${header.heldClasses()}, bundle=${header.appBundle != null}")
             if (header.packageName != request.packageName) {
+                Logger.e(TAG, "Header package mismatch: header=${header.packageName}, request=${request.packageName}")
                 return@use fail("that backup file is not ${request.packageName}'s any more")
             }
-            // Before a byte is decrypted, because the key in hand may not be this archive's — see
-            // [wrongKeyReason].
-            wrongKeyReason(header, key, cipher)?.let { return@use fail(it) }
+            wrongKeyReason(header, key, cipher)?.let {
+                Logger.e(TAG, "wrongKeyReason: $it")
+                return@use fail(it)
+            }
 
-            // Resolved once and handed to the use case below, which would otherwise ask the
-            // repository for the same package a second line later. `null` is "not installed", which
-            // is a state the gate handles — see `installFirst`.
             val app = appRepository.getAppDetails(request.packageName)
-            // The same assembly the restore screen ran before it offered the button, from the same
-            // use case: two spellings of "installed" is two gates, and only one of them would have
-            // been the one the user was shown.
             val installed = app?.let { installedFacts(it) }
-            // Re-run, not replay. The app may have arrived or gone while this waited on the chain,
-            // and this gate is the only signer comparison in the whole restore: when it answers
-            // installFirst = false the use case deliberately performs none of its own, because the
-            // check already happened here. Skipping it would make "sideload a fake com.whatsapp,
-            // restore, read everything" work. It also rejects SCHEMA_TOO_NEW, INVALID_PACKAGE_NAME
-            // and INVALID_USER_ID, which is what keeps untrusted header fields out of shell paths.
             val decision = evaluateArchiveRestoreGate(header, installed, request.classes)
+            Logger.i(TAG, "Gate decision: $decision (installed=$installed)")
             val allowed = decision as? ArchiveRestoreDecision.Allowed
-                ?: return@use fail(
-                    "this backup can no longer be restored: " +
-                        refusalReason((decision as ArchiveRestoreDecision.Refused).reason)
-                )
-            // Not in the brief; see the report. The gate ran twice — once on the confirm screen and
-            // again here — and this run can produce warnings the first never showed, because the app
-            // may have been updated or removed while the job sat in the chain. There is no UI at this
-            // point, so the log is where they go.
-            // `.name`: these are `ArchiveRestoreWarning` enum entries, not sentences. The user-facing
-            // wording lives with the screen that shows them (Task 17); a second copy here would be a
-            // second thing to translate and a second thing to drift.
+                ?: run {
+                    val reason = refusalReason((decision as ArchiveRestoreDecision.Refused).reason)
+                    Logger.e(TAG, "Gate refused restore: $reason")
+                    return@use fail("this backup can no longer be restored: $reason")
+                }
             allowed.warnings.forEach { warning -> Logger.w(TAG, "gate warning: ${warning.name}") }
 
             when (
-                // `withContext(ioDispatcher)`, and not because the use case asks politely: it takes no
-                // dispatcher of its own and blocks on the caller's for the decrypt and the bundle copy.
-                // Run on WorkManager's own executor this would block a pool thread for the length of a
-                // multi-gigabyte restore, and the cancellation checkpoints inside it are only prompt
-                // because `io` is elastic.
                 val outcome = withContext(ioDispatcher) {
                     restore(
                         source = source,
                         header = header,
                         key = key,
                         classes = request.orderedClasses(),
-                        // From the gate's own decision, never from a fresh "is it installed?" probe —
-                        // the two can disagree, and only this one has compared the signers.
                         installFirst = allowed.installFirst,
                         restoreObb = request.restoreObb,
                         appLabel = app?.appName ?: request.packageName,
@@ -365,9 +347,7 @@ internal class ArchiveRestoreWorker(
                 }
             ) {
                 is ArchiveRestoreOutcome.Completed -> {
-                    // The only reader of `Completed.obb` in the app — its KDoc used to say nothing
-                    // read it. Logged in full at every arm, and turned into a sentence only for the
-                    // arm no other channel covers; see [obbNotice].
+                    Logger.i(TAG, "ArchiveRestoreOutcome.Completed: restored=${outcome.classesRestored}, warnings=${outcome.warnings}")
                     outcome.obb?.let { Logger.i(TAG, "game data placement: $it") }
                     val warnings = outcome.warnings + listOfNotNull(obbNotice(outcome.obb))
                     warnings.forEach { Logger.w(TAG, it) }

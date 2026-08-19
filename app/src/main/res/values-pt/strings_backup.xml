@@ -305,8 +305,8 @@
     <string name="backup_hub_hero_restore_desc">Selecionar qualquer arquivo .thorbak ou pacote do armazenamento</string>
     <string name="backup_hub_section_backups">Cópias em Downloads/Thor</string>
     <string name="backup_hub_filter_all">Tudo</string>
-    <string name="backup_hub_filter_backups">Cópias de dados (.thorbak)</string>
-    <string name="backup_hub_filter_bundles">Pacotes de aplicações (.xapk, .apks, .apk)</string>
+    <string name="backup_hub_filter_backups">Cópias</string>
+    <string name="backup_hub_filter_bundles">Pacotes</string>
     <string name="backup_hub_empty_title">Sem cópias em Downloads/Thor</string>
     <string name="backup_hub_empty_desc">Os arquivos guardados em Downloads/Thor aparecerão aqui para restauro rápido num só toque.</string>
     <string name="backup_hub_tip_thorbak_title">Cópias de dados (.thorbak)</string>

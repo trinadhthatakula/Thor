@@ -298,8 +298,8 @@
     <string name="backup_hub_hero_restore_desc">从存储空间选择任意 .thorbak 备份或安装包</string>
     <string name="backup_hub_section_backups">Downloads/Thor 中的备份</string>
     <string name="backup_hub_filter_all">全部</string>
-    <string name="backup_hub_filter_backups">数据备份 (.thorbak)</string>
-    <string name="backup_hub_filter_bundles">应用安装包 (.xapk, .apks, .apk)</string>
+    <string name="backup_hub_filter_backups">备份</string>
+    <string name="backup_hub_filter_bundles">安装包</string>
     <string name="backup_hub_empty_title">Downloads/Thor 中无备份</string>
     <string name="backup_hub_empty_desc">保存在 Downloads/Thor 中的备份将显示在此处，支持一键快速恢复。</string>
     <string name="backup_hub_tip_thorbak_title">数据备份 (.thorbak)</string>

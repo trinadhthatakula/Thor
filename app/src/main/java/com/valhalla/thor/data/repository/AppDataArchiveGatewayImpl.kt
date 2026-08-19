@@ -315,16 +315,24 @@ internal class AppDataArchiveGatewayImpl(
         what: String,
         build: (String) -> String?,
     ): Boolean = withContext(ioDispatcher) {
-        val root = classRootOf(packageName, dataClass) ?: return@withContext false
-        val command = build(root) ?: run {
-            Logger.e(TAG, "$what refused for ${dataClass.id} of $packageName")
+        val root = classRootOf(packageName, dataClass) ?: run {
+            Logger.e(TAG, "$what failed: could not resolve class root for ${dataClass.id} of $packageName")
             return@withContext false
         }
+        val command = build(root) ?: run {
+            Logger.e(TAG, "$what refused for ${dataClass.id} of $packageName (root=$root)")
+            return@withContext false
+        }
+        Logger.d(TAG, "Executing $what command for ${dataClass.id}: $command")
         val result = systemRepository.executeShellCommand(command).getOrNull()
         if (result == null || result.first != 0) {
-            Logger.e(TAG, "$what of ${dataClass.id} for $packageName exited ${result?.first}")
+            Logger.e(
+                TAG,
+                "$what of ${dataClass.id} for $packageName failed. Exit code: ${result?.first}, output: '${result?.second}', command: $command"
+            )
             return@withContext false
         }
+        Logger.d(TAG, "$what of ${dataClass.id} for $packageName succeeded with exit 0")
         true
     }
 }

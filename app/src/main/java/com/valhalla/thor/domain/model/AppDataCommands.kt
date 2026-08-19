@@ -631,7 +631,7 @@ internal fun extractCommand(root: String, tarPath: String, compressed: Boolean):
     val staging = stagingDirPath(root) ?: return null
     if (!isQuotableAbsolutePath(tarPath)) return null
     val listFlags = if (compressed) "-tvzf" else "-tvf"
-    val extractFlags = if (compressed) "-xzf" else "-xf"
+    val extractFlags = if (compressed) "-mxzf" else "-mxf"
     return "rm -rf '$staging' && mkdir -p '$staging' && [ ! -L '$staging' ] && " +
         "( ( tar $listFlags '$tarPath' || echo $THOR_LIST_FAILED ) | " +
         "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' ; [ \$? -eq 1 ] ) && " +

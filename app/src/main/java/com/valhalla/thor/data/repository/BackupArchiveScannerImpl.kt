@@ -17,6 +17,8 @@ import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.util.Logger
 import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
@@ -31,28 +33,57 @@ import org.koin.core.annotation.Single
 class BackupArchiveScannerImpl(
     private val context: Context,
     private val preferences: PreferenceRepository,
+    private val systemRepository: SystemRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : BackupArchiveScanner {
 
     override fun scanBackups(): Flow<List<BackupArchiveItem>> = flow {
         val items = mutableListOf<BackupArchiveItem>()
         val seenUris = mutableSetOf<String>()
+        val seenKeys = mutableSetOf<String>()
 
-        // 1. Scan default Downloads/Thor directory
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            items.addAll(queryMediaStoreDownloads(seenUris))
+        // 0. Ensure directory exists and permissions across Downloads/Thor
+        val extPath = Environment.getExternalStorageDirectory().absolutePath
+        runCatching {
+            File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                THOR_DOWNLOADS_SUBDIR
+            ).mkdirs()
+        }
+        systemRepository.executeShellCommand(
+            "mkdir -p '$extPath/Download/$THOR_DOWNLOADS_SUBDIR' && chmod -R 777 '$extPath/Download/$THOR_DOWNLOADS_SUBDIR' 2>/dev/null"
+        )
+
+        // 1. Direct filesystem scan for Downloads/Thor
+        val fsItems = queryFilesystemDownloads(seenUris, seenKeys)
+        items.addAll(fsItems)
+
+        // 2. Privileged shell scan (Shizuku / Root) to discover non-owned files across Downloads/Thor
+        val shellItems = queryShellDownloads(seenUris, seenKeys)
+        items.addAll(shellItems)
+
+        // 3. MediaStore query (Downloads and Files tables) on Q+
+        val msItems = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            queryMediaStoreDownloads(seenUris, seenKeys)
         } else {
-            items.addAll(queryLegacyDownloads(seenUris))
+            emptyList()
         }
+        items.addAll(msItems)
 
-        // 2. Scan custom SAF folder if user configured one
+        // 4. Custom SAF tree if configured
         val customTreeUri = preferences.userPreferences.first().exportDirUri
-        if (!customTreeUri.isNullOrBlank()) {
-            items.addAll(queryCustomTree(customTreeUri, seenUris))
+        val treeItems = if (!customTreeUri.isNullOrBlank()) {
+            queryCustomTree(customTreeUri, seenUris, seenKeys)
+        } else {
+            emptyList()
         }
+        items.addAll(treeItems)
 
-        // Sort descending by date modified
         items.sortByDescending { it.dateModifiedEpochSec }
+        Logger.i(
+            "BackupArchiveScanner",
+            "Discovered ${items.size} items (filesystem=${fsItems.size}, shell=${shellItems.size}, mediaStore=${msItems.size}, customTree=${treeItems.size}): ${items.map { it.displayName }}"
+        )
         emit(items)
     }.flowOn(ioDispatcher)
 
@@ -68,8 +99,13 @@ class BackupArchiveScannerImpl(
                         context.contentResolver.delete(uri, null, null) > 0
                     }
                 } else if (uri.scheme == "file") {
-                    val f = File(uri.path ?: return@withContext false)
-                    f.delete()
+                    val path = uri.path ?: return@withContext false
+                    val f = File(path)
+                    if (!f.delete()) {
+                        systemRepository.executeShellCommand("rm -f '$path'").getOrNull()?.first == 0
+                    } else {
+                        true
+                    }
                 } else {
                     false
                 }
@@ -78,19 +114,73 @@ class BackupArchiveScannerImpl(
             }
         }
 
-    @RequiresApi(Build.VERSION_CODES.Q)
-    private fun queryMediaStoreDownloads(seenUris: MutableSet<String>): List<BackupArchiveItem> {
+    private suspend fun queryShellDownloads(
+        seenUris: MutableSet<String>,
+        seenKeys: MutableSet<String>,
+    ): List<BackupArchiveItem> {
         val results = mutableListOf<BackupArchiveItem>()
+        val extPath = Environment.getExternalStorageDirectory().absolutePath
+        val candidateDirs = listOf(
+            "$extPath/Download/$THOR_DOWNLOADS_SUBDIR",
+            "$extPath/Downloads/$THOR_DOWNLOADS_SUBDIR",
+            "/storage/emulated/0/Download/$THOR_DOWNLOADS_SUBDIR",
+            "/storage/emulated/0/Downloads/$THOR_DOWNLOADS_SUBDIR",
+        ).distinct()
+
+        for (dir in candidateDirs) {
+            val cmd = "stat -c '%s %Y %n' '$dir/'* 2>/dev/null"
+            val res = systemRepository.executeShellCommand(cmd).getOrNull()
+            if (res != null && res.first == 0 && !res.second.isNullOrBlank()) {
+                val lines = res.second!!.lines()
+                for (line in lines) {
+                    val trimmed = line.trim()
+                    if (trimmed.isBlank()) continue
+                    val parts = trimmed.split(Regex("\\s+"), limit = 3)
+                    if (parts.size < 3) continue
+                    val size = parts[0].toLongOrNull() ?: continue
+                    val mtime = parts[1].toLongOrNull() ?: (System.currentTimeMillis() / 1000)
+                    val fullPath = parts[2]
+                    val file = File(fullPath)
+                    val name = file.name
+                    val lower = name.lowercase()
+                    if (lower.endsWith(".part")) continue
+                    if (lower.endsWith(".thorbak") || lower.endsWith(".xapk") || lower.endsWith(".apks") || lower.endsWith(".apk")) {
+                        android.media.MediaScannerConnection.scanFile(context, arrayOf(fullPath), null, null)
+                        val uri = file.toUri()
+                        val key = "${lower}:$size"
+                        if (!seenUris.add(uri.toString()) || !seenKeys.add(key)) continue
+                        parseArchiveItem(file.hashCode().toLong(), uri, name, size, mtime)?.let {
+                            results.add(it)
+                        }
+                    }
+                }
+            }
+        }
+        return results
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun queryMediaStoreDownloads(
+        seenUris: MutableSet<String>,
+        seenKeys: MutableSet<String>,
+    ): List<BackupArchiveItem> {
+        val results = mutableListOf<BackupArchiveItem>()
+        val contentUris = listOf(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            MediaStore.Files.getContentUri("external"),
+        )
         val projection = arrayOf(
-            MediaStore.Downloads._ID,
-            MediaStore.Downloads.DISPLAY_NAME,
-            MediaStore.Downloads.SIZE,
-            MediaStore.Downloads.DATE_MODIFIED,
-            MediaStore.Downloads.RELATIVE_PATH,
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.DATE_MODIFIED,
+            MediaStore.MediaColumns.RELATIVE_PATH,
         )
 
-        val selection = "(${MediaStore.Downloads.RELATIVE_PATH} LIKE ? OR ${MediaStore.Downloads.RELATIVE_PATH} LIKE ?) AND (${MediaStore.Downloads.DISPLAY_NAME} LIKE ? OR ${MediaStore.Downloads.DISPLAY_NAME} LIKE ? OR ${MediaStore.Downloads.DISPLAY_NAME} LIKE ? OR ${MediaStore.Downloads.DISPLAY_NAME} LIKE ?)"
+        val selection = "(${MediaStore.MediaColumns.DATA} LIKE ? OR ${MediaStore.MediaColumns.DATA} LIKE ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?) AND (${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?)"
         val selectionArgs = arrayOf(
+            "%/Download/Thor/%",
+            "%/Downloads/Thor/%",
             "%Download/Thor%",
             "%Downloads/Thor%",
             "%.thorbak",
@@ -99,56 +189,73 @@ class BackupArchiveScannerImpl(
             "%.apk",
         )
 
-        try {
-            context.contentResolver.query(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                projection,
-                selection,
-                selectionArgs,
-                "${MediaStore.Downloads.DATE_MODIFIED} DESC",
-            )?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
-                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
-                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE)
-                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_MODIFIED)
+        for (contentUri in contentUris) {
+            try {
+                context.contentResolver.query(
+                    contentUri,
+                    projection,
+                    selection,
+                    selectionArgs,
+                    "${MediaStore.MediaColumns.DATE_MODIFIED} DESC",
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                    val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                    val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
 
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idCol)
-                    val name = cursor.getString(nameCol) ?: continue
-                    if (name.endsWith(".part")) continue
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(idCol)
+                        val name = cursor.getString(nameCol) ?: continue
+                        if (name.endsWith(".part")) continue
 
-                    val size = cursor.getLong(sizeCol)
-                    val date = cursor.getLong(dateCol)
-                    val uri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
-                    if (!seenUris.add(uri.toString())) continue
+                        val size = cursor.getLong(sizeCol)
+                        val date = cursor.getLong(dateCol)
+                        val uri = ContentUris.withAppendedId(contentUri, id)
+                        val key = "${name.lowercase()}:$size"
+                        if (!seenUris.add(uri.toString()) || !seenKeys.add(key)) continue
 
-                    parseArchiveItem(id, uri, name, size, date)?.let { results.add(it) }
+                        parseArchiveItem(id, uri, name, size, date)?.let { results.add(it) }
+                    }
                 }
+            } catch (_: Exception) {
+                // Ignore individual table query failures
             }
-        } catch (_: Exception) {
-            // Permission or resolver failure gracefully produces whatever else resolved
         }
         return results
     }
 
-    private fun queryLegacyDownloads(seenUris: MutableSet<String>): List<BackupArchiveItem> {
+    private fun queryFilesystemDownloads(
+        seenUris: MutableSet<String>,
+        seenKeys: MutableSet<String>,
+    ): List<BackupArchiveItem> {
         val results = mutableListOf<BackupArchiveItem>()
-        val dir = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            THOR_DOWNLOADS_SUBDIR,
-        )
-        if (!dir.exists() || !dir.isDirectory) return results
+        val candidateDirs = listOfNotNull(
+            File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                THOR_DOWNLOADS_SUBDIR,
+            ),
+            File(Environment.getExternalStorageDirectory(), "Download/$THOR_DOWNLOADS_SUBDIR"),
+            File(Environment.getExternalStorageDirectory(), "Downloads/$THOR_DOWNLOADS_SUBDIR"),
+        ).distinctBy { it.absolutePath }
 
-        val files = dir.listFiles { f ->
-            val n = f.name.lowercase()
-            !n.endsWith(".part") && (n.endsWith(".thorbak") || n.endsWith(".xapk") || n.endsWith(".apks") || n.endsWith(".apk"))
-        } ?: return results
+        for (dir in candidateDirs) {
+            try {
+                if (!dir.exists() || !dir.isDirectory) continue
+                val files = dir.listFiles { f ->
+                    val n = f.name.lowercase()
+                    !n.endsWith(".part") && (n.endsWith(".thorbak") || n.endsWith(".xapk") || n.endsWith(".apks") || n.endsWith(".apk"))
+                } ?: continue
 
-        for (f in files) {
-            val uri = f.toUri()
-            if (!seenUris.add(uri.toString())) continue
-            parseArchiveItem(f.hashCode().toLong(), uri, f.name, f.length(), f.lastModified() / 1000)
-                ?.let { results.add(it) }
+                for (f in files) {
+                    val uri = f.toUri()
+                    val key = "${f.name.lowercase()}:${f.length()}"
+                    if (!seenUris.add(uri.toString()) || !seenKeys.add(key)) continue
+                    parseArchiveItem(f.hashCode().toLong(), uri, f.name, f.length(), f.lastModified() / 1000)
+                        ?.let { results.add(it) }
+                }
+            } catch (_: Exception) {
+                // Ignore filesystem scan errors
+            }
         }
         return results
     }
@@ -156,6 +263,7 @@ class BackupArchiveScannerImpl(
     private fun queryCustomTree(
         treeUriString: String,
         seenUris: MutableSet<String>,
+        seenKeys: MutableSet<String>,
     ): List<BackupArchiveItem> {
         val results = mutableListOf<BackupArchiveItem>()
         try {
@@ -167,7 +275,8 @@ class BackupArchiveScannerImpl(
                 val lower = name.lowercase()
                 if (lower.endsWith(".part")) continue
                 if (lower.endsWith(".thorbak") || lower.endsWith(".xapk") || lower.endsWith(".apks") || lower.endsWith(".apk")) {
-                    if (!seenUris.add(doc.uri.toString())) continue
+                    val key = "${name.lowercase()}:${doc.length()}"
+                    if (!seenUris.add(doc.uri.toString()) || !seenKeys.add(key)) continue
                     parseArchiveItem(
                         doc.uri.hashCode().toLong(),
                         doc.uri,

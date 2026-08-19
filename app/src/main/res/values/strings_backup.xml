@@ -312,8 +312,8 @@
     <string name="backup_hub_hero_restore_desc">Select any .thorbak or bundle archive from storage</string>
     <string name="backup_hub_section_backups">Backups in Downloads/Thor</string>
     <string name="backup_hub_filter_all">All</string>
-    <string name="backup_hub_filter_backups">Data Backups (.thorbak)</string>
-    <string name="backup_hub_filter_bundles">App Bundles (.xapk, .apks, .apk)</string>
+    <string name="backup_hub_filter_backups">Backups</string>
+    <string name="backup_hub_filter_bundles">Bundles</string>
     <string name="backup_hub_empty_title">No backups in Downloads/Thor</string>
     <string name="backup_hub_empty_desc">Archives saved to Downloads/Thor will appear here for fast one-tap restore.</string>
     <string name="backup_hub_tip_thorbak_title">Data Backups (.thorbak)</string>
