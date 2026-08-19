@@ -199,6 +199,26 @@ class BackupRestoreHubViewModelTest {
     }
 
     @Test
+    fun archiveDeletion_resetsFilterToAllWhenNoMatchingItemsRemain() = runTest(testDispatcher) {
+        val backupItem = createItem(1, "app.thorbak", BackupArchiveKind.DATA_BACKUP)
+        val bundleItem = createItem(2, "app.xapk", BackupArchiveKind.APP_BUNDLE)
+        val scanner = FakeScanner(listOf(backupItem, bundleItem))
+        val vm = BackupRestoreHubViewModel(scanner, FakeAppDao())
+        advanceUntilIdle()
+
+        vm.setFilter(BackupHubFilter.DATA_BACKUPS)
+        assertEquals(BackupHubFilter.DATA_BACKUPS, vm.state.value.activeFilter)
+
+        // Delete the only data backup
+        vm.requestDeleteArchive(backupItem)
+        vm.confirmDeleteArchive()
+        advanceUntilIdle()
+
+        assertEquals(listOf(bundleItem), vm.state.value.archives)
+        assertEquals(BackupHubFilter.ALL, vm.state.value.activeFilter)
+    }
+
+    @Test
     fun refreshArchives_cancelsPreviousScan() = runTest(testDispatcher) {
         val flow1 = kotlinx.coroutines.flow.MutableSharedFlow<List<BackupArchiveItem>>(replay = 1)
         val flow2 = kotlinx.coroutines.flow.MutableSharedFlow<List<BackupArchiveItem>>(replay = 1)

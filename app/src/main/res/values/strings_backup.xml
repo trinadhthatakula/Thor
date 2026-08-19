@@ -317,7 +317,7 @@
     <string name="backup_hub_empty_title">No backups in Downloads/Thor</string>
     <string name="backup_hub_empty_desc">Archives saved to Downloads/Thor will appear here for fast one-tap restore.</string>
     <string name="backup_hub_tip_thorbak_title">Data Backups (.thorbak)</string>
-    <string name="backup_hub_tip_thorbak_desc">Encrypted full archives carrying app data (CE/DE storage classes) and APK splits. Restoring requires Root or privileged shell.</string>
+    <string name="backup_hub_tip_thorbak_desc">Encrypted full archives carrying app data and APK splits. Private app data (CE/DE) requires Root, while shared storage data can be restored with privileged shell.</string>
     <string name="backup_hub_tip_bundle_title">App Bundles (.xapk / .apks / .apk)</string>
     <string name="backup_hub_tip_bundle_desc">Standalone installation packages for offline install or sharing across devices without requiring root.</string>
     <string name="backup_hub_tip_discovery_title">Auto-Discovery</string>

@@ -476,13 +476,13 @@ internal class ArchiveRestoreViewModel(
             installed = facts
             val obbCount = header.appBundle?.obbCount ?: 0
             val held = header.heldClasses()
-            val defaultSelected = held.intersect(supportedClasses).ifEmpty { held }
+            val defaultSelected = held.intersect(supportedClasses)
             updateForOpen(generation) { state ->
                 state.copy(
                     loading = false,
                     fileName = source.displayName,
                     header = header,
-                    // Everything the archive holds that can be restored, selected.
+                    // Only classes the archive holds that are supported by the runner are selected by default.
                     selected = defaultSelected.toSet(),
                     obbOffered = obbCount > 0,
                     restoreObb = obbCount > 0,

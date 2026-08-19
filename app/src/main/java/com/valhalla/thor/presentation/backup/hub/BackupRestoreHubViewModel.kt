@@ -81,7 +81,15 @@ class BackupRestoreHubViewModel(
         scanJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             scanner.scanBackups().collect { list ->
-                _state.update { it.copy(archives = list, isLoading = false) }
+                _state.update { current ->
+                    val hasMatchingFilter = when (current.activeFilter) {
+                        BackupHubFilter.ALL -> true
+                        BackupHubFilter.DATA_BACKUPS -> list.any { it.kind == BackupArchiveKind.DATA_BACKUP }
+                        BackupHubFilter.APP_BUNDLES -> list.any { it.kind == BackupArchiveKind.APP_BUNDLE }
+                    }
+                    val normalizedFilter = if (hasMatchingFilter) current.activeFilter else BackupHubFilter.ALL
+                    current.copy(archives = list, activeFilter = normalizedFilter, isLoading = false)
+                }
             }
         }
     }

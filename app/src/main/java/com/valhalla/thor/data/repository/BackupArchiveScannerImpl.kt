@@ -207,7 +207,7 @@ class BackupArchiveScannerImpl(
 
         // Package name extraction heuristic: "com.example.app-100.thorbak" -> "com.example.app"
         val nameWithoutExt = displayName.substringBeforeLast('.')
-        val possiblePkg = nameWithoutExt.substringBefore('-').substringBefore('_')
+        val possiblePkg = nameWithoutExt.substringBefore('-')
         val packageName = if (possiblePkg.contains('.') && possiblePkg.length > 3) possiblePkg else null
 
         return BackupArchiveItem(

@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.model.swapStagedEntriesCommand
 import com.valhalla.thor.domain.model.tarCreateCommand
 import com.valhalla.thor.domain.model.verifyEntriesCommand
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
+import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import java.io.File
@@ -68,6 +69,7 @@ internal class AppDataArchiveGatewayImpl(
     private val context: Context,
     private val packageManager: PackageManager,
     private val systemRepository: SystemRepository,
+    private val probe: AppDataProbe,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : AppDataArchiveGateway {
 
@@ -89,7 +91,11 @@ internal class AppDataArchiveGatewayImpl(
      * silently downgrade to a less secure location.
      */
     private suspend fun stagingRoot(): File = withContext(ioDispatcher) {
-        val rootDir = context.externalCacheDir ?: context.cacheDir
+        val rootDir = if (probe.probePrivateDataCapability()) {
+            context.cacheDir
+        } else {
+            context.externalCacheDir ?: context.cacheDir
+        }
         File(rootDir, AppDataArchiveStagingDir.NAME).also { it.mkdirs() }
     }
 

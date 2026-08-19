@@ -7,7 +7,9 @@ import android.content.Intent
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import java.io.File
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -221,9 +223,23 @@ fun BackupRestoreHubScreen(
                                 item = item,
                                 onRestore = { handleRestoreOrInstall(item) },
                                 onShare = {
+                                    val parsedUri = item.uriString.toUri()
+                                    val shareUri = if (parsedUri.scheme == "file" && parsedUri.path != null) {
+                                        try {
+                                            FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.provider",
+                                                File(parsedUri.path!!)
+                                            )
+                                        } catch (_: Exception) {
+                                            parsedUri
+                                        }
+                                    } else {
+                                        parsedUri
+                                    }
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "*/*"
-                                        putExtra(Intent.EXTRA_STREAM, item.uriString.toUri())
+                                        putExtra(Intent.EXTRA_STREAM, shareUri)
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, item.displayName))

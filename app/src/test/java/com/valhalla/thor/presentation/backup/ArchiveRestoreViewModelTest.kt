@@ -1530,4 +1530,22 @@ class ArchiveRestoreViewModelTest {
         assertEquals(false, vm.uiState.value.queued)
         assertEquals(RestoreFinish.Succeeded(), vm.uiState.value.finished)
     }
+
+    @Test
+    fun `non-root opening a CE DE-only archive defaults to empty selection and prevents restore`() =
+        runTest(dispatcher) {
+            val nonRootProbe = FakeProbe(capable = true, privateCapable = false)
+            val vm = viewModel(
+                probe = nonRootProbe,
+                privilegeState = PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true),
+                sources = CountingSources(mapOf(URI to FakeSource(header(classes = listOf(DataClass.CE, DataClass.DE)).encode()))),
+            )
+
+            vm.open(URI)
+            testScheduler.advanceUntilIdle()
+
+            val state = vm.uiState.value
+            assertEquals(emptySet<DataClass>(), state.selected)
+            assertEquals(false, state.canStart)
+        }
 }
