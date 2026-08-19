@@ -282,6 +282,8 @@
     <string name="uninstall_app_title">Desinstalar o aplicativo?</string>
     <string name="uninstall_app_desc">Tem certeza de que quer desinstalar %1$s?</string>
     <string name="action_force_stop">Forçar parada</string>
+    <string name="action_unfreeze_and_remove">Descongelar e remover</string>
+    <string name="action_remove_from_watchlist">Remover da lista de observação</string>
     <string name="action_clear_cache">Limpar o cache</string>
     <string name="info_app_version">Versão do aplicativo</string>
     <string name="info_shared_data_dir">Diretório de dados compartilhados</string>

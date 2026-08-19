@@ -300,8 +300,9 @@
     <string name="uninstall_app_desc">确定要卸载 %1$s 吗？</string>
     <string name="action_open">打开</string>
     <string name="action_force_stop">强行停止</string>
-    <string name="action_in_freezer">已在冻结室</string>
     <string name="action_add_freezer">添加至冻结室</string>
+    <string name="action_unfreeze_and_remove">解冻并移除</string>
+    <string name="action_remove_from_watchlist">从观察列表中移除</string>
     <string name="action_clear_cache">清除缓存</string>
     <string name="action_clear_data">清除数据</string>
     <string name="info_app_version">应用版本</string>

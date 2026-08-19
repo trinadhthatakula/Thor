@@ -585,6 +585,7 @@ fun FreezerScreen(
             isShizuku = state.isShizuku,
             isDhizuku = state.isDhizuku,
             isInFreezer = app.packageName in state.freezerPackageNames,
+            freezerRemoveLabelRes = R.string.action_unfreeze_and_remove,
             onDismiss = { selectedPackageName = null },
             // Dismissing here is not optional, and this is the only action it's true of.
             // selectedAppInfo is resolved out of state.freezerApps, which is the watchlist

@@ -524,8 +524,9 @@
     <string name="uninstall_app_desc">Tem a certeza de que quer desinstalar %1$s?</string>
     <string name="action_open">Abrir</string>
     <string name="action_force_stop">Forçar a paragem</string>
-    <string name="action_in_freezer">No Congelador</string>
     <string name="action_add_freezer">Adicionar ao Congelador</string>
+    <string name="action_unfreeze_and_remove">Descongelar e remover</string>
+    <string name="action_remove_from_watchlist">Remover da lista de vigilância</string>
     <string name="action_clear_cache">Limpar a cache</string>
     <string name="action_clear_data">Limpar os dados</string>
     <string name="info_app_version">Versão da aplicação</string>

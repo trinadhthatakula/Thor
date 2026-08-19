@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.widgets
 
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -143,7 +144,8 @@ fun AppInfoSheet(
     isInFreezer: Boolean = false,
     onDismiss: () -> Unit,
     onAppAction: (AppClickAction) -> Unit = {},
-    onToggleFreezerMembership: (() -> Unit)? = null
+    onToggleFreezerMembership: (() -> Unit)? = null,
+    @StringRes freezerRemoveLabelRes: Int = R.string.action_remove_from_watchlist
 ) {
     // Default enabledValues = {Hidden, PartiallyExpanded, Expanded}. The sheet opens at the partial
     // detent, which material3 pins at min(windowHeight / 2, contentHeight) — there is no peek
@@ -270,6 +272,7 @@ fun AppInfoSheet(
                     onForceStop = { onAppAction(AppClickAction.Kill(appInfo)) },
                     onManagePermissions = { onAppAction(AppClickAction.ManagePermissions(appInfo)) },
                     onToggleFreezerMembership = onToggleFreezerMembership,
+                    freezerRemoveLabelRes = freezerRemoveLabelRes,
                     onClearCache = { onAppAction(AppClickAction.ClearCache(appInfo)) },
                     onClearData = { showClearDataConfirmation = true },
                     onFixStore = { showReinstallWarning = true },

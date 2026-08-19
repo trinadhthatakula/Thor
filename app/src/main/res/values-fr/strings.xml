@@ -307,8 +307,9 @@
     <string name="uninstall_app_desc">Êtes-vous sûr de vouloir désinstaller %1$s ?</string>
     <string name="action_open">Ouvrir</string>
     <string name="action_force_stop">Forcer l\'arrêt</string>
-    <string name="action_in_freezer">Dans le congélateur</string>
     <string name="action_add_freezer">Ajouter au congélateur</string>
+    <string name="action_unfreeze_and_remove">Dégeler et retirer</string>
+    <string name="action_remove_from_watchlist">Retirer de la liste de surveillance</string>
     <string name="action_clear_cache">Vider le cache</string>
     <string name="action_clear_data">Effacer les données</string>
     <string name="info_app_version">Version de l\'application</string>

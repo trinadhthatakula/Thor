@@ -537,8 +537,9 @@
     <string name="uninstall_app_desc">Czy na pewno chcesz odinstalować aplikację %1$s?</string>
     <string name="action_open">Otwórz</string>
     <string name="action_force_stop">Wymuś zatrzymanie</string>
-    <string name="action_in_freezer">W Zamrażarce</string>
     <string name="action_add_freezer">Dodaj do Zamrażarki</string>
+    <string name="action_unfreeze_and_remove">Odmroź i usuń</string>
+    <string name="action_remove_from_watchlist">Usuń z listy obserwowanych</string>
     <string name="action_clear_cache">Wyczyść pamięć podręczną</string>
     <string name="action_clear_data">Wyczyść dane</string>
     <string name="info_app_version">Wersja aplikacji</string>

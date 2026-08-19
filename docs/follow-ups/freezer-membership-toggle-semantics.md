@@ -1,9 +1,8 @@
 # Follow-up: one freezer-membership button, two meanings
 
-**Status:** OPEN — a product decision, not a defect. Both behaviours are correct for their host; the
-problem is that they wear the same label.
-**Severity:** Minor. Nothing is lost either way, but one of the two outcomes will surprise someone.
-**Effort:** small once the semantics are chosen.
+**Status:** SHIPPED — resolved via Option 1 (differentiating action labels: "Unfreeze & Remove" on the Freezer tab, "Remove from Watchlist" on the Apps tab).
+**Severity:** Minor.
+**Effort:** trivial.
 **Raised by:** the adversarial review of the unified-app-info-sheet steps 6/7 (2026-07-29). The
 compose-ui lens flagged it and an independent verifier confirmed every code assertion; it survived
 because the divergence is invisible to the compiler — both hosts satisfy `(() -> Unit)?`.
