@@ -23,7 +23,7 @@
   ],
   "repo_url": "https://github.com/trinadhthatakula/Thor",
   "download_url": "https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk",
-  "changelog": "• 🧊 New: Freeze Profiles — save named groups of apps, freeze or unfreeze in one tap.\n\n• 💾 New: back up or export several apps at once, including .xapk.\n\n• 🔎 New: filter your apps by permission — Camera, Mic, Location and more.\n\n• 🧊 Freezing a preinstalled app no longer wipes its data.\n\n• ✅ Freeze, restrict and clear-data now report what really happened.\n\n• 🔒 App lock covers app start and hides your app list in Recents.\n\n• 📱 App info is one sheet, with the full details built in.",
+  "changelog": "• 📦 Backup & Restore Hub: browse, manage, share and restore backups & bundles from one dedicated screen\n\n• 💾 Offline encrypted app data backup (.thorbak) with AES-256-GCM & WorkManager background sync\n\n• ⚙️ Customize App Info actions: drag-and-drop reordering and visibility controls\n\n• 🎮 Full .xapk & OBB split support for games and large apps\n\n• ❄️ Differentiated freezer actions & watchlist auto-cleanup\n\n• 🌐 Full translations in 8 languages: EN, AR, ES, FR, PL, PT, PT-BR, ZH",
   "store_issue_number": 279,
   "category": "Tools",
   "license": "GPL-3.0-or-later",
