@@ -595,7 +595,6 @@
     
     <!-- 冻结配置 -->
     <string name="freeze_profiles">冻结配置</string>
-    <string name="freeze_profiles_action">冻结配置</string>
     <string name="profile_new">新建配置</string>
     <string name="profile_edit">编辑配置</string>
     <string name="profile_name_label">配置名称</string>

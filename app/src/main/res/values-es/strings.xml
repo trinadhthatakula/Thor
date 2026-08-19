@@ -605,7 +605,6 @@
     
     <!-- Perfiles de congelación -->
     <string name="freeze_profiles">Perfiles de congelación</string>
-    <string name="freeze_profiles_action">Perfiles de congelación</string>
     <string name="profile_new">Nuevo perfil</string>
     <string name="profile_edit">Editar perfil</string>
     <string name="profile_name_label">Nombre del perfil</string>

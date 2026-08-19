@@ -726,9 +726,6 @@
 
     <!-- Freeze profiles -->
     <string name="freeze_profiles">Perfis de congelamento</string>
-    <!-- Short label for the entry point that opens the profiles screen. The empty state itself
-         reuses no_profiles_yet / no_profiles_yet_desc. -->
-    <string name="freeze_profiles_action">Perfis de congelamento</string>
     <string name="profile_new">Novo perfil</string>
     <string name="profile_edit">Editar perfil</string>
     <string name="profile_name_label">Nome do perfil</string>

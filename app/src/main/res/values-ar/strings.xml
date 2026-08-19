@@ -648,7 +648,6 @@
 
     <!-- ملفات التجميد -->
     <string name="freeze_profiles">ملفات التجميد</string>
-    <string name="freeze_profiles_action">ملفات التجميد</string>
     <string name="profile_new">ملف جديد</string>
     <string name="profile_edit">تعديل الملف</string>
     <string name="profile_name_label">اسم الملف</string>

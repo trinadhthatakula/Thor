@@ -34,7 +34,6 @@ import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
@@ -314,25 +313,6 @@ fun FreezerScreen(
                         onQueryChange = viewModel::updateSearchQuery,
                         onOpenConfig = { showSettingsSheet = true }
                     )
-
-                    // Freeze Profiles has shipped since v1.93.1 and people still ask for it,
-                    // because the only way in outside multi-select was the unlabelled glyph in
-                    // the floating toolbar below — third of four identical icon buttons. This is
-                    // the label that glyph never had. Not privilege-gated, for the same reason
-                    // the toolbar button isn't; see the comment there.
-                    FilledTonalButton(
-                        onClick = { showProfilesSheet = true },
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.list_alt),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.size(6.dp))
-                        Text(stringResource(R.string.freeze_profiles_action))
-                    }
                 }
 
                 // --- App List / Empty State ---
