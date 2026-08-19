@@ -5,6 +5,7 @@ package com.valhalla.thor.data.repository
 
 import android.content.ContentUris
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -325,10 +326,28 @@ class BackupArchiveScannerImpl(
         val possiblePkg = nameWithoutExt.substringBefore('-')
         val packageName = if (possiblePkg.contains('.') && possiblePkg.length > 3) possiblePkg else null
 
+        val appName = if (!packageName.isNullOrBlank()) {
+            try {
+                val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
+                val ai = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(flags))
+                } else {
+                    context.packageManager.getApplicationInfo(packageName, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                }
+                context.packageManager.getApplicationLabel(ai).toString()
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            val cleaned = nameWithoutExt.replace(Regex("_[0-9]+(\\.[0-9]+)*.*$"), "").replace('_', ' ').trim()
+            cleaned.ifBlank { null }
+        }
+
         return BackupArchiveItem(
             id = id,
             uriString = uri.toString(),
             displayName = displayName,
+            appName = appName,
             packageName = packageName,
             sizeBytes = sizeBytes,
             dateModifiedEpochSec = dateModifiedEpochSec,

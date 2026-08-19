@@ -521,19 +521,24 @@ private fun ArchiveItemCard(
                     },
                 )
 
-                // File Name, Package, Size
+                // App Name, Package / File Name, Size
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.displayName,
+                        text = item.appName ?: item.displayName,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (!item.packageName.isNullOrBlank()) {
+                    val subLabel = if (item.appName != null) {
+                        item.packageName ?: item.displayName
+                    } else {
+                        item.packageName
+                    }
+                    if (!subLabel.isNullOrBlank()) {
                         Text(
-                            text = item.packageName,
+                            text = subLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
