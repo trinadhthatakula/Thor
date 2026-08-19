@@ -503,7 +503,7 @@ private fun ArchiveItemCard(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = stringResource(R.string.job_restoring),
+                        text = stringResource(R.string.restore_start),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                     )
