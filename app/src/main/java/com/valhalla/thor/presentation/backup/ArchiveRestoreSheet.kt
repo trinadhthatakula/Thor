@@ -34,12 +34,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
@@ -50,7 +52,10 @@ import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
+
+private const val SUCCESS_LINGER_MS = 3_000L
 
 @StringRes
 private fun refusalLabel(refusal: ArchiveRestoreRefusal): Int = when (refusal) {
@@ -453,7 +458,22 @@ private fun RestoreSheetBody(
             }
 
             state.finished?.let { finish ->
-                RestoreOutcomeDialog(finish = finish, onDismiss = viewModel::dismissResult)
+                if (finish is RestoreFinish.Succeeded) {
+                    LaunchedEffect(Unit) {
+                        delay(SUCCESS_LINGER_MS)
+                        viewModel.dismissResult()
+                        onDismiss()
+                    }
+                }
+                RestoreOutcomeDialog(
+                    finish = finish,
+                    onDismiss = {
+                        viewModel.dismissResult()
+                        if (finish is RestoreFinish.Succeeded) {
+                            onDismiss()
+                        }
+                    }
+                )
             }
 
             if (!state.running && state.finished !is RestoreFinish.Succeeded) {
@@ -543,46 +563,28 @@ private fun RestoreRunning(state: ArchiveRestoreUiState, onBackground: () -> Uni
 }
 
 /**
- * [RestoreOutcome] in a dialog.
- *
- * A dialog rather than the card at the foot of the column it used to be, because of how tall the column
- * is: the title, the archive's three header lines, up to four class rows, the game-data row, the unlock
- * row, the confirmation row, the bar and the Restore button all sit above it. The sentence saying
- * whether an app's data came back therefore arrived below the fold, on the one surface where the user is
- * watching for exactly that — and a restore finishes minutes after the tap that started it, so it is
- * also the one event here the user is not already looking at the bottom of the column for. It has to
- * interrupt rather than wait to be found.
- *
- * A dialog *over a sheet*, now that this is one, and it survives the move unchanged because a `Dialog`
- * is its own window: it renders above the sheet rather than inside its scroll.
- *
- * What the move does change is the case where the user takes the Background button. Dismissing drops
- * this sheet's watcher, so a restore that finishes afterwards reports nowhere — the same trade the
- * backup sheet's Background button already makes, and the reason §8.5's breadcrumb rather than this
- * dialog is what covers a restore whose outcome nobody read: an interrupted one leaves the notice in
- * Settings behind it.
- *
- * All three outcomes, not only the success that prompted this. A failure was equally invisible, and one
- * container for one decision is what keeps the five sentences [RestoreOutcome] documents from drifting
- * into two shapes.
- *
- * No auto-dismiss, deliberately — unlike the backup sheet's success frame, which closes itself after
- * three seconds. That one has nothing left to say; this one tells the user to go and open the app to
- * check it works, and may be carrying warnings under it.
+ * How a completed or failed restore is acknowledged.
  */
 @Composable
 private fun RestoreOutcomeDialog(finish: RestoreFinish, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        text = { RestoreOutcome(finish = finish) },
-        confirmButton = {
-            // `restore_outcome_dismiss`, not `restore_interrupted_dismiss`: that one is named and
-            // commented for the §8.5 breadcrumb banner at the top of this sheet. Same word today, two
-            // owners, so rewording the breadcrumb's button cannot silently reword this one.
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.restore_outcome_dismiss))
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                RestoreOutcome(finish = finish)
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(stringResource(R.string.restore_outcome_dismiss))
+                }
             }
-        }
+        },
+        confirmButton = {}
     )
 }
 
@@ -591,27 +593,14 @@ private fun RestoreOutcomeDialog(finish: RestoreFinish, onDismiss: () -> Unit) {
  *
  * The body of [RestoreOutcomeDialog], which owns the dismiss button — so this stays a column of
  * sentences and nothing else.
- *
- * Three outcomes, five sentences: both failure arms split on [RestoreFinish.workerRan], because what
- * is honest depends on whether anything reached the device.
- *
- * | Outcome | Copy |
- * |---|---|
- * | `Succeeded` | it landed — go and check it, plus anything it finished in spite of |
- * | `Failed(workerRan = true)` | the worker's reason, then the damage sentence |
- * | `Failed(workerRan = false)` | the reason, then *nothing was started* |
- * | `Cancelled(workerRan = false)` | the chain cancelled it; nothing was changed |
- * | `Cancelled(workerRan = true)` | it was cancelled after it started, then the damage sentence |
- *
- * The one thing none of them may do is describe a state the code cannot vouch for — in either
- * direction. A restore that ran deletes each class before it writes it, and on the install-first path
- * it may have installed the app before failing, so *"nothing was changed"* is a lie there. A restore
- * refused before its enqueue touched nothing at all, so the damage sentence is a lie *here* — and a
- * worse one, because it ends by telling the user to run a destructive operation again.
  */
 @Composable
 private fun RestoreOutcome(finish: RestoreFinish) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         when (finish) {
             // §8.6: the honest instruction is "open it and check", because no amount of shell exit
             // codes proves the app is happy with what it was handed.
@@ -619,7 +608,8 @@ private fun RestoreOutcome(finish: RestoreFinish) {
                 Text(
                     text = stringResource(R.string.restore_done),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
                 )
                 if (finish.warnings.isNotEmpty()) {
                     // The data landed, so this is not a failure — but a run that could not place the
@@ -628,13 +618,15 @@ private fun RestoreOutcome(finish: RestoreFinish) {
                     Text(
                         text = stringResource(R.string.restore_done_warnings),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
                     )
                     finish.warnings.forEach {
                         Text(
                             text = it,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
                         )
                     }
                 }
@@ -648,7 +640,8 @@ private fun RestoreOutcome(finish: RestoreFinish) {
                             ?: stringResource(R.string.restore_failed_unknown)
                     ),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
                 )
                 Text(
                     text = stringResource(
@@ -661,7 +654,8 @@ private fun RestoreOutcome(finish: RestoreFinish) {
                         }
                     ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
                 )
             }
 
@@ -673,12 +667,14 @@ private fun RestoreOutcome(finish: RestoreFinish) {
                 Text(
                     text = stringResource(R.string.restore_cancelled_after_start),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
                 )
                 Text(
                     text = stringResource(R.string.restore_failed_partial),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
                 )
             } else {
                 // The chain case, and the only place "nothing was changed" is earned: WorkManager
@@ -686,7 +682,8 @@ private fun RestoreOutcome(finish: RestoreFinish) {
                 Text(
                     text = stringResource(R.string.restore_cancelled),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
                 )
             }
         }

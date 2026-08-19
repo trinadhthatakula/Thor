@@ -81,6 +81,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.data.source.local.room.AppEntity
@@ -106,6 +107,11 @@ fun BackupRestoreHubScreen(
     viewModel: BackupRestoreHubViewModel = koinViewModel(),
     installerViewModel: InstallerViewModel = koinViewModel(),
 ) {
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshArchives()
+        onPauseOrDispose { }
+    }
+
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showInstallerSheet by remember { mutableStateOf(false) }

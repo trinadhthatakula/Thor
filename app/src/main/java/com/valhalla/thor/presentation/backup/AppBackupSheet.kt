@@ -479,12 +479,17 @@ private fun BackupRunning(state: AppBackupUiState, onBackground: () -> Unit) {
  */
 @Composable
 private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         when (finish) {
             BackupFinish.Succeeded -> Text(
                 text = stringResource(R.string.backup_done),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
 
             is BackupFinish.Failed -> {
@@ -494,7 +499,8 @@ private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit) {
                         finish.reason ?: stringResource(R.string.backup_failed_unknown)
                     ),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
                 Text(
                     text = stringResource(
@@ -507,7 +513,8 @@ private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit) {
                         }
                     ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
 
@@ -515,12 +522,14 @@ private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit) {
                 Text(
                     text = stringResource(R.string.backup_cancelled_after_start),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
                 Text(
                     text = stringResource(R.string.backup_failed_nothing_saved),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             } else {
                 // The common cancel: a dependent of a failed job, cancelled before `doWork`. Its own
@@ -529,14 +538,15 @@ private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit) {
                 Text(
                     text = stringResource(R.string.backup_cancelled),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
         }
-        // The dismiss `dismissResult()` was written for and never given. Without it a *success* message
-        // sat under a still-enabled Back up button for as long as the sheet stayed open, and the only
-        // way to clear it was to start another backup.
-        TextButton(onClick = onDismiss) {
+        Button(
+            onClick = onDismiss,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        ) {
             Text(stringResource(R.string.backup_outcome_dismiss))
         }
     }

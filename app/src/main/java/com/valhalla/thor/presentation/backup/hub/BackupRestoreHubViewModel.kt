@@ -3,9 +3,12 @@
 
 package com.valhalla.thor.presentation.backup.hub
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import com.valhalla.thor.data.source.local.room.AppEntity
+import com.valhalla.thor.domain.model.THOR_JOB_CHAIN
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
@@ -64,6 +67,7 @@ data class BackupRestoreHubState(
 class BackupRestoreHubViewModel(
     private val scanner: BackupArchiveScanner,
     private val appRepository: AppRepository,
+    private val application: Application,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BackupRestoreHubState())
@@ -74,6 +78,21 @@ class BackupRestoreHubViewModel(
     init {
         loadInstalledApps()
         refreshArchives()
+        observeWorkManagerJobs()
+    }
+
+    private fun observeWorkManagerJobs() {
+        viewModelScope.launch {
+            runCatching {
+                WorkManager.getInstance(application)
+                    .getWorkInfosForUniqueWorkFlow(THOR_JOB_CHAIN)
+                    .collect { workInfos ->
+                        if (workInfos.any { it.state.isFinished }) {
+                            refreshArchives()
+                        }
+                    }
+            }
+        }
     }
 
     fun refreshArchives() {
