@@ -264,8 +264,17 @@ class ArchiveRestoreViewModelTest {
         }
     }
 
-    private class FakeProbe(val capable: Boolean = true) : AppDataProbe {
+    private class FakeProbe(
+        val capable: Boolean = true,
+        val privateCapable: Boolean = capable,
+    ) : AppDataProbe {
         var probes = 0
+        var privateProbes = 0
+
+        override suspend fun probePrivateDataCapability(): Boolean {
+            privateProbes++
+            return privateCapable
+        }
 
         override suspend fun probeDataArchiveCapability(): Boolean {
             probes++

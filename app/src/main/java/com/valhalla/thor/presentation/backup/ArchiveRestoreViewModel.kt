@@ -199,6 +199,7 @@ data class ArchiveRestoreUiState(
     /** Why this file cannot be used at all — not a gate refusal, which needs a readable header. */
     val error: ArchiveRestoreMessage? = null,
     val supported: Boolean? = null,
+    val supportedClasses: Set<DataClass> = DataClass.entries.toSet(),
     val refusal: ArchiveRestoreRefusal? = null,
     val warnings: List<ArchiveRestoreWarning> = emptyList(),
     val installFirst: Boolean = false,
@@ -416,11 +417,9 @@ internal class ArchiveRestoreViewModel(
                 }
             }
         ) {
-            // The one write here that is *not* file-derived, and so not generation-guarded: whether the
-            // device can restore private data at all is a property of the privilege state, identical for
-            // every archive, and the cache behind it answers the same for both reads.
             val supported = capability.isSupported()
-            _uiState.update { it.copy(supported = supported) }
+            val supportedClasses = capability.supportedClasses()
+            _uiState.update { it.copy(supported = supported, supportedClasses = supportedClasses) }
 
             // The picker offers every file on the device, so "that is not a backup" is the ordinary
             // mistake and it gets its own sentence. The two failures point the user opposite ways:
@@ -476,13 +475,15 @@ internal class ArchiveRestoreViewModel(
             if (generation != openGeneration) return@launchGuarded
             installed = facts
             val obbCount = header.appBundle?.obbCount ?: 0
+            val held = header.heldClasses()
+            val defaultSelected = held.intersect(supportedClasses).ifEmpty { held }
             updateForOpen(generation) { state ->
                 state.copy(
                     loading = false,
                     fileName = source.displayName,
                     header = header,
-                    // Everything the archive holds, selected. The user narrows from there.
-                    selected = header.heldClasses().toSet(),
+                    // Everything the archive holds that can be restored, selected.
+                    selected = defaultSelected.toSet(),
                     obbOffered = obbCount > 0,
                     restoreObb = obbCount > 0,
                 )

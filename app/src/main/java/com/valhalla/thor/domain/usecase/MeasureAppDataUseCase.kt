@@ -20,6 +20,7 @@ import org.koin.core.annotation.Factory
 data class AppDataMeasurement(
     val supported: Boolean,
     val sizes: Map<DataClass, DataClassSize>,
+    val supportedClasses: Set<DataClass> = DataClass.entries.toSet(),
 )
 
 /**
@@ -40,18 +41,23 @@ class MeasureAppDataUseCase(
         // would each cost a round trip to say so; and a package name this shape means the caller is
         // confused, not that one class is unreadable.
         if (!isUsablePackageName(packageName)) {
-            return AppDataMeasurement(supported = false, sizes = emptyMap())
+            return AppDataMeasurement(supported = false, sizes = emptyMap(), supportedClasses = emptySet())
         }
         if (!cache.isSupported()) {
             // Deliberately no measurements: four shell round trips that will each fail, rendered as
             // four "unknown" rows, is a worse answer than one honest refusal.
-            return AppDataMeasurement(supported = false, sizes = emptyMap())
+            return AppDataMeasurement(supported = false, sizes = emptyMap(), supportedClasses = emptySet())
         }
+        val supportedClasses = cache.supportedClasses()
         // Sequential, not parallel. These are `du -s -k` walks over potentially gigabytes; four at
         // once on one privileged shell queue is slower, not faster, and the shell serialises anyway.
-        val sizes = DataClass.entries.associateWith { dataClass ->
+        val sizes = supportedClasses.associateWith { dataClass ->
             probe.measureDataClass(packageName, dataClass)
         }
-        return AppDataMeasurement(supported = true, sizes = sizes)
+        return AppDataMeasurement(
+            supported = true,
+            sizes = sizes,
+            supportedClasses = supportedClasses,
+        )
     }
 }

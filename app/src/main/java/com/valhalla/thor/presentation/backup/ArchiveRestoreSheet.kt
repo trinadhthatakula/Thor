@@ -335,24 +335,18 @@ private fun RestoreSheetBody(
             // cannot use, and has to scroll past to find the only thing that is moving.
             if (!state.running) {
                 header.heldClasses().forEach { dataClass ->
-                    // `heldClasses()` is defined as the classes with a member, so this cannot drop a row
-                    // the user should have seen; it is here so the size below is read off a member that
-                    // exists rather than defaulted to a number nothing measured.
                     val member = header.member(dataClass) ?: return@forEach
+                    val isSupported = dataClass in state.supportedClasses
                     CheckRow(
-                        checked = dataClass in state.selected,
-                        // `true`, not `!state.running`. The enclosing `if` already answers that, so a
-                        // condition here would be a control that cannot be reached in its disabled
-                        // state — and reads to the next person as if the row greys out mid-restore
-                        // when in fact it is gone. Every `enabled` below is constant for the same
-                        // reason; the guard is the `if`, once, at the top.
-                        enabled = true,
+                        checked = isSupported && dataClass in state.selected,
+                        enabled = isSupported,
                         label = stringResource(dataClassLabel(dataClass)),
-                        // `Known`, and only `Known`: an archive records the byte count it actually
-                        // packed, so there is no tri-state to render here. Routed through `sizeLabel`
-                        // anyway so every size in this feature is formatted by one function.
-                        detail = sizeLabel(DataClassSize.Known(member.plainBytes)),
-                        onCheckedChange = { viewModel.toggleClass(dataClass) }
+                        detail = if (isSupported) {
+                            sizeLabel(DataClassSize.Known(member.plainBytes))
+                        } else {
+                            stringResource(R.string.backup_unsupported)
+                        },
+                        onCheckedChange = { if (isSupported) viewModel.toggleClass(dataClass) }
                     )
                 }
             }

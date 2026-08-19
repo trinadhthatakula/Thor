@@ -177,6 +177,7 @@ class BackupAppArchiveUseCaseTest {
     private class FakeProbe(
         private val sizes: Map<DataClass, DataClassSize> = emptyMap(),
     ) : AppDataProbe {
+        override suspend fun probePrivateDataCapability(): Boolean = true
         override suspend fun probeDataArchiveCapability(): Boolean = true
         // Brief named this sizeOf; real interface is measureDataClass — substituted for compilation.
         override suspend fun measureDataClass(packageName: String, dataClass: DataClass): DataClassSize =

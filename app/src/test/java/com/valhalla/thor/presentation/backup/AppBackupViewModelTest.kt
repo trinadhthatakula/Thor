@@ -68,10 +68,12 @@ class AppBackupViewModelTest {
      */
     private class FakeProbe(
         val capable: Boolean = true,
+        val privateCapable: Boolean = capable,
         val sizes: Map<DataClass, DataClassSize> = DataClass.entries.associateWith {
             DataClassSize.Known(1024L)
         },
     ) : AppDataProbe {
+        override suspend fun probePrivateDataCapability(): Boolean = privateCapable
         override suspend fun probeDataArchiveCapability(): Boolean = capable
         override suspend fun measureDataClass(
             packageName: String,
@@ -1018,6 +1020,7 @@ class AppBackupViewModelTest {
         // the bug this test names. `measureDataClass` is not cached, so it counts the real cost.
         var sweeps = 0
         val probe = object : AppDataProbe {
+            override suspend fun probePrivateDataCapability(): Boolean = true
             override suspend fun probeDataArchiveCapability(): Boolean = true
 
             override suspend fun measureDataClass(
@@ -1086,4 +1089,24 @@ class AppBackupViewModelTest {
         assertNull(backupPassphraseRefusal(needed = false, passphrase = "", confirmation = ""))
     }
 
+    @Test
+    fun `non-root privilege offers only external classes`() = runTest {
+        val probe = FakeProbe(capable = true, privateCapable = false)
+        val shizuku = PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true)
+        val vm = viewModel(probe = probe, privilegeState = shizuku)
+
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(true, state.supported)
+        assertEquals(
+            setOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA),
+            state.supportedClasses,
+        )
+        assertEquals(
+            setOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA),
+            state.selected,
+        )
+    }
 }

@@ -177,6 +177,12 @@ internal fun capabilityProbeCommand(thorPackageName: String, userId: Int): Strin
     return "ls -1 '/data/user/$userId/$thorPackageName' >/dev/null 2>&1 && echo $THOR_OK"
 }
 
+/** Probe whether shell can access external shared storage (/sdcard/Android). */
+internal fun sharedDataCapabilityProbeCommand(externalStorageDir: String): String? {
+    if (!isQuotableAbsolutePath(externalStorageDir)) return null
+    return "( [ -d '$externalStorageDir/Android' ] || [ -d '$externalStorageDir' ] ) && echo $THOR_OK"
+}
+
 /**
  * Believed only on a zero exit **and** the marker.
  *

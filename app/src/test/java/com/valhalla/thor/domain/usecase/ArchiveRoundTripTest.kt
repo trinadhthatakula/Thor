@@ -218,6 +218,7 @@ class ArchiveRoundTripTest {
     }
 
     private class NoProbe : AppDataProbe {
+        override suspend fun probePrivateDataCapability(): Boolean = true
         override suspend fun probeDataArchiveCapability(): Boolean = true
         override suspend fun measureDataClass(packageName: String, dataClass: DataClass) =
             DataClassSize.Undetermined

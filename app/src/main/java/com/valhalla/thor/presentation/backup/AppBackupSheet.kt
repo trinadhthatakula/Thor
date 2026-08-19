@@ -246,7 +246,7 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                         onCheckedChange = viewModel::setIncludeBundle
                     )
 
-                    DataClass.entries.forEach { dataClass ->
+                    state.supportedClasses.forEach { dataClass ->
                         CheckRow(
                             checked = dataClass in state.selected,
                             enabled = !state.running,
