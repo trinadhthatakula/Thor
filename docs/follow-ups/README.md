@@ -9,8 +9,7 @@ the thing to update. A row without a link is an item whose whole content is the 
 *declined* ruled out, do not re-raise. Where a row also carries a roadmap colour (🟢 do-first ·
 🟡 scope carefully · 🔴 defer), that colour is the roadmap's own verdict, not a second opinion.
 
-**Last swept:** 2026-08-07, twice — once to rank the backlog, once after band A was built against the
-ranking. The Kotlin sources still contain **no `TODO`/`FIXME`/`HACK`/`XXX` markers at all** —
+**Last swept:** 2026-08-19, after Portuguese & Polish localization completion, App Info actions customization (#410), single-app export WorkManager migration (#389), settings 9-category modularization (#383/#410), and SEO/web reporting enhancements. The Kotlin sources still contain **no `TODO`/`FIXME`/`HACK`/`XXX` markers at all** —
 re-checked this sweep, zero matches across `app/src/main/java` and `bypass`. So nothing below was
 found by grepping the code; every row came from a doc, the roadmap, the project `README.md`, or —
 new this sweep — **users**.
@@ -31,6 +30,30 @@ When you file a new follow-up, add a row here. When one ships, delete the row *a
 
 Deleting something an open row, a live conclusion or a future contributor leans on trades a tidy
 index for lost context, which is the wrong trade.
+
+<details>
+<summary>What this sweep changed (2026-08-19)</summary>
+
+* **Portuguese & Polish localizations shipped in full (Band C #29).** Thor now supports 8 complete
+  locales (`en`, `ar`, `es`, `fr`, `zh-rCN`, `pt`, `pt-rBR`, `pl`). The missing 94 strings in
+  `strings_backup.xml` were unmasked by dropping `tools:ignore="MissingTranslation"` (PR #397), 26
+  linguistic defects in the four oldest locales were proofread and corrected (PR #398), and store
+  listings for Portuguese and Polish were finalized (PR #400).
+* **App Info Actions Customization shipped (PR #410, `3e6f9a6d`).** Users can now reorder and toggle
+  visibility of action buttons on the App Info sheet via Settings → Customization → App Info Actions,
+  featuring smooth drag-and-drop reordering, local snapshot state, auto-scrolling, live preview,
+  reset to defaults, full translations across all 8 languages, and bottom bar dismissal on sub-panels.
+* **Single-App Export moved to WorkManager (PR #389, PR #387).** `ExportAppWorker` now executes
+  single-app exports on the foreground job seam (`ThorJobLauncher`), surviving Activity dismissal and
+  handling notification permissions cleanly.
+* **Settings Modularization (PR #383, PR #410).** Settings screen reorganized into 9 focused
+  categories with responsive 2-pane tablet support.
+* **Play Billing ACK refund sweep fixed (PR #386).** Resolved guard skipping refunds for unacknowledged purchases.
+* **Web & SEO infrastructure upgraded (PR #396, PR #404, PR #406).** Interactive follow-ups report
+  (`follow-ups-report.html`), automated IndexNow protocol submission, updated `llms.txt`, `llm.txt`, and
+  `robots.txt`.
+
+</details>
 
 <details>
 <summary>What this sweep changed (2026-08-03)</summary>
@@ -250,6 +273,7 @@ argument, not the status. **None of it has run on a device.**
 | 30 | #58 — app lock · #209 — VirusTotal | feature | 4–15 d each | Both carry a policy or maintenance tax out of proportion to demand. #209 also puts a third-party API key in a FOSS build |
 | 31 | **Restore a backup has one door, four taps deep in Settings** | ux | small — ≈0.5 d | **The cheapest row in this section and the only one that needs no device.** Restore ships as exactly one in-app affordance: Settings → *Backup & restore* → *Restore a backup* → SAF picker. That is four taps from a cold launch whose default tab is HOME, behind the **6th of 8** settings categories, and the category is hidden outright unless `hasPrivilege \|\| interrupted != null` (`SettingsScreen.kt:128-134`) — so an unprivileged user holding a `.thorbak` sees no door at all. Backup is the mirror image: a per-app tile roughly **10th–12th in a horizontally scrolling row** (`AppActionRow.kt:216-225`), off-screen on first paint, so a user can make an archive without ever passing the screen that restores one. Both non-Settings routes are undiscoverable from inside the app and one is documented as broken **for the default save location** — the `.thorbak` VIEW filter matches on `Uri.getPath()` and the manifest's own comment says it does *not* fire for the Downloads provider's opaque document ids (`AndroidManifest.xml:107-110`), while the default export destination is `Downloads/Thor` (`UserPreferences.kt:77`). Recommended shape: **a `RESTORE` tile in the Home bento**, gated with the *same* expression Settings uses rather than a re-derived one. It reuses `restore_title`, `restore_settings_desc` and `settings_backup_restore.xml`, so it adds **zero new strings** — which matters more since band C #29, not less: `strings_backup.xml` used to be English-only in every locale (hidden behind a file-level `tools:ignore="MissingTranslation"`), and now it is translated into all seven, so bespoke tile copy is seven translations to commission rather than four TODOs to leave. No new route (`openRestoreSheet()` opens a sheet already hosted at `MainScreen`'s global overlay level), no new ViewModel, no schema, no preference; `homeActionRows` is a pure function with a 225-line JVM test that pins the bento packing, so the risky part — a fifth action flipping the odd/even leader math — is asserted before any UI moves. It **cannot** live on a per-app surface: an archive carrying `app.xapk` reinstalls a missing app (`AppArchiveWorker.kt:548-549`), so restore's subject may not be installed. Companion worth two lines in the same PR: the Home *Install from file* picker already takes `*/*` and sends a `.thorbak` to the APK analyzer — branch on the display name and open the restore sheet instead. ⚠️ **This does not make restore shippable.** #23's device checks are unrun; an easier door onto an unverified destructive operation is a reason to run them first, not a substitute |
 | 32 | **Bulk backup / bulk restore** | feature | large — 5–8 d, and **gated on #23** | Neither exists, and the thing that looks like it is not it. ⚠️ **`MultiAppAction.Backup` is a false friend** — it is bulk APK *export* (labelled `action_export_selected` = "Export", routed to `BackupRunner`, a plain coroutine with a 2-permit staging gate and no foreground service), not app-data backup. A plan drawn from `MultiAppAction.kt` will size this as existing work; it is not. Four constraints, none of them UI, and each one is a design decision before it is code. (1) **Every byte-moving job shares one unique chain** (`THOR_JOB_CHAIN`, `APPEND_OR_REPLACE`), and WorkManager **cancels the dependents of a prerequisite that returns `failure()`** — so N naive enqueues means one app's failure silently kills every app queued behind it, `doWork` never runs, and nothing observes it. A batch cannot be N enqueues. (2) **Derived keys are in-memory only and expire** (`ArchiveKeyHolder`), which exists precisely so a passphrase never reaches WorkManager's SQLite in the clear — and `Result.retry()` is forbidden in every archive worker for the same reason. A queue must either hold a key alive for the whole run or keep the passphrase, which is the thing the design forbids. (3) **Every archive carries its own salt and iteration count**, read from its own header, so a bulk *restore* cannot derive one key for a folder of `.thorbak`s: each file needs its own unlock and may have its own passphrase. (4) The interrupted-restore breadcrumb is a **single** record (`FileArchiveBreadcrumbStore`) and `JobSheetTargets` holds **one live target per kind** in a conflated channel — so a bulk run interrupted halfway has nowhere to record *which* apps were left damaged, and a notification tap has no model for which of forty apps to reopen. On top of that, `dataSync` is mandatory-typed on API 34+ and **time-capped on 35+**, which is exactly why multi-app export chose a process-lifetime coroutine instead — and a bulk backup also changes what the approved `FOREGROUND_SERVICE_DATA_SYNC` declaration describes, since it was filmed against single-app export. #23's doc already defers this in one line ([`app-data-backup-and-xapk-export.md`](app-data-backup-and-xapk-export.md), *"needs a queue UI and a per-app failure model the single-app sheet does not have"*); this row is that line, priced. **Do not start before #23 has been restored on hardware** — this puts a queue on top of a path nobody has yet watched succeed once |
+| 33 | [App Info Actions customization + drag-and-drop reordering](reddit-howtomen-feedback.md) | ux/feature | small–medium | ✅ **shipped 2026-08-19 (PR #410, `3e6f9a6d`)** — drag-and-drop reordering, visibility toggling (hide/show), live preview, DataStore persistence (`app_info_actions_order`, `app_info_actions_hidden`), Reset to default with `FilledIconButton`, full translations across all 8 languages, and bottom nav bar hiding on settings sub-panels |
 
 ### Band D — not ready, or not ours
 
