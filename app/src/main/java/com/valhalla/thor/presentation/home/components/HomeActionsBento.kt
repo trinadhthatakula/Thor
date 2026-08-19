@@ -55,13 +55,21 @@ fun HomeActionsBento(
     onInstall: () -> Unit,
     onClearCache: () -> Unit,
     onNavigateToExtensionManager: () -> Unit,
+    onNavigateToBackupRestoreHub: () -> Unit,
     modifier: Modifier = Modifier,
     showInstaller: Boolean = true,
     showExtensions: Boolean = true,
+    showBackupRestore: Boolean = true,
     narrowContainer: Boolean = false,
 ) {
     val rows = homeActionRows(
-        reinstallVisible, canClearCache, hasPrivilege, showInstaller, showExtensions, narrowContainer
+        reinstallVisible,
+        canClearCache,
+        hasPrivilege,
+        showInstaller,
+        showExtensions,
+        showBackupRestore,
+        narrowContainer,
     )
     var explaining by rememberSaveable { mutableStateOf<HomeAction?>(null) }
     // Hiding both optional tiles with no privilege leaves nothing to draw. Emit no Column at all
@@ -83,6 +91,11 @@ fun HomeActionsBento(
             subtitle = stringResource(R.string.install_from_file_subtitle),
             icon = R.drawable.apk_install,
         )
+        HomeAction.BACKUP_RESTORE -> HomeActionCopy(
+            title = stringResource(R.string.backup_and_restore),
+            subtitle = stringResource(R.string.home_backup_restore_subtitle),
+            icon = R.drawable.settings_backup_restore,
+        )
         HomeAction.CLEAR_CACHE -> HomeActionCopy(
             title = stringResource(R.string.clear_all_cache),
             subtitle = stringResource(R.string.clear_all_cache_subtitle),
@@ -99,6 +112,7 @@ fun HomeActionsBento(
     fun onClick(action: HomeAction) = when (action) {
         HomeAction.REINSTALL -> onReinstall
         HomeAction.INSTALL -> onInstall
+        HomeAction.BACKUP_RESTORE -> onNavigateToBackupRestoreHub
         HomeAction.CLEAR_CACHE -> onClearCache
         HomeAction.EXTENSIONS -> onNavigateToExtensionManager
     }

@@ -95,6 +95,7 @@ import com.valhalla.thor.presentation.settings.SettingsScreen
 import com.valhalla.thor.presentation.settings.SettingsViewModel
 import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.backup.ArchiveRestoreSheet
+import com.valhalla.thor.presentation.backup.hub.BackupRestoreHubScreen
 import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.customization.AppInfoActionsCustomizationScreen
@@ -443,6 +444,9 @@ fun MainScreen(
                         },
                         onNavigateToExtensionManager = {
                             homeBackStack.add(ThorRoute.ExtensionManager)
+                        },
+                        onNavigateToBackupRestoreHub = {
+                            homeBackStack.add(ThorRoute.BackupRestoreHub)
                         }
                     )
                 }
@@ -670,6 +674,24 @@ fun MainScreen(
                             }
                         },
                         viewModel = settingsViewModel
+                    )
+                }
+
+                entry<ThorRoute.BackupRestoreHub>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) {
+                    BackupRestoreHubScreen(
+                        onBack = {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
+                        },
+                        onOpenBackupSheet = { pkg, label ->
+                            mainViewModel.openBackupSheet(pkg, label)
+                        },
+                        onOpenRestoreSheet = { uriString ->
+                            mainViewModel.openRestoreSheet(uriString)
+                        },
                     )
                 }
 

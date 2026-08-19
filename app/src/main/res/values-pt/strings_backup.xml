@@ -295,9 +295,33 @@
     -->
     <string name="passphrase_error_too_short">Use pelo menos %1$d caracteres.</string>
     <string name="passphrase_error_mismatch">As duas frases-passe não coincidem.</string>
-    <!--
-      Deliberately not phrased as a failure of the backup: the vault is a convenience cache, and an
-      archive is protected by the passphrase itself, never by whether this device remembered it.
-    -->
     <string name="passphrase_error_store_failed">O Thor não conseguiu guardar a frase-passe neste dispositivo. A cópia de segurança continua a funcionar — apenas terá de a escrever de cada vez.</string>
+
+    <!-- Backup & Restore Hub UI -->
+    <string name="home_backup_restore_subtitle">Gerir cópias de segurança e restaurar dados</string>
+    <string name="backup_hub_hero_backup_title">Fazer cópia de uma app</string>
+    <string name="backup_hub_hero_backup_desc">Criar cópia de dados encriptada (.thorbak) ou pacote APK</string>
+    <string name="backup_hub_hero_restore_title">Restaurar a partir de ficheiro</string>
+    <string name="backup_hub_hero_restore_desc">Selecionar qualquer arquivo .thorbak ou pacote do armazenamento</string>
+    <string name="backup_hub_section_backups">Cópias em Downloads/Thor</string>
+    <string name="backup_hub_filter_all">Tudo</string>
+    <string name="backup_hub_filter_backups">Cópias de dados (.thorbak)</string>
+    <string name="backup_hub_filter_bundles">Pacotes de aplicações (.xapk, .apk)</string>
+    <string name="backup_hub_empty_title">Sem cópias em Downloads/Thor</string>
+    <string name="backup_hub_empty_desc">Os arquivos guardados em Downloads/Thor aparecerão aqui para restauro rápido num só toque.</string>
+    <string name="backup_hub_tip_thorbak_title">Cópias de dados (.thorbak)</string>
+    <string name="backup_hub_tip_thorbak_desc">Arquivos completos encriptados contendo dados de aplicações (classes CE/DE) e divisões APK. O restauro requer root ou shell privilegiada.</string>
+    <string name="backup_hub_tip_bundle_title">Pacotes de aplicações (.xapk / .apk)</string>
+    <string name="backup_hub_tip_bundle_desc">Pacotes de instalação autónomos para instalação offline ou partilha entre dispositivos sem necessitar de root.</string>
+    <string name="backup_hub_tip_discovery_title">Deteção automática</string>
+    <string name="backup_hub_tip_discovery_desc">Qualquer arquivo exportado ou colocado em Downloads/Thor será listado aqui automaticamente para restauro imediato.</string>
+    <string name="backup_hub_pick_app_title">Selecionar uma aplicação para cópia</string>
+    <string name="backup_hub_search_apps_placeholder">Pesquisar aplicações…</string>
+    <string name="backup_hub_delete_confirm_title">Eliminar cópia de segurança?</string>
+    <string name="backup_hub_delete_confirm_message">Tem a certeza de que deseja eliminar %1$s do armazenamento? Esta ação é irreversível.</string>
+    <string name="backup_hub_badge_data_backup">Cópia de dados</string>
+    <string name="backup_hub_badge_app_bundle">Pacote de aplicação</string>
+    <string name="backup_hub_action_delete">Eliminar</string>
+    <string name="backup_hub_action_share">Partilhar</string>
+    <string name="backup_hub_no_archives">Nenhum arquivo encontrado</string>
 </resources>

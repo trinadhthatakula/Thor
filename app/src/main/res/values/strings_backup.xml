@@ -303,4 +303,32 @@
       archive is protected by the passphrase itself, never by whether this device remembered it.
     -->
     <string name="passphrase_error_store_failed">Thor could not save the passphrase on this device. The backup will still work — you will just have to type it each time.</string>
+
+    <!-- Backup & Restore Hub UI -->
+    <string name="home_backup_restore_subtitle">Manage app backups &amp; restore data</string>
+    <string name="backup_hub_hero_backup_title">Backup an app</string>
+    <string name="backup_hub_hero_backup_desc">Create encrypted data backup (.thorbak) or APK bundle</string>
+    <string name="backup_hub_hero_restore_title">Restore from file</string>
+    <string name="backup_hub_hero_restore_desc">Select any .thorbak or bundle archive from storage</string>
+    <string name="backup_hub_section_backups">Backups in Downloads/Thor</string>
+    <string name="backup_hub_filter_all">All</string>
+    <string name="backup_hub_filter_backups">Data Backups (.thorbak)</string>
+    <string name="backup_hub_filter_bundles">App Bundles (.xapk, .apk)</string>
+    <string name="backup_hub_empty_title">No backups in Downloads/Thor</string>
+    <string name="backup_hub_empty_desc">Archives saved to Downloads/Thor will appear here for fast one-tap restore.</string>
+    <string name="backup_hub_tip_thorbak_title">Data Backups (.thorbak)</string>
+    <string name="backup_hub_tip_thorbak_desc">Encrypted full archives carrying app data (CE/DE storage classes) and APK splits. Restoring requires Root or privileged shell.</string>
+    <string name="backup_hub_tip_bundle_title">App Bundles (.xapk / .apk)</string>
+    <string name="backup_hub_tip_bundle_desc">Standalone installation packages for offline install or sharing across devices without requiring root.</string>
+    <string name="backup_hub_tip_discovery_title">Auto-Discovery</string>
+    <string name="backup_hub_tip_discovery_desc">Exporting or placing any archive in Downloads/Thor automatically lists it here for instant restore.</string>
+    <string name="backup_hub_pick_app_title">Select an app to back up</string>
+    <string name="backup_hub_search_apps_placeholder">Search apps…</string>
+    <string name="backup_hub_delete_confirm_title">Delete backup?</string>
+    <string name="backup_hub_delete_confirm_message">Are you sure you want to delete %1$s from storage? This cannot be undone.</string>
+    <string name="backup_hub_badge_data_backup">Data backup</string>
+    <string name="backup_hub_badge_app_bundle">App bundle</string>
+    <string name="backup_hub_action_delete">Delete</string>
+    <string name="backup_hub_action_share">Share</string>
+    <string name="backup_hub_no_archives">No archives found</string>
 </resources>
