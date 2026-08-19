@@ -458,7 +458,7 @@ private fun RestoreSheetBody(
             }
 
             state.finished?.let { finish ->
-                if (finish is RestoreFinish.Succeeded) {
+                if (finish is RestoreFinish.Succeeded && finish.warnings.isEmpty()) {
                     LaunchedEffect(Unit) {
                         delay(SUCCESS_LINGER_MS)
                         viewModel.dismissResult()

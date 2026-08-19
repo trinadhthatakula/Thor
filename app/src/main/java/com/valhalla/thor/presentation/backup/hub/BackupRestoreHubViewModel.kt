@@ -81,11 +81,21 @@ class BackupRestoreHubViewModel(
     private fun observeWorkManagerJobs() {
         viewModelScope.launch {
             runCatching {
+                val knownFinishedIds = mutableSetOf<java.util.UUID>()
+                var isFirstEmission = true
                 WorkManager.getInstance(application)
                     .getWorkInfosForUniqueWorkFlow(THOR_JOB_CHAIN)
                     .collect { workInfos ->
-                        if (workInfos.any { it.state.isFinished }) {
-                            refreshArchives()
+                        val finishedIds = workInfos.filter { it.state.isFinished }.map { it.id }.toSet()
+                        if (isFirstEmission) {
+                            knownFinishedIds.addAll(finishedIds)
+                            isFirstEmission = false
+                        } else {
+                            val newFinished = finishedIds - knownFinishedIds
+                            if (newFinished.isNotEmpty()) {
+                                knownFinishedIds.addAll(newFinished)
+                                refreshArchives()
+                            }
                         }
                     }
             }
