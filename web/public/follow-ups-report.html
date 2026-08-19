@@ -1000,29 +1000,9 @@
       </div>
 
       <div class="next-pick-grid">
-        <!-- Pick 1: Home Bento Restore -->
+        <!-- Pick 1: Samsung My Files Diagnostic -->
         <div class="action-card rank-1">
           <span class="rank-badge">#1 NEXT PICK</span>
-          <div class="card-top">
-            <h4 class="card-title">Home Bento "Restore a Backup" Entry Point</h4>
-          </div>
-          <div class="card-meta">
-            <span class="meta-chip impact-high">Impact: 4.8 / 5.0</span>
-            <span class="meta-chip ease-high">Effort: ≈ 0.5 Days</span>
-            <span class="meta-chip">Zero New Strings</span>
-          </div>
-          <p class="card-body">
-            Restore currently requires 4 taps deep in Settings (6th category) and is completely hidden for unprivileged users. Adding a <code>RESTORE</code> tile to the Home bento unlocks full discoverability for <code>.thorbak</code> archives, reuses existing translated strings in 8 locales, and requires no schema or ViewModel changes.
-          </p>
-          <div class="card-footer">
-            <span>Target: <code>MainScreen.kt</code> / <code>HomeActionRow</code></span>
-            <strong style="color: var(--primary);">Band C #31</strong>
-          </div>
-        </div>
-
-        <!-- Pick 2: Samsung My Files Diagnostic -->
-        <div class="action-card">
-          <span class="rank-badge">#2 QUICK WIN</span>
           <div class="card-top">
             <h4 class="card-title">Samsung My Files Intent Diagnostic & Direct MIME</h4>
           </div>
@@ -1040,9 +1020,9 @@
           </div>
         </div>
 
-        <!-- Pick 3: Freezer Membership Semantics -->
+        <!-- Pick 2: Freezer Membership Semantics -->
         <div class="action-card">
-          <span class="rank-badge">#3 UX CLARITY</span>
+          <span class="rank-badge">#2 QUICK WIN</span>
           <div class="card-top">
             <h4 class="card-title">Differentiate Snowflake Button Action Labels</h4>
           </div>
@@ -1057,6 +1037,26 @@
           <div class="card-footer">
             <span>Target: <code>AppActionRow.kt</code></span>
             <strong style="color: var(--primary);">Tier 3 Follow-Up</strong>
+          </div>
+        </div>
+
+        <!-- Pick 3: App Tagging & Notes -->
+        <div class="action-card">
+          <span class="rank-badge">#3 HIGH VALUE</span>
+          <div class="card-top">
+            <h4 class="card-title">App Tagging & Per-App Notes (#24)</h4>
+          </div>
+          <div class="card-meta">
+            <span class="meta-chip impact-high">Impact: 4.0 / 5.0</span>
+            <span class="meta-chip">Effort: 3–5 Days</span>
+            <span class="meta-chip">Room Migration</span>
+          </div>
+          <p class="card-body">
+            User-requested capability on r/howtomen. Implements custom color tags and per-app notes with search filtering and batch assignment, sharing a single Room entity schema migration.
+          </p>
+          <div class="card-footer">
+            <span>Target: <code>ThorDatabase</code> / <code>AppList</code></span>
+            <strong style="color: var(--primary);">Band C #24</strong>
           </div>
         </div>
 
@@ -1110,7 +1110,7 @@
               </div>
               <div class="quadrant-items">
                 <button type="button" class="matrix-item-pill" data-key="home_restore" onclick="inspectItem('home_restore', this)">
-                  <span class="matrix-item-title">#31 Home Bento Restore Entry</span>
+                  <span class="matrix-item-title">#31 Backup & Restore Hub</span>
                   <span class="matrix-item-scores">I: 4.8 · E: 4.8</span>
                 </button>
                 <button type="button" class="matrix-item-pill" data-key="samsung_161" onclick="inspectItem('samsung_161', this)">
@@ -1346,18 +1346,18 @@
     const followUpsData = [
       {
         id: "home_restore",
-        title: "#31 Home Bento: Restore a Backup Entry Point",
-        doc: "README.md:251",
-        files: "app/src/main/java/com/valhalla/thor/presentation/main/MainScreen.kt, AppActionRow.kt",
-        status: "open",
-        statusText: "Open (Next Pick)",
+        title: "#31 Backup & Restore Hub (Home Bento & Storage Scanner)",
+        doc: "README.md:214",
+        files: "BackupRestoreHubScreen.kt, BackupArchiveScannerImpl.kt, MainScreen.kt, HomeActions.kt",
+        status: "shipped",
+        statusText: "Shipped (PR #413)",
         impact: 4.8,
         ease: 4.8,
         effort: "≈ 0.5 Days",
         category: "ux",
-        summary: "Restore currently requires 4 taps deep in Settings (6th category), completely hidden for unprivileged users holding a .thorbak. Non-Settings routes are broken for Downloads folder.",
-        rootCause: "Restore sheet was only wired inside Settings backup category. Downloads provider opaque IDs fail URI pathPattern match.",
-        solution: "Add a RESTORE tile in Home bento using existing strings (restore_title, settings_backup_restore.xml translated in 8 languages). Connect directly to openRestoreSheet().",
+        summary: "Dedicated Backup & Restore Hub accessible via Home Bento tile, with non-root storage scanning across Downloads/Thor, MediaStore, and SAF trees, archive icon extraction, category filtering, search, and app picker backup initiation.",
+        rootCause: "Restore previously required 4 taps in Settings (6th category) and had no discoverable storage browser or device-level entry point.",
+        solution: "Shipped BackupRestoreHubScreen + BackupArchiveScanner with Downloads/Thor discovery, MediaStore fallback, ArchiveIconLoader, and .thorbak routing from Install from file.",
         hardwareRequired: false
       },
       {
