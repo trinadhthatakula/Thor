@@ -737,6 +737,7 @@
     .status-indicator.open { background-color: var(--primary); box-shadow: 0 0 8px rgba(240, 255, 215, 0.4); }
     .status-indicator.blocked { background-color: var(--error); box-shadow: 0 0 8px rgba(254, 116, 83, 0.4); }
     .status-indicator.deferred { background-color: var(--outline); }
+    .status-indicator.declined { background-color: var(--error); }
 
     .item-header-title {
       font-size: 1.1rem;
@@ -781,6 +782,7 @@
     .status-tag.open { background-color: var(--primary-container); color: var(--on-primary-container); }
     .status-tag.blocked { background-color: var(--error-container); color: var(--error); }
     .status-tag.deferred { background-color: var(--surface-variant); color: var(--on-surface-variant); }
+    .status-tag.declined { background-color: var(--error-container); color: var(--error); }
 
     .expand-chevron {
       color: var(--on-surface-variant);
@@ -1697,7 +1699,7 @@
       {
         id: "app_actions_customization",
         title: "App Info Actions Customization & Drag-and-Drop",
-        doc: "README.md:277 / PR #410",
+        doc: "README.md:276 / PR #410",
         files: "AppInfoActionId.kt, AppInfoActionsCustomizationScreen.kt, UserPreferences.kt",
         status: "shipped",
         statusText: "Shipped (PR #410)",
@@ -1713,7 +1715,7 @@
       {
         id: "i18n_locales",
         title: "Portuguese, Polish & 8-Locale Translation Parity",
-        doc: "README.md:249 / PR #395, #397, #398, #400",
+        doc: "README.md:272 / PR #395, #397, #398, #400",
         files: "values-pt/, values-pt-rBR/, values-pl/, strings_backup.xml, store/res/",
         status: "shipped",
         statusText: "Shipped (8 Locales)",
@@ -1730,7 +1732,7 @@
         id: "export_workmanager",
         title: "Single-App Export on WorkManager Job Seam",
         doc: "app-data-backup-and-xapk-export.md / PR #389",
-        files: "ExportAppWorker.kt, ThorJobLauncher.kt, AppArchiveWorker.kt",
+        files: "AppExportWorker.kt, ExportJobLauncherImpl.kt, AppArchiveWorker.kt",
         status: "shipped",
         statusText: "Shipped (PR #389)",
         impact: 4.0,
@@ -1739,7 +1741,7 @@
         category: "reliability",
         summary: "Single app export migrated to WorkManager foreground job seam with notification progress and cancellation support.",
         rootCause: "Process-lifetime coroutines could stop if the app was killed from background memory pressure.",
-        solution: "Shipped in PR #389 & #387: ExportAppWorker runs with foreground service type dataSync, posts progress notifications, and handles permission prompts.",
+        solution: "Shipped in PR #389 & #387: AppExportWorker runs on ExportJobLauncherImpl with foreground service type dataSync, posts progress notifications, and handles permission prompts.",
         hardwareRequired: false
       },
       {
@@ -1761,7 +1763,7 @@
       {
         id: "bulk_backup",
         title: "#32 Bulk Backup / Bulk Restore Queue",
-        doc: "README.md:252",
+        doc: "README.md:275",
         files: "BulkBackupRunner.kt, ThorJobLauncher.kt, WorkManager",
         status: "open",
         statusText: "Open (Gated on #23 Device Pass)",
@@ -1777,7 +1779,7 @@
       {
         id: "tagging_notes",
         title: "#24 / #178 App Tagging + Per-App Notes",
-        doc: "README.md:244 / feature-request-roadmap.md",
+        doc: "README.md:267 / feature-request-roadmap.md",
         files: "AppEntity.kt, AppTagDao.kt, AppDatabase.kt",
         status: "open",
         statusText: "Open (Demand Verified)",
@@ -1793,7 +1795,7 @@
       {
         id: "change_history",
         title: "#25 Change & Version History Log",
-        doc: "README.md:245 / reddit-howtomen-feedback.md",
+        doc: "README.md:268 / reddit-howtomen-feedback.md",
         files: "AppDatabase.kt, AppEventDao.kt",
         status: "open",
         statusText: "Open (Unscheduled)",
@@ -1809,7 +1811,7 @@
       {
         id: "abandoned_apps",
         title: "#27 Abandoned App Notifications",
-        doc: "README.md:247 / reddit-howtomen-feedback.md",
+        doc: "README.md:270 / reddit-howtomen-feedback.md",
         files: "UsageAccessManager.kt, UsageStatsManager",
         status: "open",
         statusText: "Open (Unscheduled)",
@@ -1825,9 +1827,9 @@
       {
         id: "app_ops",
         title: "#28 App Ops Style Permission Revoke",
-        doc: "README.md:248",
+        doc: "README.md:271",
         files: "AppOpsManager, SystemGateway.kt",
-        status: "open",
+        status: "deferred",
         statusText: "Deferred (Large)",
         impact: 3.0,
         ease: 2.0,
@@ -1841,9 +1843,9 @@
       {
         id: "running_apps",
         title: "#55b Background Running Apps Flag",
-        doc: "README.md:261 / reddit-howtomen-feedback.md",
+        doc: "README.md:285 / reddit-howtomen-feedback.md",
         files: "ProcessManager.kt, SystemGateway.kt",
-        status: "open",
+        status: "deferred",
         statusText: "Deferred (Unsized API)",
         impact: 2.5,
         ease: 2.0,
@@ -1857,9 +1859,9 @@
       {
         id: "app_lock",
         title: "#58 App Lock Launch Protection (Declined)",
-        doc: "README.md:250 / feature-request-roadmap.md",
+        doc: "README.md:273 / feature-request-roadmap.md",
         files: "AppLockService.kt",
-        status: "open",
+        status: "declined",
         statusText: "Declined (Policy Tax)",
         impact: 3.0,
         ease: 1.0,
@@ -1891,7 +1893,7 @@
       const total = followUpsData.length;
       const shipped = followUpsData.filter(d => d.status === 'shipped').length;
       const partial = followUpsData.filter(d => d.status === 'partial').length;
-      const open = followUpsData.filter(d => d.status === 'open').length;
+      const open = followUpsData.filter(d => d.status === 'open' || d.status === 'deferred' || d.status === 'declined').length;
       const hwChecks = followUpsData.filter(d => d.hardwareRequired).length;
 
       const totalEl = document.getElementById('kpiTotal');
@@ -1923,7 +1925,7 @@
       
       const filtered = followUpsData.filter(item => {
         const matchesFilter = (currentFilter === 'all') || 
-                              (currentFilter === 'open' && item.status === 'open') ||
+                              (currentFilter === 'open' && (item.status === 'open' || item.status === 'deferred' || item.status === 'declined')) ||
                               (currentFilter === 'partial' && item.status === 'partial') ||
                               (currentFilter === 'shipped' && item.status === 'shipped');
         

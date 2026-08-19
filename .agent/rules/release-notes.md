@@ -13,7 +13,7 @@ All agents preparing releases or release notes in Thor MUST follow these standar
 
 ## 2. Directory Structure (`release-notes/v<versionName>/`)
 Every release directory MUST contain exactly three files:
-1. `playstore.txt`: Under 500 characters. Propagates identically to:
+1. `playstore.txt`: At most 500 characters. Propagates identically to:
    - Google Play "What's new"
    - F-Droid metadata (`fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`)
    - Shizu Store (`shizu_store.json`)

@@ -43,8 +43,8 @@ index for lost context, which is the wrong trade.
   visibility of action buttons on the App Info sheet via Settings → Customization → App Info Actions,
   featuring smooth drag-and-drop reordering, local snapshot state, auto-scrolling, live preview,
   reset to defaults, full translations across all 8 languages, and bottom bar dismissal on sub-panels.
-* **Single-App Export moved to WorkManager (PR #389, PR #387).** `ExportAppWorker` now executes
-  single-app exports on the foreground job seam (`ThorJobLauncher`), surviving Activity dismissal and
+* **Single-App Export moved to WorkManager (PR #389, PR #387).** `AppExportWorker` now executes
+  single-app exports on the foreground job seam (`ExportJobLauncherImpl`), surviving Activity dismissal and
   handling notification permissions cleanly.
 * **Settings Modularization (PR #383, PR #410).** Settings screen reorganized into 9 focused
   categories with responsive 2-pane tablet support.
