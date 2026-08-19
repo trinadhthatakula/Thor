@@ -1020,29 +1020,9 @@
           </div>
         </div>
 
-        <!-- Pick 2: Freezer Membership Semantics -->
+        <!-- Pick 2: App Tagging & Notes -->
         <div class="action-card">
-          <span class="rank-badge">#2 QUICK WIN</span>
-          <div class="card-top">
-            <h4 class="card-title">Differentiate Snowflake Button Action Labels</h4>
-          </div>
-          <div class="card-meta">
-            <span class="meta-chip impact-high">Impact: 3.5 / 5.0</span>
-            <span class="meta-chip ease-high">Effort: ≈ 2 Hours</span>
-            <span class="meta-chip">2 Strings</span>
-          </div>
-          <p class="card-body">
-            The snowflake button currently shares one label across two distinct behaviors: Apps tab removes watchlist row (leaves app frozen), while Freezer tab removes row AND thaws. Adopting Option 1 by setting distinct action labels ("Remove & Restore" on Freezer vs "Remove from Freezer" on Apps) eliminates user surprise.
-          </p>
-          <div class="card-footer">
-            <span>Target: <code>AppActionRow.kt</code></span>
-            <strong style="color: var(--primary);">Tier 3 Follow-Up</strong>
-          </div>
-        </div>
-
-        <!-- Pick 3: App Tagging & Notes -->
-        <div class="action-card">
-          <span class="rank-badge">#3 HIGH VALUE</span>
+          <span class="rank-badge">#2 HIGH VALUE</span>
           <div class="card-top">
             <h4 class="card-title">App Tagging & Per-App Notes (#24)</h4>
           </div>
@@ -1057,6 +1037,26 @@
           <div class="card-footer">
             <span>Target: <code>ThorDatabase</code> / <code>AppList</code></span>
             <strong style="color: var(--primary);">Band C #24</strong>
+          </div>
+        </div>
+
+        <!-- Pick 3: Freezer Removal Escape Hatch -->
+        <div class="action-card">
+          <span class="rank-badge">#3 RESILIENCE</span>
+          <div class="card-top">
+            <h4 class="card-title">Freezer Removal Stuck Escape Hatch</h4>
+          </div>
+          <div class="card-meta">
+            <span class="meta-chip impact-high">Impact: 3.5 / 5.0</span>
+            <span class="meta-chip ease-high">Effort: ≈ 0.5 Days</span>
+            <span class="meta-chip">Edge Case</span>
+          </div>
+          <p class="card-body">
+            Band B #15 automatically prunes uninstalled packages. For an installed app whose thaw command fails (e.g. OEM permission revoked or corrupted state), offer "Remove anyway" force-prune options 1 & 2 to prevent users being permanently stuck with an undeletable row.
+          </p>
+          <div class="card-footer">
+            <span>Target: <code>FreezerViewModel.kt</code></span>
+            <strong style="color: var(--primary);">Tier 2 Follow-Up</strong>
           </div>
         </div>
 
@@ -1396,16 +1396,16 @@
         id: "freezer_semantics",
         title: "Freezer Membership Toggle Semantics",
         doc: "freezer-membership-toggle-semantics.md",
-        files: "AppActionRow.kt, FreezerViewModel.kt, AppListViewModel.kt",
-        status: "open",
-        statusText: "Open (Product Decision)",
+        files: "AppActionRow.kt, FreezerScreen.kt, AppInfoSheet.kt",
+        status: "shipped",
+        statusText: "Shipped",
         impact: 3.5,
         ease: 4.8,
         effort: "≈ 2 Hours",
         category: "ux",
-        summary: "Snowflake button shares identical icon and label across two tabs with diverging semantics: Apps tab removes watchlist row only; Freezer tab removes row AND thaws.",
-        rootCause: "Both hosts passed identical lambda signature (() -> Unit)? with different use case implementations.",
-        solution: "Option 1 (Recommended): Differentiate labels ('Remove & Restore' on Freezer vs 'Remove from Freezer' on Apps).",
+        summary: "Snowflake button shares identical icon across two tabs with explicit, differentiated action labels: 'Remove from Watchlist' on Apps tab vs 'Unfreeze & Remove' on Freezer tab.",
+        rootCause: "Both hosts passed identical lambda signature (() -> Unit)? with different use case implementations under the generic 'In Freezer' label.",
+        solution: "Shipped Option 1: Differentiated action labels ('Unfreeze & Remove' on Freezer vs 'Remove from Watchlist' on Apps) across all 8 locales.",
         hardwareRequired: false
       },
       {

@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.widgets
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -78,6 +79,7 @@ fun AppActionRow(
     modifier: Modifier = Modifier,
     isInFreezer: Boolean = false,
     onToggleFreezerMembership: (() -> Unit)? = null,
+    @StringRes freezerRemoveLabelRes: Int = R.string.action_remove_from_watchlist,
     onOpenDetails: (() -> Unit)? = null,
     /**
      * Null hides the tile — the same convention as [onToggleFreezerMembership] and [onOpenDetails],
@@ -175,7 +177,7 @@ fun AppActionRow(
 
                 AppInfoActionId.FREEZER_MEMBERSHIP -> onToggleFreezerMembership?.let { toggle ->
                     val freezerLabel =
-                        if (isInFreezer) stringResource(R.string.action_in_freezer) else stringResource(R.string.action_add_freezer)
+                        if (isInFreezer) stringResource(freezerRemoveLabelRes) else stringResource(R.string.action_add_freezer)
                     ActionItem(
                         icon = R.drawable.snowflake,
                         label = freezerLabel,

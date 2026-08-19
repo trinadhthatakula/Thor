@@ -537,8 +537,9 @@
     <string name="uninstall_app_desc">Czy na pewno chcesz odinstalować aplikację %1$s?</string>
     <string name="action_open">Otwórz</string>
     <string name="action_force_stop">Wymuś zatrzymanie</string>
-    <string name="action_in_freezer">W Zamrażarce</string>
     <string name="action_add_freezer">Dodaj do Zamrażarki</string>
+    <string name="action_unfreeze_and_remove">Odmroź i usuń z Zamrażarki</string>
+    <string name="action_remove_from_watchlist">Usuń z listy obserwowanych</string>
     <string name="action_clear_cache">Wyczyść pamięć podręczną</string>
     <string name="action_clear_data">Wyczyść dane</string>
     <string name="info_app_version">Wersja aplikacji</string>
@@ -740,9 +741,6 @@
 
     <!-- Freeze profiles -->
     <string name="freeze_profiles">Profile zamrażania</string>
-    <!-- Short label for the entry point that opens the profiles screen. The empty state itself
-         reuses no_profiles_yet / no_profiles_yet_desc. -->
-    <string name="freeze_profiles_action">Profile zamrażania</string>
     <string name="profile_new">Nowy profil</string>
     <string name="profile_edit">Edytuj profil</string>
     <string name="profile_name_label">Nazwa profilu</string>

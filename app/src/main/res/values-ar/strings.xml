@@ -337,8 +337,9 @@
     <string name="uninstall_app_desc">هل أنت متأكد من إلغاء تثبيت %1$s؟</string>
     <string name="action_open">فتح</string>
     <string name="action_force_stop">فرض الإيقاف</string>
-    <string name="action_in_freezer">في المجمد</string>
     <string name="action_add_freezer">إضافة للمجمد</string>
+    <string name="action_unfreeze_and_remove">إلغاء التجميد والإزالة</string>
+    <string name="action_remove_from_watchlist">إزالة من قائمة المراقبة</string>
     <string name="action_clear_cache">مسح التخزين المؤقت</string>
     <string name="action_clear_data">مسح البيانات</string>
     <string name="info_app_version">إصدار التطبيق</string>
@@ -647,7 +648,6 @@
 
     <!-- ملفات التجميد -->
     <string name="freeze_profiles">ملفات التجميد</string>
-    <string name="freeze_profiles_action">ملفات التجميد</string>
     <string name="profile_new">ملف جديد</string>
     <string name="profile_edit">تعديل الملف</string>
     <string name="profile_name_label">اسم الملف</string>

@@ -307,8 +307,9 @@
     <string name="uninstall_app_desc">¿Estás seguro de que quieres desinstalar %1$s?</string>
     <string name="action_open">Abrir</string>
     <string name="action_force_stop">Forzar detención</string>
-    <string name="action_in_freezer">En congelador</string>
     <string name="action_add_freezer">Añadir al congelador</string>
+    <string name="action_unfreeze_and_remove">Descongelar y quitar</string>
+    <string name="action_remove_from_watchlist">Quitar de la lista de seguimiento</string>
     <string name="action_clear_cache">Limpiar caché</string>
     <string name="action_clear_data">Borrar datos</string>
     <string name="info_app_version">Versión de la aplicación</string>
@@ -604,7 +605,6 @@
     
     <!-- Perfiles de congelación -->
     <string name="freeze_profiles">Perfiles de congelación</string>
-    <string name="freeze_profiles_action">Perfiles de congelación</string>
     <string name="profile_new">Nuevo perfil</string>
     <string name="profile_edit">Editar perfil</string>
     <string name="profile_name_label">Nombre del perfil</string>

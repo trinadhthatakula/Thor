@@ -520,8 +520,9 @@
     <string name="uninstall_app_desc">Are you sure you want to uninstall %1$s?</string>
     <string name="action_open">Open</string>
     <string name="action_force_stop">Force Stop</string>
-    <string name="action_in_freezer">In Freezer</string>
     <string name="action_add_freezer">Add Freezer</string>
+    <string name="action_unfreeze_and_remove">Unfreeze &amp; Remove</string>
+    <string name="action_remove_from_watchlist">Remove from Watchlist</string>
     <string name="action_clear_cache">Clear Cache</string>
     <string name="action_clear_data">Clear Data</string>
     <string name="info_app_version">App version</string>
@@ -720,9 +721,6 @@
 
     <!-- Freeze profiles -->
     <string name="freeze_profiles">Freeze Profiles</string>
-    <!-- Short label for the entry point that opens the profiles screen. The empty state itself
-         reuses no_profiles_yet / no_profiles_yet_desc. -->
-    <string name="freeze_profiles_action">Freeze profiles</string>
     <string name="profile_new">New profile</string>
     <string name="profile_edit">Edit profile</string>
     <string name="profile_name_label">Profile name</string>
