@@ -34,9 +34,9 @@ The new **Backup & Restore Hub** transforms backup management from a hidden sett
 
 Delivers end-to-end, offline, encrypted application data preservation:
 * **AES-256-GCM Authenticated Encryption**: App data directories (`/data/data/<package>`), APKs, and external storage files are archived into encrypted `.thorbak` bundles.
-* **Argon2id / PBKDF2 Key Derivation**: Per-archive unique salt and cryptographic derivation protect your data. Optional in-memory passphrase caching with Biometric / KeyStore isolation.
-* **WorkManager Foreground Sync**: Background backup and export execution powered by Android WorkManager with `FOREGROUND_SERVICE_DATA_SYNC` compliance, persistent progress notifications, and cancellation support.
-* **Safety Pre-flight Validation**: Restoring performs package signature verification, target SDK compatibility checks, and disk capacity validation before touching app data.
+* **PBKDF2WithHmacSHA256 Key Derivation**: Per-archive unique salt and cryptographic derivation protect your data. Passphrase caching stores an encrypted DataStore blob protected by AndroidKeyStore.
+* **WorkManager Foreground Sync**: Background backup and export execution powered by Android WorkManager with `FOREGROUND_SERVICE_DATA_SYNC` compliance, persistent progress notifications, and cancellation support. Backup staging verifies usable disk space before archiving begins.
+* **Safety Pre-flight Validation**: Restoring performs package signature verification before touching app data.
 
 ### ⚙️ Customizable App Info Actions (#410)
 
