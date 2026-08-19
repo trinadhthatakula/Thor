@@ -61,4 +61,7 @@ sealed interface ThorRoute : NavKey {
 
     @Serializable
     data object AppInfoActionsCustomization : ThorRoute
+
+    @Serializable
+    data object BackupRestoreHub : ThorRoute
 }

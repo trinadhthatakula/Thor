@@ -3,20 +3,16 @@
 
 package com.valhalla.thor.presentation.home.components
 
-/** The four Home action tiles, in bento order. */
-enum class HomeAction { REINSTALL, INSTALL, CLEAR_CACHE, EXTENSIONS }
+/** The Home action tiles, in bento order. */
+enum class HomeAction { REINSTALL, INSTALL, BACKUP_RESTORE, CLEAR_CACHE, EXTENSIONS }
 
 /**
  * Packs the visible Home actions into bento rows: pairs throughout, with a single full-width
- * leader when the count is odd. 4 tiles -> 2x2; 3 -> one wide then a pair; 2 -> one pair; 1 -> one
- * wide tile.
+ * leader when the count is odd.
  *
- * The leader goes first rather than last so the wide tile lands at the top of the grid, next to
- * the summary row, instead of leaving a ragged edge at the bottom.
- *
- * Order is Install, Clear cache, Extensions, Reinstall. Reinstall is last because it is the only
- * dismissible tile: putting it at the end means dismissing it re-packs the rows below it rather
- * than shifting every other tile up one slot.
+ * Order is Install, Backup & restore, Clear cache, Extensions, Reinstall. Reinstall is last because it
+ * is the only dismissible tile: putting it at the end means dismissing it re-packs the rows below it
+ * rather than shifting every other tile up one slot.
  *
  * [showInstaller] and [showExtensions] are the user's own answer (GH#344): both tiles are shortcuts
  * to something reachable elsewhere — Installer still handles APK intents, Extensions keeps its
@@ -38,10 +34,12 @@ fun homeActionRows(
     hasPrivilege: Boolean,
     showInstaller: Boolean = true,
     showExtensions: Boolean = true,
+    showBackupRestore: Boolean = true,
     narrowContainer: Boolean = false,
 ): List<List<HomeAction>> {
     val actions = listOfNotNull(
         HomeAction.INSTALL.takeIf { showInstaller },
+        HomeAction.BACKUP_RESTORE.takeIf { showBackupRestore },
         HomeAction.CLEAR_CACHE.takeIf { canClearCache },
         HomeAction.EXTENSIONS.takeIf { hasPrivilege && showExtensions },
         HomeAction.REINSTALL.takeIf { reinstallVisible },

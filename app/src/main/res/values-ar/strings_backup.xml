@@ -293,9 +293,33 @@
     -->
     <string name="passphrase_error_too_short">استخدم %1$d أحرف على الأقل.</string>
     <string name="passphrase_error_mismatch">عبارتا المرور غير متطابقتين.</string>
-    <!--
-      Deliberately not phrased as a failure of the backup: the vault is a convenience cache, and an
-      archive is protected by the passphrase itself, never by whether this device remembered it.
-    -->
     <string name="passphrase_error_store_failed">تعذّر على Thor حفظ عبارة المرور على هذا الجهاز. سيظل النسخ الاحتياطي يعمل — لكن سيتعيّن عليك كتابتها في كل مرة.</string>
+
+    <!-- Backup & Restore Hub UI -->
+    <string name="home_backup_restore_subtitle">إدارة النسخ الاحتياطية واستعادة البيانات</string>
+    <string name="backup_hub_hero_backup_title">نسخ تطبيق احتياطيًا</string>
+    <string name="backup_hub_hero_backup_desc">إنشاء نسخة احتياطية مشفرة (.thorbak) أو حزمة APK</string>
+    <string name="backup_hub_hero_restore_title">استعادة من ملف</string>
+    <string name="backup_hub_hero_restore_desc">تحديد أي أرشيف .thorbak أو حزمة من وحدة التخزين</string>
+    <string name="backup_hub_section_backups">النسخ الاحتياطية في Downloads/Thor</string>
+    <string name="backup_hub_filter_all">الكل</string>
+    <string name="backup_hub_filter_backups">نسخ احتياطية للبيانات (.thorbak)</string>
+    <string name="backup_hub_filter_bundles">حزم التطبيقات (.xapk، .apks، .apk)</string>
+    <string name="backup_hub_empty_title">لا توجد نسخ احتياطية في Downloads/Thor</string>
+    <string name="backup_hub_empty_desc">ستظهر الأرشيفات المحفوظة في Downloads/Thor هنا لاستعادتها بنقرة واحدة.</string>
+    <string name="backup_hub_tip_thorbak_title">النسخ الاحتياطية للبيانات (.thorbak)</string>
+    <string name="backup_hub_tip_thorbak_desc">أرشيفات كاملة مشفرة تحتوي على بيانات التطبيق (فئات التخزين CE/DE) وتجزئات APK. تتطلب الاستعادة صلاحيات الروت أو شل مميز.</string>
+    <string name="backup_hub_tip_bundle_title">حزم التطبيقات (.xapk / .apks / .apk)</string>
+    <string name="backup_hub_tip_bundle_desc">حزم تثبيت مستقلة للتثبيت بدون إنترنت أو المشاركة عبر الأجهزة دون الحاجة إلى روت.</string>
+    <string name="backup_hub_tip_discovery_title">الاكتشاف التلقائي</string>
+    <string name="backup_hub_tip_discovery_desc">يؤدي تصدير أو وضع أي أرشيف في Downloads/Thor إلى إدراجه هنا تلقائيًا للاستعادة الفورية.</string>
+    <string name="backup_hub_pick_app_title">اختر تطبيقًا للنسخ الاحتياطي</string>
+    <string name="backup_hub_search_apps_placeholder">بحث في التطبيقات…</string>
+    <string name="backup_hub_delete_confirm_title">حذف النسخة الاحتياطية؟</string>
+    <string name="backup_hub_delete_confirm_message">هل أنت متأكد من رغبتك في حذف %1$s من التخزين؟ لا يمكن التراجع عن هذا الإجراء.</string>
+    <string name="backup_hub_badge_data_backup">نسخة بيانات</string>
+    <string name="backup_hub_badge_app_bundle">حزمة تطبيق</string>
+    <string name="backup_hub_action_delete">حذف</string>
+    <string name="backup_hub_action_share">مشاركة</string>
+    <string name="backup_hub_no_archives">لم يتم العثور على أي أرشيف</string>
 </resources>

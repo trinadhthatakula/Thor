@@ -76,6 +76,7 @@ fun HomeScreen(
      */
     onFilterByInstaller: (AppListType, String) -> Unit,
     onNavigateToExtensionManager: () -> Unit,
+    onNavigateToBackupRestoreHub: () -> Unit,
     viewModel: HomeViewModel = koinViewModel(),
     installerViewModel: InstallerViewModel = koinViewModel()
 ) {
@@ -183,6 +184,7 @@ fun HomeScreen(
                             onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
                             onClearCache = onClearAllCache,
                             onNavigateToExtensionManager = onNavigateToExtensionManager,
+                            onNavigateToBackupRestoreHub = onNavigateToBackupRestoreHub,
                             showInstaller = state.showInstallerTile,
                             showExtensions = state.showExtensionsTile,
                             narrowContainer = true,
@@ -264,6 +266,7 @@ fun HomeScreen(
                     onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
                     onClearCache = onClearAllCache,
                     onNavigateToExtensionManager = onNavigateToExtensionManager,
+                    onNavigateToBackupRestoreHub = onNavigateToBackupRestoreHub,
                     modifier = Modifier.padding(horizontal = 24.dp),
                     showInstaller = state.showInstallerTile,
                     showExtensions = state.showExtensionsTile,

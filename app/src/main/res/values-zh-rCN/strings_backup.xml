@@ -288,9 +288,33 @@
     -->
     <string name="passphrase_error_too_short">请至少使用 %1$d 个字符。</string>
     <string name="passphrase_error_mismatch">两次输入的密码短语不一致。</string>
-    <!--
-      Deliberately not phrased as a failure of the backup: the vault is a convenience cache, and an
-      archive is protected by the passphrase itself, never by whether this device remembered it.
-    -->
     <string name="passphrase_error_store_failed">Thor 无法在此设备上保存该密码短语。备份仍然可用——只是每次都需要重新输入它。</string>
+
+    <!-- Backup & Restore Hub UI -->
+    <string name="home_backup_restore_subtitle">管理应用备份与恢复数据</string>
+    <string name="backup_hub_hero_backup_title">备份应用</string>
+    <string name="backup_hub_hero_backup_desc">创建加密数据备份 (.thorbak) 或 APK 安装包</string>
+    <string name="backup_hub_hero_restore_title">从文件恢复</string>
+    <string name="backup_hub_hero_restore_desc">从存储空间选择任意 .thorbak 备份或安装包</string>
+    <string name="backup_hub_section_backups">Downloads/Thor 中的备份</string>
+    <string name="backup_hub_filter_all">全部</string>
+    <string name="backup_hub_filter_backups">数据备份 (.thorbak)</string>
+    <string name="backup_hub_filter_bundles">应用安装包 (.xapk, .apks, .apk)</string>
+    <string name="backup_hub_empty_title">Downloads/Thor 中无备份</string>
+    <string name="backup_hub_empty_desc">保存在 Downloads/Thor 中的备份将显示在此处，支持一键快速恢复。</string>
+    <string name="backup_hub_tip_thorbak_title">数据备份 (.thorbak)</string>
+    <string name="backup_hub_tip_thorbak_desc">包含应用数据（CE/DE 存储区）和 APK 分卷的加密完整归档。恢复需要 Root 或特权 Shell。</string>
+    <string name="backup_hub_tip_bundle_title">应用安装包 (.xapk / .apks / .apk)</string>
+    <string name="backup_hub_tip_bundle_desc">独立的安装包，支持离线安装或跨设备分享，无需 Root 权限。</string>
+    <string name="backup_hub_tip_discovery_title">自动发现</string>
+    <string name="backup_hub_tip_discovery_desc">导出或放置在 Downloads/Thor 中的任何归档文件都会自动在此列出，方便即时恢复。</string>
+    <string name="backup_hub_pick_app_title">选择要备份的应用</string>
+    <string name="backup_hub_search_apps_placeholder">搜索应用…</string>
+    <string name="backup_hub_delete_confirm_title">删除备份？</string>
+    <string name="backup_hub_delete_confirm_message">确定要从存储空间中删除 %1$s 吗？此操作无法撤销。</string>
+    <string name="backup_hub_badge_data_backup">数据备份</string>
+    <string name="backup_hub_badge_app_bundle">应用包</string>
+    <string name="backup_hub_action_delete">删除</string>
+    <string name="backup_hub_action_share">分享</string>
+    <string name="backup_hub_no_archives">未找到归档文件</string>
 </resources>

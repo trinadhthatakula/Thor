@@ -394,6 +394,10 @@ class MainViewModel(
         _uiState.update { it.copy(restoreSheet = null) }
     }
 
+    fun openBackupSheet(packageName: String, appLabel: String) {
+        _uiState.update { it.copy(backupSheet = BackupSheetState(packageName, appLabel)) }
+    }
+
     fun dismissBackupSheet() {
         _uiState.update { it.copy(backupSheet = null) }
     }
