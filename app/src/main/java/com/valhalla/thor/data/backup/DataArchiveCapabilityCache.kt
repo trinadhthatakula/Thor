@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.backup
 
+import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -10,6 +11,23 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koin.core.annotation.Single
+
+/**
+ * Capability details for data backup and restore.
+ */
+data class DataArchiveCapability(
+    val isSupported: Boolean,
+    val canReadPrivateData: Boolean,
+) {
+    fun supportedClasses(): Set<DataClass> =
+        if (canReadPrivateData) {
+            DataClass.entries.toSet()
+        } else if (isSupported) {
+            setOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA)
+        } else {
+            emptySet()
+        }
+}
 
 /**
  * "Can this device back up app data?", answered once per privilege state.
@@ -27,9 +45,9 @@ class DataArchiveCapabilityCache(
 
     private val mutex = Mutex()
 
-    private var cached: Pair<PrivilegeState, Boolean>? = null
+    private var cached: Pair<PrivilegeState, DataArchiveCapability>? = null
 
-    suspend fun isSupported(): Boolean {
+    suspend fun capability(): DataArchiveCapability {
         // Await the first resolved state rather than reading the raw snapshot. `state.value` is the
         // default on cold start: `isReady = false, active = NONE` — `hasAnyPrivilege` would be false
         // and we'd return false immediately, even on a rooted device, until both the privilege probe
@@ -39,13 +57,23 @@ class DataArchiveCapabilityCache(
         val state = privilegeState.state.first { it.isReady }
         // No surface to probe through. Shelling out would raise a `su` prompt on a device where the
         // user granted nothing — and the answer is derived, not measured, so it is not cached.
-        if (!state.hasAnyPrivilege) return false
+        if (!state.hasAnyPrivilege) {
+            return DataArchiveCapability(isSupported = false, canReadPrivateData = false)
+        }
 
         mutex.withLock {
             cached?.let { (key, value) -> if (key == state) return value }
             val supported = probe.probeDataArchiveCapability()
-            cached = state to supported
-            return supported
+            val privateData = if (supported) probe.probePrivateDataCapability() else false
+            val cap = DataArchiveCapability(isSupported = supported, canReadPrivateData = privateData)
+            cached = state to cap
+            return cap
         }
     }
+
+    suspend fun isSupported(): Boolean = capability().isSupported
+
+    suspend fun canReadPrivateData(): Boolean = capability().canReadPrivateData
+
+    suspend fun supportedClasses(): Set<DataClass> = capability().supportedClasses()
 }

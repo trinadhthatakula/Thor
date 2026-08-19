@@ -114,9 +114,6 @@ fun evaluateArchiveRestoreGate(
     if (header.userId < 0) {
         return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.INVALID_USER_ID)
     }
-    if (selectedClasses.isEmpty()) {
-        return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.NOTHING_SELECTED)
-    }
     val held = header.heldClasses()
     if (selectedClasses.any { it !in held }) {
         return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.CLASS_NOT_IN_ARCHIVE)
@@ -138,6 +135,10 @@ fun evaluateArchiveRestoreGate(
             // No version warning: the version about to be installed *is* the archive's.
             ArchiveRestoreDecision.Allowed(installFirst = true, warnings = warnings)
         }
+    }
+
+    if (selectedClasses.isEmpty()) {
+        return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.NOTHING_SELECTED)
     }
 
     if (installed.signerSha256 == null) {

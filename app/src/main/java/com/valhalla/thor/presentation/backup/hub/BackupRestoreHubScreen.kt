@@ -5,18 +5,26 @@ package com.valhalla.thor.presentation.backup.hub
 
 import android.content.Intent
 import android.text.format.Formatter
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.valhalla.thor.util.Logger
+import java.io.File
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import coil3.compose.AsyncImage
+import coil3.compose.SubcomposeAsyncImage
+import com.valhalla.thor.presentation.utils.ArchiveIconModel
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -35,16 +43,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -69,9 +81,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
-import com.valhalla.thor.data.source.local.room.AppEntity
+import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.presentation.home.components.BentoTile
@@ -94,6 +107,11 @@ fun BackupRestoreHubScreen(
     viewModel: BackupRestoreHubViewModel = koinViewModel(),
     installerViewModel: InstallerViewModel = koinViewModel(),
 ) {
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshArchives()
+        onPauseOrDispose { }
+    }
+
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showInstallerSheet by remember { mutableStateOf(false) }
@@ -146,8 +164,8 @@ fun BackupRestoreHubScreen(
                 actions = {
                     IconButton(onClick = { viewModel.refreshArchives() }) {
                         Icon(
-                            painter = painterResource(R.drawable.clear_all),
-                            contentDescription = stringResource(R.string.cd_clear),
+                            Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.refresh),
                         )
                     }
                 },
@@ -221,9 +239,25 @@ fun BackupRestoreHubScreen(
                                 item = item,
                                 onRestore = { handleRestoreOrInstall(item) },
                                 onShare = {
+                                    val parsedUri = item.uriString.toUri()
+                                    val shareUri = if (parsedUri.scheme == "file" && parsedUri.path != null) {
+                                        try {
+                                            FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.provider",
+                                                File(parsedUri.path!!)
+                                            )
+                                        } catch (e: Exception) {
+                                            Logger.e("BackupRestoreHub", "Failed to get share URI for file", e)
+                                            Toast.makeText(context, R.string.unknown_error_occurred, Toast.LENGTH_SHORT).show()
+                                            null
+                                        }
+                                    } else {
+                                        parsedUri
+                                    } ?: return@ArchiveItemCard
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "*/*"
-                                        putExtra(Intent.EXTRA_STREAM, item.uriString.toUri())
+                                        putExtra(Intent.EXTRA_STREAM, shareUri)
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, item.displayName))
@@ -365,13 +399,15 @@ private fun BackupsSectionHeader(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DynamicFilterChips(
     activeFilter: BackupHubFilter,
     onFilterSelect: (BackupHubFilter) -> Unit,
 ) {
-    FlowRow(
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         FilterChip(
@@ -404,6 +440,7 @@ private fun DynamicFilterChips(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ArchiveItemCard(
     item: BackupArchiveItem,
@@ -434,9 +471,92 @@ private fun ArchiveItemCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                SubcomposeAsyncImage(
+                    model = ArchiveIconModel(
+                        uriString = item.uriString,
+                        packageName = item.packageName,
+                        displayName = item.displayName,
+                        sizeBytes = item.sizeBytes,
+                        lastModifiedEpochSec = item.dateModifiedEpochSec,
+                    ),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+                    loading = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            LoadingIndicator(
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    },
+                    error = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(
+                                    if (item.kind == BackupArchiveKind.DATA_BACKUP) {
+                                        R.drawable.settings_backup_restore
+                                    } else {
+                                        R.drawable.apk_install
+                                    }
+                                ),
+                                contentDescription = null,
+                                modifier = Modifier.size(26.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                )
+
+                // App Name, Package / File Name, Size
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.appName ?: item.displayName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val subLabel = if (item.appName != null) {
+                        item.packageName ?: item.displayName
+                    } else {
+                        item.packageName
+                    }
+                    if (!subLabel.isNullOrBlank()) {
+                        Text(
+                            text = subLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    val subtitleText = if (formattedDate.isNotBlank()) {
+                        "$formattedSize · $formattedDate"
+                    } else {
+                        formattedSize
+                    }
+                    Text(
+                        text = subtitleText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+
                 // Leading Type Tag
                 val isDataBackup = item.kind == BackupArchiveKind.DATA_BACKUP
                 Surface(
@@ -460,34 +580,7 @@ private fun ArchiveItemCard(
                         } else {
                             MaterialTheme.colorScheme.onSecondaryContainer
                         },
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
-
-                Text(
-                    text = "$formattedSize · $formattedDate",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // File Name & Package
-            Column {
-                Text(
-                    text = item.displayName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (!item.packageName.isNullOrBlank()) {
-                    Text(
-                        text = item.packageName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
             }
@@ -662,9 +755,9 @@ private fun TipCard(
 @Composable
 private fun AppPickerBottomSheet(
     searchQuery: String,
-    apps: List<AppEntity>,
+    apps: List<AppInfo>,
     onSearchChange: (String) -> Unit,
-    onAppSelect: (AppEntity) -> Unit,
+    onAppSelect: (AppInfo) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

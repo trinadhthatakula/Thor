@@ -177,6 +177,12 @@ internal fun capabilityProbeCommand(thorPackageName: String, userId: Int): Strin
     return "ls -1 '/data/user/$userId/$thorPackageName' >/dev/null 2>&1 && echo $THOR_OK"
 }
 
+/** Probe whether shell can read and traverse external shared storage ($externalStorageDir/Android). */
+internal fun sharedDataCapabilityProbeCommand(externalStorageDir: String): String? {
+    if (!isQuotableAbsolutePath(externalStorageDir)) return null
+    return "ls -1 '$externalStorageDir/Android' >/dev/null 2>&1 && echo $THOR_OK"
+}
+
 /**
  * Believed only on a zero exit **and** the marker.
  *
@@ -625,7 +631,7 @@ internal fun extractCommand(root: String, tarPath: String, compressed: Boolean):
     val staging = stagingDirPath(root) ?: return null
     if (!isQuotableAbsolutePath(tarPath)) return null
     val listFlags = if (compressed) "-tvzf" else "-tvf"
-    val extractFlags = if (compressed) "-xzf" else "-xf"
+    val extractFlags = if (compressed) "-mxzf" else "-mxf"
     return "rm -rf '$staging' && mkdir -p '$staging' && [ ! -L '$staging' ] && " +
         "( ( tar $listFlags '$tarPath' || echo $THOR_LIST_FAILED ) | " +
         "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' ; [ \$? -eq 1 ] ) && " +
@@ -691,3 +697,9 @@ internal fun restoreconCommand(root: String): String? {
     if (!isNormalisedRoot(root)) return null
     return "restorecon -RF '$root'"
 }
+
+/**
+ * Wraps [this] in single quotes and escapes embedded single quotes for POSIX shell argument safety.
+ */
+fun String.escapeShellArg(): String = "'" + replace("'", "'\\''") + "'"
+

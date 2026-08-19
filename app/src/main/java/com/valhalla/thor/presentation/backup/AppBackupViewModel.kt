@@ -92,6 +92,7 @@ data class AppBackupUiState(
      * shown for one frame on every open is a lie the user reads before the truth arrives.
      */
     val supported: Boolean? = null,
+    val supportedClasses: Set<DataClass> = DataClass.entries.toSet(),
     val sizes: Map<DataClass, DataClassSize> = emptyMap(),
     val selected: Set<DataClass> = emptySet(),
     val includeBundle: Boolean = true,
@@ -195,17 +196,17 @@ class AppBackupViewModel(
             // Not `supported = null`, which is "still asking" and leaves the spinner turning for the
             // life of the sheet. A measurement that threw is a measurement Thor cannot make, which is
             // what `false` already means and what `backup_unsupported` already says.
-            onFailure = { _uiState.update { it.copy(supported = false, selected = emptySet()) } }
+            onFailure = { _uiState.update { it.copy(supported = false, selected = emptySet(), supportedClasses = emptySet()) } }
         ) {
             val measurement = measure(packageName)
             _uiState.update { state ->
                 state.copy(
                     supported = measurement.supported,
                     sizes = measurement.sizes,
-                    // §4.2: all default on. Including a class whose size is Undetermined — that is a
-                    // failed measurement, not an empty directory, and dropping it would narrow the
-                    // backup without saying so.
-                    selected = if (measurement.supported) DataClass.entries.toSet() else emptySet(),
+                    supportedClasses = measurement.supportedClasses,
+                    // §4.2: all supported classes default on. Including a class whose size is
+                    // Undetermined — that is a failed measurement, not an empty directory.
+                    selected = if (measurement.supported) measurement.supportedClasses else emptySet(),
                 )
             }
         }

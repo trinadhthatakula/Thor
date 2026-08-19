@@ -7,6 +7,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.net.toUri
+import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.util.Logger
@@ -36,9 +37,12 @@ import java.util.zip.ZipException
  * A [ZipException] from the fd path means the bytes were readable but are not a zip; the copy
  * fallback would fail identically, so that case gives up immediately.
  */
+import com.valhalla.thor.domain.repository.SystemRepository
+
 @Single(binds = [ArchiveSourceFactory::class])
 class UriArchiveSourceFactory(
     private val context: Context,
+    private val systemRepository: SystemRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ArchiveSourceFactory {
 
@@ -49,7 +53,10 @@ class UriArchiveSourceFactory(
 
         val descriptor = runCatching { context.contentResolver.openFileDescriptor(uri, "r") }
             .getOrNull()
-            ?: return@withContext ArchiveOpenOutcome.Unreadable
+
+        if (descriptor == null) {
+            return@withContext copyThenOpen(uri, name)
+        }
 
         openOrRelease(
             build = {
@@ -110,7 +117,7 @@ class UriArchiveSourceFactory(
      * bargain: prefix-and-suffix instead of equality, which the staging sweep already does for `.part`
      * names. The name is only ever produced and consumed here, so nothing has to parse it.
      */
-    private fun copyThenOpen(uri: Uri, name: String): ArchiveOpenOutcome {
+    private suspend fun copyThenOpen(uri: Uri, name: String): ArchiveOpenOutcome {
         val copy = runCatching {
             File.createTempFile(COPY_FILE_PREFIX, COPY_FILE_SUFFIX, context.cacheDir)
         }.getOrElse {
@@ -118,8 +125,37 @@ class UriArchiveSourceFactory(
             return ArchiveOpenOutcome.Unreadable
         }
         return runCatching {
-            context.contentResolver.openInputStream(uri)!!.use { input ->
-                copy.outputStream().use(input::copyTo)
+            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+            if (input != null) {
+                input.use { src -> copy.outputStream().use(src::copyTo) }
+            } else {
+                val path = uri.path
+                if (!path.isNullOrBlank()) {
+                    val tempToken = java.util.UUID.randomUUID().toString()
+                    val tmpPath = "/data/local/tmp/thor_read_$tempToken"
+                    val src = path.escapeShellArg()
+                    val dst = tmpPath.escapeShellArg()
+                    val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
+                    val res = systemRepository.executeShellCommand(cmd).getOrNull()
+                    if (res != null && res.first == 0) {
+                        val tmpFile = File(tmpPath)
+                        if (tmpFile.exists() && tmpFile.length() > 0) {
+                            try {
+                                tmpFile.inputStream().use { input ->
+                                    copy.outputStream().use(input::copyTo)
+                                }
+                            } finally {
+                                systemRepository.executeShellCommand("rm -f $dst")
+                            }
+                        } else {
+                            systemRepository.executeShellCommand("rm -f $dst")
+                        }
+                    }
+                }
+            }
+            if (!copy.exists() || copy.length() == 0L) {
+                copy.delete()
+                return ArchiveOpenOutcome.Unreadable
             }
             // Deletes *this* copy, by identity — the whole point of the unique name.
             ArchiveOpenOutcome.Opened(ZipArchiveSource(copy, name, onClose = { copy.delete() }))
@@ -198,7 +234,7 @@ class UriArchiveSourceFactory(
  * classpath.
  */
 internal suspend fun <T> openOrRelease(
-    build: () -> T,
+    build: suspend () -> T,
     release: (T?) -> Unit,
 ): T {
     var committed = false

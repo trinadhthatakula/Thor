@@ -26,8 +26,11 @@ import org.junit.Test
  */
 private class FakeProbe(
     private val sizes: Map<DataClass, DataClassSize> = emptyMap(),
+    private val privateDataSupported: Boolean = true,
 ) : AppDataProbe {
     var measured = mutableListOf<DataClass>()
+
+    override suspend fun probePrivateDataCapability(): Boolean = privateDataSupported
 
     // `probeDataArchiveCapability` is only called through `DataArchiveCapabilityCache.isSupported()`.
     // These fakes always answer `true`; the capability outcome is controlled by the privilege state.
@@ -111,5 +114,33 @@ class MeasureAppDataUseCaseTest {
 
         assertFalse(result.supported)
         assertTrue(probe.measured.isEmpty())
+    }
+
+    @Test
+    fun `non-root channel measures only external classes`() = runTest {
+        val probe = FakeProbe(
+            sizes = mapOf(
+                DataClass.EXTERNAL_DATA to DataClassSize.Known(1024L),
+                DataClass.EXTERNAL_MEDIA to DataClassSize.Empty,
+            ),
+            privateDataSupported = false,
+        )
+        val shizuku = PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true)
+
+        val result = makeCase(probe, shizuku)("com.example.app")
+
+        assertTrue(result.supported)
+        assertEquals(
+            setOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA),
+            result.supportedClasses
+        )
+        assertEquals(
+            setOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA),
+            result.sizes.keys
+        )
+        assertEquals(DataClassSize.Known(1024L), result.sizes[DataClass.EXTERNAL_DATA])
+        assertEquals(DataClassSize.Empty, result.sizes[DataClass.EXTERNAL_MEDIA])
+        assertFalse(DataClass.CE in probe.measured)
+        assertFalse(DataClass.DE in probe.measured)
     }
 }

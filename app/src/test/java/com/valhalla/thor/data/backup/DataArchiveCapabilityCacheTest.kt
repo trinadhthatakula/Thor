@@ -23,8 +23,18 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class DataArchiveCapabilityCacheTest {
 
-    private class FakeProbe(var answer: Boolean = true) : AppDataProbe {
+    private class FakeProbe(
+        var answer: Boolean = true,
+        var privateAnswer: Boolean = true,
+    ) : AppDataProbe {
         var probes = 0
+        var privateProbes = 0
+
+        override suspend fun probePrivateDataCapability(): Boolean {
+            privateProbes++
+            return privateAnswer
+        }
+
         override suspend fun probeDataArchiveCapability(): Boolean {
             probes++
             return answer
@@ -135,5 +145,32 @@ class DataArchiveCapabilityCacheTest {
 
         assertTrue(deferred.await())
         assertEquals(1, probe.probes)
+    }
+
+    @Test
+    fun `non-root privilege provides external classes only`() = runTest {
+        val probe = FakeProbe(answer = true, privateAnswer = false)
+        val privilege = FakePrivilege(PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true))
+        val cache = DataArchiveCapabilityCache(probe, privilege)
+
+        assertTrue(cache.isSupported())
+        assertFalse(cache.canReadPrivateData())
+        assertEquals(
+            setOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA),
+            cache.supportedClasses()
+        )
+    }
+
+    @Test
+    fun `root privilege provides all data classes`() = runTest {
+        val probe = FakeProbe(answer = true, privateAnswer = true)
+        val cache = DataArchiveCapabilityCache(probe, FakePrivilege(rooted()))
+
+        assertTrue(cache.isSupported())
+        assertTrue(cache.canReadPrivateData())
+        assertEquals(
+            DataClass.entries.toSet(),
+            cache.supportedClasses()
+        )
     }
 }

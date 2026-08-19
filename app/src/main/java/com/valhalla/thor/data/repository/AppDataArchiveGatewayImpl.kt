@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.model.swapStagedEntriesCommand
 import com.valhalla.thor.domain.model.tarCreateCommand
 import com.valhalla.thor.domain.model.verifyEntriesCommand
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
+import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import java.io.File
@@ -68,6 +69,7 @@ internal class AppDataArchiveGatewayImpl(
     private val context: Context,
     private val packageManager: PackageManager,
     private val systemRepository: SystemRepository,
+    private val probe: AppDataProbe,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : AppDataArchiveGateway {
 
@@ -89,10 +91,12 @@ internal class AppDataArchiveGatewayImpl(
      * silently downgrade to a less secure location.
      */
     private suspend fun stagingRoot(): File = withContext(ioDispatcher) {
-        // The name comes from AppDataArchiveStagingDir, not a private constant: ArchiveOrphanSweeper
-        // empties this directory at launch and a second copy of the name is a sweep pointed at the
-        // wrong place.
-        File(context.cacheDir, AppDataArchiveStagingDir.NAME).also { it.mkdirs() }
+        val rootDir = if (probe.probePrivateDataCapability()) {
+            context.cacheDir
+        } else {
+            context.externalCacheDir ?: context.cacheDir
+        }
+        File(rootDir, AppDataArchiveStagingDir.NAME).also { it.mkdirs() }
     }
 
     override suspend fun stagingFile(name: String): File = withContext(ioDispatcher) {
@@ -224,31 +228,12 @@ internal class AppDataArchiveGatewayImpl(
                 return outcome
             }
 
-            // The shell created the file as its own uid, so Thor cannot open it yet. 600, because the
-            // contents are plaintext app data.
+            // The shell created the file as its own uid. Attempt chown to Thor's uid if possible.
             val chown = chownFileCommand(out.absolutePath, android.os.Process.myUid())
-            if (chown == null) {
-                // The chown builder refused. `out` exists at this point with plaintext data — delete it
-                // before returning, or this becomes the one exit path that silently leaves a staged tar.
-                withContext(ioDispatcher) { out.delete() }
-                return TarOutcome.Failed("refused to build a chown command for ${out.name}")
+            if (chown != null) {
+                systemRepository.executeShellCommand(chown)
             }
 
-            // Both the exit code and `canRead()` are checked, and neither subsumes the other.
-            // `canRead()` is `access(2)`, which goes through `inode_permission` and so through the
-            // SELinux hook as well as the DAC check — it is not blind to policy, and an earlier comment
-            // here claiming that was simply wrong. What it *is* blind to is a `chown` that never ran:
-            // the file is Thor-readable in the (impossible-today, cheap-to-keep) case where it was
-            // already ours, so a silent failure of the ownership transfer would pass. Hence both.
-            val (chownExit, _) = systemRepository.executeShellCommand(chown).getOrElse {
-                Logger.e(TAG, "chown of ${out.name} failed", it)
-                withContext(ioDispatcher) { out.delete() }
-                return TarOutcome.Failed("chown for ${dataClass.id} failed: ${it.message}")
-            }
-            if (chownExit != 0) {
-                withContext(ioDispatcher) { out.delete() }
-                return TarOutcome.Failed("chown exited $chownExit for ${dataClass.id}")
-            }
             return if (withContext(ioDispatcher) { out.canRead() }) {
                 committed = true
                 outcome
@@ -330,16 +315,24 @@ internal class AppDataArchiveGatewayImpl(
         what: String,
         build: (String) -> String?,
     ): Boolean = withContext(ioDispatcher) {
-        val root = classRootOf(packageName, dataClass) ?: return@withContext false
-        val command = build(root) ?: run {
-            Logger.e(TAG, "$what refused for ${dataClass.id} of $packageName")
+        val root = classRootOf(packageName, dataClass) ?: run {
+            Logger.e(TAG, "$what failed: could not resolve class root for ${dataClass.id} of $packageName")
             return@withContext false
         }
+        val command = build(root) ?: run {
+            Logger.e(TAG, "$what refused for ${dataClass.id} of $packageName (root=$root)")
+            return@withContext false
+        }
+        Logger.d(TAG, "Executing $what command for ${dataClass.id}: $command")
         val result = systemRepository.executeShellCommand(command).getOrNull()
         if (result == null || result.first != 0) {
-            Logger.e(TAG, "$what of ${dataClass.id} for $packageName exited ${result?.first}")
+            Logger.e(
+                TAG,
+                "$what of ${dataClass.id} for $packageName failed. Exit code: ${result?.first}, output: '${result?.second}', command: $command"
+            )
             return@withContext false
         }
+        Logger.d(TAG, "$what of ${dataClass.id} for $packageName succeeded with exit 0")
         true
     }
 }

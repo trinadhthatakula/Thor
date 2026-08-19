@@ -20,10 +20,14 @@ interface AppDataProbe {
     /**
      * Can the active privileged surface read *another* app's private data directory?
      *
-     * Deliberately a probe and not a privilege check. Root-started Shizuku can do this and plain
-     * Shizuku (`shell` uid) cannot, so "requires Root" would be a lie on the first device and
-     * `isRootAvailable()` would be the wrong question on both. Never throws — every failure is
-     * `false`, because a maybe here has to read as "do not offer the feature".
+     * True for Root or root-started Shizuku. Plain Shizuku (shell UID 2000) returns false.
+     */
+    suspend fun probePrivateDataCapability(): Boolean
+
+    /**
+     * Can the active privileged surface back up app data at all?
+     *
+     * True for Root, root-started Shizuku, or plain Shizuku with shell access.
      */
     suspend fun probeDataArchiveCapability(): Boolean
 

@@ -17,6 +17,7 @@ import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.model.StagedPackage
+import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CoroutineDispatcher
@@ -37,11 +38,14 @@ import java.util.UUID
  * restore extracts before the swap). A file-private declaration of that name would win over an import
  * of the public one in this file without a warning, so the two are spelled apart.
  */
+import com.valhalla.thor.domain.repository.SystemRepository
+
 private const val INSTALL_STAGING_DIR_NAME = "staged_installs"
 
 @Single(binds = [AppAnalyzer::class])
 class AppAnalyzerImpl(
     private val context: Context,
+    private val systemRepository: SystemRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : AppAnalyzer {
 
@@ -68,10 +72,8 @@ class AppAnalyzerImpl(
         val apkFile = File(context.cacheDir, "analysis_$token.apk")
 
         val metadata = try {
-            val input = context.contentResolver.openInputStream(uri)
-            if (input == null) {
-                Result.failure(Exception("Could not open the selected file."))
-            } else {
+            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+            if (input != null) {
                 // The extraction budget applied at the door. A content provider is not an archive
                 // — there is no compression ratio to bound — but a hostile one can stream forever,
                 // and this copy runs before anything has decided the input is even a zip. Bounding
@@ -92,6 +94,40 @@ class AppAnalyzerImpl(
                     )
                 } else {
                     readMetadata(bundleFile, apkFile, displayName)
+                }
+            } else {
+                // If content resolver cannot open the file directly (e.g. Scoped Storage non-owned file://),
+                // stage via /data/local/tmp (writable by Shizuku/shell, readable by Thor after chmod 666)
+                val path = uri.path
+                if (!path.isNullOrBlank()) {
+                    val tempToken = UUID.randomUUID().toString()
+                    val tmpPath = "/data/local/tmp/thor_staged_$tempToken"
+                    val src = path.escapeShellArg()
+                    val dst = tmpPath.escapeShellArg()
+                    val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
+                    val res = systemRepository.executeShellCommand(cmd).getOrNull()
+                    if (res != null && res.first == 0) {
+                        val tmpFile = File(tmpPath)
+                        if (tmpFile.exists() && tmpFile.length() > 0) {
+                            try {
+                                tmpFile.inputStream().use { input ->
+                                    FileOutputStream(bundleFile).use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                readMetadata(bundleFile, apkFile, displayName)
+                            } finally {
+                                systemRepository.executeShellCommand("rm -f $dst")
+                            }
+                        } else {
+                            systemRepository.executeShellCommand("rm -f $dst")
+                            Result.failure(Exception("Could not open the selected file."))
+                        }
+                    } else {
+                        Result.failure(Exception("Could not open the selected file."))
+                    }
+                } else {
+                    Result.failure(Exception("Could not open the selected file."))
                 }
             }
         } catch (e: Exception) {

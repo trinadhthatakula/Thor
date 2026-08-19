@@ -65,6 +65,14 @@ class ArchiveRestoreGateTest {
     }
 
     @Test
+    fun `an absent app with a bundle installs first even when no data classes are selected`() {
+        val decision = evaluateArchiveRestoreGate(header(), installed = null, emptySet())
+
+        val allowed = decision as ArchiveRestoreDecision.Allowed
+        assertTrue(allowed.installFirst)
+    }
+
+    @Test
     fun `an absent app with no bundle is refused, and the reason says the archive is data-only`() {
         val decision = evaluateArchiveRestoreGate(
             header(withBundle = false),

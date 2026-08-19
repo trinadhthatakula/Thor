@@ -264,8 +264,17 @@ class ArchiveRestoreViewModelTest {
         }
     }
 
-    private class FakeProbe(val capable: Boolean = true) : AppDataProbe {
+    private class FakeProbe(
+        val capable: Boolean = true,
+        val privateCapable: Boolean = capable,
+    ) : AppDataProbe {
         var probes = 0
+        var privateProbes = 0
+
+        override suspend fun probePrivateDataCapability(): Boolean {
+            privateProbes++
+            return privateCapable
+        }
 
         override suspend fun probeDataArchiveCapability(): Boolean {
             probes++
@@ -1521,4 +1530,42 @@ class ArchiveRestoreViewModelTest {
         assertEquals(false, vm.uiState.value.queued)
         assertEquals(RestoreFinish.Succeeded(), vm.uiState.value.finished)
     }
+
+    @Test
+    fun `non-root opening a CE DE-only archive defaults to empty selection and prevents restore`() =
+        runTest(dispatcher) {
+            val nonRootProbe = FakeProbe(capable = true, privateCapable = false)
+            val vm = viewModel(
+                probe = nonRootProbe,
+                privilegeState = PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true),
+                sources = CountingSources(mapOf(URI to FakeSource(header(classes = listOf(DataClass.CE, DataClass.DE)).encode()))),
+            )
+
+            vm.open(URI)
+            testScheduler.advanceUntilIdle()
+
+            val state = vm.uiState.value
+            assertEquals(emptySet<DataClass>(), state.selected)
+            assertEquals(false, state.canStart)
+        }
+
+    @Test
+    fun `non-root opening a bundle archive for uninstalled app allows installFirst even when CE DE are excluded`() =
+        runTest(dispatcher) {
+            val nonRootProbe = FakeProbe(capable = true, privateCapable = false)
+            val vm = viewModel(
+                probe = nonRootProbe,
+                installedApps = emptyList(),
+                privilegeState = PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true),
+                sources = CountingSources(mapOf(URI to FakeSource(header(classes = listOf(DataClass.CE, DataClass.DE)).encode()))),
+            )
+
+            vm.open(URI)
+            testScheduler.advanceUntilIdle()
+
+            val state = vm.uiState.value
+            assertEquals(emptySet<DataClass>(), state.selected)
+            assertEquals(true, state.installFirst)
+            assertEquals(null, state.refusal)
+        }
 }

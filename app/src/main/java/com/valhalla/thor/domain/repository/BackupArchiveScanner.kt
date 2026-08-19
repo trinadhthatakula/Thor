@@ -20,6 +20,7 @@ data class BackupArchiveItem(
     val id: Long,
     val uriString: String,
     val displayName: String,
+    val appName: String? = null,
     val packageName: String?,
     val sizeBytes: Long,
     val dateModifiedEpochSec: Long,

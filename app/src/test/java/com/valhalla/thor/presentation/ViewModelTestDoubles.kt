@@ -868,6 +868,10 @@ class FakeContext(private val cache: File) : ContextWrapper(null) {
     override fun getCacheDir(): File = cache
 }
 
+class FakeApplication(private val cache: File = File("/tmp")) : android.app.Application() {
+    override fun getCacheDir(): File = cache
+}
+
 /**
  * A user app. `freezeTierOf` short-circuits on `!isSystem -> NORMAL`, so this is never blocked
  * whatever else it carries — which is what makes it the control in every tier-gate test.

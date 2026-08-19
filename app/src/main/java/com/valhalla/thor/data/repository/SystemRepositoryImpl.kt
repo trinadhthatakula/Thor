@@ -21,6 +21,7 @@ import com.valhalla.thor.domain.model.dataClassRoot
 import com.valhalla.thor.domain.model.measuredExclusions
 import com.valhalla.thor.domain.model.parseCapabilityProbe
 import com.valhalla.thor.domain.model.parseClassSize
+import com.valhalla.thor.domain.model.sharedDataCapabilityProbeCommand
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.StorageStatsProvider
@@ -346,15 +347,18 @@ class SystemRepositoryImpl(
         return verdict
     }
 
-    /**
-     * Built on [executeShellCommand] for the reason [probeObb] gives: the probe and the capture that
-     * follows it must cross the *same* privileged surface, or a pass here stops being evidence.
-     */
-    override suspend fun probeDataArchiveCapability(): Boolean {
-        // BuildConfig.APPLICATION_ID, not the namespace: `debug` carries an applicationIdSuffix, and
-        // the data directory is named after the application id. The namespace would name a path that
-        // exists in no build — the same trap `ComponentName`'s two halves set.
+    override suspend fun probePrivateDataCapability(): Boolean {
         val command = capabilityProbeCommand(BuildConfig.APPLICATION_ID, thorUserId) ?: return false
+        return executeShellCommand(command).fold(
+            onSuccess = { (exitCode, output) -> parseCapabilityProbe(exitCode, output) },
+            onFailure = { false }
+        )
+    }
+
+    override suspend fun probeDataArchiveCapability(): Boolean {
+        if (probePrivateDataCapability()) return true
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath.orEmpty()
+        val command = sharedDataCapabilityProbeCommand(externalRoot) ?: return false
         return executeShellCommand(command).fold(
             onSuccess = { (exitCode, output) -> parseCapabilityProbe(exitCode, output) },
             onFailure = { false }

@@ -59,7 +59,7 @@ class AppDataRestoreCommandsTest {
             "rm -rf '$staging' && mkdir -p '$staging' && [ ! -L '$staging' ] && " +
                 "( ( tar -tvzf '$tarPath' || echo $THOR_LIST_FAILED ) | " +
                 "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' ; [ \$? -eq 1 ] ) && " +
-                "tar -xzf '$tarPath' -C '$staging'",
+                "tar -mxzf '$tarPath' -C '$staging'",
             extractCommand(root, tarPath, compressed = true),
         )
     }
@@ -72,7 +72,7 @@ class AppDataRestoreCommandsTest {
             "rm -rf '$staging' && mkdir -p '$staging' && [ ! -L '$staging' ] && " +
                 "( ( tar -tvf '$tarPath' || echo $THOR_LIST_FAILED ) | " +
                 "grep -qE '$ARCHIVE_MEMBER_REFUSAL_PATTERN' ; [ \$? -eq 1 ] ) && " +
-                "tar -xf '$tarPath' -C '$staging'",
+                "tar -mxf '$tarPath' -C '$staging'",
             extractCommand(root, tarPath, compressed = false),
         )
     }
@@ -84,7 +84,7 @@ class AppDataRestoreCommandsTest {
         // member check at all — the same fail-open shape as the tar listing, one stage to the right.
         val command = extractCommand(root, "/tmp/a.tar", compressed = true)!!
 
-        assertTrue(command.contains("; [ \$? -eq 1 ] ) && tar -xzf"))
+        assertTrue(command.contains("; [ \$? -eq 1 ] ) && tar -mxzf"))
         assertFalse("the ! inversion must be gone", command.contains("! ("))
     }
 

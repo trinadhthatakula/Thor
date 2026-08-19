@@ -68,6 +68,15 @@ class AppDataCommandsTest {
     }
 
     @Test
+    fun `the shared data capability probe reads Android directory on storage and prints marker`() {
+        assertEquals(
+            "ls -1 '/storage/emulated/0/Android' >/dev/null 2>&1 && echo $THOR_OK",
+            sharedDataCapabilityProbeCommand("/storage/emulated/0")
+        )
+        assertEquals(null, sharedDataCapabilityProbeCommand("relative/path"))
+    }
+
+    @Test
     fun `the probe is believed only on a zero exit AND its own marker`() {
         // RootSystemGateway.execute() folds a *throw* into `-1 to stackTraceToString()`, so an exit
         // code alone can be a Thor stack trace rather than a shell verdict; and a gateway that

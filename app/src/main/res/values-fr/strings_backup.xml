@@ -305,12 +305,12 @@
     <string name="backup_hub_hero_restore_desc">Sélectionner une archive .thorbak ou un pack du stockage</string>
     <string name="backup_hub_section_backups">Sauvegardes dans Downloads/Thor</string>
     <string name="backup_hub_filter_all">Tout</string>
-    <string name="backup_hub_filter_backups">Sauvegardes de données (.thorbak)</string>
-    <string name="backup_hub_filter_bundles">Packs d\'applications (.xapk, .apks, .apk)</string>
+    <string name="backup_hub_filter_backups">Sauvegardes</string>
+    <string name="backup_hub_filter_bundles">Packs</string>
     <string name="backup_hub_empty_title">Aucune sauvegarde dans Downloads/Thor</string>
     <string name="backup_hub_empty_desc">Les archives enregistrées dans Downloads/Thor apparaîtront ici pour une restauration rapide.</string>
     <string name="backup_hub_tip_thorbak_title">Sauvegardes de données (.thorbak)</string>
-    <string name="backup_hub_tip_thorbak_desc">Archives complètes chiffrées contenant les données d\'appli (classes CE/DE) et divisions APK. La restauration nécessite le root ou un shell privilégié.</string>
+    <string name="backup_hub_tip_thorbak_desc">Archives complètes chiffrées contenant les données d\'appli et d\'éventuelles divisions APK. Les données privées d\'appli (CE/DE) nécessitent le root, tandis que les données de stockage partagé peuvent être restaurées avec un shell privilégié.</string>
     <string name="backup_hub_tip_bundle_title">Packs d\'applications (.xapk / .apks / .apk)</string>
     <string name="backup_hub_tip_bundle_desc">Packs d\'installation autonomes pour l\'installation hors ligne ou le partage entre appareils sans accès root.</string>
     <string name="backup_hub_tip_discovery_title">Détection automatique</string>

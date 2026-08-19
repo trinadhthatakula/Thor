@@ -3,20 +3,20 @@
 
 package com.valhalla.thor.presentation.backup.hub
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.thor.data.source.local.room.AppDao
-import com.valhalla.thor.data.source.local.room.AppEntity
+import androidx.work.WorkManager
+import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.THOR_JOB_CHAIN
+import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
@@ -33,7 +33,7 @@ data class BackupRestoreHubState(
     val activeFilter: BackupHubFilter = BackupHubFilter.ALL,
     val isAppPickerVisible: Boolean = false,
     val appPickerSearchQuery: String = "",
-    val installedApps: List<AppEntity> = emptyList(),
+    val installedApps: List<AppInfo> = emptyList(),
     val archiveToDelete: BackupArchiveItem? = null,
 ) {
     val hasBackups: Boolean get() = archives.any { it.kind == BackupArchiveKind.DATA_BACKUP }
@@ -49,7 +49,7 @@ data class BackupRestoreHubState(
 
     val totalSizeBytes: Long get() = archives.sumOf { it.sizeBytes }
 
-    val filteredInstalledApps: List<AppEntity>
+    val filteredInstalledApps: List<AppInfo>
         get() {
             if (appPickerSearchQuery.isBlank()) return installedApps
             val q = appPickerSearchQuery.trim().lowercase()
@@ -63,7 +63,8 @@ data class BackupRestoreHubState(
 @KoinViewModel
 class BackupRestoreHubViewModel(
     private val scanner: BackupArchiveScanner,
-    private val appDao: AppDao,
+    private val appRepository: AppRepository,
+    private val application: Application,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BackupRestoreHubState())
@@ -74,6 +75,31 @@ class BackupRestoreHubViewModel(
     init {
         loadInstalledApps()
         refreshArchives()
+        observeWorkManagerJobs()
+    }
+
+    private fun observeWorkManagerJobs() {
+        viewModelScope.launch {
+            runCatching {
+                val knownFinishedIds = mutableSetOf<java.util.UUID>()
+                var isFirstEmission = true
+                WorkManager.getInstance(application)
+                    .getWorkInfosForUniqueWorkFlow(THOR_JOB_CHAIN)
+                    .collect { workInfos ->
+                        val finishedIds = workInfos.filter { it.state.isFinished }.map { it.id }.toSet()
+                        if (isFirstEmission) {
+                            knownFinishedIds.addAll(finishedIds)
+                            isFirstEmission = false
+                        } else {
+                            val newFinished = finishedIds - knownFinishedIds
+                            if (newFinished.isNotEmpty()) {
+                                knownFinishedIds.addAll(newFinished)
+                                refreshArchives()
+                            }
+                        }
+                    }
+            }
+        }
     }
 
     fun refreshArchives() {
@@ -81,16 +107,24 @@ class BackupRestoreHubViewModel(
         scanJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             scanner.scanBackups().collect { list ->
-                _state.update { it.copy(archives = list, isLoading = false) }
+                _state.update { current ->
+                    val hasMatchingFilter = when (current.activeFilter) {
+                        BackupHubFilter.ALL -> true
+                        BackupHubFilter.DATA_BACKUPS -> list.any { it.kind == BackupArchiveKind.DATA_BACKUP }
+                        BackupHubFilter.APP_BUNDLES -> list.any { it.kind == BackupArchiveKind.APP_BUNDLE }
+                    }
+                    val normalizedFilter = if (hasMatchingFilter) current.activeFilter else BackupHubFilter.ALL
+                    current.copy(archives = list, activeFilter = normalizedFilter, isLoading = false)
+                }
             }
         }
     }
 
     private fun loadInstalledApps() {
         viewModelScope.launch {
-            appDao.getAllAppsFlow().collect { apps ->
+            appRepository.getAllApps().collect { apps ->
                 val sorted = apps.filter { !it.isSystem }
-                    .sortedBy { it.appName?.lowercase() ?: it.packageName }
+                    .sortedBy { (it.appName ?: it.packageName).lowercase() }
                 _state.update { it.copy(installedApps = sorted) }
             }
         }

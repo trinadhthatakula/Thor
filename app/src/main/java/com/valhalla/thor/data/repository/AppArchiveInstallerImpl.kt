@@ -195,11 +195,13 @@ class AppArchiveInstallerImpl(
         }
 
         val stampAfter = installStamp(packageName)
-        return archiveInstallOutcome(
+        val outcome = archiveInstallOutcome(
             settled = settled,
             landed = installLanded(before = stampBefore, after = stampAfter),
             reason = (settled as? InstallState.Error)?.message?.asString(context),
         )
+        Logger.i(TAG, "installAndAwait finished for $packageName: mode=$mode, settled=$settled, stampBefore=$stampBefore, stampAfter=$stampAfter, outcome=$outcome")
+        return outcome
     }
 
     /**
