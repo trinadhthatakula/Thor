@@ -302,12 +302,12 @@
     <string name="backup_hub_section_backups">Kopie w Downloads/Thor</string>
     <string name="backup_hub_filter_all">Wszystko</string>
     <string name="backup_hub_filter_backups">Kopie danych (.thorbak)</string>
-    <string name="backup_hub_filter_bundles">Pakiety aplikacji (.xapk, .apk)</string>
+    <string name="backup_hub_filter_bundles">Pakiety aplikacji (.xapk, .apks, .apk)</string>
     <string name="backup_hub_empty_title">Brak kopii w Downloads/Thor</string>
     <string name="backup_hub_empty_desc">Archiwa zapisane w Downloads/Thor pojawią się tutaj, umożliwiając szybkie przywrócenie jednym dotknięciem.</string>
     <string name="backup_hub_tip_thorbak_title">Kopie danych (.thorbak)</string>
     <string name="backup_hub_tip_thorbak_desc">Zaszyfrowane pełne archiwa zawierające dane aplikacji (klasy CE/DE) i podziały APK. Przywracanie wymaga uprawnień root lub uprzywilejowanej powłoki.</string>
-    <string name="backup_hub_tip_bundle_title">Pakiety aplikacji (.xapk / .apk)</string>
+    <string name="backup_hub_tip_bundle_title">Pakiety aplikacji (.xapk / .apks / .apk)</string>
     <string name="backup_hub_tip_bundle_desc">Samodzielne pakiety instalacyjne do instalacji offline lub przesyłania między urządzeniami bez uprawnień root.</string>
     <string name="backup_hub_tip_discovery_title">Automatyczne wykrywanie</string>
     <string name="backup_hub_tip_discovery_desc">Wyeksportowanie lub umieszczenie dowolnego archiwum w Downloads/Thor automatycznie wyświetli je tutaj do natychmiastowego przywrócenia.</string>

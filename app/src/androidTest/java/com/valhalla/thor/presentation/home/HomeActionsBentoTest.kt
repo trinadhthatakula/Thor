@@ -51,6 +51,7 @@ class HomeActionsBentoTest {
             onInstall = { installRuns++ },
             onClearCache = { clearCacheRuns++ },
             onNavigateToExtensionManager = {},
+            onNavigateToBackupRestoreHub = {},
         )
     }
 
@@ -117,6 +118,7 @@ class HomeActionsBentoTest {
                 onInstall = { installRuns++ },
                 onClearCache = {},
                 onNavigateToExtensionManager = {},
+                onNavigateToBackupRestoreHub = {},
             )
         }
         val title = str(R.string.install_from_file)

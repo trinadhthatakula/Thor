@@ -79,6 +79,11 @@ import com.valhalla.thor.presentation.widgets.AppIcon
 import java.text.DateFormat
 import java.util.Date
 import org.koin.androidx.compose.koinViewModel
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.documentfile.provider.DocumentFile
+import com.valhalla.thor.presentation.installer.InstallerViewModel
+import com.valhalla.thor.presentation.installer.PortableInstaller
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,15 +92,36 @@ fun BackupRestoreHubScreen(
     onOpenBackupSheet: (packageName: String, appLabel: String) -> Unit,
     onOpenRestoreSheet: (uriString: String?) -> Unit,
     viewModel: BackupRestoreHubViewModel = koinViewModel(),
+    installerViewModel: InstallerViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showInstallerSheet by remember { mutableStateOf(false) }
+
+    val handleRestoreOrInstall = { item: BackupArchiveItem ->
+        if (item.kind == BackupArchiveKind.DATA_BACKUP) {
+            onOpenRestoreSheet(item.uriString)
+        } else {
+            installerViewModel.parsePackage(item.uriString.toUri())
+            showInstallerSheet = true
+        }
+    }
 
     val safFilePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            onOpenRestoreSheet(uri.toString())
+            val doc = DocumentFile.fromSingleUri(context, uri)
+            val name = doc?.name?.lowercase().orEmpty()
+            val path = uri.path?.lowercase().orEmpty()
+            val isBundle = name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apks") ||
+                path.endsWith(".apk") || path.endsWith(".xapk") || path.endsWith(".apks")
+            if (isBundle) {
+                installerViewModel.parsePackage(uri)
+                showInstallerSheet = true
+            } else {
+                onOpenRestoreSheet(uri.toString())
+            }
         }
     }
 
@@ -193,7 +219,7 @@ fun BackupRestoreHubScreen(
                         itemsToRender.forEach { item ->
                             ArchiveItemCard(
                                 item = item,
-                                onRestore = { onOpenRestoreSheet(item.uriString) },
+                                onRestore = { handleRestoreOrInstall(item) },
                                 onShare = {
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "*/*"
@@ -258,6 +284,13 @@ fun BackupRestoreHubScreen(
             },
         )
     }
+
+    if (showInstallerSheet) {
+        PortableInstaller(
+            onDismiss = { showInstallerSheet = false },
+            viewModel = installerViewModel,
+        )
+    }
 }
 
 @Composable
@@ -308,19 +341,12 @@ private fun BackupsSectionHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
-            Text(
-                text = stringResource(R.string.backup_hub_section_backups),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = "Downloads/Thor",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            text = stringResource(R.string.backup_hub_section_backups),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
 
         if (totalCount > 0) {
             Surface(
@@ -497,13 +523,25 @@ private fun ArchiveItemCard(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.settings_backup_restore),
+                        painter = painterResource(
+                            if (item.kind == BackupArchiveKind.DATA_BACKUP) {
+                                R.drawable.settings_backup_restore
+                            } else {
+                                R.drawable.apk_install
+                            }
+                        ),
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = stringResource(R.string.restore_start),
+                        text = stringResource(
+                            if (item.kind == BackupArchiveKind.DATA_BACKUP) {
+                                R.string.restore_start
+                            } else {
+                                R.string.install_action_install
+                            }
+                        ),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                     )

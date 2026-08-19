@@ -306,12 +306,12 @@
     <string name="backup_hub_section_backups">Sauvegardes dans Downloads/Thor</string>
     <string name="backup_hub_filter_all">Tout</string>
     <string name="backup_hub_filter_backups">Sauvegardes de données (.thorbak)</string>
-    <string name="backup_hub_filter_bundles">Packs d\'applications (.xapk, .apk)</string>
+    <string name="backup_hub_filter_bundles">Packs d\'applications (.xapk, .apks, .apk)</string>
     <string name="backup_hub_empty_title">Aucune sauvegarde dans Downloads/Thor</string>
     <string name="backup_hub_empty_desc">Les archives enregistrées dans Downloads/Thor apparaîtront ici pour une restauration rapide.</string>
     <string name="backup_hub_tip_thorbak_title">Sauvegardes de données (.thorbak)</string>
     <string name="backup_hub_tip_thorbak_desc">Archives complètes chiffrées contenant les données d\'appli (classes CE/DE) et divisions APK. La restauration nécessite le root ou un shell privilégié.</string>
-    <string name="backup_hub_tip_bundle_title">Packs d\'applications (.xapk / .apk)</string>
+    <string name="backup_hub_tip_bundle_title">Packs d\'applications (.xapk / .apks / .apk)</string>
     <string name="backup_hub_tip_bundle_desc">Packs d\'installation autonomes pour l\'installation hors ligne ou le partage entre appareils sans accès root.</string>
     <string name="backup_hub_tip_discovery_title">Détection automatique</string>
     <string name="backup_hub_tip_discovery_desc">Toute archive exportée ou placée dans Downloads/Thor apparaît automatiquement ici pour une restauration instantanée.</string>

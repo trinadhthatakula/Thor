@@ -10,6 +10,7 @@ import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -68,13 +69,16 @@ class BackupRestoreHubViewModel(
     private val _state = MutableStateFlow(BackupRestoreHubState())
     val state: StateFlow<BackupRestoreHubState> = _state.asStateFlow()
 
+    private var scanJob: Job? = null
+
     init {
         loadInstalledApps()
         refreshArchives()
     }
 
     fun refreshArchives() {
-        viewModelScope.launch {
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             scanner.scanBackups().collect { list ->
                 _state.update { it.copy(archives = list, isLoading = false) }
