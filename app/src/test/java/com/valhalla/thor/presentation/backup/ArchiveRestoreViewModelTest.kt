@@ -1548,4 +1548,24 @@ class ArchiveRestoreViewModelTest {
             assertEquals(emptySet<DataClass>(), state.selected)
             assertEquals(false, state.canStart)
         }
+
+    @Test
+    fun `non-root opening a bundle archive for uninstalled app allows installFirst even when CE DE are excluded`() =
+        runTest(dispatcher) {
+            val nonRootProbe = FakeProbe(capable = true, privateCapable = false)
+            val vm = viewModel(
+                probe = nonRootProbe,
+                installedApps = emptyList(),
+                privilegeState = PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true),
+                sources = CountingSources(mapOf(URI to FakeSource(header(classes = listOf(DataClass.CE, DataClass.DE)).encode()))),
+            )
+
+            vm.open(URI)
+            testScheduler.advanceUntilIdle()
+
+            val state = vm.uiState.value
+            assertEquals(emptySet<DataClass>(), state.selected)
+            assertEquals(true, state.installFirst)
+            assertEquals(null, state.refusal)
+        }
 }
