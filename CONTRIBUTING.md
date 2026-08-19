@@ -6,6 +6,23 @@ Here is a guide on how you can contribute to the project.
 
 ---
 
+## 🌿 Branching & Pull Request Workflow (Mandatory)
+
+All contributors and AI agents must follow this workflow:
+
+1. **Base Branch**: Always branch from `dev` (`git checkout dev && git pull origin dev`).
+2. **Topic Branch Naming**:
+   - `feat/<feature-name>` or `feature/<feature-name>` for new features
+   - `fix/<bug-name>` for bug fixes
+   - `i18n/<locale-code>` or `translate/<locale-code>` for translations
+   - `docs/<doc-topic>` for documentation
+   - `chore/<task-name>` for dependencies and maintenance
+3. **Never Commit Directly to Protected Branches**: Do not push directly to `dev`, `master`, or `production`.
+4. **Target `dev` in PRs**: All Pull Requests must target the **`dev`** branch. PRs targeting `master` or `production` will be closed.
+5. **No Version Bumps**: Do not edit `versionCode` in `gradle.properties` in your PR. Version bumps and releases follow the three-rung ladder in [`docs/branching-and-releases.md`](docs/branching-and-releases.md).
+
+---
+
 ## 🌐 Localization & Translation Contributions
 
 We want Thor to be accessible to everyone worldwide. You can help by translating either the **In-App Strings** or the **Store Metadata (Fastlane)**.

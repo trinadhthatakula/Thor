@@ -2,8 +2,8 @@
 
 **Filed:** 2026-08-07 (UTC) · **Source:** four comment threads on the r/howtomen Thor post
 **Status:** triaged, **bands A and B are built** — eleven of band A's twelve rows shipped on
-`feat/band-a` the same day, and band B followed on 2026-08-08 across three PRs, closing the
-per-group-verbs, too-many-confirmations, Fix Store, scrollbar and export-the-list asks. Every claim
+`feat/band-a`, band B followed on 2026-08-08 across three PRs, Band C #29 (Portuguese & Polish) shipped
+2026-08-16, and App Info actions customization shipped 2026-08-19 (PR #410). Every claim
 below was checked against `origin/dev` before it was sized; the ones the implementation then
 falsified are corrected in place and labelled, not rewritten away.
 
