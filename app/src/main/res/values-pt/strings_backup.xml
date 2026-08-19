@@ -310,7 +310,7 @@
     <string name="backup_hub_empty_title">Sem cópias em Downloads/Thor</string>
     <string name="backup_hub_empty_desc">Os arquivos guardados em Downloads/Thor aparecerão aqui para restauro rápido num só toque.</string>
     <string name="backup_hub_tip_thorbak_title">Cópias de dados (.thorbak)</string>
-    <string name="backup_hub_tip_thorbak_desc">Arquivos completos encriptados contendo dados de aplicações e divisões APK. Os dados privados de aplicações (CE/DE) requerem root, enquanto os dados de armazenamento partilhado podem ser restaurados com uma shell privilegiada.</string>
+    <string name="backup_hub_tip_thorbak_desc">Arquivos completos encriptados contendo dados de aplicações e divisões APK opcionais. Os dados privados de aplicações (CE/DE) requerem root, enquanto os dados de armazenamento partilhado podem ser restaurados com uma shell privilegiada.</string>
     <string name="backup_hub_tip_bundle_title">Pacotes de aplicações (.xapk / .apks / .apk)</string>
     <string name="backup_hub_tip_bundle_desc">Pacotes de instalação autónomos para instalação offline ou partilha entre dispositivos sem necessitar de root.</string>
     <string name="backup_hub_tip_discovery_title">Deteção automática</string>

@@ -5,10 +5,12 @@ package com.valhalla.thor.presentation.backup.hub
 
 import android.content.Intent
 import android.text.format.Formatter
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.valhalla.thor.util.Logger
 import java.io.File
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -231,12 +233,14 @@ fun BackupRestoreHubScreen(
                                                 "${context.packageName}.provider",
                                                 File(parsedUri.path!!)
                                             )
-                                        } catch (_: Exception) {
-                                            parsedUri
+                                        } catch (e: Exception) {
+                                            Logger.e("BackupRestoreHub", "Failed to get share URI for file", e)
+                                            Toast.makeText(context, R.string.unknown_error_occurred, Toast.LENGTH_SHORT).show()
+                                            null
                                         }
                                     } else {
                                         parsedUri
-                                    }
+                                    } ?: return@ArchiveItemCard
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "*/*"
                                         putExtra(Intent.EXTRA_STREAM, shareUri)

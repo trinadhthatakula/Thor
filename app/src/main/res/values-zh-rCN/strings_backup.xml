@@ -303,7 +303,7 @@
     <string name="backup_hub_empty_title">Downloads/Thor 中无备份</string>
     <string name="backup_hub_empty_desc">保存在 Downloads/Thor 中的备份将显示在此处，支持一键快速恢复。</string>
     <string name="backup_hub_tip_thorbak_title">数据备份 (.thorbak)</string>
-    <string name="backup_hub_tip_thorbak_desc">包含应用数据和 APK 分卷的加密完整归档。私有应用数据（CE/DE）需要 Root 权限，而共享存储数据可通过特权 Shell 恢复。</string>
+    <string name="backup_hub_tip_thorbak_desc">包含应用数据和可选 APK 分卷的加密完整归档。私有应用数据（CE/DE）需要 Root 权限，而共享存储数据可通过特权 Shell 恢复。</string>
     <string name="backup_hub_tip_bundle_title">应用安装包 (.xapk / .apks / .apk)</string>
     <string name="backup_hub_tip_bundle_desc">独立的安装包，支持离线安装或跨设备分享，无需 Root 权限。</string>
     <string name="backup_hub_tip_discovery_title">自动发现</string>
