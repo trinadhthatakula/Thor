@@ -52,6 +52,31 @@ import org.json.JSONObject
  */
 private const val MAX_ICON_STAGE_BYTES = 256L * 1024 * 1024
 
+/**
+ * The most pixels `decodeSampled` will allocate, whatever the caller asked for — 4 MB of ARGB_8888.
+ *
+ * Target-size sampling cannot carry this on its own, and the hole is not an exotic one: the sample
+ * step advances only while **both** axes are still at or above the target, so a source with one axis
+ * already below it never samples at all. A 263 × 150000 `icon.png` — about 160 KB of PNG if its rows
+ * are uniform, so well inside [com.valhalla.thor.data.repository.MAX_METADATA_ENTRY_BYTES] — decodes
+ * whole against a 132 px request: 39 Mpx, 158 MB, from a file BundleZip's header already calls
+ * untrusted. Bigger than that and the allocation throws `OutOfMemoryError`, which is an `Error` and
+ * so escapes the `catch (Exception)` in [ArchiveIconFetcher.fetch]; smaller and it *succeeds*, gets
+ * PNG-encoded into `cacheDir` at quality 100, and is then handed to a `RecordingCanvas` that refuses
+ * any bitmap past `ro.hwui.max_texture_allocation_size` (floor 150 MB) with a UI-thread exception.
+ *
+ * A second, latent route reaches the same place: Coil's `Size` is two [coil3.size.Dimension]s and
+ * either may be `Undefined`, in which case `pxOrElse` falls back to the *source* dimension and
+ * nothing samples. Not reachable today — the one model site sizes the image at 44 dp, so both
+ * dimensions are `Pixels` — but `contentScale = ContentScale.None` on that call would make it so.
+ *
+ * Deliberately absolute rather than `maxOf(this, requested area)`: raising the ceiling to match the
+ * request would restore the full decode on precisely the `Undefined` path above, where the request
+ * *is* the source. An entry named `icon.png` is drawn at 44 dp, and 1024×1024 is past every real
+ * icon (a 108 dp adaptive icon at 4× density is 432 px), so the clamp costs nothing real.
+ */
+private const val MAX_DECODED_ICON_PIXELS = 1024L * 1024
+
 data class ArchiveIconModel(
     val uriString: String,
     val packageName: String?,
@@ -87,7 +112,14 @@ class ArchiveIconFetcher(
             val cacheKey = "icon_${model.uriString.hashCode()}_${model.sizeBytes}_${model.lastModifiedEpochSec}"
             val cachedFile = File(iconCacheDir, "$cacheKey.png")
             if (cachedFile.exists() && cachedFile.length() > 0) {
-                val bitmap = BitmapFactory.decodeFile(cachedFile.absolutePath)
+                // Sampled on the way out as well as in. `decodeFile` takes no options, so it has no
+                // ceiling: an entry written by a build that decoded a crafted strip whole is still
+                // on disk, keyed by size and mtime, and would be re-decoded at full size on every
+                // launch until the pruner reaches it — the ceiling would then protect only the
+                // devices that never hit the bug.
+                val bitmap = runCatching { cachedFile.readBytes() }
+                    .getOrNull()
+                    ?.let { decodeSampled(it) }
                 if (bitmap != null) {
                     return ImageFetchResult(
                         image = bitmap.toDrawable(context.resources).asImage(),
@@ -387,7 +419,9 @@ class ArchiveIconFetcher(
      * [fetch] would not contain it either.
      *
      * The sample step stops at the last power of two still at or above the requested size, so the
-     * result is never smaller than what was asked for; Coil scales it the rest of the way.
+     * result is never smaller than what was asked for; Coil scales it the rest of the way. The one
+     * exception is [MAX_DECODED_ICON_PIXELS], which overrides that property rather than extending
+     * it — the alternative to an icon smaller than requested there is no icon and a dead list row.
      */
     private fun decodeSampled(bytes: ByteArray): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -402,6 +436,24 @@ class ArchiveIconFetcher(
         while (
             sourceWidth / (sample * 2) >= targetWidth &&
             sourceHeight / (sample * 2) >= targetHeight
+        ) {
+            sample *= 2
+        }
+
+        // The absolute ceiling, applied after the target-size step and independent of it. The `&&`
+        // above is why it is needed: the loop stops the moment *either* axis drops below the target,
+        // so an asymmetric source pins sample at 1 however many pixels the other axis carries, and
+        // both axes come out of the archive. [MAX_DECODED_ICON_PIXELS] has the numbers. Doubling
+        // from whatever the first loop chose keeps the "never smaller than requested" property for
+        // every icon inside the budget and breaks it only where the alternative is an allocation
+        // that fails or a bitmap the canvas refuses to draw.
+        //
+        // Guarded on both dimensions because integer division floors: once one of them is down to
+        // 1 px, doubling again only drives it to 0 — the decode gets narrower, not cheaper, and the
+        // budget may still not be met. That is the degenerate strip, and it stops here.
+        while (
+            (sourceWidth / sample).toLong() * (sourceHeight / sample) > MAX_DECODED_ICON_PIXELS &&
+            sourceWidth / sample > 1 && sourceHeight / sample > 1
         ) {
             sample *= 2
         }

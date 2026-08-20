@@ -120,12 +120,30 @@ class AppAnalyzerImpl(
                         if (res != null && res.first == 0 &&
                             tmpFile.exists() && tmpFile.length() > 0
                         ) {
-                            tmpFile.inputStream().use { input ->
+                            // The same budget as the provider branch, for the same reason: the
+                            // invariant the two whole-file copies downstream rely on is a property
+                            // of `bundleFile`, not of how it was filled. This path had no bound at
+                            // all, so a 4 GB file the content resolver refused to open was copied
+                            // whole while a 100 MB one it opened was rejected.
+                            val copied = tmpFile.inputStream().use { input ->
                                 FileOutputStream(bundleFile).use { output ->
-                                    input.copyTo(output)
+                                    input.copyAtMostTo(output, MAX_EXTRACTED_TOTAL_BYTES)
                                 }
                             }
-                            readMetadata(bundleFile, apkFile, displayName)
+                            if (copied == null) {
+                                // Deliberately not the provider branch's wording: the shell has
+                                // already read the whole file into /data/local/tmp by this point,
+                                // so "was not read" would be untrue here. Only the copy Thor would
+                                // install from was declined.
+                                Result.failure(
+                                    Exception(
+                                        "The selected file is larger than " +
+                                            "${MAX_EXTRACTED_TOTAL_BYTES / (1024 * 1024)} MB and was not staged."
+                                    )
+                                )
+                            } else {
+                                readMetadata(bundleFile, apkFile, displayName)
+                            }
                         } else {
                             Result.failure(Exception("Could not open the selected file."))
                         }
