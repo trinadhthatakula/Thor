@@ -448,12 +448,18 @@ class ArchiveIconFetcher(
         // every icon inside the budget and breaks it only where the alternative is an allocation
         // that fails or a bitmap the canvas refuses to draw.
         //
-        // Guarded on both dimensions because integer division floors: once one of them is down to
-        // 1 px, doubling again only drives it to 0 — the decode gets narrower, not cheaper, and the
-        // budget may still not be met. That is the degenerate strip, and it stops here.
+        // `maxOf(1, …)` and `||`, because that is what the decoder does: `SkAndroidCodec` floors
+        // each sampled axis at 1 px and never at 0. Estimating with a bare division instead made
+        // doubling look pointless as soon as one axis reached 1 px — 1 / 2 = 0, so the product read
+        // as 0 and the guard refused to advance — which exempted the most extreme aspect ratio from
+        // the ceiling that exists for exactly that shape: a 1 × 40000000 strip stayed at
+        // `inSampleSize = 1` and decoded all 160 MB of itself. Progress is still possible while
+        // *either* axis is above 1, and the loop terminates because doubling drives both divisions
+        // to 0, where the product is 1.
         while (
-            (sourceWidth / sample).toLong() * (sourceHeight / sample) > MAX_DECODED_ICON_PIXELS &&
-            sourceWidth / sample > 1 && sourceHeight / sample > 1
+            maxOf(1, sourceWidth / sample).toLong() * maxOf(1, sourceHeight / sample) >
+                MAX_DECODED_ICON_PIXELS &&
+            (sourceWidth / sample > 1 || sourceHeight / sample > 1)
         ) {
             sample *= 2
         }
