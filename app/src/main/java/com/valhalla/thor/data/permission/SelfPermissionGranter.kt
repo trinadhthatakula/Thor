@@ -168,8 +168,14 @@ class SelfPermissionGranter(
 
         val granted = mutableListOf<String>()
         val refused = mutableListOf<String>()
+
+        // Tracked separately from [granted] because the two answer different questions, and the
+        // rescan below has to key off this one. See the bump.
+        var anyCommandReportedSuccess = false
+
         for (permission in plan.toGrant) {
             val result = systemRepository.grantPermission(context.packageName, permission)
+            if (result.isSuccess) anyCommandReportedSuccess = true
             if (isHeld(permission)) {
                 granted += permission
             } else {
@@ -184,6 +190,20 @@ class SelfPermissionGranter(
 
         if (granted.isNotEmpty()) {
             Logger.d("SelfPermissions", "Self-granted ${granted.size}: ${granted.joinToString()}")
+        }
+
+        // Deliberately **not** gated on [granted] alone. `checkSelfPermission` answers about the
+        // runtime permission grant, and on the ROMs that define `GET_INSTALLED_APPS` the thing
+        // that actually opens the package list is an app-op — a gateway can therefore succeed at
+        // opening visibility while the re-read still says denied. Keying the rescan off the
+        // re-read alone is a state where package visibility just changed and nothing asks
+        // PackageManager again, which on a fresh install is the user staring at a list holding
+        // only Thor until some unrelated package broadcast happens to arrive.
+        //
+        // The cost of being wrong in this direction is one extra package scan per process; the
+        // cost of being wrong in the other is the app looking broken. The sweep is latched, so
+        // this cannot loop.
+        if (granted.isNotEmpty() || anyCommandReportedSuccess) {
             AppScanRevision.bump()
         }
 

@@ -35,6 +35,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -471,9 +472,16 @@ class AppRepositoryImpl(
             LocaleRevision.changes.collect { triggerChannel.trySend(Unit) }
         }
 
-        // Process-wide scan requests (e.g. self-permission auto-grant, privilege changes)
+        // Process-wide scan requests (e.g. self-permission auto-grant, privilege changes).
+        //
+        // drop(1) because AppScanRevision is a StateFlow and its current value is replayed on
+        // subscribe: the worker above already sends its own initial trigger, so acting on the
+        // replay too would buy a second full scan on every collection. Bumps that happened before
+        // this subscribed are therefore *not* lost — they are folded into the value this drops, and
+        // the scan they asked for is the one the worker is about to run anyway. See the class KDoc
+        // for why this is a counter rather than a SharedFlow<Unit>.
         val scanWatcher = launch {
-            AppScanRevision.changes.collect { triggerChannel.trySend(Unit) }
+            AppScanRevision.revision.drop(1).collect { triggerChannel.trySend(Unit) }
         }
 
         // Receiver for Package-specific changes (requires "package" data scheme)
