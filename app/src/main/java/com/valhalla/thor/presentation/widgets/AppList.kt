@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -1120,7 +1121,13 @@ private fun AppFilterSheet(
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
         tonalElevation = 0.dp
     ) {
-        Column(modifier = Modifier.padding(24.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(top = 8.dp, bottom = 24.dp)
+        ) {
             Text(
                 stringResource(R.string.configuration),
                 style = MaterialTheme.typography.headlineMedium,
@@ -1198,25 +1205,26 @@ private fun AppFilterSheet(
 
             when (activeTab) {
                 SheetTab.FILTERS -> {
-                    LazyColumn(
-                        modifier = Modifier.height(200.dp),
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(filterTypes) { type ->
+                        filterTypes.forEach { type ->
+                            val isSelected = filterType == type
                             ListItem(
                                 trailingContent = {
-                                    if (filterType == type) Icon(
+                                    if (isSelected) Icon(
                                         painterResource(R.drawable.check_circle),
                                         null,
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 },
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(
-                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                                            alpha = 0.5f
-                                        )
+                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                        else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
                                     )
                                     .clickable { onFilterTypeChanged(type) },
                                 colors = androidx.compose.material3.ListItemDefaults.colors(
@@ -1234,19 +1242,21 @@ private fun AppFilterSheet(
                 }
 
                 SheetTab.SORT -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
                             stringResource(R.string.order),
                             style = MaterialTheme.typography.titleMedium
                         )
-                        Spacer(Modifier.width(8.dp))
                         FilterChip(
                             selected = sortOrder == SortOrder.ASCENDING,
                             onClick = { onSortOrderChanged(SortOrder.ASCENDING) },
                             label = { Text(stringResource(R.string.ascending)) },
                             leadingIcon = { Icon(painterResource(R.drawable.arrow_upward), null) }
                         )
-                        Spacer(Modifier.width(8.dp))
                         FilterChip(
                             selected = sortOrder == SortOrder.DESCENDING,
                             onClick = { onSortOrderChanged(SortOrder.DESCENDING) },
@@ -1255,25 +1265,26 @@ private fun AppFilterSheet(
                         )
                     }
                     Spacer(Modifier.height(12.dp))
-                    LazyColumn(
-                        modifier = Modifier.height(200.dp),
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(SortBy.entries) { item ->
+                        SortBy.entries.forEach { item ->
+                            val isSelected = sortBy == item
                             ListItem(
                                 trailingContent = {
-                                    if (sortBy == item) Icon(
+                                    if (isSelected) Icon(
                                         painterResource(R.drawable.check_circle),
                                         null,
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 },
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(
-                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                                            alpha = 0.5f
-                                        )
+                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                        else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
                                     )
                                     .clickable { onSortByChanged(item) },
                                 colors = androidx.compose.material3.ListItemDefaults.colors(
