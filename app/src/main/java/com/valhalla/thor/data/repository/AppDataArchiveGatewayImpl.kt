@@ -64,6 +64,21 @@ internal fun isSafeStagingName(name: String): Boolean =
 internal fun isInsideStagingRoot(outCanonical: String, stagingCanonical: String): Boolean =
     outCanonical.startsWith("$stagingCanonical/")
 
+/**
+ * The volume a staged tar lands on: `cacheDir` when the privileged runner can read Thor's private data
+ * directory, `externalCacheDir` when it cannot (§7.1). [AppDataArchiveGatewayImpl.stagingRoot]'s KDoc
+ * owns the reasoning and the cost.
+ *
+ * A shared function rather than a line inside `stagingRoot`, because the choice has a second reader:
+ * `ArchiveBackupWorker` measures §7.4's free space, and measuring `cacheDir` while the tar is written
+ * to external storage reports a different volume's headroom. Two copies of one routing rule is exactly
+ * how that happened — the worker's copy said the external route did not exist — so there is one.
+ *
+ * Null only if the platform returns neither directory; both callers read that as "unmeasurable".
+ */
+internal fun archiveStagingVolume(context: Context, privateDataCapable: Boolean): File? =
+    if (privateDataCapable) context.cacheDir else context.externalCacheDir ?: context.cacheDir
+
 @Single(binds = [AppDataArchiveGateway::class])
 internal class AppDataArchiveGatewayImpl(
     private val context: Context,
@@ -99,11 +114,7 @@ internal class AppDataArchiveGatewayImpl(
      * writes. Pair any further staging root with a sweeper rule in the same change.
      */
     private suspend fun stagingRoot(): File = withContext(ioDispatcher) {
-        val rootDir = if (probe.probePrivateDataCapability()) {
-            context.cacheDir
-        } else {
-            context.externalCacheDir ?: context.cacheDir
-        }
+        val rootDir = archiveStagingVolume(context, probe.probePrivateDataCapability())
         File(rootDir, AppDataArchiveStagingDir.NAME).also { it.mkdirs() }
     }
 

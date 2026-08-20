@@ -38,12 +38,14 @@ internal interface AppDataArchiveGateway {
     suspend fun externalStorageDir(): String
 
     /**
-     * A path in Thor's **internal** cache for the shell to write and Thor to read back.
+     * A path in Thor's own cache for the shell to write and Thor to read back.
      *
-     * Internal, not `externalCacheDir` (§7.1): the staged file is a plaintext tar of someone's app
-     * data, and on shared storage any all-files-access app could read it. The OBB feature staged
-     * externally because Thor's own uid had to *write* there; here the shell writes and Thor only
-     * reads, and root can write anywhere.
+     * The **internal** cache wherever it can be: the staged file is a plaintext tar of someone's app
+     * data, and on shared storage any all-files-access app could read it. Root writes anywhere and
+     * takes that route. A Shizuku shell at uid 2000 cannot read `/data/data/<thor>` at all, and §7.1
+     * spends the exposure rather than the feature — `AppDataArchiveGatewayImpl.stagingRoot` resolves
+     * `externalCacheDir` in that case, and its KDoc owns both the condition and the cost. Anything
+     * measuring or sweeping this path has to honour the same condition, not assume the internal one.
      */
     suspend fun stagingFile(name: String): File
 
