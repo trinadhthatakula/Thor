@@ -43,6 +43,7 @@ import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLocale
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -107,6 +108,7 @@ class HomeActivity : ComponentActivity() {
     private val shizukuHandler = ShizukuPermissionHandler(
         onPermissionGranted = {
             Logger.d("HomeActivity", "Shizuku Ready")
+            AppScanRevision.bump()
             homeViewModel.loadDashboardData()
         },
         onPermissionDenied = {

@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.model.scanVerdict
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.LocaleRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
@@ -426,6 +427,11 @@ class AppRepositoryImpl(
             LocaleRevision.changes.collect { triggerChannel.trySend(Unit) }
         }
 
+        // Process-wide scan requests (e.g. self-permission auto-grant, privilege changes)
+        val scanWatcher = launch {
+            AppScanRevision.changes.collect { triggerChannel.trySend(Unit) }
+        }
+
         // Receiver for Package-specific changes (requires "package" data scheme)
         val packageReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -468,6 +474,7 @@ class AppRepositoryImpl(
             context.unregisterReceiver(packageReceiver)
             context.unregisterReceiver(generalReceiver)
             localeWatcher.cancel()
+            scanWatcher.cancel()
             worker.cancel()
         }
     }.flowOn(ioDispatcher)

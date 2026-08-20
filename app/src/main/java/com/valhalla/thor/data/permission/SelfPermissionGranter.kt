@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.model.SelfPermissionDeclaration
 import com.valhalla.thor.domain.model.planSelfGrant
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -183,6 +184,7 @@ class SelfPermissionGranter(
 
         if (granted.isNotEmpty()) {
             Logger.d("SelfPermissions", "Self-granted ${granted.size}: ${granted.joinToString()}")
+            AppScanRevision.bump()
         }
 
         return SelfGrantOutcome(

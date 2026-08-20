@@ -39,6 +39,7 @@ import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
@@ -245,6 +246,7 @@ class AppListViewModel(
             val previous = _rawState.value.installedAppsPermission
             _rawState.update { it.copy(installedAppsPermission = permission) }
             if (permission is InstalledAppsPermission.Granted && previous !is InstalledAppsPermission.Granted) {
+                AppScanRevision.bump()
                 loadApps()
             }
         }
