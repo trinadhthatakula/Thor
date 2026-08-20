@@ -302,6 +302,12 @@ def main():
     inline_lib_updates = {}
     inline_plugin_updates = {}
     
+    # Everything that could not be resolved at all. Without this list a network outage, a renamed
+    # artifact or a repository that has stopped serving maven-metadata.xml all look identical to
+    # "already on the latest version" — the script would print "All dependencies are up to date."
+    # having checked nothing.
+    unresolved = sorted(key for _, key, _, _, status in results if status != "Success")
+
     for item_type, key, current, best, status in results:
         if status == "Success" and current != best:
             if item_type == "catalog":
@@ -311,10 +317,18 @@ def main():
             elif item_type == "inline_plugin":
                 inline_plugin_updates[key] = (current, best)
                 
+    if unresolved:
+        print(f"\nCould not resolve {len(unresolved)} of {len(results)} — versions unknown, not current:")
+        for key in unresolved:
+            print(f"  [Unresolved] {key}")
+
     if not catalog_updates and not inline_lib_updates and not inline_plugin_updates:
-        print("All dependencies are up to date.")
+        if len(unresolved) == len(results):
+            print("\nNothing was checked — every lookup failed. Not a clean bill of health.")
+        else:
+            print(f"\nAll {len(results) - len(unresolved)} resolved dependencies are up to date.")
         return
-        
+
     print("\nProposed Updates:")
     for key, (current, best) in sorted(catalog_updates.items()):
         print(f"  [Catalog Version] {key}: {current} -> {best}")
