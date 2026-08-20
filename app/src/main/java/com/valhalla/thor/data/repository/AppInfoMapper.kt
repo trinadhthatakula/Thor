@@ -57,7 +57,7 @@ fun mapToAppInfo(
     // a leftover from the deprecated Int `packInfo.versionCode` this mapper used to read, and
     // keeping it would silently swallow the next real deprecation on one of these calls.
     return AppInfo(
-        appName = appInfo.loadLabel(pm).toString(),
+        appName = runCatching { appInfo.loadLabel(pm).toString() }.getOrElse { packInfo.packageName },
         packageName = packInfo.packageName,
         versionName = packInfo.versionName,
         // No .toInt(): longVersionCode is (versionCodeMajor shl 32) or versionCode, so truncating

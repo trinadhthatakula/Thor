@@ -337,12 +337,71 @@ fun HomeScreen(
     // system apps are included too.
 
     if (showPrivilegeDialog) {
+        val context = androidx.compose.ui.platform.LocalContext.current
         AlertDialog(
             onDismissRequest = { showPrivilegeDialog = false },
             icon = { Icon(painterResource(R.drawable.privacy_tip), null) },
             title = { Text(stringResource(R.string.privilege_check)) },
             text = {
-                Text(stringResource(R.string.privilege_check_desc))
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(R.string.privilege_check_desc))
+
+                    if (state.installedManagers.isNotEmpty()) {
+                        androidx.compose.material3.HorizontalDivider()
+
+                        state.installedManagers.forEach { info ->
+                            val isGranted = when (info.app.mode) {
+                                PrivilegeMode.ROOT -> state.isRootAvailable
+                                PrivilegeMode.SHIZUKU -> state.isShizukuAvailable
+                                PrivilegeMode.DHIZUKU -> state.isDhizukuAvailable
+                                PrivilegeMode.NONE -> false
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = info.app.displayName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+
+                                if (isGranted) {
+                                    Text(
+                                        text = stringResource(R.string.permission_state_granted),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        if (info.app == com.valhalla.thor.domain.model.PrivilegeManagerApp.SHIZUKU && state.isShizukuBinderAlive) {
+                                            androidx.compose.material3.TextButton(
+                                                onClick = { viewModel.requestShizuku() }
+                                            ) {
+                                                Text(stringResource(R.string.installed_apps_permission_grant))
+                                            }
+                                        } else if (info.app == com.valhalla.thor.domain.model.PrivilegeManagerApp.DHIZUKU) {
+                                            androidx.compose.material3.TextButton(
+                                                onClick = { viewModel.requestDhizuku(context) }
+                                            ) {
+                                                Text(stringResource(R.string.installed_apps_permission_grant))
+                                            }
+                                        }
+                                        androidx.compose.material3.TextButton(
+                                            onClick = {
+                                                viewModel.openManagerApp(context, info.installedPackageName)
+                                            }
+                                        ) {
+                                            Text(stringResource(R.string.open_app))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 Button(onClick = {

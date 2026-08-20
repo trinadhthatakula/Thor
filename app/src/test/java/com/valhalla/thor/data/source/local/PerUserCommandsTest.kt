@@ -475,6 +475,19 @@ class PerUserCommandsTest {
         assertTrue(usageStatsGrantCommand(pkg, 10).endsWith(" GET_USAGE_STATS allow"))
     }
 
+    @Test
+    fun `the installed apps appops grant names the user and covers OEM op names`() {
+        val commands = installedAppsAppOpGrantCommands(pkg, 10)
+        assertEquals(3, commands.size)
+        commands.forEach { cmd ->
+            assertEquals(10, userArgOf(cmd))
+            assertTrue(cmd.endsWith(" allow"))
+        }
+        assertEquals("appops set --user 10 $pkg GET_INSTALLED_APPS allow", commands[0])
+        assertEquals("appops set --user 10 $pkg android:get_installed_apps allow", commands[1])
+        assertEquals("appops set --user 10 $pkg 10022 allow", commands[2])
+    }
+
     // --- the shape of the whole file, not one instance of it ---
 
     /**

@@ -43,6 +43,7 @@ import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLocale
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -107,6 +108,7 @@ class HomeActivity : ComponentActivity() {
     private val shizukuHandler = ShizukuPermissionHandler(
         onPermissionGranted = {
             Logger.d("HomeActivity", "Shizuku Ready")
+            AppScanRevision.bump()
             homeViewModel.loadDashboardData()
         },
         onPermissionDenied = {
@@ -327,6 +329,20 @@ class HomeActivity : ComponentActivity() {
         // unacknowledged for three days; coming back to the app is the first chance to catch it.
         // The store implementation does its work on a background scope and the foss one is a no-op.
         billingProcessor.refreshPurchases()
+        // Re-probe privileges (e.g. user went to KernelSU/Magisk/APatch manager to grant root,
+        // or authorized Shizuku/Dhizuku externally).
+        //
+        // Gated on isReady, which is the difference between "probe again" and "probe twice".
+        // PrivilegeManager starts its first probe from its own init, i.e. from
+        // ThorApplication.onCreate, so on a cold start that probe is still in flight when the
+        // first onResume lands — refreshing here would bump the trigger and buy a second full
+        // root/Shizuku/Dhizuku sweep for an answer already on its way. That is the duplicate
+        // c86aa565 ("perf(privilege): one root probe per cold start") removed. isReady latches
+        // true on the first emission and never goes back, so every *later* resume — the ones
+        // where the user actually did go and grant something — still re-probes.
+        if (privilegeManager.state.value.isReady) {
+            privilegeManager.refresh()
+        }
         if (hasRequestedShizuku) return
         lifecycleScope.launch {
             val privileges = privilegeManager.state.first { it.isReady }

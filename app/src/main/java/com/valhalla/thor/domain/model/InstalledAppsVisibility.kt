@@ -98,7 +98,7 @@ fun installedAppsPermissionState(
     else -> InstalledAppsPermission.Denied
 }
 
-/** Why a scan was not believed, in the order [scanVerdict] tests for them. */
+/** Why a scan was not believed. The first three are the order [scanVerdict] tests for them. */
 enum class RetainReason {
     /** The scan came back with nothing at all. */
     EmptyScan,
@@ -108,6 +108,17 @@ enum class RetainReason {
 
     /** The scan lost more than half the cached rows in one go. */
     Collapsed,
+
+    /**
+     * The scan had to fall back to weaker `getInstalledPackages` flags to see anything at all.
+     *
+     * Not one of [scanVerdict]'s rules — the caller knows it dropped `MATCH_UNINSTALLED_PACKAGES`
+     * and says so, because no rule here could infer it. A flags-0 query is *by construction* blind
+     * to packages whose per-user `FLAG_INSTALLED` bit is clear, which is exactly what an
+     * uninstall-frozen app is, so "absent from this scan" carries no information about those rows
+     * however healthy the scan otherwise looks.
+     */
+    VisibilityFallback,
 }
 
 /** Whether a package scan is trustworthy enough to prune the cache against. */

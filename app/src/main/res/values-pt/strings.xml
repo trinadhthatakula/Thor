@@ -69,6 +69,7 @@
     <string name="no">Não</string>
     <string name="done">Concluído</string>
     <string name="close">Fechar</string>
+    <string name="open_app">Abrir</string>
     <string name="installed_label">INSTALADA</string>
     <string name="new_version_label">NOVA VERSÃO</string>
     <string name="version_prefix">Versão: </string>

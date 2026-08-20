@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import com.valhalla.superuser.Shell
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.rootservice.IThorRootService
@@ -19,12 +20,14 @@ import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
 import com.valhalla.thor.data.source.local.clearCachePaths
 import com.valhalla.thor.data.source.local.forceStopCommand
+import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.setAppEnabledCommand
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
@@ -251,8 +254,14 @@ class RootSystemGateway(
         }
     }
 
-    // A root check is strictly asynchronous. Blocking the thread for this is unacceptable.
+    // A root check is strictly asynchronous. Invalidate any cached non-root shell so fresh su grants are recognized.
     override suspend fun isRootAvailable(): Boolean {
+        try {
+            val cached = Shell.cachedShell
+            if (cached != null && !cached.isRoot) {
+                cached.close()
+            }
+        } catch (_: Throwable) {}
         return shellRepository.isRootGranted()
     }
 
@@ -1330,7 +1339,13 @@ class RootSystemGateway(
             ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to grant on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
-        return runCommand("pm grant --user $userId $escapedPackage $escapedPerm")
+        val res = runCommand("pm grant --user $userId $escapedPackage $escapedPerm")
+        if (res.isSuccess && permissionName == GET_INSTALLED_APPS_PERMISSION) {
+            installedAppsAppOpGrantCommands(escapedPackage, userId).forEach { cmd ->
+                runCommand(cmd)
+            }
+        }
+        return res
     }
 
     override suspend fun revokePermission(

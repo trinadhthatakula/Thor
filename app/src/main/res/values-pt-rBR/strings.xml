@@ -67,6 +67,8 @@
     <string name="clear_all_cache_done_unmeasured">Concluído. O Thor não conseguiu medir quanto espaço isso liberou — conceda a ele acesso ao uso nas Configurações para ver o valor da próxima vez.</string>
     <string name="system_apps">Aplicativos do sistema</string>
     <string name="active">Ativo</string>
+    <string name="close">Fechar</string>
+    <string name="open_app">Abrir</string>
     <string name="frozen">Congelado</string>
     <string name="suspended">Suspenso</string>
     <string name="privilege_check_desc">O Thor precisa de acesso Root, Shizuku ou Dhizuku para funcionar corretamente.\n\nConceda o acesso no seu aplicativo de gerenciamento e toque em Atualizar.</string>

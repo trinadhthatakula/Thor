@@ -85,6 +85,7 @@ import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.presentation.widgets.ScrollToTopOnChange
 import org.koin.androidx.compose.koinViewModel
 
 /** Sentinel id for "the editor is open on a profile that does not exist yet". */
@@ -368,6 +369,11 @@ fun FreezerScreen(
                 } else if (state.isGrid) {
                     val metrics = gridMetricsFor(state.gridDensity)
                     val gridState = rememberLazyGridState()
+
+                    ScrollToTopOnChange(state.searchQuery, state.appListType) {
+                        gridState.scrollToItem(0)
+                    }
+
                     // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to
                     // null for states that drive no indicator; both lazy states override it with a
                     // real one, so the null branch is unreachable today. Branching beats `!!` — a
@@ -407,6 +413,11 @@ fun FreezerScreen(
                     }
                 } else {
                     val listState = rememberLazyListState()
+
+                    ScrollToTopOnChange(state.searchQuery, state.appListType) {
+                        listState.scrollToItem(0)
+                    }
+
                     val listScrollbar = listState.scrollIndicatorState?.let {
                         Modifier.nonInteractiveScrollbar(
                             state = it,
