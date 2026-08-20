@@ -121,8 +121,17 @@ class ReorderableLazyListState(
         autoScrollJob = scope.launch { runAutoScroll() }
     }
 
-    fun onDrag(dragAmount: Float) {
-        if (draggingItemKey == null) return
+    /**
+     * Moves the dragged card by [dragAmount], if [key] is the one holding the drag.
+     *
+     * Keyed for the same reason [finishDrag] is, and it is the same bug: a handle whose
+     * [onDragStart] was turned away still has a live gesture detector, and a bare
+     * `draggingItemKey == null` check passes for it — so a second finger anywhere in the list
+     * steered the *first* finger's card, at double speed when both moved together. The owner
+     * check is the whole guard; a rejected gesture contributes nothing until it starts its own.
+     */
+    fun onDrag(key: Any, dragAmount: Float) {
+        if (draggingItemKey != key) return
         trackDragDirection(dragAmount)
         draggingItemOffset += dragAmount
         // Nothing else this pass if a swap happened: `settleDropTarget` has already taken the slot
@@ -340,7 +349,7 @@ fun Modifier.dragHandle(
         onDragCancel = { state.onDragCancel(key) },
         onVerticalDrag = { change, dragAmount ->
             change.consume()
-            state.onDrag(dragAmount)
+            state.onDrag(key, dragAmount)
         }
     )
 }
