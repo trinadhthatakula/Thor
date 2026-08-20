@@ -29,7 +29,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
@@ -133,6 +136,17 @@ class HomeViewModel(
 
     init {
         loadDashboardData()
+
+        viewModelScope.launch {
+            privilegeManager.state
+                .map { it.active to it.hasAnyPrivilege }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    AppScanRevision.bump()
+                    loadDashboardData()
+                }
+        }
     }
 
     fun loadDashboardData() {
