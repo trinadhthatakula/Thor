@@ -367,11 +367,15 @@ fun AppListScreen(
                     }
                     // Deliberately no `selectedPackageForSheet = null` here. AppInfoSheet owns its
                     // own dismissal and already calls onDismiss() for every terminal action (launch,
-                    // freeze, uninstall, clear data, fix store); the rest — suspend, force-stop,
-                    // clear cache, share, system settings — are meant to leave the sheet up so you
-                    // can see the result and keep going. Clearing unconditionally would close it for
-                    // those too, and would do it by dropping the composable, so there'd be no exit
-                    // animation either.
+                    // freeze, uninstall, clear data, fix store, manage permissions); the rest —
+                    // suspend, force-stop, clear cache, share, system settings — are meant to leave
+                    // the sheet up so you can see the result and keep going. Clearing
+                    // unconditionally would close it for those too, and would do it by dropping the
+                    // composable, so there'd be no exit animation either.
+                    //
+                    // Manage permissions belongs in the first list and was missing from it: the
+                    // action is a destination push (ThorRoute.PermissionManager), and a sheet left
+                    // standing behind a pushed screen re-materialises on the way back.
                 },
                 // No dismissal here, unlike the Freezer tab: this list is the whole scan, so the app
                 // stays in it either way, and the selection resolves against allUserApps /
