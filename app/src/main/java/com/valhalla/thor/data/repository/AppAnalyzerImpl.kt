@@ -21,6 +21,7 @@ import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
@@ -105,26 +106,33 @@ class AppAnalyzerImpl(
                     val src = path.escapeShellArg()
                     val dst = tmpPath.escapeShellArg()
                     val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
-                    val res = systemRepository.executeShellCommand(cmd).getOrNull()
-                    if (res != null && res.first == 0) {
+                    // Uncancellable, and hoisted outside the branches so every exit passes through
+                    // it: `cat` can have produced the file even when this coroutine is cancelled
+                    // before the call returns, and a `finally` whose body is a suspend call never
+                    // executes once cancellation is in progress — it throws at the first suspension
+                    // point instead. `ArchiveOrphanSweeper` sweeps `cacheDir`,
+                    // `externalCacheDir/obb_out` and the SAF ledger but not `/data/local/tmp`, so
+                    // what is left there is a full-size, `chmod 666` copy of the user's package
+                    // that nothing in the app can reclaim.
+                    try {
+                        val res = systemRepository.executeShellCommand(cmd).getOrNull()
                         val tmpFile = File(tmpPath)
-                        if (tmpFile.exists() && tmpFile.length() > 0) {
-                            try {
-                                tmpFile.inputStream().use { input ->
-                                    FileOutputStream(bundleFile).use { output ->
-                                        input.copyTo(output)
-                                    }
+                        if (res != null && res.first == 0 &&
+                            tmpFile.exists() && tmpFile.length() > 0
+                        ) {
+                            tmpFile.inputStream().use { input ->
+                                FileOutputStream(bundleFile).use { output ->
+                                    input.copyTo(output)
                                 }
-                                readMetadata(bundleFile, apkFile, displayName)
-                            } finally {
-                                systemRepository.executeShellCommand("rm -f $dst")
                             }
+                            readMetadata(bundleFile, apkFile, displayName)
                         } else {
-                            systemRepository.executeShellCommand("rm -f $dst")
                             Result.failure(Exception("Could not open the selected file."))
                         }
-                    } else {
-                        Result.failure(Exception("Could not open the selected file."))
+                    } finally {
+                        withContext(NonCancellable) {
+                            systemRepository.executeShellCommand("rm -f $dst")
+                        }
                     }
                 } else {
                     Result.failure(Exception("Could not open the selected file."))

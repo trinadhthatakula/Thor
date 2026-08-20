@@ -34,6 +34,8 @@ import java.io.FileOutputStream
 import java.util.UUID
 import java.util.zip.ZipFile
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 data class ArchiveIconModel(
@@ -157,40 +159,47 @@ class ArchiveIconFetcher(
                     }
                 } else {
                     val path = uri.path
-                    if (!path.isNullOrBlank()) {
-                        val tmpPath = "/data/local/tmp/thor_ico_$token"
-                        val src = path.escapeShellArg()
-                        val dst = tmpPath.escapeShellArg()
-                        val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
+                    if (path.isNullOrBlank()) return null
+                    val tmpPath = "/data/local/tmp/thor_ico_$token"
+                    val src = path.escapeShellArg()
+                    val dst = tmpPath.escapeShellArg()
+                    val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
+                    // One `finally` for every exit, and an uncancellable one. The `cat` can have
+                    // produced the file even when this coroutine is cancelled before the call
+                    // returns, so a removal placed on the success paths only — as this was — never
+                    // runs on the path that matters. Coil cancels these fetches routinely as the
+                    // archive list scrolls, and `ArchiveOrphanSweeper` sweeps `cacheDir`,
+                    // `externalCacheDir/obb_out` and the SAF ledger but *not* `/data/local/tmp`, so
+                    // a skipped `rm -f` strands a full-size, `chmod 666` copy of the user's archive
+                    // where nothing in the app can ever reclaim it. `NonCancellable` alone, without
+                    // a dispatcher: `executeShellCommand` makes its own `ioDispatcher` hop.
+                    try {
                         val res = systemRepository.executeShellCommand(cmd).getOrNull()
-                        if (res != null && res.first == 0) {
-                            val tmpFile = File(tmpPath)
-                            if (tmpFile.exists() && tmpFile.length() > 0) {
-                                try {
-                                    tmpFile.inputStream().use { inputStream ->
-                                        FileOutputStream(tempStaging).use { outputStream -> inputStream.copyTo(outputStream) }
-                                    }
-                                    staged = true
-                                    tempStaging
-                                } catch (e: Throwable) {
-                                    tempStaging.delete()
-                                    throw e
-                                } finally {
-                                    systemRepository.executeShellCommand("rm -f $dst")
-                                }
-                            } else {
-                                systemRepository.executeShellCommand("rm -f $dst")
-                                return null
+                        if (res == null || res.first != 0) return null
+                        val tmpFile = File(tmpPath)
+                        if (!tmpFile.exists() || tmpFile.length() <= 0) return null
+                        try {
+                            tmpFile.inputStream().use { inputStream ->
+                                FileOutputStream(tempStaging).use { outputStream -> inputStream.copyTo(outputStream) }
                             }
-                        } else {
-                            return null
+                        } catch (e: Throwable) {
+                            tempStaging.delete()
+                            throw e
                         }
-                    } else {
-                        return null
+                        staged = true
+                        tempStaging
+                    } finally {
+                        withContext(NonCancellable) {
+                            systemRepository.executeShellCommand("rm -f $dst")
+                        }
                     }
                 }
             }
         } catch (e: CancellationException) {
+            // Above the rethrow, not below it: a cancellation arriving here leaves the same staged
+            // copy behind as any other failure, and `File.delete()` is a blocking call that still
+            // completes while cancellation is in progress.
+            tempStaging.delete()
             throw e
         } catch (_: Exception) {
             tempStaging.delete()
