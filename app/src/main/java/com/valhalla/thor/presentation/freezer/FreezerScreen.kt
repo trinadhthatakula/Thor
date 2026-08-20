@@ -368,6 +368,11 @@ fun FreezerScreen(
                 } else if (state.isGrid) {
                     val metrics = gridMetricsFor(state.gridDensity)
                     val gridState = rememberLazyGridState()
+
+                    LaunchedEffect(state.searchQuery) {
+                        gridState.scrollToItem(0)
+                    }
+
                     // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to
                     // null for states that drive no indicator; both lazy states override it with a
                     // real one, so the null branch is unreachable today. Branching beats `!!` — a
@@ -407,6 +412,11 @@ fun FreezerScreen(
                     }
                 } else {
                     val listState = rememberLazyListState()
+
+                    LaunchedEffect(state.searchQuery) {
+                        listState.scrollToItem(0)
+                    }
+
                     val listScrollbar = listState.scrollIndicatorState?.let {
                         Modifier.nonInteractiveScrollbar(
                             state = it,

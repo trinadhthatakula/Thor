@@ -261,6 +261,12 @@ fun AppList(
                             multiSelection = toggleSelection(multiSelection, app)
                         }
                     },
+                    sortBy = sortBy,
+                    sortOrder = sortOrder,
+                    selectedFilter = selectedFilter,
+                    filterType = filterType,
+                    appListType = appListType,
+                    searchQuery = searchQuery,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope
                 )
@@ -561,6 +567,12 @@ private fun AppListContent(
     selectedPackageNames: Set<String>,
     onAppClick: (AppInfo) -> Unit,
     onAppLongClick: (AppInfo) -> Unit,
+    sortBy: SortBy = SortBy.NAME,
+    sortOrder: SortOrder = SortOrder.ASCENDING,
+    selectedFilter: String? = null,
+    filterType: FilterType = FilterType.Source,
+    appListType: AppListType = AppListType.USER,
+    searchQuery: String = "",
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
@@ -577,6 +589,11 @@ private fun AppListContent(
     if (isGrid) {
         val metrics = gridMetricsFor(gridDensity)
         val gridState = rememberLazyGridState()
+
+        LaunchedEffect(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
+            gridState.scrollToItem(0)
+        }
+
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = metrics.minCellSize),
             state = gridState,
@@ -599,6 +616,11 @@ private fun AppListContent(
         }
     } else {
         val listState = rememberLazyListState()
+
+        LaunchedEffect(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
+            listState.scrollToItem(0)
+        }
+
         LazyColumn(
             state = listState,
             contentPadding = padding,
