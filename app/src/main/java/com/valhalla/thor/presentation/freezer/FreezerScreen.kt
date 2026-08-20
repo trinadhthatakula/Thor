@@ -593,7 +593,12 @@ fun FreezerScreen(
             onAppAction = { action ->
                 // No clears below, same as the Apps tab: AppInfoSheet calls onDismiss() itself for
                 // every terminal action, and the rest — suspend, force-stop, clear cache, share,
-                // settings, permissions — are meant to leave the sheet up so you can see the result.
+                // settings — are meant to leave the sheet up so you can see the result.
+                //
+                // Permissions used to be listed as one of those, which is what hid the bug: it is
+                // the one action in that group that pushes a destination
+                // (ThorRoute.PermissionManager, added to freezerBackStack in MainScreen), so the
+                // sheet has to go with it. AppInfoSheet dismisses on it now.
                 // Freezing and unfreezing don't touch membership, so neither can pull this app out
                 // of state.freezerApps.
                 when (action) {

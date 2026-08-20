@@ -122,6 +122,14 @@ fun AppInfoActionsCustomizationScreen(
 
     var showResetConfirmation by rememberSaveable { mutableStateOf(false) }
 
+    // An order that arrived mid-drag, held until the finger lifts. Deferred rather than dropped:
+    // the effect below is keyed on `currentOrder`, so a value it declines to apply is not seen
+    // again, and the case where that bites is the one that leaves no trace — a drag that settles
+    // back where it started writes nothing, `currentOrder` never changes again, and `localActions`
+    // stays diverged from what is actually stored until the screen is left. Any later drag then
+    // persists that stale snapshot over the change it never applied.
+    var deferredOrder by remember { mutableStateOf<List<AppInfoActionId>?>(null) }
+
     val reorderState = rememberReorderableLazyListState(
         listState = listState,
         onMove = { fromKey, toKey ->
@@ -133,6 +141,16 @@ fun AppInfoActionsCustomizationScreen(
             }
         },
         onDragCompleted = {
+            // Whatever was deferred during this drag is older than what the drag just built, so it
+            // is dropped rather than applied: the only writers of this preference are this screen,
+            // and none of them writes optimistically, so every value that can reach the deferral is
+            // a snapshot from before the finger went down. Cleared here and not in the effect below
+            // because `finishDrag` calls this synchronously, before the `draggingItemKey` change
+            // recomposes — so the effect sees `null` and leaves the list alone. Left set, it applied
+            // that older snapshot *after* this write, and a reorder the user had just finished
+            // visibly snapped back until its own echo returned. A drag that moved nothing never
+            // reaches here (`movedDuringGesture`), which is the case the deferral exists for.
+            deferredOrder = null
             viewModel.setAppInfoActionsOrder(localActions.toList())
         }
     )
@@ -151,9 +169,28 @@ fun AppInfoActionsCustomizationScreen(
 
     // Synchronize local snapshot with repository when not in active drag
     LaunchedEffect(currentOrder) {
-        if (reorderState.draggingItemKey == null && localActions.toList() != currentOrder) {
+        if (reorderState.draggingItemKey != null) {
+            deferredOrder = currentOrder
+        } else if (localActions.toList() != currentOrder) {
+            deferredOrder = null
             localActions.clear()
             localActions.addAll(currentOrder)
+        }
+    }
+
+    // Keyed on the drag, and doing nothing unless something was actually deferred: the drag's own
+    // completion writes `localActions` back through the view model, and that write takes a few
+    // frames to return through `prefs`, so an unconditional re-sync here would flash the pre-drag
+    // order in the window between the two. `onDragCompleted` has already cleared the deferral in
+    // that case, so what reaches here is a drag that moved nothing — the one drag whose own list is
+    // not newer than what arrived.
+    LaunchedEffect(reorderState.draggingItemKey) {
+        if (reorderState.draggingItemKey != null) return@LaunchedEffect
+        val pending = deferredOrder ?: return@LaunchedEffect
+        deferredOrder = null
+        if (localActions.toList() != pending) {
+            localActions.clear()
+            localActions.addAll(pending)
         }
     }
 

@@ -15,6 +15,7 @@ import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
 import com.valhalla.thor.data.source.local.installCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
+import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
@@ -493,10 +494,14 @@ class ShizukuSystemGateway(
                 .map { ShizukuHelper.execute(it) }
                 .any { it.first == 0 }
 
-            // Either route opening is a success; only both failing is a failure, and then the
-            // grant's own diagnostic is the useful one. The caller does not trust this either way
-            // — SelfPermissionGranter re-reads checkSelfPermission — so this is for the log.
-            if (result.first == 0 || appOpTook) Result.success(Unit) else grantFailure()
+            // The report follows the gate that actually opened, for every package and not just
+            // Thor's own — RootSystemGateway.grantPermission holds the reasoning. Short version:
+            // this method is not self-only, and restricting the fold to self-grants left a
+            // third-party grant on a MIUI-class ROM writing the app-op, reporting failure, and
+            // leaving the row OFF, from where the screen can only ever grant again — so nothing
+            // could reach revokePermission to close the op it had just opened.
+            if (result.first == 0 || appOpTook) Result.success(Unit)
+            else grantFailure()
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -515,6 +520,18 @@ class ShizukuSystemGateway(
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
             val result = ShizukuHelper.execute("pm revoke --user $userId $escapedPackageName $escapedPermissionName")
+
+            // The revoke half of the parallel route: the app-op grant outlives `pm revoke`, so a
+            // revoke that only ran `pm revoke` reported success while package visibility stayed
+            // open, and nothing else in the app could close it. Issued whatever the revoke
+            // returned, and deliberately not folded into the result — all three resets failing is
+            // the ordinary outcome on any device that does not define this op, so reading that as a
+            // failed revoke would report one on every AOSP device. `pm revoke` stays the verdict.
+            if (permissionName == GET_INSTALLED_APPS_PERMISSION) {
+                installedAppsAppOpRevokeCommands(escapedPackageName, userId)
+                    .forEach { ShizukuHelper.execute(it) }
+            }
+
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {

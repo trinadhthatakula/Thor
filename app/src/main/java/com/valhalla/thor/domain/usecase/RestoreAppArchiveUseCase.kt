@@ -5,6 +5,8 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.backup.ArchiveIntegrityException
+import com.valhalla.thor.data.repository.MAX_STAGED_BUNDLE_BYTES
+import com.valhalla.thor.data.repository.copyAtMostTo
 import com.valhalla.thor.domain.model.ArchiveCompression
 import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveMember
@@ -444,7 +446,8 @@ internal class RestoreAppArchiveUseCase(
 
         /**
          * The header declares a bundle this run could not produce: the entry is missing from the
-         * container, reading it threw, or Thor's cache could not hold the copy. [reason] says which.
+         * container, reading it threw, the entry expanded past [MAX_STAGED_BUNDLE_BYTES], or Thor's
+         * cache could not hold the copy. [reason] says which.
          */
         data class Unreadable(val reason: String) : BundleStaging
     }
@@ -466,22 +469,65 @@ internal class RestoreAppArchiveUseCase(
                     "this archive says it holds ${declared.fileName}, but that file is not in it"
                 )
             val out = gateway.stagingFile(THORBAK_BUNDLE_ENTRY)
-            try {
-                entry.use { input -> out.outputStream().use(input::copyTo) }
+            // Bounded because this is a deflated entry out of a container the user did not author, so
+            // its expanded size is the container's to choose — and it is the one member written before
+            // any verifier or passphrase check (`invoke` stages the bundle first, and an install-first
+            // restore never asks for a credential), so it is the only restore path where a caller who
+            // proved nothing decides how many bytes Thor writes. The header's `declared.bytes` is not
+            // the bound: it comes out of the same container.
+            //
+            // `MAX_STAGED_BUNDLE_BYTES` and not `MAX_EXTRACTED_TOTAL_BYTES`, which this first used on
+            // the reasoning that `extractEntries` bounds the same content downstream. It does not
+            // bound all of it: that budget covers the resolved install set, and the expansion files in
+            // the same `.xapk` are unpacked against a separate, larger one precisely because a game's
+            // OBB set legitimately reaches gigabytes. The APK-only figure therefore refused a
+            // Thor-written XAPK backup of a large game, and refused it here — before the signer check,
+            // before any class is restored, and on the install-first path there is no toggle to
+            // decline the game data and get the rest.
+            val copied = try {
+                entry.use { input ->
+                    out.outputStream().use { output ->
+                        input.copyAtMostTo(output, MAX_STAGED_BUNDLE_BYTES)
+                    }
+                }
             } catch (e: Throwable) {
                 // Delete here rather than in `getOrElse`, where `out` is out of scope: a half-copied
                 // `.xapk` left in the cache is what the installer would pick up on the next attempt.
-                out.delete()
+                discardPartial(out)
                 throw e
+            }
+            if (copied == null) {
+                // Same reason as the catch above — `copyAtMostTo` leaves the partial output for its
+                // caller to discard, and here the installer is what would otherwise find it.
+                discardPartial(out)
+                return BundleStaging.Unreadable(
+                    "this archive's app bundle is larger than " +
+                        "${MAX_STAGED_BUNDLE_BYTES / (1024 * 1024 * 1024)} GB"
+                )
             }
             BundleStaging.Staged(out)
         }.getOrElse {
             // `runCatching` catches `Throwable`, so a cancellation would otherwise come back as a
-            // failed restore instead of a cancelled one. `copyTo` has no suspension point today; the
-            // rethrow is here so that stays true the moment it is chunked or made suspending.
+            // failed restore instead of a cancelled one. `copyAtMostTo` has no suspension point today;
+            // the rethrow is here so that stays true the moment it is chunked or made suspending.
             if (it is CancellationException) throw it
             Logger.e(TAG, "could not stage the app bundle", it)
             BundleStaging.Unreadable("this archive's app bundle could not be unpacked: ${it.message}")
+        }
+    }
+
+    /**
+     * Drop a partially-written bundle, and say so when the filesystem refuses.
+     *
+     * Not fatal, and deliberately not an error: `stagingFile` hands back the same path every time, so
+     * the next restore truncates this file before it writes and the launch sweep reclaims it either
+     * way — a survivor is wasted cache, never a bundle a later install could mistake for a whole one.
+     * Silent, though, and a staging directory that only ever grows is what a bug report describes as
+     * "Thor is using 3 GB".
+     */
+    private fun discardPartial(out: File) {
+        if (!out.delete() && out.exists()) {
+            Logger.w(TAG, "could not delete the partial bundle ${out.name}; the launch sweep will reclaim it")
         }
     }
 

@@ -64,6 +64,21 @@ internal fun isSafeStagingName(name: String): Boolean =
 internal fun isInsideStagingRoot(outCanonical: String, stagingCanonical: String): Boolean =
     outCanonical.startsWith("$stagingCanonical/")
 
+/**
+ * The volume a staged tar lands on: `cacheDir` when the privileged runner can read Thor's private data
+ * directory, `externalCacheDir` when it cannot (§7.1). [AppDataArchiveGatewayImpl.stagingRoot]'s KDoc
+ * owns the reasoning and the cost.
+ *
+ * A shared function rather than a line inside `stagingRoot`, because the choice has a second reader:
+ * `ArchiveBackupWorker` measures §7.4's free space, and measuring `cacheDir` while the tar is written
+ * to external storage reports a different volume's headroom. Two copies of one routing rule is exactly
+ * how that happened — the worker's copy said the external route did not exist — so there is one.
+ *
+ * Null only if the platform returns neither directory; both callers read that as "unmeasurable".
+ */
+internal fun archiveStagingVolume(context: Context, privateDataCapable: Boolean): File? =
+    if (privateDataCapable) context.cacheDir else context.externalCacheDir ?: context.cacheDir
+
 @Single(binds = [AppDataArchiveGateway::class])
 internal class AppDataArchiveGatewayImpl(
     private val context: Context,
@@ -83,19 +98,23 @@ internal class AppDataArchiveGatewayImpl(
      * Resolves and creates the single staging directory. All [stagingFile] calls land here, so the
      * canonical path used in [tarClass]'s traversal guard is always the same base.
      *
-     * §7.1 provides for an `externalCacheDir` fallback when internal cache is unavailable. This
-     * implementation does not provide one (§14 limitation). A staged tar is plaintext app data;
-     * external cache is on the shared external storage volume and is world-readable on some device
-     * configurations. Writing plaintext app data there would defeat the exact property the rest of
-     * this feature is built around. If `cacheDir` is unavailable the job will fail loudly rather than
-     * silently downgrade to a less secure location.
+     * §7.1's `externalCacheDir` route, and the condition on it is a *capability*, not availability.
+     * `cacheDir` is `/data/data/<thor>` at mode 0700, which the privileged runner has to be able to
+     * read for a staged tar to be produced at all: a root shell can, a Shizuku shell at uid 2000
+     * cannot. [AppDataProbe.probePrivateDataCapability] is that question, and answering it `false`
+     * is what moves staging to `externalCacheDir` — the same reason `AppBundleBuilderImpl` stages
+     * expansion files there.
+     *
+     * Say the cost plainly, because this KDoc used to claim the downgrade did not exist: a staged tar
+     * is plaintext app data, and on external storage it is readable by anything holding
+     * `READ_EXTERNAL_STORAGE` on the device configurations where that still grants broad access. The
+     * exposure lasts as long as the file does, which is why the staged tar is deleted on every exit
+     * from [tarClass] under `NonCancellable` and why [ArchiveOrphanSweeper] sweeps this directory
+     * under *both* roots — a sweep of `cacheDir` alone would leave exactly the copies this branch
+     * writes. Pair any further staging root with a sweeper rule in the same change.
      */
     private suspend fun stagingRoot(): File = withContext(ioDispatcher) {
-        val rootDir = if (probe.probePrivateDataCapability()) {
-            context.cacheDir
-        } else {
-            context.externalCacheDir ?: context.cacheDir
-        }
+        val rootDir = archiveStagingVolume(context, probe.probePrivateDataCapability())
         File(rootDir, AppDataArchiveStagingDir.NAME).also { it.mkdirs() }
     }
 

@@ -10,6 +10,7 @@ import androidx.core.net.toUri
 import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
@@ -37,8 +38,6 @@ import java.util.zip.ZipException
  * A [ZipException] from the fd path means the bytes were readable but are not a zip; the copy
  * fallback would fail identically, so that case gives up immediately.
  */
-import com.valhalla.thor.domain.repository.SystemRepository
-
 @Single(binds = [ArchiveSourceFactory::class])
 class UriArchiveSourceFactory(
     private val context: Context,
@@ -136,18 +135,25 @@ class UriArchiveSourceFactory(
                     val src = path.escapeShellArg()
                     val dst = tmpPath.escapeShellArg()
                     val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
-                    val res = systemRepository.executeShellCommand(cmd).getOrNull()
-                    if (res != null && res.first == 0) {
-                        val tmpFile = File(tmpPath)
-                        if (tmpFile.exists() && tmpFile.length() > 0) {
-                            try {
+                    // One uncancellable `finally` covering every exit, replacing two removals that
+                    // between them missed the path that matters: `cat` can have produced the file
+                    // even when this coroutine is cancelled before the call returns, and a `finally`
+                    // whose body is a suspend call is a no-op once cancellation is in progress.
+                    // `ArchiveOrphanSweeper` does not sweep `/data/local/tmp`, so anything left
+                    // there is a full-size, `chmod 666` copy of the user's archive that nothing in
+                    // the app can reclaim. Same shape as `ArchiveIconFetcher.extractIcon`.
+                    try {
+                        val res = systemRepository.executeShellCommand(cmd).getOrNull()
+                        if (res != null && res.first == 0) {
+                            val tmpFile = File(tmpPath)
+                            if (tmpFile.exists() && tmpFile.length() > 0) {
                                 tmpFile.inputStream().use { input ->
                                     copy.outputStream().use(input::copyTo)
                                 }
-                            } finally {
-                                systemRepository.executeShellCommand("rm -f $dst")
                             }
-                        } else {
+                        }
+                    } finally {
+                        withContext(NonCancellable) {
                             systemRepository.executeShellCommand("rm -f $dst")
                         }
                     }

@@ -135,6 +135,16 @@ class ObbExpansionZipTest {
     }
 
     @Test
+    fun `the staged bundle bound admits a full apk set beside a full expansion set`() {
+        // The corollary of the test above, and the mistake it does not catch on its own: one `.xapk`
+        // member holds an install set *and* an expansion set, each charged against its own budget
+        // when that member is unpacked. A staging bound below their sum refuses archives Thor itself
+        // writes — a large game's XAPK backup — and refuses them during staging, which runs before a
+        // single data class is restored.
+        assertTrue(MAX_STAGED_BUNDLE_BYTES >= MAX_EXTRACTED_TOTAL_BYTES + MAX_EXPANSION_TOTAL_BYTES)
+    }
+
+    @Test
     fun `too many expansions refuses without creating the staging directory`() {
         // The byte budget does not bound the entry count: a manifest-free archive has every *.obb
         // entry treated as an expansion, and a million one-byte entries costs a million inodes and a

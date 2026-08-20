@@ -68,6 +68,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -115,6 +116,14 @@ fun BackupRestoreHubScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showInstallerSheet by remember { mutableStateOf(false) }
+
+    // The row does not disappear when a delete is refused, so something has to say why it did not.
+    LaunchedEffect(state.deleteFailed) {
+        if (state.deleteFailed) {
+            Toast.makeText(context, R.string.unknown_error_occurred, Toast.LENGTH_SHORT).show()
+            viewModel.consumeDeleteFailure()
+        }
+    }
 
     val handleRestoreOrInstall = { item: BackupArchiveItem ->
         if (item.kind == BackupArchiveKind.DATA_BACKUP) {

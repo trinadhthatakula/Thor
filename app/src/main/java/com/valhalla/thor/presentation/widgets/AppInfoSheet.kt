@@ -270,7 +270,20 @@ fun AppInfoSheet(
                         )
                     },
                     onForceStop = { onAppAction(AppClickAction.Kill(appInfo)) },
-                    onManagePermissions = { onAppAction(AppClickAction.ManagePermissions(appInfo)) },
+                    // Dismisses, unlike the in-place actions either side of it, because both hosts
+                    // turn this one into a *destination push* — `MainScreen` adds
+                    // ThorRoute.PermissionManager to the Apps or Freezer back stack. Left up, the
+                    // sheet survives the forward navigation inside the entry's saveable state
+                    // holder, and Nav3's predictive back *seeks* the pop, so it re-composes the
+                    // previous scene at the first few percent of the gesture: the sheet's dialog is
+                    // a focusable full-screen window, so adding it mid-gesture steals focus,
+                    // cancels the in-flight back, and Nav3 animates forward again — the flicker
+                    // users reported. `onSystemSettings` above is not the same case; it leaves for
+                    // an external activity and pushes nothing here.
+                    onManagePermissions = {
+                        onAppAction(AppClickAction.ManagePermissions(appInfo))
+                        onDismiss()
+                    },
                     onToggleFreezerMembership = onToggleFreezerMembership,
                     freezerRemoveLabelRes = freezerRemoveLabelRes,
                     onClearCache = { onAppAction(AppClickAction.ClearCache(appInfo)) },

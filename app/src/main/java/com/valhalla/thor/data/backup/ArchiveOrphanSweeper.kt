@@ -17,9 +17,11 @@ import java.io.File
  * §10's launch sweep, plus §8.5's interruption report.
  *
  * Five things get cleaned, by three different rules:
- * 1. **Thor's own staging directory** under `cacheDir` — emptied wholesale. Nothing but staged tars
- *    and staged bundles is ever written there, and the Odin shell dies with the process, so anything
- *    surviving a restart is garbage.
+ * 1. **Thor's own staging directory** under `cacheDir` *and* under `externalCacheDir` — emptied
+ *    wholesale. Which of the two the gateway used is a runtime decision it makes per call (see
+ *    [sweepStaging]), so both are swept unconditionally. Nothing but staged tars and staged bundles
+ *    is ever written there, and the Odin shell dies with the process, so anything surviving a
+ *    restart is garbage.
  * 2. **The bundle build tree** `ArchiveBackupWorker` hands to `AppBundleBuilder` — also emptied
  *    wholesale, and for the same reason. Not in the plan's list of three; see the class KDoc on
  *    [ArchiveBundleCacheDir]. The worker deletes only the `.xapk` it was handed back, so a kill
@@ -55,8 +57,9 @@ import java.io.File
  * `compileSafety` turns into a build failure. Bound by a `@Single` function in `di/Modules.kt`.
  *
  * @param externalCacheDir nullable, because `Context.getExternalCacheDir()` is: external storage can
- *   be unmounted or unavailable at launch. Null means target 3 is skipped — the builder could not have
- *   staged anything there either, since it reads the same nullable value.
+ *   be unmounted or unavailable at launch. Null means the external halves of targets 1 and 3 are
+ *   skipped — neither the builder nor the gateway could have staged anything there either, since both
+ *   read the same nullable value.
  */
 class ArchiveOrphanSweeper(
     private val ledger: PartialArchiveLedger,
@@ -86,9 +89,21 @@ class ArchiveOrphanSweeper(
         return SweepReport(interrupted, containers, staged)
     }
 
-    /** The directory survives; only its contents go. See the test that pins this. */
-    private fun sweepStaging(): Int {
-        val staging = File(cacheDir, AppDataArchiveStagingDir.NAME)
+    /**
+     * Both roots, because the gateway picks between them at runtime.
+     *
+     * `AppDataArchiveGatewayImpl.stagingRoot` stages under `cacheDir` when the privileged runner can
+     * read Thor's private data directory and under `externalCacheDir` when it cannot — a Shizuku
+     * shell at uid 2000 cannot write into `/data/data/<thor>` (0700). Sweeping only `cacheDir` left
+     * every plaintext staged tar a killed Shizuku backup produced sitting on shared external
+     * storage, which is both the leak and the worse half of it.
+     *
+     * The directory survives; only its contents go. See the test that pins this.
+     */
+    private fun sweepStaging(): Int = sweepStagingUnder(cacheDir) + sweepStagingUnder(externalCacheDir)
+
+    private fun sweepStagingUnder(root: File?): Int {
+        val staging = File(root ?: return 0, AppDataArchiveStagingDir.NAME)
         val children = staging.listFiles() ?: return 0
         return children.count { it.deleteRecursively() }
     }

@@ -488,6 +488,47 @@ class PerUserCommandsTest {
         assertEquals("appops set --user 10 $pkg 10022 allow", commands[2])
     }
 
+    /**
+     * The revoke exists at all because `pm revoke` does not undo the grant: an app-op left at
+     * `allow` keeps answering `MODE_ALLOWED` after the runtime permission is gone, so package
+     * visibility stayed open while Thor reported the revoke as successful.
+     *
+     * `default`, not `ignore` — asserted rather than implied, because `ignore` is the plausible
+     * wrong answer. It pins the op to hard-denied independently of the permission, and an explicit
+     * app-op mode is not something the ROM's own permission toggle can lift, so a later grant from
+     * Settings would look applied and do nothing. `default` hands the answer back to the platform,
+     * where the accompanying `pm revoke` has already denied the permission.
+     */
+    @Test
+    fun `the installed apps appops revoke resets the same three ops to default`() {
+        val commands = installedAppsAppOpRevokeCommands(pkg, 10)
+        assertEquals(3, commands.size)
+        commands.forEach { cmd ->
+            assertEquals(10, userArgOf(cmd))
+            assertTrue("$cmd does not reset the op to the platform default", cmd.endsWith(" default"))
+            assertFalse("$cmd hard-denies the op instead of resetting it", cmd.endsWith(" ignore"))
+        }
+        assertEquals("appops set --user 10 $pkg GET_INSTALLED_APPS default", commands[0])
+        assertEquals("appops set --user 10 $pkg android:get_installed_apps default", commands[1])
+        assertEquals("appops set --user 10 $pkg 10022 default", commands[2])
+    }
+
+    /**
+     * The pair has to name the *same* ops, in the same order, or a revoke leaves whichever spelling
+     * the grant used and the ROM answers to still set to `allow` — the exact defect the revoke was
+     * added to close, reintroduced by a one-line edit to either list. Both builders read the same
+     * private spelling list today; this is what makes that a requirement rather than a coincidence.
+     */
+    @Test
+    fun `grant and revoke cover the same ops in the same order`() {
+        val opOf = { command: String -> command.removePrefix("appops set --user 10 $pkg ").substringBefore(' ') }
+
+        assertEquals(
+            installedAppsAppOpGrantCommands(pkg, 10).map(opOf),
+            installedAppsAppOpRevokeCommands(pkg, 10).map(opOf)
+        )
+    }
+
     // --- the shape of the whole file, not one instance of it ---
 
     /**

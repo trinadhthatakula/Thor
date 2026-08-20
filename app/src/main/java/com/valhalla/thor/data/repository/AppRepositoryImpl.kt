@@ -18,7 +18,6 @@ import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
-import com.valhalla.thor.domain.model.RetainReason
 import com.valhalla.thor.domain.model.ScanVerdict
 import com.valhalla.thor.domain.model.prunableWatchlistRows
 import com.valhalla.thor.domain.model.scanVerdict
@@ -366,17 +365,20 @@ class AppRepositoryImpl(
                     //
                     // A scan that needed the weaker-flags fallback skips the rules entirely: none of
                     // them can see that MATCH_UNINSTALLED_PACKAGES was dropped, and every one of them
-                    // would happily Accept the 300 packages such a scan *does* return.
-                    val verdict = if (usedVisibilityFallback) {
-                        ScanVerdict.Retain(RetainReason.VisibilityFallback)
-                    } else {
-                        scanVerdict(
-                            scannedPackageNames = currentPackageNames,
-                            cachedCount = initialCachedCount,
-                            consecutiveSuspectScans = consecutiveSuspectScans,
-                            permission = installedAppsPermission.state()
-                        )
-                    }
+                    // would happily Accept the 300 packages such a scan *does* return. See
+                    // [scanVerdictFor].
+                    val verdict = scanVerdictFor(
+                        usedVisibilityFallback = usedVisibilityFallback,
+                        scannedPackageNames = currentPackageNames,
+                        cachedCount = initialCachedCount,
+                        consecutiveSuspectScans = consecutiveSuspectScans,
+                        permission = installedAppsPermission.state()
+                    )
+
+                    // Accept resets the tolerance, an ordinary Retain spends one of it, and a
+                    // VisibilityFallback Retain does neither — [nextSuspectScanCount] holds the
+                    // reasoning. Read before the `when` below so both branches see the same rule.
+                    consecutiveSuspectScans = nextSuspectScanCount(consecutiveSuspectScans, verdict)
 
                     // The cached rows this scan did not see and was not allowed to delete. Mapped
                     // through the same AppEntity.toDomain() the initial cache emission above uses,
@@ -384,7 +386,6 @@ class AppRepositoryImpl(
                     var syncCacheSucceeded = true
                     val retained = when (verdict) {
                         ScanVerdict.Accept -> {
-                            consecutiveSuspectScans = 0
                             if (toUpdate.isNotEmpty() || toDelete.isNotEmpty()) {
                                 try {
                                     appDao.syncCache(toUpdate, toDelete)
@@ -408,15 +409,6 @@ class AppRepositoryImpl(
                         }
 
                         is ScanVerdict.Retain -> {
-                            // VisibilityFallback deliberately does not count. The tolerance exists
-                            // to let a *genuinely* shrinking device eventually be believed after
-                            // SUSPECT_SCAN_TOLERANCE agreeing scans; a fallback scan is not evidence
-                            // of shrinkage at all, and spending the budget on it would hand the
-                            // third truncated scan the Accept the guard was built to withhold. Not
-                            // reset either — this scan is no proof the device is healthy.
-                            if (verdict.reason != RetainReason.VisibilityFallback) {
-                                consecutiveSuspectScans++
-                            }
                             Logger.w(
                                 "AppRepository",
                                 "not pruning against this scan (${verdict.reason}): saw " +
@@ -448,12 +440,11 @@ class AppRepositoryImpl(
                     producer.send(currentList + retained)
 
                     // Only now, and only on a scan that was trusted enough to prune against and whose
-                    // cache synchronization succeeded. Moving the key up next to the `forceRefresh`
-                    // read would let a scan that was cancelled mid-loop, or one that ran while package
-                    // visibility was truncated, record a language for rows it never re-mapped — and
-                    // nothing would ever force-refresh them again. Re-mapping twice costs a rescan;
-                    // recording too early costs the stale labels this key exists to prevent.
-                    if (forceRefresh && verdict == ScanVerdict.Accept && syncCacheSucceeded) {
+                    // cache synchronization succeeded — [shouldRecordLabelLocale] holds the rule.
+                    // Moving the key up next to the `forceRefresh` read would let a scan that was
+                    // cancelled mid-loop, or one that ran while package visibility was truncated,
+                    // record a language for rows it never re-mapped.
+                    if (shouldRecordLabelLocale(forceRefresh, verdict, syncCacheSucceeded)) {
                         lastLocale = currentLocale
                         recordLabelLocale(currentLocale)
                     }

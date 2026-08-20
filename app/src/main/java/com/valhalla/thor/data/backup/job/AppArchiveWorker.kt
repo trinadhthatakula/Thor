@@ -7,6 +7,7 @@ import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.repository.archiveStagingVolume
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleCacheDir
@@ -26,6 +27,7 @@ import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.captureName
 import com.valhalla.thor.domain.model.evaluateArchiveRestoreGate
 import com.valhalla.thor.domain.repository.AppBundleBuilder
+import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
@@ -68,6 +70,9 @@ internal class ArchiveBackupWorker(
     private val appRepository: AppRepository,
     private val bundleBuilder: AppBundleBuilder,
     private val systemRepository: SystemRepository,
+    // For [usableStagingBytes] alone — the one question that decides which volume §7.4 is measured
+    // against. Same implementing object as `systemRepository`; a narrow port, see [AppDataProbe].
+    private val dataProbe: AppDataProbe,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
     sheetTargets: JobSheetTargets,
 ) : ThorJobWorker(appContext, params, notifications, registry, sheetTargets) {
@@ -208,13 +213,20 @@ internal class ArchiveBackupWorker(
      * `ObbInstaller.usableBytes` and `AppBundleBuilderImpl`, and the reason #373's cache-clear bug is
      * the cautionary tale attached to obeying that hint.
      *
-     * **`cacheDir` alone, and never the larger of two volumes.** `AppDataArchiveGatewayImpl.stagingRoot`
-     * resolves `File(context.cacheDir, AppDataArchiveStagingDir.NAME)` and has no external fallback —
-     * that is a §14 limitation held on purpose, because a staged tar is plaintext app data and
-     * external cache is world-readable on some device configurations. Measuring the *larger* of the
-     * two therefore reported another volume's free space for a write that only ever lands on this
-     * one, which is precisely how §7.4's gate is defeated: on a phone with a roomy SD card and a full
-     * internal partition it passes every class and the `tar` fills the device.
+     * **The volume staging will actually use — never `cacheDir` unconditionally, and never the larger
+     * of two.** `AppDataArchiveGatewayImpl.stagingRoot` stages under `cacheDir` when the privileged
+     * runner can read `/data/data/<thor>` at mode 0700 and under `externalCacheDir` when it cannot — a
+     * Shizuku shell at uid 2000 cannot — so both readers of that rule go through
+     * [archiveStagingVolume]. This measured `cacheDir` outright while asserting the external route did
+     * not exist, which on a device whose shared storage is a separate volume reported the wrong
+     * partition's headroom; that is precisely how §7.4's gate is defeated, passing every class before
+     * the `tar` fills a volume nobody measured. Taking the larger of the two is the same defect with a
+     * friendlier face.
+     *
+     * The probe is a shell round trip and is not cached here. `DataArchiveCapabilityCache` is the
+     * cached reader, but it awaits `PrivilegeState.isReady` — an unbounded suspension inside a
+     * foreground-service worker. Asking [AppDataProbe] directly is what the gateway itself does moments
+     * later, so the measurement and the routing cannot disagree about where the tar goes.
      *
      * Nor is over-reporting cheap. `ThorJobWorker` forbids `Result.retry()` outright — the key is in
      * process memory and a retry cannot succeed — so a `tar` that runs out of space ends the backup
@@ -222,8 +234,12 @@ internal class ArchiveBackupWorker(
      *
      * Zero is "unmeasurable", which the rule deliberately fails open on.
      */
+    // No `withContext(ioDispatcher)`: the only call site is already inside one, and the probe makes
+    // its own hop.
     @Suppress("UsableSpace")
-    private fun usableStagingBytes(): Long = applicationContext.cacheDir?.usableSpace ?: 0L
+    private suspend fun usableStagingBytes(): Long =
+        archiveStagingVolume(applicationContext, dataProbe.probePrivateDataCapability())
+            ?.usableSpace ?: 0L
 }
 
 /**
