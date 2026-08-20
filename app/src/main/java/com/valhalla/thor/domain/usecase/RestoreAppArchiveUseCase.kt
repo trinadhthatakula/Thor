@@ -5,6 +5,8 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.backup.ArchiveIntegrityException
+import com.valhalla.thor.data.repository.MAX_EXTRACTED_TOTAL_BYTES
+import com.valhalla.thor.data.repository.copyAtMostTo
 import com.valhalla.thor.domain.model.ArchiveCompression
 import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveMember
@@ -444,7 +446,8 @@ internal class RestoreAppArchiveUseCase(
 
         /**
          * The header declares a bundle this run could not produce: the entry is missing from the
-         * container, reading it threw, or Thor's cache could not hold the copy. [reason] says which.
+         * container, reading it threw, the entry expanded past [MAX_EXTRACTED_TOTAL_BYTES], or Thor's
+         * cache could not hold the copy. [reason] says which.
          */
         data class Unreadable(val reason: String) : BundleStaging
     }
@@ -466,19 +469,39 @@ internal class RestoreAppArchiveUseCase(
                     "this archive says it holds ${declared.fileName}, but that file is not in it"
                 )
             val out = gateway.stagingFile(THORBAK_BUNDLE_ENTRY)
-            try {
-                entry.use { input -> out.outputStream().use(input::copyTo) }
+            // Bounded, like `extractEntries` already bounds the same `.xapk` content on the installer
+            // side, and for the same reason: this is a deflated entry out of a container the user did
+            // not author, so its expanded size is the container's to choose. It is also the one member
+            // written before any verifier or passphrase check — `invoke` stages the bundle first, and
+            // an install-first restore never asks for a credential — so it is the only restore path
+            // where an unauthenticated caller decides how many bytes Thor writes. The header's
+            // `declared.bytes` is not the bound: it comes out of the same container.
+            val copied = try {
+                entry.use { input ->
+                    out.outputStream().use { output ->
+                        input.copyAtMostTo(output, MAX_EXTRACTED_TOTAL_BYTES)
+                    }
+                }
             } catch (e: Throwable) {
                 // Delete here rather than in `getOrElse`, where `out` is out of scope: a half-copied
                 // `.xapk` left in the cache is what the installer would pick up on the next attempt.
                 out.delete()
                 throw e
             }
+            if (copied == null) {
+                // Same reason as the catch above — `copyAtMostTo` leaves the partial output for its
+                // caller to discard, and here the installer is what would otherwise find it.
+                out.delete()
+                return BundleStaging.Unreadable(
+                    "this archive's app bundle is larger than " +
+                        "${MAX_EXTRACTED_TOTAL_BYTES / (1024 * 1024 * 1024)} GB"
+                )
+            }
             BundleStaging.Staged(out)
         }.getOrElse {
             // `runCatching` catches `Throwable`, so a cancellation would otherwise come back as a
-            // failed restore instead of a cancelled one. `copyTo` has no suspension point today; the
-            // rethrow is here so that stays true the moment it is chunked or made suspending.
+            // failed restore instead of a cancelled one. `copyAtMostTo` has no suspension point today;
+            // the rethrow is here so that stays true the moment it is chunked or made suspending.
             if (it is CancellationException) throw it
             Logger.e(TAG, "could not stage the app bundle", it)
             BundleStaging.Unreadable("this archive's app bundle could not be unpacked: ${it.message}")
