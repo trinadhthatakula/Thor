@@ -35,7 +35,6 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -191,6 +190,14 @@ class AppRepositoryImpl(
         // A conflated channel acts as a signal buffer.
         // If 50 broadcasts come in, we only keep the latest "refresh needed" flag.
         val triggerChannel = Channel<Unit>(Channel.CONFLATED)
+
+        // Read here, synchronously, and *before* the worker below exists — not down at the watcher
+        // that consumes it. The worker runs on a multi-threaded dispatcher, so it can be inside
+        // getInstalledPackages() while this block is still registering receivers; a scan request
+        // raised in that window has to survive until the watcher subscribes, and only a baseline
+        // taken before the scan started can tell "arrived while we were scanning" from "already
+        // folded into the scan we are about to run". See [AppScanRevision.requestsAfter].
+        val scanRevisionAtStart = AppScanRevision.snapshot()
 
         // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
         val worker = launch(ioDispatcher) {
@@ -474,14 +481,15 @@ class AppRepositoryImpl(
 
         // Process-wide scan requests (e.g. self-permission auto-grant, privilege changes).
         //
-        // drop(1) because AppScanRevision is a StateFlow and its current value is replayed on
-        // subscribe: the worker above already sends its own initial trigger, so acting on the
-        // replay too would buy a second full scan on every collection. Bumps that happened before
-        // this subscribed are therefore *not* lost — they are folded into the value this drops, and
-        // the scan they asked for is the one the worker is about to run anyway. See the class KDoc
-        // for why this is a counter rather than a SharedFlow<Unit>.
+        // Filtered against the baseline captured at the top rather than with drop(1): a bump that
+        // predates this collection is already covered by the initial trigger the worker sends
+        // itself, so acting on it too would buy a second full scan every time — but a bump raised
+        // *after* that baseline must get through however late this subscribes, because the scan it
+        // is racing may have read the package list before the grant landed. drop(1) cannot tell
+        // those two apart; the baseline can. See the AppScanRevision class KDoc.
         val scanWatcher = launch {
-            AppScanRevision.revision.drop(1).collect { triggerChannel.trySend(Unit) }
+            AppScanRevision.requestsAfter(scanRevisionAtStart)
+                .collect { triggerChannel.trySend(Unit) }
         }
 
         // Receiver for Package-specific changes (requires "package" data scheme)
