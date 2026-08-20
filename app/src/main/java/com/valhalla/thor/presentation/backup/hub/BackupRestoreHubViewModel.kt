@@ -35,6 +35,8 @@ data class BackupRestoreHubState(
     val appPickerSearchQuery: String = "",
     val installedApps: List<AppInfo> = emptyList(),
     val archiveToDelete: BackupArchiveItem? = null,
+    /** One-shot: a delete the volume refused, to be reported once and cleared. */
+    val deleteFailed: Boolean = false,
 ) {
     val hasBackups: Boolean get() = archives.any { it.kind == BackupArchiveKind.DATA_BACKUP }
     val hasBundles: Boolean get() = archives.any { it.kind == BackupArchiveKind.APP_BUNDLE }
@@ -158,9 +160,21 @@ class BackupRestoreHubViewModel(
         val target = _state.value.archiveToDelete ?: return
         viewModelScope.launch {
             _state.update { it.copy(archiveToDelete = null) }
+            // A false from `deleteArchive` is a delete that did not happen — a read-only volume, a
+            // SAF grant that no longer covers the tree, a `rm` the shell refused. Dropping it, as
+            // this did, closes the confirmation dialog and leaves the row exactly where it was,
+            // which reads as a broken list rather than as a refusal, and invites the user to try
+            // again forever.
             if (scanner.deleteArchive(target)) {
                 refreshArchives()
+            } else {
+                _state.update { it.copy(deleteFailed = true) }
             }
         }
+    }
+
+    /** Clear [BackupRestoreHubState.deleteFailed] once the UI has reported it. */
+    fun consumeDeleteFailure() {
+        _state.update { it.copy(deleteFailed = false) }
     }
 }
