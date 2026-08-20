@@ -98,7 +98,18 @@ class ReorderableLazyListState(
      */
     private var movedDuringGesture = false
 
+    /**
+     * Begins a drag on [key], unless one is already running.
+     *
+     * Every handle installs its own `pointerInput`, so two fingers on two handles are two
+     * independent gesture detectors that both call in here. Letting the second one through reset the
+     * key and the offset mid-gesture: the first finger's deltas then moved the *second* row, and
+     * whichever finger lifted first cleared the whole state — so the other one went dead, and
+     * [onDragCompleted] fired while a drag was still in progress or, if [movedDuringGesture] was
+     * lost with the reset, never fired at all and the reorder was not persisted.
+     */
     fun onDragStart(key: Any) {
+        if (draggingItemKey != null) return
         draggingItemKey = key
         draggingItemOffset = 0f
         autoScrollVelocity = 0f
@@ -114,16 +125,27 @@ class ReorderableLazyListState(
         if (draggingItemKey == null) return
         trackDragDirection(dragAmount)
         draggingItemOffset += dragAmount
-        settleDropTarget()
+        // Nothing else this pass if a swap happened: `settleDropTarget` has already taken the slot
+        // gap off the translation, but `listState.layoutInfo` still describes the order from before
+        // it, and the velocity is computed from the two together. Mixing a pre-swap slot offset with
+        // a post-swap translation puts the card a whole row away from where it is rendered — enough,
+        // against a 96 dp edge zone, to start or stop the auto-scroller for a frame on nothing. The
+        // last velocity holds until the next pointer event or frame reads a layout that agrees with
+        // itself.
+        if (settleDropTarget()) return
         updateAutoScrollVelocity()
     }
 
-    fun onDragEnd() = finishDrag()
+    fun onDragEnd(key: Any) = finishDrag(key)
 
-    fun onDragCancel() = finishDrag()
+    fun onDragCancel(key: Any) = finishDrag(key)
 
-    private fun finishDrag() {
-        if (draggingItemKey == null) return
+    /**
+     * Ends the drag, if [key] is the one holding it — a gesture that [onDragStart] turned away must
+     * not be able to end the gesture that won.
+     */
+    private fun finishDrag(key: Any) {
+        if (draggingItemKey != key) return
         autoScrollJob?.cancel()
         autoScrollJob = null
         autoScrollVelocity = 0f
@@ -159,7 +181,9 @@ class ReorderableLazyListState(
             // point at exactly the speed the list is scrolling.
             if (consumed == 0f) continue // an end of the list; nothing moved, nothing to absorb
             draggingItemOffset += consumed
-            settleDropTarget()
+            // Same reason as in `onDrag`: a swap makes this frame's layout disagree with this
+            // frame's translation, and the next frame is one vsync away.
+            if (settleDropTarget()) continue
             updateAutoScrollVelocity()
         }
     }
@@ -171,11 +195,14 @@ class ReorderableLazyListState(
      * are not a uniform height (a two-line description makes one taller than its neighbour), and
      * the offset correction below — the gap between the two slots — is only exact for a single
      * adjacent swap. Repeated calls converge on the same place without accumulating that error.
+     *
+     * Returns true when it swapped, which tells the caller that [LazyListState.layoutInfo] is now a
+     * frame behind the translation and must not be read again until it catches up.
      */
-    private fun settleDropTarget() {
-        val key = draggingItemKey ?: return
+    private fun settleDropTarget(): Boolean {
+        val key = draggingItemKey ?: return false
         val visibleItems = listState.layoutInfo.visibleItemsInfo
-        val currentItem = visibleItems.firstOrNull { it.key == key } ?: return
+        val currentItem = visibleItems.firstOrNull { it.key == key } ?: return false
         val currentCenter = currentItem.offset + (currentItem.size / 2f) + draggingItemOffset
 
         val targetItem = if (draggingItemOffset > 0) {
@@ -192,7 +219,7 @@ class ReorderableLazyListState(
                     val otherCenter = other.offset + (other.size / 2f)
                     currentCenter < otherCenter
                 }
-        } ?: return
+        } ?: return false
 
         // The row is about to be laid out in the target's slot, so the same amount comes off the
         // translation to leave it rendered where the finger currently holds it.
@@ -200,6 +227,7 @@ class ReorderableLazyListState(
         movedDuringGesture = true
         haptics?.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
         onMove(key, targetItem.key)
+        return true
     }
 
     /**
@@ -308,8 +336,8 @@ fun Modifier.dragHandle(
 ): Modifier = pointerInput(key, state) {
     detectVerticalDragGestures(
         onDragStart = { state.onDragStart(key) },
-        onDragEnd = { state.onDragEnd() },
-        onDragCancel = { state.onDragCancel() },
+        onDragEnd = { state.onDragEnd(key) },
+        onDragCancel = { state.onDragCancel(key) },
         onVerticalDrag = { change, dragAmount ->
             change.consume()
             state.onDrag(dragAmount)
