@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import rikka.shizuku.Shizuku
 
 data class HomeUiState(
     val isLoading: Boolean = true,
@@ -47,6 +48,7 @@ data class HomeUiState(
     // Status
     val isRootAvailable: Boolean = false,
     val isShizukuAvailable: Boolean = false,
+    val isShizukuBinderAlive: Boolean = false,
     val isDhizukuAvailable: Boolean = false,
     val activePrivilegeMode: PrivilegeMode? = null,
     // False until the first privilege probe completes — lets the status icon show a
@@ -107,6 +109,7 @@ class HomeViewModel(
             showExtensionsTile = prefs.showExtensionsTile,
             isRootAvailable = priv.root,
             isShizukuAvailable = priv.shizuku,
+            isShizukuBinderAlive = runCatching { Shizuku.pingBinder() }.getOrDefault(false),
             isDhizukuAvailable = priv.dhizuku,
             isPrivilegeReady = priv.isReady,
             installedManagers = PrivilegeManagerApp.findInstalledManagers(packageManager),
@@ -170,6 +173,14 @@ class HomeViewModel(
         privilegeManager.refresh()
         AppScanRevision.bump()
         loadDashboardData()
+    }
+
+    fun requestShizuku() {
+        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+            runCatching {
+                Shizuku.requestPermission(1001)
+            }
+        }
     }
 
     fun requestDhizuku(context: Context) {

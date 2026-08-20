@@ -376,7 +376,13 @@ fun HomeScreen(
                                     )
                                 } else {
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        if (info.app == com.valhalla.thor.domain.model.PrivilegeManagerApp.DHIZUKU) {
+                                        if (info.app == com.valhalla.thor.domain.model.PrivilegeManagerApp.SHIZUKU && state.isShizukuBinderAlive) {
+                                            androidx.compose.material3.TextButton(
+                                                onClick = { viewModel.requestShizuku() }
+                                            ) {
+                                                Text(stringResource(R.string.installed_apps_permission_grant))
+                                            }
+                                        } else if (info.app == com.valhalla.thor.domain.model.PrivilegeManagerApp.DHIZUKU) {
                                             androidx.compose.material3.TextButton(
                                                 onClick = { viewModel.requestDhizuku(context) }
                                             ) {

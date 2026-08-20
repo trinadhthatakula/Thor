@@ -17,13 +17,11 @@ object ThorShellConfig {
         // Set logging based on build type
         Shell.enableVerboseLogging = BuildConfig.DEBUG
 
-        // Configure the default builder.
-        // FLAG_MOUNT_MASTER: Essential for global namespace operations (mounting, etc.)
+        // Configure the default builder. Do NOT set FLAG_MOUNT_MASTER as KernelSU / APatch su
+        // does not accept --mount-master and would block root acquisition.
         Shell.setDefaultBuilder(
             Shell.Builder.create()
-                .setFlags(Shell.FLAG_MOUNT_MASTER)
-            // If you have specific initializers, add them here
-            // .setInitializers(MyInitializer::class.java)
+                .setTimeout(10)
         )
     }
 }
