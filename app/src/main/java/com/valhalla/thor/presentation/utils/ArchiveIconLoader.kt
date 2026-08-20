@@ -448,18 +448,20 @@ class ArchiveIconFetcher(
         // every icon inside the budget and breaks it only where the alternative is an allocation
         // that fails or a bitmap the canvas refuses to draw.
         //
-        // `maxOf(1, …)` and `||`, because that is what the decoder does: `SkAndroidCodec` floors
-        // each sampled axis at 1 px and never at 0. Estimating with a bare division instead made
-        // doubling look pointless as soon as one axis reached 1 px — 1 / 2 = 0, so the product read
-        // as 0 and the guard refused to advance — which exempted the most extreme aspect ratio from
-        // the ceiling that exists for exactly that shape: a 1 × 40000000 strip stayed at
-        // `inSampleSize = 1` and decoded all 160 MB of itself. Progress is still possible while
-        // *either* axis is above 1, and the loop terminates because doubling drives both divisions
-        // to 0, where the product is 1.
+        // `maxOf(1, …)`, because that is what the decoder does: AOSP's `get_scaled_dimension` is
+        // `max(1, floor(dim / sample))`, so a sampled axis floors at 1 px and never at 0. Estimating
+        // with a bare division read 1 / 2 as 0, so a one-pixel axis made the product 0 and needed a
+        // `> 1 && > 1` guard to look sensible — and that guard exempted the most extreme aspect
+        // ratio from the ceiling that exists for exactly that shape. Nothing decodable reached the
+        // exemption, so this replaces a wrong reason rather than a shipped over-allocation: libpng
+        // caps an axis at `PNG_USER_{WIDTH,HEIGHT}_MAX` = 1000000, itself under the ceiling, and
+        // every other format Skia sniffs caps lower, so a strip long enough to matter fails the
+        // bounds pass and returns null above. The guard is gone because the clamped product implies
+        // it — a product over the ceiling needs an axis over 1 — and that is also why this
+        // terminates: doubling drives both divisions to 0, where the clamped product is 1.
         while (
             maxOf(1, sourceWidth / sample).toLong() * maxOf(1, sourceHeight / sample) >
-                MAX_DECODED_ICON_PIXELS &&
-            (sourceWidth / sample > 1 || sourceHeight / sample > 1)
+                MAX_DECODED_ICON_PIXELS
         ) {
             sample *= 2
         }

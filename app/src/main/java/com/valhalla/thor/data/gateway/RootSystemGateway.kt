@@ -1353,14 +1353,18 @@ class RootSystemGateway(
         // the app knows how to open that gate.
         //
         // `runProbe`, not `runCommand`: at most one of the three spellings exists on any given
-        // device, so two of them failing is the *success* path. `map` and not `any`, so all three
+        // device, so two of them failing is the *success* path. `filter` and not `any`, so all three
         // are still issued — short-circuiting on the first that lands would change what Thor writes.
+        // The accepted command is named, not just counted, because *which* spelling the ROM answered
+        // is the one thing the per-command error lines carried that a bare tally would drop.
         val appOpGrants = installedAppsAppOpGrantCommands(escapedPackage, userId)
-        val appOpsTaken = appOpGrants.map { runProbe(it) }.count { it }
+        val acceptedGrants = appOpGrants.filter { runProbe(it) }
+        val appOpsTaken = acceptedGrants.size
         Logger.d(
             "RootSystemGateway",
             "GET_INSTALLED_APPS app-op grant for $packageName (user $userId): " +
-                "$appOpsTaken of ${appOpGrants.size} spellings accepted"
+                "$appOpsTaken of ${appOpGrants.size} spellings accepted" +
+                if (acceptedGrants.isEmpty()) "" else " — ${acceptedGrants.joinToString("; ")}"
         )
 
         // The report follows the gate that actually opened, for every package and not just Thor's
@@ -1405,14 +1409,15 @@ class RootSystemGateway(
         // while package visibility stayed open — and nothing else in the app could close it. Issued
         // whatever the revoke returned, for the same reason the grant is: on these ROMs the shell's
         // verdict on a vendor permission is not the state of the gate.
-        // `runProbe` for the same reason as the grant: `count` issues all three either way, and the
-        // failures are not errors — see the aggregate below.
+        // `runProbe` for the same reason as the grant: `filter` issues all three either way, and the
+        // failures are not errors — see the aggregate below, which names the spelling that landed.
         val appOpResets = installedAppsAppOpRevokeCommands(escapedPackage, userId)
-        val appOpsReset = appOpResets.count { runProbe(it) }
+        val acceptedResets = appOpResets.filter { runProbe(it) }
         Logger.d(
             "RootSystemGateway",
             "GET_INSTALLED_APPS app-op reset for $packageName (user $userId): " +
-                "$appOpsReset of ${appOpResets.size} spellings accepted"
+                "${acceptedResets.size} of ${appOpResets.size} spellings accepted" +
+                if (acceptedResets.isEmpty()) "" else " — ${acceptedResets.joinToString("; ")}"
         )
 
         // And unlike the grant, the fold stays narrow: `pm revoke` is the verdict. All three app-op
