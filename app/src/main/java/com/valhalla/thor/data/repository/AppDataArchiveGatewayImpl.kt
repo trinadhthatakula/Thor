@@ -83,12 +83,20 @@ internal class AppDataArchiveGatewayImpl(
      * Resolves and creates the single staging directory. All [stagingFile] calls land here, so the
      * canonical path used in [tarClass]'s traversal guard is always the same base.
      *
-     * §7.1 provides for an `externalCacheDir` fallback when internal cache is unavailable. This
-     * implementation does not provide one (§14 limitation). A staged tar is plaintext app data;
-     * external cache is on the shared external storage volume and is world-readable on some device
-     * configurations. Writing plaintext app data there would defeat the exact property the rest of
-     * this feature is built around. If `cacheDir` is unavailable the job will fail loudly rather than
-     * silently downgrade to a less secure location.
+     * §7.1's `externalCacheDir` route, and the condition on it is a *capability*, not availability.
+     * `cacheDir` is `/data/data/<thor>` at mode 0700, which the privileged runner has to be able to
+     * read for a staged tar to be produced at all: a root shell can, a Shizuku shell at uid 2000
+     * cannot. [AppDataProbe.probePrivateDataCapability] is that question, and answering it `false`
+     * is what moves staging to `externalCacheDir` — the same reason `AppBundleBuilderImpl` stages
+     * expansion files there.
+     *
+     * Say the cost plainly, because this KDoc used to claim the downgrade did not exist: a staged tar
+     * is plaintext app data, and on external storage it is readable by anything holding
+     * `READ_EXTERNAL_STORAGE` on the device configurations where that still grants broad access. The
+     * exposure lasts as long as the file does, which is why the staged tar is deleted on every exit
+     * from [tarClass] under `NonCancellable` and why [ArchiveOrphanSweeper] sweeps this directory
+     * under *both* roots — a sweep of `cacheDir` alone would leave exactly the copies this branch
+     * writes. Pair any further staging root with a sweeper rule in the same change.
      */
     private suspend fun stagingRoot(): File = withContext(ioDispatcher) {
         val rootDir = if (probe.probePrivateDataCapability()) {

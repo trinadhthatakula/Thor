@@ -308,4 +308,36 @@ class ArchiveOrphanSweeperTest {
         assertEquals(emptyList<File>(), staging.listFiles()?.toList() ?: emptyList<File>())
         assertEquals(1, report.stagedFilesRemoved)
     }
+
+    /**
+     * The staged tars themselves can also be outside `cacheDir`, which is the case this sweep was
+     * missing entirely.
+     *
+     * `AppDataArchiveGatewayImpl.stagingRoot` asks `probePrivateDataCapability()` and stages under
+     * `externalCacheDir` when the answer is false — a Shizuku shell at uid 2000 cannot read
+     * `/data/data/<thor>` at 0700. So every plaintext staged tar a killed Shizuku backup produced
+     * lived on shared external storage, where a sweep of `cacheDir` alone walked straight past it.
+     * Both roots, and the directory survives in both.
+     */
+    @Test
+    fun `staged tars the gateway wrote outside cacheDir are deleted too`() = runTest {
+        val (cache, internalStaging) = cacheWith("ce.tar")
+        val external = temp.newFolder("ext-staging")
+        val externalStaging = File(external, AppDataArchiveStagingDir.NAME).apply { mkdirs() }
+        File(externalStaging, "de.tar").writeText("plaintext app data")
+        File(externalStaging, "restore-ce.tar").writeText("plaintext app data")
+        val keep = File(external, "coil_disk_cache").apply { mkdirs() }
+        val sweeper = ArchiveOrphanSweeper(
+            PartialArchiveLedger(temp.newFolder("files12")), FakeStore(emptySet()), FakeBreadcrumbs(null), cache,
+            external,
+        )
+
+        val report = sweeper.sweep()
+
+        assertEquals(emptyList<File>(), externalStaging.listFiles()?.toList() ?: emptyList<File>())
+        assertEquals(emptyList<File>(), internalStaging.listFiles()?.toList() ?: emptyList<File>())
+        assertTrue("the staging directory itself must survive under either root", externalStaging.isDirectory)
+        assertTrue(keep.isDirectory)
+        assertEquals(3, report.stagedFilesRemoved)
+    }
 }
