@@ -113,53 +113,54 @@ fun AppInfoActionsCustomizationScreen(
             onBack = onBack
         )
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 48.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        // Pinned header: the drag hint, reset action and live preview stay on screen while the
+        // action list scrolls underneath, so the preview always reflects the current arrangement.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Header summary & Preview Card
-            item(key = "header_preview") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.customization_drag_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FilledIconButton(
+                    onClick = { showResetConfirmation = true },
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    modifier = Modifier.size(36.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.customization_drag_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        FilledIconButton(
-                            onClick = { showResetConfirmation = true },
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.settings_backup_restore),
-                                contentDescription = stringResource(R.string.reset_to_default),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    // Live Preview Section
-                    ActionRowPreviewCard(
-                        actions = localActions.filterNot { it in hiddenActions }
+                    Icon(
+                        painter = painterResource(R.drawable.settings_backup_restore),
+                        contentDescription = stringResource(R.string.reset_to_default),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
+            // Live Preview Section
+            ActionRowPreviewCard(
+                actions = localActions.filterNot { it in hiddenActions }
+            )
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             // Reorderable action items
             itemsIndexed(
                 items = localActions,
