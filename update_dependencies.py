@@ -323,7 +323,12 @@ def main():
             print(f"  [Unresolved] {key}")
 
     if not catalog_updates and not inline_lib_updates and not inline_plugin_updates:
-        if len(unresolved) == len(results):
+        if not results:
+            # No lookup was even attempted, which on a repo with a populated catalog means the
+            # parse found nothing — a renamed section or a syntax change in the TOML, not a
+            # network problem. Distinct from the message below, which needs a failed lookup.
+            print("\nNo dependencies were checked — nothing was parsed out of the catalog.")
+        elif len(unresolved) == len(results):
             print("\nNothing was checked — every lookup failed. Not a clean bill of health.")
         else:
             print(f"\nAll {len(results) - len(unresolved)} resolved dependencies are up to date.")

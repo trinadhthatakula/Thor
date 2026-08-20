@@ -14,6 +14,7 @@
     gerir → gerenciar          gestor → gerenciador    eliminar → excluir
     cópia de segurança → backup            anular → cancelar
     "está a fazer" → "está fazendo"        "premir" → "tocar"
+    divisões (de APK) → splits de APK      "uma shell" → "um shell" (masculine in BR)
 -->
 <resources>
 
@@ -563,7 +564,7 @@
     <string name="backup_hub_empty_title">Nenhum backup em Downloads/Thor</string>
     <string name="backup_hub_empty_desc">Os arquivos salvos em Downloads/Thor aparecerão aqui para restauração rápida com um toque.</string>
     <string name="backup_hub_tip_thorbak_title">Backups de dados (.thorbak)</string>
-    <string name="backup_hub_tip_thorbak_desc">Arquivos completos criptografados contendo dados de aplicativos e divisões APK opcionais. Os dados privados de aplicativos (CE/DE) exigem root, enquanto os dados do armazenamento compartilhado podem ser restaurados com uma shell privilegiada.</string>
+    <string name="backup_hub_tip_thorbak_desc">Arquivos completos criptografados contendo dados de aplicativos e splits de APK opcionais. Os dados privados de aplicativos (CE/DE) exigem root, enquanto os dados do armazenamento compartilhado podem ser restaurados com um shell privilegiado.</string>
     <string name="backup_hub_tip_bundle_title">Pacotes de aplicativos (.xapk / .apks / .apk)</string>
     <string name="backup_hub_tip_bundle_desc">Pacotes de instalação autônomos para instalação offline ou compartilhamento entre dispositivos sem precisar de root.</string>
     <string name="backup_hub_tip_discovery_title">Detecção automática</string>

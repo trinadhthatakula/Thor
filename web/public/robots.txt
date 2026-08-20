@@ -1,11 +1,13 @@
 # Thor — https://thor.trinadhthatakula.com
 # Open-source Android App Manager
 #
-# A crawler obeys the single most specific group whose token it matches and ignores the `*` group
-# entirely (RFC 9309, §2.2.1). So a named group containing only `Allow: /` does not inherit the
-# wildcard group's rules — it *overrides* them, and grants the access the wildcard withholds. That
-# is how /styleguide and the follow-up pages were open to every crawler named here except
-# Googlebot, Bingbot and four of the AI agents: their groups simply left the Disallow lines out.
+# A crawler obeys the groups whose token it matches, combining their rules if there is more than
+# one, and falls back to the `*` group only when *no* named group matches it (RFC 9309, §2.2.1).
+# So a named group containing only `Allow: /` does not inherit the wildcard group's rules — the
+# wildcard group is never selected for it — and grants the access the wildcard withholds. That is
+# how /styleguide and the follow-up pages were open to every crawler named here except Googlebot,
+# Bingbot and four of the AI agents: their groups simply left the Disallow lines out. Each token
+# below appears in exactly one group, so nothing here relies on the combining rule.
 #
 # Consecutive `User-agent:` lines share one rule block, so each class of crawler states the rules
 # once and a token added to a block picks them up automatically.
