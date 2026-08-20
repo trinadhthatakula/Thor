@@ -144,6 +144,29 @@ object DhizukuHelper {
         clientInitialised = initialised
     }
 
+    /**
+     * Requests authorization from Dhizuku if installed and bound.
+     */
+    fun requestPermission(context: Context, onResult: (Boolean) -> Unit) {
+        try {
+            if (!clientInitialised) {
+                clientInitialised = DhizukuAPI.init(context)
+            }
+            if (DhizukuAPI.isPermissionGranted()) {
+                onResult(true)
+                return
+            }
+            DhizukuAPI.requestPermission(object : com.rosan.dhizuku.api.DhizukuRequestPermissionListener() {
+                override fun onRequestPermission(grantResult: Int) {
+                    onResult(grantResult == PackageManager.PERMISSION_GRANTED)
+                }
+            })
+        } catch (e: Exception) {
+            Logger.e("DhizukuHelper", "requestPermission failed", e)
+            onResult(false)
+        }
+    }
+
     fun getSystemService(serviceName: String): IBinder? {
         return try {
             val binder = SystemServiceHelper.getSystemService(serviceName)

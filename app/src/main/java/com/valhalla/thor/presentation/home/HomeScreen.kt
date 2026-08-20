@@ -337,12 +337,44 @@ fun HomeScreen(
     // system apps are included too.
 
     if (showPrivilegeDialog) {
+        val context = androidx.compose.ui.platform.LocalContext.current
         AlertDialog(
             onDismissRequest = { showPrivilegeDialog = false },
             icon = { Icon(painterResource(R.drawable.privacy_tip), null) },
             title = { Text(stringResource(R.string.privilege_check)) },
             text = {
-                Text(stringResource(R.string.privilege_check_desc))
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(R.string.privilege_check_desc))
+
+                    androidx.compose.material3.HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Dhizuku",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (!state.isDhizukuAvailable) {
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    viewModel.requestDhizuku(context)
+                                }
+                            ) {
+                                Text(stringResource(R.string.installed_apps_permission_grant))
+                            }
+                        } else {
+                            Text(
+                                text = stringResource(R.string.permission_state_granted),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
             },
             confirmButton = {
                 Button(onClick = {

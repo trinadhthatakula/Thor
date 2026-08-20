@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import com.valhalla.superuser.Shell
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.rootservice.IThorRootService
@@ -253,8 +254,14 @@ class RootSystemGateway(
         }
     }
 
-    // A root check is strictly asynchronous. Blocking the thread for this is unacceptable.
+    // A root check is strictly asynchronous. Invalidate any cached non-root shell so fresh su grants are recognized.
     override suspend fun isRootAvailable(): Boolean {
+        try {
+            val cached = Shell.cachedShell
+            if (cached != null && !cached.isRoot) {
+                cached.close()
+            }
+        } catch (_: Throwable) {}
         return shellRepository.isRootGranted()
     }
 

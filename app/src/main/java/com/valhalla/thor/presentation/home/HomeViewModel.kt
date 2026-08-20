@@ -3,10 +3,12 @@
 
 package com.valhalla.thor.presentation.home
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -14,6 +16,7 @@ import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -158,7 +161,18 @@ class HomeViewModel(
      */
     fun refreshPrivileges() {
         privilegeManager.refresh()
+        AppScanRevision.bump()
         loadDashboardData()
+    }
+
+    fun requestDhizuku(context: Context) {
+        DhizukuHelper.requestPermission(context) { granted ->
+            if (granted) {
+                privilegeManager.refresh()
+                AppScanRevision.bump()
+                loadDashboardData()
+            }
+        }
     }
 
     fun onTypeChanged(type: AppListType) {

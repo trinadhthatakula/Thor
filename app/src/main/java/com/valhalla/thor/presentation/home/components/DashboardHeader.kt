@@ -7,6 +7,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Box
@@ -248,6 +249,7 @@ private fun easterEggText(tapCount: Int, title: String): String = when {
     else -> title
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun StatusIcon(
     isRoot: Boolean,
@@ -282,16 +284,19 @@ private fun StatusIcon(
             .size(40.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .clickable {
-                if (availableModes.size > 1) {
-                    // Cycle through available modes
-                    val currentIndex = availableModes.indexOf(activeMode)
-                    val nextIndex = (currentIndex + 1) % availableModes.size
-                    onModeSelected(availableModes[nextIndex])
-                } else if (availableModes.isEmpty()) {
-                    onClick()
-                }
-            },
+            .combinedClickable(
+                onClick = {
+                    if (availableModes.size > 1) {
+                        // Cycle through available modes
+                        val currentIndex = availableModes.indexOf(activeMode)
+                        val nextIndex = (currentIndex + 1) % availableModes.size
+                        onModeSelected(availableModes[nextIndex])
+                    } else {
+                        onClick()
+                    }
+                },
+                onLongClick = { onClick() }
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
