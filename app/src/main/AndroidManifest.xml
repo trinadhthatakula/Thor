@@ -18,10 +18,6 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
 
-    <permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="ReservedSystemPermission" />
-
     <!--
       Non-AOSP. Declared by Chinese-market ROMs (MIUI/HyperOS, ColorOS, OriginOS, MagicOS)
       per T/TAF 108-2022, where package visibility is a three-state runtime permission

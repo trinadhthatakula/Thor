@@ -254,6 +254,7 @@ class AppRepositoryImpl(
                             pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
                         }
 
+                    val initialCachedCount = cachedMap.size
                     val currentList = ArrayList<AppInfo>(installedPackages.size)
                     val toUpdate = mutableListOf<AppEntity>()
 
@@ -332,7 +333,7 @@ class AppRepositoryImpl(
                     // the rules; nothing is decided here.
                     val verdict = scanVerdict(
                         scannedPackageNames = currentPackageNames,
-                        cachedCount = cachedMap.size,
+                        cachedCount = initialCachedCount,
                         consecutiveSuspectScans = consecutiveSuspectScans,
                         permission = installedAppsPermission.state()
                     )
@@ -344,7 +345,13 @@ class AppRepositoryImpl(
                         ScanVerdict.Accept -> {
                             consecutiveSuspectScans = 0
                             if (toUpdate.isNotEmpty() || toDelete.isNotEmpty()) {
-                                appDao.syncCache(toUpdate, toDelete)
+                                try {
+                                    appDao.syncCache(toUpdate, toDelete)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Logger.e("AppRepository", "syncCache failed during accepted scan", e)
+                                }
                                 toDelete.forEach { pkgName ->
                                     cachedMap.remove(pkgName)
                                     try {
@@ -362,14 +369,20 @@ class AppRepositoryImpl(
                                 "AppRepository",
                                 "not pruning against this scan (${verdict.reason}): saw " +
                                         "${currentPackageNames.size} package(s) against " +
-                                        "${cachedMap.size} cached, keeping ${toDelete.size} row(s)"
+                                        "$initialCachedCount cached, keeping ${toDelete.size} row(s)"
                             )
                             // Updates still land — they describe packages the scan *did* see, so
                             // they are no less trustworthy than on an accepted scan. Only the
                             // deletions are withheld, and the icon files with them: a retained Room
                             // row is repaired by the next good scan, a deleted PNG is not.
                             if (toUpdate.isNotEmpty()) {
-                                appDao.syncCache(toUpdate, emptyList())
+                                try {
+                                    appDao.syncCache(toUpdate, emptyList())
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Logger.e("AppRepository", "syncCache failed during retained scan", e)
+                                }
                             }
                             toDelete.mapNotNull { cachedMap[it]?.toDomain() }
                         }
@@ -398,7 +411,7 @@ class AppRepositoryImpl(
                     // the channel — defeating ensureActive() above and the awaitClose teardown.
                     throw e
                 } catch (e: Exception) {
-                    if (BuildConfig.DEBUG) e.printStackTrace()
+                    Logger.e("AppRepository", "getAllApps scan failed", e)
                 }
             }
         }
