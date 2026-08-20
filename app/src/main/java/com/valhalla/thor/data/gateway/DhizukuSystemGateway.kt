@@ -488,15 +488,13 @@ class DhizukuSystemGateway(
                 .map { DhizukuHelper.execute(it) }
                 .any { it.first == 0 }
 
-            // Whose grant this is decides what may count as success. This method is not self-only:
-            // PermissionManagerScreen -> TogglePermissionUseCase reaches it for arbitrary
-            // third-party packages, and that screen's row shows the *runtime permission*, flipped
-            // optimistically without a re-read, so folding an app-op success into "granted" there
-            // would leave the row disagreeing with PackageManager.checkPermission. For Thor's own
-            // package the routes are interchangeable — SelfPermissionGranter re-reads
-            // checkSelfPermission and acts on the outcome. The app-ops are issued either way.
-            val isSelfGrant = packageName == context.packageName
-            if (result.first == 0 || (isSelfGrant && appOpTook)) Result.success(Unit)
+            // The report follows the gate that actually opened, for every package and not just
+            // Thor's own — RootSystemGateway.grantPermission holds the reasoning. Short version:
+            // this method is not self-only, and restricting the fold to self-grants left a
+            // third-party grant on a MIUI-class ROM writing the app-op, reporting failure, and
+            // leaving the row OFF, from where the screen can only ever grant again — so nothing
+            // could reach revokePermission to close the op it had just opened.
+            if (result.first == 0 || appOpTook) Result.success(Unit)
             else grantFailure()
         } catch (e: Exception) {
             Result.failure(e)

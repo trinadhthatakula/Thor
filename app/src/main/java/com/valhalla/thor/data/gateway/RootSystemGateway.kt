@@ -1353,18 +1353,23 @@ class RootSystemGateway(
         // the app knows how to open that gate.
         val appOps = installedAppsAppOpGrantCommands(escapedPackage, userId).map { runCommand(it) }
 
-        // Whose grant this is decides what may count as success. This method is not self-only:
-        // PermissionManagerScreen -> TogglePermissionUseCase reaches it for arbitrary third-party
-        // packages, and that screen's row shows the *runtime permission*, flipped optimistically
-        // without a re-read. Folding an app-op success into "granted" there would leave the row
-        // disagreeing with PackageManager.checkPermission until something else refreshed it.
+        // The report follows the gate that actually opened, for every package and not just Thor's
+        // own. Restricting this fold to self-grants put a one-way door in the permission manager:
+        // this method is not self-only — PermissionManagerScreen -> TogglePermissionUseCase reaches
+        // it for arbitrary third-party packages — so on the ROMs where `pm grant` refuses and the
+        // app-op is what opens the package list, a third-party grant wrote the op, returned
+        // failure, and left the row reading OFF, because `AppPermission.isGranted` comes from
+        // REQUESTED_PERMISSION_GRANTED and an app-op does not move it. The only gesture the screen
+        // then offers is *grant* again, and revokePermission — the sole issuer of
+        // `appops set … default` — is never reached. Thor had opened a gate, reported that it had
+        // not, and could not close it.
         //
-        // For Thor's own package the two routes really are interchangeable — SelfPermissionGranter
-        // re-reads checkSelfPermission and acts on the *outcome*, so an app-op that opened the
-        // package list is the success it was after even when `pm grant` refused. The app-ops are
-        // issued either way; which route counts is a reporting question, not a gating one.
-        val isSelfGrant = packageName == context.packageName
-        return if (res.isSuccess || (isSelfGrant && appOps.any { it.isSuccess })) {
+        // The cost is the known one and it is the lesser: PermissionManagerScreen flips the row
+        // optimistically, so it reads granted while PackageManager.checkPermission still says
+        // denied until something refreshes it. That disagreement is with the runtime permission,
+        // not with what the app can now do, and unlike the alternative it leaves the toggle able to
+        // undo itself.
+        return if (res.isSuccess || appOps.any { it.isSuccess }) {
             Result.success(Unit)
         } else {
             res
