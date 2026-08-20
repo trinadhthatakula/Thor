@@ -1351,7 +1351,17 @@ class RootSystemGateway(
         // them on the grant succeeding is what made a Chinese-ROM install come back with Thor as
         // the only visible app: the grant failed, the app-op was never set, and nothing else in
         // the app knows how to open that gate.
-        val appOps = installedAppsAppOpGrantCommands(escapedPackage, userId).map { runCommand(it) }
+        //
+        // `runProbe`, not `runCommand`: at most one of the three spellings exists on any given
+        // device, so two of them failing is the *success* path. `map` and not `any`, so all three
+        // are still issued — short-circuiting on the first that lands would change what Thor writes.
+        val appOpGrants = installedAppsAppOpGrantCommands(escapedPackage, userId)
+        val appOpsTaken = appOpGrants.map { runProbe(it) }.count { it }
+        Logger.d(
+            "RootSystemGateway",
+            "GET_INSTALLED_APPS app-op grant for $packageName (user $userId): " +
+                "$appOpsTaken of ${appOpGrants.size} spellings accepted"
+        )
 
         // The report follows the gate that actually opened, for every package and not just Thor's
         // own. Restricting this fold to self-grants put a one-way door in the permission manager:
@@ -1369,7 +1379,7 @@ class RootSystemGateway(
         // denied until something refreshes it. That disagreement is with the runtime permission,
         // not with what the app can now do, and unlike the alternative it leaves the toggle able to
         // undo itself.
-        return if (res.isSuccess || appOps.any { it.isSuccess }) {
+        return if (res.isSuccess || appOpsTaken > 0) {
             Result.success(Unit)
         } else {
             res
@@ -1395,7 +1405,15 @@ class RootSystemGateway(
         // while package visibility stayed open — and nothing else in the app could close it. Issued
         // whatever the revoke returned, for the same reason the grant is: on these ROMs the shell's
         // verdict on a vendor permission is not the state of the gate.
-        installedAppsAppOpRevokeCommands(escapedPackage, userId).forEach { runCommand(it) }
+        // `runProbe` for the same reason as the grant: `count` issues all three either way, and the
+        // failures are not errors — see the aggregate below.
+        val appOpResets = installedAppsAppOpRevokeCommands(escapedPackage, userId)
+        val appOpsReset = appOpResets.count { runProbe(it) }
+        Logger.d(
+            "RootSystemGateway",
+            "GET_INSTALLED_APPS app-op reset for $packageName (user $userId): " +
+                "$appOpsReset of ${appOpResets.size} spellings accepted"
+        )
 
         // And unlike the grant, the fold stays narrow: `pm revoke` is the verdict. All three app-op
         // resets failing is the ordinary outcome on any device that does not define this op, so
@@ -1456,6 +1474,19 @@ class RootSystemGateway(
             Result.failure(exception)
         }
     }
+
+    /**
+     * Run [cmd] for its exit code alone, without logging a non-zero one as an error.
+     *
+     * For commands whose failure is the *ordinary* outcome. `installedAppsAppOpGrantCommands` and its
+     * revoke twin each fire three spellings of one app-op precisely because no device defines all
+     * three, so routing them through [runCommand] put two or three `Logger.e` lines — each with a
+     * synthesized `IOException` and a stack trace — into the log on every AOSP device, for the path
+     * that worked. `Command execution failed: appops set …` beside a successful grant is what a
+     * maintainer reads first in a bug report, and the callers' own comments already call it normal.
+     * Both callers log one debug-level aggregate instead, which is the line that carries the answer.
+     */
+    private suspend fun runProbe(cmd: String): Boolean = shellRepository.exec(cmd).isSuccess
 
     private fun getApplicationInfoCompat(packageName: String): android.content.pm.ApplicationInfo? = runCatching {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {

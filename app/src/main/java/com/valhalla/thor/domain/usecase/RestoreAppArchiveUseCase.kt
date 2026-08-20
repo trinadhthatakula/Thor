@@ -485,13 +485,13 @@ internal class RestoreAppArchiveUseCase(
             } catch (e: Throwable) {
                 // Delete here rather than in `getOrElse`, where `out` is out of scope: a half-copied
                 // `.xapk` left in the cache is what the installer would pick up on the next attempt.
-                out.delete()
+                discardPartial(out)
                 throw e
             }
             if (copied == null) {
                 // Same reason as the catch above — `copyAtMostTo` leaves the partial output for its
                 // caller to discard, and here the installer is what would otherwise find it.
-                out.delete()
+                discardPartial(out)
                 return BundleStaging.Unreadable(
                     "this archive's app bundle is larger than " +
                         "${MAX_EXTRACTED_TOTAL_BYTES / (1024 * 1024 * 1024)} GB"
@@ -505,6 +505,21 @@ internal class RestoreAppArchiveUseCase(
             if (it is CancellationException) throw it
             Logger.e(TAG, "could not stage the app bundle", it)
             BundleStaging.Unreadable("this archive's app bundle could not be unpacked: ${it.message}")
+        }
+    }
+
+    /**
+     * Drop a partially-written bundle, and say so when the filesystem refuses.
+     *
+     * Not fatal, and deliberately not an error: `stagingFile` hands back the same path every time, so
+     * the next restore truncates this file before it writes and the launch sweep reclaims it either
+     * way — a survivor is wasted cache, never a bundle a later install could mistake for a whole one.
+     * Silent, though, and a staging directory that only ever grows is what a bug report describes as
+     * "Thor is using 3 GB".
+     */
+    private fun discardPartial(out: File) {
+        if (!out.delete() && out.exists()) {
+            Logger.w(TAG, "could not delete the partial bundle ${out.name}; the launch sweep will reclaim it")
         }
     }
 

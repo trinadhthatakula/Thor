@@ -324,10 +324,12 @@ def main():
 
     if not catalog_updates and not inline_lib_updates and not inline_plugin_updates:
         if not results:
-            # No lookup was even attempted, which on a repo with a populated catalog means the
-            # parse found nothing — a renamed section or a syntax change in the TOML, not a
-            # network problem. Distinct from the message below, which needs a failed lookup.
-            print("\nNo dependencies were checked — nothing was parsed out of the catalog.")
+            # `results` is empty exactly when `to_check` was, so no lookup was attempted and no
+            # network failure is implied. The message stays on that observation rather than naming a
+            # cause: an empty or renamed catalog section and a catalog whose entries never resolve
+            # to a versioned `group:name` both land here, and the script cannot tell them apart.
+            # Distinct from the message below, which needs a lookup to have run and failed.
+            print("\nNo versioned dependencies were found to check — nothing was verified.")
         elif len(unresolved) == len(results):
             print("\nNothing was checked — every lookup failed. Not a clean bill of health.")
         else:
