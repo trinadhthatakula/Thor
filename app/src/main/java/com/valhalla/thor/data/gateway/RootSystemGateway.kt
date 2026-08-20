@@ -21,6 +21,7 @@ import com.valhalla.thor.data.source.local.clearAppDataCommand
 import com.valhalla.thor.data.source.local.clearCachePaths
 import com.valhalla.thor.data.source.local.forceStopCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
+import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.setAppEnabledCommand
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
@@ -1352,10 +1353,22 @@ class RootSystemGateway(
         // the app knows how to open that gate.
         val appOps = installedAppsAppOpGrantCommands(escapedPackage, userId).map { runCommand(it) }
 
-        // Either route opening is a success; only both failing is a failure, and then the grant's
-        // own diagnostic is the useful one. The caller does not trust this either way —
-        // SelfPermissionGranter re-reads checkSelfPermission — so this is for the log.
-        return if (res.isSuccess || appOps.any { it.isSuccess }) Result.success(Unit) else res
+        // Whose grant this is decides what may count as success. This method is not self-only:
+        // PermissionManagerScreen -> TogglePermissionUseCase reaches it for arbitrary third-party
+        // packages, and that screen's row shows the *runtime permission*, flipped optimistically
+        // without a re-read. Folding an app-op success into "granted" there would leave the row
+        // disagreeing with PackageManager.checkPermission until something else refreshed it.
+        //
+        // For Thor's own package the two routes really are interchangeable — SelfPermissionGranter
+        // re-reads checkSelfPermission and acts on the *outcome*, so an app-op that opened the
+        // package list is the success it was after even when `pm grant` refused. The app-ops are
+        // issued either way; which route counts is a reporting question, not a gating one.
+        val isSelfGrant = packageName == context.packageName
+        return if (res.isSuccess || (isSelfGrant && appOps.any { it.isSuccess })) {
+            Result.success(Unit)
+        } else {
+            res
+        }
     }
 
     override suspend fun revokePermission(
@@ -1369,7 +1382,20 @@ class RootSystemGateway(
             ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
-        return runCommand("pm revoke --user $userId $escapedPackage $escapedPerm")
+        val res = runCommand("pm revoke --user $userId $escapedPackage $escapedPerm")
+        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
+
+        // The revoke half of the parallel route, and the reason it cannot be left out: the app-op
+        // grant above outlives `pm revoke`, so a revoke that only ran `pm revoke` reported success
+        // while package visibility stayed open — and nothing else in the app could close it. Issued
+        // whatever the revoke returned, for the same reason the grant is: on these ROMs the shell's
+        // verdict on a vendor permission is not the state of the gate.
+        installedAppsAppOpRevokeCommands(escapedPackage, userId).forEach { runCommand(it) }
+
+        // And unlike the grant, the fold stays narrow: `pm revoke` is the verdict. All three app-op
+        // resets failing is the ordinary outcome on any device that does not define this op, so
+        // reading that as a failed revoke would report one on every AOSP device.
+        return res
     }
 
     /**

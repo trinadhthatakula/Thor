@@ -13,6 +13,7 @@ import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
 import com.valhalla.thor.data.source.local.installCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
+import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
@@ -487,10 +488,16 @@ class DhizukuSystemGateway(
                 .map { DhizukuHelper.execute(it) }
                 .any { it.first == 0 }
 
-            // Either route opening is a success; only both failing is a failure, and then the
-            // grant's own diagnostic is the useful one. The caller does not trust this either way
-            // — SelfPermissionGranter re-reads checkSelfPermission — so this is for the log.
-            if (result.first == 0 || appOpTook) Result.success(Unit) else grantFailure()
+            // Whose grant this is decides what may count as success. This method is not self-only:
+            // PermissionManagerScreen -> TogglePermissionUseCase reaches it for arbitrary
+            // third-party packages, and that screen's row shows the *runtime permission*, flipped
+            // optimistically without a re-read, so folding an app-op success into "granted" there
+            // would leave the row disagreeing with PackageManager.checkPermission. For Thor's own
+            // package the routes are interchangeable — SelfPermissionGranter re-reads
+            // checkSelfPermission and acts on the outcome. The app-ops are issued either way.
+            val isSelfGrant = packageName == context.packageName
+            if (result.first == 0 || (isSelfGrant && appOpTook)) Result.success(Unit)
+            else grantFailure()
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -509,6 +516,18 @@ class DhizukuSystemGateway(
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
             val result = DhizukuHelper.execute("pm revoke --user $userId $escapedPackageName $escapedPermissionName")
+
+            // The revoke half of the parallel route: the app-op grant outlives `pm revoke`, so a
+            // revoke that only ran `pm revoke` reported success while package visibility stayed
+            // open, and nothing else in the app could close it. Issued whatever the revoke
+            // returned, and deliberately not folded into the result — all three resets failing is
+            // the ordinary outcome on any device that does not define this op, so reading that as a
+            // failed revoke would report one on every AOSP device. `pm revoke` stays the verdict.
+            if (permissionName == GET_INSTALLED_APPS_PERMISSION) {
+                installedAppsAppOpRevokeCommands(escapedPackageName, userId)
+                    .forEach { DhizukuHelper.execute(it) }
+            }
+
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Dhizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
