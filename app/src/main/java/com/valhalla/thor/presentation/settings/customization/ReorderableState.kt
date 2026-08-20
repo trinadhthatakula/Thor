@@ -140,7 +140,8 @@ class ReorderableLazyListState(
         // a post-swap translation puts the card a whole row away from where it is rendered — enough,
         // against a 96 dp edge zone, to start or stop the auto-scroller for a frame on nothing. The
         // last velocity holds until the next pointer event or frame reads a layout that agrees with
-        // itself.
+        // itself — including when that last velocity is zero, which is why `runAutoScroll` re-reads
+        // a zero rather than only sustaining a non-zero one.
         if (settleDropTarget()) return
         updateAutoScrollVelocity()
     }
@@ -180,6 +181,15 @@ class ReorderableLazyListState(
             val frame = withFrameNanos { it }
             val seconds = ((frame - previousFrame) / 1_000_000_000f).coerceIn(0f, MAX_FRAME_SECONDS)
             previousFrame = frame
+
+            // A frame that is not scrolling is still a frame whose layout agrees with the
+            // translation, so this is where a zero velocity gets its second look. Without it this
+            // loop could only *sustain* a velocity, never start one — the `continue` below skipped
+            // the recompute at the bottom — so an `onDrag` that both swapped and crossed into an
+            // edge zone left the velocity at zero and a finger then held still at the edge never
+            // scrolled at all. What keeps this from scrolling on a mere press is the direction gate
+            // in `updateAutoScrollVelocity`: `dragDirection` is 0 until the finger has travelled.
+            if (autoScrollVelocity == 0f) updateAutoScrollVelocity()
 
             val velocity = autoScrollVelocity
             if (velocity == 0f) continue

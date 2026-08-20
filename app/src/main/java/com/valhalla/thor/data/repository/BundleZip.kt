@@ -40,6 +40,23 @@ internal const val MAX_EXTRACTED_TOTAL_BYTES = 4L * 1024 * 1024 * 1024
 internal const val MAX_EXPANSION_TOTAL_BYTES = 16L * 1024 * 1024 * 1024
 
 /**
+ * Ceiling on a whole app-bundle container staged out of a `.thorbak` before anything unpacks it.
+ *
+ * The *sum* of the two budgets above, because one `.xapk` member legitimately holds both: an install
+ * set, charged against [MAX_EXTRACTED_TOTAL_BYTES] when `extractEntries` unpacks it, and an expansion
+ * set, charged against [MAX_EXPANSION_TOTAL_BYTES] when `extractExpansions` does. Both still apply to
+ * the contents; this only bounds the copy of the container itself. Bounding that copy at the APK-only
+ * figure is what the comment on [MAX_EXPANSION_TOTAL_BYTES] rules out — it refuses archives Thor
+ * itself writes, since a 4 GB game's XAPK is an ordinary backup — and it refuses them during staging,
+ * which happens before a single data class is restored.
+ *
+ * A bound is still wanted, hence the sum rather than nothing: staging runs before any verifier or
+ * passphrase check, so it is the one restore step where a caller who proved nothing chooses how many
+ * bytes Thor writes.
+ */
+internal const val MAX_STAGED_BUNDLE_BYTES = MAX_EXTRACTED_TOTAL_BYTES + MAX_EXPANSION_TOTAL_BYTES
+
+/**
  * Ceiling on how *many* expansion files one archive may unpack.
  *
  * [MAX_EXPANSION_TOTAL_BYTES] does not bound this. An archive carrying a manifest is limited by what
