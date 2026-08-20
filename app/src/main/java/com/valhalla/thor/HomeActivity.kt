@@ -331,7 +331,18 @@ class HomeActivity : ComponentActivity() {
         billingProcessor.refreshPurchases()
         // Re-probe privileges (e.g. user went to KernelSU/Magisk/APatch manager to grant root,
         // or authorized Shizuku/Dhizuku externally).
-        privilegeManager.refresh()
+        //
+        // Gated on isReady, which is the difference between "probe again" and "probe twice".
+        // PrivilegeManager starts its first probe from its own init, i.e. from
+        // ThorApplication.onCreate, so on a cold start that probe is still in flight when the
+        // first onResume lands — refreshing here would bump the trigger and buy a second full
+        // root/Shizuku/Dhizuku sweep for an answer already on its way. That is the duplicate
+        // c86aa565 ("perf(privilege): one root probe per cold start") removed. isReady latches
+        // true on the first emission and never goes back, so every *later* resume — the ones
+        // where the user actually did go and grant something — still re-probes.
+        if (privilegeManager.state.value.isReady) {
+            privilegeManager.refresh()
+        }
         if (hasRequestedShizuku) return
         lifecycleScope.launch {
             val privileges = privilegeManager.state.first { it.isReady }

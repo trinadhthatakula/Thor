@@ -85,6 +85,7 @@ import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.presentation.widgets.ScrollToTopOnChange
 import org.koin.androidx.compose.koinViewModel
 
 /** Sentinel id for "the editor is open on a profile that does not exist yet". */
@@ -369,7 +370,7 @@ fun FreezerScreen(
                     val metrics = gridMetricsFor(state.gridDensity)
                     val gridState = rememberLazyGridState()
 
-                    LaunchedEffect(state.searchQuery, state.appListType) {
+                    ScrollToTopOnChange(state.searchQuery, state.appListType) {
                         gridState.scrollToItem(0)
                     }
 
@@ -413,7 +414,7 @@ fun FreezerScreen(
                 } else {
                     val listState = rememberLazyListState()
 
-                    LaunchedEffect(state.searchQuery, state.appListType) {
+                    ScrollToTopOnChange(state.searchQuery, state.appListType) {
                         listState.scrollToItem(0)
                     }
 

@@ -123,7 +123,7 @@ object DhizukuHelper {
     fun isDhizukuAvailable(context: Context): Boolean {
         val probe = probeDhizuku(
             alreadyInitialised = clientInitialised,
-            init = { DhizukuAPI.init(context) },
+            init = { DhizukuAPI.init(context.applicationContext) },
             isPermissionGranted = { DhizukuAPI.isPermissionGranted() },
         )
         clientInitialised = probe.initialised
@@ -146,11 +146,20 @@ object DhizukuHelper {
 
     /**
      * Requests authorization from Dhizuku if installed and bound.
+     *
+     * Synchronous binder IPC — `DhizukuAPI.init` binds a service and `isPermissionGranted` is a
+     * round-trip to another process — so callers must be off the main thread. The dialog itself is
+     * asynchronous: [onResult] arrives on whichever thread Dhizuku's listener fires on.
+     *
+     * [context] is normalised to the application context at both `init` sites in this object,
+     * because `DhizukuAPI` retains what it is handed in a static field for the life of the process.
+     * A caller passing `LocalContext.current` — which the Privilege Check dialog does — would
+     * otherwise pin an Activity there past every rotation.
      */
     fun requestPermission(context: Context, onResult: (Boolean) -> Unit) {
         try {
             if (!clientInitialised) {
-                clientInitialised = DhizukuAPI.init(context)
+                clientInitialised = DhizukuAPI.init(context.applicationContext)
             }
             if (DhizukuAPI.isPermissionGranted()) {
                 onResult(true)

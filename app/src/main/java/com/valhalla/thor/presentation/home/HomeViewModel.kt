@@ -197,12 +197,24 @@ class HomeViewModel(
         }
     }
 
+    /**
+     * Off the main thread, because [DhizukuHelper.requestPermission] opens with `DhizukuAPI.init`
+     * and `isPermissionGranted()` — both synchronous binder round-trips to another process.
+     * `DhizukuSystemGateway` confines the same helper to [ioDispatcher] for exactly that reason and
+     * this call site, reached straight from the Privilege Check dialog's `onClick`, was the one that
+     * did not. The bind is normally already latched by `ThorApplication.onCreate`, so the usual cost
+     * is a stall rather than an ANR — but "usually already bound" is not a thread policy.
+     *
+     * The `granted` callback arrives on whichever thread Dhizuku's listener fires on, so the
+     * follow-up is posted back through [viewModelScope] rather than run inline — [refreshPrivileges]
+     * reads and reassigns `dashboardJob`, and every other caller of it is on the main dispatcher.
+     * It is the same three steps this used to inline; sharing them keeps the two grant paths from
+     * drifting.
+     */
     fun requestDhizuku(context: Context) {
-        DhizukuHelper.requestPermission(context) { granted ->
-            if (granted) {
-                privilegeManager.refresh()
-                AppScanRevision.bump()
-                loadDashboardData()
+        viewModelScope.launch(ioDispatcher) {
+            DhizukuHelper.requestPermission(context) { granted ->
+                if (granted) viewModelScope.launch { refreshPrivileges() }
             }
         }
     }

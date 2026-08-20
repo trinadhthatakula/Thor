@@ -18,6 +18,7 @@ import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
+import com.valhalla.thor.domain.model.RetainReason
 import com.valhalla.thor.domain.model.ScanVerdict
 import com.valhalla.thor.domain.model.prunableWatchlistRows
 import com.valhalla.thor.domain.model.scanVerdict
@@ -257,6 +258,14 @@ class AppRepositoryImpl(
 
                     // On Chinese OEMs (HyperOS, MIUI, ColorOS), MATCH_UNINSTALLED_PACKAGES may trigger
                     // OEM package-visibility filters and collapse to only the calling app. Fall back to standard flags.
+                    //
+                    // The fallback recovers the *list*, never the *authority to prune against it*:
+                    // without MATCH_UNINSTALLED_PACKAGES the query cannot see a package whose per-user
+                    // FLAG_INSTALLED bit is clear, so an uninstall-frozen app reads as gone when it is
+                    // merely invisible. Believing that would delete its Room row, its cached icon PNG
+                    // and — the one that cannot be repaired by a later scan — its Freezer watchlist row,
+                    // which is what makes it thawable at all. Hence the flag, read at the verdict below.
+                    var usedVisibilityFallback = false
                     if (installedPackages.size <= 1) {
                         val fallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
@@ -265,6 +274,7 @@ class AppRepositoryImpl(
                         }
                         if (fallback.size > installedPackages.size) {
                             installedPackages = fallback
+                            usedVisibilityFallback = true
                         }
                     }
 
@@ -345,12 +355,20 @@ class AppRepositoryImpl(
                     // return a near-empty list, and pruning against that wipes the Room rows *and*
                     // the cached icon PNGs for almost every app the user has. scanVerdict() holds
                     // the rules; nothing is decided here.
-                    val verdict = scanVerdict(
-                        scannedPackageNames = currentPackageNames,
-                        cachedCount = initialCachedCount,
-                        consecutiveSuspectScans = consecutiveSuspectScans,
-                        permission = installedAppsPermission.state()
-                    )
+                    //
+                    // A scan that needed the weaker-flags fallback skips the rules entirely: none of
+                    // them can see that MATCH_UNINSTALLED_PACKAGES was dropped, and every one of them
+                    // would happily Accept the 300 packages such a scan *does* return.
+                    val verdict = if (usedVisibilityFallback) {
+                        ScanVerdict.Retain(RetainReason.VisibilityFallback)
+                    } else {
+                        scanVerdict(
+                            scannedPackageNames = currentPackageNames,
+                            cachedCount = initialCachedCount,
+                            consecutiveSuspectScans = consecutiveSuspectScans,
+                            permission = installedAppsPermission.state()
+                        )
+                    }
 
                     // The cached rows this scan did not see and was not allowed to delete. Mapped
                     // through the same AppEntity.toDomain() the initial cache emission above uses,
@@ -382,7 +400,15 @@ class AppRepositoryImpl(
                         }
 
                         is ScanVerdict.Retain -> {
-                            consecutiveSuspectScans++
+                            // VisibilityFallback deliberately does not count. The tolerance exists
+                            // to let a *genuinely* shrinking device eventually be believed after
+                            // SUSPECT_SCAN_TOLERANCE agreeing scans; a fallback scan is not evidence
+                            // of shrinkage at all, and spending the budget on it would hand the
+                            // third truncated scan the Accept the guard was built to withhold. Not
+                            // reset either — this scan is no proof the device is healthy.
+                            if (verdict.reason != RetainReason.VisibilityFallback) {
+                                consecutiveSuspectScans++
+                            }
                             Logger.w(
                                 "AppRepository",
                                 "not pruning against this scan (${verdict.reason}): saw " +

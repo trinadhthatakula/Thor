@@ -590,7 +590,7 @@ private fun AppListContent(
         val metrics = gridMetricsFor(gridDensity)
         val gridState = rememberLazyGridState()
 
-        LaunchedEffect(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
+        ScrollToTopOnChange(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
             gridState.scrollToItem(0)
         }
 
@@ -617,7 +617,7 @@ private fun AppListContent(
     } else {
         val listState = rememberLazyListState()
 
-        LaunchedEffect(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
+        ScrollToTopOnChange(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
             listState.scrollToItem(0)
         }
 

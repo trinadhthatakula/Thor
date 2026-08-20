@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 /**
@@ -248,6 +249,37 @@ class InstalledAppsVisibilityTest {
         )
     }
 
+    @Test
+    fun visibilityFallbackIsNeverAVerdictThisFunctionReaches() {
+        // VisibilityFallback is the caller's word, not a rule here, and the KDoc says so. A flags=0
+        // getInstalledPackages leaves no trace in its own output — the packages it cannot see are
+        // exactly the ones it does not report — so no combination of scan, cache and permission can
+        // infer it. AppRepositoryImpl short-circuits to it instead, and this asserts the boundary:
+        // if a rule below ever starts producing it, the two sources of the reason have collided.
+        val everyCase = listOf(
+            emptySet<String>(),
+            packages(5, withPlatform = false),
+            packages(5),
+            packages(400),
+        )
+        for (scanned in everyCase) {
+            for (permission in listOf(
+                InstalledAppsPermission.Unsupported,
+                InstalledAppsPermission.Denied,
+                InstalledAppsPermission.Granted,
+            )) {
+                for (suspectScans in 0..SUSPECT_SCAN_TOLERANCE) {
+                    val result = verdict(scanned, permission, suspectScans = suspectScans)
+                    assertNotEquals(
+                        "scanVerdict must not mint VisibilityFallback itself",
+                        ScanVerdict.Retain(RetainReason.VisibilityFallback),
+                        result
+                    )
+                }
+            }
+        }
+    }
+
     // --- prunableWatchlistRows: the second consumer of the same verdict ---
 
     private val watchlist = setOf("com.example.gone", "com.example.here")
@@ -266,10 +298,11 @@ class InstalledAppsVisibilityTest {
 
     @Test
     fun aDisbelievedScanPrunesNothingWhateverItsReason() {
-        // The whole safety property, one case per reason. Delete the `Accept` check in
-        // prunableWatchlistRows and all three of these turn red: on a collapsed scan every one of
-        // these rows looks uninstalled, so the user's entire watchlist would go in a single pass —
-        // silently, with no undo, and for a device that is working perfectly well.
+        // The whole safety property, one case per reason — iterating `entries` rather than listing
+        // them so a reason added later is covered without anyone remembering to come back here.
+        // Delete the `Accept` check in prunableWatchlistRows and every one of these turns red: on a
+        // disbelieved scan all of these rows look uninstalled, so the user's entire watchlist would
+        // go in a single pass — silently, with no undo, and for a device working perfectly well.
         for (reason in RetainReason.entries) {
             assertEquals(
                 "retained scan (${reason.name}) must not prune",
