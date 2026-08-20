@@ -472,15 +472,31 @@ class ShizukuSystemGateway(
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
             val result = ShizukuHelper.execute("pm grant --user $userId $escapedPackageName $escapedPermissionName")
-            if (result.first != 0) {
-                return Result.failure(Exception("Shizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
+            val grantFailure = {
+                Result.failure<Unit>(
+                    Exception("Shizuku: pm grant failed with exit code ${result.first}: ${result.second}")
+                )
             }
-            if (permissionName == GET_INSTALLED_APPS_PERMISSION) {
-                installedAppsAppOpGrantCommands(escapedPackageName, userId).forEach { cmd ->
-                    ShizukuHelper.execute(cmd)
-                }
+            if (permissionName != GET_INSTALLED_APPS_PERMISSION) {
+                return if (result.first == 0) Result.success(Unit) else grantFailure()
             }
-            Result.success(Unit)
+
+            // The app-ops are a *parallel route* to package visibility, not a follow-up to the
+            // grant, so they run whatever `pm grant` returned. On the ROMs this permission exists
+            // for — MIUI/HyperOS, ColorOS, OriginOS — the AOSP `pm grant` of a vendor-defined
+            // permission frequently exits non-zero while the app-op is the thing that actually
+            // opens the package list, which is why installedAppsAppOpGrantCommands fires three
+            // spellings of it. Gating them on the grant succeeding is what made a Chinese-ROM
+            // install come back with Thor as the only visible app: the grant failed, the app-op
+            // was never set, and nothing else in the app knows how to open that gate.
+            val appOpTook = installedAppsAppOpGrantCommands(escapedPackageName, userId)
+                .map { ShizukuHelper.execute(it) }
+                .any { it.first == 0 }
+
+            // Either route opening is a success; only both failing is a failure, and then the
+            // grant's own diagnostic is the useful one. The caller does not trust this either way
+            // — SelfPermissionGranter re-reads checkSelfPermission — so this is for the log.
+            if (result.first == 0 || appOpTook) Result.success(Unit) else grantFailure()
         } catch (e: Exception) {
             Result.failure(e)
         }

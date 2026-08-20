@@ -191,6 +191,14 @@ class AppRepositoryImpl(
         // If 50 broadcasts come in, we only keep the latest "refresh needed" flag.
         val triggerChannel = Channel<Unit>(Channel.CONFLATED)
 
+        // Read here, synchronously, and *before* the worker below exists — not down at the watcher
+        // that consumes it. The worker runs on a multi-threaded dispatcher, so it can be inside
+        // getInstalledPackages() while this block is still registering receivers; a scan request
+        // raised in that window has to survive until the watcher subscribes, and only a baseline
+        // taken before the scan started can tell "arrived while we were scanning" from "already
+        // folded into the scan we are about to run". See [AppScanRevision.requestsAfter].
+        val scanRevisionAtStart = AppScanRevision.snapshot()
+
         // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
         val worker = launch(ioDispatcher) {
             // Initial load from cache and baseline for comparison
@@ -471,9 +479,17 @@ class AppRepositoryImpl(
             LocaleRevision.changes.collect { triggerChannel.trySend(Unit) }
         }
 
-        // Process-wide scan requests (e.g. self-permission auto-grant, privilege changes)
+        // Process-wide scan requests (e.g. self-permission auto-grant, privilege changes).
+        //
+        // Filtered against the baseline captured at the top rather than with drop(1): a bump that
+        // predates this collection is already covered by the initial trigger the worker sends
+        // itself, so acting on it too would buy a second full scan every time — but a bump raised
+        // *after* that baseline must get through however late this subscribes, because the scan it
+        // is racing may have read the package list before the grant landed. drop(1) cannot tell
+        // those two apart; the baseline can. See the AppScanRevision class KDoc.
         val scanWatcher = launch {
-            AppScanRevision.changes.collect { triggerChannel.trySend(Unit) }
+            AppScanRevision.requestsAfter(scanRevisionAtStart)
+                .collect { triggerChannel.trySend(Unit) }
         }
 
         // Receiver for Package-specific changes (requires "package" data scheme)
