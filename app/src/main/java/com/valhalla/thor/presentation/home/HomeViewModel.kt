@@ -4,6 +4,8 @@
 package com.valhalla.thor.presentation.home
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.BuildConfig
@@ -11,6 +13,8 @@ import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.InstalledManagerInfo
+import com.valhalla.thor.domain.model.PrivilegeManagerApp
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.repository.InstallerLabelResolver
@@ -48,6 +52,7 @@ data class HomeUiState(
     // False until the first privilege probe completes — lets the status icon show a
     // neutral "detecting" state instead of flashing the red "no privilege" icon on cold start.
     val isPrivilegeReady: Boolean = false,
+    val installedManagers: List<InstalledManagerInfo> = emptyList(),
 
     // Preferences
     val showReinstallCard: Boolean = true, // <--- Controlled by DataStore
@@ -64,6 +69,7 @@ class HomeViewModel(
     private val privilegeManager: PrivilegeManager,
     private val preferenceRepository: PreferenceRepository, // Injected
     private val installerLabelResolver: InstallerLabelResolver,
+    private val packageManager: PackageManager,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -103,6 +109,7 @@ class HomeViewModel(
             isShizukuAvailable = priv.shizuku,
             isDhizukuAvailable = priv.dhizuku,
             isPrivilegeReady = priv.isReady,
+            installedManagers = PrivilegeManagerApp.findInstalledManagers(packageManager),
             // Keep the existing "null = no privilege" contract for the UI. Until the
             // first probe completes (isReady == false), optimistically fall back to the
             // persisted preference so a configured user never sees a "no privilege"
@@ -172,6 +179,14 @@ class HomeViewModel(
                 AppScanRevision.bump()
                 loadDashboardData()
             }
+        }
+    }
+
+    fun openManagerApp(context: Context, packageName: String) {
+        val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(intent) }
         }
     }
 

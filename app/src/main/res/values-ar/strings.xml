@@ -58,6 +58,7 @@
     <string name="no">لا</string>
     <string name="done">تم</string>
     <string name="close">إغلاق</string>
+    <string name="open_app">فتح</string>
     <string name="installed_label">مثبت</string>
     <string name="new_version_label">نسخة جديدة</string>
     <string name="version_prefix">الإصدار: </string>
