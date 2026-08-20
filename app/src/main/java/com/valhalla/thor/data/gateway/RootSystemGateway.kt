@@ -1340,7 +1340,7 @@ class RootSystemGateway(
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
         val res = runCommand("pm grant --user $userId $escapedPackage $escapedPerm")
-        if (permissionName == GET_INSTALLED_APPS_PERMISSION) {
+        if (res.isSuccess && permissionName == GET_INSTALLED_APPS_PERMISSION) {
             installedAppsAppOpGrantCommands(escapedPackage, userId).forEach { cmd ->
                 runCommand(cmd)
             }

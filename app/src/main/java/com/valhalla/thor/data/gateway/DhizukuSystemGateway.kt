@@ -466,13 +466,15 @@ class DhizukuSystemGateway(
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
             val result = DhizukuHelper.execute("pm grant --user $userId $escapedPackageName $escapedPermissionName")
+            if (result.first != 0) {
+                return Result.failure(Exception("Dhizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
+            }
             if (permissionName == GET_INSTALLED_APPS_PERMISSION) {
                 installedAppsAppOpGrantCommands(escapedPackageName, userId).forEach { cmd ->
                     DhizukuHelper.execute(cmd)
                 }
             }
-            if (result.first == 0) Result.success(Unit)
-            else Result.failure(Exception("Dhizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }

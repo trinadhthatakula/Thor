@@ -355,6 +355,7 @@ class AppRepositoryImpl(
                     // The cached rows this scan did not see and was not allowed to delete. Mapped
                     // through the same AppEntity.toDomain() the initial cache emission above uses,
                     // so a retained row reaches the UI exactly as it did a moment earlier.
+                    var syncCacheSucceeded = true
                     val retained = when (verdict) {
                         ScanVerdict.Accept -> {
                             consecutiveSuspectScans = 0
@@ -364,13 +365,16 @@ class AppRepositoryImpl(
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Exception) {
+                                    syncCacheSucceeded = false
                                     Logger.e("AppRepository", "syncCache failed during accepted scan", e)
                                 }
-                                toDelete.forEach { pkgName ->
-                                    cachedMap.remove(pkgName)
-                                    try {
-                                        File(context.filesDir, "app_icons/$pkgName.png").delete()
-                                    } catch (_: Exception) {}
+                                if (syncCacheSucceeded) {
+                                    toDelete.forEach { pkgName ->
+                                        cachedMap.remove(pkgName)
+                                        try {
+                                            File(context.filesDir, "app_icons/$pkgName.png").delete()
+                                        } catch (_: Exception) {}
+                                    }
                                 }
                             }
                             pruneWatchlist(watchlistBeforeScan, currentPackageNames, verdict)
@@ -395,6 +399,7 @@ class AppRepositoryImpl(
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Exception) {
+                                    syncCacheSucceeded = false
                                     Logger.e("AppRepository", "syncCache failed during retained scan", e)
                                 }
                             }
@@ -408,13 +413,13 @@ class AppRepositoryImpl(
                     // nothing would strand isLoading forever on a fresh collection.
                     producer.send(currentList + retained)
 
-                    // Only now, and only on a scan that was trusted enough to prune against. Moving
-                    // the key up next to the `forceRefresh` read would let a scan that was cancelled
-                    // mid-loop, or one that ran while package visibility was truncated, record a
-                    // language for rows it never re-mapped — and nothing would ever force-refresh
-                    // them again. Re-mapping twice costs a rescan; recording too early costs the
-                    // stale labels this key exists to prevent.
-                    if (forceRefresh && verdict == ScanVerdict.Accept) {
+                    // Only now, and only on a scan that was trusted enough to prune against and whose
+                    // cache synchronization succeeded. Moving the key up next to the `forceRefresh`
+                    // read would let a scan that was cancelled mid-loop, or one that ran while package
+                    // visibility was truncated, record a language for rows it never re-mapped — and
+                    // nothing would ever force-refresh them again. Re-mapping twice costs a rescan;
+                    // recording too early costs the stale labels this key exists to prevent.
+                    if (forceRefresh && verdict == ScanVerdict.Accept && syncCacheSucceeded) {
                         lastLocale = currentLocale
                         recordLabelLocale(currentLocale)
                     }

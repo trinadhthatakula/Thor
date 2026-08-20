@@ -369,7 +369,7 @@ fun FreezerScreen(
                     val metrics = gridMetricsFor(state.gridDensity)
                     val gridState = rememberLazyGridState()
 
-                    LaunchedEffect(state.searchQuery) {
+                    LaunchedEffect(state.searchQuery, state.appListType) {
                         gridState.scrollToItem(0)
                     }
 
@@ -413,7 +413,7 @@ fun FreezerScreen(
                 } else {
                     val listState = rememberLazyListState()
 
-                    LaunchedEffect(state.searchQuery) {
+                    LaunchedEffect(state.searchQuery, state.appListType) {
                         listState.scrollToItem(0)
                     }
 

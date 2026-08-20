@@ -16,16 +16,11 @@ enum class PrivilegeManagerApp(
     val mode: PrivilegeMode,
     val packageNames: Set<String>
 ) {
-    // Shizuku & Sui
+    // Shizuku
     SHIZUKU(
         displayName = "Shizuku",
         mode = PrivilegeMode.SHIZUKU,
         packageNames = setOf("moe.shizuku.privileged.api")
-    ),
-    SUI(
-        displayName = "Sui",
-        mode = PrivilegeMode.SHIZUKU,
-        packageNames = setOf("rikka.safemode")
     ),
 
     // Dhizuku
