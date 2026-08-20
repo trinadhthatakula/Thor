@@ -329,6 +329,9 @@ class HomeActivity : ComponentActivity() {
         // unacknowledged for three days; coming back to the app is the first chance to catch it.
         // The store implementation does its work on a background scope and the foss one is a no-op.
         billingProcessor.refreshPurchases()
+        // Re-probe privileges (e.g. user went to KernelSU/Magisk/APatch manager to grant root,
+        // or authorized Shizuku/Dhizuku externally).
+        privilegeManager.refresh()
         if (hasRequestedShizuku) return
         lifecycleScope.launch {
             val privileges = privilegeManager.state.first { it.isReady }

@@ -139,7 +139,7 @@ class HomeViewModel(
 
         viewModelScope.launch {
             privilegeManager.state
-                .map { it.active to it.hasAnyPrivilege }
+                .map { Triple(it.root, it.shizuku, it.dhizuku) to it.active }
                 .distinctUntilChanged()
                 .drop(1)
                 .collect {
