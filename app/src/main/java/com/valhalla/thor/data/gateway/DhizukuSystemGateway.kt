@@ -12,9 +12,11 @@ import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
 import com.valhalla.thor.data.source.local.installCommand
+import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import kotlinx.coroutines.CoroutineDispatcher
@@ -464,6 +466,11 @@ class DhizukuSystemGateway(
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
             val result = DhizukuHelper.execute("pm grant --user $userId $escapedPackageName $escapedPermissionName")
+            if (permissionName == GET_INSTALLED_APPS_PERMISSION) {
+                installedAppsAppOpGrantCommands(escapedPackageName, userId).forEach { cmd ->
+                    DhizukuHelper.execute(cmd)
+                }
+            }
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Dhizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {

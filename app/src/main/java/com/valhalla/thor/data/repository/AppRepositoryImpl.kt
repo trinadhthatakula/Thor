@@ -248,12 +248,25 @@ class AppRepositoryImpl(
                     val watchlistBeforeScan = watchlistSnapshot()
 
                     val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
-                    val installedPackages =
+                    var installedPackages =
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(flags))
                         } else {
                             pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
                         }
+
+                    // On Chinese OEMs (HyperOS, MIUI, ColorOS), MATCH_UNINSTALLED_PACKAGES may trigger
+                    // OEM package-visibility filters and collapse to only the calling app. Fall back to standard flags.
+                    if (installedPackages.size <= 1) {
+                        val fallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
+                        } else {
+                            pm.getInstalledPackages(0)
+                        }
+                        if (fallback.size > installedPackages.size) {
+                            installedPackages = fallback
+                        }
+                    }
 
                     val initialCachedCount = cachedMap.size
                     val currentList = ArrayList<AppInfo>(installedPackages.size)

@@ -257,6 +257,12 @@ internal fun backgroundRestrictionCommand(
 internal fun usageStatsGrantCommand(escapedPackage: String, userId: Int): String =
     appOpsCommand(escapedPackage, userId, op = "GET_USAGE_STATS", mode = "allow")
 
+internal fun installedAppsAppOpGrantCommands(escapedPackage: String, userId: Int): List<String> = listOf(
+    appOpsCommand(escapedPackage, userId, op = "GET_INSTALLED_APPS", mode = "allow"),
+    appOpsCommand(escapedPackage, userId, op = "android:get_installed_apps", mode = "allow"),
+    appOpsCommand(escapedPackage, userId, op = "10022", mode = "allow"),
+)
+
 /**
  * The one place that knows how an `appops set` line is spelled.
  *
