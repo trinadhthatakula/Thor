@@ -547,4 +547,34 @@
     <string name="passphrase_error_mismatch">As duas senhas não coincidem.</string>
     <string name="passphrase_error_store_failed">O Thor não conseguiu salvar a senha neste dispositivo. O backup continua funcionando — você só vai ter que digitá-la a cada vez.</string>
 
+    <!--
+      Backup &amp; Restore Hub UI
+
+      Absent on purpose: backup_hub_filter_all, backup_hub_filter_bundles,
+      backup_hub_hero_restore_desc, backup_hub_no_archives and restore_archive_version read the
+      same in both variants, so values-pt already says it right.
+    -->
+    <string name="home_backup_restore_subtitle">Gerenciar backups e restaurar dados</string>
+    <string name="backup_hub_hero_backup_title">Fazer backup de um aplicativo</string>
+    <string name="backup_hub_hero_backup_desc">Criar backup de dados criptografado (.thorbak) ou pacote APK</string>
+    <string name="backup_hub_hero_restore_title">Restaurar de um arquivo</string>
+    <string name="backup_hub_section_backups">Backups em Downloads/Thor</string>
+    <string name="backup_hub_filter_backups">Backups</string>
+    <string name="backup_hub_empty_title">Nenhum backup em Downloads/Thor</string>
+    <string name="backup_hub_empty_desc">Os arquivos salvos em Downloads/Thor aparecerão aqui para restauração rápida com um toque.</string>
+    <string name="backup_hub_tip_thorbak_title">Backups de dados (.thorbak)</string>
+    <string name="backup_hub_tip_thorbak_desc">Arquivos completos criptografados contendo dados de aplicativos e divisões APK opcionais. Os dados privados de aplicativos (CE/DE) exigem root, enquanto os dados do armazenamento compartilhado podem ser restaurados com uma shell privilegiada.</string>
+    <string name="backup_hub_tip_bundle_title">Pacotes de aplicativos (.xapk / .apks / .apk)</string>
+    <string name="backup_hub_tip_bundle_desc">Pacotes de instalação autônomos para instalação offline ou compartilhamento entre dispositivos sem precisar de root.</string>
+    <string name="backup_hub_tip_discovery_title">Detecção automática</string>
+    <string name="backup_hub_tip_discovery_desc">Qualquer arquivo exportado ou colocado em Downloads/Thor será listado aqui automaticamente para restauração imediata.</string>
+    <string name="backup_hub_pick_app_title">Selecionar um aplicativo para backup</string>
+    <string name="backup_hub_search_apps_placeholder">Pesquisar aplicativos…</string>
+    <string name="backup_hub_delete_confirm_title">Excluir backup?</string>
+    <string name="backup_hub_delete_confirm_message">Tem certeza de que deseja excluir %1$s do armazenamento? Esta ação é irreversível.</string>
+    <string name="backup_hub_badge_data_backup">Backup de dados</string>
+    <string name="backup_hub_badge_app_bundle">Pacote de aplicativo</string>
+    <string name="backup_hub_action_delete">Excluir</string>
+    <string name="backup_hub_action_share">Compartilhar</string>
+
 </resources>
