@@ -22,6 +22,7 @@
     "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/9.jpg"
   ],
   "repo_url": "https://github.com/trinadhthatakula/Thor",
+  "app_website": "https://thor.trinadhthatakula.com",
   "download_url": "https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk",
   "changelog": "• 📦 Backup & Restore Hub: browse, manage, share and restore backups & bundles from one dedicated screen\n\n• 💾 Offline encrypted app data backup (.thorbak) with AES-256-GCM & WorkManager background sync\n\n• ⚙️ Customize App Info actions: drag-and-drop reordering and visibility controls\n\n• 🎮 Full .xapk & OBB split support for games and large apps\n\n• ❄️ Differentiated freezer actions & watchlist auto-cleanup\n\n• 🌐 Full translations in 8 languages: EN, AR, ES, FR, PL, PT, PT-BR, ZH",
   "store_issue_number": 279,
@@ -52,6 +53,10 @@
     "name": "Trinadh Thatakula",
     "username": "trinadhthatakula",
     "account_url": "https://github.com/trinadhthatakula",
+    "banner_url": "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/.github/assets/shizu-developer-banner.png",
+    "email": "trinadh.thatakula@gmail.com",
+    "website": "https://thor.trinadhthatakula.com",
+    "portfolio": "https://trinadhthatakula.com",
     "socials": {
       "github": "https://github.com/trinadhthatakula",
       "telegram": "https://t.me/thorAppDev"
