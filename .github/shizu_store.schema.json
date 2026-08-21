@@ -28,6 +28,10 @@
       "description": "The Android package name (e.g. xyz.siwane.myapp).",
       "pattern": "^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$"
     },
+    "category": {
+      "type": "string",
+      "description": "App category for store browsing (e.g. 'System Tools')."
+    },
     "version_name": {
       "type": "string",
       "description": "Human-readable version string (e.g. '1.4.2')."
@@ -107,9 +111,9 @@
       "description": "The GitHub Issue number used to fetch and display user comments natively.",
       "minimum": 1
     },
-    "ad": {
+    "has_ads": {
       "type": "boolean",
-      "description": "Set to true to enable custom ad banners in your app details."
+      "description": "Set to true to enable custom ad banners in your app details. Replaces the deprecated 'ad' field."
     },
     "ads": {
       "type": "array",
@@ -137,12 +141,9 @@
         }
       }
     },
-    "category": {
-      "type": "string",
-      "description": "App category for store browsing."
-    },
     "tags": {
       "type": "array",
+      "description": "Array of keyword tags used for search and discovery.",
       "items": {
         "type": "string",
         "minLength": 1,
@@ -152,7 +153,8 @@
       "uniqueItems": true
     },
     "license": {
-      "type": "string"
+      "type": "string",
+      "description": "Software license identifier (e.g. 'GPL-3.0', 'MIT')."
     },
     "download_url": {
       "type": "string",
@@ -161,17 +163,21 @@
       "pattern": "^https?://.*\\.apk$"
     },
     "changelog": {
-      "type": "string"
+      "type": "string",
+      "description": "Changelog for the current version. Supports \\n for newlines and Markdown-style formatting."
     },
     "requires_shizuku": {
       "type": "boolean",
+      "description": "Whether the app requires Shizuku to function.",
       "default": true
     },
     "open_source": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Whether the app's source code is publicly available."
     },
     "donate_url": {
       "type": "string",
+      "description": "Absolute URL to a donation page for the app (root-level alternative to developer.donate_url).",
       "format": "uri",
       "pattern": "^https?://"
     },
@@ -211,6 +217,12 @@
           "format": "uri",
           "pattern": "^https?://"
         },
+        "donate_url": {
+          "type": "string",
+          "description": "Absolute URL to the developer's personal donation page (e.g. PayPal).",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
         "socials": {
           "type": "object",
           "additionalProperties": false,
@@ -227,7 +239,7 @@
     },
     "locales": {
       "type": "object",
-      "description": "Localized strings for supported languages (ar, en, fr, es, pt, ru, hi, zh, ja).",
+      "description": "Localized strings for supported languages (ar, en, fr, es, pt, ru, hi, zh, ja, tr, cs).",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
@@ -236,6 +248,9 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 100
+          },
+          "category": {
+            "type": "string"
           },
           "short_description": {
             "type": "string",
