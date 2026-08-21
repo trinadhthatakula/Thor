@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -58,7 +57,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
-import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
@@ -67,7 +65,6 @@ import com.valhalla.thor.presentation.appList.AppInfoDetailBody
 import com.valhalla.thor.presentation.appList.AppInfoDetailsViewModel
 import com.valhalla.thor.presentation.appList.ExportBottomSheet
 import com.valhalla.thor.presentation.backup.AppBackupSheet
-import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -225,8 +222,25 @@ fun AppInfoSheet(
                     .semantics { paneTitle = paneTitleText },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Hoisted, because the header icon is a shortcut to these two actions and gets the
+                // *same* lambdas the row does — see AppHeaderIcon for why sharing the instance
+                // rather than duplicating the body is the point. Open dismisses (the user is
+                // leaving for another app); settings does not, for the reason spelled out on
+                // onManagePermissions below.
+                val onLaunchApp: () -> Unit = {
+                    onAppAction(AppClickAction.Launch(appInfo))
+                    onDismiss()
+                }
+                val onOpenSystemSettings: () -> Unit = {
+                    onAppAction(AppClickAction.AppInfoSettings(appInfo))
+                }
+
                 // 1. Header (Icon + Title)
-                AppHeader(appInfo)
+                AppHeader(
+                    appInfo = appInfo,
+                    onOpen = onLaunchApp,
+                    onOpenSettings = onOpenSystemSettings
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -237,11 +251,8 @@ fun AppInfoSheet(
                     isShizuku = isShizuku,
                     isDhizuku = isDhizuku,
                     isInFreezer = isInFreezer,
-                    onLaunch = {
-                        onAppAction(AppClickAction.Launch(appInfo))
-                        onDismiss()
-                    },
-                    onSystemSettings = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) },
+                    onLaunch = onLaunchApp,
+                    onSystemSettings = onOpenSystemSettings,
                     onFreezeToggle = { shouldFreeze ->
                         // Only SYSTEM apps get the safety-warning dialog; unfreezing and user apps
                         // go straight through. `freezeNeedsConfirmation` also answers the newer
@@ -478,34 +489,43 @@ fun AppInfoSheet(
 }
 
 @Composable
-private fun AppHeader(appInfo: AppInfo) {
+private fun AppHeader(
+    appInfo: AppInfo,
+    onOpen: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val valueLabel = stringResource(R.string.value_label)
+    val iconSize = 100.dp
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
+            // The scrolling column above clips, and its top edge is this content's top edge. The
+            // icon's glow reserves its own room, so this is only the room the press and flare need
+            // to swell into — derived rather than guessed, because a straight line across the top of
+            // a halo is exactly what the reserved inset was introduced to stop.
+            .padding(top = appHeaderIconGlowOvershoot(iconSize))
     ) {
-        // Icon with a nice background
-        Box(
-            modifier = Modifier
-                .size(100.dp)
-                .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            AsyncImage(
-                model = AppIconModel(appInfo.packageName),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
+        // Icon with a nice background — and the two shortcuts on it: tap opens the app,
+        // long-press opens its system settings page.
+        AppHeaderIcon(
+            appInfo = appInfo,
+            onOpen = onOpen,
+            onOpenSettings = onOpenSettings,
+            size = iconSize,
+            cornerRadius = 32.dp,
+            contentPadding = 16.dp
+        )
 
-        Spacer(Modifier.height(24.dp))
+        // The gap this header wants under the icon is 24 dp, and the icon block already carries most
+        // of it as reserved glow. Spending it rather than adding to it keeps the title where it was
+        // before the glow existed — and keeps the sheet's partially-expanded detent, which shows a
+        // fixed half of the screen, from losing that much of its budget to the header.
+        Spacer(Modifier.height((24.dp - appHeaderIconGlowInset(iconSize)).coerceAtLeast(0.dp)))
 
         // Title
         Text(

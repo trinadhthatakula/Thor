@@ -70,11 +70,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.widgets.AppActionRow
+import com.valhalla.thor.presentation.widgets.AppHeaderIcon
 import com.valhalla.thor.presentation.widgets.AppRiskAction
 import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.presentation.widgets.StatusChip
-import coil3.compose.AsyncImage
+import com.valhalla.thor.presentation.widgets.appHeaderIconGlowInset
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
@@ -84,7 +85,6 @@ import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
-import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.util.AppLocale
@@ -282,9 +282,16 @@ fun AppInfoHeaderAndActions(
     var showExportSheet by remember { mutableStateOf(false) }
     var showBackupSheet by remember { mutableStateOf(false) }
 
+    // Hoisted so the header icon's tap and long-press shortcuts are the *same* lambdas the row's
+    // Open and Settings actions get, exactly as `AppInfoSheet` does it. See `AppHeaderIcon`.
+    val onLaunchApp: () -> Unit = { onAppAction(AppClickAction.Launch(appInfo)) }
+    val onOpenSystemSettings: () -> Unit = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) }
+
     Column(modifier = modifier) {
         AppDetailsHeader(
             appInfo = appInfo,
+            onOpen = onLaunchApp,
+            onOpenSettings = onOpenSystemSettings,
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope
         )
@@ -295,8 +302,8 @@ fun AppInfoHeaderAndActions(
             isShizuku = isShizuku,
             isDhizuku = isDhizuku,
             isInFreezer = isInFreezer,
-            onLaunch = { onAppAction(AppClickAction.Launch(appInfo)) },
-            onSystemSettings = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) },
+            onLaunch = onLaunchApp,
+            onSystemSettings = onOpenSystemSettings,
             onFreezeToggle = { shouldFreeze ->
                 // Unfreeze immediately. When freezing, only SYSTEM apps get the
                 // safety-warning dialog (instability / reboot-loop risk); user
@@ -511,6 +518,8 @@ fun AppInfoDetailBody(
 @Composable
 private fun AppDetailsHeader(
     appInfo: AppInfo,
+    onOpen: () -> Unit,
+    onOpenSettings: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
@@ -518,43 +527,50 @@ private fun AppDetailsHeader(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val valueLabel = stringResource(R.string.value_label)
+    val iconSize = 72.dp
+    // The icon reserves this much transparent margin on every side for its glow, so the card's own
+    // 16 dp of padding is already more than paid for on the icon's side. Spending it rather than
+    // adding to it keeps the icon 16 dp from the card edge instead of 32, keeps the gap to the app
+    // name at 16 rather than doubling it, and — the reason it is worth the arithmetic — leaves the
+    // name/package/chips column the width it had. This header also renders in `MainScreen`'s narrow
+    // list pane, where 32 dp is the difference between a one-line app name and a wrapped one.
+    val iconGlowInset = appHeaderIconGlowInset(iconSize)
+    val iconGap = (16.dp - iconGlowInset).coerceAtLeast(0.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
             .clip(RoundedCornerShape(28.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f))
-            .padding(16.dp),
+            .padding(start = iconGap, top = 16.dp, end = 16.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .padding(12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                with(sharedTransitionScope) {
-                    Modifier.sharedElement(
-                        sharedContentState = rememberSharedContentState(key = "icon-${appInfo.packageName}"),
-                        animatedVisibilityScope = animatedVisibilityScope
-                    )
-                }
-            } else {
-                Modifier
+        val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+            with(sharedTransitionScope) {
+                Modifier.sharedElement(
+                    sharedContentState = rememberSharedContentState(key = "icon-${appInfo.packageName}"),
+                    animatedVisibilityScope = animatedVisibilityScope
+                )
             }
-            AsyncImage(
-                model = AppIconModel(appInfo.packageName),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(sharedModifier)
-            )
+        } else {
+            Modifier
         }
+        // Tap opens the app, long-press opens its system settings page — the same shortcuts the
+        // sheet's header carries, on the same widget, because these two headers are one header on
+        // two surfaces. The glow's default diameter scales off the icon, which is what keeps it
+        // inside this card's clip without a per-surface number.
+        AppHeaderIcon(
+            appInfo = appInfo,
+            onOpen = onOpen,
+            onOpenSettings = onOpenSettings,
+            size = iconSize,
+            cornerRadius = 20.dp,
+            contentPadding = 12.dp,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            imageModifier = sharedModifier
+        )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(iconGap))
 
         Column(modifier = Modifier.weight(1f)) {
             val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
