@@ -61,11 +61,12 @@ import com.valhalla.thor.presentation.theme.greenDark
  *   can still cut it, and a caller that has a tight clip nearby is better off at 0 and letting the
  *   gradient do the work.
  * @param coreFraction how much of the radius holds [color] at full strength before the fade begins,
- *   as a fraction of the radius. 0 fades from the dead centre, which is right for a wash nothing
- *   sits on top of. It is wrong when something opaque covers the middle, as an app icon covers the
- *   middle of its own halo: then the only visible part of the gradient is its faintest tail, and the
- *   glow disappears at any tasteful alpha. A core pushes the falloff outwards so the visible ring
- *   keeps most of the colour.
+ *   as a fraction of the radius. 0 fades from the dead centre, which spreads roughly a third of the
+ *   ink a solid disc of the same alpha would — so it is the wrong default to *drift* into: both
+ *   callers pass a core. An app icon covers the middle of its own halo, leaving only the gradient's
+ *   faintest tail visible, and a full-screen wash replacing a solid blurred disc has to put back the
+ *   ink the gradient's centre gives away. In both cases a core pushes the falloff outwards so the
+ *   part that is actually seen keeps most of the colour.
  */
 @Composable
 internal fun AmbientGlow(

@@ -75,6 +75,7 @@ import com.valhalla.thor.presentation.widgets.AppRiskAction
 import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.presentation.widgets.StatusChip
+import com.valhalla.thor.presentation.widgets.appHeaderIconGlowInset
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
@@ -526,13 +527,22 @@ private fun AppDetailsHeader(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val valueLabel = stringResource(R.string.value_label)
+    val iconSize = 72.dp
+    // The icon reserves this much transparent margin on every side for its glow, so the card's own
+    // 16 dp of padding is already more than paid for on the icon's side. Spending it rather than
+    // adding to it keeps the icon 16 dp from the card edge instead of 32, keeps the gap to the app
+    // name at 16 rather than doubling it, and — the reason it is worth the arithmetic — leaves the
+    // name/package/chips column the width it had. This header also renders in `MainScreen`'s narrow
+    // list pane, where 32 dp is the difference between a one-line app name and a wrapped one.
+    val iconGlowInset = appHeaderIconGlowInset(iconSize)
+    val iconGap = (16.dp - iconGlowInset).coerceAtLeast(0.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
             .clip(RoundedCornerShape(28.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f))
-            .padding(16.dp),
+            .padding(start = iconGap, top = 16.dp, end = 16.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
@@ -553,14 +563,14 @@ private fun AppDetailsHeader(
             appInfo = appInfo,
             onOpen = onOpen,
             onOpenSettings = onOpenSettings,
-            size = 72.dp,
+            size = iconSize,
             cornerRadius = 20.dp,
             contentPadding = 12.dp,
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             imageModifier = sharedModifier
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(iconGap))
 
         Column(modifier = Modifier.weight(1f)) {
             val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {

@@ -45,6 +45,37 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.presentation.utils.AppIconModel
 
+/** How much wider than the icon [AppHeaderIcon]'s glow is, by default. */
+internal const val APP_HEADER_ICON_GLOW_RATIO = 1.45f
+
+// The three animated scale bumps. They are additive and can all be at maximum at once: a long press
+// is recognised while the finger is still down, so `press` is at 1 when `flare` snaps to 1, and
+// `breath` is free-running and answers to nothing.
+private const val GLOW_BREATH_SCALE = 0.02f
+private const val GLOW_PRESS_SCALE = 0.04f
+private const val GLOW_FLARE_SCALE = 0.05f
+
+/**
+ * The transparent margin [AppHeaderIcon] reserves on every side of a [size]-dp icon for its glow.
+ *
+ * Callers subtract this from the spacing they want around the icon. The widget measures
+ * `size * `[APP_HEADER_ICON_GLOW_RATIO], so a caller that leaves its usual gap on top of that leaves
+ * about twice the gap it intended.
+ */
+internal fun appHeaderIconGlowInset(size: Dp): Dp = size * (APP_HEADER_ICON_GLOW_RATIO - 1f) / 2f
+
+/**
+ * How far past its own bounds [AppHeaderIcon]'s glow reaches at the peak of a press-and-hold.
+ *
+ * [appHeaderIconGlowInset] reserves room for the glow at rest — scale 1.0 and no more. The press and
+ * flare take it to about 1.11x, and nothing inside the widget clips, so that last 11 % draws outside
+ * it. It is the outermost ring of a smoothstep falloff, which has arrived at zero alpha by then, so
+ * a clip there costs nothing visible; a caller that wants the peak intact anyway can reserve this.
+ */
+internal fun appHeaderIconGlowOvershoot(size: Dp): Dp =
+    size * APP_HEADER_ICON_GLOW_RATIO *
+        (GLOW_BREATH_SCALE + GLOW_PRESS_SCALE + GLOW_FLARE_SCALE) / 2f
+
 /**
  * The app icon as it appears at the top of both app-info surfaces — and the two shortcuts on it.
  *
@@ -73,19 +104,25 @@ import com.valhalla.thor.presentation.utils.AppIconModel
  *
  * @param imageModifier applied to the icon image itself, for the details screen's shared-element
  *   transition. On the container it would animate the glow and the ripple with it.
- * @param glowDiameter defaults to 1.45x [size] — a halo hugging the icon, not a wash behind the
- *   header. Twice [size] was the first attempt and it was wrong: at 100 dp that is a 220 dp patch
- *   reaching 60 dp past the icon, which on the sheet lands under the app title and reads as a
- *   discoloured background rather than as something around the icon. The blur clips to these bounds
- *   (`BlurredEdgeTreatment.Rectangle`), so this is the real footprint, scale aside.
+ * @param glowDiameter defaults to [APP_HEADER_ICON_GLOW_RATIO] x [size] — a halo hugging the icon,
+ *   not a wash behind the header. Twice [size] was the first attempt and it was wrong: at 100 dp
+ *   that is a 220 dp patch reaching 60 dp past the icon, which on the sheet lands under the app
+ *   title and reads as a discoloured background rather than as something around the icon.
  *
  * The difference between [glowDiameter] and [size] is *reserved* around the icon rather than left to
  * overflow, because both surfaces sit inside something that clips: the sheet's scrolling column and
  * the details card's rounded background. Overflowing, the glow was sliced off flat along the icon's
  * own top edge on the sheet — a bright straight line where a halo should be, and only above, since
  * the bottom half had a spacer to bleed into. The widget therefore measures [glowDiameter], not
- * [size]; a caller placing something immediately below the icon wants roughly that much less spacing
- * than it would otherwise use.
+ * [size]: [appHeaderIconGlowInset] of transparent margin on every side.
+ *
+ * **Callers have to spend that margin, not add to it.** A caller that keeps the spacing it used
+ * before the glow existed puts the next thing along twice as far away as it means to, and on a
+ * horizontal layout takes the same amount off whatever shares the row. Both call sites subtract
+ * [appHeaderIconGlowInset] from the gap they want; see either one. The reserved margin covers the
+ * glow at rest — the press and flare scale it up to [appHeaderIconGlowOvershoot] past the widget's
+ * bounds, which is the *outermost* ring of a smoothstep falloff and so has essentially no alpha
+ * left, but a caller with a clip right there can pay for it as the sheet's header does.
  */
 @Composable
 internal fun AppHeaderIcon(
@@ -97,7 +134,7 @@ internal fun AppHeaderIcon(
     contentPadding: Dp,
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    glowDiameter: Dp = size * 1.45f,
+    glowDiameter: Dp = size * APP_HEADER_ICON_GLOW_RATIO,
     imageModifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -152,11 +189,21 @@ internal fun AppHeaderIcon(
     // Luminance of `surface`, not `isSystemInDarkTheme`: `ThorTheme` also has an AMOLED variant and
     // takes `darkTheme` as a parameter the caller can override, so the scheme actually in hand is
     // the only reliable answer to what this glow is being drawn over.
-    val onLightScheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
-    val glowColor = if (onLightScheme) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.primary
+    val scheme = MaterialTheme.colorScheme
+    val surfaceLuminance = scheme.surface.luminance()
+    val onLightScheme = surfaceLuminance > 0.5f
+    val glowColor = when {
+        !onLightScheme -> scheme.primary
+        // Thor's own light scheme is unusual: its `primaryContainer` is a *dark* green (#4c662b,
+        // luminance 0.11 against a 0.95 surface), which is why it is the better choice above. Every
+        // dynamic light scheme puts the ordinary M3 tone there instead — accent1-90, a near-white
+        // pastel — and `useDynamicColor` is a user preference (`HomeActivity`), so that scheme is
+        // reachable. At 0.40 alpha a pastel over a near-white sheet is an 8/255 delta: the
+        // affordance simply is not there. So take `primaryContainer` only when it is actually dark
+        // enough to register, and fall back to `primary`, which is the 40-tone in every M3 light
+        // scheme and so always is.
+        surfaceLuminance - scheme.primaryContainer.luminance() > 0.35f -> scheme.primaryContainer
+        else -> scheme.primary
     }
     val restAlpha = if (onLightScheme) 0.40f else 0.16f
     val breathAlpha = if (onLightScheme) 0.12f else 0.08f
@@ -182,24 +229,33 @@ internal fun AppHeaderIcon(
             // nothing. 0.45 puts the falloff just outside the icon's edge.
             coreFraction = 0.45f,
             // Concentrated rather than spread: a tighter halo needs a little more alpha to read at
-            // all. Punch comes from alpha, not size — the scale deltas peak at about 1.11x, which is
-            // the most the reserved inset absorbs; a press that swelled the glow past it would clip
-            // against the sheet's scroll bounds, and reserving for the peak would cost 40 dp of
-            // permanent layout to serve 300 ms of animation.
+            // all. Punch comes from alpha, not size — the scale deltas are small deliberately. The
+            // reserved inset covers scale 1.0 exactly, so every bump above it draws outside the
+            // widget ([appHeaderIconGlowOvershoot]); keeping the peak at 1.11x keeps what escapes to
+            // the zero-alpha tail of the falloff, where a clip is invisible. Reserving for the peak
+            // instead would cost 16 dp of permanent layout to serve 300 ms of animation.
             alpha = {
                 restAlpha + breathAlpha * breath + pressAlpha * press + flareAlpha * flare.value
             },
-            scale = { 1f + 0.02f * breath + 0.04f * press + 0.05f * flare.value }
+            scale = {
+                1f + GLOW_BREATH_SCALE * breath + GLOW_PRESS_SCALE * press +
+                    GLOW_FLARE_SCALE * flare.value
+            }
         )
 
         Box(
             modifier = Modifier
                 .size(size)
-                // Modifier order follows the app list's tappable rows: clip, then the press squish,
-                // then the click, then the background. Background *inside* the squish's
-                // graphicsLayer, or the icon shrinks under a container that stays put.
-                .clip(RoundedCornerShape(cornerRadius))
+                // Squish first, then clip, then the click, then the background — everything visible
+                // inside the squish's `graphicsLayer`, or it shrinks under something that stays put.
+                // The app list's rows clip *outside* it, which is subtly wrong on a shape this
+                // round: `expressivePress` is a scale layer (`Motion.kt`), and a clip above it keeps
+                // its corner arcs at the unscaled radius while the fill shrinks under them, so a
+                // pressed 32 dp corner is cut by a stationary r=32 arc and gains a visible kink
+                // where the arc meets the straight edge. Inside the layer the whole silhouette
+                // scales together and the press is a squish rather than a change of shape.
                 .expressivePress(interactionSource)
+                .clip(RoundedCornerShape(cornerRadius))
                 .combinedClickable(
                     interactionSource = interactionSource,
                     role = Role.Button,

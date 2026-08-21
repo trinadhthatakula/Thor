@@ -498,16 +498,17 @@ private fun AppHeader(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val valueLabel = stringResource(R.string.value_label)
+    val iconSize = 100.dp
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
             // The scrolling column above clips, and its top edge is this content's top edge. The
-            // icon's glow reserves its own room, so this is only the margin between the glow's outer
-            // rim and that clip — enough that a press, which swells the glow slightly, still has
-            // somewhere to go.
-            .padding(top = 8.dp)
+            // icon's glow reserves its own room, so this is only the room the press and flare need
+            // to swell into — derived rather than guessed, because a straight line across the top of
+            // a halo is exactly what the reserved inset was introduced to stop.
+            .padding(top = appHeaderIconGlowOvershoot(iconSize))
     ) {
         // Icon with a nice background — and the two shortcuts on it: tap opens the app,
         // long-press opens its system settings page.
@@ -515,14 +516,16 @@ private fun AppHeader(
             appInfo = appInfo,
             onOpen = onOpen,
             onOpenSettings = onOpenSettings,
-            size = 100.dp,
+            size = iconSize,
             cornerRadius = 32.dp,
             contentPadding = 16.dp
         )
 
-        // 8, not the 24 this was before the icon grew a glow: the icon block now carries ~22 dp of
-        // reserved glow around itself, so 24 here would have put the title 46 dp adrift.
-        Spacer(Modifier.height(8.dp))
+        // The gap this header wants under the icon is 24 dp, and the icon block already carries most
+        // of it as reserved glow. Spending it rather than adding to it keeps the title where it was
+        // before the glow existed — and keeps the sheet's partially-expanded detent, which shows a
+        // fixed half of the screen, from losing that much of its budget to the header.
+        Spacer(Modifier.height((24.dp - appHeaderIconGlowInset(iconSize)).coerceAtLeast(0.dp)))
 
         // Title
         Text(

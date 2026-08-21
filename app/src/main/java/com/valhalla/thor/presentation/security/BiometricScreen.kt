@@ -45,6 +45,20 @@ import com.valhalla.thor.R
 import com.valhalla.thor.presentation.theme.greenDark
 import com.valhalla.thor.presentation.widgets.AmbientGlow
 
+/**
+ * How much of this screen's wash holds its colour before the fade starts.
+ *
+ * The glow here used to be a solid 400 dp disc at 5 % alpha with a 120 dp blur over it, and became a
+ * shared widget when the app-info headers wanted the same motif. That widget carries the fade in a
+ * gradient rather than in the blur, so that it also works on API 28-30, where `Modifier.blur` does
+ * nothing — but a gradient fading from the dead centre spreads about a third of the ink a solid disc
+ * does, and this screen is a near-black background where a third of 5 % is nothing at all. A core
+ * restores the disc: full colour out to 65 % of the radius, then the fade. Measured against the old
+ * profile that is within a few percent everywhere out to r = 160 dp, and past that it goes to zero
+ * instead of being cut off square at the node edge, which is what the old blur did.
+ */
+private const val AMBIENT_WASH_CORE = 0.65f
+
 @Composable
 fun BiometricScreen(
     isError: Boolean,
@@ -68,7 +82,7 @@ fun BiometricScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         // 1. Ambient Glow
-        AmbientGlow(Modifier.fillMaxSize())
+        AmbientGlow(Modifier.fillMaxSize(), coreFraction = AMBIENT_WASH_CORE)
 
         if (isError) {
             BiometricErrorView(
@@ -114,7 +128,7 @@ fun BiometricUnavailableScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        AmbientGlow(Modifier.fillMaxSize())
+        AmbientGlow(Modifier.fillMaxSize(), coreFraction = AMBIENT_WASH_CORE)
 
         Column(
             modifier = Modifier.fillMaxSize(),
