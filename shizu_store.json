@@ -29,7 +29,7 @@
   "license": "GPL-3.0-or-later",
   "open_source": true,
   "requires_shizuku": true,
-  "ad": false,
+  "has_ads": false,
   "donate_url": "https://www.patreon.com/trinadh",
   "tags": [
     "shizuku",
