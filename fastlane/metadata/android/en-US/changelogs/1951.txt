@@ -1,0 +1,9 @@
+• 📦 Backup & Restore Hub: browse, restore, share or delete backups and app bundles from one screen
+
+• 💾 Encrypted offline backups: full app data on root, APK + shared storage on Shizuku, plus .xapk & OBB
+
+• 🔀 Reorder or hide App Info actions; tap an app's icon to open it, long-press for system settings
+
+• 🔧 Fixed app lists that showed only Thor; newly granted root or Dhizuku applies on Refresh
+
+• 🌐 8 languages: EN, AR, ES, FR, PL, PT, PT-BR, ZH, plus clearer freezer action labels
