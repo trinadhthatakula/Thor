@@ -170,7 +170,12 @@ internal fun AppHeaderIcon(
         AmbientGlow(
             modifier = Modifier.matchParentSize(),
             diameter = glowDiameter,
-            blurRadius = size / 4f,
+            // No blur. A blur is what put a square edge on this: it smears the halo out to the
+            // node's rectangular bounds, and the default edge treatment then clips it there, so the
+            // glow ended in four straight lines a few pixels short of where the gradient had already
+            // faded to nothing. The gradient's own smoothstep falloff is the softness, which also
+            // means this renders identically on API 28-30, where `Modifier.blur` does nothing at all.
+            blurRadius = 0.dp,
             color = glowColor,
             // The icon container is opaque and covers the middle of its own halo, so without a core
             // the only visible part of the gradient is the tail that has already faded to nearly
