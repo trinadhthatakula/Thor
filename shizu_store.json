@@ -22,6 +22,7 @@
     "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/9.jpg"
   ],
   "repo_url": "https://github.com/trinadhthatakula/Thor",
+  "app_website": "https://thor.trinadhthatakula.com",
   "download_url": "https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk",
   "changelog": "• 🧊 New: Freeze Profiles — save named groups of apps, freeze or unfreeze in one tap.\n\n• 💾 New: back up or export several apps at once, including .xapk.\n\n• 🔎 New: filter your apps by permission — Camera, Mic, Location and more.\n\n• 🧊 Freezing a preinstalled app no longer wipes its data.\n\n• ✅ Freeze, restrict and clear-data now report what really happened.\n\n• 🔒 App lock covers app start and hides your app list in Recents.\n\n• 📱 App info is one sheet, with the full details built in.",
   "store_issue_number": 279,
@@ -29,7 +30,7 @@
   "license": "GPL-3.0-or-later",
   "open_source": true,
   "requires_shizuku": true,
-  "ad": false,
+  "has_ads": false,
   "donate_url": "https://www.patreon.com/trinadh",
   "tags": [
     "shizuku",
@@ -52,6 +53,10 @@
     "name": "Trinadh Thatakula",
     "username": "trinadhthatakula",
     "account_url": "https://github.com/trinadhthatakula",
+    "banner_url": "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/.github/assets/shizu-developer-banner.png",
+    "email": "trinadh.thatakula@gmail.com",
+    "website": "https://thor.trinadhthatakula.com",
+    "portfolio": "https://trinadhthatakula.com",
     "socials": {
       "github": "https://github.com/trinadhthatakula",
       "telegram": "https://t.me/thorAppDev"

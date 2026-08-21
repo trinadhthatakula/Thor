@@ -219,11 +219,17 @@ section "locale keys"
 # store silently ignores the whole manifest.  Also, "en" must not appear under
 # locales — it is the top-level base, not a locale override.  These are the
 # two distinct failures and get distinct messages.
-if jq -e '((.locales // {} | keys) - ["ar","en","fr","es","pt","ru","hi","zh","ja"]) == []' "$MANIFEST" >/dev/null 2>&1; then
-  ok "locale keys are all in the permitted set (ar en fr es pt ru hi zh ja)"
+#
+# The permitted set is not ours to choose: it is the list in the `locales`
+# description of the upstream schema, which is prose and therefore enforced by
+# nothing on their side.  Re-read it whenever the schema is re-vendored — it
+# grew from 9 to 11 (adding "tr" and "cs") in the revision that also renamed
+# `ad` to `has_ads`, and a stale copy here rejects a locale the store accepts.
+if jq -e '((.locales // {} | keys) - ["ar","en","fr","es","pt","ru","hi","zh","ja","tr","cs"]) == []' "$MANIFEST" >/dev/null 2>&1; then
+  ok "locale keys are all in the permitted set (ar en fr es pt ru hi zh ja tr cs)"
 else
-  fail "locales contains unrecognised locale keys (valid: ar en fr es pt ru hi zh ja)"
-  jq -r '((.locales // {} | keys) - ["ar","en","fr","es","pt","ru","hi","zh","ja"])[]' "$MANIFEST" >&2
+  fail "locales contains unrecognised locale keys (valid: ar en fr es pt ru hi zh ja tr cs)"
+  jq -r '((.locales // {} | keys) - ["ar","en","fr","es","pt","ru","hi","zh","ja","tr","cs"])[]' "$MANIFEST" >&2
 fi
 if jq -e '.locales // {} | has("en") | not' "$MANIFEST" >/dev/null 2>&1; then
   ok "locales does not duplicate the top-level en base"
