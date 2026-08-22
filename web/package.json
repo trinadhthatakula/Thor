@@ -22,9 +22,9 @@
     "build": "npm run check:types && astro build && npm run check:links && npm run check:claims && npm run check:markup && npm run check:sitemap && npm run check:screenshots"
   },
   "dependencies": {
-    "@astrojs/mdx": "^7.0.5",
+    "@astrojs/mdx": "^7.0.6",
     "@astrojs/sitemap": "^3.7.3",
-    "astro": "^7.2.1"
+    "astro": "^7.2.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
@@ -34,6 +34,6 @@
     "jsdom": "^30.0.1",
     "smol-toml": "^1.8.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
