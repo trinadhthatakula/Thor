@@ -10,28 +10,28 @@
     <string name="settings">Ajustes</string>
     <string name="settings_desc">Página de ajustes para cambiar las opciones de la aplicación</string>
     <string name="config_engine_v">Motor de configuración • v%1$s</string>
-    <string name="general">GENERAL</string>
     <string name="show_reinstall_card">Mostrar tarjeta de reinstalación</string>
     <string name="show_reinstall_card_desc">Mostrar recordatorio de Fix Store en la pantalla de inicio</string>
     <string name="show_installer_tile">Mostrar mosaico del instalador</string>
     <string name="show_installer_tile_desc">Mostrar «Instalar desde archivo» en la pantalla de inicio</string>
+    <string name="any_file_opener">Mostrar Thor al abrir cualquier archivo</string>
+    <string name="any_file_opener_desc">Actívalo solo si tu gestor de archivos no abre los APK con Thor. Thor aparecerá entonces para los archivos que no pueda identificar, incluidos los que no son APK.</string>
+    <string name="any_file_opener_failed">Android rechazó el cambio. No se activó nada.</string>
     <string name="show_extensions_tile">Mostrar mosaico de extensiones</string>
     <string name="show_extensions_tile_desc">Mostrar Extensiones en la pantalla de inicio</string>
-    <string name="appearance">APARIENCIA</string>
+    <string name="default_tab">Pestaña predeterminada</string>
+    <string name="default_tab_desc">La pantalla que abre Thor al iniciarse</string>
     <string name="theme">Tema</string>
     <string name="theme_desc">Estilo de interfaz visual</string>
     <string name="amoled_mode">Modo AMOLED</string>
     <string name="amoled_desc">Fondo negro puro</string>
     <string name="dynamic_colors">Colores dinámicos</string>
     <string name="dynamic_colors_desc">Integración con Material You</string>
-    <string name="security">SEGURIDAD</string>
     <string name="biometric_lock">Bloqueo biométrico</string>
     <string name="biometric_lock_desc">Requerir autenticación al iniciar</string>
     <string name="biometric_not_available">Biometría no registrada o disponible</string>
-    <string name="work_mode">MODO DE TRABAJO</string>
     <string name="active_engine">Motor activo</string>
     <string name="active_engine_desc">Cambiar entre proveedores disponibles</string>
-    <string name="about">ACERCA DE</string>
     <string name="version">Versión</string>
     <string name="release_candidate">Versión candidata</string>
     <string name="source_code">CÓDIGO FUENTE</string>
@@ -46,6 +46,9 @@
     <string name="french">Francés</string>
     <string name="spanish">Español</string>
     <string name="arabic">Árabe</string>
+    <string name="portuguese">Portugués</string>
+    <string name="portuguese_brazil">Portugués (Brasil)</string>
+    <string name="polish">Polaco</string>
 
     <!-- Common Actions -->
     <string name="cancel">Cancelar</string>
@@ -55,6 +58,7 @@
     <string name="no">No</string>
     <string name="done">Hecho</string>
     <string name="close">Cerrar</string>
+    <string name="open_app">Abrir</string>
     <string name="installed_label">INSTALADO</string>
     <string name="new_version_label">NUEVA VERSIÓN</string>
     <string name="version_prefix">Versión: </string>
@@ -75,11 +79,15 @@
     <string name="total_apps">TOTAL: %1$d</string>
     <string name="others">Otros</string>
     <string name="clear_all_cache">Limpiar todos los cachés</string>
-    <string name="clear_cache_prompt">¿Qué aplicaciones te gustaría limpiar?</string>
     <string name="clear_all_cache_subtitle">Limpiar archivos en caché de todas las aplicaciones para recuperar espacio de almacenamiento</string>
-    <string name="clear_system_cache_title">¿Limpiar caché del sistema?</string>
-    <string name="clear_system_cache_desc">Limpiar el caché de las aplicaciones del sistema podría causar inestabilidad temporal. ¿Estás seguro de que quieres proceder?</string>
-    <string name="user_apps">Aplicaciones de usuario</string>
+    <string name="clear_all_cache_confirm_desc">Android decide qué cachés borrar y no deja elegir a Thor: se incluyen todas las aplicaciones del dispositivo, tanto las del sistema como las tuyas. No se toca nada más: tus datos, sesiones y ajustes se quedan como están. Puede que las aplicaciones tarden un poco más en abrirse la primera vez, mientras reconstruyen su caché.</string>
+    <string name="clear_all_cache_running">Limpiando…</string>
+    <string name="clear_all_cache_running_desc">Recorriendo todas las aplicaciones del dispositivo. Puede tardar un momento.</string>
+    <string name="clear_all_cache_done_title">Caché limpiada</string>
+    <string name="clear_all_cache_done_size">Se liberaron %1$s.</string>
+    <string name="clear_all_cache_done_nothing">No quedaba caché que borrar.</string>
+    <string name="clear_all_cache_done_size_unknown">Listo. Thor no pudo medir cuánto liberó.</string>
+    <string name="clear_all_cache_done_unmeasured">Listo. Thor no pudo medir cuánto liberó: concédele acceso de uso en Ajustes para ver la cifra la próxima vez.</string>
     <string name="system_apps">Aplicaciones del sistema</string>
     <string name="active">Activo</string>
     <string name="frozen">Congelado</string>
@@ -103,6 +111,14 @@
     <string name="descending">Descendente</string>
     <string name="filters">Filtros</string>
     <string name="sort_by">Ordenar por</string>
+    <string name="sort_by_name">Nombre</string>
+    <string name="sort_by_size">Tamaño</string>
+    <string name="sort_by_install_date">Fecha de instalación</string>
+    <string name="sort_by_last_updated">Última actualización</string>
+    <string name="sort_by_version_code">Código de versión</string>
+    <string name="sort_by_version_name">Nombre de versión</string>
+    <string name="sort_by_target_sdk">SDK objetivo</string>
+    <string name="sort_by_min_sdk">SDK mínimo</string>
     <string name="filter_type_state">Estado</string>
     <string name="filter_type_source">Origen de instalación</string>
     <string name="filter_type_permission">Permiso</string>
@@ -141,11 +157,19 @@
     <string name="action_freeze">Congelar</string>
     <string name="action_unfreeze">Descongelar</string>
     <string name="action_suspend">Suspender</string>
-    <string name="action_unsuspend">Habilitar</string>
+    <string name="action_unsuspend">Reanudar</string>
     <string name="action_kill">Detener</string>
     <string name="action_cache">Caché</string>
     <string name="action_uninstall">Desinstalar</string>
     <string name="action_reinstall">Reinstalar</string>
+
+    <!-- Action explainers -->
+    <string name="explain_force_stop_title">Forzar detención</string>
+    <string name="explain_force_stop_body">Cierra la aplicación y todo lo que esté ejecutando ahora mismo. Sigue instalada y arranca de nuevo en cuanto la abras tú o el sistema. No se borra nada.</string>
+    <string name="explain_suspend_title">Suspender</string>
+    <string name="explain_suspend_body">La aplicación sigue en tu lanzador, pero no se puede abrir: al tocarla aparece un diálogo del sistema. Esto se mantiene tras reiniciar, hasta que la reanudes. No se borra nada.</string>
+    <string name="explain_freeze_title">Congelar</string>
+    <string name="explain_freeze_body">Desactiva la aplicación por completo: desaparece del lanzador y no puede ejecutarse en absoluto, ni siquiera en segundo plano. Esto se mantiene tras reiniciar, hasta que la descongeles. No se borra nada.</string>
 
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">No se puede abrir la aplicación</string>
@@ -218,6 +242,8 @@
         <item quantity="other">Se añadieron %1$d aplicaciones al Congelador</item>
     </plurals>
     <string name="add_to_freezer">Añadir al congelador</string>
+    <string name="freezer_add_warning_title">Se congela al añadirla</string>
+    <string name="freezer_add_warning_body">Una aplicación entra en el Congelador ya congelada: así funciona el Congelador, no es un fallo. Se pierde todo lo que no hayas guardado en ella y seguirá congelada hasta que la descongeles.</string>
 
     <!-- Extensions -->
     <string name="extensions">Extensiones</string>
@@ -253,6 +279,7 @@
     </plurals>
     <string name="killed_success">Se detuvo %1$s</string>
     <string name="cache_cleared_success">Caché de %1$s borrada</string>
+    <string name="cache_cleared_success_size">Se borraron %2$s de caché de %1$s</string>
     <string name="data_cleared_success">Datos de %1$s borrados</string>
     <string name="suspended_success">%1$s suspendido</string>
     <string name="unsuspended_success">%1$s reanudado</string>
@@ -267,6 +294,8 @@
     <string name="unknown_error_occurred">Ocurrió un error desconocido</string>
     <string name="toast_copied_class_name">Nombre de clase copiado</string>
     <string name="toast_copy_saved">Copiado al portapapeles</string>
+    <string name="cd_copy_package_name">Copiar el nombre del paquete</string>
+    <string name="cd_copy_field">Copiar %1$s</string>
     <string name="not_available">N/D</string>
     <string name="tab_overview_title">General</string>
     <string name="tab_components">Componentes</string>
@@ -279,11 +308,13 @@
     <string name="uninstall_app_desc">¿Estás seguro de que quieres desinstalar %1$s?</string>
     <string name="action_open">Abrir</string>
     <string name="action_force_stop">Forzar detención</string>
-    <string name="action_in_freezer">En congelador</string>
-    <string name="action_add_freezer">Añadir congelador</string>
+    <string name="action_add_freezer">Añadir al congelador</string>
+    <string name="action_unfreeze_and_remove">Descongelar y quitar</string>
+    <string name="action_remove_from_watchlist">Quitar de la lista de seguimiento</string>
     <string name="action_clear_cache">Limpiar caché</string>
     <string name="action_clear_data">Borrar datos</string>
     <string name="info_app_version">Versión de la aplicación</string>
+    <string name="info_package_name">Nombre del paquete</string>
     <string name="info_sdk_details">Detalles del SDK</string>
     <string name="info_sdk_details_format">SDK objetivo: %1$d   |   SDK mínimo: %2$d</string>
     <string name="info_installer_source">Origen del instalador</string>
@@ -292,15 +323,19 @@
     <string name="info_apk_path">Ruta de origen del APK</string>
     <string name="info_data_dir">Directorio de datos</string>
     <string name="info_obb_dir">Directorio OBB</string>
+    <string name="info_obb_present">%1$s: %2$s de datos del juego</string>
+    <string name="info_obb_none">Sin datos de juego</string>
+    <string name="info_obb_unknown">No se puede comprobar ahora</string>
     <string name="info_shared_data_dir">Directorio de datos compartidos</string>
     <string name="info_signature_sha256">Huella digital de firma SHA-256</string>
+    <string name="info_bloat_description">Por qué está marcada</string>
     <string name="no_permissions_found">No se encontraron permisos</string>
     <string name="search_components_placeholder">Buscar componentes&#8230;</string>
     <string name="section_activities_title">Actividades (%1$d)</string>
     <string name="section_services_title">Servicios (%1$d)</string>
     <string name="section_receivers_title">Receptores de transmisión (%1$d)</string>
     <string name="section_providers_title">Proveedores de contenido (%1$d)</string>
-    <string name="cd_collapse">Colapsar</string>
+    <string name="cd_collapse">Contraer</string>
     <string name="cd_expand">Expandir</string>
     <string name="components_none_declared">Ninguno declarado</string>
     <string name="section_native_libs_title">Librerías nativas (.so)</string>
@@ -345,8 +380,6 @@
     <!-- Terminal Logs -->
     <string name="log_initializing">Inicializando…</string>
     <string name="log_op_complete">\nOperación completada.</string>
-    <string name="log_preparing_cache">Preparando limpieza de caché…</string>
-    <string name="log_no_eligible_apps">No se encontraron aplicaciones elegibles.</string>
     <string name="log_sharing_app">Compartiendo %1$s</string>
     <string name="log_preparing_files">Preparando archivos…</string>
     <string name="log_files_ready">✔ Archivos listos</string>
@@ -371,7 +404,6 @@
     <string name="log_uninstalling_batch">Desinstalando aplicaciones</string>
     <string name="log_suspending_batch">Suspendiendo aplicaciones</string>
     <string name="log_unsuspending_batch">Reanudando aplicaciones</string>
-    <string name="log_clearing_data_batch">Limpiando datos</string>
     <string name="log_sharing_batch">Compartiendo aplicaciones</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_batch_preparing">[%1$d/%2$d] Preparando %3$s…</string>
@@ -392,6 +424,7 @@
     <string name="filter_all">Todas</string>
     <string name="error_debuggable_app">La aplicación es depurable (probablemente discrepancia de firma)</string>
     <string name="error_unsafe_skipped">Omitido: La aplicación del sistema es INSEGURA / falló la verificación de seguridad</string>
+    <string name="error_self_skipped">Omitido: Thor no puede hacerse esto a sí mismo</string>
     <string name="error_parse_package">Error al analizar el paquete.</string>
     <string name="error_downgrade_privilege">La degradación solo es compatible con acceso privilegiado (Root, Shizuku o Dhizuku).</string>
 
@@ -428,10 +461,22 @@
     <string name="biometric_lock_unavailable_toast">No se puede activar el bloqueo de la app: este dispositivo no tiene biometría con la que desbloquearlo</string>
     <string name="biometric_lock_disabled_no_biometric">Bloqueo de la app desactivado: este dispositivo no tiene biometría con la que desbloquearlo</string>
     <string name="settings_lost_using_defaults">Thor no pudo leer tus ajustes y está usando los predeterminados: revisa el bloqueo de la app en Ajustes</string>
+    <string name="settings_not_saved">Thor no pudo guardar ese ajuste: volverá a su valor anterior la próxima vez que abras la app</string>
+    <string name="biometric_lock_disable_not_saved">El bloqueo de la app no puede usarse en este dispositivo y Thor no pudo guardarlo: volverá a preguntar la próxima vez que abras la app</string>
+    <string name="biometric_lock_not_saved_still_off">Thor no pudo guardar eso: el bloqueo de la app sigue desactivado</string>
+    <string name="biometric_lock_not_saved_still_on">Thor no pudo guardar eso: el bloqueo de la app sigue activado</string>
+    <string name="language_not_saved">Thor no pudo guardar tu elección de idioma, así que no se ha cambiado</string>
     <string name="open_security_settings">Abrir ajustes de seguridad</string>
     <string name="unlock">Desbloquear</string>
     <string name="thank_you_support_desc">Tu suscripción está activa. ¡Gracias por ayudar a apoyar el desarrollo de Thor!</string>
     
+    <!-- Grid density -->
+    <string name="grid_density">Densidad de la cuadrícula</string>
+    <string name="grid_density_desc">Cuántas aplicaciones caben en una fila de la cuadrícula</string>
+    <string name="grid_density_compact">Compacta</string>
+    <string name="grid_density_default">Predeterminada</string>
+    <string name="grid_density_large">Grande</string>
+
     <!-- Details & Animation Intensity -->
     <string name="action_details">Detalles</string>
     <string name="animation_intensity">Intensidad de animación</string>
@@ -447,23 +492,40 @@
     <string name="suspend_owned_by_other_privilege">No se puede reanudar %1$s desde aquí. Fue suspendida por %2$s y Android solo permite que el mismo privilegio la reanude. Cambia Thor a ese modo de privilegio e inténtalo de nuevo.</string>
     <string name="freeze_system_app_requires_root">No se puede congelar %1$s desde aquí. Este dispositivo no ha dejado que Thor la desactive y Android solo permite que root elimine una app preinstalada para un solo usuario. La app se ha quedado intacta: para congelarla necesitas el modo Root de Thor.</string>
     <string name="freeze_system_app_removal_failed">No se puede congelar %1$s. Este dispositivo no ha dejado que Thor la desactive y eliminarla para este usuario también ha fallado. Android informó: %2$s</string>
+    <string name="freeze_system_app_disable_refused">No se puede congelar %1$s. Este dispositivo se ha negado a desactivarla, así que Thor la ha dejado intacta: eliminarla en su lugar podría cerrar tu sesión en las cuentas que gestiona.</string>
+    <string name="freeze_system_app_disable_failed">No se puede congelar %1$s. Nada en este dispositivo ha rechazado la petición, así que es más probable que sea un fallo de Thor que una restricción. La aplicación sigue instalada y sin cambios: informa del problema, por favor.</string>
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
     <string name="legacy_extension_desc">Se ha detectado una versión heredada de la extensión Stormbringer (escrita incorrectamente como \"Strombringer\"). Por favor, desinstálala para evitar conflictos e instala la versión actualizada.</string>
     <string name="action_export">Exportar</string>
-    <string name="export_explain_apk">Thor guarda esta aplicación como un único archivo de instalación (.apk) en la carpeta de abajo. Úsala para hacer una copia de seguridad o reinstalarla más tarde.</string>
+    <string name="export_explain_apk">Thor guarda esta aplicación como un único archivo de instalación (.apk) en la carpeta de abajo. Úsalo para hacer una copia de seguridad o reinstalarla más tarde.</string>
     <string name="export_explain_apks">Esta aplicación consta de varias partes divididas, que se agrupan en un único paquete (.apks) en la carpeta de abajo. Reinstálala en cualquier momento con el instalador de Thor.</string>
-    <string name="export_explain_xapk">Thor agrupa las partes de esta aplicación en un único archivo (.xapk) en la carpeta de abajo, un formato que también entienden otros instaladores. Los datos de juego (archivos OBB) no se incluyen porque Android 11 y versiones posteriores impiden que cualquier aplicación lea la carpeta OBB de otra; un juego grande se instalará desde este archivo, pero puede que no funcione.</string>
+    <string name="export_explain_xapk">Thor empaqueta las partes de esta app en un único .xapk en la carpeta de abajo, un formato que otros instaladores también entienden. Los datos del juego (archivos OBB) se incluyen cuando el modo de acceso actual de Thor puede leerlos.</string>
+    <string name="export_xapk_no_game_data">Thor no puede leer los datos del juego de esta app ahora mismo; normalmente eso significa que hace falta root o Shizuku. El .xapk se creará igualmente, sin ellos.</string>
+    <string name="export_obb_included">Incluye %1$s de datos del juego.</string>
+    <string name="export_obb_partial">Algunos elementos de la carpeta de datos del juego de esta app no son archivos de expansión y no se incluirán.</string>
     <string name="export_format">Formato</string>
     <string name="export_save_to">Guardar en</string>
     <string name="export_change">Cambiar</string>
-    <string name="export_in_progress">Exportando…</string>
     <string name="export_saved">Guardado en %1$s</string>
     <string name="export_failed">Error de exportación: %1$s</string>
     <string name="export_failed_unknown">error desconocido</string>
     <string name="export_dest_downloads">Descargas/Thor</string>
     <string name="export_dest_selected">Carpeta seleccionada</string>
+    <string name="export_job_queued">Esperando a que termine otra tarea.</string>
+    <string name="export_job_preparing">Preparando %1$s</string>
+    <string name="export_job_packaging">Empaquetando %1$s como .%2$s</string>
+    <string name="export_job_cleanup_busy">Thor aún está limpiando lo que quedó de la última sesión. Inténtalo de nuevo en un momento.</string>
+    <string name="export_job_saved">%1$s se exportó a %2$s</string>
+    <string name="export_job_background">Segundo plano</string>
+    <string name="export_job_background_desc">La exportación sigue si cierras esto. Su notificación muestra cuánto lleva hecho.</string>
+    <string name="export_job_done">Exportado.</string>
+    <string name="export_job_stopped">La exportación se detuvo antes de terminar. No se guardó nada.</string>
+    <string name="export_failed_not_started">La exportación no llegó a empezar, así que no se guardó nada.</string>
+    <string name="export_job_app_gone">%1$s ya no está instalada, así que no había nada que exportar.</string>
+    <string name="export_job_folder_gone">Thor ya no puede escribir en esa carpeta. Vuelve a elegirla.</string>
+    <string name="export_job_unreadable">Thor no pudo leer qué se debía exportar.</string>
 
     <string name="action_export_selected">Exportar</string>
     <string name="export_bulk_confirm_title">¿Exportar las aplicaciones seleccionadas?</string>
@@ -483,7 +545,6 @@
     <string name="failed_to_load_permissions">Error al cargar los permisos</string>
     <string name="permission_status_updated">Estado de permiso actualizado</string>
     <string name="failed_to_modify_permission">Error al modificar el permiso</string>
-    <string name="permissions">PERMISOS</string>
     <string name="usage_access">Acceso de uso</string>
     <string name="usage_access_granted_subtitle">Concedido — permite ordenar por tamaño de app</string>
     <string name="usage_access_needed_subtitle">Necesario para leer el tamaño de las apps al ordenar por tamaño</string>
@@ -499,6 +560,8 @@
     <string name="freeze_mode">Modo de congelación</string>
     <string name="suspend_instead_of_freeze">Suspender en lugar de congelar</string>
     <string name="suspend_instead_of_freeze_desc">Al congelar (incluyendo el autocongelado), suspende las aplicaciones en lugar de desactivarlas. Las aplicaciones suspendidas siguen siendo visibles pero pausadas.</string>
+    <string name="skip_routine_freeze_confirmation">No confirmar las congelaciones habituales</string>
+    <string name="skip_routine_freeze_confirmation_desc">Congelar aplicaciones del sistema sin preguntar antes, salvo que la lista UAD las marque. Las marcadas como Expert siguen avisando y las inseguras siguen bloqueadas.</string>
     <string name="add_freezer_to_launcher">Añadir Congelador al lanzador</string>
     <string name="add_freezer_to_launcher_desc">Mostrar las aplicaciones congeladas como accesos directos en la pantalla de inicio para abrirlas con un toque</string>
     <string name="add_to_home_screen">Añadir a la pantalla de inicio</string>
@@ -568,5 +631,83 @@
         <item quantity="one">%1$d aplicación</item>
         <item quantity="other">%1$d aplicaciones</item>
     </plurals>
+    <string name="fix_store_desc">Thor reinstala cada aplicación para que Android registre Play Store como la aplicación que la instaló. Se conservan tus datos y ajustes.</string>
+    <string name="fix_store_warning">Una aplicación cuya firma no coincida con la versión de Play Store puede dejar de actualizarse. Desmarca lo que prefieras no tocar.</string>
+    <plurals name="fix_store_confirm">
+        <item quantity="one">Arreglar %1$d aplicación</item>
+        <item quantity="other">Arreglar %1$d aplicaciones</item>
+    </plurals>
+    <string name="fix_store_installed_by">Instalada por %1$s</string>
+    <string name="fix_store_installer_none">Sin instalador registrado</string>
+    <string name="select_all">Seleccionar todo</string>
+    <string name="select_none">Borrar</string>
+    <string name="log_stop">Detener</string>
+    <string name="log_stopping">Se detendrá al terminar la aplicación actual…</string>
+    <string name="log_stopped">Detenido: se procesaron %1$d de %2$d aplicaciones.</string>
+    <string name="export_list">Exportar lista</string>
+    <string name="export_list_share">Compartir lista</string>
+    <string name="export_list_empty">No hay aplicaciones en esta lista para exportar</string>
+    <string name="export_list_failed">No se pudo guardar la lista</string>
+    <string name="clear_all_caches_requires_usage_access">Shizuku no puede borrar la caché de todas las apps sin acceso de uso. Hay que indicarle a Android cuántos bytes debe liberar, y solo ese permiso puede medir cuánta caché hay. Concede a Thor el acceso de uso en Ajustes e inténtalo de nuevo.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku no puede borrar cachés. No tiene una shell en la que ejecutar la limpieza de caché de Android, y la API de propietario del dispositivo no ofrece nada equivalente. Cambia a Root o a Shizuku.</string>
+
+    <!-- Pantalla de ajustes por categorías — véase values/strings_settings.xml -->
+    <string name="settings_category_appearance">Apariencia</string>
+    <string name="settings_category_home">Pantalla de inicio</string>
+    <string name="settings_category_installing">Instalación y uso compartido</string>
+    <string name="settings_category_security">Seguridad</string>
+    <string name="settings_category_about">Acerca de y apoyo</string>
+    <string name="settings_search_hint">Buscar en los ajustes…</string>
+    <string name="settings_search_no_results">Ningún ajuste coincide con «%1$s».</string>
+    <string name="settings_search_result_in">en %1$s</string>
+    <string name="cd_settings_search_clear">Borrar la búsqueda</string>
+    <string name="cd_back">Atrás</string>
+    <string name="settings_select_category">Elige una categoría para ver sus ajustes</string>
+    <string name="settings_engine_none">Ninguno</string>
+    <string name="app_language_desc">El idioma de las pantallas de Thor</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Oscuro</string>
+    <string name="theme_system">Sistema</string>
+    <string name="settings_summary_opens_on">Se abre en %1$s</string>
+    <string name="settings_summary_auto_freeze_on">Congelación automática activada</string>
+    <string name="settings_summary_auto_freeze_off">Congelación automática desactivada</string>
+    <string name="settings_summary_suspend_mode">Modo de suspensión</string>
+    <string name="settings_summary_auto_reinstall_on">Reinstalación automática activada</string>
+    <string name="settings_summary_auto_reinstall_off">Reinstalación automática desactivada</string>
+    <string name="settings_summary_app_lock_on">Bloqueo activado</string>
+    <string name="settings_summary_app_lock_off">Bloqueo desactivado</string>
+    <string name="settings_summary_restore_interrupted">Una restauración no terminó</string>
+    <string name="settings_summary_backup">Restaurar un archivo o cambiar la frase de contraseña</string>
+    <string name="settings_summary_unprivileged">Requiere Root, Shizuku o Dhizuku</string>
+    <string name="settings_summary_customization">Acciones del panel de la app y opciones de diseño</string>
+
+    <string name="settings_category_customization">Personalización</string>
+    <string name="customization_app_info_actions">Acciones del panel de la app</string>
+    <string name="customization_app_info_actions_desc">Reordenar y activar o desactivar acciones en el panel inferior</string>
+    <string name="customization_drag_hint">Arrastra para reordenar • Activa o desactiva para mostrar u ocultar</string>
+    <string name="customization_preview_title">Vista previa de la barra de acciones</string>
+    <string name="reset_to_default">Restablecer valores predeterminados</string>
+    <string name="reset_actions_confirm_title">¿Restablecer el orden de las acciones?</string>
+    <string name="reset_actions_confirm_desc">Esto restablecerá el orden predeterminado y mostrará todas las acciones.</string>
+
+    <string name="action_open_desc">Iniciar la aplicación</string>
+    <string name="action_settings_desc">Abrir ajustes del sistema Android para la aplicación</string>
+    <string name="action_freeze_desc">Desactivar o volver a activar la aplicación</string>
+    <string name="action_suspend_desc">Suspender o reanudar la ejecución del paquete</string>
+    <string name="action_force_stop_desc">Detener todos los procesos en segundo y primer plano</string>
+    <string name="action_permissions_desc">Ver y gestionar permisos de la aplicación</string>
+    <string name="action_freezer_membership_desc">Añadir o quitar de la lista del Congelador</string>
+    <string name="action_clear_cache_desc">Borrar memoria caché (requiere acceso Root)</string>
+    <string name="action_clear_data_desc">Borrar todos los datos de usuario, base de datos y caché</string>
+    <string name="action_share_desc">Compartir archivo APK o enlace de la tienda</string>
+    <string name="action_export_desc">Exportar paquete APK, APKS o XAPK</string>
+    <string name="action_backup_desc">Crear copia de seguridad cifrada de los datos</string>
+    <string name="action_details_desc">Abrir inspector detallado de manifiesto y componentes</string>
+    <string name="action_add_to_home_desc">Fijar acceso directo en la pantalla de inicio</string>
+    <string name="action_fix_store_desc">Reasignar instalador a Google Play Store</string>
+    <string name="action_uninstall_desc">Desinstalar completamente la aplicación del dispositivo</string>
+    <string name="all_actions_hidden">Todas las acciones están ocultas</string>
+    <string name="cd_move_up">Mover hacia arriba</string>
+    <string name="cd_move_down">Mover hacia abajo</string>
 
 </resources>

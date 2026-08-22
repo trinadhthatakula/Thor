@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +25,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material3.AlertDialog
@@ -40,9 +44,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
@@ -55,6 +61,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -76,7 +83,9 @@ import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
+import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.presentation.widgets.ScrollToTopOnChange
 import org.koin.androidx.compose.koinViewModel
 
 /** Sentinel id for "the editor is open on a profile that does not exist yet". */
@@ -115,6 +124,32 @@ fun FreezerScreen(
     // opened from it; false for "save selection as profile", which starts from the app grid and
     // should return there.
     var editorReturnsToList by rememberSaveable { mutableStateOf(false) }
+    // Identifies the *current* editor, not the profile it edits. A save that lands after its own
+    // editor was dismissed by hand must not close whatever editor replaced it — see
+    // FreezerEvent.ProfileSaveSucceeded. Saved with the rest of the editor state so the comparison
+    // still holds across a config change mid-save.
+    var editorSession by rememberSaveable { mutableIntStateOf(0) }
+
+    // Every open goes through here so the session can never be forgotten at a new entry point —
+    // there are three today, and the failure mode of a missed increment is silent (two editors
+    // sharing an id, which is exactly the bug the id exists to prevent).
+    val openProfileEditor = { profileId: Long, seed: Set<String>, returnsToList: Boolean ->
+        editorSeed = seed
+        editorReturnsToList = returnsToList
+        editorSession++
+        editorProfileId = profileId
+    }
+
+    // Cancel and a confirmed save unwind identically — the only difference is whether a write was
+    // issued first — so the teardown lives in one place rather than being kept in step by hand.
+    // Declared up here rather than beside the sheet because the event observer below closes on it.
+    val closeProfileEditor = {
+        editorProfileId = null
+        // The picker's query is VM state so it survives the sheet; clear it or the next open
+        // starts filtered by a search the user has forgotten making.
+        viewModel.updateProfileEditorSearch("")
+        showProfilesSheet = editorReturnsToList
+    }
 
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var hasCheckedAutoPrompt by rememberSaveable { mutableStateOf(false) }
@@ -168,6 +203,16 @@ fun FreezerScreen(
 
             is FreezerEvent.ShowFreezerPrompt ->
                 freezerPrompt = FreezerPrompt(event.packageName, event.appName)
+
+            // Two guards, for the two things a hand-dismissed editor can do to a write still in
+            // flight. The null check keeps an already-closed sheet from unwinding again and
+            // re-opening the profiles list underneath it. The session check keeps a *replacement*
+            // editor from being closed by the previous one's write, which would throw away a draft
+            // the user is in the middle of typing.
+            is FreezerEvent.ProfileSaveSucceeded ->
+                if (editorProfileId != null && event.editorSession == editorSession) {
+                    closeProfileEditor()
+                }
         }
     }
 
@@ -298,14 +343,54 @@ fun FreezerScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
+                                // The other half of the discoverability fix: say what profiles
+                                // are, while there is room to. Only the truly-empty branch gets
+                                // this — a user who has filtered a populated watchlist down to
+                                // nothing is not being onboarded — and only while they have no
+                                // profiles, since past that it explains something they know.
+                                if (state.profiles.isEmpty()) {
+                                    Spacer(Modifier.size(24.dp))
+                                    Text(
+                                        stringResource(R.string.no_profiles_yet),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        stringResource(R.string.no_profiles_yet_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(horizontal = 32.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 } else if (state.isGrid) {
+                    val metrics = gridMetricsFor(state.gridDensity)
+                    val gridState = rememberLazyGridState()
+
+                    ScrollToTopOnChange(state.searchQuery, state.appListType) {
+                        gridState.scrollToItem(0)
+                    }
+
+                    // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to
+                    // null for states that drive no indicator; both lazy states override it with a
+                    // real one, so the null branch is unreachable today. Branching beats `!!` — a
+                    // future null then costs the scrollbar, not the whole list.
+                    val gridScrollbar = gridState.scrollIndicatorState?.let {
+                        Modifier.nonInteractiveScrollbar(
+                            state = it,
+                            orientation = Orientation.Vertical
+                        )
+                    } ?: Modifier
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 100.dp),
+                        columns = GridCells.Adaptive(minSize = metrics.minCellSize),
+                        state = gridState,
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(gridScrollbar)
                     ) {
                         items(
                             displayedApps,
@@ -320,15 +405,31 @@ fun FreezerScreen(
                                         selectedPackageName = app.packageName
                                 },
                                 onLongClick = { viewModel.toggleSelection(app.packageName) },
+                                metrics = metrics,
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope
                             )
                         }
                     }
                 } else {
+                    val listState = rememberLazyListState()
+
+                    ScrollToTopOnChange(state.searchQuery, state.appListType) {
+                        listState.scrollToItem(0)
+                    }
+
+                    val listScrollbar = listState.scrollIndicatorState?.let {
+                        Modifier.nonInteractiveScrollbar(
+                            state = it,
+                            orientation = Orientation.Vertical
+                        )
+                    } ?: Modifier
                     LazyColumn(
+                        state = listState,
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(listScrollbar)
                     ) {
                         items(
                             displayedApps,
@@ -384,9 +485,7 @@ fun FreezerScreen(
                         viewModel.removeFromFreezer(state.multiSelection)
                     },
                     onSaveAsProfile = {
-                        editorSeed = state.multiSelection
-                        editorReturnsToList = false
-                        editorProfileId = NEW_PROFILE_ID
+                        openProfileEditor(NEW_PROFILE_ID, state.multiSelection, false)
                         // Clear the selection only once the editor has the seed: the editor is a
                         // separate sheet, so leaving the Freezer in multi-select behind it means
                         // backing out lands on a toolbar for a selection the user has moved on from.
@@ -477,6 +576,7 @@ fun FreezerScreen(
             isShizuku = state.isShizuku,
             isDhizuku = state.isDhizuku,
             isInFreezer = app.packageName in state.freezerPackageNames,
+            freezerRemoveLabelRes = R.string.action_unfreeze_and_remove,
             onDismiss = { selectedPackageName = null },
             // Dismissing here is not optional, and this is the only action it's true of.
             // selectedAppInfo is resolved out of state.freezerApps, which is the watchlist
@@ -493,7 +593,12 @@ fun FreezerScreen(
             onAppAction = { action ->
                 // No clears below, same as the Apps tab: AppInfoSheet calls onDismiss() itself for
                 // every terminal action, and the rest — suspend, force-stop, clear cache, share,
-                // settings, permissions — are meant to leave the sheet up so you can see the result.
+                // settings — are meant to leave the sheet up so you can see the result.
+                //
+                // Permissions used to be listed as one of those, which is what hid the bug: it is
+                // the one action in that group that pushes a destination
+                // (ThorRoute.PermissionManager, added to freezerBackStack in MainScreen), so the
+                // sheet has to go with it. AppInfoSheet dismisses on it now.
                 // Freezing and unfreezing don't touch membership, so neither can pull this app out
                 // of state.freezerApps.
                 when (action) {
@@ -523,6 +628,7 @@ fun FreezerScreen(
             allApps = state.allInstalledApps,
             freezerPackageNames = state.freezerPackageNames,
             searchQuery = state.manageSheetSearchQuery,
+            gridDensity = state.gridDensity,
             onSearchChange = viewModel::updateManageSheetSearch,
             onToggle = { pkg, add -> viewModel.toggleManaged(pkg, add) },
             onDismiss = { showManageSheet = false }
@@ -532,36 +638,30 @@ fun FreezerScreen(
     if (showProfilesSheet) {
         FreezeProfilesSheet(
             profiles = state.profiles,
+            allApps = state.allInstalledApps,
             runningRequests = state.runningRequests,
             hasPrivilege = hasPrivilege,
             onRun = viewModel::runProfile,
+            // Dismissed first: the kill lands in MainScreen's confirm dialog and then its progress
+            // log, and neither is worth reading through a sheet that can no longer say anything
+            // about the run. Freeze and unfreeze keep the sheet because their report *is* the row.
+            onKill = { apps ->
+                showProfilesSheet = false
+                onMultiAppAction(MultiAppAction.Kill(apps))
+            },
             onCreate = {
-                editorSeed = emptySet()
-                editorReturnsToList = true
-                editorProfileId = NEW_PROFILE_ID
+                openProfileEditor(NEW_PROFILE_ID, emptySet(), true)
                 // Swap the editor in for the list rather than stacking it: two modal sheets at
                 // once leaves the lower one's scrim eating the upper one's dismiss gesture.
                 showProfilesSheet = false
             },
             onEdit = { profile ->
-                editorSeed = emptySet()
-                editorReturnsToList = true
-                editorProfileId = profile.id
+                openProfileEditor(profile.id, emptySet(), true)
                 showProfilesSheet = false
             },
             onDelete = viewModel::deleteProfile,
             onDismiss = { showProfilesSheet = false }
         )
-    }
-
-    // Save and cancel unwind identically — the only difference is whether a write was issued
-    // first — so the teardown lives in one place rather than being kept in step by hand.
-    val closeProfileEditor = {
-        editorProfileId = null
-        // The picker's query is VM state so it survives the sheet; clear it or the next open
-        // starts filtered by a search the user has forgotten making.
-        viewModel.updateProfileEditorSearch("")
-        showProfilesSheet = editorReturnsToList
     }
 
     editorProfileId?.let { id ->
@@ -574,11 +674,17 @@ fun FreezerScreen(
             existingNames = state.profiles.map { it.name },
             allApps = state.allInstalledApps,
             searchQuery = state.profileEditorSearchQuery,
+            gridDensity = state.gridDensity,
             onSearchChange = viewModel::updateProfileEditorSearch,
+            isSaving = state.profileSaveInFlight,
+            // No close here. The sheet comes down on FreezerEvent.ProfileSaveSucceeded, so a write
+            // the database refuses — a duplicate name, a foreign key — leaves the draft on screen
+            // to be corrected instead of reporting itself into the void.
+            // The session is captured here, at the tap, rather than read when the answer arrives —
+            // by then it may already name a different editor.
             onSave = { name, packageNames ->
-                if (editing == null) viewModel.createProfile(name, packageNames)
-                else viewModel.updateProfile(editing.id, name, packageNames)
-                closeProfileEditor()
+                if (editing == null) viewModel.createProfile(editorSession, name, packageNames)
+                else viewModel.updateProfile(editorSession, editing.id, name, packageNames)
             },
             onDismiss = { closeProfileEditor() }
         )

@@ -10,28 +10,28 @@
     <string name="settings">الإعدادات</string>
     <string name="settings_desc">صفحة الإعدادات لتغيير إعدادات التطبيق</string>
     <string name="config_engine_v">محرك التكوين • إصدار %1$s</string>
-    <string name="general">عام</string>
     <string name="show_reinstall_card">إظهار بطاقة إعادة التثبيت</string>
     <string name="show_reinstall_card_desc">إظهار تذكير إصلاح المتجر على الشاشة الرئيسية</string>
     <string name="show_installer_tile">إظهار مربع المثبِّت</string>
     <string name="show_installer_tile_desc">إظهار "تثبيت من ملف" على الشاشة الرئيسية</string>
+    <string name="any_file_opener">إظهار Thor عند فتح أي ملف</string>
+    <string name="any_file_opener_desc">فعِّل هذا فقط إذا كان مدير الملفات لديك لا يفتح ملفات APK باستخدام Thor. عندها سيُعرض Thor للملفات التي يتعذّر التعرّف على نوعها، بما فيها ما ليس ملفات APK.</string>
+    <string name="any_file_opener_failed">رفض Android تغيير هذا الإعداد. لم يتم تفعيل أي شيء.</string>
     <string name="show_extensions_tile">إظهار مربع الإضافات</string>
     <string name="show_extensions_tile_desc">إظهار الإضافات على الشاشة الرئيسية</string>
-    <string name="appearance">المظهر</string>
+    <string name="default_tab">علامة التبويب الافتراضية</string>
+    <string name="default_tab_desc">الشاشة التي يفتحها Thor عند التشغيل</string>
     <string name="theme">المظهر</string>
     <string name="theme_desc">نمط الواجهة المرئية</string>
     <string name="amoled_mode">وضع AMOLED</string>
     <string name="amoled_desc">خلفية سوداء نقية</string>
     <string name="dynamic_colors">ألوان ديناميكية</string>
     <string name="dynamic_colors_desc">تكامل Material You</string>
-    <string name="security">الأمان</string>
     <string name="biometric_lock">قفل القياسات الحيوية</string>
     <string name="biometric_lock_desc">يتطلب المصادقة عند التشغيل</string>
     <string name="biometric_not_available">المقاييس الحيوية غير مسجلة أو غير متوفرة</string>
-    <string name="work_mode">وضع العمل</string>
     <string name="active_engine">المحرك النشط</string>
     <string name="active_engine_desc">التبديل بين الموفرين المتاحين</string>
-    <string name="about">حول</string>
     <string name="version">الإصدار</string>
     <string name="release_candidate">نسخة مرشحة</string>
     <string name="source_code">كود المصدر</string>
@@ -46,6 +46,9 @@
     <string name="french">الفرنسية</string>
     <string name="spanish">الإسبانية</string>
     <string name="arabic">العربية</string>
+    <string name="portuguese">البرتغالية</string>
+    <string name="portuguese_brazil">البرتغالية (البرازيل)</string>
+    <string name="polish">البولندية</string>
 
     <!-- Common Actions -->
     <string name="cancel">إلغاء</string>
@@ -55,6 +58,7 @@
     <string name="no">لا</string>
     <string name="done">تم</string>
     <string name="close">إغلاق</string>
+    <string name="open_app">فتح</string>
     <string name="installed_label">مثبت</string>
     <string name="new_version_label">نسخة جديدة</string>
     <string name="version_prefix">الإصدار: </string>
@@ -75,11 +79,15 @@
     <string name="total_apps">الإجمالي: %1$d</string>
     <string name="others">أخرى</string>
     <string name="clear_all_cache">مسح جميع الذاكرة المؤقتة</string>
-    <string name="clear_cache_prompt">أي التطبيقات ترغب في مسحها؟</string>
     <string name="clear_all_cache_subtitle">مسح الملفات المؤقتة لجميع التطبيقات لاستعادة مساحة التخزين</string>
-    <string name="clear_system_cache_title">مسح ذاكرة النظام المؤقتة؟</string>
-    <string name="clear_system_cache_desc">قد يؤدي مسح ذاكرة تطبيقات النظام المؤقتة إلى عدم استقرار مؤقت. هل أنت متأكد أنك تريد المتابعة؟</string>
-    <string name="user_apps">تطبيقات المستخدم</string>
+    <string name="clear_all_cache_confirm_desc">Android هو من يقرر أي ذاكرة مؤقتة تُمسح، ولا يتيح لـ Thor الاختيار — تشمل العملية كل تطبيقات الجهاز، تطبيقات النظام وتطبيقاتك على حد سواء. لن يُمسّ أي شيء آخر: بياناتك وتسجيلات دخولك وإعداداتك تبقى كما هي. قد تفتح التطبيقات ببطء بسيط في المرة الأولى بينما تعيد بناء ذاكرتها المؤقتة.</string>
+    <string name="clear_all_cache_running">جارٍ المسح…</string>
+    <string name="clear_all_cache_running_desc">جارٍ العمل على كل تطبيقات الجهاز. قد يستغرق ذلك لحظة.</string>
+    <string name="clear_all_cache_done_title">تم مسح الذاكرة المؤقتة</string>
+    <string name="clear_all_cache_done_size">تم تحرير %1$s.</string>
+    <string name="clear_all_cache_done_nothing">لم تتبقَّ أي ذاكرة تخزين مؤقت لمسحها.</string>
+    <string name="clear_all_cache_done_size_unknown">تم. لم يتمكن Thor من قياس المساحة المحرّرة.</string>
+    <string name="clear_all_cache_done_unmeasured">تم. لم يتمكن Thor من قياس المساحة المحرّرة — امنحه إذن الوصول إلى بيانات الاستخدام في الإعدادات لرؤية الرقم في المرة القادمة.</string>
     <string name="system_apps">تطبيقات النظام</string>
     <string name="active">نشط</string>
     <string name="frozen">مجمد</string>
@@ -103,6 +111,14 @@
     <string name="descending">تنازلي</string>
     <string name="filters">الفلاتر</string>
     <string name="sort_by">فرز حسب</string>
+    <string name="sort_by_name">الاسم</string>
+    <string name="sort_by_size">الحجم</string>
+    <string name="sort_by_install_date">تاريخ التثبيت</string>
+    <string name="sort_by_last_updated">آخر تحديث</string>
+    <string name="sort_by_version_code">رمز الإصدار</string>
+    <string name="sort_by_version_name">اسم الإصدار</string>
+    <string name="sort_by_target_sdk">إصدار SDK المستهدف</string>
+    <string name="sort_by_min_sdk">أدنى إصدار SDK</string>
     <string name="filter_type_state">الحالة النشطة</string>
     <string name="filter_type_source">مصدر التثبيت</string>
     <string name="filter_type_permission">الإذن</string>
@@ -147,6 +163,14 @@
     <string name="action_uninstall">إلغاء التثبيت</string>
     <string name="action_reinstall">إعادة تثبيت</string>
 
+    <!-- Action explainers -->
+    <string name="explain_force_stop_title">فرض الإيقاف</string>
+    <string name="explain_force_stop_body">ينهي التطبيق وكل ما يشغّله في هذه اللحظة. يبقى مثبَّتًا ويعمل من جديد بمجرد أن تفتحه أنت أو يفتحه النظام. لا يُحذف أي شيء.</string>
+    <string name="explain_suspend_title">التعليق</string>
+    <string name="explain_suspend_body">يبقى التطبيق في شاشة التطبيقات لكن لا يمكن فتحه — عند النقر عليه تظهر نافذة نظام بدلاً من ذلك. يستمر ذلك بعد إعادة التشغيل حتى تلغي التعليق. لا يُحذف أي شيء.</string>
+    <string name="explain_freeze_title">التجميد</string>
+    <string name="explain_freeze_body">يعطّل التطبيق تمامًا: يختفي من شاشة التطبيقات ولا يمكنه العمل إطلاقًا، ولا حتى في الخلفية. يستمر ذلك بعد إعادة التشغيل حتى تلغي التجميد. لا يُحذف أي شيء.</string>
+
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">لا يمكن تشغيل التطبيق</string>
     <string name="share_app">مشاركة التطبيق</string>
@@ -182,23 +206,23 @@
     <string name="tile_no_apps">لا توجد تطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="tile_subtitle_format">
-        <item quantity="zero">%1$d تطبيقات · اضغط للتجميد</item>
-        <item quantity="one">%1$d تطبيقات · اضغط للتجميد</item>
-        <item quantity="two">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="zero">لا توجد تطبيقات · اضغط للتجميد</item>
+        <item quantity="one">تطبيق واحد · اضغط للتجميد</item>
+        <item quantity="two">تطبيقان · اضغط للتجميد</item>
         <item quantity="few">%1$d تطبيقات · اضغط للتجميد</item>
-        <item quantity="many">%1$d تطبيقات · اضغط للتجميد</item>
-        <item quantity="other">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="many">%1$d تطبيقًا · اضغط للتجميد</item>
+        <item quantity="other">%1$d تطبيق · اضغط للتجميد</item>
     </plurals>
     <string name="tile_grant_privilege_toast">امنح صلاحية Root / Shizuku / Dhizuku أولاً</string>
     <string name="tile_no_apps_toast">لا توجد تطبيقات في المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="tile_freeze_success">
-        <item quantity="zero">تم تجميد %1$d تطبيقات</item>
-        <item quantity="one">تم تجميد %1$d تطبيقات</item>
-        <item quantity="two">تم تجميد %1$d تطبيقات</item>
+        <item quantity="zero">لم يتم تجميد أي تطبيق</item>
+        <item quantity="one">تم تجميد تطبيق واحد</item>
+        <item quantity="two">تم تجميد تطبيقين</item>
         <item quantity="few">تم تجميد %1$d تطبيقات</item>
-        <item quantity="many">تم تجميد %1$d تطبيقات</item>
-        <item quantity="other">تم تجميد %1$d تطبيقات</item>
+        <item quantity="many">تم تجميد %1$d تطبيقًا</item>
+        <item quantity="other">تم تجميد %1$d تطبيق</item>
     </plurals>
     <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
     <string name="tile_freeze_incomplete">تم تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
@@ -219,25 +243,27 @@
     <string name="import_disabled_apps_title">استيراد التطبيقات المعطلة</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="import_disabled_apps_desc">
-        <item quantity="zero">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
-        <item quantity="one">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
-        <item quantity="two">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
-        <item quantity="few">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
-        <item quantity="many">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="zero">لا توجد تطبيقات معطلة خارج قائمة المجمد.</item>
+        <item quantity="one">هناك تطبيق واحد معطل غير موجود في قائمة المجمد. هل ترغب في إضافته إلى المجمد؟</item>
+        <item quantity="two">هناك تطبيقان معطلان غير موجودين في قائمة المجمد. هل ترغب في إضافتهما إلى المجمد؟</item>
+        <item quantity="few">هناك %1$d تطبيقات معطلة غير موجودة في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="many">هناك %1$d تطبيقًا معطلًا غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
         <item quantity="other">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
     </plurals>
     <string name="import_disabled_apps_button">استيراد التطبيقات المعطلة</string>
     <string name="no_disabled_apps_found">لم يتم العثور على تطبيقات معطلة أخرى.</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="added_to_freezer_count_success">
-        <item quantity="zero">تمت إضافة %1$d تطبيقات إلى المجمد</item>
-        <item quantity="one">تمت إضافة %1$d تطبيقات إلى المجمد</item>
-        <item quantity="two">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="zero">لم تتم إضافة أي تطبيق إلى المجمد</item>
+        <item quantity="one">تمت إضافة تطبيق واحد إلى المجمد</item>
+        <item quantity="two">تمت إضافة تطبيقين إلى المجمد</item>
         <item quantity="few">تمت إضافة %1$d تطبيقات إلى المجمد</item>
-        <item quantity="many">تمت إضافة %1$d تطبيقات إلى المجمد</item>
-        <item quantity="other">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="many">تمت إضافة %1$d تطبيقًا إلى المجمد</item>
+        <item quantity="other">تمت إضافة %1$d تطبيق إلى المجمد</item>
     </plurals>
     <string name="add_to_freezer">إضافة للمجمد</string>
+    <string name="freezer_add_warning_title">الإضافة تُجمّده فورًا</string>
+    <string name="freezer_add_warning_body">يدخل التطبيق إلى المجمد مجمدًا بالفعل — هكذا يعمل المجمد، وليس خللًا. يُفقد كل ما لم تحفظه فيه، ويبقى مجمدًا حتى تلغي تجميده.</string>
 
     <!-- Extensions -->
     <string name="extensions">الإضافات</string>
@@ -261,12 +287,12 @@
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="unfrozen_count_success">
-        <item quantity="zero">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="one">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="two">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="zero">لم يتم إلغاء تجميد أي تطبيق</item>
+        <item quantity="one">تم إلغاء تجميد تطبيق واحد</item>
+        <item quantity="two">تم إلغاء تجميد تطبيقين</item>
         <item quantity="few">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="many">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="other">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="many">تم إلغاء تجميد %1$d تطبيقًا</item>
+        <item quantity="other">تم إلغاء تجميد %1$d تطبيق</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
     <string name="tile_unfreeze_incomplete">تم إلغاء تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
@@ -274,19 +300,20 @@
     <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="removed_from_freezer_success">
-        <item quantity="zero">تمت إزالة %1$d تطبيقات من المجمد</item>
-        <item quantity="one">تمت إزالة %1$d تطبيقات من المجمد</item>
-        <item quantity="two">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="zero">لم تتم إزالة أي تطبيق من المجمد</item>
+        <item quantity="one">تمت إزالة تطبيق واحد من المجمد</item>
+        <item quantity="two">تمت إزالة تطبيقين من المجمد</item>
         <item quantity="few">تمت إزالة %1$d تطبيقات من المجمد</item>
-        <item quantity="many">تمت إزالة %1$d تطبيقات من المجمد</item>
-        <item quantity="other">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="many">تمت إزالة %1$d تطبيقًا من المجمد</item>
+        <item quantity="other">تمت إزالة %1$d تطبيق من المجمد</item>
     </plurals>
     <string name="killed_success">تم إنهاء %1$s</string>
     <string name="cache_cleared_success">تم مسح ذاكرة التخزين المؤقت لـ %1$s</string>
+    <string name="cache_cleared_success_size">تم مسح %2$s من ذاكرة %1$s المؤقتة</string>
     <string name="data_cleared_success">تم مسح بيانات %1$s</string>
     <string name="suspended_success">تم تعليق %1$s</string>
     <string name="unsuspended_success">تم إلغاء تعليق %1$s</string>
-    <string name="unfreezing_app">جاري إلغاء تجميد %1$s…</string>
+    <string name="unfreezing_app">جارٍ إلغاء تجميد %1$s…</string>
     <string name="uninstall_success">تم إلغاء تثبيت %1$s</string>
     <string name="error_app_info_missing">خطأ: معلومات التطبيق مفقودة للإجراء</string>
     <string name="failed_to_load_app_details">فشل في تحميل تفاصيل التطبيق</string>
@@ -297,6 +324,8 @@
     <string name="unknown_error_occurred">حدث خطأ غير معروف</string>
     <string name="toast_copied_class_name">تم نسخ اسم الفئة</string>
     <string name="toast_copy_saved">تم النسخ إلى الحافظة</string>
+    <string name="cd_copy_package_name">نسخ اسم الحزمة</string>
+    <string name="cd_copy_field">نسخ %1$s</string>
     <string name="not_available">غير متاح</string>
     <string name="tab_overview_title">عام</string>
     <string name="tab_components">المكونات</string>
@@ -309,11 +338,13 @@
     <string name="uninstall_app_desc">هل أنت متأكد من إلغاء تثبيت %1$s؟</string>
     <string name="action_open">فتح</string>
     <string name="action_force_stop">فرض الإيقاف</string>
-    <string name="action_in_freezer">في المجمد</string>
     <string name="action_add_freezer">إضافة للمجمد</string>
+    <string name="action_unfreeze_and_remove">إلغاء التجميد والإزالة</string>
+    <string name="action_remove_from_watchlist">إزالة من قائمة المراقبة</string>
     <string name="action_clear_cache">مسح التخزين المؤقت</string>
     <string name="action_clear_data">مسح البيانات</string>
     <string name="info_app_version">إصدار التطبيق</string>
+    <string name="info_package_name">اسم الحزمة</string>
     <string name="info_sdk_details">تفاصيل SDK</string>
     <string name="info_sdk_details_format">SDK المستهدف: %1$d   |   SDK الأدنى: %2$d</string>
     <string name="info_installer_source">مصدر التثبيت</string>
@@ -322,15 +353,19 @@
     <string name="info_apk_path">مسار ملف APK</string>
     <string name="info_data_dir">دليل البيانات</string>
     <string name="info_obb_dir">دليل OBB</string>
+    <string name="info_obb_present">%1$s — %2$s من بيانات اللعبة</string>
+    <string name="info_obb_none">لا توجد بيانات لعبة</string>
+    <string name="info_obb_unknown">لا يمكن التحقق حاليًا</string>
     <string name="info_shared_data_dir">دليل البيانات المشتركة</string>
     <string name="info_signature_sha256">بصمة توقيع SHA-256</string>
+    <string name="info_bloat_description">سبب هذا التصنيف</string>
     <string name="no_permissions_found">لم يتم العثور على أذونات</string>
     <string name="search_components_placeholder">البحث عن المكونات&#8230;</string>
     <string name="section_activities_title">الأنشطة (%1$d)</string>
     <string name="section_services_title">الخدمات (%1$d)</string>
     <string name="section_receivers_title">مستقبلات البث (%1$d)</string>
     <string name="section_providers_title">موفرو المحتوى (%1$d)</string>
-    <string name="cd_collapse">طوي</string>
+    <string name="cd_collapse">طي</string>
     <string name="cd_expand">توسيع</string>
     <string name="components_none_declared">لم يتم الإعلان عن أي منها</string>
     <string name="section_native_libs_title">المكتبات الأصلية (.so)</string>
@@ -347,7 +382,7 @@
     <string name="try_again">حاول مجدداً</string>
     <string name="exit">خروج</string>
     <string name="title_thor_installer">مثبت Thor</string>
-    <string name="install_analyzing">جاري تحليل الحزمة…</string>
+    <string name="install_analyzing">جارٍ تحليل الحزمة…</string>
     <string name="install_downgrade_warning">سيؤدي هذا إلى خفض إصدار التطبيق.</string>
     <string name="install_downgrade_code_explainer">رمز الإصدار %1$s أقل من المثبَّت %2$s. يرتّب Android التحديثات حسب رمز الإصدار لا حسب اسم الإصدار، لذا قد يبدو التطبيق أحدث وهو في الواقع خفض للإصدار.</string>
     <string name="install_update_warning">سيؤدي هذا إلى تحديث التطبيق الحالي.</string>
@@ -379,8 +414,6 @@
     <!-- Terminal Logs -->
     <string name="log_initializing">جارٍ التهيئة…</string>
     <string name="log_op_complete">\nاكتملت العملية.</string>
-    <string name="log_preparing_cache">جارٍ تجهيز تنظيف الذاكرة المؤقتة…</string>
-    <string name="log_no_eligible_apps">لم يتم العثور على تطبيقات مؤهلة.</string>
     <string name="log_sharing_app">جارٍ مشاركة %1$s</string>
     <string name="log_preparing_files">جارٍ تجهيز الملفات…</string>
     <string name="log_files_ready">✔ الملفات جاهزة</string>
@@ -405,7 +438,6 @@
     <string name="log_uninstalling_batch">جارٍ إلغاء تثبيت التطبيقات</string>
     <string name="log_suspending_batch">جارٍ تعليق التطبيقات</string>
     <string name="log_unsuspending_batch">جارٍ إلغاء تعليق التطبيقات</string>
-    <string name="log_clearing_data_batch">جارٍ مسح البيانات</string>
     <string name="log_sharing_batch">جارٍ مشاركة التطبيقات</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_batch_preparing">[%1$d/%2$d] جارٍ تجهيز %3$s…</string>
@@ -426,6 +458,7 @@
     <string name="filter_all">الكل</string>
     <string name="error_debuggable_app">التطبيق قابل للتصحيح (من المحتمل عدم تطابق التوقيع)</string>
     <string name="error_unsafe_skipped">تم التخطي: تطبيق النظام غير آمن / فشل فحص الأمان</string>
+    <string name="error_self_skipped">تم التخطي: لا يمكن لـ Thor تنفيذ ذلك على نفسه</string>
     <string name="error_parse_package">فشل في تحليل الحزمة.</string>
     <string name="error_downgrade_privilege">خفض الإصدار مدعوم فقط مع الوصول المميز (Root أو Shizuku أو Dhizuku).</string>
 
@@ -458,14 +491,26 @@
     <string name="biometric_unavailable_message">قفل التطبيق مُفعَّل، لكن لا يوجد في هذا الجهاز ما يمكن إلغاء القفل به. قم بإعداد قفل شاشة أو تسجيل بصمة من إعدادات النظام ثم عُد — وسيسمح لك Thor بالدخول.</string>
     <string name="biometric_unavailable_message_biometric_only">قفل التطبيق مُفعَّل، لكن لا توجد بصمة مُسجَّلة على هذا الجهاز، وفي Android 9 لا يمكن لطلب إلغاء القفل قبول قفل الشاشة. سجِّل بصمة من إعدادات النظام ثم عُد — وسيسمح لك Thor بالدخول.</string>
     <string name="biometric_not_enrolled_toast">لا توجد بيانات حيوية مُسجَّلة — أعدّ قفل شاشة أو بصمة أولاً</string>
-    <string name="biometric_not_enrolled_toast_biometric_only">لا توجد بصمة مُسجَّلة — في أندرويد 9 لا يفتح قفل الشاشة تطبيق ثور، فسجّل بصمة أولاً</string>
+    <string name="biometric_not_enrolled_toast_biometric_only">لا توجد بصمة مُسجَّلة — في Android 9 لا يفتح قفل الشاشة تطبيق Thor، فسجّل بصمة أولاً</string>
     <string name="biometric_lock_unavailable_toast">لا يمكن تفعيل قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
     <string name="biometric_lock_disabled_no_biometric">تم إيقاف قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
     <string name="settings_lost_using_defaults">تعذّر على Thor قراءة إعداداتك، ويستخدم الآن الإعدادات الافتراضية: تحقّق من قفل التطبيق في الإعدادات</string>
+    <string name="settings_not_saved">تعذّر على Thor حفظ هذا الإعداد، وسيعود إلى قيمته السابقة عند فتح التطبيق في المرة القادمة</string>
+    <string name="biometric_lock_disable_not_saved">لا يمكن استخدام قفل التطبيق على هذا الجهاز، وتعذّر على Thor حفظ ذلك: سيسأل مرة أخرى عند فتح التطبيق في المرة القادمة</string>
+    <string name="biometric_lock_not_saved_still_off">تعذّر على Thor حفظ ذلك: قفل التطبيق ما زال مُعطَّلاً</string>
+    <string name="biometric_lock_not_saved_still_on">تعذّر على Thor حفظ ذلك: قفل التطبيق ما زال مُفعَّلاً</string>
+    <string name="language_not_saved">تعذّر على Thor حفظ اختيارك للّغة، لذلك لم يتم تغييرها</string>
     <string name="open_security_settings">فتح إعدادات الأمان</string>
     <string name="unlock">إلغاء القفل</string>
     <string name="thank_you_support_desc">اشتراكك نشط الآن. شكرًا لك على المساعدة في دعم تطوير Thor!</string>
     
+    <!-- Grid density -->
+    <string name="grid_density">كثافة الشبكة</string>
+    <string name="grid_density_desc">عدد التطبيقات التي تظهر في صف واحد من الشبكة</string>
+    <string name="grid_density_compact">مضغوطة</string>
+    <string name="grid_density_default">افتراضية</string>
+    <string name="grid_density_large">كبيرة</string>
+
     <!-- Details & Animation Intensity -->
     <string name="action_details">التفاصيل</string>
     <string name="animation_intensity">كثافة الرسوم المتحركة</string>
@@ -481,6 +526,8 @@
     <string name="suspend_owned_by_other_privilege">لا يمكن إلغاء تعليق %1$s من هنا. تم تعليقه بواسطة %2$s، ولا يسمح Android إلا للصلاحية نفسها بإلغائه. بدّل Thor إلى وضع الصلاحية ذاك وحاول مرة أخرى.</string>
     <string name="freeze_system_app_requires_root">لا يمكن تجميد %1$s من هنا. لم يسمح هذا الجهاز لـ Thor بتعطيله، ولا يسمح Android إلا لـ root بإزالة تطبيق مثبَّت مسبقًا لمستخدم واحد. لم يطرأ أي تغيير على التطبيق — يتطلب تجميده وضع Root في Thor.</string>
     <string name="freeze_system_app_removal_failed">لا يمكن تجميد %1$s. لم يسمح هذا الجهاز لـ Thor بتعطيله، كما فشلت إزالته لهذا المستخدم. أبلغ Android عن: %2$s</string>
+    <string name="freeze_system_app_disable_refused">لا يمكن تجميد %1$s. رفض هذا الجهاز تعطيله، لذلك تركه Thor دون تغيير — فإزالته بدلاً من ذلك قد تُخرجك من الحسابات التي يديرها.</string>
+    <string name="freeze_system_app_disable_failed">لا يمكن تجميد %1$s. لم يرفض أي شيء في هذا الجهاز الطلب، لذا فالأرجح أن هذا خلل في Thor وليس قيدًا من النظام. بقي التطبيق مثبّتًا دون تغيير — نرجو الإبلاغ عن المشكلة.</string>
     <string name="auto_reinstall">إعادة التثبيت التلقائي للتطبيقات</string>
     <string name="auto_reinstall_desc">الحفاظ تلقائيًا على متجر Google Play كمثبت رئيسي لتمكين التحديثات في الخلفية</string>
     <string name="legacy_extension_title">تم اكتشاف امتداد قديم</string>
@@ -488,16 +535,31 @@
     <string name="action_export">تصدير</string>
     <string name="export_explain_apk">يقوم Thor بحفظ هذا التطبيق كملف تثبيت فردي (.apk) في المجلد أدناه. استخدمه لنسخ التطبيق احتياطيًا أو إعادة تثبيته لاحقًا.</string>
     <string name="export_explain_apks">يأتي هذا التطبيق في أجزاء متعددة ومقسمة، تُحزم في حزمة واحدة (.apks) في المجلد أدناه. يمكنك إعادة تثبيتها في أي وقت باستخدام مثبت Thor.</string>
-    <string name="export_explain_xapk">يحزم Thor أجزاء هذا التطبيق في ملف واحد (.xapk) في المجلد أدناه، وهي صيغة تفهمها المثبتات الأخرى أيضًا. لا تُضمَّن بيانات الألعاب (ملفات OBB) لأن Android 11 والإصدارات الأحدث تمنع أي تطبيق من قراءة مجلد OBB الخاص بتطبيق آخر؛ لذا ستُثبَّت اللعبة الكبيرة من هذا الملف لكنها قد لا تعمل.</string>
+    <string name="export_explain_xapk">يحزم Thor أجزاء هذا التطبيق في ملف ‎.xapk واحد داخل المجلد أدناه، وهي صيغة تفهمها برامج التثبيت الأخرى أيضًا. تُضمَّن بيانات اللعبة (ملفات OBB) عندما يستطيع وضع الوصول الحالي قراءتها.</string>
+    <string name="export_xapk_no_game_data">لا يستطيع Thor قراءة بيانات اللعبة لهذا التطبيق حاليًا — وغالبًا يعني ذلك أنه يحتاج إلى الروت أو Shizuku. وسيُنشأ ملف ‎.xapk على أي حال، بدونها.</string>
+    <string name="export_obb_included">يتضمن %1$s من بيانات اللعبة.</string>
+    <string name="export_obb_partial">بعض العناصر في مجلد بيانات هذا التطبيق ليست ملفات توسعة ولن تُضمَّن.</string>
     <string name="export_format">الصيغة</string>
     <string name="export_save_to">حفظ في</string>
     <string name="export_change">تغيير</string>
-    <string name="export_in_progress">جاري التصدير…</string>
     <string name="export_saved">تم الحفظ في %1$s</string>
     <string name="export_failed">فشل التصدير: %1$s</string>
     <string name="export_failed_unknown">خطأ غير معروف</string>
     <string name="export_dest_downloads">التنزيلات/Thor</string>
     <string name="export_dest_selected">المجلد المحدد</string>
+    <string name="export_job_queued">في انتظار انتهاء مهمة أخرى.</string>
+    <string name="export_job_preparing">جارٍ تجهيز %1$s</string>
+    <string name="export_job_packaging">جارٍ تحزيم %1$s بصيغة ‎.%2$s</string>
+    <string name="export_job_cleanup_busy">لا يزال Thor ينظّف مخلفات التشغيل السابق. أعد محاولة التصدير بعد قليل.</string>
+    <string name="export_job_saved">تم تصدير %1$s إلى %2$s</string>
+    <string name="export_job_background">في الخلفية</string>
+    <string name="export_job_background_desc">يستمر التصدير حتى لو أغلقت هذه النافذة. يعرض الإشعار مدى تقدّمه.</string>
+    <string name="export_job_done">تم التصدير.</string>
+    <string name="export_job_stopped">توقّف التصدير قبل أن يكتمل. لم يتم حفظ أي شيء.</string>
+    <string name="export_failed_not_started">لم يبدأ التصدير، لذلك لم يتم حفظ أي شيء.</string>
+    <string name="export_job_app_gone">لم يعد %1$s مثبتًا، لذلك لم يكن هناك ما يمكن تصديره.</string>
+    <string name="export_job_folder_gone">لم يعد بإمكان Thor الكتابة في ذلك المجلد. اختره من جديد.</string>
+    <string name="export_job_unreadable">تعذّر على Thor قراءة ما يجب تصديره.</string>
 
     <string name="action_export_selected">تصدير</string>
     <string name="export_bulk_confirm_title">تصدير التطبيقات المحددة؟</string>
@@ -521,7 +583,6 @@
     <string name="failed_to_load_permissions">فشل تحميل الأذونات</string>
     <string name="permission_status_updated">تم تحديث حالة الإذن</string>
     <string name="failed_to_modify_permission">فشل تعديل الإذن</string>
-    <string name="permissions">الأذونات</string>
     <string name="usage_access">الوصول إلى بيانات الاستخدام</string>
     <string name="usage_access_granted_subtitle">تم المنح — يتيح فرز التطبيقات حسب الحجم</string>
     <string name="usage_access_needed_subtitle">مطلوب لقراءة أحجام التطبيقات للفرز حسب الحجم</string>
@@ -536,21 +597,23 @@
     <string name="installed_apps_permission_grant">منح</string>
     <string name="freeze_mode">وضع التجميد</string>
     <string name="suspend_instead_of_freeze">التعليق بدلاً من التجميد</string>
-    <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>
+    <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>
+    <string name="skip_routine_freeze_confirmation">عدم تأكيد عمليات التجميد المعتادة</string>
+    <string name="skip_routine_freeze_confirmation_desc">تجميد تطبيقات النظام دون السؤال أولاً، ما لم تكن قائمة UAD قد وسمتها. التطبيقات المصنفة كـ Expert لا تزال تُحذّر، وغير الآمنة لا يزال تجميدها محظوراً.</string>
     <string name="add_freezer_to_launcher">إضافة المجمد إلى شاشة التشغيل</string>
     <string name="add_freezer_to_launcher_desc">إظهار التطبيقات المجمدة كاختصارات على الشاشة الرئيسية يمكنك النقر عليها لتشغيلها</string>
     <string name="add_to_home_screen">إضافة إلى الشاشة الرئيسية</string>
     <string name="freeze_all_apps">تجميد الكل</string>
     <string name="shortcuts">الاختصارات</string>
     <string name="shortcut_add_all">إضافة جميع التطبيقات</string>
-    <string name="shortcut_added_named">تم إضافة %1$s إلى الشاشة الرئيسية</string>
-    <string name="shortcut_added">تم إضافة الاختصار إلى الشاشة الرئيسية</string>
+    <string name="shortcut_added_named">تمت إضافة %1$s إلى الشاشة الرئيسية</string>
+    <string name="shortcut_added">تمت إضافة الاختصار إلى الشاشة الرئيسية</string>
     <string name="pin_all_confirm_title">إضافة جميع التطبيقات إلى الشاشة الرئيسية؟</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="pin_all_confirm_desc">
-        <item quantity="zero">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
-        <item quantity="one">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
-        <item quantity="two">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
+        <item quantity="zero">لا توجد لديك تطبيقات مجمدة لإضافتها إلى الشاشة الرئيسية.</item>
+        <item quantity="one">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لتطبيقك المجمد الوحيد. ستطلب منك شاشة التشغيل تأكيده.</item>
+        <item quantity="two">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكلا تطبيقيك المجمدين. ستطلب منك شاشة التشغيل تأكيد كل منهما.</item>
         <item quantity="few">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
         <item quantity="many">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
         <item quantity="other">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
@@ -608,12 +671,94 @@
     <string name="action_save">حفظ</string>
     <string name="more_options">المزيد من الخيارات</string>
     <plurals name="profile_app_count">
-        <item quantity="zero">%1$d تطبيقات</item>
-        <item quantity="one">%1$d تطبيق</item>
-        <item quantity="two">%1$d تطبيقان</item>
+        <item quantity="zero">لا توجد تطبيقات</item>
+        <item quantity="one">تطبيق واحد</item>
+        <item quantity="two">تطبيقان</item>
         <item quantity="few">%1$d تطبيقات</item>
         <item quantity="many">%1$d تطبيقًا</item>
-        <item quantity="other">%1$d تطبيقات</item>
+        <item quantity="other">%1$d تطبيق</item>
     </plurals>
+    <string name="fix_store_desc">يعيد Thor تثبيت كل تطبيق حتى يسجّل Android متجر Play كالتطبيق الذي ثبّته. تبقى بياناتك وإعداداتك كما هي.</string>
+    <string name="fix_store_warning">قد يتوقف تحديث أي تطبيق لا يطابق توقيعه نسخة متجر Play. أزل تحديد ما تفضّل تركه دون تغيير.</string>
+    <plurals name="fix_store_confirm">
+        <item quantity="zero">إصلاح %1$d تطبيق</item>
+        <item quantity="one">إصلاح تطبيق واحد</item>
+        <item quantity="two">إصلاح تطبيقين</item>
+        <item quantity="few">إصلاح %1$d تطبيقات</item>
+        <item quantity="many">إصلاح %1$d تطبيقًا</item>
+        <item quantity="other">إصلاح %1$d تطبيق</item>
+    </plurals>
+    <string name="fix_store_installed_by">ثبّته %1$s</string>
+    <string name="fix_store_installer_none">لا يوجد مثبّت مسجّل</string>
+    <string name="select_all">تحديد الكل</string>
+    <string name="select_none">مسح</string>
+    <string name="log_stop">إيقاف</string>
+    <string name="log_stopping">سيتوقف بعد انتهاء التطبيق الحالي…</string>
+    <string name="log_stopped">تم الإيقاف — تمت معالجة %1$d من %2$d تطبيق.</string>
+    <string name="export_list">تصدير القائمة</string>
+    <string name="export_list_share">مشاركة القائمة</string>
+    <string name="export_list_empty">لا توجد تطبيقات في هذه القائمة للتصدير</string>
+    <string name="export_list_failed">تعذّر حفظ القائمة</string>
+    <string name="clear_all_caches_requires_usage_access">لا يستطيع Shizuku مسح ذاكرة التخزين المؤقت لكل التطبيقات بدون إذن الوصول إلى الاستخدام. يجب إخبار Android بعدد البايتات المطلوب تحريرها، وهذا الإذن وحده هو ما يمكنه قياس حجم ذاكرة التخزين المؤقت. امنح Thor إذن الوصول إلى الاستخدام من الإعدادات ثم أعد المحاولة.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">لا يستطيع Dhizuku مسح ذاكرة التخزين المؤقت. ليست لديه صدفة (shell) لتشغيل أداة تقليص ذاكرة التخزين المؤقت في Android، ولا تتضمن واجهة مالك الجهاز أي بديل لها. بدّل إلى وضع Root أو Shizuku.</string>
+
+    <!-- شاشة الإعدادات المقسّمة إلى فئات — راجع values/strings_settings.xml -->
+    <string name="settings_category_appearance">المظهر</string>
+    <string name="settings_category_home">الشاشة الرئيسية</string>
+    <string name="settings_category_installing">التثبيت والمشاركة</string>
+    <string name="settings_category_security">الأمان</string>
+    <string name="settings_category_about">حول التطبيق والدعم</string>
+    <string name="settings_search_hint">ابحث في الإعدادات…</string>
+    <string name="settings_search_no_results">لا يوجد إعداد يطابق ”%1$s“.</string>
+    <string name="settings_search_result_in">في %1$s</string>
+    <string name="cd_settings_search_clear">مسح البحث</string>
+    <string name="cd_back">رجوع</string>
+    <string name="settings_select_category">اختر فئة لعرض إعداداتها</string>
+    <string name="settings_engine_none">لا يوجد</string>
+    <string name="app_language_desc">لغة شاشات Thor نفسها</string>
+    <string name="theme_light">فاتح</string>
+    <string name="theme_dark">داكن</string>
+    <string name="theme_system">النظام</string>
+    <string name="settings_summary_opens_on">يفتح على %1$s</string>
+    <string name="settings_summary_auto_freeze_on">التجميد التلقائي مفعّل</string>
+    <string name="settings_summary_auto_freeze_off">التجميد التلقائي معطّل</string>
+    <string name="settings_summary_suspend_mode">وضع التعليق</string>
+    <string name="settings_summary_auto_reinstall_on">إعادة التثبيت التلقائية مفعّلة</string>
+    <string name="settings_summary_auto_reinstall_off">إعادة التثبيت التلقائية معطّلة</string>
+    <string name="settings_summary_app_lock_on">قفل التطبيق مفعّل</string>
+    <string name="settings_summary_app_lock_off">قفل التطبيق معطّل</string>
+    <string name="settings_summary_restore_interrupted">لم تكتمل إحدى عمليات الاستعادة</string>
+    <string name="settings_summary_backup">استعادة أرشيف أو تغيير عبارة المرور</string>
+    <string name="settings_summary_unprivileged">يتطلب Root أو Shizuku أو Dhizuku</string>
+    <string name="settings_summary_customization">إجراءات لوحة التطبيق وخيارات التنسيق</string>
+
+    <string name="settings_category_customization">التخصيص</string>
+    <string name="customization_app_info_actions">إجراءات لوحة التطبيق</string>
+    <string name="customization_app_info_actions_desc">إعادة ترتيب وتبديل الإجراءات في اللوحة السفلية للتطبيق</string>
+    <string name="customization_drag_hint">اسحب لإعادة الترتيب • بدّل للإظهار أو الإخفاء</string>
+    <string name="customization_preview_title">معاينة شريط الإجراءات</string>
+    <string name="reset_to_default">إعادة التعيين إلى الافتراضي</string>
+    <string name="reset_actions_confirm_title">إعادة تعيين ترتيب الإجراءات؟</string>
+    <string name="reset_actions_confirm_desc">سيؤدي هذا إلى استعادة الترتيب الافتراضي وإظهار جميع الإجراءات.</string>
+
+    <string name="action_open_desc">تشغيل التطبيق</string>
+    <string name="action_settings_desc">فتح إعدادات النظام للتطبيق في Android</string>
+    <string name="action_freeze_desc">تعطيل أو إعادة تفعيل التطبيق</string>
+    <string name="action_suspend_desc">تعليق أو إلغاء تعليق تشغيل الحزمة</string>
+    <string name="action_force_stop_desc">إيقاف جميع العمليات في الخلفية والواجهة بالقوة</string>
+    <string name="action_permissions_desc">عرض وإدارة أذونات التطبيق</string>
+    <string name="action_freezer_membership_desc">التبديل بين الإضافة والإزالة من قائمة المجمد</string>
+    <string name="action_clear_cache_desc">مسح ذاكرة التخزين المؤقت (يتطلب صلاحية Root)</string>
+    <string name="action_clear_data_desc">محو جميع بيانات المستخدم وقاعدة البيانات وذاكرة التخزين المؤقت</string>
+    <string name="action_share_desc">مشاركة ملف APK أو رابط المتجر</string>
+    <string name="action_export_desc">تصدير حزمة APK أو APKS أو XAPK</string>
+    <string name="action_backup_desc">إنشاء نسخة احتياطية مشفرة للبيانات</string>
+    <string name="action_details_desc">فتح فاحص البيان والمكونات التفصيلي</string>
+    <string name="action_add_to_home_desc">تثبيت اختصار مباشرة على الشاشة الرئيسية</string>
+    <string name="action_fix_store_desc">إعادة ربط مصدر التثبيت بمتجر Google Play</string>
+    <string name="action_uninstall_desc">إلغاء تثبيت التطبيق بالكامل من الجهاز</string>
+    <string name="all_actions_hidden">جميع الإجراءات مخفية</string>
+    <string name="cd_move_up">تحريك لأعلى</string>
+    <string name="cd_move_down">تحريك لأسفل</string>
 
 </resources>

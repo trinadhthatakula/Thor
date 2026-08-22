@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.main
 
 import android.content.Intent
 import android.provider.Settings
+import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -70,7 +71,9 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.presentation.appList.AppInfoDetailsScreen
 import com.valhalla.thor.presentation.appList.AppListScreen
 import com.valhalla.thor.presentation.appList.AppListViewModel
@@ -84,12 +87,22 @@ import com.valhalla.asgard.navigation.AsgardNavItem
 import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
+import com.valhalla.thor.presentation.settings.SettingsCategory
+import com.valhalla.thor.presentation.settings.SettingsCategoryScreen
+import com.valhalla.thor.presentation.settings.SettingsDetailPlaceholder
+import com.valhalla.thor.presentation.settings.SettingsRowId
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.settings.SettingsViewModel
+import com.valhalla.thor.presentation.backup.AppBackupSheet
+import com.valhalla.thor.presentation.backup.ArchiveRestoreSheet
+import com.valhalla.thor.presentation.backup.hub.BackupRestoreHubScreen
 import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
+import com.valhalla.thor.presentation.settings.customization.AppInfoActionsCustomizationScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
+import com.valhalla.thor.presentation.widgets.ClearAllCacheSheet
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.ExportProgressBar
 import com.valhalla.thor.presentation.widgets.FreezeLoggerDialog
@@ -98,13 +111,46 @@ import com.valhalla.thor.presentation.widgets.ThankYouDialog
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
+/**
+ * Resolves the persisted [DefaultTab] onto the nav bar's [AppDestinations].
+ *
+ * The single join between the two enums. It lives here rather than on either enum because
+ * [DefaultTab] is a domain type and must not see [AppDestinations], which carries `R.string` and
+ * `R.drawable` ids.
+ */
+internal fun DefaultTab.toDestination(): AppDestinations = when (this) {
+    DefaultTab.HOME -> AppDestinations.HOME
+    DefaultTab.APPS -> AppDestinations.APPS
+    DefaultTab.FREEZER -> AppDestinations.FREEZER
+    DefaultTab.SETTINGS -> AppDestinations.SETTINGS
+}
+
+/**
+ * @param startDestination the tab to open on, already resolved from `UserPreferences.defaultTab`.
+ *   Required rather than defaulted, and resolved by the caller behind the splash gate, because the
+ *   first composition is the only chance to pick it: reading the preference from here would compose
+ *   Home first and then jump.
+ * @param pendingRestoreUri the `.thorbak` this launch was opened on, or null for an ordinary launch.
+ *   Required rather than defaulted for the same reason [startDestination] is — a default would
+ *   compile at the one call site that has to pass it, and the only symptom would be that opening a
+ *   backup file lands on Home.
+ */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun MainScreen(
+    startDestination: AppDestinations,
+    pendingRestoreUri: String?,
     mainViewModel: MainViewModel = koinViewModel(),
     homeViewModel: HomeViewModel = koinViewModel(),
     appListViewModel: AppListViewModel = koinViewModel(),
     freezerViewModel: FreezerViewModel = koinViewModel(),
+    // Hoisted here rather than resolved inside the two settings entries, and this is load-bearing
+    // rather than tidiness. Each nav entry is wrapped in rememberViewModelStoreNavEntryDecorator
+    // below, so it owns a ViewModelStore: a koinViewModel<SettingsViewModel>() default on both the
+    // index and a category screen resolves to *two* instances. That is two privilege probes — which
+    // can spawn `su` — and two divergent copies of the PackageManager-backed any-file-opener state,
+    // one of which is showing on the index while the other is the one the switch writes to.
+    settingsViewModel: SettingsViewModel = koinViewModel(),
     onExit: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
@@ -116,7 +162,11 @@ fun MainScreen(
     var showExitConfirmation by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup (Multiple Backstacks) ---
-    var activeDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
+    // Seeded from [startDestination], and deliberately *not* keyed on it: rememberSaveable's restored
+    // value has to win after a rotation or process death, because the tab the user is standing on
+    // beats the tab they chose to open on. Keying it would also re-run the seed — and play
+    // NavDisplay's slide transition — every time any unrelated preference changed.
+    var activeDestination by rememberSaveable { mutableStateOf(startDestination) }
 
     val activeTab = when (activeDestination) {
         AppDestinations.HOME -> ThorRoute.Home
@@ -140,6 +190,18 @@ fun MainScreen(
     }
 
     val currentBackStack = backStacks[activeTab] ?: homeBackStack
+
+    // Consumed once, and the once is counted on `MainViewModel` — NOT in a `rememberSaveable` here.
+    // A saveable latch outlives the sheet state it guards, so after process death it would say
+    // "already handled" to a fresh ViewModel that has no sheet, and the archive Thor was opened on
+    // would be dropped silently. See MainViewModel.openRestoreSheetForLaunchUri.
+    //
+    // No tab switch any more. This used to jump to Settings and push a route there, because the
+    // restore *screen* had to live in some tab's back stack; the sheet is hosted above all four, so
+    // the tab the user opened Thor on is left alone.
+    LaunchedEffect(pendingRestoreUri) {
+        pendingRestoreUri?.let(mainViewModel::openRestoreSheetForLaunchUri)
+    }
 
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
 
@@ -192,8 +254,11 @@ fun MainScreen(
         }
     }
 
+    // Bottom bar is only shown on top-level root tabs (Home, Apps, Freezer, Settings).
+    // All sub-panels and detail screens hide the navigation bar to maximize content area and focus.
     val showBottomBar = currentBackStack.lastOrNull()?.let {
-        it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer || it == ThorRoute.Settings
+        it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer ||
+                it == ThorRoute.Settings
     } ?: true
 
     // System Back Press Handler: 
@@ -206,14 +271,17 @@ fun MainScreen(
         }
     }
 
-    // 2. Switch to Home tab if at the root of a non-Home tab
-    val isNonStartRoot = activeDestination != AppDestinations.HOME && (backStacks[activeTab]?.size ?: 0) == 1
+    // 2. Switch to the start tab if at the root of any other tab.
+    // Follows [startDestination] rather than a hardcoded HOME: back has to land on the tab the app
+    // opens on, or a user whose default is Freezer gets a Home screen they never asked to see and
+    // then has to press back a second time to leave.
+    val isNonStartRoot = activeDestination != startDestination && (backStacks[activeTab]?.size ?: 0) == 1
     BackHandler(enabled = isNonStartRoot) {
-        activeDestination = AppDestinations.HOME
+        activeDestination = startDestination
     }
 
-    // 3. Show exit confirmation dialog if at the root of the Home tab
-    val isAtRoot = activeDestination == AppDestinations.HOME && (backStacks[ThorRoute.Home]?.size ?: 0) == 1
+    // 3. Show exit confirmation dialog if at the root of the start tab
+    val isAtRoot = activeDestination == startDestination && (backStacks[activeTab]?.size ?: 0) == 1
     BackHandler(enabled = isAtRoot) {
         showExitConfirmation = true
     }
@@ -362,16 +430,23 @@ fun MainScreen(
                         onNavigateToFreezer = {
                             activeDestination = AppDestinations.FREEZER
                         },
-                        onReinstallAll = {
-                            checkAndProcessAction(
-                                AppClickAction.ReinstallAll,
-                                { pendingSingleAction = it },
-                                { mainViewModel.onAppAction(it) }
-                            )
+                        // No confirmation dialog: the action now scans, then opens a picker that
+                        // names every app it would touch. Confirming a list beats confirming a
+                        // warning about a list you were never shown.
+                        onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
+                        // No type argument any more: `pm trim-caches` takes no package list and
+                        // PackageManagerService evicts by LRU across the volume, so "user apps only"
+                        // was never a promise Thor could keep. The tap opens the confirmation sheet.
+                        onClearAllCache = { mainViewModel.requestClearAllCaches() },
+                        onFilterByInstaller = { type, installer ->
+                            appListViewModel.showAppsFromInstaller(type, installer)
+                            activeDestination = AppDestinations.APPS
                         },
-                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) },
                         onNavigateToExtensionManager = {
                             homeBackStack.add(ThorRoute.ExtensionManager)
+                        },
+                        onNavigateToBackupRestoreHub = {
+                            homeBackStack.add(ThorRoute.BackupRestoreHub)
                         }
                     )
                 }
@@ -460,12 +535,106 @@ fun MainScreen(
                     )
                 }
 
-                entry<ThorRoute.Settings> {
+                entry<ThorRoute.Settings>(
+                    metadata = ListDetailSceneStrategy.listPane(
+                        detailPlaceholder = { SettingsDetailPlaceholder() }
+                    )
+                ) {
                     SettingsScreen(
-                        onNavigateToExtensionManager = {
-                            settingsBackStack.add(ThorRoute.ExtensionManager)
+                        viewModel = settingsViewModel,
+                        // Gated on the pane directive, never on isWideScreen — the two are in scope
+                        // four lines apart above and the comment there exists because this mistake
+                        // has been made once already. On a 600-839 dp window isWideScreen is true
+                        // while maxHorizontalPartitions is still 1, so the index would mark a row as
+                        // selected while occupying the whole window and showing none of it.
+                        selectedCategory = if (hasDetailPane) {
+                            (settingsBackStack.lastOrNull() as? ThorRoute.SettingsCategory)
+                                ?.let { SettingsCategory.fromId(it.id) }
+                        } else {
+                            null
+                        },
+                        onOpenCategory = { category, focus ->
+                            val route = ThorRoute.SettingsCategory(category.id, focus?.name)
+                            // Replace, don't stack. Picking a second category is ordinary use of a
+                            // two-pane layout — the list stays put and the right-hand side changes —
+                            // and stacking would make Back walk every category visited on the way in
+                            // before it reaches the index. The hierarchy is two deep by design
+                            // (Option C's depth limit); a settings back stack four entries tall means
+                            // the index is no longer one Back away, which is the property the split
+                            // was for.
+                            //
+                            // Everything above the index goes, not merely a SettingsCategory sitting
+                            // on top. Extensions pushes ExtensionManager, which is *also* a detail
+                            // pane, so the index stays visible beside it — the user can pick a second
+                            // category at a moment when the top of the stack is not a category, and a
+                            // guard that only recognised SettingsCategory appended instead. Truncating
+                            // to the index is the only spelling of "replace" that holds for every
+                            // route a category can open. Index 0 is ThorRoute.Settings by
+                            // construction (rememberNavBackStack above), so size 1 *is* the index.
+                            while (settingsBackStack.size > 1) {
+                                settingsBackStack.removeAt(settingsBackStack.lastIndex)
+                            }
+                            settingsBackStack.add(route)
                         }
                     )
+                }
+
+                entry<ThorRoute.SettingsCategory>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) { route ->
+                    val popSelf = {
+                        if (settingsBackStack.size > 1) {
+                            settingsBackStack.removeLastOrNull()
+                        }
+                        Unit
+                    }
+                    // Resolved here rather than in the route, because a route holds data and this is
+                    // a question only the current build can answer. A persisted back stack outlives
+                    // an app update (see ThorRoute.SettingsCategory), so `id` can name a category
+                    // this build merged away — null, and the entry shows nothing and pops itself,
+                    // which lands the user on the index rather than on a blank screen.
+                    //
+                    // Unqualified `SettingsCategory` is the settings *enum*; the route of the same
+                    // name is nested in ThorRoute and is spelled with that prefix everywhere here.
+                    val category = remember(route.id) { SettingsCategory.fromId(route.id) }
+                    if (category == null) {
+                        LaunchedEffect(route) { popSelf() }
+                    } else {
+                        SettingsCategoryScreen(
+                            category = category,
+                            // Same tolerance for the same reason: a row renamed between the save and
+                            // the restore is simply no focus, not a crash and not a wrong row.
+                            focus = remember(route.focus) {
+                                route.focus?.let { name ->
+                                    SettingsRowId.entries.firstOrNull { it.name == name }
+                                }
+                            },
+                            viewModel = settingsViewModel,
+                            onBack = popSelf,
+                            onOpenRestore = { mainViewModel.openRestoreSheet() },
+                            onNavigateToExtensionManager = {
+                                settingsBackStack.add(ThorRoute.ExtensionManager)
+                            },
+                            onNavigateToCustomizeAppInfoActions = {
+                                settingsBackStack.add(ThorRoute.AppInfoActionsCustomization)
+                            }
+                        )
+                    }
+                }
+
+                // A shim, and the only thing left of the restore *route*. Restore is a sheet now
+                // (hosted in GLOBAL OVERLAYS below), so nothing pushes this — but a back stack saved
+                // by the previous build can still hold it: `rememberNavBackStack` state is persisted
+                // for task restoration, which survives an app update. Deleting the route outright
+                // would make that stack fail to deserialise, so the entry stays for one release and
+                // forwards to the sheet instead of rendering anything.
+                entry<ThorRoute.ArchiveRestore> { route ->
+                    LaunchedEffect(route) {
+                        if (currentBackStack.size > 1) {
+                            currentBackStack.removeLastOrNull()
+                        }
+                        mainViewModel.openRestoreSheet(route.uriString)
+                    }
                 }
 
                 entry<ThorRoute.ExtensionManager>(
@@ -492,6 +661,37 @@ fun MainScreen(
                                 currentBackStack.removeLastOrNull()
                             }
                         }
+                    )
+                }
+
+                entry<ThorRoute.AppInfoActionsCustomization>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) {
+                    AppInfoActionsCustomizationScreen(
+                        onBack = {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
+                        },
+                        viewModel = settingsViewModel
+                    )
+                }
+
+                entry<ThorRoute.BackupRestoreHub>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) {
+                    BackupRestoreHubScreen(
+                        onBack = {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
+                        },
+                        onOpenBackupSheet = { pkg, label ->
+                            mainViewModel.openBackupSheet(pkg, label)
+                        },
+                        onOpenRestoreSheet = { uriString ->
+                            mainViewModel.openRestoreSheet(uriString)
+                        },
                     )
                 }
 
@@ -657,12 +857,6 @@ fun MainScreen(
                             R.drawable.danger
                         )
 
-                        AppClickAction.ReinstallAll -> Triple(
-                            stringResource(R.string.reinstall_all),
-                            stringResource(R.string.risk_warning_desc),
-                            R.drawable.apk_install
-                        )
-
                         else -> Triple(
                             stringResource(R.string.confirm),
                             stringResource(R.string.are_you_sure),
@@ -682,12 +876,74 @@ fun MainScreen(
                     )
                 }
 
+                state.fixStoreSelection?.let { selection ->
+                    val labelResolver: InstallerLabelResolver = koinInject()
+                    FixStoreSheet(
+                        selection = selection,
+                        labelFor = labelResolver::labelFor,
+                        onToggle = { mainViewModel.toggleFixStoreTarget(it) },
+                        onSetAll = { mainViewModel.setAllFixStoreTargets(it) },
+                        onConfirm = { mainViewModel.confirmFixStore() },
+                        onDismiss = { mainViewModel.dismissFixStorePicker() }
+                    )
+                }
+
                 if (state.loggerState.isVisible) {
                     TermLoggerDialog(
                         title = state.loggerState.title,
                         logs = state.loggerState.logs,
                         isOperationComplete = state.loggerState.isComplete,
+                        isStopping = state.loggerState.isStopping,
+                        onStop = if (state.loggerState.canStop) {
+                            { mainViewModel.requestStopBatch() }
+                        } else {
+                            null
+                        },
                         onDismiss = { mainViewModel.dismissLogger() }
+                    )
+                }
+
+                // Hosted here rather than in HomeScreen because the clear outlives the screen that
+                // started it: switching tabs mid-operation must not cancel it or lose the byte
+                // count. The state lives in MainViewModel for the same reason.
+                state.cacheClear?.let { cacheClear ->
+                    ClearAllCacheSheet(
+                        state = cacheClear,
+                        // Formatted here, not in the ViewModel: Formatter needs a Context, and the
+                        // short form is locale-aware, so it has to be resolved at draw time.
+                        // Zero is formatted like any other number rather than being filtered out —
+                        // the sheet has a sentence for "there was nothing left", and dropping it to
+                        // null here would put a measured zero in the *unmeasured* branch and tell a
+                        // user who has usage access to go and grant usage access.
+                        formattedFreedBytes = (cacheClear as? CacheClearState.Done)
+                            ?.freedBytes
+                            ?.let { Formatter.formatShortFileSize(context, it) },
+                        onConfirm = { mainViewModel.confirmClearAllCaches() },
+                        onDismiss = { mainViewModel.dismissCacheClear() }
+                    )
+                }
+
+                // Restore is a sheet, and it is hosted here rather than in a tab's back stack because
+                // a restore outlives the section it was started from: the Settings row, an incoming
+                // `.thorbak`, and a tap on a running restore's notification all open the same one,
+                // and switching tabs mid-restore must not tear it down. This is also what makes the
+                // suppression in ObserveInterruptedRestoreUseCase load-bearing — the Settings section
+                // really is composed underneath, so it must not announce the restore that is on
+                // screen above it.
+                state.restoreSheet?.let { restore ->
+                    ArchiveRestoreSheet(
+                        uriString = restore.uriString,
+                        onDismiss = { mainViewModel.dismissRestoreSheet() }
+                    )
+                }
+
+                // Only ever opened by a notification tap — see [BackupSheetState]. The in-app route
+                // is the copy the app-info surfaces host themselves.
+                state.backupSheet?.let { backup ->
+                    AppBackupSheet(
+                        packageName = backup.packageName,
+                        appLabel = backup.appLabel,
+                        onDismiss = { mainViewModel.dismissBackupSheet() }
                     )
                 }
 
@@ -744,8 +1000,9 @@ private fun checkAndProcessAction(
     onExecute: (AppClickAction) -> Unit
 ) {
     when (action) {
-        is AppClickAction.Kill,
-        AppClickAction.ReinstallAll -> onRequireConfirmation(action)
+        // ReinstallAll used to be here too. It confirms through its own picker now, which names
+        // the apps instead of warning about them.
+        is AppClickAction.Kill -> onRequireConfirmation(action)
 
         else -> onExecute(action)
     }

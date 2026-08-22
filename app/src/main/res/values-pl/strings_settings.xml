@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ── The eight categories ──────────────────────────────────────────────────────────────
+         Title Case, unlike the SCREAMING CASE section labels they replace: these are screen
+         titles and index rows now, not the small all-caps rubric above a group. `freezer`,
+         `extensions` and `backup_and_restore` are already Title Case and are reused as they are. -->
+    <string name="settings_category_appearance">Wygląd</string>
+    <string name="settings_category_home">Ekran główny</string>
+    <string name="settings_category_installing">Instalowanie i udostępnianie</string>
+    <string name="settings_category_security">Bezpieczeństwo</string>
+    <string name="settings_category_about">Informacje i wsparcie</string>
+
+    <!-- ── Index chrome ──────────────────────────────────────────────────────────────────── -->
+    <string name="settings_search_hint">Szukaj w ustawieniach…</string>
+    <string name="settings_search_no_results">Nic w Ustawieniach nie pasuje do „%1$s”.</string>
+    <string name="settings_search_result_in">w: %1$s</string>
+    <string name="cd_settings_search_clear">Wyczyść wyszukiwanie</string>
+    <string name="cd_back">Wstecz</string>
+
+    <!--
+      The empty right-hand pane on a tablet or an unfolded foldable, before a category is picked.
+      Never shown on a phone, where the index occupies the whole window and opening a category
+      replaces it.
+    -->
+    <string name="settings_select_category">Wybierz kategorię, aby zobaczyć jej ustawienia</string>
+
+    <!--
+      The privilege picker's label for PrivilegeMode.NONE. Present for exhaustiveness only — the
+      picker is built from the engines that probed available, so NONE is never one of its buttons.
+      Worth a real string rather than an empty one: if it ever does render, "None" is a state a
+      user can act on and `mode.name` is not.
+    -->
+    <string name="settings_engine_none">Brak</string>
+
+    <!--
+      The language row's description. It had none: the row's subtitle was the *current language*,
+      which is the value, not what the setting does — so the row was the one entry in Settings that
+      could not say what it was for, and search had nothing static to index it by.
+    -->
+    <string name="app_language_desc">Język ekranów aplikacji Thor</string>
+
+    <!--
+      Theme option labels. These were `ThemeMode.label()` returning hardcoded "Light"/"Dark"/
+      "System" from a domain enum — English in all five locales, on the setting users flip most.
+    -->
+    <string name="theme_light">Jasny</string>
+    <string name="theme_dark">Ciemny</string>
+    <string name="theme_system">Systemowy</string>
+
+    <!-- ── Index summary lines ───────────────────────────────────────────────────────────────
+         Each index row carries a line describing the state behind it, so that the door does not
+         have to be opened to see what is through it. Joined with a middle dot by the caller. -->
+    <string name="settings_summary_opens_on">Otwierany ekran: %1$s</string>
+    <string name="settings_summary_auto_freeze_on">Automatyczne zamrażanie włączone</string>
+    <string name="settings_summary_auto_freeze_off">Automatyczne zamrażanie wyłączone</string>
+    <string name="settings_summary_suspend_mode">Tryb zawieszania</string>
+    <string name="settings_summary_auto_reinstall_on">Automatyczna reinstalacja włączona</string>
+    <string name="settings_summary_auto_reinstall_off">Automatyczna reinstalacja wyłączona</string>
+    <string name="settings_summary_app_lock_on">Blokada aplikacji włączona</string>
+    <string name="settings_summary_app_lock_off">Blokada aplikacji wyłączona</string>
+    <string name="settings_summary_restore_interrupted">Przywracanie nie zostało ukończone</string>
+    <string name="settings_summary_backup">Przywróć archiwum lub zmień hasło</string>
+    <string name="settings_summary_unprivileged">Wymaga uprawnień root, Shizuku lub Dhizuku</string>
+    <string name="settings_summary_customization">Akcje panelu aplikacji i opcje układu</string>
+
+    <!-- ── Kategoria personalizacji i akcje ───────────────────────────────────────────── -->
+    <string name="settings_category_customization">Personalizacja</string>
+    <string name="customization_app_info_actions">Akcje panelu aplikacji</string>
+    <string name="customization_app_info_actions_desc">Zmień kolejność i widoczność akcji w dolnym panelu aplikacji</string>
+    <string name="customization_drag_hint">Przeciągnij, aby zmienić kolejność • Przełącz, aby ukryć lub pokazać</string>
+    <string name="customization_preview_title">Podgląd paska akcji</string>
+    <string name="reset_to_default">Przywróć domyślne</string>
+    <string name="reset_actions_confirm_title">Przywrócić domyślną kolejność akcji?</string>
+    <string name="reset_actions_confirm_desc">Spowoduje to przywrócenie domyślnej kolejności oraz odkrycie wszystkich ukrytych akcji.</string>
+
+    <string name="action_open_desc">Uruchom aplikację</string>
+    <string name="action_settings_desc">Otwórz ustawienia systemowe aplikacji w systemie Android</string>
+    <string name="action_freeze_desc">Wyłącz lub włącz ponownie aplikację</string>
+    <string name="action_suspend_desc">Zawieś lub odwiesz wykonywanie pakietu</string>
+    <string name="action_force_stop_desc">Wymuś zatrzymanie wszystkich procesów w tle i na pierwszym planie</string>
+    <string name="action_permissions_desc">Przeglądaj i zarządzaj uprawnieniami aplikacji</string>
+    <string name="action_freezer_membership_desc">Dodaj lub usuń z listy Zamrażarki</string>
+    <string name="action_clear_cache_desc">Wyczyść pamięć podręczną (wymaga uprawnień Root)</string>
+    <string name="action_clear_data_desc">Wyczyść wszystkie dane użytkownika, bazy danych i pamięć podręczną</string>
+    <string name="action_share_desc">Udostępnij plik APK aplikacji lub link do sklepu</string>
+    <string name="action_export_desc">Eksportuj pakiet APK, APKS lub XAPK</string>
+    <string name="action_backup_desc">Utwórz zaszyfrowaną kopię zapasową danych</string>
+    <string name="action_details_desc">Otwórz szczegółowy inspektor manifestu i komponentów</string>
+    <string name="action_add_to_home_desc">Przypnij skrót bezpośrednio do ekranu głównego</string>
+    <string name="action_fix_store_desc">Przypisz źródło instalacji do Google Play</string>
+    <string name="action_uninstall_desc">Całkowicie odinstaluj aplikację z urządzenia</string>
+    <string name="all_actions_hidden">Wszystkie akcje są ukryte</string>
+    <string name="cd_move_up">Przesuń w górę</string>
+    <string name="cd_move_down">Przesuń w dół</string>
+
+</resources>

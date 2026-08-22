@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { findRepoRoot } from './repo-facts/read.ts'
@@ -44,14 +44,8 @@ describe('outbound links agree with the repository', () => {
     // web-ci is path-filtered to web/** and the two Gradle version files — so a
     // Kotlin change that breaks a web assertion stays green until a release PR
     // bumps versionCode. Hence the loud message below rather than a silent skip.
-    const settingsRel = existsSync(
-      join(root, 'app/src/main/java/com/valhalla/thor/presentation/settings/SettingsCategoryScreen.kt'),
-    )
-      ? 'app/src/main/java/com/valhalla/thor/presentation/settings/SettingsCategoryScreen.kt'
-      : 'app/src/main/java/com/valhalla/thor/presentation/settings/SettingsScreen.kt'
-
     const inApp = [
-      settingsRel,
+      'app/src/main/java/com/valhalla/thor/presentation/settings/SettingsCategoryScreen.kt',
       'app/src/main/java/com/valhalla/thor/presentation/home/components/SupportCommunitySection.kt',
     ].map((rel) => {
       const match = /https:\/\/t\.me\/([A-Za-z0-9_]+)/.exec(readRepo(rel))

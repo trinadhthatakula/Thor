@@ -42,8 +42,8 @@ describe('lockstep with the repo shell scripts', () => {
   // Everything downstream — the anchored pattern, head/cut/tr — is verbatim, and
   // the third test pins that literal so this copy cannot silently go stale.
   const extractCode =
-    "grep -E '(^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$|^versionCode=)' gradle.properties" +
-    " | head -n 1 | cut -d= -f2 | tr -dc '0-9'"
+    "grep -E '^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$' gradle.properties" +
+    " | head -n 1 | cut -d= -f2 | tr -d '[:space:]'"
 
   it('agrees with check-shizu-manifest.sh on the derived version name', () => {
     const script = [
@@ -70,14 +70,33 @@ describe('lockstep with the repo shell scripts', () => {
   })
 
   it('still finds the LOCKSTEP resolver it is pinned against', () => {
+    // If someone deletes the shell arithmetic, the two tests above would compare
+    // an empty string to an empty string and pass. This is the tripwire.
     for (const rel of [
       '.github/scripts/check-shizu-manifest.sh',
       '.github/scripts/sync-shizu-changelog.sh',
     ]) {
       const body = readFileSync(join(root, rel), 'utf8')
       expect(body, `${rel} lost its LOCKSTEP comment`).toContain('LOCKSTEP:')
-      expect(body, `${rel} lost its versionCode grep`).toContain('versionCode')
+      expect(body, `${rel} lost its anchored versionCode grep`).toContain(
+        "grep -E '^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$'",
+      )
+      // `| head -n 1 |` is what stops an unanchored match on `initialVersionCode=1921`
+      // feeding two lines into the arithmetic. parse.ts asserts all three scripts
+      // that read gradle.properties use it; pinning it here means that claim cannot
+      // silently go stale in the direction that is least safe to miss.
+      expect(body, `${rel} lost its head -n 1 guard`).toContain('| head -n 1 |')
+      // The rebinding itself. Without this, `origin/production` could be edited
+      // back to `origin/master` and every assertion above would still pass —
+      // both refs carry a `versionCode`, and the arithmetic is identical.
+      expect(body, `${rel} no longer resolves the version from production`).toContain(
+        'production_ref="${SHIZU_VERSION_REF:-origin/production}"',
+      )
     }
+    // detect-version-bump.sh is not LOCKSTEP-commented (it has no shizu analogue)
+    // but parse.ts names it alongside the two above. Pin its head -n 1 guard too.
+    const bump = readFileSync(join(root, '.github/scripts/detect-version-bump.sh'), 'utf8')
+    expect(bump, 'detect-version-bump.sh lost its head -n 1 guard').toContain('| head -n 1 |')
   })
 
   it('agrees with app/build.gradle.kts, which is the actual build authority', () => {

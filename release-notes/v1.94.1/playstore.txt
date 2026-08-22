@@ -1,0 +1,11 @@
+• 🧹 Clear all cache really clears now — it used to free nothing and report there was none.
+
+• 🧊 Freezing a preinstalled app can never remove it. If Android refuses, Thor stops and says so.
+
+• 🔎 Search the Freezer, and select many apps at once in the Apps list.
+
+• ⚙️ Sort, filter, icon size and your starting tab are remembered.
+
+• 📤 Export your app list, and see what Fix Store will touch before it runs.
+
+• ⚠️ A warning before the actions that can leave a device unbootable.

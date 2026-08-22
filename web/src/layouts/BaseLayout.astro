@@ -11,6 +11,16 @@ import ThemeScript from '../components/ThemeScript.astro'
 import Nav from '../components/Nav.astro'
 import Footer from '../components/Footer.astro'
 import { SITE, canonical } from '../lib/site.ts'
+/**
+ * The one importer of `repoFacts` outside `Fact.astro`, and a deliberate exception to that rule.
+ *
+ * The JSON-LD below is not prose — it is a machine-readable claim in a <script> tag, where a
+ * component cannot render. It stated `operatingSystem: 'Android 8.0+'` while `minSdk` has been 28
+ * (Android 9) for the life of this site, so every consumer of the structured data was told Thor
+ * installs on a release it refuses to install on. Deriving it is the only version of this that
+ * cannot drift again.
+ */
+import { repoFacts } from '../lib/repo-facts/index.ts'
 
 import '../styles/fonts.css'
 import '../styles/tokens.css'
@@ -61,7 +71,7 @@ const jsonLd = {
       '@type': 'SoftwareApplication',
       '@id': `${SITE.origin}/#software`,
       name: 'Thor',
-      operatingSystem: 'Android 8.0+',
+      operatingSystem: `${repoFacts.minSdkAndroidName}+`,
       applicationCategory: 'UtilitiesApplication',
       offers: {
         '@type': 'Offer',

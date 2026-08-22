@@ -106,9 +106,13 @@ for the presentation layer.
 - **Customization**: Dark/Light/System + AMOLED themes. "Asgardian" static color scheme is the
   default; Material You dynamic color opt-in. Preferred privilege mode persisted across sessions.
 - **Search**: Live search by app name or package name in App List and Freezer screens.
-- **Multi-language**: Supports English, Spanish, French, Arabic, and Chinese. Runtime locale
-  switching via `LocaleManager` (`util/LocaleManager.kt`); language preference stored in
-  `UserPreferences.language` (null = system default).
+- **Multi-language**: Supports English, Spanish, French, Arabic, Chinese, Portuguese, Brazilian
+  Portuguese and Polish. Runtime locale switching via `LocaleManager` (`util/LocaleManager.kt`);
+  language preference stored in `UserPreferences.language` (null = system default). Adding a
+  language means changing five things, not one — `translatedLocales` in `app/build.gradle.kts`,
+  `res/xml/locales_config.xml`, the `AppLanguage` enum in `util/LocalePolicy.kt`,
+  `SettingsCatalog.labelRes`, and the `values-xx/` directory itself. `CONTRIBUTING.md` has the
+  table; note the qualifier/BCP-47 split (`pt-rBR` vs `pt-BR`).
 - **Privacy**: No ads, no trackers, no analytics, FOSS (GPL-3.0). The app declares
   `android.permission.INTERNET`; the only network access is the optional Extensions store, which
   fetches its catalog and verified extension APKs over HTTPS. Every other feature works offline.

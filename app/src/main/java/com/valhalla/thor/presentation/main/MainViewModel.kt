@@ -5,14 +5,19 @@ package com.valhalla.thor.presentation.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
+import com.valhalla.thor.data.backup.job.JobSheetTarget
+import com.valhalla.thor.data.backup.job.JobSheetTargets
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
@@ -24,6 +29,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
@@ -65,7 +71,19 @@ data class LoggerState(
     val isVisible: Boolean = false,
     val title: UiText = UiText.DynamicString(""),
     val logs: List<UiText> = emptyList(),
-    val isComplete: Boolean = false
+    val isComplete: Boolean = false,
+    /**
+     * Whether this run can be stopped part-way. True only for the per-app batches, where stopping
+     * leaves a coherent result — some apps done, the rest untouched. A single shell command has no
+     * such halfway point.
+     */
+    val canStop: Boolean = false,
+    /**
+     * A stop has been asked for and the app in flight is being allowed to finish. Killing it
+     * mid-`pm install` is what leaves a package half-written, so the button reports "stopping"
+     * rather than pretending it was instant.
+     */
+    val isStopping: Boolean = false
 )
 
 /**
@@ -112,10 +130,88 @@ data class ExportProgressState(
 /**
  * Main UI State holding global feedback.
  */
+/**
+ * The Fix Store picker: the apps the action would touch, and which of them are still ticked.
+ *
+ * Everything starts ticked. The accident being prevented is "I did not know what it would touch",
+ * not "I did not mean to tap Confirm" — so showing the list is the fix, and making someone tick
+ * forty rows would punish the case the feature is for.
+ *
+ * [selected] holds package names rather than [AppInfo]s so a tick survives the list being rebuilt.
+ */
+data class FixStoreSelection(
+    val candidates: List<AppInfo> = emptyList(),
+    val selected: Set<String> = emptySet()
+) {
+    val selectedApps: List<AppInfo> get() = candidates.filter { it.packageName in selected }
+}
+
+/**
+ * The whole-device cache clear, from the tile tap to the moment its result sheet goes away.
+ * `null` in [MainUiState.cacheClear] means neither is happening.
+ *
+ * Modelled as state rather than as two `remember`ed booleans in `HomeScreen` because the operation
+ * is not the Home screen's: it clears every app on the device, it outlives a tab switch, and the
+ * result is a number the user asked for. [Confirming] is in here for the same reason — the
+ * confirmation is not a formality, it is the only place the user is told that *system* apps are
+ * included, so it belongs where the action it guards does.
+ */
+sealed interface CacheClearState {
+    /** Waiting on the confirmation the tile must not skip. */
+    data object Confirming : CacheClearState
+
+    data object Running : CacheClearState
+
+    /**
+     * [freedBytes] is `null` when the clear succeeded but Thor could not measure it — no usage
+     * access, or an app that refilled its cache between the two readings. A screen must render that
+     * as "cache cleared" with no number, never as "0 B freed".
+     *
+     * [hasUsageAccess] separates those two causes, and exists because the sentence they deserve is
+     * not the same one. "Grant usage access to see the figure" is advice for the first and an
+     * insult to the second: the user already granted it, so the only actionable thing on screen is
+     * an instruction to do what they have done. Sampled when the result lands rather than when it
+     * is drawn, because it describes why *this* measurement failed.
+     */
+    data class Done(val freedBytes: Long?, val hasUsageAccess: Boolean) : CacheClearState
+}
+
+/**
+ * The restore sheet, or null when it is closed.
+ *
+ * A nullable field holding a type with a nullable field, on purpose: the *outer* null means the sheet
+ * is not open, and [uriString] being null means it is open with no archive chosen yet, so the sheet
+ * shows its file picker. Collapsing the two would make "open the restore sheet" and "open the restore
+ * sheet on this file" indistinguishable, which is the difference between the Settings row and a
+ * notification tap.
+ */
+data class RestoreSheetState(val uriString: String? = null)
+
+/**
+ * The backup sheet hosted by `MainScreen`, or null when it is closed.
+ *
+ * Only ever opened by a notification tap. The in-app route to a backup is the sheet the app-info
+ * surfaces host themselves, which owns its own visibility — so this is a *second* host, and the two
+ * can be composed at once if the user backgrounds Thor with a backup sheet open and then taps the
+ * notification. Both watch the same job through `runningJobFor`, so the stacked pair shows the same
+ * progress twice rather than disagreeing; dismissing the top one leaves the original underneath.
+ * Lifting all backup-sheet hosting up here would fix the cosmetics at the cost of threading a
+ * `MainViewModel` call through `onAppAction` on both app-info surfaces, which is not worth it for a
+ * duplicate that requires leaving the sheet open on the way to the shade.
+ *
+ * [appLabel] must be the app's real name: `AppBackupViewModel.start` writes what it is handed straight
+ * into its state and never resolves it.
+ */
+data class BackupSheetState(val packageName: String, val appLabel: String)
+
 data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
+    val fixStoreSelection: FixStoreSelection? = null, // Fix Store picker, null when closed
     val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
     val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
+    val cacheClear: CacheClearState? = null, // Whole-device cache clear, null when idle
+    val restoreSheet: RestoreSheetState? = null, // Archive restore sheet, null when closed
+    val backupSheet: BackupSheetState? = null, // Archive backup sheet reopened from a notification
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
     val hasShownSupportDeveloperPrompt: Boolean = true,
     val showSupportDeveloperPrompt: Boolean = false,
@@ -130,6 +226,14 @@ class MainViewModel(
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
     private val backupRunner: BackupRunner,
+    // Only ever asked `isGranted`, and only to explain a measurement that came back empty. The
+    // interface rather than UsageAccessManager because the concrete class reaches for a Context for
+    // its Settings deep-link, which would put an Android type in this ViewModel's constructor and
+    // take it off the JVM test classpath.
+    private val usageAccessGate: UsageAccessGate,
+    // Where a tap on a running job's notification arrives. A plain in-memory holder, so it costs
+    // nothing to observe and stays on the JVM test classpath.
+    private val jobSheetTargets: JobSheetTargets,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -141,6 +245,9 @@ class MainViewModel(
     )
 
     private var pendingSupportPrompt = false
+
+    /** Whether [openRestoreSheetForLaunchUri] has already fired for this ViewModel. See it for why here. */
+    private var launchRestoreUriConsumed = false
 
     // Declared *above* `init`, and it has to stay there.
     //
@@ -157,6 +264,7 @@ class MainViewModel(
     init {
         observePreferences()
         observeBackupRun()
+        observeJobSheetRequests()
     }
 
     private fun observePreferences() {
@@ -221,6 +329,79 @@ class MainViewModel(
         }
     }
 
+    /**
+     * Reopen the sheet a job notification was tapped on.
+     *
+     * From `init` for the same reason as [observeBackupRun]: the tap is what brings Thor forward, so
+     * this instance is routinely *younger* than the request. `JobSheetTargets` conflates rather than
+     * drops, so a request made before the ViewModel existed is still waiting here — which is the whole
+     * point on the app-lock path, where the trampoline runs minutes before `MainScreen` composes.
+     *
+     * Touches only [_uiState] and the constructor parameter, both live before `init` runs. See the
+     * comment on `_effect` for why that sentence has to be checked and not assumed.
+     */
+    private fun observeJobSheetRequests() {
+        viewModelScope.launch {
+            jobSheetTargets.requests.collect { target ->
+                _uiState.update { state ->
+                    when (target) {
+                        is JobSheetTarget.Backup -> state.copy(
+                            backupSheet = BackupSheetState(target.packageName, target.appLabel)
+                        )
+                        is JobSheetTarget.Restore -> state.copy(
+                            restoreSheet = RestoreSheetState(target.uriString)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Open the restore sheet, on [uriString] if there is one and on its file picker if not.
+     *
+     * The Settings row and `HomeActivity`'s incoming-`.thorbak` intent both land here. It is not a
+     * navigation call any more: the sheet is hosted over whatever tab is showing, so nothing switches
+     * section on the way in.
+     */
+    fun openRestoreSheet(uriString: String? = null) {
+        _uiState.update { it.copy(restoreSheet = RestoreSheetState(uriString)) }
+    }
+
+    /**
+     * Open the restore sheet on the `.thorbak` this launch was opened on, at most once.
+     *
+     * The latch belongs here rather than in a `rememberSaveable` in `MainScreen`, and that is a
+     * correctness point, not tidiness: it has to have **the same lifetime as the sheet state it
+     * guards**. `restoreSheet` lives on this ViewModel, which survives a rotation and dies with the
+     * process; a `rememberSaveable` latch survives *both*. So the pair disagreed exactly once — kill the
+     * process while it is backgrounded, return through Recents, and the activity is recreated with the
+     * same VIEW intent and a still-valid task-scoped read grant, but the saved latch said "already
+     * handled" while the fresh ViewModel had no sheet. The archive the user opened Thor on was dropped
+     * with nothing on screen to say so. Sharing one lifetime makes the two answers agree by
+     * construction: rotation keeps both, process death clears both and the sheet reopens.
+     *
+     * Being on the ViewModel is also what makes the no-reopen-after-dismiss half testable, which the
+     * `rememberSaveable` never was.
+     */
+    fun openRestoreSheetForLaunchUri(uriString: String) {
+        if (launchRestoreUriConsumed) return
+        launchRestoreUriConsumed = true
+        openRestoreSheet(uriString)
+    }
+
+    fun dismissRestoreSheet() {
+        _uiState.update { it.copy(restoreSheet = null) }
+    }
+
+    fun openBackupSheet(packageName: String, appLabel: String) {
+        _uiState.update { it.copy(backupSheet = BackupSheetState(packageName, appLabel)) }
+    }
+
+    fun dismissBackupSheet() {
+        _uiState.update { it.copy(backupSheet = null) }
+    }
+
     fun markSupportDeveloperPromptShown() {
         viewModelScope.launch(ioDispatcher) {
             preferenceRepository.setHasShownSupportDeveloperPrompt(true)
@@ -261,13 +442,77 @@ class MainViewModel(
         _uiState.update { it.copy(selectedDestination = destination) }
     }
 
-    private fun startLogger(title: UiText) {
+    // --- Fix Store picker ---
+
+    fun toggleFixStoreTarget(packageName: String) {
+        _uiState.update { state ->
+            val picker = state.fixStoreSelection ?: return@update state
+            val selected = if (packageName in picker.selected) {
+                picker.selected - packageName
+            } else {
+                picker.selected + packageName
+            }
+            state.copy(fixStoreSelection = picker.copy(selected = selected))
+        }
+    }
+
+    fun setAllFixStoreTargets(selectAll: Boolean) {
+        _uiState.update { state ->
+            val picker = state.fixStoreSelection ?: return@update state
+            val selected = if (selectAll) {
+                picker.candidates.mapTo(mutableSetOf()) { it.packageName }
+            } else {
+                emptySet()
+            }
+            state.copy(fixStoreSelection = picker.copy(selected = selected))
+        }
+    }
+
+    fun dismissFixStorePicker() {
+        _uiState.update { it.copy(fixStoreSelection = null) }
+    }
+
+    /**
+     * Runs Fix Store against whatever is still ticked, and closes the picker.
+     *
+     * An empty selection closes the picker and does nothing rather than starting a batch of zero —
+     * the confirm button is disabled at that point, so reaching here means the state moved out from
+     * under the click.
+     */
+    fun confirmFixStore() {
+        val targets = _uiState.value.fixStoreSelection?.selectedApps.orEmpty()
+        dismissFixStorePicker()
+        if (targets.isNotEmpty()) {
+            onMultiAppAction(MultiAppAction.ReInstall(targets))
+        }
+    }
+
+    /**
+     * Asks the batch in flight to stop once the current app finishes.
+     *
+     * Written from the main thread and read from [ioDispatcher], hence `@Volatile`. Cancelling the
+     * job instead would abandon a `pm install` mid-write; this lets the app in flight land and then
+     * stops handing out more work.
+     */
+    @Volatile
+    private var stopRequested = false
+
+    fun requestStopBatch() {
+        val logger = _uiState.value.loggerState
+        if (!logger.isVisible || logger.isComplete || !logger.canStop) return
+        stopRequested = true
+        _uiState.update { it.copy(loggerState = it.loggerState.copy(isStopping = true)) }
+    }
+
+    private fun startLogger(title: UiText, canStop: Boolean = false) {
+        stopRequested = false
         _uiState.update {
             it.copy(
                 loggerState = LoggerState(
                     isVisible = true,
                     title = title,
-                    logs = listOf(UiText.StringResource(R.string.log_initializing))
+                    logs = listOf(UiText.StringResource(R.string.log_initializing)),
+                    canStop = canStop
                 )
             )
         }
@@ -283,43 +528,82 @@ class MainViewModel(
     private fun finishLogger() {
         addLog(UiText.StringResource(R.string.log_op_complete))
         _uiState.update { state ->
-            state.copy(loggerState = state.loggerState.copy(isComplete = true))
+            state.copy(
+                loggerState = state.loggerState.copy(isComplete = true, isStopping = false)
+            )
         }
     }
 
-    fun clearAllCache(type: AppListType) {
+    /**
+     * Opens the confirmation for the whole-device cache clear. The tile calls this, never
+     * [confirmClearAllCaches] — see [CacheClearState.Confirming].
+     */
+    fun requestClearAllCaches() {
+        _uiState.update { it.copy(cacheClear = CacheClearState.Confirming) }
+    }
+
+    /**
+     * Clears every app's cache on the primary volume, system apps included.
+     *
+     * This used to be `clearAllCache(type)`: load every app of one [AppListType], drop Thor and the
+     * Play Store, then walk the list clearing one package at a time behind the batch logger. Every
+     * part of that is now wrong.
+     *
+     * The per-package loop could not work outside Root. `INTERNAL_DELETE_CACHE_FILES` is
+     * signature-level, so under Shizuku `PackageManagerService` logged that it was silently ignoring
+     * each call — hundreds of packages, fifteen seconds of observer timeout each, nothing deleted.
+     * The operation that *does* work is `pm trim-caches`, and it is not a loop: PMS picks its own
+     * victims by LRU across the whole volume.
+     *
+     * Which is why the USER/SYSTEM choice is gone rather than moved. It could not be honoured — a
+     * trim clears both — and offering it would have been a lie in the one place the user is deciding
+     * whether to touch system apps. The `safeList` filter goes with it for the same reason: PMS
+     * decides, so excluding Thor and the Play Store was never in Thor's gift. Thor's own cache being
+     * included is the correct behaviour anyway; it was only ever excluded because clearing it
+     * mid-batch was visible.
+     */
+    fun confirmClearAllCaches() {
+        // Synchronous, and deliberately *outside* the coroutine. Two taps landing in the same frame
+        // each queue a launch, and a guard inside the coroutine can only see whatever the other one
+        // left behind — which by the time it runs may already be `Done`, and `Done` is not
+        // `Running`, so the second trim would start anyway. Flipping the state here, before either
+        // coroutine exists, is what makes the second tap a no-op. Safe as a check-then-set because
+        // both callers are Compose click handlers on the main thread.
+        //
+        // Requiring `Confirming` rather than "not Running" also means nothing can start a trim
+        // without the sheet having asked first.
+        if (_uiState.value.cacheClear != CacheClearState.Confirming) return
+        _uiState.update { it.copy(cacheClear = CacheClearState.Running) }
         viewModelScope.launch {
-            startLogger(UiText.StringResource(R.string.log_preparing_cache))
-
-            // 1. Fetch current list — getInstalledAppsUseCase() reads PackageManager and can
-            // throw (e.g. DeadObjectException). Guard it so a failure can't crash the app or
-            // leave the logger dialog stuck spinning.
-            val (userApps, systemApps) = try {
-                getInstalledAppsUseCase().first()
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e // preserve structured-concurrency cancellation
-                Logger.e("MainViewModel", "clearAllCache: failed to load apps", e)
-                addLog(UiText.StringResource(R.string.log_error, e.message ?: ""))
-                finishLogger()
-                return@launch
-            }
-            val targetList = if (type == AppListType.USER) userApps else systemApps
-
-            // 2. Filter out self and Play Store to be safe
-            val safeList = targetList.filter {
-                it.packageName != "com.valhalla.thor" &&
-                        it.packageName != "com.android.vending"
-            }
-
-            if (safeList.isEmpty()) {
-                addLog(UiText.StringResource(R.string.log_no_eligible_apps))
-                finishLogger()
-                return@launch
-            }
-
-            dismissLogger() // Switch to batch logger
-            onMultiAppAction(MultiAppAction.ClearCache(safeList))
+            manageAppUseCase.clearAllCaches()
+                .onSuccess { freed ->
+                    // Read only when the number is missing. `isGranted` is a local AppOps lookup,
+                    // but asking it on the happy path would still be asking a question whose answer
+                    // is already implied — a byte count arrived, so the op is held.
+                    val hasUsageAccess = freed != null || usageAccessGate.isGranted()
+                    _uiState.update {
+                        it.copy(cacheClear = CacheClearState.Done(freed, hasUsageAccess))
+                    }
+                }
+                .onFailure { e ->
+                    Logger.e("MainViewModel", "clearAllCaches failed", e)
+                    _uiState.update { it.copy(cacheClear = null) }
+                    val errorText = if (e is UiTextException) e.uiText else UiText.DynamicString(e.message ?: "")
+                    _effect.send(MainSideEffect.Message(UiText.StringResource(R.string.error_format, errorText)))
+                }
         }
+    }
+
+    /**
+     * Closes the confirmation or the result sheet, whichever is open.
+     *
+     * The support prompt is triggered from here rather than at the moment the clear succeeds: two
+     * bottom sheets racing each other is not a thing to ask a user to read.
+     */
+    fun dismissCacheClear() {
+        val wasDone = _uiState.value.cacheClear is CacheClearState.Done
+        _uiState.update { it.copy(cacheClear = null) }
+        if (wasDone) viewModelScope.launch { triggerSupportPromptIfNeeded() }
     }
 
     // --- Single App Action Handler ---
@@ -456,10 +740,7 @@ class MainViewModel(
                         return@launch
                     }
 
-                    val targets = userApps.filter {
-                        it.installerPackageName != "com.android.vending" &&
-                                it.installerPackageName != "com.google.android.packageinstaller"
-                    }
+                    val targets = fixStoreCandidates(userApps, BuildConfig.APPLICATION_ID)
 
                     if (targets.isEmpty()) {
                         addLog(UiText.StringResource(R.string.log_no_apps_to_fix))
@@ -467,7 +748,19 @@ class MainViewModel(
                     } else {
                         addLog(UiText.StringResource(R.string.log_found_apps_to_fix, targets.size))
                         dismissLogger()
-                        onMultiAppAction(MultiAppAction.ReInstall(targets))
+                        // The scan hands over to the picker, not to the batch. What this action used
+                        // to do was reinstall every app it had just counted, behind a warning
+                        // dialog that never said which ones.
+                        _uiState.update { state ->
+                            state.copy(
+                                fixStoreSelection = FixStoreSelection(
+                                    candidates = targets.sortedBy { app ->
+                                        (app.appName ?: app.packageName).lowercase()
+                                    },
+                                    selected = targets.mapTo(mutableSetOf()) { it.packageName }
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -475,7 +768,27 @@ class MainViewModel(
                 is AppClickAction.Kill -> quickAction(action) { manageAppUseCase.forceStop(it.packageName) }
                 is AppClickAction.Freeze -> quickAction(action) { manageAppUseCase.setAppDisabled(it.packageName, true) }
                 is AppClickAction.UnFreeze -> quickAction(action) { manageAppUseCase.setAppDisabled(it.packageName, false) }
-                is AppClickAction.ClearCache -> quickAction(action) { manageAppUseCase.clearCache(it.packageName) }
+                // The only quick action with a number to report. A null count is not zero — the
+                // clear worked and the measurement did not — so it falls back to the plain message
+                // rather than saying "0 B".
+                is AppClickAction.ClearCache -> quickAction(
+                    action,
+                    successMessage = { app, freed ->
+                        val name = app.appName ?: app.packageName
+                        if (freed == null || freed <= 0L) {
+                            UiText.StringResource(R.string.cache_cleared_success, name)
+                        } else {
+                            // Order matters: %1$s is the app label, %2$s the size — the same
+                            // positions cache_cleared_success uses for its single argument, so the
+                            // two messages stay swappable.
+                            UiText.StringResource(
+                                R.string.cache_cleared_success_size,
+                                name,
+                                formatBytes(freed)
+                            )
+                        }
+                    }
+                ) { manageAppUseCase.clearCache(it.packageName) }
                 is AppClickAction.ClearData -> quickAction(action) { manageAppUseCase.clearAppData(it.packageName) }
                 is AppClickAction.Suspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, true) }
                 is AppClickAction.UnSuspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, false) }
@@ -517,21 +830,41 @@ class MainViewModel(
                     UiText.StringResource(R.string.log_killing_batch),
                     action.appList
                 ) {
-                    manageAppUseCase.forceStop(it.packageName)
+                    // Thor is in its own app list, so "select all -> Kill" is two taps and the
+                    // batch would reach the process running it. Force-stopping that process does
+                    // not stop the batch cleanly — it takes the ViewModel, the logger and the
+                    // remaining apps with it, and the user is left with a partly-killed selection
+                    // and no report of where it stopped. `fixStoreCandidates` already excludes
+                    // Thor from its computed target list for the same reason; this is the same
+                    // exclusion on a list the user assembled by hand, so it is reported rather
+                    // than filtered silently.
+                    if (it.packageName == BuildConfig.APPLICATION_ID) {
+                        Result.failure(UiTextException(UiText.StringResource(R.string.error_self_skipped)))
+                    } else {
+                        manageAppUseCase.forceStop(it.packageName)
+                    }
                 }
 
+                // Root-only, like every per-package clear. The freed byte counts are discarded here
+                // on purpose: this path reports through the batch logger, which speaks in
+                // per-app success/failure lines, and a running total interleaved with them would be
+                // the one number on screen that nothing else agrees with. The whole-device clear is
+                // where a total belongs.
                 is MultiAppAction.ClearCache -> performLoggedMultiAction(
                     UiText.StringResource(R.string.log_clearing_cache_batch),
                     action.appList
                 ) {
-                    manageAppUseCase.clearCache(it.packageName)
+                    manageAppUseCase.clearCache(it.packageName).map { }
                 }
 
                 is MultiAppAction.Uninstall -> performLoggedMultiAction(
                     UiText.StringResource(R.string.log_uninstalling_batch),
                     action.appList
                 ) { appInfo ->
-                    if (appInfo.freezeTier == FreezeTier.BLOCKED) {
+                    if (appInfo.packageName == BuildConfig.APPLICATION_ID) {
+                        // Same reasoning as the Kill branch, with a worse ending: this one succeeds.
+                        Result.failure(UiTextException(UiText.StringResource(R.string.error_self_skipped)))
+                    } else if (appInfo.freezeTier == FreezeTier.BLOCKED) {
                         Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                     } else {
                         val result = manageAppUseCase.uninstallApp(appInfo.packageName)
@@ -556,22 +889,32 @@ class MainViewModel(
                     manageAppUseCase.setAppSuspended(it.packageName, false)
                 }
 
-                is MultiAppAction.ClearData -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_clearing_data_batch),
-                    action.appList
-                ) {
-                    manageAppUseCase.clearAppData(it.packageName)
-                }
-
                 is MultiAppAction.Share -> {
                     viewModelScope.launch {
-                        startLogger(UiText.StringResource(R.string.log_sharing_batch))
+                        // `canStop` and the break below are what every other batch has had since
+                        // `performLoggedMultiAction` grew them. This loop is hand-rolled — it
+                        // collects Uris rather than counting successes, which is why it never went
+                        // through the shared helper — and the Stop button was simply never wired
+                        // to it. Preparing 50 installer bundles is the slowest batch Thor has, so
+                        // it was the one batch most likely to be stopped and the only one that
+                        // could not be.
+                        startLogger(
+                            UiText.StringResource(R.string.log_sharing_batch),
+                            canStop = action.appList.size > 1
+                        )
                         val uris = mutableListOf<android.net.Uri>()
+                        var processed = 0
 
                         withContext(ioDispatcher) {
-                            action.appList.forEachIndexed { index, app ->
+                            for ((index, app) in action.appList.withIndex()) {
+                                // Between apps, never during one — same contract as
+                                // `performLoggedMultiAction`. Whatever is already staged is still
+                                // shared; stopping declines to prepare the rest, it does not
+                                // discard the work already done.
+                                if (stopRequested) break
                                 addLog(UiText.StringResource(R.string.log_batch_preparing, index + 1, action.appList.size, app.appName ?: ""))
                                 val result = shareAppUseCase(app)
+                                processed++
                                 if (result.isSuccess) {
                                     uris.add(result.getOrThrow())
                                     addLog(UiText.StringResource(R.string.log_ready))
@@ -587,6 +930,12 @@ class MainViewModel(
                             }
                         }
 
+                        // `processed <`, not `stopRequested` alone — see the same gate at the end of
+                        // [performLoggedMultiAction] for why. A Stop tapped while the last
+                        // `shareAppUseCase` runs would otherwise report "Stopped: 20 of 20".
+                        if (processed < action.appList.size) {
+                            addLog(UiText.StringResource(R.string.log_stopped, processed, action.appList.size))
+                        }
                         if (uris.isNotEmpty()) {
                             dismissLogger()
                             _effect.send(MainSideEffect.ShareApps(uris))
@@ -640,8 +989,24 @@ class MainViewModel(
                     if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
                     else manageAppUseCase.setAppDisabled(app.packageName, true)
                 } else {
-                    // State-aware restore: clears suspend AND disable, incl. mixed state.
-                    manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
+                    // `forceUnfreeze`, not the state-aware `restoreApp(_, app.enabled,
+                    // app.isSuspended)` this used to call. Both clear suspend AND disable; the
+                    // difference is that `restoreApp` decides which halves to attempt from the flags,
+                    // and on this path the flags are stale by construction.
+                    //
+                    // Nothing patches `isSuspended` on an app list after a bulk freeze — not this
+                    // function (it updates only the logger counters and never refreshes the lists on
+                    // completion), not `AppListViewModel`'s bulk branch, not the QS tile. So the
+                    // freeze-then-unfreeze round trip that is the *primary* way suspend mode gets
+                    // used — `useSuspend = true` above, then Unfreeze over the same selection —
+                    // hands `restorePlanFor` a snapshot that still calls every app active. It plans
+                    // nothing, returns `Result.success`, and this loop counts a success for each app
+                    // while all of them are still suspended: "Unfroze 12" over 12 paused apps.
+                    //
+                    // FreezerViewModel already documents this trap twice and answers it the same way.
+                    // The cost is one redundant unsuspend per already-active app, which root and
+                    // Shizuku answer from the flag alone.
+                    manageAppUseCase.forceUnfreeze(app.packageName)
                 }
                 processed++
                 if (result.isFailure) failed++
@@ -784,13 +1149,18 @@ class MainViewModel(
         apps: List<AppInfo>,
         block: suspend (AppInfo) -> Result<Unit>
     ) {
-        startLogger(title)
+        startLogger(title, canStop = apps.size > 1)
         var hasAtLeastOneSuccess = false
+        var processed = 0
 
         withContext(ioDispatcher) {
-            apps.forEachIndexed { index, app ->
+            for ((index, app) in apps.withIndex()) {
+                // Checked between apps, never during one: a batch stopped here has done some apps
+                // and left the rest untouched, which is a state the user can reason about.
+                if (stopRequested) break
                 addLog(UiText.StringResource(R.string.log_batch_step, index + 1, apps.size, app.appName ?: ""))
                 val result = block(app)
+                processed++
                 if (result.isSuccess) {
                     addLog(UiText.StringResource(R.string.log_success))
                     hasAtLeastOneSuccess = true
@@ -806,23 +1176,40 @@ class MainViewModel(
             }
         }
 
+        // `processed <`, not `stopRequested` alone. The flag is checked between apps, so a Stop
+        // tapped while the *last* app's call is in flight sets it after the loop has already run
+        // every app — and reporting on the flag then says "Stopped: 20 of 20", a stop that skipped
+        // nothing, which reads as though something was lost. The count is the only thing that knows
+        // whether the loop broke early.
+        //
+        // Six bulk actions come through here (kill, clear cache, uninstall, reinstall, suspend,
+        // unsuspend) and the share branch keeps its own copy of this loop; both now gate the same way.
+        if (processed < apps.size) {
+            addLog(UiText.StringResource(R.string.log_stopped, processed, apps.size))
+        }
         finishLogger()
         if (hasAtLeastOneSuccess) {
             triggerSupportPromptIfNeeded()
         }
     }
 
-    private suspend fun quickAction(
+    /**
+     * [successMessage] exists for the one action whose result carries information: a cache clear
+     * knows how many bytes it freed, and the toast is the place to say so. Every other caller omits
+     * it and gets [getSuccessMessage], which only knows the action and the app name.
+     */
+    private suspend fun <T> quickAction(
         action: AppClickAction,
-        block: suspend (AppInfo) -> Result<Unit>
+        successMessage: ((AppInfo, T) -> UiText)? = null,
+        block: suspend (AppInfo) -> Result<T>
     ) {
         val app = action.appInfo()
         if (app != null)
             block(app)
-                .onSuccess {
+                .onSuccess { value ->
                     _effect.send(
                         MainSideEffect.Message(
-                            getSuccessMessage(
+                            successMessage?.invoke(app, value) ?: getSuccessMessage(
                                 action,
                                 app.appName ?: app.packageName
                             )

@@ -10,30 +10,38 @@
     <string name="settings">Settings</string>
     <string name="settings_desc">Settings Page to change app settings</string>
     <string name="config_engine_v">Configuration Engine • v%1$s</string>
-    <string name="general">GENERAL</string>
+    <!--
+      The SCREAMING CASE section labels that used to head the ten groups of the one-column settings
+      screen — general, appearance, security, work_mode, about, permissions — are gone with it.
+      Settings is eight category rows now, titled in Title Case in strings_settings.xml; the
+      remaining sections whose names survived (freezer, extensions, backup_and_restore) are reused
+      as those titles rather than duplicated.
+    -->
     <string name="show_reinstall_card">Show Reinstall Card</string>
     <string name="show_reinstall_card_desc">Show Fix Store reminder on home screen</string>
     <string name="show_installer_tile">Show Installer Tile</string>
     <string name="show_installer_tile_desc">Show Install from File on the home screen</string>
+    <string name="any_file_opener">Show Thor when opening any file</string>
+    <string name="any_file_opener_desc">Turn this on only if your file manager won\'t open APKs with Thor. Thor will then be offered for files it can\'t identify — including ones that aren\'t APKs.</string>
+    <string name="any_file_opener_failed">Android refused to change this setting. Nothing was turned on.</string>
     <string name="show_extensions_tile">Show Extensions Tile</string>
     <string name="show_extensions_tile_desc">Show Extensions on the home screen</string>
     <string name="auto_reinstall">Auto Reinstall Apps</string>
     <string name="auto_reinstall_desc">Automatically preserve Google Play Store as the installer of record to enable background updates</string>
-    <string name="appearance">APPEARANCE</string>
+    <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
+    <string name="default_tab">Default Tab</string>
+    <string name="default_tab_desc">The screen Thor opens on at launch</string>
     <string name="theme">Theme</string>
     <string name="theme_desc">Visual interface style</string>
     <string name="amoled_mode">AMOLED Mode</string>
     <string name="amoled_desc">Pure black background</string>
     <string name="dynamic_colors">Dynamic Colors</string>
     <string name="dynamic_colors_desc">Material You integration</string>
-    <string name="security">SECURITY</string>
     <string name="biometric_lock">Biometric Lock</string>
     <string name="biometric_lock_desc">Require auth on launch</string>
     <string name="biometric_not_available">Biometrics not enrolled or available</string>
-    <string name="work_mode">WORK MODE</string>
     <string name="active_engine">Active Engine</string>
     <string name="active_engine_desc">Switch between available providers</string>
-    <string name="about">ABOUT</string>
     <string name="version">Version</string>
     <string name="release_candidate">Release candidate</string>
     <string name="source_code">SOURCE CODE</string>
@@ -48,6 +56,9 @@
     <string name="french">French</string>
     <string name="spanish">Spanish</string>
     <string name="arabic">Arabic</string>
+    <string name="portuguese">Portuguese</string>
+    <string name="portuguese_brazil">Portuguese (Brazil)</string>
+    <string name="polish">Polish</string>
 
     <!-- Common Actions -->
     <string name="cancel">Cancel</string>
@@ -57,6 +68,7 @@
     <string name="no">No</string>
     <string name="done">Done</string>
     <string name="close">Close</string>
+    <string name="open_app">Open</string>
     <string name="installed_label">INSTALLED</string>
     <string name="new_version_label">NEW VERSION</string>
     <string name="version_prefix">Version: </string>
@@ -79,11 +91,23 @@
     <string name="total_apps">TOTAL: %1$d</string>
     <string name="others">Others</string>
     <string name="clear_all_cache">Clear All Cache</string>
-    <string name="clear_cache_prompt">Which apps would you like to clear?</string>
     <string name="clear_all_cache_subtitle">Clear cached files of all apps to reclaim storage space</string>
-    <string name="clear_system_cache_title">Clear System Cache?</string>
-    <string name="clear_system_cache_desc">Clearing the cache of system apps might cause temporary instability. Are you sure you want to proceed?</string>
-    <string name="user_apps">User Apps</string>
+    <string name="clear_all_cache_confirm_desc">Android decides which caches to drop, and it does not let Thor choose — every app on the device is included, system apps as well as yours. Nothing else is touched: your data, logins and settings all stay put. Apps may open a little slower the first time while they rebuild.</string>
+    <string name="clear_all_cache_running">Clearing…</string>
+    <string name="clear_all_cache_running_desc">Working through every app on the device. This can take a moment.</string>
+    <string name="clear_all_cache_done_title">Cache cleared</string>
+    <string name="clear_all_cache_done_size">Freed %1$s.</string>
+    <!-- Shown when the measurement worked and the answer was genuinely zero — a second clear with
+         nothing left to drop. Deliberately not the _unmeasured line: that one asks for a permission
+         this user demonstrably already granted. -->
+    <string name="clear_all_cache_done_nothing">There was no cache left to clear.</string>
+    <!-- The measurement was available and still came back empty — an app refilled its cache while
+         the clear ran, or the storage service refused the reading. Says nothing about usage access:
+         this line is only ever shown to someone who already has it. -->
+    <string name="clear_all_cache_done_size_unknown">Done. Thor could not measure how much this freed.</string>
+    <!-- Shown only when the usage-access op is genuinely missing, which is what makes the advice
+         actionable. Any other unmeasured outcome uses clear_all_cache_done_size_unknown. -->
+    <string name="clear_all_cache_done_unmeasured">Done. Thor could not measure how much this freed — grant it usage access in Settings to see the figure next time.</string>
     <string name="system_apps">System Apps</string>
     <string name="active">Active</string>
     <string name="frozen">Frozen</string>
@@ -108,6 +132,16 @@
     <string name="descending">Descending</string>
     <string name="filters">Filters</string>
     <string name="sort_by">Sort By</string>
+    <!-- One label per SortBy entry. The English values are byte-identical to the strings
+         SortBy.asGeneralName() hardcodes today, so switching to resources changes no en text. -->
+    <string name="sort_by_name">Name</string>
+    <string name="sort_by_size">Size</string>
+    <string name="sort_by_install_date">Install Date</string>
+    <string name="sort_by_last_updated">Last Updated</string>
+    <string name="sort_by_version_code">Version Code</string>
+    <string name="sort_by_version_name">Version Name</string>
+    <string name="sort_by_target_sdk">Target SDK Version</string>
+    <string name="sort_by_min_sdk">Min SDK Version</string>
     <string name="filter_type_state">Active State</string>
     <string name="filter_type_source">Installation Source</string>
     <string name="filter_type_permission">Permission</string>
@@ -154,20 +188,73 @@
     <string name="action_uninstall">Uninstall</string>
     <string name="action_reinstall">Reinstall</string>
 
+    <!-- Action explainers. Three actions users routinely confuse; each body answers the same
+         three questions in the same order — what it does, does it survive a reboot, is data lost. -->
+    <string name="explain_force_stop_title">Force Stop</string>
+    <string name="explain_force_stop_body">Kills the app and everything it is running right now. It stays installed and starts again the moment you or the system opens it. Nothing is deleted.</string>
+    <string name="explain_suspend_title">Suspend</string>
+    <string name="explain_suspend_body">The app stays on your launcher but can\'t be opened — tapping it shows a system dialog instead. This survives a reboot, until you unsuspend it. Nothing is deleted.</string>
+    <string name="explain_freeze_title">Freeze</string>
+    <string name="explain_freeze_body">Disables the app completely: it disappears from the launcher and can\'t run at all, not even in the background. This survives a reboot, until you unfreeze it. Nothing is deleted.</string>
+
     <!-- Export -->
     <string name="action_export">Export</string>
     <string name="export_explain_apk">Thor saves this app as a single installer file (.apk) to the folder below. Use it to back up the app or reinstall it later.</string>
     <string name="export_explain_apks">This app ships as several split parts, packed into one bundle (.apks) in the folder below. Reinstall it anytime with Thor\'s installer.</string>
-    <string name="export_explain_xapk">Thor packs this app\'s parts into a single .xapk in the folder below, a format other installers understand too. Game data (OBB files) is left out because Android 11 and later stops any app from reading another app\'s OBB folder; a large game will install from this file but may not run.</string>
+    <string name="export_explain_xapk">Thor packs this app\'s parts into a single .xapk in the folder below, a format other installers understand too. Game data (OBB files) is included when Thor\'s current access mode can read it.</string>
+    <!-- Shown for every ObbProbe.Undetermined, which is more than a missing privilege: a failed,
+         empty, truncated or malformed reply from a shell Thor *does* have lands here too. So it
+         states what is certainly true (Thor cannot read the data now) and offers the usual cause
+         without asserting it — the same mistake as the explain string this feature retracted.
+
+         Renamed from export_xapk_unavailable, because it no longer describes anything unavailable.
+         The old copy said a .xapk "would install a game that doesn't run", which was a refusal
+         written as a warning: it asserted the app *has* game data, and Undetermined is precisely
+         the verdict that cannot say so. Most apps have none, so most of the time the sentence was
+         false as well as blocking. The rename is deliberate — a translation carried over under the
+         old key would keep promising a broken install. -->
+    <string name="export_xapk_no_game_data">Thor can\'t read this app\'s game data right now — usually that means root or Shizuku access is needed. The .xapk will still be built, without it.</string>
+    <string name="export_obb_included">Includes %1$s of game data.</string>
+    <string name="export_obb_partial">Some items in this app\'s game data folder aren\'t expansion files and won\'t be included.</string>
     <string name="export_format">Format</string>
     <string name="export_save_to">Save to</string>
     <string name="export_change">Change</string>
-    <string name="export_in_progress">Exporting…</string>
     <string name="export_saved">Saved to %1$s</string>
     <string name="export_failed">Export failed: %1$s</string>
     <string name="export_failed_unknown">unknown error</string>
     <string name="export_dest_downloads">Downloads/Thor</string>
     <string name="export_dest_selected">Selected folder</string>
+
+    <!-- Export as a background job. The sheet hands the work to a Worker and can then be dismissed,
+         so every sentence below has to stand on its own in a notification with no sheet behind it:
+         each one names the app or the folder rather than relying on what the user was looking at.
+
+         export_job_saved is the outcome row on the success path. It is the only report a user who
+         backgrounded the export ever sees — ThorJobWorker's `finally` removes the ongoing row — so
+         it names both the app and where the file actually landed. -->
+    <string name="export_job_queued">Waiting behind another job.</string>
+    <string name="export_job_preparing">Getting %1$s ready</string>
+    <string name="export_job_packaging">Packaging %1$s as .%2$s</string>
+    <string name="export_job_cleanup_busy">Thor is still tidying up from its last run. Try the export again in a moment.</string>
+    <string name="export_job_saved">%1$s exported to %2$s</string>
+    <!-- The Background button and the sentence that makes its one word mean something. Separate from
+         backup_background/_desc, which say the same thing about a different job: those live in
+         strings_backup.xml under a file-level MissingTranslation ignore, so borrowing them would put
+         an untranslated button in a translated sheet. -->
+    <string name="export_job_background">Background</string>
+    <string name="export_job_background_desc">The export keeps running if you close this. Its notification shows how far it has got.</string>
+    <!-- On screen only, and only for the three seconds before the sheet closes itself. The
+         destination is not repeated here — the notification is where export_job_saved names it, and
+         the sheet the user is still looking at is the one surface that does not need telling. -->
+    <string name="export_job_done">Exported.</string>
+    <!-- The armed fallback for a stop that returns no Result at all: WorkManager discards a
+         cancelled worker's Result, so a worded failure cannot travel that way. Any path that *can*
+         word itself replaces this before returning. -->
+    <string name="export_job_stopped">Export stopped before it finished. Nothing was saved.</string>
+    <string name="export_failed_not_started">The export didn\'t start, so nothing was saved.</string>
+    <string name="export_job_app_gone">%1$s isn\'t installed any more, so there was nothing to export.</string>
+    <string name="export_job_folder_gone">Thor can\'t write to that folder any more. Pick the folder again.</string>
+    <string name="export_job_unreadable">Thor couldn\'t read what to export.</string>
 
     <!-- Bulk export (multi-select toolbox). Scope is deliberately "the apps you picked", never
          "back up everything": the count-bearing strings below all read as composites of two
@@ -225,7 +312,9 @@
     <string name="failed_to_modify_permission">Failed to modify permission</string>
 
     <!-- Usage Access / Size sort -->
-    <string name="permissions">PERMISSIONS</string>
+    <!-- `permissions` (the PERMISSIONS section header) removed with the one-column settings screen;
+         those two rows are in the Security category now. -->
+
     <string name="usage_access">Usage Access</string>
     <string name="usage_access_granted_subtitle">Granted — enables app-size sorting</string>
     <string name="usage_access_needed_subtitle">Needed to read app sizes for the Size sort</string>
@@ -275,6 +364,8 @@
     <string name="suspend_instead_of_freeze">Suspend instead of freeze</string>
     <string name="suspend_instead_of_freeze_desc">When freezing (including auto-freeze), suspend apps instead of disabling them. Suspended apps stay visible but paused.</string>
     <string name="auto_freeze_desc">Freeze apps automatically when screen is locked</string>
+    <string name="skip_routine_freeze_confirmation">Don\'t confirm routine freezes</string>
+    <string name="skip_routine_freeze_confirmation_desc">Freeze system apps without asking first, unless the removal list flags them. Apps marked Expert still warn, and unsafe ones are still refused.</string>
     <string name="add_freezer_to_launcher">Add Freezer to launcher</string>
     <string name="add_freezer_to_launcher_desc">Show frozen apps as home-screen shortcuts you can tap to launch</string>
     <string name="add_to_home_screen">Add to Home screen</string>
@@ -305,6 +396,10 @@
         <item quantity="other">Added %1$d apps to Freezer</item>
     </plurals>
     <string name="add_to_freezer">Add to Freezer</string>
+    <!-- Confirmation shown before an app joins the watchlist. Adding freezes immediately — that is
+         the intended behaviour, so the copy states it as the rule rather than apologising for it. -->
+    <string name="freezer_add_warning_title">Adding freezes it now</string>
+    <string name="freezer_add_warning_body">An app goes into the Freezer already frozen — that is how the Freezer works, not a fault. Anything you haven\'t saved in it is lost, and it stays frozen until you unfreeze it.</string>
 
     <!-- Extensions -->
     <string name="extensions">Extensions</string>
@@ -374,6 +469,9 @@
     <string name="removed_from_freezer_partial_failure" tools:ignore="PluralsCandidate">Removed %1$d/%2$d apps from Freezer (%3$d failed)</string>
     <string name="killed_success">Killed %1$s</string>
     <string name="cache_cleared_success">Cleared cache of %1$s</string>
+    <!-- %1$s is the app label, %2$s an already-formatted size ("12 MB"). Used when the freed bytes
+         could be measured; cache_cleared_success is the fallback when they could not. -->
+    <string name="cache_cleared_success_size">Cleared %2$s of cache from %1$s</string>
     <string name="data_cleared_success">Cleared data of %1$s</string>
     <string name="suspended_success">Suspended %1$s</string>
     <string name="unsuspended_success">Unsuspended %1$s</string>
@@ -392,6 +490,12 @@
          paraphrasing it away into "reflection is blocked or shell lacks permissions" named the
          wrong cause, which is the defect this string replaces. -->
     <string name="freeze_system_app_removal_failed">Can\'t freeze %1$s. This device wouldn\'t let Thor disable it, and removing it for this user also failed. Android reported: %2$s</string>
+    <!-- %1$s is an app name. Replaces the freeze->uninstall escalation: a refused disable is now a
+         plain failure. The second sentence exists because "it just didn't work" reads as a bug,
+         while "Thor chose not to remove it" is the decision — removing a preinstalled app can sign
+         the user out of every account it manages. Short enough to read in a Toast. -->
+    <string name="freeze_system_app_disable_refused">Can\'t freeze %1$s. This device refused to disable it, so Thor left the app alone — removing it instead could sign you out of the accounts it manages.</string>
+    <string name="freeze_system_app_disable_failed">Can\'t freeze %1$s. Nothing on this device refused the request, so this is more likely a bug in Thor than a restriction. The app was left installed and untouched — please report it.</string>
     <string name="unfreezing_app">Unfreezing %1$s…</string>
     <string name="uninstall_success">Uninstalled %1$s</string>
     <string name="error_app_info_missing">Error: App info missing for action</string>
@@ -403,6 +507,8 @@
     <string name="unknown_error_occurred">Unknown error occurred</string>
     <string name="toast_copied_class_name">Copied class name</string>
     <string name="toast_copy_saved">Copied to clipboard</string>
+    <string name="cd_copy_package_name">Copy package name</string>
+    <string name="cd_copy_field">Copy %1$s</string>
     <string name="not_available">N/A</string>
     <string name="tab_overview_title">General</string>
     <string name="tab_components">Components</string>
@@ -415,11 +521,13 @@
     <string name="uninstall_app_desc">Are you sure you want to uninstall %1$s?</string>
     <string name="action_open">Open</string>
     <string name="action_force_stop">Force Stop</string>
-    <string name="action_in_freezer">In Freezer</string>
     <string name="action_add_freezer">Add Freezer</string>
+    <string name="action_unfreeze_and_remove">Unfreeze &amp; Remove</string>
+    <string name="action_remove_from_watchlist">Remove from Watchlist</string>
     <string name="action_clear_cache">Clear Cache</string>
     <string name="action_clear_data">Clear Data</string>
     <string name="info_app_version">App version</string>
+    <string name="info_package_name">Package name</string>
     <string name="info_sdk_details">SDK details</string>
     <string name="info_sdk_details_format">Target SDK: %1$d   |   Min SDK: %2$d</string>
     <string name="info_app_size">Size</string>
@@ -429,8 +537,14 @@
     <string name="info_apk_path">APK source path</string>
     <string name="info_data_dir">Data directory</string>
     <string name="info_obb_dir">OBB directory</string>
+    <string name="info_obb_present">%1$s — %2$s of game data</string>
+    <string name="info_obb_none">No game data</string>
+    <string name="info_obb_unknown">Can\'t check right now</string>
     <string name="info_shared_data_dir">Shared data directory</string>
     <string name="info_signature_sha256">SHA-256 signature fingerprint</string>
+    <!-- Label for the UAD debloat note. The note itself ships in uad_lists.json and is English
+         only, so this card renders in the General tab alone — never in the app-info header. -->
+    <string name="info_bloat_description">Why this is flagged</string>
     <string name="no_permissions_found">No permissions found</string>
     <string name="search_components_placeholder">Search components&#8230;</string>
     <string name="section_activities_title">Activities (%1$d)</string>
@@ -487,8 +601,6 @@
     <!-- Terminal Logs -->
     <string name="log_initializing">Initializing…</string>
     <string name="log_op_complete">\nOperation Complete.</string>
-    <string name="log_preparing_cache">Preparing Cache Cleanup…</string>
-    <string name="log_no_eligible_apps">No eligible apps found.</string>
     <string name="log_sharing_app">Sharing %1$s</string>
     <string name="log_preparing_files">Preparing files…</string>
     <string name="log_files_ready">✔ Files Ready</string>
@@ -514,7 +626,6 @@
     <string name="log_uninstalling_batch">Uninstalling Apps</string>
     <string name="log_suspending_batch">Suspending Apps</string>
     <string name="log_unsuspending_batch">Unsuspending Apps</string>
-    <string name="log_clearing_data_batch">Clearing Data</string>
     <string name="log_sharing_batch">Sharing Apps</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_batch_preparing">[%1$d/%2$d] Preparing %3$s…</string>
@@ -535,6 +646,7 @@
     <string name="filter_all">All</string>
     <string name="error_debuggable_app">App is Debuggable (Signature mismatch likely)</string>
     <string name="error_unsafe_skipped">Skipped: System app is UNSAFE / safety check failed</string>
+    <string name="error_self_skipped">Skipped: Thor cannot do this to itself</string>
     <string name="error_parse_package">Failed to parse package.</string>
     <string name="error_downgrade_privilege">Downgrade is only supported with privileged access (Root, Shizuku, or Dhizuku).</string>
 
@@ -577,9 +689,27 @@
     <string name="biometric_lock_disabled_no_biometric">App lock turned off: this device has no biometrics to unlock it with</string>
     <!-- Shown once when the settings file could not be read, so every setting - the app lock included - fell back to its default. -->
     <string name="settings_lost_using_defaults">Thor couldn\'t read your settings and is using the defaults — check the app lock in Settings</string>
+    <!-- The write-side twin of the above: shown once when a setting the user changed could not be saved to disk. -->
+    <string name="settings_not_saved">Thor couldn\'t save that setting — it will go back to its old value next time you open the app</string>
+    <!-- The disarm above was attempted but the write was dropped, so the lock is still on disk and will disarm again next launch. -->
+    <string name="biometric_lock_disable_not_saved">App lock can\'t be used on this device, and Thor couldn\'t save that — it will ask again next time you open the app</string>
+    <!-- The user turned app lock ON in Settings and the write was dropped. Names which way the lock is actually facing, not just that a write failed. -->
+    <string name="biometric_lock_not_saved_still_off">Thor couldn\'t save that — app lock is still off</string>
+    <!-- The user turned app lock OFF in Settings and the write was dropped. -->
+    <string name="biometric_lock_not_saved_still_on">Thor couldn\'t save that — app lock is still on</string>
+    <!-- The language write was dropped, so the app was deliberately left in the old language rather than switching for one session. -->
+    <string name="language_not_saved">Thor couldn\'t save your language choice, so it hasn\'t been changed</string>
     <string name="open_security_settings">Open security settings</string>
     <string name="unlock">Unlock</string>
     <string name="thank_you_support_desc">Your subscription is active. Thank you for helping support the development of Thor!</string>
+
+    <!-- Grid density. Deliberately its own three labels rather than reusing
+         animation_intensity_low/medium/high — two unrelated settings must not share copy. -->
+    <string name="grid_density">Grid Density</string>
+    <string name="grid_density_desc">How many apps fit in a row of the grid</string>
+    <string name="grid_density_compact">Compact</string>
+    <string name="grid_density_default">Default</string>
+    <string name="grid_density_large">Large</string>
 
     <!-- Details & Animation Intensity -->
     <string name="action_details">Details</string>
@@ -617,5 +747,24 @@
         <item quantity="one">%1$d app</item>
         <item quantity="other">%1$d apps</item>
     </plurals>
+    <string name="fix_store_desc">Thor reinstalls each app so Android records the Play Store as the app that installed it. Your data and settings are kept.</string>
+    <string name="fix_store_warning">An app whose signature doesn\'t match the Play Store version may stop updating. Uncheck anything you\'d rather leave alone.</string>
+    <plurals name="fix_store_confirm">
+        <item quantity="one">Fix %1$d app</item>
+        <item quantity="other">Fix %1$d apps</item>
+    </plurals>
+    <string name="fix_store_installed_by">Installed by %1$s</string>
+    <string name="fix_store_installer_none">No installer recorded</string>
+    <string name="select_all">Select all</string>
+    <string name="select_none">Clear</string>
+    <string name="log_stop">Stop</string>
+    <string name="log_stopping">Stopping after the current app…</string>
+    <string name="log_stopped" tools:ignore="PluralsCandidate">Stopped — %1$d of %2$d apps were processed.</string>
+    <string name="export_list">Export list</string>
+    <string name="export_list_share">Share list</string>
+    <string name="export_list_empty">There are no apps in this list to export</string>
+    <string name="export_list_failed">Couldn\'t save the list</string>
+    <string name="clear_all_caches_requires_usage_access">Shizuku can\'t clear every app\'s cache without Usage Access. Android has to be told how many bytes to reclaim, and only that permission can measure how much cache there is. Grant Thor usage access in Settings and try again.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku can\'t clear caches. It has no shell to run Android\'s cache trim in, and the Device Owner API has no equivalent. Switch to Root or Shizuku.</string>
 
 </resources>

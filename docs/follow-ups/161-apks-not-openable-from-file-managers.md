@@ -85,6 +85,42 @@ makes Thor a candidate for *every* file of unknown type — user-hostile, and th
 gets an app uninstalled. If it turns out to be necessary, put it on an `<activity-alias>` disabled by
 default behind a Settings toggle ("show Thor when opening any file"), so the broad filter is opt-in.
 
+## What shipped (PR #366, 2026-08-08)
+
+The diagnostic above was **not** run — no Samsung device was available — so the broad route was taken
+blind, and therefore taken opt-in exactly as prescribed above.
+
+A **typeless** filter rather than `*/*`: it declares two schemes and no `android:mimeType` at all.
+That is narrower than the block above, because `matchData` returns `NO_MATCH_TYPE` for any intent
+carrying a type and `Intent.resolveTypeIfNeeded` asks the ContentResolver first — so a `content://`
+URI reaches it only when the provider's own `getType()` also returned null, which is the reported
+symptom. It is still broad, though: every `file://` VIEW intent **that carries no explicit MIME
+type** matches, since `resolveType` consults a provider only for `content://`.
+
+(An earlier revision of this section said "every `file://` VIEW intent … unconditionally". That
+overstated it. `Intent.resolveType` opens with `if (mType != null) return mType;` — verified against
+`frameworks/base/core/java/android/content/Intent.java` on `main` — so an intent built with
+`setDataAndType` resolves to its declared type and is rejected by this filter on `NO_MATCH_TYPE`
+like any other typed intent. Only the typeless ones get through. The mechanism clause was right; the
+quantifier was not.)
+
+**It cannot be narrowed by path.** Under `IntentFilter.matchData` the path list is consulted only
+inside the `authorities != null` branch, so path matchers are inert without a host and *mandatory*
+with one. Adding a host to reach the extension patterns would make an opaque provider URI — a
+MediaStore row id with no filename — unmatchable, excluding the exact case the filter exists to
+serve. There is no middle setting; the filter is either this broad or absent.
+
+So it lives on `AnyFileInstallerAlias` with `android:enabled="false"`, flipped by
+`AnyFileOpenerManager` from a Settings switch. `PackageManager` owns the state — there is no
+DataStore preference mirroring it, so the two cannot disagree — and the switch reads the state back
+after writing rather than flipping optimistically. `AnyFileOpenerAliasTest` pins the manifest and the
+Kotlin class name to each other and asserts the alias ships disabled.
+
+**Still open:** the diagnostic. Until someone runs it on a real Samsung device, nobody knows whether
+a narrow `android:mimeType` would have solved this outright, and the opt-in stays the only route —
+which means the users who reported #161 get nothing until they find the switch. Running it is the
+thing that could retire the broad filter entirely.
+
 ## Two side findings
 
 - **This is not a "fix never shipped" issue.** v1.92.0 already carries these filters. The reporter is
@@ -97,7 +133,11 @@ default behind a Settings toggle ("show Thor when opening any file"), so the bro
 ## Acceptance
 
 - The `pm query-activities` command above lists Thor for whatever type Samsung My Files reports.
+  — **not met.** No Samsung device; the diagnostic has not been run.
 - Opening a `.apks` from Samsung My Files reaches `PortableInstallerActivity` on a real Samsung
-  device (the reporter's, ideally — they are responsive).
+  device (the reporter's, ideally — they are responsive). — **not met**, same reason. The shipped
+  filter is a reasoned guess at the mechanism, not a confirmed fix.
 - If `*/*` was used: Thor does **not** appear when opening a `.txt`, `.pdf` or `.jpg` unless the user
-  has enabled the toggle.
+  has enabled the toggle. — **met by construction**: the filter is on a component that ships
+  disabled, so with the switch off Thor is not a candidate for anything, and
+  `AnyFileOpenerAliasTest` fails the build if that stops being true. Not yet confirmed on hardware.

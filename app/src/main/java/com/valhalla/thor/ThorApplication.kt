@@ -14,12 +14,18 @@ import coil3.request.crossfade
 import com.rosan.dhizuku.api.Dhizuku
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
+import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
+import com.valhalla.thor.data.backup.job.LaunchSweepBarrier
+import com.valhalla.thor.data.permission.SelfPermissionGranter
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
+import com.valhalla.thor.presentation.utils.ArchiveIconFetcher
+import com.valhalla.thor.presentation.utils.ArchiveIconKeyer
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.LocaleRevision
@@ -27,6 +33,7 @@ import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.koinLogLevel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,7 +45,9 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
+import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.annotation.KoinApplication
+import org.koin.core.qualifier.named
 import org.koin.plugin.module.dsl.startKoin
 
 @KoinApplication
@@ -168,11 +177,15 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    private val systemRepository: SystemRepository by inject()
+
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
             .components {
                 add(AppIconKeyer())
                 add(AppIconFetcher.Factory(context))
+                add(ArchiveIconKeyer())
+                add(ArchiveIconFetcher.Factory(context, systemRepository))
             }
             .crossfade(true)
             .build()
@@ -182,6 +195,36 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val localeManager: LocaleManager by inject()
     private val autoFreezeManager: AutoFreezeManager by inject()
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager by inject()
+    private val archiveOrphanSweeper: ArchiveOrphanSweeper by inject()
+
+    /**
+     * Released once the sweep below is over, and the only thing standing between a re-run export and
+     * the sweep deleting its staging tree. Resolved here rather than injected into the worker alone,
+     * because a barrier only works if both halves hold the *same* instance — which is what `@Single`
+     * guarantees and what a worker-side `LaunchSweepBarrier()` would silently not.
+     */
+    private val launchSweepBarrier: LaunchSweepBarrier by inject()
+
+    /**
+     * Resolved here because a Koin `@Single` nobody injects is never constructed, so its observer
+     * would never start — the same reason [autoFreezeManager] is resolved eagerly.
+     *
+     * Constructing it resolves `PrivilegeStateProvider`, which brings the first privilege probe
+     * forward from "when the first ViewModel is built" to `onCreate`. That is milliseconds on the
+     * path this app already takes (`MainScreen` composes immediately) and the probe launches into
+     * `PrivilegeManager`'s own scope rather than blocking here.
+     */
+    private val selfPermissionGranter: SelfPermissionGranter by inject()
+
+    /**
+     * The sweep's dispatcher, injected rather than hardcoded even here.
+     *
+     * [appScope] runs on `Dispatchers.Main.immediate`, and the sweeper blocks on whoever calls it —
+     * the same convention as `FileArchiveBreadcrumbStore` and `RestoreAppArchiveUseCase`. Left on
+     * Main, a launch after a killed backup would `deleteRecursively()` a multi-gigabyte bundle tree on
+     * the UI thread.
+     */
+    private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
 
     // Retained, cancellable application-lifetime scope. A SupervisorJob keeps one failing
     // child from cancelling the others, and holding the reference lets us cancel it in
@@ -206,6 +249,10 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         startKoin<ThorApplication> {
             androidContext(this@ThorApplication)
             androidLogger(Logger.koinLogLevel)
+            // Constructor injection for @KoinWorker workers. Reads Context out of the root scope,
+            // so it has to follow androidContext(). Also performs WorkManager.initialize(), which
+            // is why the manifest removes the androidx.startup initializer.
+            workManagerFactory()
         }
 
         Bypass.setLogger { message, throwable ->
@@ -232,6 +279,11 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
 
         autoFreezeManager.startObserving()
 
+        // After the Dhizuku init above, not before: that call is what lets the Dhizuku rung of the
+        // privilege probe answer truthfully on a first run, and this observer acts on the probe's
+        // result. Nothing here blocks — it launches a collector and returns.
+        selfPermissionGranter.startObserving()
+
         appScope.launch {
             runCatching {
                 val prefs = preferenceRepository.userPreferences.first()
@@ -246,7 +298,18 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
                     // Only when the platform's per-app locale won (API 33+). Writing it back is what
                     // stops the Settings row saying "System default" over a screen the system
                     // language picker put in French.
-                    preferenceRepository.setLanguage(reconciled)
+                    //
+                    // Logged rather than surfaced, unlike the two ViewModel callers: nobody asked
+                    // for this write. It reconciles two stores behind the user's back during
+                    // startup, so there is no action of theirs to report on and no screen to report
+                    // it to. The cost of it failing is the mismatched Settings row above, which the
+                    // next start attempts to fix again.
+                    if (!preferenceRepository.setLanguage(reconciled)) {
+                        Logger.w(
+                            "ThorApp",
+                            "Locale reconciled to $reconciled but the preference write was dropped"
+                        )
+                    }
                 }
                 freezerShortcutManager.syncDynamicShortcuts(prefs.addFreezerToLauncher)
             }.onFailure { throwable ->
@@ -254,6 +317,30 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
                 // (onTerminate) isn't logged as a failure and cooperative cancellation is preserved.
                 if (throwable is CancellationException) throw throwable
                 Logger.e("ThorApp", "Startup preference sync failed", throwable)
+            }
+
+            // §10. After the locale block, not before: nothing here is on the path to first frame,
+            // and it touches the filesystem. Deliberately not awaited and deliberately not fatal — a
+            // launch that cannot delete a stale temp file is still a launch. The interruption warning
+            // the report may carry is the restore screen's to show; Application has no UI, so the
+            // report here is a log line and the breadcrumb is left standing for Task 17 to clear.
+            try {
+                runCatching { withContext(ioDispatcher) { archiveOrphanSweeper.sweep() } }
+                    .onFailure { throwable ->
+                        // Same rethrow as above: runCatching swallows CancellationException, and
+                        // appScope.cancel() in onTerminate must not be logged as a sweep failure.
+                        if (throwable is CancellationException) throw throwable
+                        Logger.e("ThorApp", "archive orphan sweep failed", throwable)
+                    }
+            } finally {
+                // AppExportWorker blocks on this before it stages anything, because the sweep above
+                // deletes `externalCacheDir/obb_out` wholesale and a worker WorkManager re-ran at
+                // process start is writing into that very tree. See LaunchSweepBarrier.
+                //
+                // In a `finally`, so the release survives a sweep that threw and a scope that was
+                // cancelled: neither is a reason to leave an export pinned on "Preparing" until the
+                // barrier's own timeout, and a sweep that failed has still stopped deleting.
+                launchSweepBarrier.markSwept()
             }
         }
 

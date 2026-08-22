@@ -41,14 +41,36 @@ internal fun clearAppDataCommand(escapedPackage: String, userId: Int): String =
     "pm clear --user $userId $escapedPackage"
 
 /**
- * The cache directories of [escapedPackage] **for [userId]**, credential-encrypted first, then
- * external.
+ * The cache directories of [escapedPackage] **for [userId]**: credential-encrypted, then
+ * device-encrypted, then external.
+ *
+ * The set is not a guess — it is the three branches of `InstalldNativeService::clearAppData` under
+ * `FLAG_CLEAR_CACHE_ONLY`, which is what the platform itself deletes when a user taps Clear cache
+ * in Settings:
+ *  - `FLAG_STORAGE_CE` → `create_data_user_ce_package_path(...) + "cache"`
+ *  - `FLAG_STORAGE_DE` → `create_data_user_de_package_path(...) + CACHE_DIR_POSTFIX`
+ *  - `FLAG_STORAGE_EXTERNAL` → `<ext>/Android/data/<pkg>/cache`
+ *
+ * The device-encrypted entry is the one this list spent its whole life missing. `/data/user_de` is
+ * not an exotic direct-boot-only location: PMS creates a `user_de` package directory for **every**
+ * installed app, and anything written through `createDeviceProtectedStorageContext().cacheDir`
+ * lands there. Clearing only CE and external therefore left a real, sometimes large, slice of cache
+ * behind while reporting the operation complete — and it is invisible in testing precisely because
+ * most apps put little there and the number that is left behind was never shown to anyone.
+ *
+ * Deliberately no `code_cache`, in either encryption. That is a *different* installd flag
+ * (`FLAG_CLEAR_CODE_CACHE_ONLY`), Settings' Clear cache does not touch it, and it holds compiled
+ * artifacts an app expects to persist. Matching the platform matters more here than freeing the
+ * largest possible number of bytes.
  *
  * Deliberately no `/data/data/<pkg>/cache` and no `/sdcard/Android/data/<pkg>/cache`. They are not
- * extra coverage: they are aliases of the first and second entries *for user 0*, so on a secondary
+ * extra coverage: they are aliases of the CE and external entries *for user 0*, so on a secondary
  * user (work profile, Xiaomi Second Space) a shell that expands them deletes a different user's
- * cache and leaves Thor's own untouched. At `userId = 0` — every single-user device — the paths
- * below resolve to exactly the directories those two aliases pointed at, so nothing changes there.
+ * cache and leaves Thor's own untouched.
+ *
+ * Only the root gateway can act on all of these. A shell-uid or device-owner caller is refused
+ * `/data/user*` outright, which is why per-app cache clearing is root-gated in
+ * `SystemRepositoryImpl` rather than attempted and reported as done.
  */
 // SdCardPath is suppressed because its advice does not apply: these are not Thor's own directories.
 // getExternalCacheDir/getFilesDir answer for the *calling* app, and the whole point of the function
@@ -58,6 +80,7 @@ internal fun clearAppDataCommand(escapedPackage: String, userId: Int): String =
 @SuppressLint("SdCardPath")
 internal fun clearCachePaths(escapedPackage: String, userId: Int): List<String> = listOf(
     "/data/user/$userId/$escapedPackage/cache",
+    "/data/user_de/$userId/$escapedPackage/cache",
     "/storage/emulated/$userId/Android/data/$escapedPackage/cache",
 )
 
@@ -233,6 +256,53 @@ internal fun backgroundRestrictionCommand(
  */
 internal fun usageStatsGrantCommand(escapedPackage: String, userId: Int): String =
     appOpsCommand(escapedPackage, userId, op = "GET_USAGE_STATS", mode = "allow")
+
+/**
+ * The three spellings of the `GET_INSTALLED_APPS` app-op, tried together because which one a ROM
+ * answers to is not knowable from here.
+ *
+ * `GET_INSTALLED_APPS` is the bare name AOSP's `appops` shell accepts, `android:get_installed_apps`
+ * is the fully-qualified form some ROMs register the op under, and `10022` is the op *number* MIUI
+ * and HyperOS assign it — a ROM that knows the op by number rejects both names with "Unknown
+ * operation string". They are alternatives, not a sequence, so all three are always issued and any
+ * one of them landing is the whole of the success condition.
+ */
+private val INSTALLED_APPS_APP_OP_SPELLINGS =
+    listOf("GET_INSTALLED_APPS", "android:get_installed_apps", "10022")
+
+/**
+ * `appops set … allow` for every spelling in [INSTALLED_APPS_APP_OP_SPELLINGS].
+ *
+ * **The app-op is the real gate, not a follow-up to `pm grant`.** On MIUI/HyperOS `pm grant` of
+ * `com.android.permission.GET_INSTALLED_APPS` exits non-zero — the ROM does not let a shell grant
+ * its own vendor permission — while setting the app-op is what actually opens the package list. The
+ * two are parallel routes to the same outcome, which is why gating these commands on `pm grant`
+ * having succeeded silently re-broke every Chinese ROM once already.
+ */
+internal fun installedAppsAppOpGrantCommands(escapedPackage: String, userId: Int): List<String> =
+    INSTALLED_APPS_APP_OP_SPELLINGS.map { op ->
+        appOpsCommand(escapedPackage, userId, op = op, mode = "allow")
+    }
+
+/**
+ * The counterpart to [installedAppsAppOpGrantCommands], and the reason a revoke has to issue one.
+ *
+ * `pm revoke` alone does not undo the grant: on the ROMs that define this op, an app-op left at
+ * `allow` keeps answering `MODE_ALLOWED` after the runtime permission is gone, so package visibility
+ * stays open while Thor reports the revoke as successful. Nothing else in the app could close it —
+ * [appOpsCommand] is private and had only an `allow` caller.
+ *
+ * **`default`, not `ignore`.** `ignore` would be the deterministic fail-closed choice, but it pins
+ * the op to hard-denied *independently of the permission*, and the ROM's own permission toggle
+ * cannot lift an explicit app-op mode — a later grant from Settings would look applied and do
+ * nothing, with Thor the only way back. `default` hands the answer back to the platform, where the
+ * `pm revoke` this accompanies has already denied the permission, so visibility closes and stays
+ * reversible from either side.
+ */
+internal fun installedAppsAppOpRevokeCommands(escapedPackage: String, userId: Int): List<String> =
+    INSTALLED_APPS_APP_OP_SPELLINGS.map { op ->
+        appOpsCommand(escapedPackage, userId, op = op, mode = "default")
+    }
 
 /**
  * The one place that knows how an `appops set` line is spelled.

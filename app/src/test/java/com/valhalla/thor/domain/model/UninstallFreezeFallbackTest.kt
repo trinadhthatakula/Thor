@@ -3,17 +3,26 @@
 
 package com.valhalla.thor.domain.model
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The gate that decides whether a failed disable may escalate to `pm uninstall --user` — the one
- * freeze decision that can cost a user data they cannot recover. No Android deps.
+ * The gate that decides whether a failed disable may escalate to `pm uninstall -k --user N` — the
+ * one freeze decision that changes what a package looks like to the rest of the system. No Android
+ * deps.
  *
- * These tests are deliberately exhaustive over `PrivilegeMode` rather than spot-checking the
- * interesting branch. The failure mode being guarded against is someone adding a mode, or relaxing
- * a branch to make a freeze "work", without noticing that the branch's price is the user's data.
+ * **It is now shut for every privilege mode**, and most of what is below exists to keep it shut: a
+ * system-app freeze the platform refuses to disable ends in a visible failure with the package left
+ * installed, rather than in a quiet substitution of one mechanic for another. `false` here is not
+ * "nothing happens" — it is the gateway returning `Result.failure`, which the freeze surfaces as a
+ * message naming the refusal.
+ *
+ * These tests stay exhaustive over `PrivilegeMode` rather than spot-checking the interesting
+ * branch. The failure mode being guarded against is someone adding a mode, or re-opening a branch
+ * to make a freeze "work" on a device that refuses to disable, without noticing that the branch's
+ * price is a package removed for the user who only asked for it to be frozen.
  */
 class UninstallFreezeFallbackTest {
 
@@ -23,37 +32,49 @@ class UninstallFreezeFallbackTest {
         refused: Boolean = true,
     ) = uninstallFreezeFallbackAllowed(isSystem, mode, refused)
 
-    // --- The combinations that are allowed to escalate -----------------------------------------
+    // --- A refusal is a failure to report, not a licence to remove the package -----------------
 
+    /**
+     * Shizuku is the mode the fallback was built for: an OEM (Xiaomi HyperOS, first reported on
+     * Android 14) refuses to let the shell uid disable its system packages, and removing the
+     * package for the current user was the only mechanic left.
+     *
+     * That is no longer read as permission to use it. The user asked for a freeze — a reversible
+     * thing that leaves the app where it is — and `pm uninstall -k --user N` clears
+     * `FLAG_INSTALLED`, so the package stops resolving for anything that does not pass
+     * `MATCH_UNINSTALLED_PACKAGES`. `-k` keeps the data; nothing keeps the installed bit. The cost
+     * of this answer is real and deliberate: on those devices a Shizuku user cannot freeze system
+     * apps at all, and is told why instead of being shown a success toast for a package that was
+     * removed for them.
+     */
     @Test
-    fun `shizuku refused by the platform may escalate for a system app`() {
-        assertTrue(allowed(mode = PrivilegeMode.SHIZUKU, refused = true))
+    fun `shizuku refused by the platform fails the freeze instead of escalating`() {
+        assertFalse(allowed(mode = PrivilegeMode.SHIZUKU, refused = true))
     }
 
     /**
-     * Dhizuku answers like Shizuku, and for the same reason: it has a disable rung that the
-     * platform can *refuse*. Its commands run as the device-owner app rather than as shell, and
-     * that app holds no CHANGE_COMPONENT_ENABLED_STATE, so a `SecurityException` out of
-     * `PackageManagerService` is the expected refusal — after which uninstall-for-user is the only
-     * remaining way to freeze a preinstalled app.
+     * Dhizuku answers like Shizuku, and always has, because it faces the same question: it has a
+     * disable rung the platform can *refuse*. Its commands run as the device-owner app rather than
+     * as shell, and that app holds no CHANGE_COMPONENT_ENABLED_STATE, so a `SecurityException` out
+     * of `PackageManagerService` is the expected refusal.
      *
-     * This branch was `false` while `DhizukuSystemGateway` uninstalled system apps unconditionally,
-     * where a closed gate would have changed nothing. Now that the gateway routes through the
-     * disable chain first, a closed gate makes the rung unreachable and takes system-app freezing
-     * away from Dhizuku entirely.
+     * Its escalation was never observed running on hardware — no device with Dhizuku was available
+     * while it was open — so this branch shuts on the argument rather than on a measurement. The
+     * argument is Shizuku's: a package removed for the user is not what "freeze" was asked for.
      */
     @Test
-    fun `dhizuku refused by the platform may escalate for a system app`() {
-        assertTrue(allowed(mode = PrivilegeMode.DHIZUKU, refused = true))
+    fun `dhizuku refused by the platform fails the freeze instead of escalating`() {
+        assertFalse(allowed(mode = PrivilegeMode.DHIZUKU, refused = true))
     }
 
     // --- The discriminator: refusal, not failure ----------------------------------------------
 
     /**
-     * This is the branch the whole gate exists for. A busy PackageManager, a binder timeout or a
-     * package caught mid-update all fail to disable without the platform having refused anything;
-     * escalating on those is how a transient error turns into permanent data loss that nobody ever
-     * reports, because from the outside it looked like the freeze worked.
+     * This branch predates the gate being shut everywhere and still earns its own test. A busy
+     * PackageManager, a binder timeout or a package caught mid-update all fail to disable without
+     * the platform having refused anything; the two cases have to stay distinguishable because the
+     * gateways spend the flag on *which sentence the user reads*, and because the explicit removal
+     * path that is deferred to its own change may only ever be offered on a real refusal.
      */
     @Test
     fun `shizuku that merely failed may not escalate`() {
@@ -81,12 +102,13 @@ class UninstallFreezeFallbackTest {
         }
     }
 
-    // --- Every other privilege mode fails closed, refused or not -------------------------------
+    // --- Every privilege mode fails closed, refused or not -------------------------------------
 
     /**
      * Root is uid 0. Every refusal observed in the wild — AOSP's own shell guard and Xiaomi's
      * vendor `canBeDisabled` alike — keys on the shell uid (2000), so a refusal reaching root is an
-     * anomaly worth surfacing, not a licence to delete the user's data.
+     * anomaly worth surfacing, not a licence to remove the package. Root reached that reading
+     * first; the other two modes have now adopted it.
      */
     @Test
     fun `root never escalates, refused or not`() {
@@ -95,9 +117,10 @@ class UninstallFreezeFallbackTest {
     }
 
     /**
-     * The half of Dhizuku's answer that did not change. A binder timeout, a package mid-update or
-     * a `pm` that simply did nothing all fail without the platform having refused, and escalating
-     * on those is how a transient error becomes a package silently removed for the user.
+     * The other half of Dhizuku's answer, and the older one. A binder timeout, a package mid-update
+     * or a `pm` that simply did nothing all fail without the platform having refused; a transient
+     * error must never be able to buy a removal even if the refusal branch is ever re-opened for an
+     * explicit, asked-for one.
      */
     @Test
     fun `dhizuku that merely failed may not escalate`() {
@@ -115,7 +138,7 @@ class UninstallFreezeFallbackTest {
     /**
      * A user app disables on every supported release under every privilege mode, so there is no
      * platform gap to work around. If this ever returns true, some caller has lost the `isSystem`
-     * distinction and is one failed `pm disable` away from wiping a user-installed app.
+     * distinction and is one failed `pm disable` away from removing a user-installed app.
      */
     @Test
     fun `a user app never escalates under any mode, even when refused`() {
@@ -129,25 +152,36 @@ class UninstallFreezeFallbackTest {
         }
     }
 
+    // --- The whole gate, end to end ------------------------------------------------------------
+
     /**
-     * Guards the enum itself: a new mode must be considered, not silently inherit `true`.
+     * The owner's ruling, pinned as one assertion: **no argument this function can be handed opens
+     * the uninstall rung.** Not a refused system app under Shizuku, not one under Dhizuku, not any
+     * of the other twelve combinations.
      *
-     * The expected set is spelled out rather than counted. Both members earned their place by
-     * having a disable rung the platform can refuse — root cannot be refused by the guards this
-     * fallback exists for (they key on the shell uid), and NONE has no rung at all.
+     * Enumerated rather than spot-checked so the enum is guarded too — a new [PrivilegeMode] must
+     * be considered here, not silently inherit an answer — and so that re-opening *any* branch,
+     * including the two that used to be open, turns this red with the combination named. When the
+     * explicit "remove it for this user anyway" path lands it will re-open exactly one branch, and
+     * this test is where that decision has to be written down.
      */
     @Test
-    fun `only the modes with a refusable disable rung can escalate`() {
-        val escalating = PrivilegeMode.entries.filter {
-            uninstallFreezeFallbackAllowed(
-                isSystem = true,
-                privilegeMode = it,
-                disableRefusedByPolicy = true,
-            )
+    fun `nothing opens the uninstall rung, so no freeze can remove a package for the user`() {
+        val escalating = buildList {
+            for (isSystem in listOf(true, false)) {
+                for (mode in PrivilegeMode.entries) {
+                    for (refused in listOf(true, false)) {
+                        if (uninstallFreezeFallbackAllowed(isSystem, mode, refused)) {
+                            add("isSystem=$isSystem, mode=$mode, refused=$refused")
+                        }
+                    }
+                }
+            }
         }
-        assertTrue(
-            "unexpected modes may remove packages for the user: $escalating",
-            escalating.toSet() == setOf(PrivilegeMode.SHIZUKU, PrivilegeMode.DHIZUKU),
+        assertEquals(
+            "a freeze may still remove packages for the user: $escalating",
+            emptyList<String>(),
+            escalating,
         )
     }
 }

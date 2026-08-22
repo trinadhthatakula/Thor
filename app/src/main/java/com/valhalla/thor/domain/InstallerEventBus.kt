@@ -23,6 +23,16 @@ class InstallerEventBus {
     )
     val events: SharedFlow<InstallState> = _events
 
+    /**
+     * The most recently emitted state, or null before the first emission.
+     *
+     * Never suspends and never collects — `replay = 1` means the buffer holds exactly the current
+     * state. For a poll that needs to know whether the install it is waiting on has already failed,
+     * collecting would mean racing a collector against the thing being polled; reading the replay
+     * cache asks the same question once, cheaply.
+     */
+    val latest: InstallState? get() = _events.replayCache.lastOrNull()
+
     suspend fun emit(state: InstallState) {
         _events.emit(state)
     }

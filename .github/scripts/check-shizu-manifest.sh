@@ -5,7 +5,7 @@
 # silently falls back to default GitHub repository data. Nothing reports the
 # failure, so every assertion here exists to make one silent failure loud.
 #
-# Usage: .github/scripts/check-shizu-manifest.sh [--network]
+# Usage: .github/scripts/check-shizu-manifest.sh [--network] [--warn-changelog-drift]
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -17,13 +17,20 @@ FASTLANE="fastlane/metadata/android"
 SHOTS="$FASTLANE/en-US/images/phoneScreenshots"
 RAW_BASE="https://raw.githubusercontent.com/trinadhthatakula/Thor/master"
 
-[ "$#" -le 1 ] || { printf 'usage: %s [--network]\n' "$0" >&2; exit 2; }
 NETWORK=0
-case "${1:-}" in
-  --network) NETWORK=1 ;;
-  "")        ;;
-  *)         printf 'usage: %s [--network]\n' "$0" >&2; exit 2 ;;
-esac
+# --warn-changelog-drift downgrades exactly ONE condition — the changelog no
+# longer matching production's release notes — to a warning with exit 0. See
+# changelog_drift() below for why the scope is that narrow and must stay so.
+WARN_CHANGELOG_DRIFT=0
+usage() { printf 'usage: %s [--network] [--warn-changelog-drift]\n' "$0" >&2; exit 2; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --network)              NETWORK=1 ;;
+    --warn-changelog-drift) WARN_CHANGELOG_DRIFT=1 ;;
+    *)                      usage ;;
+  esac
+  shift
+done
 
 failures=0
 warnings=0
@@ -31,6 +38,46 @@ fail()    { printf '  FAIL %s\n' "$*" >&2; failures=$((failures + 1)); }
 warn()    { printf '  WARN %s\n' "$*" >&2; warnings=$((warnings + 1)); }
 ok()      { printf '  ok   %s\n' "$*"; }
 section() { printf '\n== %s ==\n' "$*"; }
+
+# The ONE condition --warn-changelog-drift softens, and the only call site that
+# may ever route through it.
+#
+# shizu_store.json carries the changelog of the last PRODUCTION release. A
+# production promotion moves that target, runs no pull_request workflow, and the
+# manifest is refreshed by a separate commit to master. In the window between
+# the two, this check fails — and it is deliberately not path-filtered, so it
+# fails on EVERY open PR at once, for people who did not cause the drift and
+# cannot fix it from their branch. A red check nobody can act on is a red check
+# everyone learns to ignore.
+#
+# Keep the scope at exactly this. A schema violation, a missing file, an
+# unresolvable ref, a dead URL, a wrong SDK level all stay hard failures in
+# every mode: each describes a manifest that is broken, not one that is behind.
+#
+# Both codes name the same complaint - "this function is never called" - and
+# which one you get depends on the shellcheck you have. 0.9 (what ubuntu-latest
+# preinstalls) says SC2317; 0.10 split it out as SC2329. Naming only one is a
+# gate that passes locally and fails in CI, which is how this line got written.
+# An unrecognised code in a disable directive is ignored, so listing both is
+# safe on every version.
+# shellcheck disable=SC2317,SC2329 # invoked indirectly, as compare_text's $reporter
+changelog_drift() {
+  if [ "$WARN_CHANGELOG_DRIFT" -eq 0 ]; then
+    fail "$*"
+    return
+  fi
+  warnings=$((warnings + 1))
+  # ::warning:: renders as an annotation on the PR's Checks tab; the indented
+  # lines are for whoever opens the raw log.
+  printf '::warning::%s — not caused by this PR, and not fixable from this branch; see the log\n' "$*"
+  printf '  WARN %s\n' "$*" >&2
+  printf '       Nothing in this PR caused this. shizu_store.json carries the\n' >&2
+  printf '       changelog of the last production release, and a production\n' >&2
+  printf '       promotion moves that target before the manifest catches up.\n' >&2
+  printf '       Fix (a commit on master, not on this branch): run\n' >&2
+  printf '       .github/scripts/sync-shizu-changelog.sh and commit\n' >&2
+  printf '       shizu_store.json — release-notes/README.md, Step 5.\n' >&2
+}
 
 # The manifest's twelve image URLs are fetched back to back from one address,
 # and raw.githubusercontent.com answers a burst like that with a 429 often
@@ -87,15 +134,18 @@ fi
 
 section "copy matches fastlane"
 compare_text() {
-  # $1 label, $2 jq filter, $3 file
-  local label="$1" filter="$2" file="$3" from_json from_file
+  # $1 label, $2 jq filter, $3 file, $4 optional reporter for a MISMATCH.
+  # Defaults to fail; only the changelog passes anything else. A missing file
+  # stays a hard failure in every mode — an absent file is a broken repo, not a
+  # manifest that is merely behind.
+  local label="$1" filter="$2" file="$3" reporter="${4:-fail}" from_json from_file
   if [ ! -f "$file" ]; then fail "$label: $file not found"; return; fi
   from_json="$(jq -r "$filter" "$MANIFEST")"
   from_file="$(cat "$file")"
   if [ "$from_json" = "$from_file" ]; then
     ok "$label matches $file"
   else
-    fail "$label has drifted from $file"
+    "$reporter" "$label has drifted from $file"
     diff <(printf '%s\n' "$from_file") <(printf '%s\n' "$from_json") >&2 || true
   fi
 }
@@ -170,6 +220,7 @@ if [ ! -d "$SHOTS" ]; then
   fail "screenshots: $SHOTS does not exist"
   expected_shots=""
 else
+  # shellcheck disable=SC2012 # screenshot filenames are controlled alphanumeric; find adds no value here
   expected_shots="$(ls "$SHOTS" | sed "s#^#$RAW_BASE/$SHOTS/#" | sort)"
   # Guard against vacuous pass: if both sets are empty the assertion below
   # would pass silently.  An empty screenshot set is always a failure.
@@ -249,24 +300,80 @@ check_int min_sdk    "$toml_min"    "gradle/libs.versions.toml"
 check_int target_sdk "$toml_target" "gradle/libs.versions.toml"
 
 section "changelog matches the current release notes"
-# Anchored on purpose: an unanchored 'versionCode' also matches
-# initialVersionCode=1921, feeding two lines into arithmetic — the bug that
-# made the old release-manager workflow unusable (deleted 2026-07-27).
-# LOCKSTEP: this block (versionCode grep, version arithmetic, notes fallback path) is
-# kept in lockstep with sync-shizu-changelog.sh — update both scripts together.
-version_code="$(grep -E '^versionCode=' gradle.properties | cut -d= -f2 | tr -dc '0-9')"
-if [ -z "$version_code" ]; then
-  fail "could not read versionCode from gradle.properties"
-else
-  version_name="$((version_code / 1000)).$(((version_code % 1000) / 10)).$((version_code % 10))"
-  notes="release-notes/v$version_name/playstore.txt"
-  [ -f "$notes" ] || notes="release-notes/$version_name/playstore.txt"
-  if [ ! -f "$notes" ]; then
-    fail "no playstore.txt for v$version_name (versionCode $version_code)"
-  else
-    compare_text "changelog" '.changelog' "$notes"
-    printf '       (versionCode %s -> v%s)\n' "$version_code" "$version_name"
+# LOCKSTEP-BEGIN
+# shizu_store.json's download_url is /releases/latest/, which GitHub
+# resolves to the newest NON-pre-release - production's build. dev and
+# master both mint pre-releases, so their gradle.properties is one or more
+# codes ahead of what that URL actually serves. Read the code from
+# production so the changelog we assert matches the APK a user downloads.
+#
+# The versionCode pattern is ANCHORED on purpose: an unanchored 'versionCode'
+# also matches initialVersionCode=1921, feeding two lines into the arithmetic -
+# the bug that made the old release-manager workflow unusable (deleted
+# 2026-07-27). The `head -n 1` hardens it further: even a gradle.properties
+# carrying two legitimate matches yields one number rather than a syntax error.
+#
+# LOCKSTEP: everything between the two sentinels is byte-identical in
+# check-shizu-manifest.sh and sync-shizu-changelog.sh - edit both copies
+# together. .github/scripts/test/test-shizu-version-source.sh extracts the two
+# regions and diffs them, so drift is a red test rather than a discovery.
+# Failure REPORTING sits outside the sentinels on purpose: the checker
+# accumulates and the sync script aborts, and that difference is deliberate.
+production_ref="${SHIZU_VERSION_REF:-origin/production}"
+if ! git rev-parse --verify --quiet "$production_ref" >/dev/null; then
+  # A shallow or single-branch clone will not have it. Fetch just that ref -
+  # but ONLY when we picked the default. An explicit SHIZU_VERSION_REF that
+  # does not resolve is an operator error, and fetching production instead
+  # would answer a question nobody asked: measured before this guard,
+  # SHIZU_VERSION_REF=origin/v1.93.0 in a clone without that ref reported
+  # production's 1940 and exited 0. Leaving the unresolvable override in place
+  # makes `git show` fail, which the guard below reports against the ref that
+  # was actually requested.
+  #
+  # Setting production_ref=FETCH_HEAD unconditionally after a `|| true` fetch
+  # LOOKS like a stale-FETCH_HEAD trap, and is not, by a git implementation
+  # detail worth writing down: git truncates .git/FETCH_HEAD to 0 bytes at the
+  # start of every fetch attempt, including one that then fails. Measured — a
+  # clone whose FETCH_HEAD held master (versionCode 9990) with a broken remote
+  # URL read EMPTY, not 9990, and the guard below fired. That is what makes this
+  # fail closed. Do NOT "fix" it into `git fetch … || production_ref=<fallback>`:
+  # that reintroduces the stale read, and a wrong-but-plausible version silently
+  # attaches the wrong changelog to a shipped APK.
+  if [ -z "${SHIZU_VERSION_REF:-}" ]; then
+    git fetch --quiet --depth=1 origin production 2>/dev/null || true
+    production_ref="FETCH_HEAD"
   fi
+fi
+
+# `|| true` is load-bearing and must stay. sync-shizu-changelog.sh runs under
+# `set -e`, where a failing pipeline in an assignment kills the script AT THIS
+# LINE - before the guard below can say why, and with git's own stderr already
+# swallowed by the 2>/dev/null. Measured: without it, the identical block prints
+# the ::error:: under `set -uo` and nothing at all under `set -euo`. The checker
+# has no -e today, but its header already warns against constructs that break
+# "the day someone adds set -e". One spelling has to be right under both.
+version_code="$(git show "${production_ref}:gradle.properties" 2>/dev/null \
+  | grep -E '^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$' \
+  | head -n 1 | cut -d= -f2 | tr -d '[:space:]')" || true
+
+version_name="$((version_code / 1000)).$(((version_code % 1000) / 10)).$((version_code % 10))"
+notes="release-notes/v$version_name/playstore.txt"
+[ -f "$notes" ] || notes="release-notes/$version_name/playstore.txt"
+# LOCKSTEP-END
+
+# Reporting is deliberately NOT in the lockstep block: this script accumulates
+# failures and the other one aborts, and that difference is the whole point of
+# each. `fail`, not `exit 1` - an exit here would abandon the --network tier
+# below on the strength of one transient fetch failure, and that tier is the
+# only thing that catches rot originating outside the repository.
+if [ -z "$version_code" ]; then
+  fail "could not read versionCode from ${production_ref}:gradle.properties — fetch it with: git fetch origin production"
+elif [ ! -f "$notes" ]; then
+  fail "no playstore.txt for v$version_name (versionCode $version_code)"
+else
+  # The only call site that may pass a reporter other than the default.
+  compare_text "changelog" '.changelog' "$notes" changelog_drift
+  printf '       (versionCode %s -> v%s)\n' "$version_code" "$version_name"
 fi
 
 if [ "$NETWORK" -eq 1 ]; then
@@ -356,7 +463,7 @@ if [ "$failures" -eq 0 ]; then
   if [ "$warnings" -eq 0 ]; then
     printf 'shizu_store.json: all checks passed\n'
   else
-    printf 'shizu_store.json: all checks passed, %d skipped (see WARN above)\n' "$warnings"
+    printf 'shizu_store.json: all checks passed, %d warning(s) (see WARN above)\n' "$warnings"
   fi
   exit 0
 fi

@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.home.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,35 +32,47 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.Installers
+import com.valhalla.thor.presentation.home.InstallerSlice
+import com.valhalla.thor.util.UiText
 
 private data class ChartSlice(
-    val label: String,
+    val installerPackageName: String?,
+    val label: UiText,
     val count: Int,
     val color: Color
 )
 
+/**
+ * The installation-source breakdown on Home.
+ *
+ * [onInstallerClick] fires for a bar that names one installer, and is how the chart stopped being
+ * read-only: seeing that 40 apps came from somewhere is only half an answer if there is no way to
+ * ask which ones. Others names several installers at once, so it reports but does not navigate.
+ */
 @Composable
 fun AppDistributionChart(
-    data: Map<String, Int>,
+    slices: List<InstallerSlice>,
+    onInstallerClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
 
     // 1. Prepare Data & Colors
-    val chartSlices = remember(data, colorScheme) {
-        val sortedData = data.toList().sortedByDescending { it.second }
-
-        sortedData.mapIndexed { index, (label, count) ->
-            val color = when (label.uppercase()) {
-                "PLAY STORE" -> colorScheme.primary
-                "F-DROID" -> colorScheme.secondary
-                "SIDELOADED" -> colorScheme.tertiary
-                "OTHERS" -> colorScheme.error
+    val chartSlices = remember(slices, colorScheme) {
+        slices.sortedByDescending { it.count }.mapIndexed { index, slice ->
+            val installer = slice.installerPackageName
+            // Keyed on the installer id rather than the display label, so a translated or
+            // device-supplied name can never silently move a bar to a different colour.
+            val color = when {
+                installer == null -> colorScheme.error
+                installer == Installers.PLAY_STORE -> colorScheme.primary
+                installer == Installers.F_DROID -> colorScheme.secondary
+                installer in Installers.PACKAGE_INSTALLERS -> colorScheme.tertiary
                 else -> {
                     val colors = listOf(
                         colorScheme.primary,
@@ -72,7 +85,7 @@ fun AppDistributionChart(
                     colors[index % colors.size]
                 }
             }
-            ChartSlice(label, count, color)
+            ChartSlice(installer, slice.label, slice.count, color)
         }
     }
 
@@ -84,7 +97,7 @@ fun AppDistributionChart(
         DistributionBar(slices = chartSlices)
 
         // 2. The Legend Grid
-        LegendGrid(slices = chartSlices)
+        LegendGrid(slices = chartSlices, onInstallerClick = onInstallerClick)
     }
 }
 
@@ -134,6 +147,7 @@ private fun DistributionBar(
 @Composable
 private fun LegendGrid(
     slices: List<ChartSlice>,
+    onInstallerClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -147,6 +161,7 @@ private fun LegendGrid(
                 rowSlices.forEach { slice ->
                     LegendItem(
                         slice = slice,
+                        onInstallerClick = onInstallerClick,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -161,18 +176,23 @@ private fun LegendGrid(
 @Composable
 private fun LegendItem(
     slice: ChartSlice,
+    onInstallerClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val localizedLabel = when (slice.label.uppercase()) {
-        "PLAY STORE" -> stringResource(R.string.play_store)
-        "F-DROID" -> stringResource(R.string.f_droid)
-        "SIDELOADED" -> stringResource(R.string.sideloaded)
-        "OTHERS" -> stringResource(R.string.others)
-        else -> slice.label
-    }
+    val installer = slice.installerPackageName
 
     Row(
-        modifier = modifier,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            // Others stands for several installers at once and the Apps tab filters on exactly one,
+            // so that entry stays a label. Anything that names an installer drills through to it.
+            .then(
+                if (installer == null) Modifier
+                // `Role.Button` so a screen reader says what it is. Without it the entry reads as
+                // text that happens to offer "double tap to activate".
+                else Modifier.clickable(role = Role.Button) { onInstallerClick(installer) }
+            )
+            .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -183,7 +203,7 @@ private fun LegendItem(
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
-                text = localizedLabel.uppercase(),
+                text = slice.label.asString().uppercase(),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold,

@@ -5,16 +5,21 @@ package com.valhalla.thor.presentation
 
 import android.content.ContextWrapper
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
@@ -31,6 +36,7 @@ import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
+import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -48,6 +54,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.io.File
+import java.nio.file.Files
 
 // Hand-written fakes, matching the rest of the suite — no mocking library. The point of a
 // privileged-action fake is that the *call it was asked to make* is the assertion, so these record
@@ -81,16 +88,47 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
 
     private val failures = mutableMapOf<String, Throwable>()
 
+    /**
+     * Runs as each call is recorded, before its result is returned.
+     *
+     * The only way a test can act *between* two apps of a batch. Everything here answers without
+     * suspending and the view model's IO dispatcher is the test's own, so a batch started from a
+     * test body runs to completion before control returns — leaving no moment to, say, ask it to
+     * stop.
+     */
+    var onCall: ((String) -> Unit)? = null
+
     /** Make every call recorded as [call] fail with [error]. Keys are the [calls] format. */
     fun failWith(call: String, error: Throwable) {
         failures[call] = error
     }
 
-    private fun record(call: String): Result<Unit> {
+    /**
+     * The three shared side effects of any call reaching this fake.
+     *
+     * Split out of [record] for the overrides that do not return `Result<Unit>` — they used to
+     * append to [calls] and nothing else, so a test observing the privilege layer through [trace] or
+     * steering it through [onCall] could neither see nor intercept them.
+     */
+    private fun note(call: String) {
         calls += call
         trace?.add(call)
+        onCall?.invoke(call)
+    }
+
+    private fun record(call: String): Result<Unit> {
+        note(call)
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
+
+    /**
+     * What the two cache clears report as freed on success. `null` is the real "the clear worked and
+     * the measurement did not" answer, so that is the default: a test that wants a number says so.
+     */
+    var cacheFreedBytes: Long? = null
+
+    /** [record] for the two operations that return a byte count; [failWith] still applies. */
+    private fun recordBytes(call: String): Result<Long?> = record(call).map { cacheFreedBytes }
 
     override suspend fun isRootAvailable(): Boolean = true
     override suspend fun isShizukuAvailable(): Boolean = false
@@ -98,7 +136,9 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
 
     override suspend fun forceStopApp(packageName: String) = record("forceStopApp:$packageName")
 
-    override suspend fun clearCache(packageName: String) = record("clearCache:$packageName")
+    override suspend fun clearCache(packageName: String) = recordBytes("clearCache:$packageName")
+
+    override suspend fun clearAllCaches() = recordBytes("clearAllCaches")
 
     override suspend fun clearAppData(packageName: String) = record("clearAppData:$packageName")
 
@@ -128,13 +168,27 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         record("revokePermission:$packageName:$permissionName")
 
     override suspend fun getAppPaths(packageName: String): Result<List<String>> {
-        calls += "getAppPaths:$packageName"
+        note("getAppPaths:$packageName")
         return Result.success(emptyList())
     }
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
-        calls += "executeShellCommand:$command"
+        note("executeShellCommand:$command")
         return Result.success(0 to null)
+    }
+
+    /**
+     * What [probeObb] answers. `None` — a device where the app genuinely has no expansion files —
+     * rather than `Undetermined`, because the honest default for a fake is the successful read of
+     * an empty directory, not a privilege failure. A test that wants `Present` or `Undetermined`
+     * assigns it; the two must stay distinguishable at every consumer, so a fake that only ever
+     * says `None` would let a consumer that collapses them pass.
+     */
+    var obbProbe: ObbProbe = ObbProbe.None
+
+    override suspend fun probeObb(packageName: String): ObbProbe {
+        note("probeObb:$packageName")
+        return obbProbe
     }
 }
 
@@ -218,6 +272,15 @@ class FakeFreezerRepository(
         packages.update { it - packageName }
     }
 
+    override suspend fun removeAll(packageNames: Set<String>) {
+        if (packageNames.isEmpty()) return
+        packageNames.forEach {
+            removed += it
+            trace?.add("freezer.removeAll:$it")
+        }
+        packages.update { it - packageNames }
+    }
+
     override suspend fun contains(packageName: String): Boolean = packageName in packages.value
 }
 
@@ -235,6 +298,16 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     private val profiles = MutableStateFlow(initial)
     private var nextId = (initial.maxOfOrNull { it.id } ?: 0L) + 1
 
+    /**
+     * Set to make every write raise instead of landing.
+     *
+     * A real one has two ways to refuse — the unique index on the name, and the members table's
+     * foreign key — and both arrive as `SQLiteConstraintException`. That class is Android-only, so
+     * the tests that need "the database said no" hand this whatever the view model's `catch` is
+     * meant to see, rather than the fake picking one.
+     */
+    var writeFailure: Exception? = null
+
     override fun observeProfiles(): Flow<List<FreezeProfile>> = profiles
 
     override suspend fun packagesOf(profileId: Long): List<String> =
@@ -244,18 +317,21 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
         profiles.value.flatMap { it.packageNames }.toSet()
 
     override suspend fun create(name: String, packageNames: List<String>): Long {
+        writeFailure?.let { throw it }
         val id = nextId++
         profiles.update { it + FreezeProfile(id, name, packageNames) }
         return id
     }
 
     override suspend fun update(profileId: Long, name: String, packageNames: List<String>) {
+        writeFailure?.let { throw it }
         profiles.update { list ->
             list.map { if (it.id == profileId) FreezeProfile(profileId, name, packageNames) else it }
         }
     }
 
     override suspend fun delete(profileId: Long) {
+        writeFailure?.let { throw it }
         profiles.update { list -> list.filterNot { it.id == profileId } }
     }
 }
@@ -268,7 +344,7 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
  * Recording the request and answering with an already-completed [outcome] covers both members.
  */
 class FakeBulkFreezeController(
-    var outcome: BulkOutcome = BulkOutcome.NothingToDo
+    var outcome: BulkOutcome = BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
 ) : BulkFreezeController {
 
     val launched = mutableListOf<BulkRequest>()
@@ -297,13 +373,51 @@ class FakeBulkFreezeController(
  * treats "not read yet" as an answer is open for exactly that long. Left at 0 the flow emits
  * synchronously as it always has; above 0 it emits nothing until that much virtual time has passed,
  * then the current value and every later one.
+ *
+ * [writesFail] models the other thing it cannot: a disk that refuses. Every setter becomes a no-op
+ * that reports failure, which is the state `PreferenceRepositoryImpl.guardedWrite` produces on an
+ * `IOException`. The distinction that matters to a caller is that the flow does **not** re-emit, so
+ * a screen driven off the preference cannot notice on its own.
  */
 class FakePreferenceRepository(
     initial: UserPreferences = UserPreferences(),
-    firstReadDelayMs: Long = 0
+    firstReadDelayMs: Long = 0,
+    private val writesFail: Boolean = false
 ) : PreferenceRepository {
 
     private val prefs = MutableStateFlow(initial)
+
+    private val _settingsWriteFailed = MutableStateFlow(false)
+    override val settingsWriteFailed: Flow<Boolean> = _settingsWriteFailed
+
+    override fun acknowledgeSettingsWriteFailure() {
+        _settingsWriteFailed.value = false
+    }
+
+    /** Arms the latch the way a foregone failure in an earlier ViewModel would have left it. */
+    fun latchWriteFailure() {
+        _settingsWriteFailed.value = true
+    }
+
+    /** What a collector would see now — the assertion for "the notice was acknowledged". */
+    val writeFailureLatched: Boolean get() = _settingsWriteFailed.value
+
+    /**
+     * The fake's half of `guardedWrite`, latch and all: applies [change] and answers `true`, or
+     * skips it and answers `false` when [writesFail]. Kept in one place so a test cannot get a
+     * setter that half-honours the flag.
+     *
+     * [announce] mirrors the production parameter — the two setters that report their own outcome
+     * pass `false`, so a test asserting on a specific message does not also see the generic one.
+     */
+    private fun write(announce: Boolean = true, change: (UserPreferences) -> UserPreferences): Boolean {
+        if (writesFail) {
+            if (announce) _settingsWriteFailed.value = true
+            return false
+        }
+        prefs.update(change)
+        return true
+    }
 
     override val userPreferences: Flow<UserPreferences> =
         if (firstReadDelayMs == 0L) {
@@ -316,137 +430,231 @@ class FakePreferenceRepository(
         }
 
     override suspend fun updateAppSort(sortBy: SortBy) {
-        prefs.update { it.copy(appSortBy = sortBy) }
+        write { it.copy(appSortBy = sortBy) }
     }
 
     override suspend fun updateAppSortOrder(sortOrder: SortOrder) {
-        prefs.update { it.copy(appSortOrder = sortOrder) }
+        write { it.copy(appSortOrder = sortOrder) }
     }
 
     override suspend fun updateAppFilter(filterType: FilterType, selectedFilter: String) {
-        prefs.update { it.copy(appFilterType = filterType, appSelectedFilter = selectedFilter) }
+        write { it.copy(appFilterType = filterType, appSelectedFilter = selectedFilter) }
     }
 
     override suspend fun setReinstallAllCardVisibility(isVisible: Boolean) {
-        prefs.update { it.copy(showReinstallAllCard = isVisible) }
+        write { it.copy(showReinstallAllCard = isVisible) }
+    }
+
+    override suspend fun setDefaultTab(tab: DefaultTab) {
+        write { it.copy(defaultTab = tab) }
     }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
-        prefs.update { it.copy(showInstallerTile = isVisible) }
+        write { it.copy(showInstallerTile = isVisible) }
     }
 
     override suspend fun setExtensionsTileVisibility(isVisible: Boolean) {
-        prefs.update { it.copy(showExtensionsTile = isVisible) }
+        write { it.copy(showExtensionsTile = isVisible) }
     }
 
     override suspend fun setThemeMode(themeMode: ThemeMode) {
-        prefs.update { it.copy(themeMode = themeMode) }
+        write { it.copy(themeMode = themeMode) }
     }
 
     override suspend fun setDynamicColor(enabled: Boolean) {
-        prefs.update { it.copy(useDynamicColor = enabled) }
+        write { it.copy(useDynamicColor = enabled) }
     }
 
     override suspend fun setUseAmoled(enabled: Boolean) {
-        prefs.update { it.copy(useAmoled = enabled) }
+        write { it.copy(useAmoled = enabled) }
     }
 
-    override suspend fun setBiometricLock(enabled: Boolean) {
-        prefs.update { it.copy(biometricLockEnabled = enabled) }
-    }
+    override suspend fun setBiometricLock(enabled: Boolean): Boolean =
+        write(announce = false) { it.copy(biometricLockEnabled = enabled) }
 
     override suspend fun setPrivilegeMode(mode: PrivilegeMode?) {
-        prefs.update { it.copy(preferredPrivilegeMode = mode) }
+        write { it.copy(preferredPrivilegeMode = mode) }
     }
 
-    override suspend fun setLanguage(language: String?) {
-        prefs.update { it.copy(language = language) }
-    }
+    override suspend fun setLanguage(language: String?): Boolean =
+        write(announce = false) { it.copy(language = language) }
 
     override suspend fun setExportDirUri(uri: String?) {
-        prefs.update { it.copy(exportDirUri = uri) }
+        write { it.copy(exportDirUri = uri) }
     }
 
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
-        prefs.update { it.copy(autoFreezeEnabled = enabled) }
+        write { it.copy(autoFreezeEnabled = enabled) }
     }
 
     override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
-        prefs.update { it.copy(addFreezerToLauncher = enabled) }
+        write { it.copy(addFreezerToLauncher = enabled) }
     }
 
     override suspend fun setFreezerMode(mode: FreezerMode) {
-        prefs.update { it.copy(freezerMode = mode) }
+        write { it.copy(freezerMode = mode) }
+    }
+
+    override suspend fun setSkipRoutineFreezeConfirmation(enabled: Boolean) {
+        write { it.copy(skipRoutineFreezeConfirmation = enabled) }
     }
 
     override suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean) {
-        prefs.update { it.copy(hasShownDisabledAppsPrompt = hasShown) }
+        write { it.copy(hasShownDisabledAppsPrompt = hasShown) }
     }
 
     override suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean) {
-        prefs.update { it.copy(hasShownSupportDeveloperPrompt = hasShown) }
+        write { it.copy(hasShownSupportDeveloperPrompt = hasShown) }
     }
 
     override suspend fun setAnimationIntensity(intensity: AnimationIntensity) {
-        prefs.update { it.copy(animationIntensity = intensity) }
+        write { it.copy(animationIntensity = intensity) }
     }
 
     override suspend fun setAppListIsGrid(isGrid: Boolean) {
-        prefs.update { it.copy(appListIsGrid = isGrid) }
+        write { it.copy(appListIsGrid = isGrid) }
     }
 
     override suspend fun setFreezerIsGrid(isGrid: Boolean) {
-        prefs.update { it.copy(freezerIsGrid = isGrid) }
+        write { it.copy(freezerIsGrid = isGrid) }
     }
 
     override suspend fun toggleAppListIsGrid() {
-        prefs.update { it.copy(appListIsGrid = !it.appListIsGrid) }
+        write { it.copy(appListIsGrid = !it.appListIsGrid) }
     }
 
     override suspend fun toggleFreezerIsGrid() {
-        prefs.update { it.copy(freezerIsGrid = !it.freezerIsGrid) }
+        write { it.copy(freezerIsGrid = !it.freezerIsGrid) }
+    }
+
+    override suspend fun setAppGridDensity(density: AppGridDensity) {
+        write { it.copy(appGridDensity = density) }
     }
 
     override suspend fun setExtensionsUnlocked(unlocked: Boolean) {
-        prefs.update { it.copy(extensionsUnlocked = unlocked) }
+        write { it.copy(extensionsUnlocked = unlocked) }
     }
 
     override suspend fun setExtensionConsentAccepted(accepted: Boolean) {
-        prefs.update { it.copy(extensionConsentAccepted = accepted) }
+        write { it.copy(extensionConsentAccepted = accepted) }
     }
 
     override suspend fun setAutoReinstallEnabled(enabled: Boolean) {
-        prefs.update { it.copy(autoReinstallEnabled = enabled) }
+        write { it.copy(autoReinstallEnabled = enabled) }
     }
 
     override suspend fun getInstallerArg(): String = ""
+
+    override suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>) {
+        write { it.copy(appInfoActionsOrder = order) }
+    }
+
+    override suspend fun setAppInfoActionVisibility(actionId: AppInfoActionId, isVisible: Boolean) {
+        write {
+            val hidden = it.hiddenAppInfoActions.toMutableSet()
+            if (isVisible) hidden.remove(actionId) else hidden.add(actionId)
+            it.copy(hiddenAppInfoActions = hidden)
+        }
+    }
+
+    override suspend fun resetAppInfoActionsCustomization() {
+        write {
+            it.copy(
+                appInfoActionsOrder = AppInfoActionId.DEFAULT_ORDER,
+                hiddenAppInfoActions = emptySet()
+            )
+        }
+    }
 }
 
-// The share pipeline is out of reach on a plain JVM: ShareAppUseCase finishes by turning the file
-// store's path into an android.net.Uri, and Uri.parse is one of the android.jar stubs that throws
-// in unit tests. These two exist so MainViewModel can be constructed; they fail loudly rather than
-// quietly, so a future share test reports the real reason instead of a confusing null.
+// Building a bundle is out of reach on a plain JVM — it copies an installed package's APKs off
+// disk — so this one fails loudly rather than quietly, and a share test that reaches it reports the
+// real reason instead of a confusing null.
 
-class FakeAppBundleBuilder : AppBundleBuilder {
+class FakeAppBundleBuilder(
+    /**
+     * Run at the top of every [build], before it fails.
+     *
+     * The seam for a test that has to act *during* a batch rather than before or after it — tapping
+     * Stop, say, which a view model only observes between apps. Nothing else can reach that moment:
+     * the loop runs to completion inside one `withContext`, so a test body regains control only once
+     * every app has had its turn.
+     *
+     * Defaulted, so the tests that predate it read unchanged.
+     */
+    private val onBuild: (AppInfo) -> Unit = {},
+) : AppBundleBuilder {
     // No default values on the override — Kotlin takes them from the interface.
     override suspend fun build(
         appInfo: AppInfo,
         cacheSubDir: String,
         format: BundleFormat,
         fileName: String?
-    ): Result<File> =
-        Result.failure(UnsupportedOperationException("bundle building needs a device"))
+    ): Result<File> {
+        onBuild(appInfo)
+        return Result.failure(UnsupportedOperationException("bundle building needs a device"))
+    }
 }
 
+/**
+ * A file store backed by a real temp directory.
+ *
+ * Functional rather than throwing, because the text half of this port — [stageText] plus a write —
+ * needs no Android at all: it is a string, a file and a destination label. Faking it as unsupported
+ * would put the app-list export beyond unit test for no reason. The bundle half still never runs
+ * here; [FakeAppBundleBuilder] fails before a bundle can reach a write.
+ */
 class FakeAppBundleFileStore : AppBundleFileStore {
-    override suspend fun writeToDownloads(file: File, mime: String): String = unsupported()
-    override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String = unsupported()
-    override suspend fun isTreeWritable(treeUriStr: String?): Boolean = unsupported()
-    override suspend fun currentTargetLabel(savedTreeUriStr: String?): String = unsupported()
-    override fun shareUri(file: File): String = unsupported()
 
-    private fun unsupported(): Nothing =
-        throw UnsupportedOperationException("file store needs a device")
+    /** Created on first use, so a test that never exports leaves no temp directory behind. */
+    private val stagingDir: File by lazy {
+        Files.createTempDirectory("thor-fake-store").toFile().apply { deleteOnExit() }
+    }
+
+    /** File name → contents, as the destination folder would hold it after the run. */
+    val written = linkedMapOf<String, String>()
+
+    /** Where each write landed, in order, so a run that split across folders is visible. */
+    val targets = mutableListOf<String>()
+
+    /** MIME each write was labelled with, in the same order as [targets]. */
+    val mimes = mutableListOf<String>()
+
+    /** The one tree URI this store will accept; anything else reads as revoked. */
+    var writableTree: String? = null
+
+    /** Set to make the next destination write fail, as a full disk or a revoked tree would. */
+    var writeFailure: Exception? = null
+
+    override suspend fun writeToDownloads(file: File, mime: String): String =
+        record(file, mime, "Downloads/Thor")
+
+    override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String =
+        record(file, mime, "Tree:$treeUriStr")
+
+    override suspend fun isTreeWritable(treeUriStr: String?): Boolean =
+        treeUriStr != null && treeUriStr == writableTree
+
+    override suspend fun currentTargetLabel(savedTreeUriStr: String?): String =
+        if (isTreeWritable(savedTreeUriStr)) "Tree:$savedTreeUriStr" else "Downloads/Thor"
+
+    override fun shareUri(file: File): String = "content://fake/${file.name}"
+
+    override suspend fun stageText(fileName: String, content: String): File {
+        // Wipes on entry exactly as the real store does, so a test can assert that the previous
+        // export's staged copy is gone once a new one starts.
+        if (stagingDir.exists()) stagingDir.deleteRecursively()
+        stagingDir.mkdirs()
+        return File(stagingDir, fileName).apply { writeText(content) }
+    }
+
+    private fun record(file: File, mime: String, target: String): String {
+        writeFailure?.let { throw it }
+        written[file.name] = file.readText()
+        targets += target
+        mimes += mime
+        return target
+    }
 }
 
 // The four ports below exist so a view model can be built without a Context. Each concrete
@@ -485,6 +693,31 @@ class FakeStorageStatsProvider(
         // Mirrors the real one: an unreadable package is *absent*, not zero.
         return sizes.filterKeys { it in packages }
     }
+
+    /**
+     * Successive answers from [cacheBytes] and [totalCacheBytes]. A cache measurement is taken twice
+     * around one clear, so a single value cannot express "18 MB before, 2 MB after" — the queue can.
+     * Empty means every reading is `null`, the real "no usage access" answer.
+     */
+    val cacheReadings = ArrayDeque<Long?>()
+
+    /**
+     * What [cacheTrimTargetBytes] answers. `null` is the no-usage-access case: Root still clears
+     * (it skips the trim and sweeps the directories by name), Shizuku cannot.
+     *
+     * Deliberately ignores the cache total it is handed, even though the real helper adds it to free
+     * space — this fake stands in for the *port*, and a test that wants "the target is unreadable
+     * but the measurements are not" has to be able to say so.
+     */
+    var trimTarget: Long? = null
+
+    override suspend fun cacheBytes(packageName: String): Long? =
+        if (cacheReadings.isEmpty()) null else cacheReadings.removeFirst()
+
+    override suspend fun totalCacheBytes(): Long? =
+        if (cacheReadings.isEmpty()) null else cacheReadings.removeFirst()
+
+    override suspend fun cacheTrimTargetBytes(totalCacheBytes: Long): Long? = trimTarget
 }
 
 /** Grant state is a plain flag a test can flip mid-run, matching how the app-op behaves. */
@@ -635,10 +868,26 @@ class FakeContext(private val cache: File) : ContextWrapper(null) {
     override fun getCacheDir(): File = cache
 }
 
+class FakeApplication(private val cache: File = File("/tmp")) : android.app.Application() {
+    override fun getCacheDir(): File = cache
+}
+
 /**
  * A user app. `freezeTierOf` short-circuits on `!isSystem -> NORMAL`, so this is never blocked
  * whatever else it carries — which is what makes it the control in every tier-gate test.
  */
+/**
+ * Names installers from a map the test supplies.
+ *
+ * An id that isn't in the map resolves to null, which is the real resolver's answer for a store
+ * that is no longer installed — so the default, empty, fake is the "nothing is installed" device.
+ */
+class FakeInstallerLabelResolver(
+    private val labels: Map<String, String> = emptyMap()
+) : InstallerLabelResolver {
+    override fun labelFor(packageName: String): String? = labels[packageName]
+}
+
 fun userApp(
     packageName: String,
     enabled: Boolean = true,
@@ -648,6 +897,9 @@ fun userApp(
     // The permission index keys its invalidation on `packageName@lastUpdateTime`, so this is how a
     // test says "the same app, updated" as opposed to "the same app".
     lastUpdateTime: Long = 0L,
+    // Null is a real device state, not a missing default: Android records no installer for an app
+    // that arrived by `adb install` or shipped with the image.
+    installerPackageName: String? = null,
 ): AppInfo = AppInfo(
     appName = appName,
     packageName = packageName,
@@ -655,7 +907,8 @@ fun userApp(
     enabled = enabled,
     isSuspended = isSuspended,
     isDebuggable = isDebuggable,
-    lastUpdateTime = lastUpdateTime
+    lastUpdateTime = lastUpdateTime,
+    installerPackageName = installerPackageName
 )
 
 /**

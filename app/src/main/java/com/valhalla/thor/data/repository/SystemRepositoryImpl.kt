@@ -3,14 +3,30 @@
 
 package com.valhalla.thor.data.repository
 
+import android.os.Environment
 import android.os.SystemClock
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
+import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.model.DataClass
+import com.valhalla.thor.domain.model.DataClassSize
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.capabilityProbeCommand
+import com.valhalla.thor.domain.model.classSizeCommand
+import com.valhalla.thor.domain.model.dataClassRoot
+import com.valhalla.thor.domain.model.measuredExclusions
+import com.valhalla.thor.domain.model.parseCapabilityProbe
+import com.valhalla.thor.domain.model.parseClassSize
+import com.valhalla.thor.domain.model.sharedDataCapabilityProbeCommand
+import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -18,14 +34,15 @@ import kotlinx.coroutines.flow.first
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
-@Single(binds = [SystemRepository::class])
+@Single(binds = [SystemRepository::class, AppDataProbe::class])
 class SystemRepositoryImpl(
     private val rootGateway: RootSystemGateway,
     private val shizukuGateway: ShizukuSystemGateway,
     private val dhizukuGateway: DhizukuSystemGateway,
     private val preferenceRepository: PreferenceRepository,
+    private val storageStats: StorageStatsProvider,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
-) : SystemRepository {
+) : SystemRepository, AppDataProbe {
 
     override suspend fun isRootAvailable(): Boolean = withContext(ioDispatcher) {
         rootGateway.isRootAvailable()
@@ -123,8 +140,68 @@ class SystemRepositoryImpl(
         runGatewayAction { it.forceStopApp(packageName) }
     }
 
-    override suspend fun clearCache(packageName: String): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.clearCache(packageName) }
+    // Root-gated rather than routed through runGatewayAction, and deliberately so: no other
+    // privilege mode can clear one app's cache. `SystemGateway.clearAllCaches` records the
+    // measurements behind that; the short version is that `INTERNAL_DELETE_CACHE_FILES` is
+    // signature-level, so PackageManagerService answers Shizuku's call by logging that it is
+    // silently ignoring it. This follows `copyFileWithRoot` and `getAppPaths`, the two operations
+    // that were already root-only for a reason of their own.
+    override suspend fun clearCache(packageName: String): Result<Long?> = withContext(ioDispatcher) {
+        if (!rootGateway.isRootAvailable()) {
+            return@withContext Result.failure(
+                Exception("Clearing one app's cache requires Root. Shizuku and Dhizuku can only clear every app's cache at once.")
+            )
+        }
+        measuringCacheFreed({ storageStats.cacheBytes(packageName) }) {
+            rootGateway.clearCache(packageName)
+        }
+    }
+
+    override suspend fun clearAllCaches(): Result<Long?> = withContext(ioDispatcher) {
+        measuringCacheFreed({ storageStats.totalCacheBytes() }) { before ->
+            // The trim target is built from the *same* reading the freed figure is computed from,
+            // which is why the before-value is handed down here rather than measured again. A
+            // second `queryStatsForUser` would be a full walk of every app's data directory on a
+            // device without filesystem quota support, taken microseconds after the first, for a
+            // number that could differ only by whatever an app wrote in between.
+            //
+            // `null` is the no-usage-access case. Root goes on to sweep the directories by name;
+            // Shizuku has no such rung and fails with a message naming the permission.
+            val target = before?.let { storageStats.cacheTrimTargetBytes(it) }
+            runGatewayAction { it.clearAllCaches(target) }
+        }
+    }
+
+    /**
+     * Runs [clear] between two [measure] readings and reports the difference.
+     *
+     * The subtraction is the only way to answer "how much did that free". `pm trim-caches` prints
+     * nothing on success and picks its own victims, and `rm -rf` prints nothing either, so neither
+     * rung can report a byte count of its own.
+     *
+     * [clear] receives the before-reading because the whole-volume path needs it twice — once as the
+     * baseline of the subtraction and once as the cache half of the `pm trim-caches` target — and
+     * the two must be the same number rather than two measurements of it. The per-app path ignores
+     * the argument.
+     *
+     * Three things it refuses to do. It does not measure when the clear failed — a failure's delta
+     * is noise, and attaching a number to it invites a caller to show it. It answers `null`, not 0,
+     * when either reading is missing, because "no usage access" and "there was no cache" are
+     * different facts. And it clamps a negative delta to `null` rather than to 0: cache that an app
+     * rebuilt between the two readings can make the after-value larger, and that is a measurement
+     * Thor could not take, not a clear that freed nothing.
+     */
+    private suspend inline fun measuringCacheFreed(
+        measure: () -> Long?,
+        clear: (before: Long?) -> Result<Unit>
+    ): Result<Long?> {
+        val before = measure()
+        val result = clear(before)
+        if (result.isFailure) return Result.failure(result.exceptionOrNull() ?: Exception("Cache clear failed"))
+        val after = measure()
+        if (before == null || after == null) return Result.success(null)
+        val freed = before - after
+        return Result.success(if (freed >= 0) freed else null)
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(ioDispatcher) {
@@ -221,6 +298,93 @@ class SystemRepositoryImpl(
         withContext(ioDispatcher) {
             runGatewayAction { it.executeShellCommand(command) }
         }
+
+    /**
+     * Deliberately built on [executeShellCommand] rather than on `runGatewayAction` directly: the
+     * probe and the copy that follows it must run through the *same* privileged surface, or a
+     * successful probe stops being evidence that the files can actually be captured — which is
+     * what lets the export sheet leave the `.xapk` chip enabled on a `Present` result.
+     *
+     * No `withContext(ioDispatcher)` here: [executeShellCommand] already makes that hop, and
+     * everything either side of it is pure string work.
+     */
+    override suspend fun probeObb(packageName: String): ObbProbe {
+        // Two distinct refusals, named separately: obbProbeCommand returns null for an unusable
+        // package name *or* an unusable storage root, and folding them together reported the package
+        // name as the cause of a missing external volume. The reason is the diagnostic, so it has to
+        // name the thing that actually failed.
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath
+            ?: return ObbProbe.Undetermined("this device's shared storage is unavailable")
+        val command = obbProbeCommand(externalRoot, packageName)
+            ?: return ObbProbe.Undetermined(
+                if (isUsablePackageName(packageName)) {
+                    "\"$externalRoot\" is not a usable storage path"
+                } else {
+                    "\"$packageName\" is not a usable package name"
+                }
+            )
+
+        val verdict = executeShellCommand(command).fold(
+            onSuccess = { (exitCode, output) -> parseObbProbe(exitCode, output) },
+            onFailure = { ObbProbe.Undetermined(it.message ?: "no privileged shell is available") }
+        )
+        // The verdict is the only thing a user or a bug report can see about this, and until now it
+        // reached them as a UI state with the reason thrown away — "Thor can't read this app's game
+        // data" for a shell failure, a truncated reply and a genuinely unreadable directory alike.
+        // One line at the single exit, on the reason string the sealed type already carries, is what
+        // makes an Undetermined on a device answerable rather than guessable. Logged for every
+        // verdict, not just the bad one: "we probed and got None" and "we never probed" are the two
+        // states a silent log cannot tell apart.
+        Logger.d(
+            "SystemRepo",
+            "obb probe for $packageName: " + when (verdict) {
+                is ObbProbe.None -> "None"
+                is ObbProbe.Present ->
+                    "Present(${verdict.files.size} obb, ${verdict.otherEntryCount} other)"
+                is ObbProbe.Undetermined -> "Undetermined(${verdict.reason})"
+            }
+        )
+        return verdict
+    }
+
+    override suspend fun probePrivateDataCapability(): Boolean {
+        val command = capabilityProbeCommand(BuildConfig.APPLICATION_ID, thorUserId) ?: return false
+        return executeShellCommand(command).fold(
+            onSuccess = { (exitCode, output) -> parseCapabilityProbe(exitCode, output) },
+            onFailure = { false }
+        )
+    }
+
+    override suspend fun probeDataArchiveCapability(): Boolean {
+        if (probePrivateDataCapability()) return true
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath.orEmpty()
+        val command = sharedDataCapabilityProbeCommand(externalRoot) ?: return false
+        return executeShellCommand(command).fold(
+            onSuccess = { (exitCode, output) -> parseCapabilityProbe(exitCode, output) },
+            onFailure = { false }
+        )
+    }
+
+    override suspend fun measureDataClass(
+        packageName: String,
+        dataClass: DataClass
+    ): DataClassSize {
+        // Empty string rather than a bail-out when shared storage is unavailable: CE and DE do not
+        // use it, and `dataClassRoot` refuses the two external classes on an unquotable root anyway.
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath.orEmpty()
+        val root = dataClassRoot(dataClass, packageName, thorUserId, externalRoot)
+            ?: return DataClassSize.Undetermined
+        // The exclusions are not an optimisation. This number is shown as the class size *and* is what
+        // the space check refuses on, so measuring a cache the archive then drops refuses a backup that
+        // would have fitted. `measuredExclusions` derives them from the same constant the backup filter
+        // uses, so the two cannot drift.
+        val command = classSizeCommand(root, measuredExclusions(dataClass))
+            ?: return DataClassSize.Undetermined
+        return executeShellCommand(command).fold(
+            onSuccess = { (exitCode, output) -> parseClassSize(exitCode, output) },
+            onFailure = { DataClassSize.Undetermined }
+        )
+    }
 
     private companion object {
         // TTL for the resolved-gateway cache; ~3s comfortably covers a single batch operation

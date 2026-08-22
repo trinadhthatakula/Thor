@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor>
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  -->
+<!--
+  European Portuguese (pt-PT) translation of values/strings_settings.xml.
+  The comments below are the source file's translator notes, kept in English on
+  purpose: they explain why a string is worded the way it is, and they are notes
+  to maintainers rather than UI text.
+-->
+<resources>
+
+    <!-- ── The eight categories ──────────────────────────────────────────────────────────────
+         Title Case, unlike the SCREAMING CASE section labels they replace: these are screen
+         titles and index rows now, not the small all-caps rubric above a group. `freezer`,
+         `extensions` and `backup_and_restore` are already Title Case and are reused as they are. -->
+    <string name="settings_category_appearance">Aspeto</string>
+    <string name="settings_category_home">Ecrã principal</string>
+    <string name="settings_category_installing">Instalação e partilha</string>
+    <string name="settings_category_security">Segurança</string>
+    <string name="settings_category_about">Sobre e apoio</string>
+
+    <!-- ── Index chrome ──────────────────────────────────────────────────────────────────── -->
+    <string name="settings_search_hint">Pesquisar nas definições…</string>
+    <string name="settings_search_no_results">Nada nas Definições corresponde a «%1$s».</string>
+    <string name="settings_search_result_in">em %1$s</string>
+    <string name="cd_settings_search_clear">Limpar a pesquisa</string>
+    <string name="cd_back">Retroceder</string>
+
+    <!--
+      The empty right-hand pane on a tablet or an unfolded foldable, before a category is picked.
+      Never shown on a phone, where the index occupies the whole window and opening a category
+      replaces it.
+    -->
+    <string name="settings_select_category">Escolha uma categoria para ver as respetivas definições</string>
+
+    <!--
+      The privilege picker's label for PrivilegeMode.NONE. Present for exhaustiveness only — the
+      picker is built from the engines that probed available, so NONE is never one of its buttons.
+      Worth a real string rather than an empty one: if it ever does render, "None" is a state a
+      user can act on and `mode.name` is not.
+    -->
+    <string name="settings_engine_none">Nenhum</string>
+
+    <!--
+      The language row's description. It had none: the row's subtitle was the *current language*,
+      which is the value, not what the setting does — so the row was the one entry in Settings that
+      could not say what it was for, and search had nothing static to index it by.
+    -->
+    <string name="app_language_desc">O idioma dos ecrãs do próprio Thor</string>
+
+    <!--
+      Theme option labels. These were `ThemeMode.label()` returning hardcoded "Light"/"Dark"/
+      "System" from a domain enum — English in all five locales, on the setting users flip most.
+    -->
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Escuro</string>
+    <string name="theme_system">Sistema</string>
+
+    <!-- ── Index summary lines ───────────────────────────────────────────────────────────────
+         Each index row carries a line describing the state behind it, so that the door does not
+         have to be opened to see what is through it. Joined with a middle dot by the caller. -->
+    <string name="settings_summary_opens_on">Abre em %1$s</string>
+    <string name="settings_summary_auto_freeze_on">Congelamento automático ativado</string>
+    <string name="settings_summary_auto_freeze_off">Congelamento automático desativado</string>
+    <string name="settings_summary_suspend_mode">Modo de suspensão</string>
+    <string name="settings_summary_auto_reinstall_on">Reinstalação automática ativada</string>
+    <string name="settings_summary_auto_reinstall_off">Reinstalação automática desativada</string>
+    <string name="settings_summary_app_lock_on">Bloqueio ativado</string>
+    <string name="settings_summary_app_lock_off">Bloqueio desativado</string>
+    <string name="settings_summary_restore_interrupted">Um restauro não terminou</string>
+    <string name="settings_summary_backup">Restaurar um arquivo ou alterar a frase-passe</string>
+    <string name="settings_summary_unprivileged">Necessita de root, Shizuku ou Dhizuku</string>
+    <string name="settings_summary_customization">Ações do painel da app e opções de esquema</string>
+
+    <!-- ── Categoria de personalização e ações ─────────────────────────────────────────── -->
+    <string name="settings_category_customization">Personalização</string>
+    <string name="customization_app_info_actions">Ações do painel da app</string>
+    <string name="customization_app_info_actions_desc">Reordenar e alternar ações no painel inferior da app</string>
+    <string name="customization_drag_hint">Arraste para reordenar • Alterne para mostrar ou ocultar</string>
+    <string name="customization_preview_title">Pré-visualização da barra de ações</string>
+    <string name="reset_to_default">Repor predefinições</string>
+    <string name="reset_actions_confirm_title">Repor a ordem das ações?</string>
+    <string name="reset_actions_confirm_desc">Isto irá restaurar a ordem predefinida e tornar todas as ações visíveis.</string>
+
+    <string name="action_open_desc">Iniciar a aplicação</string>
+    <string name="action_settings_desc">Abrir definições da aplicação no sistema Android</string>
+    <string name="action_freeze_desc">Desativar ou reativar a aplicação</string>
+    <string name="action_suspend_desc">Suspender ou retomar a execução do pacote</string>
+    <string name="action_force_stop_desc">Forçar paragem de todos os processos em segundo e primeiro plano</string>
+    <string name="action_permissions_desc">Ver e gerir permissões da aplicação</string>
+    <string name="action_freezer_membership_desc">Alternar presença na lista do Congelador</string>
+    <string name="action_clear_cache_desc">Limpar memória cache (requer acesso Root)</string>
+    <string name="action_clear_data_desc">Apagar todos os dados do utilizador, base de dados e cache</string>
+    <string name="action_share_desc">Partilhar ficheiro APK ou hiperligação da loja</string>
+    <string name="action_export_desc">Exportar pacote APK, APKS ou XAPK</string>
+    <string name="action_backup_desc">Criar cópia de segurança encriptada dos dados</string>
+    <string name="action_details_desc">Abrir inspetor detalhado de manifesto e componentes</string>
+    <string name="action_add_to_home_desc">Fixar atalho diretamente no ecrã principal</string>
+    <string name="action_fix_store_desc">Reassociar atribuição do instalador à Google Play Store</string>
+    <string name="action_uninstall_desc">Remover completamente a aplicação do dispositivo</string>
+    <string name="all_actions_hidden">Todas as ações estão ocultas</string>
+    <string name="cd_move_up">Mover para cima</string>
+    <string name="cd_move_down">Mover para baixo</string>
+
+</resources>

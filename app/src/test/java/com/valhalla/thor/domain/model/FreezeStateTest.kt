@@ -214,4 +214,131 @@ class FreezePolicyTest {
             )
         )
     }
+
+    // ── freezeNeedsConfirmation: which freezes the user may switch the dialog off for ──
+    //
+    // Every freeze surface calls this before raising AppRiskDialog, so it is the whole gate. The
+    // dialog is also the only refusal a BLOCKED app gets on these paths, which is why the suppression
+    // lives out here rather than inside it.
+
+    private fun systemApp(recommendation: String?, uadFailed: Boolean = false) = AppInfo(
+        packageName = "com.system.app",
+        isSystem = true,
+        bloatRecommendation = recommendation,
+        isUadLoadFailed = uadFailed
+    )
+
+    @Test
+    fun `a user app is never confirmed, whether or not the setting is on`() {
+        val user = AppInfo(packageName = "com.user.app", isSystem = false)
+        assertEquals(false, freezeNeedsConfirmation(user, skipRoutineConfirmation = false))
+        assertEquals(false, freezeNeedsConfirmation(user, skipRoutineConfirmation = true))
+    }
+
+    @Test
+    fun `a routine system app is confirmed by default and skipped when asked`() {
+        // The tap the setting exists for: debloating a fresh device answers this dialog dozens of
+        // times, and the last answer carries no more information than the first.
+        val routine = systemApp("Recommended")
+        assertEquals(true, freezeNeedsConfirmation(routine, skipRoutineConfirmation = false))
+        assertEquals(false, freezeNeedsConfirmation(routine, skipRoutineConfirmation = true))
+    }
+
+    @Test
+    fun `an unclassified system app counts as routine`() {
+        // Most of the system list: present in uad_lists.json with no advice, or absent from it. It
+        // is FreezeTier.NORMAL, so leaving it out of the setting's reach would make the setting
+        // apply to almost nothing.
+        assertEquals(false, freezeNeedsConfirmation(systemApp(null), skipRoutineConfirmation = true))
+    }
+
+    @Test
+    fun `an expert system app is confirmed however the setting is set`() {
+        // The load-bearing one. EXPERT is a per-app verdict about *this* package, and nothing under
+        // the dialog re-checks it — FreezeAppUseCase refuses BLOCKED and nothing else. A "don't ask
+        // me" about tedium must not quietly become one about risk.
+        val expert = systemApp("Expert")
+        assertEquals(true, freezeNeedsConfirmation(expert, skipRoutineConfirmation = false))
+        assertEquals(true, freezeNeedsConfirmation(expert, skipRoutineConfirmation = true))
+    }
+
+    @Test
+    fun `a blocked system app still raises the dialog, because that is how it is refused`() {
+        // AppRiskDialog renders no confirm button for BLOCKED. Suppressing it here would not skip a
+        // confirmation, it would skip the refusal and freeze the app.
+        val unsafe = systemApp("Unsafe")
+        assertEquals(true, freezeNeedsConfirmation(unsafe, skipRoutineConfirmation = true))
+        // Same for the fail-closed branch: no usable UAD list at all.
+        val unreadable = systemApp("Recommended", uadFailed = true)
+        assertEquals(true, freezeNeedsConfirmation(unreadable, skipRoutineConfirmation = true))
+    }
+
+    // ── killableMembers: the same question for the one profile verb outside the runner ──
+
+    private fun app(
+        packageName: String,
+        enabled: Boolean = true,
+        isSuspended: Boolean = false,
+        isInstalled: Boolean = true,
+    ) = AppInfo(
+        packageName = packageName,
+        enabled = enabled,
+        isSuspended = isSuspended,
+        isInstalled = isInstalled
+    )
+
+    @Test
+    fun `a force-stop targets only the members that could be running`() {
+        val installed = listOf(
+            app("com.active.one"),
+            app("com.disabled", enabled = false),
+            app("com.suspended", isSuspended = true),
+            app("com.active.two"),
+        )
+        // "com.never.installed" is in the profile and in no snapshot row at all — the shape a
+        // profile takes on after its app is uninstalled, or after the profile came off a backup.
+        val members = listOf(
+            "com.active.one", "com.disabled", "com.suspended", "com.never.installed",
+            "com.active.two"
+        )
+
+        assertEquals(
+            listOf("com.active.one", "com.active.two"),
+            killableMembers(members, installed).map { it.packageName }
+        )
+    }
+
+    @Test
+    fun `the profile's own order survives, because the count sits under a confirmation`() {
+        val installed = listOf(app("c"), app("b"), app("a"))
+        assertEquals(
+            listOf("a", "b", "c"),
+            killableMembers(listOf("a", "b", "c"), installed).map { it.packageName }
+        )
+    }
+
+    @Test
+    fun `a member uninstalled for this user is dropped even while it reads as enabled`() {
+        // Belt and braces, and the test says so: AppInfoMapper folds FLAG_INSTALLED into `enabled`,
+        // so this row cannot be produced today. It pins the second clause against a mapper that
+        // stops folding — the alternative is force-stopping a package that is not there, silently.
+        assertEquals(
+            emptyList<String>(),
+            killableMembers(listOf("a"), listOf(app("a", isInstalled = false)))
+                .map { it.packageName }
+        )
+    }
+
+    @Test
+    fun `a profile whose members are all frozen offers nothing to stop`() {
+        // What the disabled menu item is derived from. "Force stop 0 apps" behind a confirmation
+        // dialog is the outcome this makes visible before the tap instead of after it.
+        val installed = listOf(app("a", enabled = false), app("b", isSuspended = true))
+        assertEquals(emptyList<AppInfo>(), killableMembers(listOf("a", "b"), installed))
+    }
+
+    @Test
+    fun `an empty profile is answered without touching the snapshot`() {
+        assertEquals(emptyList<AppInfo>(), killableMembers(emptyList(), listOf(app("a"))))
+    }
 }

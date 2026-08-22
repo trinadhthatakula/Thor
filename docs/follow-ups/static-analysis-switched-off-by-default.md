@@ -10,6 +10,23 @@ force at that moment left **292 findings switched off** across the three modules
 `:app` (measured on `storeDebug`, the superset variant), 18 in `:bypass`, and 1 javac warning in
 `:vm-runtime`.
 
+**The `:bypass` figure is 18. It was rewritten to 9 on 2026-08-07 and that rewrite was wrong; 18 is
+restored, and this paragraph is kept as the record of how.** The "9" was never measured — it was
+*derived*, by disassembling the detector and then enumerating only the cross-class private
+references that a misread bail-out left standing (see below), which discarded exactly the 9 that
+the misread hid. The story attached to it, that "18 is 9 counted twice across `lintDebug` and
+`lintRelease`", was a coincidence of arithmetic dressed as an explanation: the two variants do
+analyse identical sources, but each reports **18**, not 9. Re-measured 2026-08-07 by reverting all
+six methods to `private` and running `:bypass:lintDebug` — 18 errors, `descriptorString` ×5,
+`isAligned` ×4, `componentSize` ×3, `slice` ×2, `roundUp` ×2, `primitiveOrder` ×2. All 18 are now
+fixed and pinned by `enable += "SyntheticAccessor"` in `bypass/build.gradle.kts`, where
+`warningsAsErrors = true` makes the build itself the check.
+
+The durable lesson is narrower than "count carefully": **a derived count and a measured count are
+different kinds of claim, and this file printed the derived one in the measured one's place.** The
+detector was disassembled correctly; what failed was reading one `return` as broader than it is,
+and nothing downstream could catch that because no number was ever run past lint again.
+
 **The counts are not additive, and anyone reproducing them must say which variant and which flag
 combination they used.** `checkAllWarnings` alone gives 253 and `checkTestSources` alone gives 9, but
 both together give 266, not 262 — the extra 4 are `SyntheticAccessor` hits inside test sources, a
@@ -19,24 +36,59 @@ adds a further 7 to reach 273; `foss` (2 files) adds none. `fossDebug` and `stor
 Two of these were closed in that sweep and are recorded here only so the remaining number is
 readable: `checkTestSources = true` is now on (61 unit-test files and the `androidTest` tree had been
 analysed by nothing at all), and `:bypass` now has a `lint {}` block pinning the clean state it was
-already in. Everything below is still open.
+already in. A third closed on 2026-08-07: `:bypass` enables `SyntheticAccessor` by id and all 18 of
+its findings are fixed, which takes the remaining number to **274**. Everything else below is still
+open.
 
 ## What is still off, and what each is worth
 
 | Check | Hits | Verdict |
 |---|---:|---|
-| `SyntheticAccessor` | 43 `:app` main (51 on `storeDebug` incl. test + store), 18 `:bypass` | **The only one with a real payoff.** Method count against the 64K limit, and APK size is a tracked concern in this repo. The 18 in `:bypass` are all in `DexFieldLayout.kt` and all the same shape — an outer class calling a `private` Companion method. Six methods changed from `private` to `internal` closes all 18 in one file, which is the best findings-per-edit ratio anywhere in the repo |
+| `SyntheticAccessor` | 43 `:app` main (51 on `storeDebug` incl. test + store); `:bypass` **closed** — 18 | **The only one with a real payoff.** Method count against the 64K limit, and APK size is a tracked concern in this repo. `:bypass` is done: all 18 were in `DexFieldLayout.kt`, and widening **six** Companion methods from `private` to `internal` — `descriptorString` ×5, `isAligned` ×4, `componentSize` ×3, `slice` ×2, `roundUp` ×2, `primitiveOrder` ×2 — closed every one. One correction to the original entry survives re-measurement: they are not all "an outer class calling a private Companion method". Only 6 are (`isAligned` ×4 and `roundUp` ×2, from `layoutOf`/`shuffleForward`/`addFieldGap`); 3 are a *nested* class doing it (`ZipReader.openEntry`, `DexReader.getString`, `DexField.componentSize`); and the remaining 9 are the companion calling itself from a `val` initializer or from a lambda inside one, which is **not** exempt (see below). `:app` is untouched and is its own piece of work |
 | `TypographyQuotes` | 127 | Largest contributor and the least defensible. It fires on translator-supplied text in `values-fr`/`values-es`/`values-ar`/`values-zh-rCN`; "fixing" it means editing other people's translations to swap `'` for U+2019. Disabled by default for good reason |
 | `DuplicateStrings` | 82 | Real but low value here. Several are legitimately the same word in that language — e.g. `values-zh-rCN` `home_desc` == `home` |
 | `PermissionNamingConvention` | 1 | **False positive by construction.** Fires on `android.permission.QUERY_ALL_PACKAGES` at `AndroidManifest.xml:22`, a Google-defined platform permission this repo cannot rename. If it is ever enabled it must be `ignore`d, never "fixed" |
 | `:vm-runtime` javac | 1 (2) | `-Xlint:all` reports `[missing-explicit-ctor]` on `sun/misc/Unsafe.java:4`, identical on JDK 21 and JDK 26. It is an artifact of `--patch-module` placing the stub in the exported `jdk.unsupported` package. The file-level `@SuppressWarnings({"unused","rawtypes"})` hides a second (`[rawtypes]`, line 16). **Do not add `-Xlint:all` to this module** — the class is a compile-only shadow stub that is never instantiated and never ships, and silencing the warning means adding a constructor to a file whose entire job is to mirror the platform's shape |
 
+### Two bail-outs decide what `SyntheticAccessor` can report
+
+Verified by disassembling `SyntheticAccessorDetector` out of `lint-checks-32.4.0-alpha07`, the jar
+that pairs with the pinned `agp = "9.4.0-alpha07"`. Anyone re-counting `:app` needs both of these,
+because each silently removes a whole category of candidate:
+
+- `visitSimpleNameReferenceExpression` returns immediately when the resolved element
+  `is PsiField && isKotlin(language)`, and it does so *before* the `ConstantEvaluator` check.
+  **No Kotlin field reference is ever reported.** In `DexFieldLayout.kt` that alone removes the eight
+  cross-class `private const val` reads and both `private val` Comparators.
+- `visitCallExpression` returns when `getNameFromSource(node.getContainingUClass()) == "Companion"`.
+  **This is much narrower than "a call inside the companion object is skipped", and reading it that
+  way is what produced the wrong count above.** The containing `UClass` is the class that *hosts*
+  the call in UAST, not the source block it is typed in, and Kotlin puts a companion `val` on the
+  **outer** class as a static field — so the initializer of `val OBJECT = descriptorString(...)`,
+  and a SAM-converted lambda inside `private val FIELD_COMPARATOR`, both report `DexFieldLayout`
+  and are **not** exempt. Only a call in a companion *function body* reaches that `return`. This is
+  measured, not read: reverting the six methods to `private` makes lint report `descriptorString`
+  ×5 (lines 488–492) and `primitiveOrder` ×2 (both on line 513), plus `componentSize` ×2 from the
+  same lambda.
+
+The issue is `Category.PERFORMANCE`, priority 2, `Severity.WARNING`, `enabledByDefault = false`,
+`androidSpecific = true`, `JAVA_FILE_SCOPE`, aliased `SyntheticAccessorCall` and
+`PrivateMemberAccessBetweenOuterAndInnerClass`.
+
+### Enable by id, never `checkAllWarnings`
+
 The registry holds **512 issue ids, 473 enabled by default and 39 disabled**. Only 4 of those 39 fire
 on this codebase at all, which is the argument against ever flipping `checkAllWarnings` globally:
 35 of them buy nothing, and the 4 that do fire are dominated by the two cosmetic ones. If
-`SyntheticAccessor` is wanted, enable **it** in `app/lint.xml` — `<issue id="SyntheticAccessor"
-severity="warning" />` — rather than the global flag, which under the existing `warningsAsErrors`
-would turn 253 findings into an instantly red build.
+`SyntheticAccessor` is wanted, enable **it** by id rather than the global flag, which under the
+existing `warningsAsErrors` would turn 253 findings into an instantly red build.
+
+`:bypass` took the Gradle DSL form of that — `enable += "SyntheticAccessor"` inside its existing
+`lint {}` block, so the module keeps a single config surface rather than gaining a `bypass/lint.xml`.
+`:app` already has a `lint.xml` and would use the `<issue id="SyntheticAccessor" severity="warning"
+/>` form there. Either way, the enable line and the fixes have to be the **same commit**: the check
+ships at `Severity.WARNING`, and both modules set `warningsAsErrors = true`, so enabling it on its
+own reddens every build of that module.
 
 ## The related thing that is not a lint setting
 

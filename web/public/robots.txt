@@ -1,5 +1,16 @@
 # Thor — https://thor.trinadhthatakula.com
 # Open-source Android App Manager
+#
+# A crawler obeys the groups whose token it matches, combining their rules if there is more than
+# one, and falls back to the `*` group only when *no* named group matches it (RFC 9309, §2.2.1).
+# So a named group containing only `Allow: /` does not inherit the wildcard group's rules — the
+# wildcard group is never selected for it — and grants the access the wildcard withholds. That is
+# how /styleguide and the follow-up pages were open to every crawler named here except Googlebot,
+# Bingbot and four of the AI agents: their groups simply left the Disallow lines out. Each token
+# below appears in exactly one group, so nothing here relies on the combining rule.
+#
+# Consecutive `User-agent:` lines share one rule block, so each class of crawler states the rules
+# once and a token added to a block picks them up automatically.
 
 User-agent: *
 Allow: /
@@ -9,133 +20,57 @@ Disallow: /follow-ups-report
 
 # Primary Search Engine Crawlers
 User-agent: Googlebot
-Allow: /
-Disallow: /styleguide
-Disallow: /follow-ups
-Disallow: /follow-ups-report
-
 User-agent: Bingbot
-Allow: /
-Disallow: /styleguide
-Disallow: /follow-ups
-Disallow: /follow-ups-report
-
 User-agent: Slurp
-Allow: /
-
 User-agent: DuckDuckBot
-Allow: /
-
 User-agent: Baiduspider
-Allow: /
-
 User-agent: YandexBot
-Allow: /
-
 User-agent: Sogou web spider
-Allow: /
-
 User-agent: Yeti
 Allow: /
+Disallow: /styleguide
+Disallow: /follow-ups
+Disallow: /follow-ups-report
 
 # AI Search & Retrieval Crawlers (GEO / Real-Time LLM Search)
 User-agent: OAI-SearchBot
-Allow: /
-Disallow: /styleguide
-Disallow: /follow-ups
-Disallow: /follow-ups-report
-
 User-agent: GPTBot
-Allow: /
-Disallow: /styleguide
-Disallow: /follow-ups
-Disallow: /follow-ups-report
-
 User-agent: ChatGPT-User
-Allow: /
-
 User-agent: ClaudeBot
-Allow: /
-Disallow: /styleguide
-Disallow: /follow-ups
-Disallow: /follow-ups-report
-
 User-agent: Claude-Web
-Allow: /
-
 User-agent: PerplexityBot
-Allow: /
-Disallow: /styleguide
-Disallow: /follow-ups
-Disallow: /follow-ups-report
-
 User-agent: Google-Extended
-Allow: /
-
 User-agent: Applebot
-Allow: /
-
 User-agent: Applebot-Extended
-Allow: /
-
 User-agent: Meta-ExternalAgent
-Allow: /
-
 User-agent: Meta-ExternalFetcher
-Allow: /
-
 User-agent: TavilyBot
-Allow: /
-
 User-agent: ExaBot
-Allow: /
-
 User-agent: MistralBot
-Allow: /
-
 User-agent: YouBot
-Allow: /
-
 User-agent: DuckAssistBot
-Allow: /
-
 User-agent: cohere-ai
-Allow: /
-
 User-agent: Amazonbot
-Allow: /
-
 User-agent: Bytespider
-Allow: /
-
 User-agent: CCBot
-Allow: /
-
 User-agent: Diffbot
 Allow: /
+Disallow: /styleguide
+Disallow: /follow-ups
+Disallow: /follow-ups-report
 
 # Social & Messaging Link Preview Crawlers
+#
+# Deliberately unrestricted, unlike every group above. These fetch a single URL because a person
+# just pasted it into a chat, so a Disallow here does not keep a page out of an index — it only
+# strips the preview from a link someone chose to share, including the internal ones.
 User-agent: LinkedInBot
-Allow: /
-
 User-agent: Twitterbot
-Allow: /
-
 User-agent: facebookexternalhit
-Allow: /
-
 User-agent: Slackbot
-Allow: /
-
 User-agent: Slackbot-LinkExpanding
-Allow: /
-
 User-agent: TelegramBot
-Allow: /
-
 User-agent: Discordbot
-Allow: /
-
 User-agent: WhatsApp
 Allow: /
 

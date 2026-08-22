@@ -6,11 +6,16 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.APP_LIST_MIME
+import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.InstalledAppsPermission
+import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
@@ -22,19 +27,23 @@ import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
+import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.UsageAccessGate
+import com.valhalla.thor.domain.usecase.ExportAppListUseCase
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
+import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -96,6 +105,7 @@ data class AppListUiState(
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
     val isGrid: Boolean = true,
+    val gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     val isComputingSizes: Boolean = false,
     // Holds the pull-to-refresh indicator up for a readable minimum. isLoading cannot do this job:
     // getAllApps() emits the Room cache before it starts the package rescan, so isLoading clears
@@ -118,6 +128,9 @@ data class AppListUiState(
 sealed interface AppListEvent {
     data class ShowMessage(val message: UiText) : AppListEvent
     data class ShowFreezerPrompt(val prompt: FreezerPrompt) : AppListEvent
+
+    /** Hand the exported list to another app. [uri] is a `content://` string; the screen chooses. */
+    data class ShareList(val uri: String, val mime: String) : AppListEvent
 }
 
 @KoinViewModel
@@ -135,6 +148,8 @@ class AppListViewModel(
     private val storageStats: StorageStatsProvider,
     private val usageAccess: UsageAccessGate,
     private val installedAppsPermission: InstalledAppsPermissionGate,
+    private val installerLabelResolver: InstallerLabelResolver,
+    private val exportAppListUseCase: ExportAppListUseCase,
     // Injected rather than hardcoded so a test can put every stage of this view model on one
     // scheduler: the sort/filter pipeline below runs off-main, and a `Dispatchers.Default` baked
     // in here would keep it on a real thread pool while the rest ran on virtual time.
@@ -147,6 +162,22 @@ class AppListViewModel(
     private var refreshIndicatorJob: Job? = null
     private var permissionIndexJob: Job? = null
     private var permissionRefreshJob: Job? = null
+
+    /**
+     * The one list export in flight, save or share.
+     *
+     * Both destinations are guarded by the same handle on purpose: they are one feature with two
+     * endings, and the share half stages through a directory that is wiped on entry
+     * (`AppBundleFileStoreImpl.stageText`). Two overlapping runs therefore do not merely write the
+     * same file twice — the second one can delete the first one's staged file after the Uri for it
+     * has already been handed out.
+     *
+     * A duplicate tap is dropped rather than reported. The work is a `buildString` and one write,
+     * so the window is a few frames wide; a toast saying "already exporting" would appear and
+     * disappear faster than it could be read, and would be the only message on this screen that
+     * describes Thor's internals rather than the user's apps.
+     */
+    private var listExportJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
@@ -165,7 +196,8 @@ class AppListViewModel(
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
-            isGrid = prefs.appListIsGrid
+            isGrid = prefs.appListIsGrid,
+            gridDensity = prefs.appGridDensity
         )
         processList(mergedState)
     }
@@ -211,7 +243,12 @@ class AppListViewModel(
         permissionRefreshJob = viewModelScope.launch(ioDispatcher) {
             val permission = installedAppsPermission.state()
             ensureActive()
+            val previous = _rawState.value.installedAppsPermission
             _rawState.update { it.copy(installedAppsPermission = permission) }
+            if (permission is InstalledAppsPermission.Granted && previous !is InstalledAppsPermission.Granted) {
+                AppScanRevision.bump()
+                loadApps()
+            }
         }
     }
 
@@ -663,43 +700,81 @@ class AppListViewModel(
                     }
                     _events.send(
                         AppListEvent.ShowMessage(
-                            if (failures == 0) {
-                                UiText.PluralsResource(
-                                    R.plurals.tile_freeze_success,
-                                    action.appList.size
+                            bulkResultMessage(
+                                BulkResult(
+                                    op = BulkOp.FREEZE,
+                                    total = action.appList.size,
+                                    succeeded = succeededPackages.size,
+                                    failed = failures,
                                 )
-                            } else {
-                                UiText.StringResource(
-                                    R.string.tile_freeze_partial_failure,
-                                    succeededPackages.size,
-                                    action.appList.size,
-                                    failures
-                                )
-                            }
+                            )
                         )
                     )
                 }
 
                 is MultiAppAction.UnFreeze -> {
-                    val packageNames = action.appList.map { it.packageName }.toSet()
-                    action.appList.forEach {
-                        manageAppUseCase.setAppDisabled(it.packageName, false)
+                    // Only the packages that actually came back successful, for both halves of the
+                    // report. This used to discard every result, mark the whole selection
+                    // `enabled = true` and then send an unconditional success plural for
+                    // `appList.size` — so a batch where nothing was unfrozen said "Unfroze 12 apps"
+                    // and drew twelve thawed rows to match. The freeze branch above always counted
+                    // properly; only this direction did not.
+                    //
+                    // `forceUnfreeze`, not `setAppDisabled(_, false)` and not
+                    // `restoreApp(_, app.enabled, app.isSuspended)`:
+                    //
+                    //  - `setAppDisabled` clears one of the two dimensions a frozen app can be
+                    //    frozen in. An app suspended from any other surface — the Freezer's suspend
+                    //    mode, `MainViewModel.performCountedFreeze(useSuspend = true)`, the QS tile,
+                    //    an extension — comes back still suspended, and the report above now says so
+                    //    *precisely*: it counts the enable that succeeded while the user still can't
+                    //    open the app.
+                    //  - `restoreApp` reads the flags, and the flags here are stale by construction.
+                    //    `isSuspended` is patched in exactly one place in this ViewModel
+                    //    ([toggleFreezerMembership]) and never on a bulk path, so it only moves on a
+                    //    full rescan. A snapshot that still calls a just-suspended app active makes
+                    //    `restorePlanFor` plan nothing, and `restoreApp` then returns success having
+                    //    made zero privileged calls — the same lie this branch was just fixed to stop
+                    //    telling, re-entering through the choice of API. FreezerViewModel documents
+                    //    this trap twice for the same reason.
+                    //
+                    // `forceUnfreeze` asks unconditionally, which is what its KDoc is for ("bulk
+                    // 'unfreeze all' when per-app state isn't known"). The cost is one redundant
+                    // unsuspend per already-active app; root and Shizuku answer that from the flag
+                    // alone and Dhizuku pays one `pm unsuspend`. A redundant call is the cheaper of
+                    // the two mistakes.
+                    val succeededPackages = mutableSetOf<String>()
+                    action.appList.forEach { app ->
+                        if (manageAppUseCase.forceUnfreeze(app.packageName).isSuccess) {
+                            succeededPackages.add(app.packageName)
+                        }
                     }
                     _rawState.update { state ->
+                        // Both dimensions, because forceUnfreeze cleared both. Patching only
+                        // `enabled` would leave a thawed app drawn as suspended until the next
+                        // rescan, and would leave the next unfreeze reading that stale flag.
                         state.copy(
                             allUserApps = state.allUserApps.map {
-                                if (it.packageName in packageNames) it.copy(enabled = true) else it
+                                if (it.packageName in succeededPackages) {
+                                    it.copy(enabled = true, isSuspended = false)
+                                } else it
                             },
                             allSystemApps = state.allSystemApps.map {
-                                if (it.packageName in packageNames) it.copy(enabled = true) else it
+                                if (it.packageName in succeededPackages) {
+                                    it.copy(enabled = true, isSuspended = false)
+                                } else it
                             }
                         )
                     }
                     _events.send(
                         AppListEvent.ShowMessage(
-                            UiText.PluralsResource(
-                                R.plurals.unfrozen_count_success,
-                                action.appList.size
+                            bulkResultMessage(
+                                BulkResult(
+                                    op = BulkOp.UNFREEZE,
+                                    total = action.appList.size,
+                                    succeeded = succeededPackages.size,
+                                    failed = action.appList.size - succeededPackages.size,
+                                )
                             )
                         )
                     )
@@ -747,6 +822,23 @@ class AppListViewModel(
         }
     }
 
+    /**
+     * Jumps the list to one installer's apps — where the Home distribution chart's bars lead.
+     *
+     * Sets the list type as well, because that chart is drawn per type and a bar read off System
+     * names apps a list left on User would hide, so the tap would land on an empty screen.
+     *
+     * Deliberately not [updateListType] followed by [updateFilter]: the first of those resets the
+     * selection to "All", so the pair would queue two writes and the list would depend on their
+     * order to not throw away the very filter this was called to apply. One write, right value.
+     */
+    fun showAppsFromInstaller(type: AppListType, installerPackageName: String) {
+        _rawState.update { it.copy(appListType = type) }
+        viewModelScope.launch {
+            preferenceRepository.updateAppFilter(FilterType.Source, installerPackageName)
+        }
+    }
+
     fun updateFilter(filter: String) {
         viewModelScope.launch {
             // We need to know current filter type to update properly
@@ -783,6 +875,72 @@ class AppListViewModel(
         }
     }
 
+    /**
+     * Save the list as it is on screen to the export destination.
+     *
+     * [AppListUiState.displayedApps] and nothing else: the tab, the search, the filter and the sort
+     * are all already applied to it, so what a user gets is what they were looking at. That is also
+     * the whole feature — the request behind it is "give me a list of what I have to work through",
+     * and a list that ignored the filter you set to narrow it down would be no use at all. Someone
+     * who wants everything clears the filter first.
+     */
+    fun exportList() {
+        val apps = uiState.value.displayedApps
+        if (apps.isEmpty()) {
+            // Not a failure: nothing was written because there was nothing to write. Saying so is
+            // the difference between "the filter is too narrow" and "the export is broken".
+            viewModelScope.launch {
+                _events.send(
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))
+                )
+            }
+            return
+        }
+        if (listExportJob?.isActive == true) return
+        listExportJob = viewModelScope.launch {
+            exportAppListUseCase(apps)
+                .onSuccess {
+                    _events.send(
+                        AppListEvent.ShowMessage(UiText.StringResource(R.string.export_saved, it))
+                    )
+                }
+                .onFailure { e ->
+                    Logger.e("AppListViewModel", "list export failed", e)
+                    _events.send(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(R.string.export_list_failed)
+                        )
+                    )
+                }
+        }
+    }
+
+    /** Hand the same list straight to another app, without writing a copy to the export folder. */
+    fun shareList() {
+        val apps = uiState.value.displayedApps
+        if (apps.isEmpty()) {
+            viewModelScope.launch {
+                _events.send(
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))
+                )
+            }
+            return
+        }
+        if (listExportJob?.isActive == true) return
+        listExportJob = viewModelScope.launch {
+            exportAppListUseCase.shareUri(apps)
+                .onSuccess { _events.send(AppListEvent.ShareList(it, APP_LIST_MIME)) }
+                .onFailure { e ->
+                    Logger.e("AppListViewModel", "list share failed", e)
+                    _events.send(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(R.string.export_list_failed)
+                        )
+                    )
+                }
+        }
+    }
+
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
         val rawList =
@@ -815,19 +973,24 @@ class AppListViewModel(
         val installers =
             rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
 
-        // Fast lookup map for app names to avoid O(N^2) associative logic
-        val nameMap = rawList.associateBy({ it.packageName }, { it.appName })
         // Emit UiText identifiers instead of resolved strings so the ViewModel needs no Context;
         // AppListScreen resolves them via UiText.asString(context).
+        //
+        // Anything outside the curated three is named by [installerLabelResolver]. It used to be
+        // looked up in the list being shown, which made the name depend on the tab: Aurora Store is
+        // a user app, so its apps were "Aurora Store" on the User tab and "com.aurora.store" on the
+        // System tab. The resolver asks the package manager, which knows either way, and memoises —
+        // this runs on every search keystroke.
         val installerNames: Map<String, UiText> = installers.associateWith { pkg ->
             when (pkg) {
-                "com.android.vending" -> UiText.StringResource(R.string.installer_play_store)
-                "org.fdroid.fdroid" -> UiText.StringResource(R.string.installer_fdroid)
+                Installers.PLAY_STORE -> UiText.StringResource(R.string.installer_play_store)
+                Installers.F_DROID -> UiText.StringResource(R.string.installer_fdroid)
                 // Sideloaded via the system package-installer UI: Google ships
                 // com.google.android.packageinstaller, AOSP uses com.android.packageinstaller.
-                "com.google.android.packageinstaller",
-                "com.android.packageinstaller" -> UiText.StringResource(R.string.installer_sideloaded)
-                else -> UiText.DynamicString(nameMap[pkg] ?: pkg)
+                in Installers.PACKAGE_INSTALLERS ->
+                    UiText.StringResource(R.string.installer_sideloaded)
+
+                else -> UiText.DynamicString(installerLabelResolver.labelFor(pkg) ?: pkg)
             }
         }
 

@@ -47,3 +47,4 @@ web/node_modules/
 web/dist/
 web/.astro/
 .vercel
+docs/discussions

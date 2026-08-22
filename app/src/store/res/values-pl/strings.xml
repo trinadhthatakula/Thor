@@ -1,0 +1,20 @@
+<resources>
+
+    <!-- Store-only strings: Play Store billing / support UI (store source set). -->
+    <string name="support_tab_play_store">Sklep Play</string>
+    <string name="support_tab_direct">Bezpośrednio</string>
+    <string name="rate_play_store_title">Oceń w Sklepie Play</string>
+    <string name="rate_play_store_desc">Wystaw 5 gwiazdek, aby pomóc innym odkryć Thora</string>
+    <string name="explore_other_apps_title">Zobacz inne aplikacje</string>
+    <string name="explore_other_apps_desc">Sprawdź moją konsolę dewelopera i wypróbuj inne aplikacje</string>
+    <string name="billing_error">Błąd płatności</string>
+    <string name="change_support_plan_title">Zmienić plan wsparcia?</string>
+    <string name="change_support_plan_desc">Już wspierasz dewelopera aktywnym planem. Zmiana planu lub przejście na wyższy anuluje poprzednią subskrypcję i zastąpi ją nową. Czy chcesz kontynuować?</string>
+    <string name="active_plan">Aktywny plan</string>
+    <string name="billing_purchase_pending">Zakup oczekuje na płatność — zostanie aktywowany po jej zakończeniu</string>
+    <string name="billing_price_per_week">%1$s / tydzień</string>
+    <string name="billing_price_per_month">%1$s / miesiąc</string>
+    <string name="billing_price_per_quarter">%1$s / 3 miesiące</string>
+    <string name="billing_price_per_half_year">%1$s / 6 miesięcy</string>
+    <string name="billing_price_per_year">%1$s / rok</string>
+</resources>

@@ -4,11 +4,14 @@
 package com.valhalla.thor.presentation.appList
 
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.ObbFile
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezerRepository
+import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
@@ -21,6 +24,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -50,6 +54,7 @@ class AppInfoDetailsViewModelTest {
     private lateinit var system: FakeSystemRepository
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var shortcuts: FakeAppShortcutController
+    private lateinit var preferences: FakePreferenceRepository
 
     @Before
     fun setUp() {
@@ -57,6 +62,7 @@ class AppInfoDetailsViewModelTest {
         system = FakeSystemRepository()
         freezer = FakeFreezerRepository()
         shortcuts = FakeAppShortcutController()
+        preferences = FakePreferenceRepository()
     }
 
     private fun viewModel(): AppInfoDetailsViewModel {
@@ -68,6 +74,7 @@ class AppInfoDetailsViewModelTest {
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
             freezerRepository = freezer,
             appShortcuts = shortcuts,
+            preferenceRepository = preferences,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
     }
@@ -92,6 +99,9 @@ class AppInfoDetailsViewModelTest {
         val vm = viewModel()
         vm.loadAppDetails("a")
         runCurrent()
+        // The detail load probes for expansion files, which is setup noise here: this assertion is
+        // about what the removal reaches at the privilege boundary, not about what loading did.
+        system.calls.clear()
 
         vm.addOrRemoveFromFreezer("a")
         runCurrent()
@@ -168,6 +178,10 @@ class AppInfoDetailsViewModelTest {
         val vm = viewModel()
         vm.loadAppDetails("a")
         runCurrent()
+        // The detail load probes for expansion files. Cleared rather than expected, because
+        // threading a setup call into the expectation would turn "no privileged call belongs on the
+        // add path" into "one particular list of them does" — which asserts nothing about the add.
+        system.calls.clear()
 
         vm.addOrRemoveFromFreezer("a")
         runCurrent()
@@ -193,5 +207,155 @@ class AppInfoDetailsViewModelTest {
         runCurrent()
 
         assertEquals(listOf("a"), shortcuts.disabled)
+    }
+
+    // ── the freeze-confirmation setting ──────────────────────────────────────
+    //
+    // This view model carries the flag for both freeze surfaces (see AppInfoDetailsUiState). What
+    // has to hold is *when* it is right, not what it means — the rule itself is pinned in
+    // FreezePolicyTest, where it needs no Android at all.
+
+    @Test
+    fun `the confirmation setting is known before any detail load`() = runTest {
+        // The freeze action sits in the action row, which AppInfoSheet shows at its partial detent —
+        // before anything has expanded the sheet and so before loadAppDetails has ever run. Sourcing
+        // the flag from that load would leave the first freeze of every session asking, whatever the
+        // user chose.
+        preferences.setSkipRoutineFreezeConfirmation(true)
+
+        val vm = viewModel()
+        runCurrent()
+
+        assertTrue(vm.uiState.value.skipRoutineFreezeConfirmation)
+        assertEquals(null, vm.uiState.value.detailedInfo)
+    }
+
+    @Test
+    fun `flipping the setting reaches a sheet that is already open`() = runTest {
+        loaded(userApp("a"))
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+        assertFalse(vm.uiState.value.skipRoutineFreezeConfirmation)
+
+        preferences.setSkipRoutineFreezeConfirmation(true)
+        runCurrent()
+
+        assertTrue(vm.uiState.value.skipRoutineFreezeConfirmation)
+    }
+
+    @Test
+    fun `a later detail load does not undo the setting`() = runTest {
+        // loadAppDetails rewrites the state with a copy() built off a snapshot it took earlier. The
+        // flag has to survive that, or the setting would silently revert to "always ask" on every
+        // reload — the failure would look exactly like the user never set it.
+        preferences.setSkipRoutineFreezeConfirmation(true)
+        loaded(userApp("a"))
+        val vm = viewModel()
+        runCurrent()
+
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        assertTrue(vm.uiState.value.skipRoutineFreezeConfirmation)
+    }
+
+    // ── the OBB probe ────────────────────────────────────────────────────────
+    //
+    // The app-info card used to be drawn from `AppInfo.obbFilePath`, computed with
+    // `File(...).exists()` — false for another package's OBB directory on Android 11+ whether or not
+    // one is there, so the card never appeared on a modern device. It now reads the probe, and what
+    // has to hold here is that the load asks and that all three answers survive the trip.
+
+    @Test
+    fun `the detail load asks for the OBB verdict and publishes it`() = runTest {
+        loaded(userApp("a"))
+        system.obbProbe = ObbProbe.Present(listOf(ObbFile("main.obb", 1024)), otherEntryCount = 0)
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        assertTrue(
+            "the card cannot be right if the load never asked",
+            "probeObb:a" in system.calls
+        )
+        assertEquals(
+            "the verdict has to reach the state, or the card renders from nothing",
+            ObbProbe.Present(listOf(ObbFile("main.obb", 1024)), otherEntryCount = 0),
+            vm.uiState.value.obbProbe
+        )
+    }
+
+    /**
+     * The reason the verdict is a tri-state. `Undetermined` says "this privilege cannot read
+     * `Android/obb`", which is not "the app has no expansion files" — folding the two back together
+     * is precisely the GH#164 defect, and it fails in the direction that looks like success.
+     */
+    @Test
+    fun `an unreadable OBB directory stays Undetermined`() = runTest {
+        loaded(userApp("a"))
+        system.obbProbe = ObbProbe.Undetermined("dhizuku cannot read external storage")
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        assertEquals(
+            "'cannot see it' must not arrive as 'there is none'",
+            ObbProbe.Undetermined("dhizuku cannot read external storage"),
+            vm.uiState.value.obbProbe
+        )
+    }
+
+    @Test
+    fun `the verdict is absent until the probe answers, not None`() = runTest {
+        loaded(userApp("a"))
+        val vm = viewModel()
+        runCurrent()
+
+        assertNull(
+            "null is the absence of an answer; None is an answer, and the card says so",
+            vm.uiState.value.obbProbe
+        )
+
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        assertEquals(
+            "the answer has to replace the absence once the probe returns",
+            ObbProbe.None,
+            vm.uiState.value.obbProbe
+        )
+    }
+
+    /**
+     * The probe deliberately resolves *after* the details, so on a second load there is a window
+     * where the new app's details are on screen. A verdict carried into that window is read against
+     * the wrong app: the card claims game data the app does not have, and the export sheet leaves
+     * `.xapk` enabled for an app whose expansions Thor never managed to read.
+     */
+    @Test
+    fun `a second load clears the previous verdict before the new probe answers`() = runTest {
+        loaded(userApp("a"))
+        appRepository.details["b"] = DetailedAppInfo(appInfo = userApp("b"))
+        system.obbProbe = ObbProbe.Present(listOf(ObbFile("main.obb", 1024)), otherEntryCount = 0)
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+        assertEquals(
+            ObbProbe.Present(listOf(ObbFile("main.obb", 1024)), otherEntryCount = 0),
+            vm.uiState.value.obbProbe
+        )
+
+        system.obbProbe = ObbProbe.None
+        vm.loadAppDetails("b")
+
+        assertNull(
+            "app a's expansions must not be attributed to app b while b's probe is still running",
+            vm.uiState.value.obbProbe
+        )
+
+        runCurrent()
+
+        assertEquals(ObbProbe.None, vm.uiState.value.obbProbe)
     }
 }

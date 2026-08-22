@@ -56,8 +56,12 @@ val hasSigningCredentials: Boolean =
 // `zh-rCN` and not `zh`: the resource directory is `values-zh-rCN`, and `localeFilters` matches on
 // the qualifier as written. The picker's tag is region-less `zh`, which still resolves, because
 // since API 24 ResourcesImpl selects via LocaleList.getFirstMatch with likely-subtag expansion
-// (`zh` -> `zh-Hans` matches `zh-CN` -> `zh-Hans-CN`).
-val translatedLocales: Set<String> = setOf("en", "ar", "es", "fr", "zh-rCN")
+// (`zh` -> `zh-Hans` matches `zh-CN` -> `zh-Hans-CN`). `pt-rBR` is spelled the same way and for the
+// same reason — and note it is a *second* Portuguese entry, not a replacement for `pt`: dropping
+// the bare `pt` here would filter out European Portuguese and leave `values-pt-rBR` overlaying
+// nothing, since a region folder resolves through its parent language folder.
+val translatedLocales: Set<String> =
+    setOf("en", "ar", "es", "fr", "pl", "pt", "pt-rBR", "zh-rCN")
 
 // --- VERSIONING HELPERS (Private & Modernized) ---
 
@@ -194,7 +198,13 @@ android {
 
         create("foss") {
             dimension = "distribution"
-            versionNameSuffix = "-foss"
+            // No versionNameSuffix on purpose. Obtainium cannot reconcile
+            // "1.94.0-foss" against tag v1.94.0 - "foss" is not in its
+            // recognised suffix list - so it sets versionDetection = false and
+            // marks outdated users as up to date. F-Droid's Binaries: field
+            // also substitutes only %v, which would resolve to a tag that does
+            // not exist. The flavour is identified by its APK filename
+            // (foss-release.apk) and its ProGuard file, not by versionName.
             proguardFile("proguard-rules-foss.pro")
         }
     }
@@ -325,12 +335,12 @@ androidComponents {
     // decision and the two are only correct together.
     //
     // Without this filter, disabling the language split would mean every Play install downloading
-    // ~75 locales of AndroidX/Material translations it cannot reach: Thor's own UI is one of five
-    // languages, so those library strings (date pickers, accessibility labels) would render in a
-    // language the app is not being displayed in. The filter is what keeps "no per-locale delivery"
-    // from meaning "pay for all locales".
+    // ~70 locales of AndroidX/Material translations it cannot reach: Thor's own UI is one of the
+    // eight in `translatedLocales`, so those library strings (date pickers, accessibility labels)
+    // would render in a language the app is not being displayed in. The filter is what keeps
+    // "no per-locale delivery" from meaning "pay for all locales".
     //
-    // The cost is real and bounded: a user whose system language is, say, Polish loses Polish
+    // The cost is real and bounded: a user whose system language is, say, Japanese loses Japanese
     // library strings and gets English ones inside an app whose own UI is already English. That is
     // the same experience foss users have always had.
     onVariants { variant ->
@@ -389,7 +399,7 @@ dependencies {
     // every behavioural test of a ViewModel or of BulkFreezeRunner has to sleep in wall-clock, which
     // is why docs/follow-ups/{viewmodel-behavior-tests,bulk-freeze-runner-concurrency-tests}.md were
     // filed as blocked. No mocking library: those follow-ups all specify "fake, don't mock", matching
-    // the hand-written fakes the existing suite already uses.
+    // the handwritten fakes the existing suite already uses.
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.junit)
@@ -414,6 +424,8 @@ dependencies {
     implementation(libs.dhizuku.api)
     implementation(libs.bundles.coil)
     implementation(libs.bundles.koin)
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.koin.androidx.workmanager)
 
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)

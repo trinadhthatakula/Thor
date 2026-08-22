@@ -1,0 +1,16 @@
+<resources>
+
+    <!--
+      Brazilian override for the store-only strings. Same rule as
+      app/src/main/res/values-pt-rBR: only the entries whose Brazilian wording
+      differs, everything else resolves through values-pt.
+        aplicações → aplicativos   consola → console   faturação → faturamento
+        programador → desenvolvedor   subscrição → assinatura
+        "está a apoiar" → "está apoiando"
+    -->
+    <string name="explore_other_apps_title">Explorar outros aplicativos</string>
+    <string name="explore_other_apps_desc">Veja meu console de desenvolvedor e experimente outros aplicativos</string>
+    <string name="billing_error">Erro de faturamento</string>
+    <string name="change_support_plan_desc">Você já está apoiando o desenvolvedor com um plano ativo. Mudar ou fazer upgrade do plano cancela a assinatura anterior e a substitui pela nova. Deseja continuar?</string>
+    <string name="billing_purchase_pending">Compra pendente — ela é ativada assim que o pagamento for concluído</string>
+</resources>

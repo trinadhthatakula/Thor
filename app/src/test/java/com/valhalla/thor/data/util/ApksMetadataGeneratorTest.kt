@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.AppInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -237,5 +238,150 @@ class ApksMetadataGeneratorTest {
             listOf("base.apk", "split_config.arm64_v8a.apk"),
             manifest.splitApkFiles()
         )
+    }
+
+    @Test
+    fun xapkManifest_roundTripsExpansionsFromTheWriterIntoTheReader() {
+        val json = ApksMetadataGenerator().generateManifestJson(
+            appInfo = app(),
+            totalSize = 123L,
+            iconName = "icon.png",
+            staged = staged("$baseDir/base.apk"),
+            expansions = listOf(
+                XapkExpansion(
+                    file = "Android/obb/com.example.game/main.12.com.example.game.obb",
+                    installPath = "Android/obb/com.example.game/main.12.com.example.game.obb"
+                )
+            )
+        )
+
+        // The wire keys are what third-party installers read; they are not ours to rename.
+        assertTrue(json, json.contains("\"expansions\""))
+        assertTrue(json, json.contains("\"install_path\""))
+        assertTrue(json, json.contains("\"install_location\":\"EXTERNAL_STORAGE\""))
+
+        val parsed = parseXapkManifest(json)!!
+        assertEquals(1, parsed.expansions.size)
+        assertEquals(
+            "Android/obb/com.example.game/main.12.com.example.game.obb",
+            parsed.expansions.first().file
+        )
+        assertEquals(
+            "Android/obb/com.example.game/main.12.com.example.game.obb",
+            parsed.expansions.first().installPath
+        )
+    }
+
+    /**
+     * The inverse of what this file used to assert.
+     *
+     * The key used to be omitted when there were no expansions, so that OBB-less bundles stayed
+     * byte-identical to what shipped before the feature. `[]` is the better wire shape: it is the
+     * only encoding that survives a null check, a truthiness check and a type check at once, and it
+     * is what APK Extractor already emits — `null` is emitted by nobody. `encodeDefaults = true` on
+     * `xapkJson` is what makes a defaulted `emptyList()` appear rather than vanish.
+     */
+    @Test
+    fun xapkManifest_writesAnEmptyExpansionsArrayWhenThereAreNone() {
+        val json = ApksMetadataGenerator().generateManifestJson(
+            appInfo = app(),
+            totalSize = 123L,
+            iconName = "icon.png",
+            staged = staged("$baseDir/base.apk")
+        )
+
+        // Guard that this is the .xapk overload and not the .apks one, which uses a different Json
+        // instance: without it the assertions below pass for the wrong reason.
+        assertTrue(json, json.contains("\"total_size\":123"))
+        assertTrue(json, json.contains("\"expansions\":[]"))
+        // Not `"expansions":null`. `explicitNulls = false` would drop that, so the two failures are
+        // indistinguishable from the `contains("expansions")` this test used to do.
+        assertFalse(json, json.contains("\"expansions\":null"))
+
+        // The entry that actually decides whether a no-OBB .xapk installs. cubehouse's installer
+        // throws "Cannot find base APK in manifest.json!" without it, and adhu2018's hard-subscripts
+        // `manifest["split_apks"]` *inside* the no-expansions branch — so the OBB-less bundle is
+        // precisely the one that reaches that code. Thor emits it, and this pins it.
+        val parsed = parseXapkManifest(json)!!
+        assertEquals("base.apk", parsed.baseApkFile())
+        assertTrue(parsed.expansions.isEmpty())
+    }
+
+    /**
+     * The base entry's id comes from *which path it is*, not from what the file happens to be called.
+     *
+     * Found by mutation: replacing `if (apk.sourcePath == basePath) "base"` with a plain
+     * `splitIdFor(...)` killed nothing, because `splitIdFor` strips `.apk` and every fixture in this
+     * file names the base APK `base.apk` — so the two agreed by coincidence on every case tested.
+     * They stop agreeing the moment the base is named anything else, which happens on ROMs that
+     * rename it and on any app whose base path is not `.../base.apk`. That is the case where
+     * cubehouse's installer throws `Cannot find base APK in manifest.json!` and adhu2018's
+     * hard-subscripts a `split_apks` list with no `"base"` in it.
+     */
+    @Test
+    fun xapkManifest_idsTheBaseApkFromItsPathEvenWhenItIsNotNamedBaseApk() {
+        val oddBase = "$baseDir/com.example.app.apk"
+        val json = ApksMetadataGenerator().generateManifestJson(
+            appInfo = app(
+                splits = listOf("$baseDir/split_config.arm64_v8a.apk"),
+                publicSourceDir = oddBase
+            ),
+            totalSize = 123L,
+            iconName = "icon.png",
+            staged = staged(oddBase, "$baseDir/split_config.arm64_v8a.apk")
+        )
+
+        val parsed = parseXapkManifest(json)!!
+        // Both sides: the base is found under its own file name, and the split beside it keeps the
+        // id derived from its path — a rule that identified *everything* as base would also pass a
+        // baseApkFile() assertion on its own.
+        assertEquals("com.example.app.apk", parsed.baseApkFile())
+        assertEquals(
+            listOf("com.example.app.apk", "split_config.arm64_v8a.apk"),
+            parsed.splitApkFiles()
+        )
+        // splitIdFor strips the `split_` prefix and the `.apk` suffix and nothing else, so the id
+        // is `config.arm64_v8a` rather than `arm64_v8a`. Pinned as emitted, not as guessed.
+        assertTrue(json, json.contains("\"id\":\"config.arm64_v8a\""))
+    }
+
+    /**
+     * The `.apks` manifest goes through the plain `Json`, where `encodeDefaults` is false, so the
+     * same non-null `emptyList()` default is dropped there. Its bytes did not move.
+     */
+    @Test
+    fun apksManifest_stillOmitsExpansionsAltogether() {
+        val json = ApksMetadataGenerator().generateManifestJson(app(), staged("$baseDir/base.apk"))
+
+        assertFalse(json, json.contains("expansions"))
+        // The overload guard, inverted from the .xapk test above: total_size is XAPK-only, so its
+        // absence proves this is the .apks writer and the assertion above is about the right bytes.
+        assertFalse(json, json.contains("total_size"))
+    }
+
+    @Test
+    fun xapkManifest_readsAMissingExpansionsKeyAsAnEmptyListRatherThanNull() {
+        val parsed = parseXapkManifest(
+            """{"package_name":"com.example.game","name":"Game","version_code":"12"}"""
+        )!!
+
+        assertTrue(parsed.expansions.isEmpty())
+    }
+
+    /**
+     * A hostile or merely old archive must not make the manifest unreadable — losing the manifest
+     * would lose the split list too, breaking an install that could have worked.
+     */
+    @Test
+    fun xapkManifest_readsAnExpansionMissingInstallPathAsNullRatherThanFailingTheManifest() {
+        val parsed = parseXapkManifest(
+            """
+            {"package_name":"com.example.game","name":"Game","version_code":"12",
+             "expansions":[{"file":"main.obb"}]}
+            """.trimIndent()
+        )!!
+
+        assertEquals(1, parsed.expansions.size)
+        assertNull(parsed.expansions.first().installPath)
     }
 }
