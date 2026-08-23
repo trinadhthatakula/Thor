@@ -6,19 +6,87 @@ Here is a guide on how you can contribute to the project.
 
 ---
 
+## 🌿 Branching & Pull Request Workflow (Mandatory)
+
+All contributors and AI agents must follow this workflow:
+
+1. **Base Branch**: Always branch from `dev` (`git checkout dev && git pull origin dev`).
+2. **Topic Branch Naming**:
+   - `feat/<feature-name>` or `feature/<feature-name>` for new features
+   - `fix/<bug-name>` for bug fixes
+   - `i18n/<locale-code>` or `translate/<locale-code>` for translations
+   - `docs/<doc-topic>` for documentation
+   - `chore/<task-name>` for dependencies and maintenance
+3. **Never Commit Directly to Protected Branches**: Do not push directly to `dev`, `master`, or `production`.
+4. **Target `dev` in PRs**: All Pull Requests must target the **`dev`** branch. PRs targeting `master` or `production` will be closed.
+5. **No Version Bumps**: Do not edit `versionCode` in `gradle.properties` in your PR. Version bumps and releases follow the three-rung ladder in [`docs/branching-and-releases.md`](docs/branching-and-releases.md).
+
+---
+
 ## 🌐 Localization & Translation Contributions
 
 We want Thor to be accessible to everyone worldwide. You can help by translating either the **In-App Strings** or the **Store Metadata (Fastlane)**.
 
 ### 1. In-App Strings Translation
-In-app strings are stored in standard Android resources:
-* **Base Strings**: [app/src/main/res/values/strings.xml](app/src/main/res/values/strings.xml)
-* **Localized Strings**: Located under `app/src/main/res/values-<locale-code>/strings.xml` (e.g., [values-es/strings.xml](app/src/main/res/values-es/strings.xml) for Spanish).
+In-app strings are stored in standard Android resources, split across **three** files:
+* **Base Strings**: [values/strings.xml](app/src/main/res/values/strings.xml) (the bulk),
+  [values/strings_settings.xml](app/src/main/res/values/strings_settings.xml) and
+  [values/strings_backup.xml](app/src/main/res/values/strings_backup.xml)
+* **Localized Strings**: the same three file names under `app/src/main/res/values-<locale-code>/`
+  (e.g. [values-pt/](app/src/main/res/values-pt) for Portuguese).
+
+`values/non-translatable.xml` is the one file you should *not* copy — everything in it is marked
+`translatable="false"` on purpose.
+
+The file names carry no meaning to the resource merger: it keys on `name=`, so what matters is that
+the union of your files covers the union of the base ones. Mirror the three-file split anyway — the
+four oldest locales (`ar`, `es`, `fr`, `zh-rCN`) predate it and fold the settings strings into their
+`strings.xml`, which is why their `strings.xml` is longer than the base one.
 
 **How to contribute:**
 1. Identify your target language code (e.g., `hi` for Hindi, `de` for German).
 2. Create the directory `app/src/main/res/values-<locale-code>/` if it doesn't exist.
-3. Copy the base [strings.xml](app/src/main/res/values/strings.xml) to your new folder and translate the text inside the `<string>` tags.
+3. Copy the three base files into it and translate the text inside the `<string>` tags. Every
+   `name=` must survive: lint runs with `warningsAsErrors`, so **one missing string fails the
+   build**, not just your locale.
+4. Get the `<plurals>` categories right for your language — the ones CLDR defines for it, no more
+   and no fewer. Polish needs `one/few/many/other`; Chinese needs only `other`; a category your
+   language does not have is a lint error too.
+5. Leave every `%1$s`, `%1$d` and `\n` exactly as the English has them, and escape a literal
+   apostrophe as `\'`.
+
+**Then wire the language up, or it ships and nobody can select it.** A `values-xx` directory alone
+does nothing; five other places have to agree, and `lintFossDebug` only catches two of them:
+
+| File | What to add |
+|---|---|
+| [`app/build.gradle.kts`](app/build.gradle.kts) → `translatedLocales` | the **resource qualifier** (`pt-rBR`, not `pt-BR`). Missing here means the resources are compiled and then filtered straight back out. |
+| [`res/xml/locales_config.xml`](app/src/main/res/xml/locales_config.xml) | the **BCP-47 tag** (`pt-BR`, not `pt-rBR`). This is what Android 13+'s own per-app language screen reads. |
+| [`LocalePolicy.kt`](app/src/main/java/com/valhalla/thor/util/LocalePolicy.kt) → `AppLanguage` | an enum entry with its BCP-47 tag. Read the KDoc first — whether the tag carries a region is not a free choice. |
+| [`SettingsCatalog.kt`](app/src/main/java/com/valhalla/thor/presentation/settings/SettingsCatalog.kt) → `labelRes` | the picker's own row label, plus a new `<string>` for the language name **in every locale** (they are exonyms — `values-fr` says "Anglais", not "English"). |
+| [`app/src/store/res/values-<x>/strings.xml`](app/src/store/res) | the 16 billing/support strings of the **store flavour**. They live outside `src/main`, so `lintFossDebug` cannot see them — only `lintStoreRelease` (which is what CI runs) reports them missing. |
+
+`LocalePolicyTest` pins several of these, so before opening the PR run
+`./gradlew :app:testFossDebugUnitTest :app:lintFossDebug :app:lintStoreRelease` — **both** lint
+variants, or the store source set stays unchecked until CI says otherwise.
+
+**A green build is not a proofread.** Everything above — name-set parity, placeholder parity, CLDR
+quantity coverage, both lint variants — answers *"is the string present and well-formed?"*. Nothing
+in this repo answers *"is it correct in the language?"*, and the two look identical from CI. All of
+these shipped green:
+
+- an Arabic `<plurals>` whose six quantity forms were byte-identical, so `quantity="one"` rendered
+  *"تم تجميد 1 تطبيقات"* — "froze 1 apps". Correct XML, full CLDR coverage, placeholders intact.
+- Spanish `action_add_freezer` reading "Añadir congelador" — *add a freezer*, not *add to the
+  freezer*.
+- French `no_permissions_found` reading "Aucun permis trouvé" — no *licence* found.
+- Chinese using 冷冻 (*refrigerate*) for the freezer, in a file that says 冻结室 eighteen lines
+  earlier.
+
+Lint is not neutral about this either: its `Typos` check fires on **correct** Portuguese while
+sitting silent on all four of the above. So read the diff in the language, and when you fix
+something, **grep the class rather than the line** — every sweep we have run found sites the review
+had not listed.
 
 ### 2. Store Listing Metadata (Fastlane) Translation
 We use Fastlane to deploy the app to the Google Play Store and other stores. Store listings are localized under the [fastlane/metadata/android/](fastlane/metadata/android) directory.
@@ -58,6 +126,9 @@ Thor is built using modern Android development practices. Please read the archit
 * **Root Operations**: [Odin](https://github.com/trinadhthatakula/Odin), an in-house Kotlin fork of
   libsu, consumed as `com.trinadhthatakula:odin` from Maven Central.
 * **Hidden API Bypass**: Custom internal `:bypass` module.
+* **Background Work**: WorkManager, but only for two operations — see
+  [docs/workers/README.md](docs/workers/README.md) for which ones, what the job seam requires of a new
+  job kind, and why every bulk action is a plain coroutine instead.
 
 ### Useful Build Commands
 * **Assemble Debug APK (FOSS)**: `./gradlew assembleFossDebug`
@@ -84,6 +155,12 @@ If you modify Dalvik VM shadowing or hidden API bypasses, place your stub class 
 3. **Commit your changes**: Write clear, descriptive commit messages.
 4. **Run Verification**: Ensure your code builds (`./gradlew assembleFossDebug`) and tests pass (`./gradlew test`).
 5. **Submit a Pull Request**: Submit your pull request targeting the `dev` branch of the main repository.
+
+> 📖 **Which branch does what?** Thor uses a three-rung release ladder — `dev` → `master` →
+> `production` — and your PR always targets `dev`. See
+> [docs/branching-and-releases.md](docs/branching-and-releases.md) for the full picture, including
+> how a merged commit reaches the Play Store and why you should not bump `versionCode` in a
+> feature PR.
 
 ---
 

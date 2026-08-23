@@ -13,8 +13,13 @@ class ManageAppUseCase(
     suspend fun forceStop(packageName: String): Result<Unit> =
         systemRepository.forceStopApp(packageName)
 
-    suspend fun clearCache(packageName: String): Result<Unit> =
+    /** Root only, and the `Long?` is bytes freed — see `SystemRepository.clearCache`. */
+    suspend fun clearCache(packageName: String): Result<Long?> =
         systemRepository.clearCache(packageName)
+
+    /** Every app's cache, under any mode that can. The `Long?` is bytes freed. */
+    suspend fun clearAllCaches(): Result<Long?> =
+        systemRepository.clearAllCaches()
 
     suspend fun clearAppData(packageName: String): Result<Unit> =
         systemRepository.clearAppData(packageName)

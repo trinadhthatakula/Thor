@@ -29,6 +29,14 @@ class FreezerRepositoryImpl(
         freezerDao.delete(packageName)
     }
 
+    override suspend fun removeAll(packageNames: Set<String>) {
+        // Room builds `IN ()` from an empty collection, which SQLite rejects. The pruner's gate
+        // never sends one; this keeps that from being the only thing standing between a caller and
+        // a crash.
+        if (packageNames.isEmpty()) return
+        freezerDao.deleteAll(packageNames)
+    }
+
     override suspend fun contains(packageName: String): Boolean =
         freezerDao.contains(packageName)
 }

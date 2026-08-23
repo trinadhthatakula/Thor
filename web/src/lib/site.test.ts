@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { findRepoRoot } from './repo-facts/read.ts'
-import { FUNDING_LINKS, PROJECT_LINKS, SITE, canonical } from './site.ts'
+import { FUNDING_LINKS, INDEXNOW, PROJECT_LINKS, SITE, canonical } from './site.ts'
 
 /**
  * Locks the footer's outbound links to the repository's own answers.
@@ -37,8 +37,15 @@ describe('outbound links agree with the repository', () => {
     // The app is the authority: these are the two places a user can reach the
     // channel from inside Thor, so the website disagreeing with them is the
     // website being wrong.
+    //
+    // The settings half lives in SettingsCategoryScreen.kt, not SettingsScreen.kt:
+    // the one long panel was split into eight categories, and the link went with
+    // the About & support one. That move landed without this test noticing, because
+    // web-ci is path-filtered to web/** and the two Gradle version files — so a
+    // Kotlin change that breaks a web assertion stays green until a release PR
+    // bumps versionCode. Hence the loud message below rather than a silent skip.
     const inApp = [
-      'app/src/main/java/com/valhalla/thor/presentation/settings/SettingsScreen.kt',
+      'app/src/main/java/com/valhalla/thor/presentation/settings/SettingsCategoryScreen.kt',
       'app/src/main/java/com/valhalla/thor/presentation/home/components/SupportCommunitySection.kt',
     ].map((rel) => {
       const match = /https:\/\/t\.me\/([A-Za-z0-9_]+)/.exec(readRepo(rel))
@@ -110,5 +117,11 @@ describe('outbound links agree with the repository', () => {
     expect(match, 'astro.config.mjs has no `site`').not.toBeNull()
     expect(match![1].replace(/\/$/, '')).toBe(SITE.origin)
     expect(canonical('/faq')).toBe(`${SITE.origin}/faq`)
+  })
+
+  it('declares a valid IndexNow configuration matching the site origin', () => {
+    expect(INDEXNOW.key).toMatch(/^[0-9a-f]{32}$/)
+    expect(INDEXNOW.keyLocation).toBe(`${SITE.origin}/${INDEXNOW.key}.txt`)
+    expect(INDEXNOW.endpoint).toBe('https://api.indexnow.org/indexnow')
   })
 })

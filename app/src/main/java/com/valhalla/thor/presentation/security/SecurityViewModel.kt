@@ -184,8 +184,23 @@ class SecurityViewModel(
                 enabled == true && !capable
             }.collect { lockedOut ->
                 if (!lockedOut || enrolmentCanFix) return@collect
-                preferenceRepository.setBiometricLock(false)
-                _events.send(UiText.StringResource(R.string.biometric_lock_disabled_no_biometric))
+                // Announce the disarm only if it actually landed. The message is past tense and
+                // load-bearing — it is the user's only sign that the lock they configured is off —
+                // so sending it after a dropped write states the opposite of the truth, and the
+                // preference flow will not correct it because nothing changed.
+                //
+                // A failed write here does not strand anyone: `authState` resolves this same
+                // combination to `NotRequired`, so the app opens either way. What breaks is the
+                // next launch, which finds `biometric_lock=true` still on disk and disarms it
+                // again. Saying so lets the user act on a store that has stopped taking writes
+                // instead of watching one setting undo itself forever.
+                val disarmed = preferenceRepository.setBiometricLock(false)
+                _events.send(
+                    UiText.StringResource(
+                        if (disarmed) R.string.biometric_lock_disabled_no_biometric
+                        else R.string.biometric_lock_disable_not_saved
+                    )
+                )
             }
         }
 
@@ -200,6 +215,27 @@ class SecurityViewModel(
         viewModelScope.launch {
             _settingsLost.first { it }
             _events.send(UiText.StringResource(R.string.settings_lost_using_defaults))
+        }
+
+        // The write-side twin of the notice above, and told from the same place for the same
+        // reason: this ViewModel outlives every settings screen, so a preference dropped by a
+        // screen the user has already left still gets said out loud.
+        //
+        // Kept as a second collector rather than folded into a `combine` with `_settingsLost`,
+        // because the two failures deserve different sentences — one means Thor is running on
+        // values the user never chose, the other means a value the user just chose did not stick —
+        // and a `combine` would have to pick one of them to say.
+        //
+        // Latched flag, `first { it }`: one notice for however many writes fail after it. Then the
+        // latch is lowered, because it lives on the repository singleton and this ViewModel does
+        // not — Exit finishes the activity without ending the process, so the next launch builds a
+        // fresh SecurityViewModel that would collect a `true` it has already reported and open on a
+        // notice about nothing. Acknowledging does not claim the disk recovered; the next dropped
+        // write raises it again.
+        viewModelScope.launch {
+            preferenceRepository.settingsWriteFailed.first { it }
+            _events.send(UiText.StringResource(R.string.settings_not_saved))
+            preferenceRepository.acknowledgeSettingsWriteFailure()
         }
     }
 

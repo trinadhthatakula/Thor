@@ -3,14 +3,24 @@
 
 package com.valhalla.thor.presentation.home
 
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.InstalledManagerInfo
+import com.valhalla.thor.domain.model.PrivilegeManagerApp
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.fixStoreCandidates
+import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -19,11 +29,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import rikka.shizuku.Shizuku
 
 data class HomeUiState(
     val isLoading: Boolean = true,
@@ -33,15 +47,17 @@ data class HomeUiState(
     val frozenAppCount: Int = 0,
     val suspendedAppCount: Int = 0,
     val unknownInstallerCount: Int = 0,
-    val distributionData: Map<String, Int> = emptyMap(),
+    val distribution: List<InstallerSlice> = emptyList(),
     // Status
     val isRootAvailable: Boolean = false,
     val isShizukuAvailable: Boolean = false,
+    val isShizukuBinderAlive: Boolean = false,
     val isDhizukuAvailable: Boolean = false,
     val activePrivilegeMode: PrivilegeMode? = null,
     // False until the first privilege probe completes — lets the status icon show a
     // neutral "detecting" state instead of flashing the red "no privilege" icon on cold start.
     val isPrivilegeReady: Boolean = false,
+    val installedManagers: List<InstalledManagerInfo> = emptyList(),
 
     // Preferences
     val showReinstallCard: Boolean = true, // <--- Controlled by DataStore
@@ -57,6 +73,8 @@ class HomeViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val privilegeManager: PrivilegeManager,
     private val preferenceRepository: PreferenceRepository, // Injected
+    private val installerLabelResolver: InstallerLabelResolver,
+    private val packageManager: PackageManager,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -88,14 +106,16 @@ class HomeViewModel(
             frozenAppCount = stats.frozenCount,
             suspendedAppCount = stats.suspendedCount,
             unknownInstallerCount = stats.unknownCount,
-            distributionData = stats.distribution,
+            distribution = stats.distribution,
             showReinstallCard = prefs.showReinstallAllCard,
             showInstallerTile = prefs.showInstallerTile,
             showExtensionsTile = prefs.showExtensionsTile,
             isRootAvailable = priv.root,
             isShizukuAvailable = priv.shizuku,
+            isShizukuBinderAlive = runCatching { Shizuku.pingBinder() }.getOrDefault(false),
             isDhizukuAvailable = priv.dhizuku,
             isPrivilegeReady = priv.isReady,
+            installedManagers = PrivilegeManagerApp.findInstalledManagers(packageManager),
             // Keep the existing "null = no privilege" contract for the UI. Until the
             // first probe completes (isReady == false), optimistically fall back to the
             // persisted preference so a configured user never sees a "no privilege"
@@ -116,6 +136,17 @@ class HomeViewModel(
 
     init {
         loadDashboardData()
+
+        viewModelScope.launch {
+            privilegeManager.state
+                .map { Triple(it.root, it.shizuku, it.dhizuku) to it.active }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    AppScanRevision.bump()
+                    loadDashboardData()
+                }
+        }
     }
 
     fun loadDashboardData() {
@@ -154,7 +185,46 @@ class HomeViewModel(
      */
     fun refreshPrivileges() {
         privilegeManager.refresh()
+        AppScanRevision.bump()
         loadDashboardData()
+    }
+
+    fun requestShizuku() {
+        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+            runCatching {
+                Shizuku.requestPermission(1001)
+            }
+        }
+    }
+
+    /**
+     * Off the main thread, because [DhizukuHelper.requestPermission] opens with `DhizukuAPI.init`
+     * and `isPermissionGranted()` — both synchronous binder round-trips to another process.
+     * `DhizukuSystemGateway` confines the same helper to [ioDispatcher] for exactly that reason and
+     * this call site, reached straight from the Privilege Check dialog's `onClick`, was the one that
+     * did not. The bind is normally already latched by `ThorApplication.onCreate`, so the usual cost
+     * is a stall rather than an ANR — but "usually already bound" is not a thread policy.
+     *
+     * The `granted` callback arrives on whichever thread Dhizuku's listener fires on, so the
+     * follow-up is posted back through [viewModelScope] rather than run inline — [refreshPrivileges]
+     * reads and reassigns `dashboardJob`, and every other caller of it is on the main dispatcher.
+     * It is the same three steps this used to inline; sharing them keeps the two grant paths from
+     * drifting.
+     */
+    fun requestDhizuku(context: Context) {
+        viewModelScope.launch(ioDispatcher) {
+            DhizukuHelper.requestPermission(context) { granted ->
+                if (granted) viewModelScope.launch { refreshPrivileges() }
+            }
+        }
+    }
+
+    fun openManagerApp(context: Context, packageName: String) {
+        val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(intent) }
+        }
     }
 
     fun onTypeChanged(type: AppListType) {
@@ -193,7 +263,7 @@ class HomeViewModel(
         val frozenCount: Int = 0,
         val suspendedCount: Int = 0,
         val unknownCount: Int = 0,
-        val distribution: Map<String, Int> = emptyMap()
+        val distribution: List<InstallerSlice> = emptyList()
     )
 
     /**
@@ -214,44 +284,16 @@ class HomeViewModel(
         val frozenCount = filteredApps.count { !it.enabled }
         val suspendedCount = filteredApps.count { it.isSuspended && it.enabled }
 
+        // The badge on the Fix Store card counts exactly what the picker will list — same predicate,
+        // one definition. It had its own copy before, which knew nothing of AOSP's package
+        // installer or of Thor itself, so the count and the list disagreed on a de-Googled ROM.
         val unknownCount = if (selectedType == AppListType.USER) {
-            userApps.count {
-                it.installerPackageName != "com.android.vending" &&
-                        it.installerPackageName != "com.google.android.packageinstaller"
-            }
+            fixStoreCandidates(userApps, BuildConfig.APPLICATION_ID).size
         } else 0
 
-        val labelCounts = filteredApps
-            .groupBy {
-                when (val pkg = it.installerPackageName) {
-                    "com.android.vending" -> "PLAY STORE"
-                    "org.fdroid.fdroid" -> "F-DROID"
-                    "com.google.android.packageinstaller" -> "SIDELOADED"
-                    null, "Unknown" -> "OTHERS"
-                    else -> pkg.substringAfterLast(".").uppercase()
-                }
-            }
-            .mapValues { it.value.size }
-
-        // --- TOP 3 / 4 GROUPING LOGIC ---
-        val sortedLabels = labelCounts.entries.sortedByDescending { it.value }
-
-        val distribution = if (sortedLabels.size <= 4) {
-            // If 4 or fewer categories, show them exactly as they are
-            labelCounts
-        } else {
-            // If more than 4, take top 3 and bunch the rest into "Others"
-            val top3Entries = sortedLabels.take(3)
-            val restEntries = sortedLabels.drop(3)
-
-            val result = mutableMapOf<String, Int>()
-            top3Entries.forEach { result[it.key] = it.value }
-
-            val othersCount = restEntries.sumOf { it.value }
-            // Add 'othersCount' to 'OTHERS' label (merge if 'OTHERS' was already in top 3)
-            result["OTHERS"] = result.getOrDefault("OTHERS", 0) + othersCount
-            result
-        }
+        // Bucketing and labelling both live in [installerDistribution] — a pure function taking the
+        // label lookup as a parameter, so the naming rules can be unit-tested without a device.
+        val distribution = installerDistribution(filteredApps, installerLabelResolver::labelFor)
 
         return DashboardStats(
             activeCount = activeCount,

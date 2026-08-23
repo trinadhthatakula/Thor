@@ -58,22 +58,21 @@ class ObserverCallSitesTest {
     )
 
     /**
-     * The three rungs that now wait for a verdict.
+     * The two rungs that now wait for a verdict.
+     *
+     * There were three. `Shizuku.kt#clearCache` was deleted rather than kept honest: its
+     * `deleteApplicationCacheFiles` reflection needed `INTERNAL_DELETE_CACHE_FILES`, which is
+     * `protectionLevel="signature"` and therefore ungrantable to `com.android.shell`, so
+     * PackageManagerService logged "Calling uid 2000 does not have
+     * android.permission.INTERNAL_DELETE_CACHE_FILES, silently ignoring" and returned. The observer
+     * was wired up correctly and waited on a verdict that never came. Per-app cache clearing is
+     * root-only now; Shizuku gets `pm trim-caches`, which uses no observer at all.
      *
      * `RootSystemGateway` is not here and does not belong here: it mentions `IPackageDataObserver`
      * only in comments explaining why its cache clear goes through the shell instead. `DhizukuHelper`
      * is excluded deliberately, and the last test in this file is what keeps that exclusion honest.
      */
     private val verifiedSites = listOf(
-        ClearSite(
-            relativePath = "data/source/local/shizuku/Shizuku.kt",
-            functionName = "clearCache",
-            control = "clearCachePaths(",
-            frameworkMethods = listOf(
-                "deleteApplicationCacheFilesAsUser",
-                "deleteApplicationCacheFiles",
-            ),
-        ),
         ClearSite(
             relativePath = "data/source/local/shizuku/Shizuku.kt",
             functionName = "clearAppData",
@@ -160,7 +159,7 @@ class ObserverCallSitesTest {
             mainSourceRoot.isDirectory
         )
 
-        assertEquals("the site list has been edited without updating this guard", 3, verifiedSites.size)
+        assertEquals("the site list has been edited without updating this guard", 2, verifiedSites.size)
 
         verifiedSites.forEach { site ->
             val source = sourceOf(site.relativePath)
@@ -277,13 +276,17 @@ class ObserverCallSitesTest {
     /**
      * `DhizukuHelper` still passes `null`, still says why, and is still outside this sweep.
      *
-     * Its two reflection rungs were made honest rather than verified: on a Dhizuku-only device the
-     * call dies inside a `ShizukuBinderWrapper` before it ever reaches `PackageManagerService`, so a
-     * real observer would buy one guaranteed 15-second timeout per package — an always-red answer
-     * that teaches nobody anything — and both rungs now simply return `false`. That is a decision,
-     * not an oversight, and this test is what keeps the difference legible.
+     * Its reflection rung was made honest rather than verified: on a Dhizuku-only device the call
+     * dies inside a `ShizukuBinderWrapper` before it ever reaches `PackageManagerService`, so a real
+     * observer would buy one guaranteed 15-second timeout per package — an always-red answer that
+     * teaches nobody anything — and the rung now simply returns `false`. That is a decision, not an
+     * oversight, and this test is what keeps the difference legible.
      *
-     * It is deliberately two-sided. If the comment marking the rungs disappears, the reasoning has
+     * One rung, not two. The other was `clearCache`, deleted along with Shizuku's for the same
+     * reason: no privilege mode short of a platform signature can clear one package's cache through
+     * `PackageManagerService`, so there was nothing left for it to be honest about.
+     *
+     * It is deliberately two-sided. If the comment marking the rung disappears, the reasoning has
      * been lost and this fails. If [awaitDataObserver] ever appears in that file, the transport has
      * been fixed and Dhizuku belongs in [verifiedSites] — which is also a failure, and the right
      * one: the sweep should widen rather than quietly not cover the new code.
@@ -294,9 +297,9 @@ class ObserverCallSitesTest {
         val marker = "issued, and deliberately never believed"
 
         assertEquals(
-            "DhizukuHelper's reflection rungs no longer carry \"$marker\" — either they were " +
-                "rewired, in which case add them to verifiedSites, or the reasoning was deleted",
-            2,
+            "DhizukuHelper's reflection rung no longer carries \"$marker\" — either it was " +
+                "rewired, in which case add it to verifiedSites, or the reasoning was deleted",
+            1,
             dhizuku.split(marker).size - 1
         )
 

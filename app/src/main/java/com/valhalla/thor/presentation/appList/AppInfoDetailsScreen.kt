@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.appList
 
 import android.content.Context
 import android.icu.text.DateFormat
+import android.text.format.Formatter
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -35,6 +36,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -66,20 +68,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.widgets.AppActionRow
+import com.valhalla.thor.presentation.widgets.AppHeaderIcon
 import com.valhalla.thor.presentation.widgets.AppRiskAction
 import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.presentation.widgets.StatusChip
-import coil3.compose.AsyncImage
+import com.valhalla.thor.presentation.widgets.appHeaderIconGlowInset
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionDetail
+import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
-import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.util.AppLocale
@@ -185,6 +190,8 @@ fun AppInfoDetailsScreen(
                                 isShizuku = state.isShizuku,
                                 isDhizuku = state.isDhizuku,
                                 isInFreezer = state.isInFreezer,
+                                skipRoutineFreezeConfirmation =
+                                    state.skipRoutineFreezeConfirmation,
                                 onAppAction = onAppAction,
                                 onFreeze = { shouldFreeze ->
                                     viewModel.toggleFreezerState(
@@ -209,7 +216,7 @@ fun AppInfoDetailsScreen(
                         }
 
                         if (!showOnlyHeaderAndActions) {
-                            AppInfoDetailBody(details)
+                            AppInfoDetailBody(details, state.obbProbe)
                         }
                     }
                 }
@@ -241,6 +248,10 @@ fun AppInfoDetailsScreen(
  *
  * [onFreeze] is the "do it" callback: this composable decides whether a confirmation has to come
  * first, the host decides what freezing means.
+ *
+ * [skipRoutineFreezeConfirmation] only ever narrows *which* freezes ask; it can never widen what a
+ * confirmed freeze is allowed to do. Required rather than defaulted to `false`, so a new host has to
+ * say where it reads the setting from instead of silently inheriting "always ask".
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -250,6 +261,7 @@ fun AppInfoHeaderAndActions(
     isShizuku: Boolean,
     isDhizuku: Boolean,
     isInFreezer: Boolean,
+    skipRoutineFreezeConfirmation: Boolean,
     onAppAction: (AppClickAction) -> Unit,
     onFreeze: (Boolean) -> Unit,
     onToggleFreezerMembership: () -> Unit,
@@ -268,10 +280,18 @@ fun AppInfoHeaderAndActions(
     var showFreezeConfirmation by remember { mutableStateOf(false) }
     var showReinstallWarning by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
+    var showBackupSheet by remember { mutableStateOf(false) }
+
+    // Hoisted so the header icon's tap and long-press shortcuts are the *same* lambdas the row's
+    // Open and Settings actions get, exactly as `AppInfoSheet` does it. See `AppHeaderIcon`.
+    val onLaunchApp: () -> Unit = { onAppAction(AppClickAction.Launch(appInfo)) }
+    val onOpenSystemSettings: () -> Unit = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) }
 
     Column(modifier = modifier) {
         AppDetailsHeader(
             appInfo = appInfo,
+            onOpen = onLaunchApp,
+            onOpenSettings = onOpenSystemSettings,
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope
         )
@@ -282,13 +302,17 @@ fun AppInfoHeaderAndActions(
             isShizuku = isShizuku,
             isDhizuku = isDhizuku,
             isInFreezer = isInFreezer,
-            onLaunch = { onAppAction(AppClickAction.Launch(appInfo)) },
-            onSystemSettings = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) },
+            onLaunch = onLaunchApp,
+            onSystemSettings = onOpenSystemSettings,
             onFreezeToggle = { shouldFreeze ->
                 // Unfreeze immediately. When freezing, only SYSTEM apps get the
                 // safety-warning dialog (instability / reboot-loop risk); user
-                // apps are safe to freeze directly (mirrors AppInfoSheet gating).
-                if (shouldFreeze && appInfo.isSystem) {
+                // apps are safe to freeze directly. Not "mirrors AppInfoSheet
+                // gating" any more — it is literally the same call, which is what
+                // keeps the two from drifting.
+                if (shouldFreeze &&
+                    freezeNeedsConfirmation(appInfo, skipRoutineFreezeConfirmation)
+                ) {
                     showFreezeConfirmation = true
                 } else {
                     onFreeze(shouldFreeze)
@@ -306,7 +330,15 @@ fun AppInfoHeaderAndActions(
             onFixStore = { showReinstallWarning = true },
             onUninstall = { showUninstallConfirmation = true },
             onShare = { onAppAction(AppClickAction.Share(appInfo)) },
-            onExport = { showExportSheet = true }
+            onExport = { showExportSheet = true },
+            // Not optional in practice, whatever the defaulted parameter suggests. `MainScreen`
+            // pushes this screen's route only where a detail pane exists, so on those layouts an
+            // app-list tap lands here and never opens `AppInfoSheet` — leaving this out is not "the
+            // sheet carries backup and the details screen does not", it is "the app list has no
+            // route to backup at all on a tablet". Not *no* route anywhere: `FreezerScreen` hosts
+            // `AppInfoSheet` with no layout gate, so a watchlisted app could already reach backup
+            // through that tab. Every app that is not on the watchlist could not.
+            onBackup = { showBackupSheet = true }
         )
     }
 
@@ -402,18 +434,38 @@ fun AppInfoHeaderAndActions(
     if (showExportSheet) {
         ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
     }
+
+    // The same call `AppInfoSheet` makes, deliberately without a second copy of anything: the sheet
+    // reaches its own view model through Koin and scopes it to its own composition, so hosting it is
+    // one call and the per-app scoping cannot drift between the two surfaces.
+    if (showBackupSheet) {
+        AppBackupSheet(
+            packageName = appInfo.packageName,
+            appLabel = appInfo.appName ?: appInfo.packageName,
+            onDismiss = { showBackupSheet = false }
+        )
+    }
 }
 
 /**
  * The tabbed detail body: everything below the action row.
  *
- * Takes a fully-loaded [DetailedAppInfo] and nothing else, so a host is free to render the header
- * and actions from a cheap [AppInfo] it already has and only pay for this once the details land.
+ * Takes a fully-loaded [DetailedAppInfo], so a host is free to render the header and actions from a
+ * cheap [AppInfo] it already has and only pay for this once the details land.
+ *
+ * [obbProbe] is **required with no default**, deliberately. Both hosts drive this from the same
+ * `AppInfoDetailsViewModel` that runs the probe, and a default of `null` reads as "still probing" —
+ * so a host that forgot to pass it would compile, pay the privileged round-trip and then render an
+ * empty card forever. That is not hypothetical: `AppInfoSheet` did exactly that while the parameter
+ * was optional. Requiring it turns the omission into a compile error. (Compose lint also wants
+ * `modifier` to be the first optional parameter, which an optional `obbProbe` ahead of it violates —
+ * the two constraints agree here.)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppInfoDetailBody(
     details: DetailedAppInfo,
+    obbProbe: ObbProbe?,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
@@ -455,7 +507,7 @@ fun AppInfoDetailBody(
         }
 
         when (selectedTab) {
-            0 -> GeneralTabScreen(details)
+            0 -> GeneralTabScreen(details, obbProbe)
             1 -> ComponentsTabScreen(details)
             2 -> LibsAndFeaturesTabScreen(details)
             3 -> PermissionsTabScreen(details.permissions)
@@ -466,46 +518,59 @@ fun AppInfoDetailBody(
 @Composable
 private fun AppDetailsHeader(
     appInfo: AppInfo,
+    onOpen: () -> Unit,
+    onOpenSettings: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
+    val clipboard = LocalClipboard.current
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val valueLabel = stringResource(R.string.value_label)
+    val iconSize = 72.dp
+    // The icon reserves this much transparent margin on every side for its glow, so the card's own
+    // 16 dp of padding is already more than paid for on the icon's side. Spending it rather than
+    // adding to it keeps the icon 16 dp from the card edge instead of 32, keeps the gap to the app
+    // name at 16 rather than doubling it, and — the reason it is worth the arithmetic — leaves the
+    // name/package/chips column the width it had. This header also renders in `MainScreen`'s narrow
+    // list pane, where 32 dp is the difference between a one-line app name and a wrapped one.
+    val iconGlowInset = appHeaderIconGlowInset(iconSize)
+    val iconGap = (16.dp - iconGlowInset).coerceAtLeast(0.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
             .clip(RoundedCornerShape(28.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f))
-            .padding(16.dp),
+            .padding(start = iconGap, top = 16.dp, end = 16.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .padding(12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                with(sharedTransitionScope) {
-                    Modifier.sharedElement(
-                        sharedContentState = rememberSharedContentState(key = "icon-${appInfo.packageName}"),
-                        animatedVisibilityScope = animatedVisibilityScope
-                    )
-                }
-            } else {
-                Modifier
+        val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+            with(sharedTransitionScope) {
+                Modifier.sharedElement(
+                    sharedContentState = rememberSharedContentState(key = "icon-${appInfo.packageName}"),
+                    animatedVisibilityScope = animatedVisibilityScope
+                )
             }
-            AsyncImage(
-                model = AppIconModel(appInfo.packageName),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(sharedModifier)
-            )
+        } else {
+            Modifier
         }
+        // Tap opens the app, long-press opens its system settings page — the same shortcuts the
+        // sheet's header carries, on the same widget, because these two headers are one header on
+        // two surfaces. The glow's default diameter scales off the icon, which is what keeps it
+        // inside this card's clip without a per-surface number.
+        AppHeaderIcon(
+            appInfo = appInfo,
+            onOpen = onOpen,
+            onOpenSettings = onOpenSettings,
+            size = iconSize,
+            cornerRadius = 20.dp,
+            contentPadding = 12.dp,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            imageModifier = sharedModifier
+        )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(iconGap))
 
         Column(modifier = Modifier.weight(1f)) {
             val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
@@ -530,11 +595,40 @@ private fun AppDetailsHeader(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            // Tap to copy, exactly as the sheet's header does — the two headers are the same
+            // header on two surfaces, and one of them being inert is the kind of difference nobody
+            // finds on purpose. Same reasoning for the click label and the 48 dp target; see the
+            // note in AppInfoSheet. labelSmall with 2 dp of padding is the smaller of the two, so
+            // if either needed the minimum size it was this one.
             Text(
                 text = appInfo.packageName,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontFamily = firaMonoFontFamily
+                fontFamily = firaMonoFontFamily,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClickLabel = stringResource(R.string.cd_copy_package_name)) {
+                        // Toast inside the coroutine, after the await — see AppInfoSheet for why.
+                        // setClipEntry suspends, so a Toast beside the launch reports a copy that
+                        // has not happened yet and may never happen if the scope is cancelled.
+                        coroutineScope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(
+                                    android.content.ClipData.newPlainText(
+                                        valueLabel,
+                                        appInfo.packageName
+                                    )
+                                )
+                            )
+                            Toast.makeText(
+                                context,
+                                R.string.toast_copy_saved,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -597,7 +691,7 @@ private fun AppDetailsHeader(
 }
 
 @Composable
-private fun GeneralTabScreen(details: DetailedAppInfo) {
+private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?) {
     val appInfo = details.appInfo
     val context = LocalContext.current
     val installTime = remember(appInfo.firstInstallTime, context) { formatTime(appInfo.firstInstallTime, context) }
@@ -617,6 +711,26 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
             }
         }
 
+        // Directly under the tier, because on its own a tier is a verdict without a reason: "Expert"
+        // does not tell you that the package is the vendor's OTA client. Blank rather than absent is
+        // the common shape here — 64 of the 5364 UAD entries carry an empty description — and an
+        // "Why this is flagged" card with nothing under it is worse than no card, so it is dropped.
+        appInfo.bloatDescription?.takeIf { it.isNotBlank() }?.let { description ->
+            item {
+                InfoCard(
+                    title = stringResource(R.string.info_bloat_description),
+                    value = description,
+                    monospace = false
+                )
+            }
+        }
+
+        item {
+            InfoCard(
+                title = stringResource(R.string.info_package_name),
+                value = appInfo.packageName
+            )
+        }
         item {
             InfoCard(
                 title = stringResource(R.string.info_app_version),
@@ -671,9 +785,42 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
                 value = appInfo.dataDir ?: stringResource(R.string.not_available)
             )
         }
-        appInfo.obbFilePath?.let { obb ->
-            item {
-                InfoCard(title = stringResource(R.string.info_obb_dir), value = obb)
+        // Not appInfo.obbFilePath: that is computed with File(...).exists(), which returns false
+        // for another package's OBB directory on Android 11+ regardless of whether one exists —
+        // so this card was simply absent for every game on a modern device.
+        when (val probe = obbProbe) {
+            null -> Unit // still probing
+            ObbProbe.None -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(R.string.info_obb_none)
+                )
+            }
+
+            is ObbProbe.Undetermined -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(R.string.info_obb_unknown)
+                )
+            }
+
+            // otherEntryCount is deliberately not rendered here. It answers "what won't be packed",
+            // which is only actionable while choosing an export format, so the export sheet shows it
+            // and this read-only card does not. The consequence is that an OBB directory holding
+            // nothing but non-.obb content reads "0 B of game data" — accurate about the expansion
+            // files, which is what this card is about, and still discloses that the directory exists.
+            is ObbProbe.Present -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(
+                        R.string.info_obb_present,
+                        "Android/obb/${appInfo.packageName}",
+                        Formatter.formatShortFileSize(
+                            context,
+                            probe.files.sumOf { it.sizeBytes }
+                        )
+                    )
+                )
             }
         }
         if (appInfo.sharedDataDir.isNotEmpty()) {
@@ -1115,30 +1262,50 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
     }
 }
 
+/**
+ * One labelled fact about the app, tap to copy.
+ *
+ * [monospace] defaults to the heuristic this card has always used — a value with a `/` or a `.` in
+ * it is an identifier or a path, and reads better in Fira Mono. The parameter exists because the
+ * heuristic is wrong for exactly one caller: the UAD description is English prose, and prose
+ * containing a full stop is the common case, not the exception.
+ */
 @Composable
-private fun InfoCard(title: String, value: String) {
+private fun InfoCard(
+    title: String,
+    value: String,
+    monospace: Boolean = value.contains("/") || value.contains(".")
+) {
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val valueLabel = stringResource(R.string.value_label)
+    // Labelled with the card's own title, so every card announces what it copies — "Copy
+    // Package name", "Copy Installer" — rather than the generic "activate" TalkBack falls back to.
+    // A fixed "Copy value" would be a verb without an object on a screen that is a list of values.
+    val copyLabel = stringResource(R.string.cd_copy_field, title)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable {
+            .clickable(onClickLabel = copyLabel) {
+                // Toast after the await, not beside the launch — setClipEntry suspends, and a
+                // success message that outruns the write tells the user their clipboard holds
+                // something it does not. Same fix as the two package-name headers; this helper is
+                // the third surface and backs all fourteen InfoCard call sites on this screen.
                 coroutineScope.launch {
                     clipboard.setClipEntry(
                         ClipEntry(
                             android.content.ClipData.newPlainText(valueLabel, value)
                         )
                     )
+                    Toast.makeText(
+                        context,
+                        R.string.toast_copy_saved,
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
-                Toast.makeText(
-                    context,
-                    (R.string.toast_copy_saved),
-                    Toast.LENGTH_SHORT
-                ).show()
             }
             .padding(16.dp)
     ) {
@@ -1153,7 +1320,7 @@ private fun InfoCard(title: String, value: String) {
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
-            fontFamily = if (value.contains("/") || value.contains(".")) firaMonoFontFamily else bodyFontFamily
+            fontFamily = if (monospace) firaMonoFontFamily else bodyFontFamily
         )
     }
 }

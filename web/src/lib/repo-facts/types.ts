@@ -14,12 +14,6 @@ export interface RepoFacts {
    */
   readonly versionName: string
 
-  /**
-   * `versionName` plus the `-foss` suffix `app/build.gradle.kts` sets on the FOSS
-   * flavour — what a user of the recommended channel actually sees on-device.
-   */
-  readonly fossVersionName: string
-
   readonly minSdk: number
   readonly targetSdk: number
   readonly compileSdk: number

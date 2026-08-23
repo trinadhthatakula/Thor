@@ -35,12 +35,18 @@ class ShizukuReflector(
     val context: Context
 ) {
 
-    fun clearCache(packageName: String): Boolean {
+    /**
+     * There is no per-package `clearCache` here any more, and its absence is the finding rather than
+     * a tidy-up: `INTERNAL_DELETE_CACHE_FILES` is `signature`-level, so no `pm grant` and no Shizuku
+     * delegation can obtain it, and PMS answers the call by logging that it is silently ignoring it.
+     * [Shizuku.trimCaches] is the whole-device operation that shell privilege *can* perform.
+     */
+    fun trimCaches(targetFreeBytes: Long): Boolean {
         return try {
-            Shizuku.clearCache(packageName)
+            Shizuku.trimCaches(targetFreeBytes)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
-                Logger.e("ShizukuReflector", "clearCache failed: ${e.message}")
+                Logger.e("ShizukuReflector", "trimCaches failed: ${e.message}")
             false
         }
     }

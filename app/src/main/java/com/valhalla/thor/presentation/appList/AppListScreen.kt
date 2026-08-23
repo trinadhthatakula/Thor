@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.appList
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +61,7 @@ import com.valhalla.thor.domain.model.AppListType
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.core.net.toUri
 import com.valhalla.asgard.components.AsgardBanner
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
@@ -114,6 +116,9 @@ fun AppListScreen(
     // state so it isn't replayed on recomposition/config change.
     var freezerPrompt by remember { mutableStateOf<FreezerPrompt?>(null) }
 
+    // Resolved in composition: the event handler runs outside it and cannot call stringResource.
+    val shareListTitle = stringResource(R.string.export_list_share)
+
     // Resolve installer identifiers to display strings here (keeps the ViewModel Context-free).
     val installerNameMap = remember(state.installerNameMap, context) {
         state.installerNameMap.mapValues { (_, label) -> label.asString(context) }
@@ -126,9 +131,12 @@ fun AppListScreen(
         }
     }
 
-    // com.android.permission.GET_INSTALLED_APPS — an ordinary runtime permission, so an ordinary
-    // RequestPermission contract. No privilege path: Thor never self-grants the permission that
-    // decides how much of the device it is allowed to see.
+    // com.android.permission.GET_INSTALLED_APPS — an ordinary runtime permission on the ROMs that
+    // define it, so an ordinary RequestPermission contract. This is the route for an unprivileged
+    // user: a user who has already granted root or Shizuku will normally never reach it, because
+    // SelfPermissionGranter takes every declared runtime permission as soon as a gateway is live —
+    // asking someone to approve in a weaker form what they have already approved in a stronger one
+    // is the ask this dialog exists to avoid, not to repeat.
     //
     // The result boolean is deliberately ignored and the truth re-read instead, the same way the
     // notification row does it in SettingsScreen. This permission is three-state on the ROMs that
@@ -164,6 +172,15 @@ fun AppListScreen(
 
             is AppListEvent.ShowFreezerPrompt ->
                 freezerPrompt = event.prompt
+
+            is AppListEvent.ShareList -> {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = event.mime
+                    putExtra(Intent.EXTRA_STREAM, event.uri.toUri())
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, shareListTitle))
+            }
         }
     }
 
@@ -281,7 +298,10 @@ fun AppListScreen(
                     isShizuku = state.isShizuku,
                     isDhizuku = state.isDhizuku,
                     isGrid = state.isGrid,
+                    gridDensity = state.gridDensity,
                     onToggleView = viewModel::toggleGridMode,
+                    onExportList = viewModel::exportList,
+                    onShareList = viewModel::shareList,
                     installerNameMap = installerNameMap,
                     permissionIndex = state.permissionIndex,
                     isLoadingPermissions = state.isLoadingPermissions,
@@ -347,11 +367,15 @@ fun AppListScreen(
                     }
                     // Deliberately no `selectedPackageForSheet = null` here. AppInfoSheet owns its
                     // own dismissal and already calls onDismiss() for every terminal action (launch,
-                    // freeze, uninstall, clear data, fix store); the rest — suspend, force-stop,
-                    // clear cache, share, system settings — are meant to leave the sheet up so you
-                    // can see the result and keep going. Clearing unconditionally would close it for
-                    // those too, and would do it by dropping the composable, so there'd be no exit
-                    // animation either.
+                    // freeze, uninstall, clear data, fix store, manage permissions); the rest —
+                    // suspend, force-stop, clear cache, share, system settings — are meant to leave
+                    // the sheet up so you can see the result and keep going. Clearing
+                    // unconditionally would close it for those too, and would do it by dropping the
+                    // composable, so there'd be no exit animation either.
+                    //
+                    // Manage permissions belongs in the first list and was missing from it: the
+                    // action is a destination push (ThorRoute.PermissionManager), and a sheet left
+                    // standing behind a pushed screen re-materialises on the way back.
                 },
                 // No dismissal here, unlike the Freezer tab: this list is the whole scan, so the app
                 // stays in it either way, and the selection resolves against allUserApps /

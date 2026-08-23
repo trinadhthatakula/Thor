@@ -3,7 +3,10 @@
 
 package com.valhalla.thor.presentation.widgets
 
+import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -24,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
@@ -41,6 +44,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -52,14 +57,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
-import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.appList.AppInfoDetailBody
 import com.valhalla.thor.presentation.appList.AppInfoDetailsViewModel
 import com.valhalla.thor.presentation.appList.ExportBottomSheet
-import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -136,7 +141,8 @@ fun AppInfoSheet(
     isInFreezer: Boolean = false,
     onDismiss: () -> Unit,
     onAppAction: (AppClickAction) -> Unit = {},
-    onToggleFreezerMembership: (() -> Unit)? = null
+    onToggleFreezerMembership: (() -> Unit)? = null,
+    @StringRes freezerRemoveLabelRes: Int = R.string.action_remove_from_watchlist
 ) {
     // Default enabledValues = {Hidden, PartiallyExpanded, Expanded}. The sheet opens at the partial
     // detent, which material3 pins at min(windowHeight / 2, contentHeight) — there is no peek
@@ -189,6 +195,7 @@ fun AppInfoSheet(
     var showClearDataConfirmation by remember { mutableStateOf(false) }
     var showFreezeConfirmation by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
+    var showBackupSheet by remember { mutableStateOf(false) }
 
     val paneTitleText = appInfo.appName ?: appInfo.packageName
 
@@ -215,8 +222,25 @@ fun AppInfoSheet(
                     .semantics { paneTitle = paneTitleText },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Hoisted, because the header icon is a shortcut to these two actions and gets the
+                // *same* lambdas the row does — see AppHeaderIcon for why sharing the instance
+                // rather than duplicating the body is the point. Open dismisses (the user is
+                // leaving for another app); settings does not, for the reason spelled out on
+                // onManagePermissions below.
+                val onLaunchApp: () -> Unit = {
+                    onAppAction(AppClickAction.Launch(appInfo))
+                    onDismiss()
+                }
+                val onOpenSystemSettings: () -> Unit = {
+                    onAppAction(AppClickAction.AppInfoSettings(appInfo))
+                }
+
                 // 1. Header (Icon + Title)
-                AppHeader(appInfo)
+                AppHeader(
+                    appInfo = appInfo,
+                    onOpen = onLaunchApp,
+                    onOpenSettings = onOpenSystemSettings
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -227,15 +251,20 @@ fun AppInfoSheet(
                     isShizuku = isShizuku,
                     isDhizuku = isDhizuku,
                     isInFreezer = isInFreezer,
-                    onLaunch = {
-                        onAppAction(AppClickAction.Launch(appInfo))
-                        onDismiss()
-                    },
-                    onSystemSettings = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) },
+                    onLaunch = onLaunchApp,
+                    onSystemSettings = onOpenSystemSettings,
                     onFreezeToggle = { shouldFreeze ->
                         // Only SYSTEM apps get the safety-warning dialog; unfreezing and user apps
-                        // go straight through.
-                        if (shouldFreeze && appInfo.isSystem) {
+                        // go straight through. `freezeNeedsConfirmation` also answers the newer
+                        // half — whether the user has switched off the routine-tier confirmation —
+                        // and it is the same call `AppInfoHeaderAndActions` makes, so the two
+                        // surfaces cannot drift apart on when the dialog appears.
+                        if (shouldFreeze &&
+                            freezeNeedsConfirmation(
+                                appInfo,
+                                detailsState.skipRoutineFreezeConfirmation
+                            )
+                        ) {
                             showFreezeConfirmation = true
                         } else {
                             onAppAction(
@@ -252,8 +281,22 @@ fun AppInfoSheet(
                         )
                     },
                     onForceStop = { onAppAction(AppClickAction.Kill(appInfo)) },
-                    onManagePermissions = { onAppAction(AppClickAction.ManagePermissions(appInfo)) },
+                    // Dismisses, unlike the in-place actions either side of it, because both hosts
+                    // turn this one into a *destination push* — `MainScreen` adds
+                    // ThorRoute.PermissionManager to the Apps or Freezer back stack. Left up, the
+                    // sheet survives the forward navigation inside the entry's saveable state
+                    // holder, and Nav3's predictive back *seeks* the pop, so it re-composes the
+                    // previous scene at the first few percent of the gesture: the sheet's dialog is
+                    // a focusable full-screen window, so adding it mid-gesture steals focus,
+                    // cancels the in-flight back, and Nav3 animates forward again — the flicker
+                    // users reported. `onSystemSettings` above is not the same case; it leaves for
+                    // an external activity and pushes nothing here.
+                    onManagePermissions = {
+                        onAppAction(AppClickAction.ManagePermissions(appInfo))
+                        onDismiss()
+                    },
                     onToggleFreezerMembership = onToggleFreezerMembership,
+                    freezerRemoveLabelRes = freezerRemoveLabelRes,
                     onClearCache = { onAppAction(AppClickAction.ClearCache(appInfo)) },
                     onClearData = { showClearDataConfirmation = true },
                     onFixStore = { showReinstallWarning = true },
@@ -266,6 +309,7 @@ fun AppInfoSheet(
                     },
                     onShare = { onAppAction(AppClickAction.Share(appInfo)) },
                     onExport = { showExportSheet = true },
+                    onBackup = { showBackupSheet = true },
                     // Details no longer leaves for another screen — it brings the body up in place,
                     // which matters because dragging is not an option for every user. The sheet's
                     // own semantics expand action covers assistive tech; this covers everyone else.
@@ -305,8 +349,13 @@ fun AppInfoSheet(
                         when {
                             // Kept ahead of the error and loading branches so a failed or in-flight
                             // refresh never blanks details that are already on screen.
+                            // obbProbe is passed explicitly even though it is defaulted. It is the
+                            // same view model that ran the probe, so omitting it would pay the
+                            // privileged round-trip and then render the card's "still probing"
+                            // branch forever — on the surface most users reach, not the full screen.
                             details != null -> AppInfoDetailBody(
                                 details = details,
+                                obbProbe = detailsState.obbProbe,
                                 modifier = Modifier.fillMaxSize()
                             )
 
@@ -343,6 +392,17 @@ fun AppInfoSheet(
 
     if (showExportSheet) {
         ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
+    }
+
+    // This sheet stays up behind it, as it already does for the export sheet: the job runs in a
+    // foreground service, so closing a sheet is not what stops it, and leaving the host up puts the
+    // user back on the app they were looking at.
+    if (showBackupSheet) {
+        AppBackupSheet(
+            packageName = appInfo.packageName,
+            appLabel = appInfo.appName ?: appInfo.packageName,
+            onDismiss = { showBackupSheet = false }
+        )
     }
 
     if (showClearDataConfirmation) {
@@ -429,30 +489,43 @@ fun AppInfoSheet(
 }
 
 @Composable
-private fun AppHeader(appInfo: AppInfo) {
+private fun AppHeader(
+    appInfo: AppInfo,
+    onOpen: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val clipboard = LocalClipboard.current
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val valueLabel = stringResource(R.string.value_label)
+    val iconSize = 100.dp
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
+            // The scrolling column above clips, and its top edge is this content's top edge. The
+            // icon's glow reserves its own room, so this is only the room the press and flare need
+            // to swell into — derived rather than guessed, because a straight line across the top of
+            // a halo is exactly what the reserved inset was introduced to stop.
+            .padding(top = appHeaderIconGlowOvershoot(iconSize))
     ) {
-        // Icon with a nice background
-        Box(
-            modifier = Modifier
-                .size(100.dp)
-                .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            AsyncImage(
-                model = AppIconModel(appInfo.packageName),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
+        // Icon with a nice background — and the two shortcuts on it: tap opens the app,
+        // long-press opens its system settings page.
+        AppHeaderIcon(
+            appInfo = appInfo,
+            onOpen = onOpen,
+            onOpenSettings = onOpenSettings,
+            size = iconSize,
+            cornerRadius = 32.dp,
+            contentPadding = 16.dp
+        )
 
-        Spacer(Modifier.height(24.dp))
+        // The gap this header wants under the icon is 24 dp, and the icon block already carries most
+        // of it as reserved glow. Spending it rather than adding to it keeps the title where it was
+        // before the glow existed — and keeps the sheet's partially-expanded detent, which shows a
+        // fixed half of the screen, from losing that much of its budget to the header.
+        Spacer(Modifier.height((24.dp - appHeaderIconGlowInset(iconSize)).coerceAtLeast(0.dp)))
 
         // Title
         Text(
@@ -506,12 +579,45 @@ private fun AppHeader(appInfo: AppInfo) {
 
         Spacer(Modifier.height(12.dp))
 
-        // Package Name
+        // Package Name. Tap to copy — the one gesture that was still free here. Long-press is the
+        // list's multi-select and a row tap opens this sheet, so the list itself has nowhere to put
+        // this; the header the sheet already draws is where the package name is legible anyway.
+        // Copying must not dismiss: `setClipEntry` suspends, and this scope dies with the sheet.
+        //
+        // onClickLabel, because the click target is a Text: without it TalkBack announces the
+        // package name and "double tap to activate" and never says what activating does. The
+        // package name is not a verb. minimumInteractiveComponentSize keeps the 48 dp touch target
+        // labelMedium plus 4 dp of padding does not reach, and reserves it in layout only — the
+        // glyphs stay the size they are.
         Text(
             text = appInfo.packageName,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
+            fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily,
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClickLabel = stringResource(R.string.cd_copy_package_name)) {
+                    // The Toast is INSIDE the coroutine, after the await. setClipEntry is a suspend
+                    // call; toasting beside the launch instead of after it says "Copied" before the
+                    // write has happened — and this is a bottom sheet, so the scope it runs in can
+                    // die on dismissal between the two. That produced a success message with an
+                    // unchanged clipboard, which is worse than no message at all: the user pastes
+                    // whatever was there before and trusts it.
+                    coroutineScope.launch {
+                        clipboard.setClipEntry(
+                            ClipEntry(
+                                android.content.ClipData.newPlainText(
+                                    valueLabel,
+                                    appInfo.packageName
+                                )
+                            )
+                        )
+                        Toast.makeText(context, R.string.toast_copy_saved, Toast.LENGTH_SHORT)
+                            .show()
+                    }
+                }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         )
 
         // UAD Description skipped by user request

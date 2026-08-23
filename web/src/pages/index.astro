@@ -56,17 +56,13 @@ const description =
       turns grey, and tapping it unfreezes the app and opens it.
     </p>
     <p>
-      Your data stays where it is. Freezing switches an app off; it doesn't take anything away. On
-      the handful of devices that refuse to let a preinstalled app be switched off, Shizuku mode
-      removes it for your Android user instead, with the keep-data flag — the app's files and
-      settings stay, so unfreezing brings it back with its data attached. Permissions are the part
-      I can only tell you about narrowly: one runtime permission was measured across that round
-      trip and came back granted, on one platform build, and app-ops were never measured, so I
-      won't promise more than that. Root has no such fallback: a refusal is reported as a failure
-      and the app is left installed. Dhizuku is
-      the exception, and the one to avoid for preinstalled apps — it freezes them by removing them
-      for your user in every case, and without that flag. Where nothing the platform allows will
-      switch an app off, Thor tells you it couldn't, rather than doing something else.
+      Your data stays where it is. Freezing switches an app off; it doesn't take anything away, in
+      any of the three modes. A handful of devices — some OEM builds — refuse to let a preinstalled
+      app be switched off at all, and on those, Shizuku and Dhizuku can't freeze that app. Thor
+      says so and leaves it alone. It won't remove the package to get the job done instead: you
+      asked for something reversible, and removing an app for your Android user is a different
+      thing with a different blast radius, however carefully its files are kept. Freezing those
+      apps needs Root.
     </p>
 
     <DeviceFrame

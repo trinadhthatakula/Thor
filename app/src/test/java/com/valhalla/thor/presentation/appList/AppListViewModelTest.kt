@@ -5,20 +5,28 @@ package com.valhalla.thor.presentation.appList
 
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.InstalledAppsPermission
+import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.usecase.ExportAppListUseCase
+import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.presentation.FakeAppBundleBuilder
+import com.valhalla.thor.presentation.FakeAppBundleFileStore
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakeInstalledAppsPermissionGate
+import com.valhalla.thor.presentation.FakeInstallerLabelResolver
 import com.valhalla.thor.presentation.FakePermissionRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
@@ -28,6 +36,7 @@ import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -80,6 +89,7 @@ class AppListViewModelTest {
     private lateinit var system: FakeSystemRepository
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var privilege: FakePrivilegeStateProvider
+    private lateinit var fileStore: FakeAppBundleFileStore
 
     @Before
     fun setUp() {
@@ -87,6 +97,7 @@ class AppListViewModelTest {
         system = FakeSystemRepository()
         freezer = FakeFreezerRepository()
         privilege = FakePrivilegeStateProvider()
+        fileStore = FakeAppBundleFileStore()
     }
 
     /** Live collectors on the app list — 1 while a scan is running, 0 once it has been torn down. */
@@ -111,6 +122,12 @@ class AppListViewModelTest {
             UserPreferences(animationIntensity = intensity, appFilterType = filterType)
         )
         val manageAppUseCase = ManageAppUseCase(system)
+        val exportAppUseCase = ExportAppUseCase(
+            FakeAppBundleBuilder(),
+            prefs,
+            fileStore,
+            mainDispatcherRule.dispatcher
+        )
         val vm = AppListViewModel(
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             getAppDetailsUseCase = GetAppDetailsUseCase(appRepository),
@@ -125,6 +142,12 @@ class AppListViewModelTest {
             storageStats = FakeStorageStatsProvider(),
             usageAccess = FakeUsageAccessGate(),
             installedAppsPermission = installedApps,
+            installerLabelResolver = FakeInstallerLabelResolver(),
+            exportAppListUseCase = ExportAppListUseCase(
+                exportAppUseCase,
+                fileStore,
+                mainDispatcherRule.dispatcher
+            ),
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
@@ -441,6 +464,101 @@ class AppListViewModelTest {
         )
     }
 
+    // --- Bulk unfreeze ----------------------------------------------------------------------
+
+    /**
+     * The bulk direction had two independent ways to report a thaw that never happened, and fixing
+     * one of them made the other one worse.
+     *
+     * It used to discard every result, mark the whole selection enabled and send an unconditional
+     * success plural. Counting properly fixed the arithmetic and left the deeper problem: with
+     * `setAppDisabled` it counted an enable that succeeded on an app that was *suspended*, so the
+     * report became precisely accurate about a call that did not unfreeze anything. Both halves have
+     * to hold at once — the right call, and only the apps it worked for.
+     */
+    @Test
+    fun `a bulk unfreeze clears both freeze dimensions for every app`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        appRepository.apps.value = listOf(
+            userApp("a", enabled = false),
+            userApp("b", enabled = true, isSuspended = true),
+        )
+        runCurrent()
+        system.calls.clear()
+
+        vm.performMultiAction(
+            MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false), userApp("b", isSuspended = true)))
+        )
+        runCurrent()
+
+        // Asked for unconditionally rather than planned from the flags: `isSuspended` is patched on
+        // exactly one path in this view model and never on a bulk one, so a snapshot is the wrong
+        // thing to plan from. `b` needs the unsuspend and `a` does not; both are asked anyway.
+        assertEquals(
+            listOf(
+                "setAppSuspended:a:false", "setAppDisabled:a:false",
+                "setAppSuspended:b:false", "setAppDisabled:b:false",
+            ),
+            system.calls
+        )
+    }
+
+    @Test
+    fun `a bulk unfreeze stops the rows reading as suspended, not just as disabled`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("a", enabled = false, isSuspended = true))
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false, isSuspended = true))))
+        runCurrent()
+
+        // Patching only `enabled` would leave a thawed app drawn as suspended until the next rescan —
+        // and would leave the *next* unfreeze reading that stale flag, which is the trap this whole
+        // section exists for.
+        val app = vm.uiState.value.allUserApps.first { it.packageName == "a" }
+        assertTrue("enabled again", app.enabled)
+        assertFalse("and not suspended", app.isSuspended)
+    }
+
+    @Test
+    fun `a bulk unfreeze counts only the apps that came back and leaves the rest frozen`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(
+            userApp("a", enabled = false),
+            userApp("b", enabled = false),
+        )
+        runCurrent()
+        events.clear()
+        // The enable is the second half of forceUnfreeze, so failing it fails the whole restore for
+        // that app while the other one succeeds — the mixed outcome the report has to survive.
+        system.failWith("setAppDisabled:b:false", IllegalStateException("no privilege"))
+
+        vm.performMultiAction(
+            MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false), userApp("b", enabled = false)))
+        )
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                AppListEvent.ShowMessage(
+                    bulkResultMessage(
+                        BulkResult(op = BulkOp.UNFREEZE, total = 2, succeeded = 1, failed = 1)
+                    )
+                )
+            ),
+            events
+        )
+        // And the row for the app that stayed frozen must still say so, or the only affordance for
+        // retrying it is gone.
+        assertFalse(vm.uiState.value.allUserApps.first { it.packageName == "b" }.enabled)
+        assertTrue(vm.uiState.value.allUserApps.first { it.packageName == "a" }.enabled)
+    }
+
     // --- GET_INSTALLED_APPS banner ---------------------------------------------------------
 
     @Test
@@ -524,6 +642,151 @@ class AppListViewModelTest {
         assertEquals(
             InstalledAppsPermission.Granted,
             vm.uiState.value.installedAppsPermission
+        )
+    }
+
+    // --- Exporting the list ---------------------------------------------------------------------
+
+    /**
+     * The export writes what is on screen, not what is installed.
+     *
+     * This is the whole promise of the feature and the one place it could quietly go wrong: reading
+     * `allUserApps` instead of `displayedApps` would still produce a valid-looking CSV, just of the
+     * wrong list — and a user who filtered to "sideloaded" before exporting would have no way to
+     * tell from the file that the filter had been ignored.
+     */
+    @Test
+    fun `the export writes the displayed list, not the whole scan`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"), userApp("com.b"), userApp("com.c"))
+        runCurrent()
+        vm.updateSearchQuery("com.b")
+        runCurrent()
+
+        vm.exportList()
+        runCurrent()
+
+        val csv = fileStore.written.values.single()
+        assertEquals(
+            listOf("com.b"),
+            csv.trimEnd('\n').lines().drop(1).map { it.split(",")[1] }
+        )
+    }
+
+    @Test
+    fun `a successful export names where it landed`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"))
+        runCurrent()
+        events.clear()
+
+        vm.exportList()
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                AppListEvent.ShowMessage(
+                    UiText.StringResource(R.string.export_saved, "Downloads/Thor")
+                )
+            ),
+            events
+        )
+        assertEquals(listOf("text/csv"), fileStore.mimes)
+    }
+
+    /**
+     * An empty list is not a failure, and must not be reported as one.
+     *
+     * The two states are reached the same way — a tap on Export — but they mean opposite things:
+     * one says the filter is too narrow, the other says the write broke. Collapsing them into
+     * "Couldn't save the list" sends a user looking for a storage problem that isn't there.
+     */
+    @Test
+    fun `exporting an empty list says so instead of writing a header-only file`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"))
+        runCurrent()
+        vm.updateSearchQuery("nothing matches this")
+        runCurrent()
+        events.clear()
+
+        vm.exportList()
+        runCurrent()
+
+        assertEquals(
+            listOf(AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))),
+            events
+        )
+        assertTrue("nothing should have been written", fileStore.written.isEmpty())
+    }
+
+    @Test
+    fun `a failed write is reported as a failure`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"))
+        runCurrent()
+        events.clear()
+        fileStore.writeFailure = java.io.IOException("no space left on device")
+
+        vm.exportList()
+        runCurrent()
+
+        assertEquals(
+            listOf(AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_failed))),
+            events
+        )
+    }
+
+    /**
+     * Share stages a copy and hands over a URI; it does **not** write to the export destination.
+     *
+     * A share is not a save. The user picked a messaging app, not a folder, and leaving a file in
+     * Downloads on the way there is a side effect nobody asked for — and one they would only find
+     * later, with no idea what put it there.
+     */
+    @Test
+    fun `sharing hands over a uri without writing to the export folder`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"))
+        runCurrent()
+        events.clear()
+
+        vm.shareList()
+        runCurrent()
+
+        val shared = events.single() as AppListEvent.ShareList
+        assertTrue(shared.uri.startsWith("content://fake/thor-apps-"))
+        assertEquals("text/csv", shared.mime)
+        assertTrue("share must not write to the export folder", fileStore.targets.isEmpty())
+    }
+
+    @Test
+    fun `sharing an empty list says so rather than sending a header`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        events.clear()
+
+        vm.shareList()
+        runCurrent()
+
+        assertEquals(
+            listOf(AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))),
+            events
         )
     }
 }

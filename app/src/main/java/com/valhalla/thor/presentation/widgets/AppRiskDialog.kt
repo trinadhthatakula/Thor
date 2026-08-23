@@ -52,11 +52,26 @@ enum class AppRiskAction {
  * package name and freeze it. So treat the blocked branch here as load-bearing, not as advice with
  * a backstop underneath it. See docs/follow-ups/single-app-freeze-tier-gate.md.
  *
- * [AppRiskAction.Freeze] is only ever confirmed for system apps — freezing a user app is a
- * reversible `pm disable` with nothing to warn about, so every caller acts on it directly without
- * asking. The freeze wording therefore only covers the system case, and what it warns about is the
- * device, not the mechanic: `freeze_system_app_desc` is about reboot loops and broken services, so
- * it stays correct now that a system freeze usually disables the package and keeps its data.
+ * Whether a freeze is confirmed at all is not decided here. `freezeNeedsConfirmation` in
+ * `FreezePolicy.kt` owns that, every freeze surface calls it, and the user's
+ * "don't confirm routine freezes" setting is one of its two inputs. It stays outside this file
+ * deliberately: a dialog that decided whether to render itself is a dialog whose callers stop
+ * agreeing about when it appears, and on these paths the confirm button below is enforcement rather
+ * than courtesy. The setting reaches [FreezeTier.NORMAL] only — [FreezeTier.EXPERT] is a verdict
+ * about a specific package with nothing underneath it, and [FreezeTier.BLOCKED] needs this dialog to
+ * refuse at all.
+ *
+ * [AppRiskAction.Freeze] is only ever *raised* for system apps: every user app is
+ * [FreezeTier.NORMAL], and no caller brings a NORMAL app here. The freeze wording therefore only
+ * covers the system case, and what it warns about is the device, not the mechanic:
+ * `freeze_system_app_desc` is about reboot loops and broken services, so it stays correct now that
+ * a system freeze usually disables the package and keeps its data.
+ *
+ * That is not the same as "a user app is never confirmed". `ManageFreezerSheet` asks before *every*
+ * add, user apps included, because joining the watchlist freezes the app immediately and takes
+ * unsaved work with it. It raises its own dialog for that rather than a NORMAL branch here: the
+ * danger it names is the timing, which none of these branches describes, and a NORMAL branch would
+ * put watchlist wording in front of every plain freeze that ever reaches this dialog.
  *
  * [onConfirm] owns the action *and* the dismissal: the dialog does not close itself, so callers
  * can uninstall by intent or by privileged command, and can close the surface underneath, as each

@@ -155,15 +155,12 @@ class FreezerShortcutManager(
         // result reporting. It previously ran sequentially and discarded every Result.
         bulkFreezeRunner.launch(if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE)
 
-    /**
-     * Fire-and-forget rebuild of every pinned per-app icon, for a caller that runs its own
-     * batch instead of going through [BulkFreezeRunner] — currently only Settings'
-     * Unfreeze-all. Runs on this manager's process-lifetime scope, so a finishing caller
-     * cannot truncate it.
-     */
-    fun refreshPinnedShortcutIcons() {
-        scope.launch { rebuildPinnedIcons() }
-    }
+    // The public `refreshPinnedShortcutIcons()` that used to sit here is gone with its only
+    // caller. It existed "for a caller that runs its own batch instead of going through
+    // BulkFreezeRunner", which described Settings' Unfreeze-all until that was rerouted through
+    // the runner — and leaving it would have advertised the bypass as a supported way to write a
+    // new bulk surface. There is no such way: every bulk run goes through the runner, and the
+    // rebuild hangs off its completions in `init`, which is the whole point of that subscription.
 
     /**
      * Repaint every pinned per-app shortcut from live freeze state.

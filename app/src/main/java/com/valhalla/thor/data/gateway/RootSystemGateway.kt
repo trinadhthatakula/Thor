@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import com.valhalla.superuser.Shell
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.rootservice.IThorRootService
@@ -19,12 +20,15 @@ import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
 import com.valhalla.thor.data.source.local.clearCachePaths
 import com.valhalla.thor.data.source.local.forceStopCommand
+import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
+import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.setAppEnabledCommand
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
@@ -251,8 +255,14 @@ class RootSystemGateway(
         }
     }
 
-    // A root check is strictly asynchronous. Blocking the thread for this is unacceptable.
+    // A root check is strictly asynchronous. Invalidate any cached non-root shell so fresh su grants are recognized.
     override suspend fun isRootAvailable(): Boolean {
+        try {
+            val cached = Shell.cachedShell
+            if (cached != null && !cached.isRoot) {
+                cached.close()
+            }
+        } catch (_: Throwable) {}
         return shellRepository.isRootGranted()
     }
 
@@ -349,18 +359,78 @@ class RootSystemGateway(
         )
     }
 
-    override suspend fun clearCache(packageName: String): Result<Unit> {
+    /**
+     * Deletes [packageName]'s cache directories for [thorUserId].
+     *
+     * **Not an override.** This is the only privilege mode that can clear one app's cache, so it
+     * sits off [SystemGateway] rather than on it — the same shape `copyFile` and `getAppPaths`
+     * already have, and `SystemRepositoryImpl` reaches it the same way, behind `isRootAvailable()`.
+     * The Shizuku and Dhizuku implementations that used to satisfy an interface method here are
+     * gone; [SystemGateway.clearAllCaches] records why they could not have worked.
+     *
+     * Deliberately unverified, and deliberately staying that way: as uid 0 `rm -rf` is honest about
+     * its own post-condition — exit 0 means those paths are gone or were never there, non-zero means
+     * a real error — so there is no asynchronous framework call here and no `IPackageDataObserver`
+     * to wait on. A readback would re-`stat` what the shell already reported on.
+     */
+    suspend fun clearCache(packageName: String): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
-        // Deliberately unverified, and deliberately staying that way: as uid 0 `rm -rf` is honest
-        // about its own post-condition — exit 0 means those paths are gone or were never there,
-        // non-zero means a real error — so there is no asynchronous framework call here, and no
-        // IPackageDataObserver to wire up as the reflective cache rungs in the other two gateways
-        // need. A readback would re-`stat` what the shell already reported on.
         val command = "rm -rf ${clearCachePaths(escapedPackage, thorUserId).joinToString(" ")}"
         return runCommand(command)
+    }
+
+    /**
+     * Root's whole-volume clear: `pm trim-caches`, and then a direct sweep **regardless of what the
+     * trim said**.
+     *
+     * The two rungs are not a fallback chain, and treating them as one is what broke this in v1.94.
+     * `pm trim-caches` cannot report a result — `PackageManagerShellCommand.runTrimCaches` waits on
+     * its observer and returns 0 with no regard for how many bytes moved — so there is no success to
+     * fall back *from*. The sweep is the rung that answers for itself, and it always runs.
+     *
+     * The trim still goes first, because it is `PackageManagerService` doing the deleting: it knows
+     * about volumes Thor's globs do not name, it reaches every Android user rather than just this
+     * one, and it leaves PMS's accounting current instead of stale. As uid 0 its `CLEAR_APP_CACHE`
+     * check passes unconditionally (`ActivityManager.checkComponentPermission` short-circuits
+     * `ROOT_UID`). Its failure is worth a log line and nothing more.
+     *
+     * The sweep is also why [targetFreeBytes] being `null` is survivable in this mode: it names the
+     * same three directories per package that [clearCache] does, with the package component globbed,
+     * so root clears caches on a device that has never granted usage access. Shizuku has no such
+     * rung and genuinely cannot proceed without the number.
+     *
+     * **The two rungs do not have the same reach, and the narrower one is the deliberate part.**
+     * `pm trim-caches` is volume-wide, so it takes every Android user with it; the sweep is scoped to
+     * [thorUserId] and leaves a work profile's or a Second Space's caches alone. That is not an
+     * oversight to be widened later — `PerUserCommands` exists because deleting another user's data
+     * from a command that names no user is the defect this codebase kept finding, and an `rm -rf`
+     * across every user's tree would be the largest instance of it. A user's other profiles are not
+     * Thor's to empty on a tile tap taken in this one.
+     */
+    override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+        if (targetFreeBytes != null) {
+            // The verdict is logged and then dropped on the floor, and that is the fix. This used to
+            // `return trim` on success, which made the sweep below unreachable: `runTrimCaches` waits
+            // on its observer and then `return 0`s unconditionally, so `pm trim-caches` exits 0
+            // whether it reclaimed gigabytes or bailed out on `freeStorage`'s first line. Root
+            // therefore reported success on a no-op and never ran the rung that works — measured on
+            // four devices, all answering "there was no cache left to clear".
+            val trim = runCommand("pm trim-caches $targetFreeBytes")
+            if (trim.isFailure) {
+                Logger.w(
+                    "RootSystemGateway",
+                    "pm trim-caches $targetFreeBytes failed: ${trim.exceptionOrNull()?.message}"
+                )
+            }
+        }
+        // The glob is expanded by the shell running as uid 0, not by Thor, so an app whose package
+        // name would need escaping is covered too — `*` never matches a path separator, so this
+        // cannot reach outside the three parents.
+        val sweep = clearCachePaths(escapedPackage = "*", userId = thorUserId).joinToString(" ")
+        return runCommand("rm -rf $sweep")
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(ioDispatcher) {
@@ -466,10 +536,14 @@ class RootSystemGateway(
      *     worth surfacing, not a platform gap worth working around. `-k` is `DELETE_KEEP_DATA`, so
      *     this rung keeps the app's files, settings and granted permissions too; what it does *not*
      *     keep is the per-user installed bit, which is why a package frozen this way reads as gone
-     *     to anything querying without `MATCH_UNINSTALLED_PACKAGES`. Under root this rung is
-     *     unreachable today and a failed rung 1 returns `Result.failure`. The code stays because
-     *     the gate — not this gateway — owns that decision, and a device check could legitimately
-     *     flip the root branch later.
+     *     to anything querying without `MATCH_UNINSTALLED_PACKAGES`. This rung is unreachable today
+     *     and a failed rung 1 returns `Result.failure`. The code stays because the gate — not this
+     *     gateway — owns that decision, and the deferred "remove it for this user anyway" path is
+     *     what will re-open it.
+     *
+     *     Root reached that shape first. The gate now answers `false` for the other two privilege
+     *     modes as well, and both their gateways end a refused disable the way this one does — an
+     *     `IOException` naming what was tried, and the package left installed.
      *
      * Unfreeze has to undo **both** mechanics, in the order install-existing → enable. Devices in
      * the field carry apps frozen by the uninstall-only builds and must still thaw after this ships;
@@ -608,8 +682,9 @@ class RootSystemGateway(
         // whatever the refusal flag says — every refusal observed in the wild, AOSP's own and
         // Xiaomi's alike, keys on the shell uid (2000), and root is uid 0 — so the rung below is
         // unreachable today and the failure is surfaced instead. The flag is still computed and
-        // passed honestly rather than hardcoded to false, so the two gateways call the gate the
-        // same way and a future decision to let root escalate is a change in the policy, not here.
+        // passed honestly rather than hardcoded to false, so all three gateways call the gate the
+        // same way and a future decision to let any of them escalate is a change in the policy,
+        // not here.
         if (!uninstallFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.ROOT,
@@ -1172,30 +1247,12 @@ class RootSystemGateway(
         return runCommand(sb.toString())
     }
 
-    override suspend fun getAppCacheSize(packageName: String): Long {
-        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return 0L
-        }
-        return try {
-            val escapedPackage = packageName.escapeForShell()
-            // The credential-encrypted cache dir for Thor's own user. `/data/data/<pkg>` is an alias
-            // of this path *for user 0* — from a secondary user it sizes the wrong copy — and at
-            // user 0 the two name the same directory, so nothing changes on a single-user device.
-            val result = shellRepository.exec("du -s /data/user/$thorUserId/$escapedPackage/cache")
-            val outputLine = (if (result.isSuccess) result.stdout.firstOrNull() else null) ?: return 0L
-
-            // Output format is usually "12345   /path/to/file"
-            // We parse this in Kotlin, not using brittle 'awk' or 'cut'
-            val sizeInBlocks =
-                outputLine.substringBefore('\t').substringBefore(' ').toLongOrNull() ?: 0L
-
-            // du usually returns 1k blocks
-            sizeInBlocks * 1024
-        } catch (e: Exception) {
-            Logger.e("RootSystemGateway", "Failed to get app cache size for $packageName", e)
-            0L
-        }
-    }
+    // getAppCacheSize() used to sit here, on all three gateways, with no caller in the app. It was
+    // also wrong: it sized only `/data/user/N/<pkg>/cache`, one of the three directories a cache
+    // clear deletes, so any number it produced under-reported by whatever sat in the DE and external
+    // caches. `StorageStatsProvider.cacheBytes` answers the same question from
+    // `StorageStatsManager`, which counts external cache too, needs no privilege beyond the usage
+    // access Thor already manages, and gives the same answer in every privilege mode.
 
     /**
      * Modernized Reinstall Logic.
@@ -1283,7 +1340,54 @@ class RootSystemGateway(
             ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to grant on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
-        return runCommand("pm grant --user $userId $escapedPackage $escapedPerm")
+        val res = runCommand("pm grant --user $userId $escapedPackage $escapedPerm")
+        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
+
+        // The app-ops are a *parallel route* to package visibility, not a follow-up to the grant,
+        // so they run whatever `pm grant` returned. On the ROMs this permission exists for —
+        // MIUI/HyperOS, ColorOS, OriginOS — the AOSP `pm grant` of a vendor-defined permission
+        // frequently exits non-zero while the app-op is the thing that actually opens the package
+        // list, which is why installedAppsAppOpGrantCommands fires three spellings of it. Gating
+        // them on the grant succeeding is what made a Chinese-ROM install come back with Thor as
+        // the only visible app: the grant failed, the app-op was never set, and nothing else in
+        // the app knows how to open that gate.
+        //
+        // `runProbe`, not `runCommand`: at most one of the three spellings exists on any given
+        // device, so two of them failing is the *success* path. `filter` and not `any`, so all three
+        // are still issued — short-circuiting on the first that lands would change what Thor writes.
+        // The accepted command is named, not just counted, because *which* spelling the ROM answered
+        // is the one thing the per-command error lines carried that a bare tally would drop.
+        val appOpGrants = installedAppsAppOpGrantCommands(escapedPackage, userId)
+        val acceptedGrants = appOpGrants.filter { runProbe(it) }
+        val appOpsTaken = acceptedGrants.size
+        Logger.d(
+            "RootSystemGateway",
+            "GET_INSTALLED_APPS app-op grant for $packageName (user $userId): " +
+                "$appOpsTaken of ${appOpGrants.size} spellings accepted" +
+                if (acceptedGrants.isEmpty()) "" else " — ${acceptedGrants.joinToString("; ")}"
+        )
+
+        // The report follows the gate that actually opened, for every package and not just Thor's
+        // own. Restricting this fold to self-grants put a one-way door in the permission manager:
+        // this method is not self-only — PermissionManagerScreen -> TogglePermissionUseCase reaches
+        // it for arbitrary third-party packages — so on the ROMs where `pm grant` refuses and the
+        // app-op is what opens the package list, a third-party grant wrote the op, returned
+        // failure, and left the row reading OFF, because `AppPermission.isGranted` comes from
+        // REQUESTED_PERMISSION_GRANTED and an app-op does not move it. The only gesture the screen
+        // then offers is *grant* again, and revokePermission — the sole issuer of
+        // `appops set … default` — is never reached. Thor had opened a gate, reported that it had
+        // not, and could not close it.
+        //
+        // The cost is the known one and it is the lesser: PermissionManagerScreen flips the row
+        // optimistically, so it reads granted while PackageManager.checkPermission still says
+        // denied until something refreshes it. That disagreement is with the runtime permission,
+        // not with what the app can now do, and unlike the alternative it leaves the toggle able to
+        // undo itself.
+        return if (res.isSuccess || appOpsTaken > 0) {
+            Result.success(Unit)
+        } else {
+            res
+        }
     }
 
     override suspend fun revokePermission(
@@ -1297,7 +1401,29 @@ class RootSystemGateway(
             ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
-        return runCommand("pm revoke --user $userId $escapedPackage $escapedPerm")
+        val res = runCommand("pm revoke --user $userId $escapedPackage $escapedPerm")
+        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
+
+        // The revoke half of the parallel route, and the reason it cannot be left out: the app-op
+        // grant above outlives `pm revoke`, so a revoke that only ran `pm revoke` reported success
+        // while package visibility stayed open — and nothing else in the app could close it. Issued
+        // whatever the revoke returned, for the same reason the grant is: on these ROMs the shell's
+        // verdict on a vendor permission is not the state of the gate.
+        // `runProbe` for the same reason as the grant: `filter` issues all three either way, and the
+        // failures are not errors — see the aggregate below, which names the spelling that landed.
+        val appOpResets = installedAppsAppOpRevokeCommands(escapedPackage, userId)
+        val acceptedResets = appOpResets.filter { runProbe(it) }
+        Logger.d(
+            "RootSystemGateway",
+            "GET_INSTALLED_APPS app-op reset for $packageName (user $userId): " +
+                "${acceptedResets.size} of ${appOpResets.size} spellings accepted" +
+                if (acceptedResets.isEmpty()) "" else " — ${acceptedResets.joinToString("; ")}"
+        )
+
+        // And unlike the grant, the fold stays narrow: `pm revoke` is the verdict. All three app-op
+        // resets failing is the ordinary outcome on any device that does not define this op, so
+        // reading that as a failed revoke would report one on every AOSP device.
+        return res
     }
 
     /**
@@ -1353,6 +1479,19 @@ class RootSystemGateway(
             Result.failure(exception)
         }
     }
+
+    /**
+     * Run [cmd] for its exit code alone, without logging a non-zero one as an error.
+     *
+     * For commands whose failure is the *ordinary* outcome. `installedAppsAppOpGrantCommands` and its
+     * revoke twin each fire three spellings of one app-op precisely because no device defines all
+     * three, so routing them through [runCommand] put two or three `Logger.e` lines — each with a
+     * synthesized `IOException` and a stack trace — into the log on every AOSP device, for the path
+     * that worked. `Command execution failed: appops set …` beside a successful grant is what a
+     * maintainer reads first in a bug report, and the callers' own comments already call it normal.
+     * Both callers log one debug-level aggregate instead, which is the line that carries the answer.
+     */
+    private suspend fun runProbe(cmd: String): Boolean = shellRepository.exec(cmd).isSuccess
 
     private fun getApplicationInfoCompat(packageName: String): android.content.pm.ApplicationInfo? = runCatching {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {

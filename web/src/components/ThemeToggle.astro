@@ -1,46 +1,71 @@
 ---
 /**
- * The site's only interactive control, and — together with the blocking script
- * in ThemeScript.astro — its only client JavaScript.
+ * Interactive theme controls for Thor web.
  *
- * It cycles system → light → dark rather than toggling two states, so a visitor
- * who lands in the wrong mode can always get back to "whatever my OS says"
- * without clearing site data.
+ * Provides:
+ * 1. Theme toggle cycling System → Light → Dark.
+ * 2. Dedicated AMOLED toggle for pure OLED black (#000000) under Dark theme.
  *
- * "System" is `thor-theme` absent from storage — NOT `data-theme` absent from the
- * DOM. The two look equivalent, because `:root` plus the `prefers-color-scheme`
- * query resolve the same colours either way, but tokens.css keys AMOLED on
- * `[data-theme='dark'][data-amoled='true']` and that selector cannot match
- * without a concrete `data-theme`. ThemeScript.astro documents this as the one
- * thing a toggle must not do. So `paint` resolves the OS preference itself and
- * always writes a concrete value — which then makes this component responsible
- * for keeping up with an OS change while in system mode, because the CSS media
- * query no longer gets the chance to. ThemeScript runs once, before paint, and
- * never again; the `change` listener below is the other half of that contract.
+ * Adheres strictly to the theme runtime contract (see ThemeScript.astro & theme-runtime.test.ts):
+ * - Never removes data-theme attribute (writes concrete 'light' or 'dark').
+ * - Matches window.matchMedia('(prefers-color-scheme: light)').
+ * - Listens to OS change events while in system mode.
+ * - Pins AMOLED to dark (theme === 'dark' && amoled === 'true').
  */
 ---
-<button
-  id="theme-toggle"
-  type="button"
-  class="theme-toggle"
-  aria-live="polite"
-  data-label-system="Theme: system"
-  data-label-light="Theme: light"
-  data-label-dark="Theme: dark"
->
-  <span id="theme-toggle-label">Theme</span>
-</button>
+<div class="theme-cluster" role="group" aria-label="Appearance and color theme">
+  <button
+    id="theme-toggle"
+    type="button"
+    class="theme-toggle"
+    aria-live="polite"
+    data-label-system="Theme: system"
+    data-label-light="Theme: light"
+    data-label-dark="Theme: dark"
+    title="Toggle color theme (System / Light / Dark)"
+  >
+    <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+    <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+    </svg>
+    <span id="theme-toggle-label">Theme</span>
+  </button>
+
+  <button
+    id="amoled-toggle"
+    type="button"
+    class="amoled-toggle"
+    aria-live="polite"
+    title="Toggle pure black AMOLED mode"
+    aria-label="Toggle pure black AMOLED mode"
+  >
+    <svg class="amoled-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+      <path d="M19 3v4"></path>
+      <path d="M21 5h-4"></path>
+    </svg>
+    <span id="amoled-toggle-label">AMOLED</span>
+  </button>
+</div>
 
 <script is:inline>
   ;(function () {
     var btn = document.getElementById('theme-toggle')
     if (!btn) return
     var label = document.getElementById('theme-toggle-label')
+    var amoledBtn = document.getElementById('amoled-toggle')
     var root = document.documentElement
     var order = ['system', 'light', 'dark']
-    // Asking for light and defaulting everything else to dark, exactly as
-    // ThemeScript does: `no-preference` was dropped from Media Queries Level 5,
-    // so a machine with no preference answers `light` to a dark query.
     var media = window.matchMedia('(prefers-color-scheme: light)')
 
     function current() {
@@ -48,41 +73,46 @@
       try {
         stored = localStorage.getItem('thor-theme')
       } catch (_) {
-        // Private browsing and some embedded webviews throw on any access.
-        // Falling back to "system" is correct: the OS preference still applies.
+        // Private browsing refusal; fallback to system.
       }
       return order.indexOf(stored) === -1 ? 'system' : stored
+    }
+
+    function isAmoledPreferred() {
+      try {
+        return localStorage.getItem('thor-amoled') === 'true'
+      } catch (_) {
+        return false
+      }
     }
 
     function paint(mode) {
       var theme = mode === 'system' ? (media.matches ? 'light' : 'dark') : mode
       root.setAttribute('data-theme', theme)
-      // AMOLED is nested under dark, mirroring the app, so leaving a stale
-      // 'true' set while the page is light would switch black back on the
-      // moment the visitor cycles to dark — from a preference they never
-      // expressed in this session.
-      var amoled = null
-      try {
-        amoled = localStorage.getItem('thor-amoled')
-      } catch (_) {
-        // Same storage refusal as above; AMOLED off is the safe answer.
+      var amoled = isAmoledPreferred() ? 'true' : 'false'
+      var isAmoledActive = theme === 'dark' && amoled === 'true'
+      root.setAttribute('data-amoled', isAmoledActive ? 'true' : 'false')
+
+      if (label) {
+        label.textContent = btn.getAttribute('data-label-' + mode) || 'Theme'
       }
-      root.setAttribute('data-amoled', theme === 'dark' && amoled === 'true' ? 'true' : 'false')
-      if (label) label.textContent = btn.getAttribute('data-label-' + mode) || 'Theme'
+
+      if (amoledBtn) {
+        if (isAmoledActive) {
+          amoledBtn.classList.add('is-active')
+          amoledBtn.setAttribute('aria-pressed', 'true')
+        } else {
+          amoledBtn.classList.remove('is-active')
+          amoledBtn.setAttribute('aria-pressed', 'false')
+        }
+      }
     }
 
     paint(current())
 
-    // Only while following the system: in light or dark the visitor has made an
-    // explicit choice and an OS change must not override it.
     function onSystemChange() {
       if (current() === 'system') paint('system')
     }
-    // No addListener fallback. Safari shipped addEventListener on MediaQueryList
-    // in 14, and base.css already uses `aspect-ratio`, which is Safari 15 — so
-    // anything old enough to need the deprecated call cannot lay the page out
-    // anyway, and the fallback would only be dead code drawing a deprecation
-    // warning out of `astro check`.
     media.addEventListener('change', onSystemChange)
 
     btn.addEventListener('click', function () {
@@ -90,31 +120,92 @@
       try {
         if (next === 'system') localStorage.removeItem('thor-theme')
         else localStorage.setItem('thor-theme', next)
-      } catch (_) {
-        // Storage refused; the change still applies for this page view.
-      }
+      } catch (_) {}
       paint(next)
     })
+
+    if (amoledBtn) {
+      amoledBtn.addEventListener('click', function () {
+        var mode = current()
+        var resolvedTheme = mode === 'system' ? (media.matches ? 'light' : 'dark') : mode
+        var currentlyAmoled = isAmoledPreferred() && resolvedTheme === 'dark'
+        var nextAmoled = !currentlyAmoled
+
+        try {
+          localStorage.setItem('thor-amoled', nextAmoled ? 'true' : 'false')
+          if (nextAmoled && resolvedTheme !== 'dark') {
+            localStorage.setItem('thor-theme', 'dark')
+          }
+        } catch (_) {}
+
+        paint(current())
+      })
+    }
   })()
 </script>
 
 <style>
-  .theme-toggle {
-    font-family: var(--font-mono);
-    font-size: var(--text-label-large);
-    color: var(--on-surface-variant);
-    background: transparent;
-    /* --outline, not --outline-variant: the hairline is 1.6:1 in light and
-       2.1:1 in dark, fine as a decorative rule and not fine as the only thing
-       telling you where a button ends. */
-    border: 1px solid var(--outline);
+  .theme-cluster {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 32px;
+    box-sizing: border-box;
+    background: var(--surface-container-low);
+    border: 1px solid var(--outline-variant);
     border-radius: var(--radius-full);
-    padding: var(--space-3xs) var(--space-xs);
-    cursor: pointer;
+    padding: 2px;
   }
 
-  .theme-toggle:hover {
+  .theme-toggle,
+  .amoled-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3xs);
+    height: 26px;
+    box-sizing: border-box;
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+    color: var(--on-surface-variant);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    padding: 0 var(--space-xs);
+    cursor: pointer;
+    line-height: 1;
+    transition: color var(--motion-duration-fast) ease, background var(--motion-duration-fast) ease, border-color var(--motion-duration-fast) ease;
+  }
+
+  .theme-toggle:hover,
+  .amoled-toggle:hover {
     color: var(--on-surface);
     background: var(--surface-container-high);
+  }
+
+  .amoled-toggle.is-active {
+    color: var(--primary);
+    background: var(--surface-container-highest);
+    border-color: var(--outline);
+  }
+
+  .theme-icon,
+  .amoled-icon {
+    flex-shrink: 0;
+  }
+
+  /* Light theme: show sun icon; Dark theme: show moon icon */
+  :root[data-theme='light'] .theme-icon--moon {
+    display: none;
+  }
+  :root[data-theme='light'] .theme-icon--sun {
+    display: block;
+  }
+
+  :root[data-theme='dark'] .theme-icon--sun {
+    display: none;
+  }
+  :root[data-theme='dark'] .theme-icon--moon {
+    display: block;
   }
 </style>

@@ -17,22 +17,23 @@
     "check:a11y": "node scripts/check-a11y.mjs dist",
     "check:sitemap": "node scripts/check-sitemap.mjs dist",
     "check:screenshots": "node scripts/check-screenshots.mjs dist",
+    "submit:indexnow": "node scripts/submit-indexnow.mjs",
     "test": "vitest run",
     "build": "npm run check:types && astro build && npm run check:links && npm run check:claims && npm run check:markup && npm run check:sitemap && npm run check:screenshots"
   },
   "dependencies": {
-    "@astrojs/mdx": "^7.0.5",
+    "@astrojs/mdx": "^7.0.6",
     "@astrojs/sitemap": "^3.7.3",
-    "astro": "^7.1.6"
+    "astro": "^7.2.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@astrojs/compiler": "^4.0.0",
-    "@types/node": "^26.1.2",
-    "axe-core": "^4.12.1",
+    "@types/node": "^26.2.0",
+    "axe-core": "^4.13.0",
     "jsdom": "^30.0.1",
-    "smol-toml": "^1.7.1",
+    "smol-toml": "^1.8.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

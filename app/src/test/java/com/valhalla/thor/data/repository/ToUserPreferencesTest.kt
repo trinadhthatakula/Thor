@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.preferencesOf
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
@@ -106,7 +107,65 @@ class ToUserPreferencesTest {
         assertEquals(SortOrder.ASCENDING, prefs.appSortOrder)
         assertEquals(FilterType.Source, prefs.appFilterType)
         assertEquals(ThemeMode.SYSTEM, prefs.themeMode)
+        assertEquals(DefaultTab.HOME, prefs.defaultTab)
         assertFalse(prefs.hasShownDisabledAppsPrompt)
         assertFalse(prefs.biometricLockEnabled)
+    }
+
+    /** Every entry round-trips, so a rename of one is caught here rather than on a user's device. */
+    @Test
+    fun `each default tab survives the write-read round trip`() {
+        for (tab in DefaultTab.entries) {
+            val settings = preferencesOf(Keys.DEFAULT_TAB to tab.name)
+
+            assertEquals(tab, settings.toUserPreferences().defaultTab)
+        }
+    }
+
+    /**
+     * Downgrade safety, and worth more here than for the other enums in this file.
+     *
+     * This value is read once, before the first frame, and decides which screen the app opens on: a
+     * settings file written by a newer Thor — or restored from one by Auto Backup — must degrade to
+     * Home rather than throw, because a throw on this path is a launch crash, not a wrong-looking
+     * setting.
+     */
+    @Test
+    fun `an unknown default tab degrades to Home`() {
+        val fromTheFuture = preferencesOf(Keys.DEFAULT_TAB to "EXTENSIONS")
+
+        assertEquals(DefaultTab.HOME, fromTheFuture.toUserPreferences().defaultTab)
+    }
+
+    @Test
+    fun `default action order and visibility are present on empty stores`() {
+        val prefs = emptyPreferences().toUserPreferences()
+
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.DEFAULT_ORDER, prefs.appInfoActionsOrder)
+        assertTrue(prefs.hiddenAppInfoActions.isEmpty())
+    }
+
+    @Test
+    fun `custom action order and hidden set are correctly parsed`() {
+        val settings = preferencesOf(
+            Keys.APP_INFO_ACTIONS_ORDER to "SETTINGS,OPEN,CLEAR_CACHE",
+            Keys.HIDDEN_APP_INFO_ACTIONS to setOf("CLEAR_DATA", "UNINSTALL")
+        )
+
+        val prefs = settings.toUserPreferences()
+
+        // First 3 should match custom order, rest appended in default order
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.SETTINGS, prefs.appInfoActionsOrder[0])
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.OPEN, prefs.appInfoActionsOrder[1])
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.CLEAR_CACHE, prefs.appInfoActionsOrder[2])
+        assertEquals(com.valhalla.thor.domain.model.AppInfoActionId.entries.size, prefs.appInfoActionsOrder.size)
+
+        assertEquals(
+            setOf(
+                com.valhalla.thor.domain.model.AppInfoActionId.CLEAR_DATA,
+                com.valhalla.thor.domain.model.AppInfoActionId.UNINSTALL
+            ),
+            prefs.hiddenAppInfoActions
+        )
     }
 }

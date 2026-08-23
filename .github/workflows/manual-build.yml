@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v5.6.0
+        uses: actions/setup-java@v5.7.0
         with:
           distribution: 'zulu'
           java-version: '21'
@@ -55,8 +55,8 @@ jobs:
       - name: Read Version Info
         id: version_info
         run: |
-          echo "VERSION_NAME=$(cat version_name.txt)" >> $GITHUB_ENV
-          echo "VERSION_CODE=$(cat version_code.txt)" >> $GITHUB_ENV
+          echo "VERSION_NAME=$(cat version_name.txt)" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(cat version_code.txt)" >> "$GITHUB_ENV"
 
       - name: Upload APKs to GitHub Actions
         uses: actions/upload-artifact@v7

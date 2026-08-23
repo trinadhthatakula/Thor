@@ -13,7 +13,6 @@ import com.valhalla.thor.data.source.local.DataClearOutcome
 import com.valhalla.thor.data.source.local.awaitDataObserver
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
-import com.valhalla.thor.data.source.local.clearCachePaths
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
@@ -897,107 +896,32 @@ object Shizuku {
     }
 
     /**
-     * Deletes [packageName]'s cache directories **for [thorUserId]** — shell first, then a
-     * hidden-API `IPackageManager` call.
+     * Trims every app's cache until the volume reports [targetFreeBytes] free, via `pm trim-caches`.
      *
-     * The two reflection overloads used to be tried in the opposite order, and that order made the
-     * user id decorative. `deleteApplicationCacheFiles(String, IPackageDataObserver)` is declared on
-     * `IPackageManager` on every release this app runs on (28 through 37), so the
-     * `NoSuchMethodException` that was supposed to reach the `…AsUser` branch never fired: the only
-     * branch naming a user was unreachable, and the branch that ran named none. It could not — that
-     * overload takes no user id, and `PackageManagerService`'s implementation of it is
-     * `deleteApplicationCacheFilesAsUser(packageName, UserHandle.getCallingUserId(), observer)`,
-     * which resolves the user from the *caller*. The caller here is the Shizuku server, at shell uid
-     * 2000 in the ordinary setup, so from a work profile the reachable rung cleared **user 0's**
-     * cache for a package the user selected in profile 10. Hence the reorder rather than an extra
-     * argument: `…AsUser` first, and the calling-user overload kept only as the answer to "this
-     * release does not declare the symbol".
+     * This replaced a per-package `deleteApplicationCacheFilesAsUser`, and the replacement is not a
+     * refactor — the per-package call cannot work here at all. `PackageManagerService` guards it with
+     * `INTERNAL_DELETE_CACHE_FILES`, a `signature`-level permission that only a platform-signed
+     * package can hold; `pm grant` refuses it as "not a changeable permission type" and
+     * `com.android.shell` never requests it, so there is nothing for Shizuku to delegate. The call
+     * arrives at PMS as uid 2000 and is answered with `Calling uid 2000 does not have
+     * android.permission.INTERNAL_DELETE_CACHE_FILES, silently ignoring` — accepted, then dropped.
+     * That is why the observer rung existed and why it only ever timed out.
      *
-     * The fallback is deliberately gated on `NoSuchMethodException` alone and not on `Exception`. A
-     * *refusal* of the per-user call must not fall through to a call that clears a different user's
-     * cache and reports it as this user's success — the failure the reorder exists to remove.
+     * `pm trim-caches` takes the other door: it calls `freeStorage`, which PMS gates on
+     * `CLEAR_APP_CACHE` — a permission shell *does* hold. The cost is that the caller no longer picks
+     * the victim. PMS evicts by LRU across every app on the volume, system and user alike, until the
+     * target is met, so this is a whole-device operation and the UI must say so before running it.
      *
-     * **Both rungs now answer for themselves.** The shell rung always could: `rm -rf` exits 0 or it
-     * does not. The reflection rung could not, and used to say `true` whenever the binder call
-     * returned without throwing — which is not the same claim at all, because the call is
-     * asynchronous. `PackageManagerService` posts the work to its own handler and reports on an
-     * `IPackageDataObserver`, and that argument was `null`. At shell uid PMS also *accepts* cache
-     * clears that it then declines: it logs that it is silently ignoring the request, deletes
-     * nothing, and the old `true` reported that as a success. The observer is the only place that
-     * refusal is visible, so it is now wired up and waited on — see `awaitDataObserver`.
+     * [targetFreeBytes] must come from `StorageStatsProvider.cacheTrimTargetBytes` and not from a
+     * round number. `freeStorage` is an escalating ladder on which app cache is only rungs 4 and 8; a
+     * target it cannot satisfy walks on to prune unused static shared libraries and to uninstall
+     * instant apps, neither of which is cache. The provider's KDoc carries the full argument.
      *
-     * What that changes for a caller: `true` means a verdict of "cleared" actually arrived. A
-     * refusal, a timeout, and a transport that never reached PMS all give `false`, and are told
-     * apart in the log rather than in the return type, because every consumer of this is a Boolean.
-     * `false` is therefore the honest answer to "could not confirm" as well as to "refused" — a
-     * cache clear repeated costs nothing, a false "done" costs the user the chance to try a
-     * privilege mode that would have worked.
-     *
-     * Still not a byte count. This Boolean must not be turned into "N bytes freed"; re-measure the
-     * cache if the number matters.
+     * Returns whether the command exited 0. Not a byte count — `pm trim-caches` prints nothing on
+     * success, so a caller that wants a number must re-measure `totalCacheBytes` either side.
      */
-    // PrivateApi: hidden-API reflection (IPackageDataObserver) is intentional — the core privilege
-    // mechanism, guarded by the :bypass VMRuntime unseal.
-    // SdCardPath: the absolute /data and /storage paths are intentional for privileged file ops,
-    // not app-scoped storage.
-    @SuppressLint("PrivateApi", "SdCardPath")
-    fun clearCache(packageName: String): Boolean {
-        // 1. Try shell first. The `/data/data/<pkg>/cache` and `/sdcard/Android/data/<pkg>/cache`
-        // aliases that used to sit either side of these two are gone: they are not extra coverage,
-        // they are the same directories *for user 0*, so from a secondary user they deleted another
-        // user's cache. At user 0 they resolve to exactly what remains.
-        val command =
-            "rm -rf ${clearCachePaths(packageName.escapeForShell(), thorUserId).joinToString(" ")}"
-        val shellResult = execute(command)
-        if (shellResult.first == 0) return true
-
-        // 2. Fallback to reflection, and this is the rung that matters under Shizuku: shell uid 2000
-        // cannot `rm -rf /data/data/<pkg>/cache`, so rung 1 normally fails and this is the real
-        // operation. It is also the one PMS can accept and then quietly decline, which is why the
-        // observer is no longer null — `awaitDataObserver` builds a real IPackageDataObserver.Stub,
-        // hands it to the invoke, and waits for onRemoveCompleted rather than for the invoke to
-        // return. Only a verdict of "cleared" gets out of here as true.
-        val outcome = runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package")
-            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
-
-            awaitDataObserver("Shizuku", packageName) { observer ->
-                try {
-                    Bypass.invoke<Any?>(
-                        pm.javaClass,
-                        pm,
-                        "deleteApplicationCacheFilesAsUser",
-                        arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
-                        packageName,
-                        thorUserId,
-                        observer
-                    )
-                } catch (_: NoSuchMethodException) {
-                    // No user id to give: this overload derives one from the calling uid. Reached
-                    // only if a release stops declaring the AsUser variant, which none in 28..37
-                    // does. The observer still reports honestly, but about the *calling* user's
-                    // cache — shell's, not necessarily Thor's — so an UNVERIFIED from this branch
-                    // is doubly uninformative and a CLEARED from it is not a claim about the user
-                    // the caller asked for.
-                    Bypass.invoke<Any?>(
-                        pm.javaClass,
-                        pm,
-                        "deleteApplicationCacheFiles",
-                        arrayOf(String::class.java, observerClass),
-                        packageName,
-                        observer
-                    )
-                }
-            }
-        }.getOrElse { e ->
-            // Only the binder lookup can land here; awaitDataObserver absorbs whatever the invokes
-            // themselves throw and answers UNVERIFIED for it.
-            Logger.e("Shizuku", "clearCache($packageName): could not reach IPackageManager", e)
-            DataClearOutcome.UNVERIFIED
-        }
-
-        return outcome == DataClearOutcome.CLEARED
-    }
+    fun trimCaches(targetFreeBytes: Long): Boolean =
+        execute("pm trim-caches $targetFreeBytes").first == 0
 
     /**
      * Wipes [packageName]'s data **for [thorUserId]** — `pm clear` first, then a hidden-API

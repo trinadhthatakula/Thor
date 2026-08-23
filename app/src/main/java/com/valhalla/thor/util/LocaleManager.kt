@@ -20,7 +20,7 @@ import android.app.LocaleManager as AndroidLocaleManager
  * - **28–32** — [AppLocale], which records the tag and has each Thor component wrap its own base
  *   context in a `Configuration` carrying it. This replaces `AppCompatDelegate.setApplicationLocales`,
  *   which applies a locale only by recreating the AppCompat activities it tracks; Thor has none, so
- *   that call was a silent no-op and four of the five shipped translations were unreachable below
+ *   that call was a silent no-op and every shipped translation but English was unreachable below
  *   Android 13. See [AppLocale] for why the replacement is shaped the way it is.
  */
 @Single
@@ -34,13 +34,15 @@ class LocaleManager(private val context: Context) {
      * for this" and "this is what we had written down last time".
      *
      * The short-circuit is [isRedundantLanguageRequest], which compares on the **language subtag**
-     * rather than the whole tag. Below 33, re-recording an equal tag would fire
-     * [AppLocale.appliedTag] and recreate the visible activity for no change. On 33+ it stops a `fr`
-     * request from flattening the `fr-FR` the system language screen handed back, which is a real
-     * narrowing — but only that one. It does **not** protect a *different* language chosen in that
-     * screen; a whole-tag comparison and a language-subtag comparison both report `es` and `fr` as a
-     * disagreement, and this method resolves every disagreement in the preference's favour because
-     * that is what its one caller now means. [reconcileOnStartup] is where the other reading lives.
+     * rather than the whole tag — except for the languages Thor ships twice, where the region
+     * decides too, so that Português → Português (Brasil) is not mistaken for a no-op. Below 33,
+     * re-recording an equal tag would fire [AppLocale.appliedTag] and recreate the visible activity
+     * for no change. On 33+ it stops a `fr` request from flattening the `fr-FR` the system language
+     * screen handed back, which is a real narrowing — but only that one. It does **not** protect a
+     * *different* language chosen in that screen; a whole-tag comparison and a language-subtag
+     * comparison both report `es` and `fr` as a disagreement, and this method resolves every
+     * disagreement in the preference's favour because that is what its one caller now means.
+     * [reconcileOnStartup] is where the other reading lives.
      *
      * A request for "System default" is deliberately *not* decided by that comparison — see
      * [isRedundantLanguageRequest] for why a bare subtag comparison would swallow it.

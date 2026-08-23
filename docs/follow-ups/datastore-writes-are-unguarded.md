@@ -1,7 +1,66 @@
 # The DataStore **write** path has no guard
 
-**Filed:** 2026-08-04 (UTC) · **Tier 3** — filed, decision still open · **Effort:** small-to-medium
+**Filed:** 2026-08-04 (UTC) · **Effort:** small-to-medium
 **Raised by:** PR #339, which guarded the *read* path and deliberately stopped there.
+
+> ## ✅ SHIPPED — band B #13, 2026-08-08
+>
+> Kept rather than deleted because it is the argument under the design, and because the count below
+> is the thing a future sweep would otherwise re-derive. Four corrections to what is written here:
+>
+> - **29 `edit { }` blocks, not 25** — across **28** write functions and **33** call sites, with
+>   **zero** `try` blocks among them. The 25 was a count taken before band A added three more.
+> - **The retry question resolved to *no retry*.** `DataStore.edit` already serialises writes and
+>   re-reads the current value inside the transform, so a second attempt re-runs the same disk
+>   operation against the same full disk. The read path retries because a transient read can
+>   genuinely succeed on the next try; a write that threw `IOException` here has nothing to wait for.
+> - **One catch covers corruption too.** `androidx.datastore.core.CorruptionException` extends
+>   `IOException` (`javap`-verified), so the narrow catch is complete. It matters that it *is*
+>   narrow: `CancellationException` is not an `IOException`, so structured concurrency survives
+>   without the rethrow a `catch (Throwable)` would have needed.
+> - **Two setters return `Boolean` instead of latching.** `setBiometricLock` and `setLanguage` have
+>   callers with something specific to say, and a failed write must not both raise the generic
+>   notice and let the caller raise its own — hence `announce = false` on those two rather than a
+>   second latch.
+>
+> What shipped: `guardedWrite` on `PreferenceRepositoryImpl`, a `settingsWriteFailed` latch on the
+> `PreferenceRepository` interface with an `acknowledgeSettingsWriteFailure()` beside it, five new
+> strings in all five locales, `PreferenceWriteGuardTest`, and six tests in `SecurityViewModelTest`.
+>
+> Two things the first cut of this got wrong, both caught in review before merge:
+>
+> - **The latch outlives the ViewModel that reads it.** It sits on the repository, which is a
+>   singleton, while the only collector is `SecurityViewModel`. Exit finishes the activity without
+>   ending the process, so the next launch built a fresh ViewModel that replayed a notice already
+>   delivered. Hence the acknowledgement — the latch tracks *an unreported failure*, not *a broken
+>   store*, so a later dropped write raises it again.
+> - **`setBiometricLock` returns a `Boolean` that `SettingsViewModel` discarded.** Combined with
+>   `announce = false`, a failed app-lock write from the Settings screen reached the user through no
+>   channel at all — a *quieter* failure than the crash it replaced, for the one preference whose
+>   failure the interface says must be heard in its own words. It now names which way the lock is
+>   actually facing (`biometric_lock_not_saved_still_off` / `..._still_on`).
+>
+> Three more came from CodeRabbit on the open PR, all in the copy rather than the code:
+>
+> - **C1 and C1R described the mechanism, not the outcome.** Both said a freeze is
+>   `pm disable --user` and nothing else. The three gateways each try *both* a shell disable and
+>   `IPackageManager.setApplicationEnabledSetting` by reflection, and they disagree on the order —
+>   Shizuku reflects first, Root shells out first. The rules now assert the behaviour that is
+>   actually invariant: a freeze disables in place and never removes.
+> - **The first rewrite of the status-chip sentence was wrong in the other direction.** "Nothing
+>   Thor does now puts an app in that state" ignores Uninstall and Debloat, which still run
+>   `pm uninstall --user N`. Only the *freeze* rung stopped reaching it.
+> - **C16 missed the passive voice and a bare `not` exempted true claims.** "A system app a freeze
+>   removed for your Android user" — the exact sentence this PR had to fix — matched no pattern,
+>   and any unrelated `not` in the 60-character window switched the rule off for that sentence. A
+>   fifth pattern covers the passive, and the negation half of `unless` now has to attach to the
+>   removal itself. Its first draft was 120 chars wide and caught a true two-clause sentence on the
+>   download page, which is why it is `[^.;:]{0,40}` — the claim is the removal being predicated of
+>   the freeze, and that puts the two words next to each other.
+>
+> `SettingsViewModel` is still not JVM-testable — `LocaleManager` is a concrete class taking a
+> `Context` — so both of its branches are covered by reading plus a repository-level assertion that
+> neither reporting setter raises the generic notice. That seam is the one piece of this left undone.
 
 ## What #339 fixed, and what it did not
 

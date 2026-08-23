@@ -1,18 +1,79 @@
 # Thor — https://thor.trinadhthatakula.com
+# Open-source Android App Manager
 #
-# Everything on this site is public documentation and marketing copy, so the
-# default is "crawl it all". The one exception is /styleguide, which is a
-# development-only surface: per the plan it renders under `astro dev` and its
-# getStaticPaths returns [] when import.meta.env.PROD, so it is not in a
-# production build at all. The rule below is belt and braces — if the PROD guard
-# ever regresses, a token dump should still not be an entry point from search.
+# A crawler obeys the groups whose token it matches, combining their rules if there is more than
+# one, and falls back to the `*` group only when *no* named group matches it (RFC 9309, §2.2.1).
+# So a named group containing only `Allow: /` does not inherit the wildcard group's rules — the
+# wildcard group is never selected for it — and grants the access the wildcard withholds. That is
+# how /styleguide and the follow-up pages were open to every crawler named here except Googlebot,
+# Bingbot and four of the AI agents: their groups simply left the Disallow lines out. Each token
+# below appears in exactly one group, so nothing here relies on the combining rule.
+#
+# Consecutive `User-agent:` lines share one rule block, so each class of crawler states the rules
+# once and a token added to a block picks them up automatically.
 
 User-agent: *
 Allow: /
 Disallow: /styleguide
+Disallow: /follow-ups
+Disallow: /follow-ups-report
 
-# Emitted by @astrojs/sitemap, which filters /styleguide out a second time. This
-# is the one line here that can be silently wrong — a 404 sitemap reads to a
-# crawler as no sitemap at all, with no error anywhere — so the filename is
-# asserted against dist by `sitemap.test.ts` rather than trusted.
+# Primary Search Engine Crawlers
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: Slurp
+User-agent: DuckDuckBot
+User-agent: Baiduspider
+User-agent: YandexBot
+User-agent: Sogou web spider
+User-agent: Yeti
+Allow: /
+Disallow: /styleguide
+Disallow: /follow-ups
+Disallow: /follow-ups-report
+
+# AI Search & Retrieval Crawlers (GEO / Real-Time LLM Search)
+User-agent: OAI-SearchBot
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-Web
+User-agent: PerplexityBot
+User-agent: Google-Extended
+User-agent: Applebot
+User-agent: Applebot-Extended
+User-agent: Meta-ExternalAgent
+User-agent: Meta-ExternalFetcher
+User-agent: TavilyBot
+User-agent: ExaBot
+User-agent: MistralBot
+User-agent: YouBot
+User-agent: DuckAssistBot
+User-agent: cohere-ai
+User-agent: Amazonbot
+User-agent: Bytespider
+User-agent: CCBot
+User-agent: Diffbot
+Allow: /
+Disallow: /styleguide
+Disallow: /follow-ups
+Disallow: /follow-ups-report
+
+# Social & Messaging Link Preview Crawlers
+#
+# Deliberately unrestricted, unlike every group above. These fetch a single URL because a person
+# just pasted it into a chat, so a Disallow here does not keep a page out of an index — it only
+# strips the preview from a link someone chose to share, including the internal ones.
+User-agent: LinkedInBot
+User-agent: Twitterbot
+User-agent: facebookexternalhit
+User-agent: Slackbot
+User-agent: Slackbot-LinkExpanding
+User-agent: TelegramBot
+User-agent: Discordbot
+User-agent: WhatsApp
+Allow: /
+
+# Sitemaps & Machine-Readable Indexes
 Sitemap: https://thor.trinadhthatakula.com/sitemap-index.xml
+# LLM Context: https://thor.trinadhthatakula.com/llms.txt

@@ -3,11 +3,16 @@
 
 package com.valhalla.thor.presentation.main
 
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
+import com.valhalla.thor.data.backup.job.JobSheetTarget
+import com.valhalla.thor.data.backup.job.JobSheetTargets
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
@@ -21,6 +26,7 @@ import com.valhalla.thor.presentation.FakeContext
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
+import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.blockedSystemApp
 import com.valhalla.thor.presentation.systemApp
@@ -35,12 +41,14 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.util.UUID
 
 /**
  * Behaviour tests for [MainViewModel] — the one view model in `presentation/` that can be built on
@@ -103,18 +111,31 @@ class MainViewModelTest {
     private fun TestScope.viewModel(
         preferenceRepository: FakePreferenceRepository = prefs,
         runner: BackupRunner = backupRunner(preferenceRepository),
+        // Granted by default because that is the case every other test in this file is indifferent
+        // to: with the op held, an unmeasured clear is described without mentioning permissions. The
+        // one test that cares about the ungranted branch passes false.
+        usageAccess: Boolean = true,
+        // A real one, not a fake: `JobSheetTargets` is a plain in-memory holder with no Android type
+        // on it, so a test can drive a notification tap by calling `requestOpen` on the same instance
+        // the view model is watching. Defaulted so the tests that predate it read unchanged.
+        sheetTargets: JobSheetTargets = JobSheetTargets(),
+        // Only the two stop-reporting tests pass one: they need to act from *inside* the share loop,
+        // which is the one moment a test body cannot otherwise reach. See FakeAppBundleBuilder.onBuild.
+        bundleBuilder: FakeAppBundleBuilder = FakeAppBundleBuilder(),
     ): MainViewModel {
         val vm = MainViewModel(
             manageAppUseCase = ManageAppUseCase(system),
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             shareAppUseCase = ShareAppUseCase(
-                FakeAppBundleBuilder(),
+                bundleBuilder,
                 FakeAppBundleFileStore(),
                 mainDispatcherRule.dispatcher
             ),
             preferenceRepository = preferenceRepository,
             freezerRepository = freezer,
             backupRunner = runner,
+            usageAccessGate = FakeUsageAccessGate(usageAccess),
+            jobSheetTargets = sheetTargets,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
@@ -250,9 +271,52 @@ class MainViewModelTest {
 
         // Reusing the freeze filter for unfreeze is the tempting simplification, and it would strand
         // every blocked app that is already frozen — the exact state a user needs a way out of.
-        assertEquals(listOf("setAppDisabled:com.blocked:false"), system.calls)
+        //
+        // Both dimensions, unconditionally: this app is only *disabled*, so the unsuspend is redundant
+        // and asked for anyway. See the round-trip test below for what reading the flags instead costs.
+        assertEquals(
+            listOf("setAppSuspended:com.blocked:false", "setAppDisabled:com.blocked:false"),
+            system.calls
+        )
         assertEquals(1, vm.uiState.value.freezeLoggerState.total)
     }
+
+    @Test
+    fun `apps suspended by a bulk freeze are actually unsuspended by the bulk unfreeze after it`() =
+        runTest {
+            val vm = viewModel()
+            // One selection, held across both actions — which is what the UI does, and the whole
+            // point: nothing patches `isSuspended` on these objects when the freeze suspends them, so
+            // by the second action the flags are stale and still read "active".
+            val selection = listOf(userApp("com.a"), userApp("com.b"))
+
+            vm.onMultiAppAction(MultiAppAction.Freeze(selection, useSuspend = true))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("setAppSuspended:com.a:true", "setAppSuspended:com.b:true"),
+                system.calls
+            )
+            system.calls.clear()
+
+            vm.onMultiAppAction(MultiAppAction.UnFreeze(selection))
+            advanceUntilIdle()
+
+            // The regression: reading the stale flags made `restoreApp` plan nothing, return success
+            // for both apps, and report "Unfroze 2" over two apps still showing the system's "app
+            // paused" dialog. The suspend-then-unsuspend round trip is the primary way suspend mode
+            // gets used, so the failure was reachable in two taps.
+            assertEquals(
+                "the unsuspend has to be asked for, not inferred from a snapshot the freeze never patched",
+                listOf(
+                    "setAppSuspended:com.a:false", "setAppDisabled:com.a:false",
+                    "setAppSuspended:com.b:false", "setAppDisabled:com.b:false",
+                ),
+                system.calls
+            )
+            val state = vm.uiState.value.freezeLoggerState
+            assertEquals(2, state.processed)
+            assertEquals(0, state.failed)
+        }
 
     @Test
     fun `the freeze counter reports every failure and still finishes the run`() = runTest {
@@ -560,48 +624,156 @@ class MainViewModelTest {
         assertEquals(1, effects.size)
     }
 
-    // --- Clear-all-cache safe list ----------------------------------------------------------
+    // --- Clear-all-cache ----------------------------------------------------------------------
+    //
+    // The old block here asserted a safe list — never Thor, never the Play Store — and a USER/SYSTEM
+    // split. Both are gone with the per-package loop they described: `pm trim-caches` hands victim
+    // selection to PackageManagerService, which evicts by LRU across the whole volume and takes no
+    // package argument. A test asserting Thor still spares the Play Store would be asserting a
+    // promise the platform never let Thor make.
 
     @Test
-    fun `clear all cache never clears Thor's own cache or the Play Store's`() = runTest {
-        appRepository.apps.value = listOf(
-            userApp("com.valhalla.thor"),
-            userApp("com.android.vending"),
-            userApp("com.example.a")
-        )
+    fun `the tile asks before it clears anything`() = runTest {
         val vm = viewModel()
 
-        vm.clearAllCache(AppListType.USER)
+        vm.requestClearAllCaches()
         advanceUntilIdle()
 
-        // Clearing Thor's own cache mid-run pulls the rug out from under the run itself; clearing
-        // the Play Store's is a known way to break app updates.
-        assertEquals(listOf("clearCache:com.example.a"), system.calls)
-    }
-
-    @Test
-    fun `clear all cache with nothing eligible touches nothing`() = runTest {
-        appRepository.apps.value = listOf(userApp("com.valhalla.thor"), userApp("com.android.vending"))
-        val vm = viewModel()
-
-        vm.clearAllCache(AppListType.USER)
-        advanceUntilIdle()
-
-        // The empty selection must short-circuit rather than start an empty batch that never
-        // finishes and leaves the log dialog spinning.
+        // The tap must not reach the repository. Every app on the device, system apps included, is
+        // not something to start from a single tap on a home-screen tile.
+        assertEquals(CacheClearState.Confirming, vm.uiState.value.cacheClear)
         assertTrue(system.calls.isEmpty())
-        assertTrue(vm.uiState.value.loggerState.isComplete)
     }
 
     @Test
-    fun `clear all cache reads the list the tab is showing`() = runTest {
-        appRepository.apps.value = listOf(userApp("com.user.app"), systemApp("com.system.app"))
+    fun `confirming runs one whole-device clear, not a per-package walk`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.a"), userApp("com.b"), systemApp("com.c"))
         val vm = viewModel()
 
-        vm.clearAllCache(AppListType.SYSTEM)
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
         advanceUntilIdle()
 
-        assertEquals(listOf("clearCache:com.system.app"), system.calls)
+        // One call regardless of how many apps are installed — and `clearAllCaches`, not
+        // `clearCache`, which is the root-only per-app operation.
+        assertEquals(listOf("clearAllCaches"), system.calls)
+    }
+
+    @Test
+    fun `the result carries the bytes freed`() = runTest {
+        system.cacheFreedBytes = 18_874_368L
+        val vm = viewModel()
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        assertEquals(
+            CacheClearState.Done(18_874_368L, hasUsageAccess = true),
+            vm.uiState.value.cacheClear
+        )
+    }
+
+    /**
+     * A byte count arrived, so the op is held by definition — the gate is not consulted and the flag
+     * does not go false behind a real measurement. Belt and braces: a `Done` carrying both a number
+     * and `hasUsageAccess = false` would render as "grant usage access" *and* have a figure to show.
+     */
+    @Test
+    fun `a measured clear does not ask the gate what it already knows`() = runTest {
+        system.cacheFreedBytes = 4_096L
+        val vm = viewModel(usageAccess = false)
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        assertEquals(CacheClearState.Done(4_096L, hasUsageAccess = true), vm.uiState.value.cacheClear)
+    }
+
+    @Test
+    fun `an unmeasured clear still reports Done, with a null count`() = runTest {
+        // `cacheFreedBytes` defaults to null: the clear worked and the measurement did not. Reporting
+        // 0 there would read as "that freed nothing".
+        val vm = viewModel()
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        assertEquals(CacheClearState.Done(null, hasUsageAccess = true), vm.uiState.value.cacheClear)
+    }
+
+    /**
+     * The same empty result, and a different sentence on the sheet. With the op missing there is
+     * something the user can do about it; with the op held — an app refilling its cache mid-clear,
+     * say — telling them to grant what they already granted is the one piece of advice on screen and
+     * it is unfollowable.
+     */
+    @Test
+    fun `an unmeasured clear records whether usage access was the reason`() = runTest {
+        val vm = viewModel(usageAccess = false)
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        assertEquals(CacheClearState.Done(null, hasUsageAccess = false), vm.uiState.value.cacheClear)
+    }
+
+    @Test
+    fun `a failed clear closes the sheet and says why`() = runTest {
+        system.failWith("clearAllCaches", IllegalStateException("no privileged gateway"))
+        val vm = viewModel()
+        val effects = effectsOf(vm)
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        // No Done(null): that is the "it worked, we could not measure it" answer, and showing it
+        // here would report a failure as a success with a missing number.
+        assertNull(vm.uiState.value.cacheClear)
+        // The whole effect, not just its arity: a success message is also one effect, and the point
+        // of this path is that the reason reaches the user rather than a silent sheet close.
+        assertEquals(
+            listOf(
+                MainSideEffect.Message(
+                    UiText.StringResource(
+                        R.string.error_format,
+                        UiText.DynamicString("no privileged gateway")
+                    )
+                )
+            ),
+            effects
+        )
+    }
+
+    @Test
+    fun `confirming twice does not start a second clear`() = runTest {
+        val vm = viewModel()
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        // The sheet's Proceed button is gone while Running, but the state is public and the coroutine
+        // is not instantaneous; a double-tap landing in the same frame must not queue two trims.
+        assertEquals(listOf("clearAllCaches"), system.calls)
+    }
+
+    @Test
+    fun `dismissing the confirmation clears nothing and raises no prompt`() = runTest {
+        val vm = viewModel()
+
+        vm.requestClearAllCaches()
+        vm.dismissCacheClear()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.cacheClear)
+        assertTrue(system.calls.isEmpty())
+        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
     }
 
     // --- The support prompt -----------------------------------------------------------------
@@ -654,5 +826,390 @@ class MainViewModelTest {
         assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
         // Persisted, not just cleared in memory — otherwise it reappears after every process death.
         assertTrue(vm.uiState.value.prefs.hasShownSupportDeveloperPrompt)
+    }
+
+    // --- Fix Store: the picker ----------------------------------------------------------------
+
+    @Test
+    fun `fix store opens a picker instead of reinstalling everything it found`() = runTest {
+        appRepository.apps.value = listOf(
+            userApp("com.play", installerPackageName = Installers.PLAY_STORE),
+            userApp("com.sideloaded", installerPackageName = null),
+            userApp("com.fdroid", installerPackageName = Installers.F_DROID)
+        )
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+
+        // The old action ran the batch straight off the scan. Nothing may reach the privilege layer
+        // until the picker is confirmed.
+        assertTrue(system.calls.isEmpty())
+        val picker = vm.uiState.value.fixStoreSelection!!
+        assertEquals(
+            setOf("com.sideloaded", "com.fdroid"),
+            picker.candidates.map { it.packageName }.toSet()
+        )
+        // Everything starts ticked: the accident being prevented is not knowing what it would
+        // touch, not tapping Confirm by mistake.
+        assertEquals(picker.candidates.map { it.packageName }.toSet(), picker.selected)
+    }
+
+    @Test
+    fun `fix store reinstalls only what is still ticked`() = runTest {
+        appRepository.apps.value = listOf(
+            userApp("com.keep", installerPackageName = null),
+            userApp("com.fix", installerPackageName = null)
+        )
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        vm.toggleFixStoreTarget("com.keep")
+        vm.confirmFixStore()
+        advanceUntilIdle()
+
+        assertEquals(listOf("reinstallAppWithGoogle:com.fix"), system.calls)
+        assertNull(vm.uiState.value.fixStoreSelection)
+    }
+
+    @Test
+    fun `confirming an empty selection starts no run`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.a", installerPackageName = null))
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        vm.setAllFixStoreTargets(false)
+        vm.confirmFixStore()
+        advanceUntilIdle()
+
+        // The confirm button is disabled at zero, so this is the state moving out from under a
+        // click rather than a route a user can take on purpose — a batch of nothing is still wrong.
+        assertTrue(system.calls.isEmpty())
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+    }
+
+    @Test
+    fun `dismissing the picker leaves every app alone`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.a", installerPackageName = null))
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        vm.dismissFixStorePicker()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
+    fun `fix store finds nothing when every app came from Play`() = runTest {
+        appRepository.apps.value = listOf(
+            userApp("com.play", installerPackageName = Installers.PLAY_STORE)
+        )
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+
+        // No picker; the logger says so and stays up to be read.
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertTrue(vm.uiState.value.loggerState.isVisible)
+        assertTrue(vm.uiState.value.loggerState.isComplete)
+    }
+
+    // --- Stopping a batch part-way ------------------------------------------------------------
+
+    @Test
+    fun `a stop request ends the batch after the app in flight`() = runTest {
+        val vm = viewModel()
+        // Asked for from inside the first app's call, which is the only moment a test has: the
+        // batch would otherwise run to completion before control came back.
+        system.onCall = { vm.requestStopBatch() }
+
+        vm.onMultiAppAction(
+            MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"), userApp("com.c")))
+        )
+        advanceUntilIdle()
+
+        // com.a completed — stopping mid-command is what leaves a package half-written — and
+        // nothing after it was started.
+        assertEquals(listOf("forceStopApp:com.a"), system.calls)
+        assertTrue(vm.uiState.value.loggerState.isComplete)
+        assertFalse(vm.uiState.value.loggerState.isStopping)
+    }
+
+    @Test
+    fun `a batch that was not stopped runs every app`() = runTest {
+        val vm = viewModel()
+
+        vm.onMultiAppAction(
+            MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"), userApp("com.c")))
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("forceStopApp:com.a", "forceStopApp:com.b", "forceStopApp:com.c"),
+            system.calls
+        )
+    }
+
+    @Test
+    fun `a one-app batch offers no stop`() = runTest {
+        val vm = viewModel()
+
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"))))
+        advanceUntilIdle()
+
+        // A single app has no halfway point: by the time the button could be pressed the work is
+        // done, so offering it would only ever be a lie.
+        assertFalse(vm.uiState.value.loggerState.canStop)
+    }
+
+    @Test
+    fun `a stop asked for after the run finished is ignored`() = runTest {
+        val vm = viewModel()
+
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+        vm.requestStopBatch()
+
+        // The completed dialog must not flip back into "stopping" — and, more importantly, the
+        // flag must not survive to cut the *next* batch short at its first app.
+        assertFalse(vm.uiState.value.loggerState.isStopping)
+
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.c"), userApp("com.d"))))
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("forceStopApp:com.a", "forceStopApp:com.b", "forceStopApp:com.c", "forceStopApp:com.d"),
+            system.calls
+        )
+    }
+
+    @Test
+    fun `a stop that arrives during the last app does not report a stopped batch`() = runTest {
+        val vm = viewModel()
+        // The last app is the only one that can tell `processed < apps.size` apart from
+        // `stopRequested`: the flag is read *after* the loop, so a stop arriving while the final call
+        // is in flight sets it with every app already done.
+        system.onCall = { if (it == "forceStopApp:com.b") vm.requestStopBatch() }
+
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+
+        // Nothing was skipped, so nothing may say it was — "Stopped: 2 of 2" is a complete run
+        // describing itself as an interrupted one, and the user's next question is what got lost.
+        assertEquals(listOf("forceStopApp:com.a", "forceStopApp:com.b"), system.calls)
+        assertFalse(
+            "a batch that finished every app reported itself stopped",
+            vm.uiState.value.loggerState.logs.any {
+                it is UiText.StringResource && it.resId == R.string.log_stopped
+            }
+        )
+    }
+
+    @Test
+    fun `a stop that skipped apps reports how many were done`() = runTest {
+        val vm = viewModel()
+        system.onCall = { if (it == "forceStopApp:com.a") vm.requestStopBatch() }
+
+        vm.onMultiAppAction(
+            MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"), userApp("com.c")))
+        )
+        advanceUntilIdle()
+
+        // The other half of the gate: two apps really were skipped, and the count has to be the one
+        // the loop reached, not the size of the selection.
+        assertEquals(listOf("forceStopApp:com.a"), system.calls)
+        assertTrue(
+            vm.uiState.value.loggerState.logs.contains(
+                UiText.StringResource(R.string.log_stopped, 1, 3)
+            )
+        )
+    }
+
+    @Test
+    fun `a stop during the last shared app does not report a stopped batch either`() = runTest {
+        // The share branch keeps its own copy of the batch loop, so it needs its own pin. Driven from
+        // the bundle builder rather than the system fake because sharing never reaches the privilege
+        // layer — it stages files.
+        // Assigned after construction because the builder is a constructor argument of the thing it
+        // has to call back into.
+        var stopper: MainViewModel? = null
+        val builder = FakeAppBundleBuilder { app ->
+            if (app.packageName == "com.b") stopper?.requestStopBatch()
+        }
+        val vm = viewModel(bundleBuilder = builder)
+        stopper = vm
+
+        vm.onMultiAppAction(MultiAppAction.Share(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+
+        // Both bundles fail here (no device), so the logger stays up to be read instead of being
+        // dismissed for a share sheet — which is what makes this assertion possible at all.
+        assertFalse(
+            vm.uiState.value.loggerState.logs.any {
+                it is UiText.StringResource && it.resId == R.string.log_stopped
+            }
+        )
+    }
+
+    // --- Job sheets ---------------------------------------------------------------------------
+    //
+    // A tap on a running job's notification has to end with that job's sheet on screen. The tap
+    // itself lands in a trampoline activity that needs an Android runtime, so what is pinned here is
+    // the half that does not: a request published to `JobSheetTargets` becomes sheet state, the right
+    // one, and it is not lost if it arrives before the view model exists.
+
+    /** Stands in for the publishing worker's `WorkSpec` id. `JobSheetTargetsTest` covers what it is for. */
+    private fun jobId(n: Int) = UUID(0L, n.toLong())
+
+    @Test
+    fun `a restore request opens the restore sheet on that archive`() = runTest {
+        val targets = JobSheetTargets()
+        targets.set(jobId(1), JobSheetTarget.Restore("content://docs/tree/1/thor.thorbak"))
+        val vm = viewModel(sheetTargets = targets)
+
+        targets.requestOpen(ThorJobKind.ARCHIVE_RESTORE)
+        advanceUntilIdle()
+
+        assertEquals(
+            RestoreSheetState("content://docs/tree/1/thor.thorbak"),
+            vm.uiState.value.restoreSheet
+        )
+        // Not the other sheet. Two nullable fields driven by one `when`, so a mis-mapped arm would
+        // put a restore's URI behind a backup sheet with no package name to show.
+        assertNull(vm.uiState.value.backupSheet)
+    }
+
+    @Test
+    fun `a backup request opens the backup sheet with the label the worker resolved`() = runTest {
+        val targets = JobSheetTargets()
+        targets.set(jobId(1), JobSheetTarget.Backup("com.supercell.clashofclans", "Clash of Clans"))
+        val vm = viewModel(sheetTargets = targets)
+
+        targets.requestOpen(ThorJobKind.ARCHIVE_BACKUP)
+        advanceUntilIdle()
+
+        // The label is carried, not re-derived: `AppBackupViewModel.start` writes what it is handed
+        // straight into its own state, so a package name arriving here is a package name on screen.
+        assertEquals(
+            BackupSheetState("com.supercell.clashofclans", "Clash of Clans"),
+            vm.uiState.value.backupSheet
+        )
+        assertNull(vm.uiState.value.restoreSheet)
+    }
+
+    @Test
+    fun `a request made before the view model exists is not lost`() = runTest {
+        val targets = JobSheetTargets()
+        targets.set(jobId(1), JobSheetTarget.Restore("content://docs/tree/1/thor.thorbak"))
+
+        // The ordinary case, not an edge case: the tap is what brings Thor forward, so the request is
+        // published while nothing is collecting. `JobSheetTargets` conflates rather than dropping —
+        // a `replay = 0` SharedFlow here would send this to no one and the tap would do nothing.
+        targets.requestOpen(ThorJobKind.ARCHIVE_RESTORE)
+
+        val vm = viewModel(sheetTargets = targets)
+        advanceUntilIdle()
+
+        assertEquals(
+            RestoreSheetState("content://docs/tree/1/thor.thorbak"),
+            vm.uiState.value.restoreSheet
+        )
+    }
+
+    @Test
+    fun `a tap on a job that is no longer live opens nothing`() = runTest {
+        val targets = JobSheetTargets()
+        val vm = viewModel(sheetTargets = targets)
+
+        // Nothing was ever published, or the worker's `finally` has already cleared it. The
+        // trampoline reads the false and resumes the app without a sheet; here the point is that no
+        // *empty* sheet is opened in its place.
+        assertFalse(targets.requestOpen(ThorJobKind.ARCHIVE_RESTORE))
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.restoreSheet)
+        assertNull(vm.uiState.value.backupSheet)
+    }
+
+    @Test
+    fun `the thorbak a launch was opened on opens the restore sheet once`() = runTest {
+        val vm = viewModel()
+
+        vm.openRestoreSheetForLaunchUri("content://docs/tree/1/thor.thorbak")
+        advanceUntilIdle()
+
+        assertEquals(
+            RestoreSheetState("content://docs/tree/1/thor.thorbak"),
+            vm.uiState.value.restoreSheet
+        )
+
+        // The recomposition case: `MainScreen`'s LaunchedEffect re-runs with the same non-null
+        // `pendingRestoreUri` after the user has dismissed the sheet. It must not come back.
+        vm.dismissRestoreSheet()
+        vm.openRestoreSheetForLaunchUri("content://docs/tree/1/thor.thorbak")
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.restoreSheet)
+    }
+
+    @Test
+    fun `a fresh view model reopens the launch thorbak, because a killed process kept the intent`() = runTest {
+        val first = viewModel()
+        first.openRestoreSheetForLaunchUri("content://docs/tree/1/thor.thorbak")
+        advanceUntilIdle()
+
+        // Process death, then a return through Recents: the activity is recreated with the same VIEW
+        // intent and a still-valid task-scoped read grant, and gets a new view model. The latch has to
+        // come back with it, which is the whole reason it does not live in a `rememberSaveable` — that
+        // survives process death while the sheet state does not, so the archive was silently dropped.
+        val second = viewModel()
+        second.openRestoreSheetForLaunchUri("content://docs/tree/1/thor.thorbak")
+        advanceUntilIdle()
+
+        assertEquals(
+            RestoreSheetState("content://docs/tree/1/thor.thorbak"),
+            second.uiState.value.restoreSheet
+        )
+    }
+
+    @Test
+    fun `dismissing a sheet closes it and leaves the other alone`() = runTest {
+        val targets = JobSheetTargets()
+        val vm = viewModel(sheetTargets = targets)
+
+        vm.openRestoreSheet("content://docs/tree/1/thor.thorbak")
+        targets.set(jobId(1), JobSheetTarget.Backup("com.a", "App A"))
+        targets.requestOpen(ThorJobKind.ARCHIVE_BACKUP)
+        advanceUntilIdle()
+
+        vm.dismissRestoreSheet()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.restoreSheet)
+        assertEquals(BackupSheetState("com.a", "App A"), vm.uiState.value.backupSheet)
+
+        vm.dismissBackupSheet()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.backupSheet)
+    }
+
+    @Test
+    fun `the Settings row opens the sheet with no archive chosen`() = runTest {
+        val vm = viewModel()
+
+        vm.openRestoreSheet()
+        advanceUntilIdle()
+
+        // Open, and open on the file picker. The outer null means "closed", so this has to be a
+        // present state holding a null URI — collapsing the two would make the Settings row and a
+        // dismissed sheet indistinguishable.
+        assertEquals(RestoreSheetState(null), vm.uiState.value.restoreSheet)
     }
 }

@@ -9,10 +9,16 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.os.Environment
+import android.text.format.Formatter
 import androidx.core.graphics.createBitmap
 import com.valhalla.thor.data.util.ApksMetadataGenerator
+import com.valhalla.thor.data.util.XapkExpansion
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ObbExportStagingDir
+import com.valhalla.thor.domain.model.ObbFile
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.bundleFileNameFor
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -28,6 +34,7 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -57,6 +64,23 @@ class AppBundleBuilderImpl(
         // call would delete earlier apps' bundles before they are read. Distinct
         // packages (a multi-select can't pick the same app twice) never collide.
         val cacheDir = File(File(context.cacheDir, cacheSubDir), appInfo.packageName)
+        // Not under cacheDir: the privileged shell that copies an expansion out of
+        // Android/obb/<pkg>/ cannot write into /data/data/<thor> (0700), so the staged copies have
+        // to land somewhere both parties can reach. That also puts them outside everything the
+        // catch blocks below wipe, which is why this dir is deleted explicitly on all three exits —
+        // a failed export of a 4 GB game would otherwise leave 4 GB in external cache until the
+        // next export of the same package, which may never come.
+        //
+        // Declared here rather than inside the try for exactly that reason: a `val` created inside
+        // the try is not in scope in the catch blocks, and a staging dir a catch cannot see is a
+        // staging dir a failed export cannot free.
+        //
+        // The directory name is the shared constant, not a literal: `ArchiveOrphanSweeper` removes
+        // this whole tree at launch, which is the only thing that cleans up after a *kill* mid-build,
+        // and a second spelling would point the sweep at a directory nothing writes to.
+        val obbStagingDir = context.externalCacheDir?.let {
+            File(it, "${ObbExportStagingDir.NAME}/${appInfo.packageName}")
+        }
         try {
             if (cacheDir.exists()) cacheDir.deleteRecursively()
             cacheDir.mkdirs()
@@ -108,6 +132,64 @@ class AppBundleBuilderImpl(
                 // The APKs that make it into the zip, summed before the sidecars are staged
                 // because the XAPK manifest has to carry this number.
                 val totalApkSize = apkFiles.sumOf { it.length() }
+
+                // Only .xapk carries expansions, so only .xapk pays for the probe.
+                val probe = if (format == BundleFormat.XAPK) {
+                    systemRepository.probeObb(appInfo.packageName)
+                } else {
+                    ObbProbe.None
+                }
+                // An Undetermined probe used to throw here, and the export sheet disabled the .xapk
+                // chip to match: a verdict of "we could not tell" refused the whole format. That is
+                // fail-closed on *unknowability*, and it turned the ordinary case into an error —
+                // most apps have no expansion files at all, so most of the time the answer we could
+                // not read was "there is nothing to read". Per the owner we proceed instead: an
+                // .xapk built for an app that has no game data is a correct .xapk, and one built
+                // for an app that does is no worse than the .apk export the user would otherwise
+                // fall back to.
+                //
+                // The line this draws is between *unknown* and *known lost*, and only the second
+                // half of it moved. `requireStagedExpansions` below still throws, because Present
+                // means the probe measured real files and a copy that then fails is data we know we
+                // are dropping. That is GH#164, and it stays fatal.
+                val obbFiles = expansionsToPack(format, probe)
+
+                // Every failure below throws rather than returning a Result: this whole block is
+                // inside the try, so a `return@withContext Result.failure(...)` is an ordinary
+                // return that skips both catch blocks — and with them the only cleanup that reaches
+                // the staging dir. The surrounding code fails the same way (`IllegalStateException
+                // ("Failed to copy APK: …")`) and `catch (e: Exception)` turns it into a failed
+                // Result with the message intact.
+                val expansionSources = if (obbFiles.isEmpty()) {
+                    emptyList()
+                } else {
+                    val externalCache = context.externalCacheDir
+                    if (externalCache == null || obbStagingDir == null) {
+                        throw IOException(
+                            "external storage is unavailable, so the game data cannot be staged"
+                        )
+                    }
+                    // usableSpace is read from externalCache, not from obbStagingDir: that dir does
+                    // not exist yet here, and File.usableSpace on a non-existent path returns 0,
+                    // which would fail every export with a phantom shortfall.
+                    val shortfall = expansionSpaceShortfall(
+                        cacheDir = cacheDir,
+                        externalCache = externalCache,
+                        apkBytes = totalApkSize,
+                        obbBytes = obbFiles.sumOf { it.sizeBytes }
+                    )
+                    if (shortfall > 0L) {
+                        throw IOException(
+                            "not enough free space to pack this app's game data — about " +
+                                "${Formatter.formatShortFileSize(context, shortfall)} more is needed"
+                        )
+                    }
+                    requireStagedExpansions(
+                        requested = obbFiles,
+                        staged = stageExpansions(appInfo.packageName, obbFiles, obbStagingDir)
+                    )
+                }
+
                 // Source path *and* staged name together: stagedApkNames renames a leaf collision,
                 // and a manifest that named the source leaf would then describe an entry the zip
                 // does not contain. See ApksMetadataGenerator.StagedApk.
@@ -133,12 +215,19 @@ class AppBundleBuilderImpl(
                 if (format == BundleFormat.XAPK) {
                     // A null icon name leaves the field out altogether. A .xapk that names an
                     // icon.png it does not contain is worse than one that names nothing.
+                    //
+                    // total_size widens to include the staged expansions here and *only* here: it
+                    // describes the archive, and the expansions are in the archive. totalApkSize
+                    // itself stays APK-only because the space arithmetic above needs the two
+                    // figures apart — the APKs are counted twice on internal storage, the OBB once
+                    // per volume.
                     manifestFile.writeText(
                         apksMetadataGenerator.generateManifestJson(
                             appInfo,
-                            totalApkSize,
+                            totalApkSize + expansionSources.sumOf { it.file.length() },
                             iconFile?.name,
-                            stagedApks
+                            stagedApks,
+                            expansionDescriptors(expansionSources)
                         )
                     )
                 } else {
@@ -146,18 +235,18 @@ class AppBundleBuilderImpl(
                 }
 
                 val sidecars = listOfNotNull(metadataFile, manifestFile, iconFile)
-                // A .xapk gets its sidecars first: SAI reads manifest.json + icon.png and a
-                // streaming reader would otherwise scan past every APK to reach them. .apks
-                // keeps the historical order, which readers using the central directory
-                // (Thor's BundleZip included) are indifferent to either way.
-                val filesToZip = if (format == BundleFormat.XAPK) {
-                    sidecars + apkFiles
-                } else {
-                    apkFiles + sidecars
-                }
-
-                zipFiles(filesToZip, finalFile)
+                // Entry order and entry names are zipSourcesFor's decision now; see its KDoc for
+                // why a .xapk leads with its sidecars and why .apks drops expansions outright.
+                // expansionSources is empty for every format but .xapk, and for a .xapk whose app
+                // has no OBB, so this produces exactly the entry list it did before for those.
+                zipFiles(
+                    zipSourcesFor(format, apkFiles, sidecars, expansionSources),
+                    finalFile
+                )
                 tempSplitDir.deleteRecursively()
+                // The zip now holds its own copy of every expansion, so the staged ones are dead
+                // weight in external cache from this line on.
+                obbStagingDir?.deleteRecursively()
             }
             Result.success(finalFile)
         } catch (e: CancellationException) {
@@ -165,11 +254,15 @@ class AppBundleBuilderImpl(
             // written. Nothing has been handed out yet — no content:// URI, no returned File —
             // so this copy has no reader, and here is the only chance to free it: the dir is
             // otherwise wiped by the *next* build of this same package, which may never come.
+            // The staged expansions go with it, and they are the larger half — cacheDir.
+            // deleteRecursively() does not reach them, because they are not under cacheDir.
             cacheDir.deleteRecursively()
+            obbStagingDir?.deleteRecursively()
             throw e
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) e.printStackTrace()
             cacheDir.deleteRecursively()
+            obbStagingDir?.deleteRecursively()
             Result.failure(e)
         }
     }
@@ -238,6 +331,80 @@ class AppBundleBuilderImpl(
         return bitmap
     }
 
+    /**
+     * How many bytes short the device is for staging and zipping this app's expansions, or 0 when
+     * there is room.
+     *
+     * Split out of [build] only to keep the lint suppression on one small declaration instead of on
+     * the whole builder. `File.usableSpace` is the deliberate choice, not an oversight lint caught:
+     * lint's `UsableSpace` check points at `getAllocatableBytes`/`getFreeBytes`, which add back the
+     * clearable cache quota and so report space that exists only if the platform evicts other apps'
+     * caches at the right moment. A staging copy that has to survive until the zip is closed needs
+     * the pessimistic figure. (`StorageStatsHelper` suppresses the same check for the mirror-image
+     * reason: there the point is to match what `PackageManagerService.freeStorage` itself measures.)
+     */
+    @Suppress("UsableSpace")
+    private fun expansionSpaceShortfall(
+        cacheDir: File,
+        externalCache: File,
+        apkBytes: Long,
+        obbBytes: Long
+    ): Long = spaceShortfall(
+        need = bundleSpaceRequirement(apkBytes = apkBytes, obbBytes = obbBytes),
+        internalFree = cacheDir.usableSpace,
+        externalFree = externalCache.usableSpace,
+        // Same emulated volume on any phone without an SD card, in which case the two free-space
+        // figures are the same bytes counted twice and the two requirements add rather than overlap.
+        sameVolume = cacheDir.totalSpace == externalCache.totalSpace
+    )
+
+    /**
+     * Copy each expansion into a directory Thor can read, returning one [ZipSource] per file, or
+     * null if any single copy failed.
+     *
+     * All-or-nothing on purpose. A `.xapk` missing one of a game's expansion files installs and
+     * then fails at runtime in a way the user cannot diagnose — the exact complaint in GH#164 —
+     * so a partial capture is a failed export, not a degraded one.
+     *
+     * Unlike [copyFileSafely] this never tries a direct read first: `Android/obb/<other-pkg>/` is
+     * unreadable to Thor on every Android version this app supports, so an unprivileged attempt
+     * is a guaranteed exception and a wasted syscall.
+     *
+     * Cleanup of [stagingDir] belongs to the caller, on every one of its exits — see the comment
+     * where it is declared. Deliberately no `try`/`catch` here: `return null` inside the loop is a
+     * non-local return, so anything written after the loop to tidy up would not run on the paths
+     * that need it most.
+     */
+    private suspend fun stageExpansions(
+        packageName: String,
+        files: List<ObbFile>,
+        stagingDir: File
+    ): List<ZipSource>? {
+        stagingDir.deleteRecursively()
+        if (!stagingDir.mkdirs()) return null
+
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath.orEmpty()
+        return files.map { obb ->
+            val dest = File(stagingDir, obb.name)
+            val command = obbCopyCommand(
+                externalStorageDir = externalRoot,
+                packageName = packageName,
+                leaf = obb.name,
+                destPath = dest.absolutePath
+            ) ?: return null
+
+            val result = systemRepository.executeShellCommand(command).getOrNull()
+            if (result == null || result.first != 0) return null
+            // The shell reported success; verify the bytes actually arrived. A `cp` that hits a
+            // full volume can still exit 0 on some toybox builds, and a size that no longer
+            // matches what the probe measured means the app rewrote the file underneath us —
+            // either way the capture is not the one the manifest is about to describe.
+            if (!dest.isFile || dest.length() != obb.sizeBytes) return null
+
+            ZipSource(dest, expansionEntryName(packageName, obb.name))
+        }
+    }
+
     private suspend fun copyFileSafely(sourcePath: String, destFile: File): Boolean {
         return try {
             copyCancellable(File(sourcePath), destFile)
@@ -274,7 +441,7 @@ class AppBundleBuilderImpl(
         }
     }
 
-    private suspend fun zipFiles(files: List<File>, zipFile: File) {
+    private suspend fun zipFiles(sources: List<ZipSource>, zipFile: File) {
         ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
             // APK entries are already DEFLATEd, so re-compressing them is pure CPU for ~0%
             // saving. Measurable when a bulk share zips dozens of apps in a row.
@@ -285,10 +452,10 @@ class AppBundleBuilderImpl(
             out.setLevel(Deflater.NO_COMPRESSION)
             // 8 KB buffer — 1 KB is needlessly slow when zipping multi-MB APK splits.
             val data = ByteArray(COPY_BUFFER_BYTES)
-            files.forEach { file ->
-                FileInputStream(file).use { fi ->
+            sources.forEach { source ->
+                FileInputStream(source.file).use { fi ->
                     BufferedInputStream(fi).use { origin ->
-                        val entry = ZipEntry(file.name)
+                        val entry = ZipEntry(source.entryName)
                         out.putNextEntry(entry)
                         while (true) {
                             // Same reason as copyCancellable: zipping a split app is the other
@@ -344,3 +511,140 @@ internal fun stagedApkNames(paths: List<String>): List<Pair<String, String>> {
         path to candidate
     }
 }
+
+/**
+ * A file plus the name it takes inside the zip.
+ *
+ * Until OBB support, every entry name was `file.name` and the archive was flat. An expansion has
+ * to land at `Android/obb/<pkg>/<leaf>`, so the entry name stops being derivable from the file and
+ * becomes a decision the caller makes.
+ */
+internal data class ZipSource(val file: File, val entryName: String)
+
+/**
+ * The entry order for one bundle.
+ *
+ * `.xapk` puts the sidecars first — an installer reading the archive as a stream reaches
+ * `manifest.json` before anything large — and the expansions last, because they are the biggest
+ * entries and nothing needs them early. `.apks` keeps its existing APKs-then-sidecars order, and
+ * drops expansions entirely: that format has no expansion convention, and writing entries no
+ * reader looks for would only inflate the file.
+ *
+ * The `.apks` order is historical rather than load-bearing — a reader working from the central
+ * directory (SAI, Thor's own `BundleZip`) is indifferent to it either way — which is exactly why
+ * it is preserved here instead of unified with the `.xapk` order.
+ */
+internal fun zipSourcesFor(
+    format: BundleFormat,
+    apkFiles: List<File>,
+    sidecars: List<File>,
+    expansions: List<ZipSource>
+): List<ZipSource> {
+    val apks = apkFiles.map { ZipSource(it, it.name) }
+    val extras = sidecars.map { ZipSource(it, it.name) }
+    return if (format == BundleFormat.XAPK) extras + apks + expansions else apks + extras
+}
+
+/**
+ * `cp` one expansion out of `Android/obb/<pkg>/` into a destination the app can read, or null when
+ * any of the three interpolated strings is unsafe to put in a shell command.
+ *
+ * The destination is always inside Thor's own `externalCacheDir`, which is the single location the
+ * privileged shell and Thor can both reach: the shell uid cannot enter `/data/data/com.valhalla.thor`
+ * (0700), and Thor cannot open another package's `Android/obb`. `chmod 644` follows the copy
+ * because a file the shell creates is owned by the shell, and Thor has to be able to delete it
+ * afterwards.
+ *
+ * **The source is refused if it is a symlink.** The probe already rejects one
+ * ([SENTINEL_SYMLINK]), but that is a check-then-use across two shell invocations and the directory
+ * belongs to the app being exported, so the copy re-tests rather than inheriting the conclusion.
+ * `cp` follows links, and following one here would put the target's bytes into the user's archive
+ * under a game-data name — read with the shell's privilege, not the app's.
+ */
+internal fun obbCopyCommand(
+    externalStorageDir: String,
+    packageName: String,
+    leaf: String,
+    destPath: String
+): String? {
+    if (!isUsablePackageName(packageName)) return null
+    if (!isSafeObbLeafName(leaf)) return null
+    if (externalStorageDir.isBlank() || !externalStorageDir.startsWith('/')) return null
+    if (!destPath.startsWith('/')) return null
+    // `leaf` is in this sum as well as the other two, even though isSafeObbLeafName already
+    // rejects a quote. Defence in depth: this command runs as root, and the cost of the redundant
+    // check is nothing next to the cost of the predicate ever being relaxed by someone who did not
+    // read why it is strict.
+    if ((externalStorageDir + destPath + leaf).any { it == '\'' || it == '\n' }) return null
+
+    val sourceDir = "$externalStorageDir/${expansionDirFor(packageName)}"
+    val source = "$sourceDir/$leaf"
+    // Both components, because `-L` only ever tests a path's final one: a link at `<pkg>` redirects
+    // the read just as effectively as a link at the leaf, and passes a test aimed at the leaf.
+    return "[ ! -L '$sourceDir' ] && [ ! -L '$source' ] && " +
+        "cp -f '$source' '$destPath' && chmod 644 '$destPath'"
+}
+
+/**
+ * Which expansion files this bundle should try to pack — the probe verdict turned into a list.
+ *
+ * Three inputs, one list, and the interesting arm is [ObbProbe.Undetermined] → empty. It reads like
+ * the mistake the tri-state exists to prevent, so it is worth being explicit about why it is not:
+ *
+ *  - [ObbProbe.Present] is the only verdict that names files, so it is the only one that can
+ *    produce a non-empty list.
+ *  - [ObbProbe.None] means the probe looked and found nothing.
+ *  - [ObbProbe.Undetermined] means the probe could not look. Packing nothing is the *only* thing
+ *    this function can do with that; what changed is that the export no longer refuses instead.
+ *
+ * The verdicts stay distinguishable — `Undetermined` is still not `None`, the sheet still says so,
+ * and `SystemRepositoryImpl.probeObb` logs the reason — they just no longer have distinct *blocking*
+ * consequences. The fatal case moved to [requireStagedExpansions], which fires when the probe did
+ * name files and the copy then failed: that is loss we can prove, and it is still an error.
+ *
+ * [format] is read rather than assumed. `.apks` has no expansion convention, and `zipSourcesFor`
+ * already drops expansions for it — this makes the same rule true one step earlier, so an `.apks`
+ * export never stages a byte it will not ship.
+ */
+internal fun expansionsToPack(format: BundleFormat, probe: ObbProbe): List<ObbFile> =
+    if (format != BundleFormat.XAPK) {
+        emptyList()
+    } else {
+        (probe as? ObbProbe.Present)?.files.orEmpty()
+    }
+
+/**
+ * The staged expansions, or a failed export — the one place where not having the game data is still
+ * fatal.
+ *
+ * [requested] is [expansionsToPack]'s output, so a non-empty list means the probe *measured* those
+ * files: it read their names and their sizes off the device. `stageExpansions` returning null after
+ * that is not "there was nothing there", it is "we could not copy what we saw", and writing the
+ * .xapk anyway hands the user an archive that installs a game which then cannot start. That is
+ * GH#164, and it is exactly the case an Undetermined probe is *not*.
+ *
+ * Empty [requested] short-circuits, so the caller does not have to prove it only calls this on the
+ * path where there was something to stage.
+ */
+internal fun requireStagedExpansions(
+    requested: List<ObbFile>,
+    staged: List<ZipSource>?
+): List<ZipSource> {
+    if (requested.isEmpty()) return emptyList()
+    return staged ?: throw IOException(
+        "this app's game data could not be read, so the .xapk would be incomplete"
+    )
+}
+
+/**
+ * Turn staged expansion sources into the manifest's `expansions` block.
+ *
+ * `file` and `install_path` are written equal — see [XapkExpansion] for why that is the compatible
+ * choice rather than a shortcut.
+ *
+ * Takes no `packageName`: the entry name already carries it, and a parameter the body never reads is
+ * a warning, which this build treats as an error.
+ */
+internal fun expansionDescriptors(
+    sources: List<ZipSource>
+): List<XapkExpansion> = sources.map { XapkExpansion(file = it.entryName, installPath = it.entryName) }

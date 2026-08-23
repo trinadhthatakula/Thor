@@ -27,6 +27,9 @@ index:
 import Callout from '../components/Callout.astro'
 import CodeBlock from '../components/CodeBlock.astro'
 import Fact from '../components/Fact.astro'
+import DownloadOptions from '../components/DownloadOptions.astro'
+
+<DownloadOptions />
 
 <h2 id="before-you-pick-a-channel">Before you pick a channel</h2>
 
@@ -91,11 +94,9 @@ Thor runs on <Fact name="minSdkAndroidName" /> (API <Fact name="minSdk" />) and 
 This is not a switching-channels problem. It applies to **any** uninstall — a new phone, a factory
 reset, or "I'll put it back later."
 
-**Frozen apps stay frozen.** Removing Thor undoes neither freeze mechanic. Thor switches the package
-off in place; on the devices that refuse to allow that, the Shizuku path removes it for your Android
-user while keeping its data. Dhizuku is the exception: it removes a preinstalled package for your
-user every time, refusal or not, and does not keep its data. Android has no reason to undo any of
-that just because Thor is gone.
+**Frozen apps stay frozen.** Removing Thor does not undo a freeze. Thor switches the package off in
+place and its data is kept where it is; Android has no reason to switch it back on just because
+Thor is gone. Unfreeze anything you want back before you uninstall.
 
 **Suspended apps are not in that position.** The Freezer's optional Suspend mode is a different
 mechanic, and Android only lets the package that recorded a suspension lift it again. Under root
@@ -185,8 +186,9 @@ Two others worth knowing, both of them in `app/build.gradle.kts`:
   on-device.
 - **An extra ProGuard file** for the `foss` flavour.
 
-**Locales are no longer one of them.** Both builds now ship the same five — English, Arabic,
-Spanish, French and Chinese — in a single file, and the Play build no longer uses per-locale
+**Locales are no longer one of them.** Both builds now ship the same eight — English, Arabic,
+Spanish, French, Chinese, Portuguese, Brazilian Portuguese and Polish — in a single file, and the
+Play build no longer uses per-locale
 splits. Splitting an app bundle by locale means Play installs only the languages the device's system
 settings ask for, which is exactly the set the in-app language picker is not needed for: choosing
 Français on a phone that never asked for French would have selected resources Play had not

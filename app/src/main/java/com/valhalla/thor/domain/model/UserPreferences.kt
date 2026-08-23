@@ -10,6 +10,9 @@ data class UserPreferences(
     val appFilterType: FilterType = FilterType.Source,
     val appSelectedFilter: String = "All",
 
+    // Navigation — the tab Thor opens on at launch
+    val defaultTab: DefaultTab = DefaultTab.HOME,
+
     // Home Screen Config
     val showReinstallAllCard: Boolean = true,
 
@@ -42,6 +45,11 @@ data class UserPreferences(
     // Add Freezer to launcher (home-screen shortcuts for frozen apps)
     val addFreezerToLauncher: Boolean = false,
 
+    // Skip the freeze confirmation for system apps at FreezeTier.NORMAL — the dialog someone
+    // debloating a fresh device answers forty times in a row. Reaches nothing else: EXPERT still
+    // warns and BLOCKED is still refused. See `freezeNeedsConfirmation`.
+    val skipRoutineFreezeConfirmation: Boolean = false,
+
     // Freezer Prompts
     val hasShownDisabledAppsPrompt: Boolean = false,
 
@@ -55,6 +63,9 @@ data class UserPreferences(
     val appListIsGrid: Boolean = true,
     val freezerIsGrid: Boolean = true,
 
+    // How tightly the grids pack. DEFAULT is today's rendering to the dp — see AppGridDensity.
+    val appGridDensity: AppGridDensity = AppGridDensity.DEFAULT,
+
     // Extensions (the Settings entry is shown only with an active privilege; the manager itself is
     // gated behind a one-time liability-consent sheet on first open).
     val extensionsUnlocked: Boolean = false,
@@ -65,6 +76,10 @@ data class UserPreferences(
 
     // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
     val exportDirUri: String? = null,
+
+    // AppInfo Sheet Actions Customization (reordered action list and hidden action set)
+    val appInfoActionsOrder: List<AppInfoActionId> = AppInfoActionId.DEFAULT_ORDER,
+    val hiddenAppInfoActions: Set<AppInfoActionId> = emptySet(),
 
     /**
      * True when the values above are Thor's defaults rather than the user's, because the settings

@@ -10,6 +10,30 @@ import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
 import java.io.File
 
+/**
+ * One OBB expansion file inside a `.xapk`.
+ *
+ * The field names are the wire format, fixed by the installers that consume it — verified against
+ * `cade335/xapk-installer`, `dqh147258/XApkInstaller` and `litefeel/adbtool`. [installLocation] is
+ * decorative: every implementation checked writes `"EXTERNAL_STORAGE"` and none of them branches
+ * on it. It is emitted anyway, because an installer that *does* read it would find a value it
+ * expects rather than an absent key.
+ *
+ * [file] is the zip entry path; [installPath] is the destination relative to the external-storage
+ * root. Thor writes them equal (see `expansionEntryName`), which is what the reference installers
+ * assume, but they are separate fields on the wire and the reader must not assume they match.
+ *
+ * Top-level rather than nested inside [ApksMetadataGenerator] like [ApksMetadataGenerator.XapkSplitApk]:
+ * the bundle builder imports it as `com.valhalla.thor.data.util.XapkExpansion`, and the reader-side
+ * mirror `XapkExpansionInfo` is top-level in its own file too.
+ */
+@Serializable
+data class XapkExpansion(
+    @SerialName("file") val file: String,
+    @SerialName("install_location") val installLocation: String = "EXTERNAL_STORAGE",
+    @SerialName("install_path") val installPath: String
+)
+
 @Single
 class ApksMetadataGenerator {
 
@@ -72,7 +96,30 @@ class ApksMetadataGenerator {
         @SerialName("target_sdk_version") val targetSdkVersion: String? = null,
         @SerialName("total_size") val totalSize: Long? = null,
         @SerialName("icon") val icon: String? = null,
-        @SerialName("split_apks") val splitApks: List<XapkSplitApk> = emptyList()
+        @SerialName("split_apks") val splitApks: List<XapkSplitApk> = emptyList(),
+        /**
+         * An empty list, never null — so an OBB-less `.xapk` carries `"expansions":[]`.
+         *
+         * This was the other way round, on the reasoning that leaving the key out kept those
+         * bundles byte-identical to what shipped before the feature existed. The reasoning was
+         * sound and the conclusion was still the riskier of the two, because it optimised for
+         * Thor's diff rather than for the readers:
+         *
+         *  - `[]` is the only encoding that survives a null check, a truthiness check and a type
+         *    check simultaneously, which is the union of what the reference `.xapk` installers
+         *    actually do. APK Extractor emits it; **nothing** emits `null`.
+         *  - `expansions` is optional in every parser read for this, so an absent key is *also*
+         *    accepted — but "accepted by the five we read" is a weaker claim than "the shape the
+         *    ecosystem already produces".
+         *  - Thor's own reader (`BundleAnalysis`) declares it non-null with an `emptyList()`
+         *    default, so `[]` parses there with no change.
+         *
+         * `xapkJson` sets `encodeDefaults = true`, which is what makes the default *emit* rather
+         * than vanish; see the comment on `xapkJson` for why that config is not negotiable. The
+         * `.apks` manifest goes through the plain `Json` (`encodeDefaults = false`), so its bytes
+         * are unchanged — a value equal to its declared default is still dropped there.
+         */
+        @SerialName("expansions") val expansions: List<XapkExpansion> = emptyList()
     )
 
     fun generateJson(appInfo: AppInfo) = Json.encodeToString(
@@ -111,14 +158,17 @@ class ApksMetadataGenerator {
      * [iconName] must name an entry the builder actually writes at the zip root; pass null when it
      * wrote none, so the field is left out rather than pointing a reader at a missing entry.
      * [staged] is the same contract for the APKs — see [xapkManifest].
+     * [expansions] is what the builder actually packed into `Android/obb/<pkg>/`; an empty list is
+     * written as `"expansions":[]` rather than omitted — see [XapkManifest.expansions].
      */
     fun generateManifestJson(
         appInfo: AppInfo,
         totalSize: Long,
         iconName: String? = "icon.png",
         staged: List<StagedApk>? = null,
+        expansions: List<XapkExpansion> = emptyList(),
     ): String = xapkJson.encodeToString(
-        xapkManifest(appInfo, staged).copy(
+        xapkManifest(appInfo, staged, expansions).copy(
             minSdkVersion = appInfo.minSdk.toString(),
             targetSdkVersion = appInfo.targetSdk.toString(),
             totalSize = totalSize,
@@ -141,7 +191,11 @@ class ApksMetadataGenerator {
      * Pass null only when the caller genuinely has no such list; every declared split is then named
      * and the manifest is a claim about the app.
      */
-    private fun xapkManifest(appInfo: AppInfo, staged: List<StagedApk>? = null): XapkManifest {
+    private fun xapkManifest(
+        appInfo: AppInfo,
+        staged: List<StagedApk>? = null,
+        expansions: List<XapkExpansion> = emptyList(),
+    ): XapkManifest {
         // publicSourceDir first, matching how the builder resolves the base APK it copies.
         val basePath = appInfo.publicSourceDir ?: appInfo.sourceDir
         val splitApks = staged?.map { apk ->
@@ -159,7 +213,10 @@ class ApksMetadataGenerator {
             name = appInfo.appName ?: "",
             versionCode = appInfo.versionCode.toString(),
             versionName = appInfo.versionName ?: "",
-            splitApks = splitApks
+            splitApks = splitApks,
+            // The list itself, empty or not. There used to be a `takeIf { it.isNotEmpty() }` here
+            // to null it out; see XapkManifest.expansions for why `[]` is the better wire shape.
+            expansions = expansions
         )
     }
 

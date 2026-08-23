@@ -17,9 +17,11 @@ import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.model.StagedPackage
+import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
@@ -29,12 +31,22 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.UUID
 
-/** Sub-directory of cacheDir holding staged installer inputs. */
-private const val STAGING_DIR_NAME = "staged_installs"
+/**
+ * Sub-directory of cacheDir holding staged installer inputs.
+ *
+ * Not `STAGING_DIR_NAME`: `com.valhalla.thor.domain.model.STAGING_DIR_NAME` is a public top-level
+ * constant naming a *different* directory (`.thorbak-staging`, inside an app's own data root, where a
+ * restore extracts before the swap). A file-private declaration of that name would win over an import
+ * of the public one in this file without a warning, so the two are spelled apart.
+ */
+import com.valhalla.thor.domain.repository.SystemRepository
+
+private const val INSTALL_STAGING_DIR_NAME = "staged_installs"
 
 @Single(binds = [AppAnalyzer::class])
 class AppAnalyzerImpl(
     private val context: Context,
+    private val systemRepository: SystemRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : AppAnalyzer {
 
@@ -43,7 +55,7 @@ class AppAnalyzerImpl(
         // Random, unpredictable temp names (CWE-377): avoids collisions between
         // concurrent analyses and predictable cache paths.
         val token = UUID.randomUUID()
-        val stagingDir = File(context.cacheDir, STAGING_DIR_NAME).apply { mkdirs() }
+        val stagingDir = File(context.cacheDir, INSTALL_STAGING_DIR_NAME).apply { mkdirs() }
         // The staged file outlives analyze() now, so a process death between the analysis and
         // the install (or the dismissal) would strand a full copy of the input — hundreds of MB
         // for an XAPK. Nothing else ever revisits this directory, so the sweep happens on the
@@ -61,10 +73,8 @@ class AppAnalyzerImpl(
         val apkFile = File(context.cacheDir, "analysis_$token.apk")
 
         val metadata = try {
-            val input = context.contentResolver.openInputStream(uri)
-            if (input == null) {
-                Result.failure(Exception("Could not open the selected file."))
-            } else {
+            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+            if (input != null) {
                 // The extraction budget applied at the door. A content provider is not an archive
                 // — there is no compression ratio to bound — but a hostile one can stream forever,
                 // and this copy runs before anything has decided the input is even a zip. Bounding
@@ -85,6 +95,65 @@ class AppAnalyzerImpl(
                     )
                 } else {
                     readMetadata(bundleFile, apkFile, displayName)
+                }
+            } else {
+                // If content resolver cannot open the file directly (e.g. Scoped Storage non-owned file://),
+                // stage via /data/local/tmp (writable by Shizuku/shell, readable by Thor after chmod 666)
+                val path = uri.path
+                if (!path.isNullOrBlank()) {
+                    val tempToken = UUID.randomUUID().toString()
+                    val tmpPath = "/data/local/tmp/thor_staged_$tempToken"
+                    val src = path.escapeShellArg()
+                    val dst = tmpPath.escapeShellArg()
+                    val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
+                    // Uncancellable, and hoisted outside the branches so every exit passes through
+                    // it: `cat` can have produced the file even when this coroutine is cancelled
+                    // before the call returns, and a `finally` whose body is a suspend call never
+                    // executes once cancellation is in progress — it throws at the first suspension
+                    // point instead. `ArchiveOrphanSweeper` sweeps `cacheDir`,
+                    // `externalCacheDir/obb_out` and the SAF ledger but not `/data/local/tmp`, so
+                    // what is left there is a full-size, `chmod 666` copy of the user's package
+                    // that nothing in the app can reclaim.
+                    try {
+                        val res = systemRepository.executeShellCommand(cmd).getOrNull()
+                        val tmpFile = File(tmpPath)
+                        if (res != null && res.first == 0 &&
+                            tmpFile.exists() && tmpFile.length() > 0
+                        ) {
+                            // The same budget as the provider branch, for the same reason: the
+                            // invariant the two whole-file copies downstream rely on is a property
+                            // of `bundleFile`, not of how it was filled. This path had no bound at
+                            // all, so a 4 GB file the content resolver refused to open was copied
+                            // whole while a 100 MB one it opened was rejected.
+                            val copied = tmpFile.inputStream().use { input ->
+                                FileOutputStream(bundleFile).use { output ->
+                                    input.copyAtMostTo(output, MAX_EXTRACTED_TOTAL_BYTES)
+                                }
+                            }
+                            if (copied == null) {
+                                // Deliberately not the provider branch's wording: the shell has
+                                // already read the whole file into /data/local/tmp by this point,
+                                // so "was not read" would be untrue here. Only the copy Thor would
+                                // install from was declined.
+                                Result.failure(
+                                    Exception(
+                                        "The selected file is larger than " +
+                                            "${MAX_EXTRACTED_TOTAL_BYTES / (1024 * 1024)} MB and was not staged."
+                                    )
+                                )
+                            } else {
+                                readMetadata(bundleFile, apkFile, displayName)
+                            }
+                        } else {
+                            Result.failure(Exception("Could not open the selected file."))
+                        }
+                    } finally {
+                        withContext(NonCancellable) {
+                            systemRepository.executeShellCommand("rm -f $dst")
+                        }
+                    }
+                } else {
+                    Result.failure(Exception("Could not open the selected file."))
                 }
             }
         } catch (e: Exception) {

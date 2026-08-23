@@ -31,8 +31,10 @@ import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.data.security.promptAuthenticators
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
+import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.main.MainScreen
+import com.valhalla.thor.presentation.main.toDestination
 import com.valhalla.thor.presentation.security.AuthState
 import com.valhalla.thor.presentation.security.BiometricScreen
 import com.valhalla.thor.presentation.security.BiometricUnavailableScreen
@@ -41,7 +43,9 @@ import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLocale
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -57,6 +61,33 @@ class HomeActivity : ComponentActivity() {
 
     private val requestCode = 1001
     private var hasRequestedShizuku = false
+
+    /**
+     * The tab [MainScreen] will open on, or `null` while the preference is still being read.
+     *
+     * Deliberately tri-state, for the reason [AuthState.Loading] is: DataStore answers a beat after
+     * `setContent` returns, so folding "not read yet" into "HOME" would compose the Home tab, then
+     * jump to the user's actual choice one frame later. It is a field rather than a `remember`
+     * inside the composition so the read starts before `setContent` and survives recomposition,
+     * and the splash is held until it lands.
+     */
+    private val startTab = MutableStateFlow<AppDestinations?>(null)
+
+    /**
+     * The `.thorbak` this activity was opened on, or null for an ordinary launch.
+     *
+     * Read from `intent` rather than from `onNewIntent`: [HomeActivity] declares no `launchMode`, so
+     * it is `standard` — a VIEW intent creates a new instance rather than delivering to the existing
+     * one, and that new instance's `intent` is the one carrying the URI.
+     *
+     * The grant that arrives with a VIEW intent lives as long as this **task**, not as long as the
+     * process, and it is not persistable. A restore whose task the user swipes away mid-job fails with
+     * a "could not open that file" message — which is the reason §8.5's breadcrumb exists to cover the
+     * data side.
+     */
+    private val pendingRestoreUri: String? by lazy {
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data?.toString()
+    }
 
     /** The locale tag this instance attached with; see [attachBaseContext]. */
     private var attachedLocaleTag: String? = null
@@ -77,6 +108,7 @@ class HomeActivity : ComponentActivity() {
     private val shizukuHandler = ShizukuPermissionHandler(
         onPermissionGranted = {
             Logger.d("HomeActivity", "Shizuku Ready")
+            AppScanRevision.bump()
             homeViewModel.loadDashboardData()
         },
         onPermissionDenied = {
@@ -90,12 +122,23 @@ class HomeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val splashScreen = installSplashScreen()
+        // Started before setContent so the read is already in flight while the first frame is built.
+        // One shot, not a collector: this decides the *start* destination, and a user who changes
+        // the setting while standing in Settings must not be teleported out of it.
+        lifecycleScope.launch {
+            startTab.value = preferenceRepository.userPreferences.first().defaultTab.toDestination()
+        }
         // Hold the frame until the app lock has answered. The preference comes from DataStore, which
         // answers a beat after `setContent` returns, so without this the branch the user sees first
         // is decided by a race rather than by the preference — and the losing outcome is the app,
         // fully composed, behind a lock that had not finished switching on.
+        //
+        // The default tab is held on the same terms and for the same reason: MainScreen's first
+        // composition is the only one that gets to pick a tab, so it must not happen before the
+        // answer is in. Both reads are the same DataStore flow, so this costs no extra latency
+        // beyond the one already being paid.
         splashScreen.setKeepOnScreenCondition {
-            securityViewModel.authState.value == AuthState.Loading
+            securityViewModel.authState.value == AuthState.Loading || startTab.value == null
         }
         enableEdgeToEdge()
         // Settings lives inside this activity, so a language change never leaves it: without this
@@ -120,6 +163,7 @@ class HomeActivity : ComponentActivity() {
                 amoledMode = prefs.useAmoled,
             ) {
                 val authState by securityViewModel.authState.collectAsStateWithLifecycle()
+                val resolvedStartTab by startTab.collectAsStateWithLifecycle()
 
                 // The app lock promises that nothing inside is visible until you authenticate, and
                 // the Recents card is inside: Android snapshots whatever was on screen when Thor went
@@ -178,10 +222,27 @@ class HomeActivity : ComponentActivity() {
 
                     AuthState.NotRequired,
                     AuthState.Unlocked -> {
-                        MainScreen(
-                            homeViewModel = homeViewModel,
-                            onExit = { finish() }
-                        )
+                        // Copied to a local before the null check: `resolvedStartTab` is a delegated
+                        // property and does not smart-cast.
+                        val tab = resolvedStartTab
+                        if (tab == null) {
+                            // The same backdrop as AuthState.Loading, held for the same reason: the
+                            // default tab has not landed yet, and MainScreen's first composition is
+                            // the only one that chooses a tab. Composing it against a guess would
+                            // show Home and then jump. The splash is still up over this.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background)
+                            )
+                        } else {
+                            MainScreen(
+                                startDestination = tab,
+                                pendingRestoreUri = pendingRestoreUri,
+                                homeViewModel = homeViewModel,
+                                onExit = { finish() }
+                            )
+                        }
                     }
 
                     AuthState.Unavailable -> {
@@ -268,6 +329,20 @@ class HomeActivity : ComponentActivity() {
         // unacknowledged for three days; coming back to the app is the first chance to catch it.
         // The store implementation does its work on a background scope and the foss one is a no-op.
         billingProcessor.refreshPurchases()
+        // Re-probe privileges (e.g. user went to KernelSU/Magisk/APatch manager to grant root,
+        // or authorized Shizuku/Dhizuku externally).
+        //
+        // Gated on isReady, which is the difference between "probe again" and "probe twice".
+        // PrivilegeManager starts its first probe from its own init, i.e. from
+        // ThorApplication.onCreate, so on a cold start that probe is still in flight when the
+        // first onResume lands — refreshing here would bump the trigger and buy a second full
+        // root/Shizuku/Dhizuku sweep for an answer already on its way. That is the duplicate
+        // c86aa565 ("perf(privilege): one root probe per cold start") removed. isReady latches
+        // true on the first emission and never goes back, so every *later* resume — the ones
+        // where the user actually did go and grant something — still re-probes.
+        if (privilegeManager.state.value.isReady) {
+            privilegeManager.refresh()
+        }
         if (hasRequestedShizuku) return
         lifecycleScope.launch {
             val privileges = privilegeManager.state.first { it.isReady }

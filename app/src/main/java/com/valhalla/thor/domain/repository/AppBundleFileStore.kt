@@ -26,4 +26,17 @@ interface AppBundleFileStore {
 
     /** Content-uri (as String) to share [file] via FileProvider. */
     fun shareUri(file: File): String
+
+    /**
+     * Stage [content] as [fileName] in a shareable cache directory, replacing the previous staging.
+     *
+     * For the small text artefacts a caller builds in memory rather than from an installed package
+     * — the app-list CSV — which the bundle builder has no way to produce.
+     *
+     * The directory is wiped on entry rather than the file being deleted when the caller finishes,
+     * because a staged file that has been shared must outlive the call that made it: the receiving
+     * app opens the `content://` URI whenever it gets round to it. Clearing on the *next* export is
+     * the only point at which nobody can still be reading the last one.
+     */
+    suspend fun stageText(fileName: String, content: String): File
 }

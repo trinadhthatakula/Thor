@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -32,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,6 +52,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FreezeTier
@@ -57,10 +61,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
+import com.valhalla.thor.presentation.widgets.AppGridMetrics
 import com.valhalla.thor.presentation.widgets.AppIcon
 import com.valhalla.thor.presentation.widgets.AppRiskAction
 import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.AppSearchBar
+import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,13 +75,14 @@ fun ManageFreezerSheet(
     allApps: List<AppInfo>,
     freezerPackageNames: Set<String>,
     searchQuery: String,
+    gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     onSearchChange: (String) -> Unit,
     onToggle: (packageName: String, add: Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     var selectedType by rememberSaveable { mutableStateOf(AppListType.USER) }
 
-    // The app awaiting a blocked/expert confirmation, or null. Plain remember rather than
+    // The app awaiting an add confirmation, or null. Plain remember rather than
     // rememberSaveable: AppInfo is not Saveable, and a dialog that survives process death would
     // outlive the list it was raised from anyway — losing it on rotation is the safe direction.
     var pendingApp by remember { mutableStateOf<AppInfo?>(null) }
@@ -146,8 +153,9 @@ fun ManageFreezerSheet(
             Spacer(Modifier.height(4.dp))
         }
 
+        val metrics = gridMetricsFor(gridDensity)
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 100.dp),
+            columns = GridCells.Adaptive(minSize = metrics.minCellSize),
             contentPadding = PaddingValues(
                 start = 16.dp, end = 16.dp, bottom = 32.dp
             )
@@ -157,34 +165,70 @@ fun ManageFreezerSheet(
                 FreezerAppPickerItem(
                     app = app,
                     selected = inFreezer,
+                    metrics = metrics,
                     onClick = {
                         // Ask once, here, rather than on every later freeze. A watchlist entry
                         // is a standing instruction: the QS tile and the launcher Freeze-all
                         // shortcut act on it with no UI at all, so add time is the last moment
                         // a warning can reach the user. Removal is never gated — unfreezing is
                         // the way out of a bad state.
-                        val tier = app.freezeTier
-                        if (!inFreezer && tier != FreezeTier.NORMAL) pendingApp = app
-                        else onToggle(app.packageName, !inFreezer)
+                        //
+                        // Every add asks, not only the risky tiers. Joining the watchlist
+                        // freezes the app there and then — that is the intended behaviour, but
+                        // it is invisible, and a user who was part-way through something in the
+                        // app loses whatever wasn't saved. The tier decides *which* question is
+                        // asked; it no longer decides whether one is.
+                        if (inFreezer) onToggle(app.packageName, false)
+                        else pendingApp = app
                     }
                 )
             }
         }
     }
 
-    // Only non-NORMAL apps ever land here, so the shared dialog's normal-tier wording is
-    // unreachable from this call site — blocked gets no confirm button, expert gets the red
-    // "Freeze anyway", exactly as the freeze confirmation in the app info sheet does.
+    // Two questions, one gate, because the two dangers are different. A tiered app keeps the
+    // shared risk dialog — blocked gets no confirm button, expert gets the red "Freeze anyway",
+    // exactly as the freeze confirmation in the app info sheet does — and that copy is about the
+    // *device*: what breaks when this package stops running. Everything else gets the plain
+    // warning, which is about the *timing*: the app freezes on confirm, not later, so anything
+    // unsaved in it is gone. Neither wording covers the other, which is why this is not one
+    // dialog with a fifth branch.
     pendingApp?.let { app ->
-        AppRiskDialog(
-            app = app,
-            action = AppRiskAction.Freeze,
-            onConfirm = {
-                onToggle(app.packageName, true)
-                pendingApp = null
-            },
-            onDismiss = { pendingApp = null }
-        )
+        val confirmAdd = {
+            onToggle(app.packageName, true)
+            pendingApp = null
+        }
+        if (app.freezeTier == FreezeTier.NORMAL) {
+            AlertDialog(
+                onDismissRequest = { pendingApp = null },
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.warning),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                title = { Text(stringResource(R.string.freezer_add_warning_title)) },
+                text = { Text(stringResource(R.string.freezer_add_warning_body)) },
+                confirmButton = {
+                    TextButton(onClick = confirmAdd) {
+                        Text(stringResource(R.string.proceed))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingApp = null }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                }
+            )
+        } else {
+            AppRiskDialog(
+                app = app,
+                action = AppRiskAction.Freeze,
+                onConfirm = confirmAdd,
+                onDismiss = { pendingApp = null }
+            )
+        }
     }
 }
 
@@ -199,14 +243,15 @@ fun ManageFreezerSheet(
 internal fun FreezerAppPickerItem(
     app: AppInfo,
     selected: Boolean,
+    metrics: AppGridMetrics = gridMetricsFor(AppGridDensity.DEFAULT),
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .padding(6.dp)
-            .clip(RoundedCornerShape(32.dp))
+            .padding(metrics.outerPadding)
+            .clip(RoundedCornerShape(metrics.cornerRadius))
             .background(
                 if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 else MaterialTheme.colorScheme.surfaceContainerLow
@@ -216,10 +261,10 @@ internal fun FreezerAppPickerItem(
                 indication = null,
                 onClick = onClick
             )
-            .padding(16.dp)
+            .padding(metrics.innerPadding)
     ) {
         Box {
-            AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp)
+            AppIcon(app.packageName, app.enabled, app.isSuspended, metrics.iconSize)
             if (selected) {
                 Icon(
                     painter = painterResource(R.drawable.check_circle),
@@ -227,10 +272,14 @@ internal fun FreezerAppPickerItem(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
+                        .size(metrics.selectionSize)
                         .background(MaterialTheme.colorScheme.surface, CircleShape)
                 )
             }
         }
+        // Not metrics.labelSpacing: this picker has always sat 2 dp tighter than the browsing
+        // grid, and folding the two together would move the default rendering — which is the one
+        // thing a density setting must not do to a user who never opens it.
         Spacer(Modifier.height(6.dp))
         Text(
             text = app.appName ?: app.packageName,

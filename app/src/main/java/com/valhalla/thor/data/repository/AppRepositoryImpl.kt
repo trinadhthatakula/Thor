@@ -19,9 +19,12 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.model.ScanVerdict
+import com.valhalla.thor.domain.model.prunableWatchlistRows
 import com.valhalla.thor.domain.model.scanVerdict
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
+import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.LocaleRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
@@ -44,10 +47,93 @@ class AppRepositoryImpl(
     private val appDao: AppDao,
     private val uadHelper: UadHelper,
     private val installedAppsPermission: InstalledAppsPermissionGate,
+    // Only for the watchlist prune below. The scan is the one place that knows whether a package's
+    // absence is real, and the Freezer's rows are the only other thing keyed on package name that
+    // outlives the package — the same class of stale artifact as the cached icon PNGs this already
+    // deletes.
+    private val freezerRepository: FreezerRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : AppRepository {
 
     private val pm = context.packageManager
+
+    /**
+     * Drop Freezer watchlist rows for packages this scan proves are gone.
+     *
+     * **Here, and not in `FreezerViewModel`, because this is the only place that holds the
+     * verdict.** The Freezer screen sees a `List<AppInfo>`, and on a retained scan that list is the
+     * union of the scan and the rows Thor refused to prune — so from there a genuinely uninstalled
+     * package and a package hidden by a truncated scan look identical. [prunableWatchlistRows] holds
+     * the rule; nothing is decided here, the same division [scanVerdict] already uses above.
+     *
+     * Silent, and one `Logger` line. There is no UI surface that renders a row with no referent, so
+     * a dialog would be asking permission to tidy something the user cannot see, and naming the
+     * packages would list apps they can no longer act on.
+     *
+     * Failure is swallowed on purpose. This is housekeeping hanging off a scan whose actual job is
+     * to emit an app list; a Room error here must not take the emission down with it, and the next
+     * trusted scan tries again.
+     *
+     * [watchlistBeforeScan] is passed in rather than read here, and that ordering is the whole of
+     * the rule — see [watchlistSnapshot].
+     */
+    private suspend fun pruneWatchlist(
+        watchlistBeforeScan: Set<String>?,
+        scannedPackageNames: Set<String>,
+        verdict: ScanVerdict
+    ) {
+        // Null means the snapshot itself failed to read. Pruning against a watchlist we could not
+        // see is the one thing worse than not pruning: the empty set makes every row look absent.
+        if (watchlistBeforeScan == null) return
+        try {
+            val stale = prunableWatchlistRows(
+                watchlist = watchlistBeforeScan,
+                scannedPackageNames = scannedPackageNames,
+                verdict = verdict
+            )
+            if (stale.isEmpty()) return
+            freezerRepository.removeAll(stale)
+            Logger.d(
+                "AppRepository",
+                "pruned ${stale.size} freezer row(s) with no installed package"
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("AppRepository", "pruning the freezer watchlist failed", e)
+        }
+    }
+
+    /**
+     * The watchlist as it stood **before** the package scan this prune will judge it against.
+     *
+     * The order is the point. Read afterwards, a row added while the scan was running names a
+     * package the scan never had a chance to see, so it lands in the stale set and is deleted —
+     * and because adding to the Freezer freezes immediately, that leaves a frozen app with no
+     * Freezer row: precisely the unreachable state this whole prune exists to clean up. It needs a
+     * newer scan to have surfaced a fresh install while this older one is still mid-flight, which
+     * is narrow, but the fix is an ordering, not a lock.
+     *
+     * Rows added after this point are simply not candidates for this scan. The next one considers
+     * them, by which time it has seen their packages — so the error this ordering can make is
+     * always "pruned nothing", never "pruned something live".
+     *
+     * Returns null rather than an empty set on failure, and the two must not be conflated: an
+     * empty watchlist prunes nothing, while an *unread* watchlist would prune everything if it
+     * were treated as empty and compared the other way round. The read is guarded here rather than
+     * inside the scan's own `try`, whose catch swallows and loops — a Room throw there would skip
+     * the `producer.send` below and drop that scan's emission entirely, turning a housekeeping
+     * failure into a blank app list.
+     */
+    private suspend fun watchlistSnapshot(): Set<String>? =
+        try {
+            freezerRepository.getAllPackageNames().toSet()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("AppRepository", "reading the freezer watchlist failed", e)
+            null
+        }
 
     /**
      * What the cached app labels depend on, as one comparable value.
@@ -104,12 +190,28 @@ class AppRepositoryImpl(
         // If 50 broadcasts come in, we only keep the latest "refresh needed" flag.
         val triggerChannel = Channel<Unit>(Channel.CONFLATED)
 
+        // Read here, synchronously, and *before* the worker below exists — not down at the watcher
+        // that consumes it. The worker runs on a multi-threaded dispatcher, so it can be inside
+        // getInstalledPackages() while this block is still registering receivers; a scan request
+        // raised in that window has to survive until the watcher subscribes, and only a baseline
+        // taken before the scan started can tell "arrived while we were scanning" from "already
+        // folded into the scan we are about to run". See [AppScanRevision.requestsAfter].
+        val scanRevisionAtStart = AppScanRevision.snapshot()
+
         // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
         val worker = launch(ioDispatcher) {
             // Initial load from cache and baseline for comparison
             val cachedMap = try {
                 val entities = appDao.getAllApps()
                 if (entities.isNotEmpty()) {
+                    // Deliberately un-enriched. `AppEntity` stores no bloat fields, so this first
+                    // frame carries a null recommendation and description for every app, and the
+                    // list's UAD tier badge draws nothing until the rescan below lands. Copying
+                    // `uadHelper.uadMap` in here would fix the pop-in and drag the ~1.6 MB JSON
+                    // parse, under its lock, onto the one path that exists to get pixels up fast —
+                    // the path that was cleared of exactly that after an ANR (see the note at the
+                    // per-rescan read further down, and `UadHelper.uadMap`). A badge that arrives a
+                    // beat late is recoverable; a stall before the first frame is not.
                     producer.send(entities.map { it.toDomain() })
                 }
                 entities.associateBy { it.packageName }.toMutableMap()
@@ -149,14 +251,41 @@ class AppRepositoryImpl(
                     val currentLocale = localeCacheKey()
                     val forceRefresh = currentLocale != lastLocale
 
+                    // Before the scan, not after it. See [watchlistSnapshot] — a row added
+                    // between the two reads names a package the scan could not have seen.
+                    val watchlistBeforeScan = watchlistSnapshot()
+
                     val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
-                    val installedPackages =
+                    var installedPackages =
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(flags))
                         } else {
                             pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
                         }
 
+                    // On Chinese OEMs (HyperOS, MIUI, ColorOS), MATCH_UNINSTALLED_PACKAGES may trigger
+                    // OEM package-visibility filters and collapse to only the calling app. Fall back to standard flags.
+                    //
+                    // The fallback recovers the *list*, never the *authority to prune against it*:
+                    // without MATCH_UNINSTALLED_PACKAGES the query cannot see a package whose per-user
+                    // FLAG_INSTALLED bit is clear, so an uninstall-frozen app reads as gone when it is
+                    // merely invisible. Believing that would delete its Room row, its cached icon PNG
+                    // and — the one that cannot be repaired by a later scan — its Freezer watchlist row,
+                    // which is what makes it thawable at all. Hence the flag, read at the verdict below.
+                    var usedVisibilityFallback = false
+                    if (installedPackages.size <= 1) {
+                        val fallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
+                        } else {
+                            pm.getInstalledPackages(0)
+                        }
+                        if (fallback.size > installedPackages.size) {
+                            installedPackages = fallback
+                            usedVisibilityFallback = true
+                        }
+                    }
+
+                    val initialCachedCount = cachedMap.size
                     val currentList = ArrayList<AppInfo>(installedPackages.size)
                     val toUpdate = mutableListOf<AppEntity>()
 
@@ -233,45 +362,72 @@ class AppRepositoryImpl(
                     // return a near-empty list, and pruning against that wipes the Room rows *and*
                     // the cached icon PNGs for almost every app the user has. scanVerdict() holds
                     // the rules; nothing is decided here.
-                    val verdict = scanVerdict(
+                    //
+                    // A scan that needed the weaker-flags fallback skips the rules entirely: none of
+                    // them can see that MATCH_UNINSTALLED_PACKAGES was dropped, and every one of them
+                    // would happily Accept the 300 packages such a scan *does* return. See
+                    // [scanVerdictFor].
+                    val verdict = scanVerdictFor(
+                        usedVisibilityFallback = usedVisibilityFallback,
                         scannedPackageNames = currentPackageNames,
-                        cachedCount = cachedMap.size,
+                        cachedCount = initialCachedCount,
                         consecutiveSuspectScans = consecutiveSuspectScans,
                         permission = installedAppsPermission.state()
                     )
 
+                    // Accept resets the tolerance, an ordinary Retain spends one of it, and a
+                    // VisibilityFallback Retain does neither — [nextSuspectScanCount] holds the
+                    // reasoning. Read before the `when` below so both branches see the same rule.
+                    consecutiveSuspectScans = nextSuspectScanCount(consecutiveSuspectScans, verdict)
+
                     // The cached rows this scan did not see and was not allowed to delete. Mapped
                     // through the same AppEntity.toDomain() the initial cache emission above uses,
                     // so a retained row reaches the UI exactly as it did a moment earlier.
+                    var syncCacheSucceeded = true
                     val retained = when (verdict) {
                         ScanVerdict.Accept -> {
-                            consecutiveSuspectScans = 0
                             if (toUpdate.isNotEmpty() || toDelete.isNotEmpty()) {
-                                appDao.syncCache(toUpdate, toDelete)
-                                toDelete.forEach { pkgName ->
-                                    cachedMap.remove(pkgName)
-                                    try {
-                                        File(context.filesDir, "app_icons/$pkgName.png").delete()
-                                    } catch (_: Exception) {}
+                                try {
+                                    appDao.syncCache(toUpdate, toDelete)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    syncCacheSucceeded = false
+                                    Logger.e("AppRepository", "syncCache failed during accepted scan", e)
+                                }
+                                if (syncCacheSucceeded) {
+                                    toDelete.forEach { pkgName ->
+                                        cachedMap.remove(pkgName)
+                                        try {
+                                            File(context.filesDir, "app_icons/$pkgName.png").delete()
+                                        } catch (_: Exception) {}
+                                    }
                                 }
                             }
+                            pruneWatchlist(watchlistBeforeScan, currentPackageNames, verdict)
                             emptyList<AppInfo>()
                         }
 
                         is ScanVerdict.Retain -> {
-                            consecutiveSuspectScans++
                             Logger.w(
                                 "AppRepository",
                                 "not pruning against this scan (${verdict.reason}): saw " +
                                         "${currentPackageNames.size} package(s) against " +
-                                        "${cachedMap.size} cached, keeping ${toDelete.size} row(s)"
+                                        "$initialCachedCount cached, keeping ${toDelete.size} row(s)"
                             )
                             // Updates still land — they describe packages the scan *did* see, so
                             // they are no less trustworthy than on an accepted scan. Only the
                             // deletions are withheld, and the icon files with them: a retained Room
                             // row is repaired by the next good scan, a deleted PNG is not.
                             if (toUpdate.isNotEmpty()) {
-                                appDao.syncCache(toUpdate, emptyList())
+                                try {
+                                    appDao.syncCache(toUpdate, emptyList())
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    syncCacheSucceeded = false
+                                    Logger.e("AppRepository", "syncCache failed during retained scan", e)
+                                }
                             }
                             toDelete.mapNotNull { cachedMap[it]?.toDomain() }
                         }
@@ -283,13 +439,12 @@ class AppRepositoryImpl(
                     // nothing would strand isLoading forever on a fresh collection.
                     producer.send(currentList + retained)
 
-                    // Only now, and only on a scan that was trusted enough to prune against. Moving
-                    // the key up next to the `forceRefresh` read would let a scan that was cancelled
-                    // mid-loop, or one that ran while package visibility was truncated, record a
-                    // language for rows it never re-mapped — and nothing would ever force-refresh
-                    // them again. Re-mapping twice costs a rescan; recording too early costs the
-                    // stale labels this key exists to prevent.
-                    if (forceRefresh && verdict == ScanVerdict.Accept) {
+                    // Only now, and only on a scan that was trusted enough to prune against and whose
+                    // cache synchronization succeeded — [shouldRecordLabelLocale] holds the rule.
+                    // Moving the key up next to the `forceRefresh` read would let a scan that was
+                    // cancelled mid-loop, or one that ran while package visibility was truncated,
+                    // record a language for rows it never re-mapped.
+                    if (shouldRecordLabelLocale(forceRefresh, verdict, syncCacheSucceeded)) {
                         lastLocale = currentLocale
                         recordLabelLocale(currentLocale)
                     }
@@ -300,7 +455,7 @@ class AppRepositoryImpl(
                     // the channel — defeating ensureActive() above and the awaitClose teardown.
                     throw e
                 } catch (e: Exception) {
-                    if (BuildConfig.DEBUG) e.printStackTrace()
+                    Logger.e("AppRepository", "getAllApps scan failed", e)
                 }
             }
         }
@@ -313,6 +468,19 @@ class AppRepositoryImpl(
         // [LocaleRevision]).
         val localeWatcher = launch {
             LocaleRevision.changes.collect { triggerChannel.trySend(Unit) }
+        }
+
+        // Process-wide scan requests (e.g. self-permission auto-grant, privilege changes).
+        //
+        // Filtered against the baseline captured at the top rather than with drop(1): a bump that
+        // predates this collection is already covered by the initial trigger the worker sends
+        // itself, so acting on it too would buy a second full scan every time — but a bump raised
+        // *after* that baseline must get through however late this subscribes, because the scan it
+        // is racing may have read the package list before the grant landed. drop(1) cannot tell
+        // those two apart; the baseline can. See the AppScanRevision class KDoc.
+        val scanWatcher = launch {
+            AppScanRevision.requestsAfter(scanRevisionAtStart)
+                .collect { triggerChannel.trySend(Unit) }
         }
 
         // Receiver for Package-specific changes (requires "package" data scheme)
@@ -357,6 +525,7 @@ class AppRepositoryImpl(
             context.unregisterReceiver(packageReceiver)
             context.unregisterReceiver(generalReceiver)
             localeWatcher.cancel()
+            scanWatcher.cancel()
             worker.cancel()
         }
     }.flowOn(ioDispatcher)
