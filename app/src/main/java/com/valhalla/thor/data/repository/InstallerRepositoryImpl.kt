@@ -633,10 +633,12 @@ class InstallerRepositoryImpl(
         eventBus.emit(InstallState.Installing(0f))
 
         // Shared storage, because the *shell* has to be able to read these files: uid 2000 cannot
-        // open anything under Thor's own /data/data, and it is the documented exception to the
-        // Android 11 Android/data restriction, so shared storage is the one place both sides can
-        // reach. integrityGuardedInstall re-hashes them there to close the exposure. See the digest
-        // map below.
+        // open anything under Thor's own /data/data, and it is exempt from the Android 11
+        // Android/data restriction — MediaProvider's FUSE daemon waives that check for any
+        // `uid < AID_APP_START` (10000), which is an AOSP implementation detail rather than a
+        // documented guarantee, but it is what the shell rung has always relied on. So shared
+        // storage is the one place both sides can reach. integrityGuardedInstall re-hashes them
+        // there to close the exposure. See the digest map below.
         //
         // What used to be written here — that piping the bytes in "is not available here", because
         // newProcess feeds the command itself down stdin — was wrong, and it is why this rung named
