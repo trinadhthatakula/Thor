@@ -13,7 +13,8 @@ import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
-import com.valhalla.thor.data.source.local.installCommand
+import com.valhalla.thor.data.source.local.SessionApk
+import com.valhalla.thor.data.source.local.installViaSessionCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
@@ -33,6 +34,7 @@ import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.first
+import java.io.File
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 
@@ -404,8 +406,14 @@ class ShizukuSystemGateway(
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
 
-        val command = installCommand(
-            escapedApkPaths = listOf(apkPath.escapeForShell()),
+        // Through the same session builder as every other install in the app. This override has no
+        // caller today, which is the only reason it never reported the bug the installer rung did:
+        // `pm install <path>` is read by system_server, not by this shell, so shell-readable is
+        // necessary and not sufficient. Left as `pm install` it would be a working-looking helper
+        // that fails the first time someone routes the fallback chain through it.
+        val file = File(apkPath)
+        val command = installViaSessionCommand(
+            apks = listOf(SessionApk(path = apkPath, sizeBytes = file.length(), name = file.name)),
             userId = thorUserId,
             canDowngrade = canDowngrade,
             installerArg = installerArg,

@@ -14,8 +14,13 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.receivers.InstallReceiver
-import com.valhalla.thor.data.source.local.installCommand
-import com.valhalla.thor.data.source.local.shizuku.ShizukuPackageInstallerUtils
+import com.valhalla.thor.data.source.local.SessionApk
+import com.valhalla.thor.data.source.local.installViaSessionCommand
+import com.valhalla.thor.data.source.local.privileged.InstallerHandle
+import com.valhalla.thor.data.source.local.privileged.PrivilegedInstallerTransport
+import com.valhalla.thor.data.source.local.privileged.PrivilegedPackageInstallers
+import com.valhalla.thor.data.source.local.privileged.sessionInstallerPackageName
+import com.valhalla.thor.data.source.local.privileged.transportFor
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
@@ -66,7 +71,11 @@ class InstallerRepositoryImpl(
     @Named("main") private val mainDispatcher: CoroutineDispatcher
 ) : InstallerRepository {
 
-    private val defaultInstaller = context.packageManager.packageInstaller
+    // The in-process installer. Its sessions are created by Thor's own uid, so the platform's
+    // openSession() is the correct opener here — which is why the unprivileged case has to be asked
+    // for by name rather than arrived at by leaving an argument off.
+    private val defaultInstaller =
+        InstallerHandle.unprivileged(context.packageManager.packageInstaller)
 
     /**
      * Given an on-disk copy of the installer input, return the ordered list of APK
@@ -159,7 +168,7 @@ class InstallerRepositoryImpl(
                             Logger.d("InstallerRepo", "Shizuku shell install failed. Trying reflection fallback...")
                             // 2. Try Reflection
                             val privilegedInstaller = try {
-                                getShizukuPackageInstaller()
+                                privilegedInstallerHandle(InstallMode.SHIZUKU)
                             } catch (e: Throwable) {
                                 if (e is CancellationException) throw e
                                 Logger.e("InstallerRepo", "Failed to get Shizuku privileged installer: ${e.message}")
@@ -211,7 +220,7 @@ class InstallerRepositoryImpl(
                             Logger.d("InstallerRepo", "Dhizuku shell install failed. Trying reflection fallback...")
                             // 2. Try Reflection
                             val privilegedInstaller = try {
-                                getDhizukuPackageInstaller()
+                                privilegedInstallerHandle(InstallMode.DHIZUKU)
                             } catch (e: Throwable) {
                                 if (e is CancellationException) throw e
                                 Logger.e("InstallerRepo", "Failed to get Dhizuku privileged installer: ${e.message}")
@@ -397,58 +406,72 @@ class InstallerRepositoryImpl(
         return settled ?: InstallWait.UNCONFIRMED
     }
 
-    // Create a PackageInstaller using Dhizuku's binder wrapper but make the installer package
-    // be this app's package name so created sessions belong to the app UID (avoids UID mismatch).
-    private fun getDhizukuPackageInstaller(): PackageInstaller {
-        // Prefer using the existing Shizuku helper which returns a privileged IPackageInstaller.
-        // This avoids calling IPackageManager.getPackageInstaller() directly (which may not exist
-        // on some ROMs / API versions and caused NoSuchMethodError).
-        try {
-            val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-            // Thor's own user, for the reason `ShizukuReflector.getPackageInstaller` gives: which
-            // uid Shizuku holds is a different question from which user the session installs for,
-            // and the old `if (root) … else 0` answered the first one.
-            val userId = thorUserId
-            val installerPackageName = context.packageName
-
-            return ShizukuPackageInstallerUtils.createPackageInstaller(
-                iPackageInstaller,
-                installerPackageName,
-                userId
-            )
-        } catch (e: Throwable) {
-            if (e is CancellationException) throw e
-            // Bubble up so caller falls back to normal installer; log for debugging.
-            Logger.e("InstallerRepo", "getDhizukuPackageInstaller failed: ${e.message}")
-            throw e
+    /**
+     * The privileged session installer for [mode], or `null` for a mode that has no such thing.
+     *
+     * One function for both privilege modes, deliberately. There used to be two — and the Dhizuku
+     * one fetched its `IPackageInstaller` through `ShizukuPackageInstallerUtils`, so **the Dhizuku
+     * rung transacted over `ShizukuBinderWrapper`**, which on a Dhizuku-only device wraps a service
+     * that is not installed. Its own comment claimed to be "using Dhizuku's binder wrapper". Two
+     * copies is how they drifted; [transportFor] answering from the mode is how they stop.
+     *
+     * The returned [InstallerHandle] carries its own session opener, because
+     * `PackageInstaller.openSession` does **not** wrap the session binder it gets back — see
+     * [PrivilegedPackageInstallers.openSession] for what that costs.
+     */
+    private fun privilegedInstallerHandle(mode: InstallMode): InstallerHandle? {
+        val transport = transportFor(mode) ?: run {
+            // Unreachable today — both call sites pass a literal privileged mode. Logged rather than
+            // returned silently so that a mode added later shows up here instead of quietly skipping
+            // the session rung and landing the user in the confirmation dialog.
+            Logger.e("InstallerRepo", "No privileged installer transport for $mode")
+            return null
         }
-    }
 
-    // Create a PackageInstaller using Shizuku's privileged installer helper (like ShizukuReflector)
-    // and make the installer package be this app's package name so sessions belong to app UID.
-    private fun getShizukuPackageInstaller(): PackageInstaller {
-        // Reuse ShizukuPackageInstallerUtils to get a privileged IPackageInstaller safely across API levels
-        val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-
-        val shizukuUid = try {
-            rikka.shizuku.Shizuku.getUid()
-        } catch (_: Exception) {
+        // Read only on the transport it means something for. The Dhizuku rung must not touch
+        // rikka.shizuku at all — reaching for Shizuku on the Dhizuku path is the exact defect this
+        // function exists to fix, and on a Dhizuku-only device getUid() has no binder to ask.
+        // -1 is the "could not read it" sentinel; sessionInstallerPackageName treats it the same as
+        // a root Shizuku, i.e. it names Thor rather than shell.
+        val shizukuUid = if (transport == PrivilegedInstallerTransport.SHIZUKU) {
+            try {
+                rikka.shizuku.Shizuku.getUid()
+            } catch (_: Throwable) {
+                -1
+            }
+        } else {
             -1
         }
-        val isShell = shizukuUid == 2000
 
-        // Thor's own user, whatever uid Shizuku holds. Shell uid is the normal setup, so the old
-        // `if (isRoot) … else 0` meant a work-profile install landed in the primary user instead.
-        val userId = thorUserId
+        // The mirror image, scoped the same way: a Dhizuku transact is re-issued from the device
+        // owner's process, so `mAppOps.checkPackage(callingUid, installerPackageName)` in
+        // `createSessionInternal` refuses any name that uid does not own — including Thor's.
+        // getOwnerPackageName() throws until the owner component has been received; `null` then means
+        // "no better name available" and sessionInstallerPackageName falls back to Thor's, which is
+        // where this rung already was.
+        val dhizukuOwnerPackageName = if (transport == PrivilegedInstallerTransport.DHIZUKU) {
+            try {
+                com.rosan.dhizuku.api.Dhizuku.getOwnerPackageName()
+            } catch (_: Throwable) {
+                null
+            }
+        } else {
+            null
+        }
 
-        // For ADB-based Shizuku (shell), using "com.android.shell" often works better
-        // than the app's own package name to avoid permission/UID mismatch issues.
-        val installerPackageName = if (isShell) "com.android.shell" else context.packageName
-
-        return ShizukuPackageInstallerUtils.createPackageInstaller(
-            iPackageInstaller,
-            installerPackageName,
-            userId
+        return PrivilegedPackageInstallers.handleFor(
+            transport = transport,
+            installerPackageName = sessionInstallerPackageName(
+                transport = transport,
+                shizukuUid = shizukuUid,
+                thorPackageName = context.packageName,
+                dhizukuOwnerPackageName = dhizukuOwnerPackageName,
+            ),
+            // Thor's own user, whatever uid the transport holds. Which uid Shizuku runs as is a
+            // different question from which user the session installs for, and the old
+            // `if (isRoot) … else 0` answered the first one — a work-profile install landed in the
+            // primary user instead.
+            userId = thorUserId,
         )
     }
 
@@ -609,12 +632,20 @@ class InstallerRepositoryImpl(
     private suspend fun installWithShizuku(staged: StagedPackage, canDowngrade: Boolean): Boolean {
         eventBus.emit(InstallState.Installing(0f))
 
-        // Shared storage, deliberately: `pm install <path>` has *system_server* open the path,
-        // and it cannot read /data/data. The root gateway sidesteps this by piping the bytes in
-        // over stdin, which is not available here — Shizuku's newProcess feeds the command
-        // itself down stdin and closes it, and the shell uid could not `cat` an app-private file
-        // even if it were free. So the files are exposed, and integrityGuardedInstall re-hashes
-        // them inside the same shell invocation instead. See the digest map below.
+        // Shared storage, because the *shell* has to be able to read these files: uid 2000 cannot
+        // open anything under Thor's own /data/data, and it is exempt from the Android 11
+        // Android/data restriction — MediaProvider's FUSE daemon waives that check for any
+        // `uid < AID_APP_START` (10000), which is an AOSP implementation detail rather than a
+        // documented guarantee, but it is what the shell rung has always relied on. So shared
+        // storage is the one place both sides can reach. integrityGuardedInstall re-hashes them
+        // there to close the exposure. See the digest map below.
+        //
+        // What used to be written here — that piping the bytes in "is not available here", because
+        // newProcess feeds the command itself down stdin — was wrong, and it is why this rung named
+        // an absolute path to `pm` for its entire existence. The pipeline in
+        // `cat <apk> | pm install-write … -` is internal to the shell and has nothing to do with
+        // what that shell was started with; Odin's root channel is fed on stdin in exactly the same
+        // way and has streamed installs successfully since GH#159.
         val baseDir = context.externalCacheDir ?: context.cacheDir
         val tempDir = File(baseDir, "install_shizuku_${UUID.randomUUID()}")
         val tempFiles = stageInstallSetCleaningUpOnFailure(staged, tempDir)
@@ -631,7 +662,7 @@ class InstallerRepositoryImpl(
         return try {
             // The shell rung, and normally the one that decides the outcome: the PackageInstaller
             // session rung is only reached when this returns false. Both rungs now name the same
-            // user, which is the whole point — getShizukuPackageInstaller() creates its session for
+            // user, which is the whole point — privilegedInstallerHandle() creates its session for
             // thorUserId, so a shell rung that installed somewhere else meant one operation landing
             // in two different places depending on which rung happened to succeed.
             //
@@ -640,18 +671,32 @@ class InstallerRepositoryImpl(
             // parsed, and the session is then created with USER_SYSTEM plus INSTALL_ALL_USERS, so
             // every install here landed on *every* user of the device and exited 0. From a work
             // profile that pushes an APK into the personal profile nobody asked to install it into.
-            val apkPaths = tempFiles.map { it.file.absolutePath }
+            //
+            // A session, streaming the bytes in, rather than `pm install <path>`: the shell can open
+            // these files but system_server — which is what actually opens a path argument, via
+            // ShellCommand.openFileForSystem — may not, and `pm install-multiple` is not a verb any
+            // Android has ever implemented, so every split set failed here unconditionally.
+            // installViaSessionCommand carries the full argument.
+            //
             // The digests came out of the copy itself, not out of a read-back of these paths. By
             // the time this line runs, `eventBus.emit` and a DataStore read have both suspended —
             // tens of milliseconds during which a co-installed app holding WRITE_EXTERNAL_STORAGE
             // could have replaced base.apk. Hashing here would have hashed its file and then
             // confirmed it against itself.
             //
-            // integrityGuardedInstall escapes these paths itself, so they are passed raw here and
-            // escaped for installCommand separately — the two must not be escaped twice.
+            // Both builders escape the paths themselves, so raw paths go to both. Note what
+            // streaming does to the guard: `sha256sum <path>` and `cat <path>` need the same one
+            // permission, so the guard no longer adds a way for the install to fail that the install
+            // did not already have.
             val digests = tempFiles.map { it.file.absolutePath to it.sha256 }
-            val command = installCommand(
-                escapedApkPaths = apkPaths.map { it.escapeForShell() },
+            val command = installViaSessionCommand(
+                apks = tempFiles.map {
+                    SessionApk(
+                        path = it.file.absolutePath,
+                        sizeBytes = it.file.length(),
+                        name = it.file.name,
+                    )
+                },
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
                 installerArg = installerArg,
@@ -678,7 +723,16 @@ class InstallerRepositoryImpl(
     private suspend fun installWithDhizuku(staged: StagedPackage, canDowngrade: Boolean): Boolean {
         eventBus.emit(InstallState.Installing(0f))
 
-        // Shared storage for the same reason as the Shizuku path, and guarded the same way.
+        // Shared storage for the same reason as the Shizuku path, and guarded the same way — but
+        // with a caveat that does not apply there. DhizukuAPI.newProcess runs the shell inside the
+        // device-owner *app*, at an ordinary app uid, which is precisely the uid class that cannot
+        // read another app's Android/data from API 30 on; Shizuku's uid 2000 is the exemption, and
+        // Dhizuku has no equivalent. So this rung is expected to work on API 28-29 and to fail on
+        // anything newer no matter how the bytes are moved, and the session rung
+        // (privilegedInstallerHandle) is the one that has to carry modern Android: there Thor's own
+        // process supplies the bytes and the shell is not involved at all. That rung had its own
+        // defect until now — it ran on the Shizuku binder wrapper, so on a Dhizuku-only device
+        // there was nothing left to carry modern Android with.
         val baseDir = context.externalCacheDir ?: context.cacheDir
         val tempDir = File(baseDir, "install_dhizuku_${UUID.randomUUID()}")
         val tempFiles = stageInstallSetCleaningUpOnFailure(staged, tempDir)
@@ -694,15 +748,25 @@ class InstallerRepositoryImpl(
 
         return try {
             // Same rung, same seed, same fix as installWithShizuku above — and the same pairing
-            // with the session rung, which getDhizukuPackageInstaller() creates for thorUserId.
+            // with the session rung, which privilegedInstallerHandle() creates for thorUserId.
             // Dhizuku's identity does not soften the trap: `pm` runs inside the device-owner app
             // via DhizukuAPI.newProcess, but the missing --user is parsed by PackageManagerService,
             // not by whoever invoked it, so the bare form installed for every user here too.
-            val apkPaths = tempFiles.map { it.file.absolutePath }
+            // A streaming session for the same two reasons as the Shizuku rung: system_server, not
+            // this shell, is what opens a path argument, and `pm install-multiple` does not exist.
+            // The second reason bites here even on API 28-29, where the read succeeds — every split
+            // set failed on an unknown verb regardless of permissions.
+            //
             // Digests from the copy, for the same reason as the Shizuku rung above.
             val digests = tempFiles.map { it.file.absolutePath to it.sha256 }
-            val command = installCommand(
-                escapedApkPaths = apkPaths.map { it.escapeForShell() },
+            val command = installViaSessionCommand(
+                apks = tempFiles.map {
+                    SessionApk(
+                        path = it.file.absolutePath,
+                        sizeBytes = it.file.length(),
+                        name = it.file.name,
+                    )
+                },
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
                 installerArg = installerArg,
@@ -729,7 +793,10 @@ class InstallerRepositoryImpl(
     @SuppressLint("RequestInstallPackagesPolicy")
     private suspend fun performPackageInstallerInstall(
         staged: StagedPackage,
-        packageInstaller: PackageInstaller,
+        // An [InstallerHandle] rather than a bare PackageInstaller: on a privileged installer the
+        // platform's own openSession() hands back a session whose binder is unwrapped, so every
+        // write on it transacts as Thor and is refused. The handle carries the correct opener.
+        installer: InstallerHandle,
         canDowngrade: Boolean,
         emitErrors: Boolean = true
     ) {
@@ -760,7 +827,7 @@ class InstallerRepositoryImpl(
         }
 
         val sessionId = try {
-            packageInstaller.createSession(params)
+            installer.createSession(params)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             if (emitErrors) {
@@ -770,13 +837,13 @@ class InstallerRepositoryImpl(
         }
 
         val session = try {
-            packageInstaller.openSession(sessionId)
+            installer.openSession(sessionId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             // createSession() succeeded but the session could not be opened — abandon it
             // so the failed session isn't leaked in PackageInstaller (both paths below).
             try {
-                packageInstaller.abandonSession(sessionId)
+                installer.abandonSession(sessionId)
             } catch (_: Exception) {
             }
             if (emitErrors) {
@@ -1088,8 +1155,8 @@ internal fun writeEntriesWithinBudget(
 }
 
 /**
- * Prefix [installCommand] with a check that each staged APK still hashes to what it did when we
- * wrote it, aborting with [INTEGRITY_CHECK_EXIT_CODE] if not.
+ * Prefix a privileged install command with a check that each staged APK still hashes to what it did
+ * when we wrote it, aborting with [INTEGRITY_CHECK_EXIT_CODE] if not.
  *
  * The Shizuku/Dhizuku rungs have to stage into shared storage (see installWithShizuku), where on
  * API 28-29 — minSdk is 28, and Android/data was not sandboxed until 11 — any app holding
@@ -1099,11 +1166,25 @@ internal fun writeEntriesWithinBudget(
  *
  * Running the check inside the same shell invocation is the point: doing it from Thor's process
  * would put a binder round trip and a process spawn between the check and the read. A window
- * remains — `sha256sum` finishes, then `pm` opens the file — but it is microseconds of the same
- * script rather than the whole staging-to-install span. A device whose toybox has no
- * `sha256sum` fails the guard, which drops this rung and falls through to the privileged-session
- * path that reads the app-private staged file directly: safe by construction, so failing closed
- * costs nothing.
+ * remains — `sha256sum` finishes, then the bytes are read — but it is microseconds of the same
+ * script rather than the whole staging-to-install span.
+ *
+ * Now that both callers pass [installViaSessionCommand], the guard's read and the install's read are
+ * the same read: `sha256sum <path>` and `cat <path>` are both performed by this shell, on this path,
+ * needing exactly one permission between them. So the guard can no longer fail on a path the install
+ * would have managed — it costs a hash, not a rung. That was not true of `pm install <path>`, where
+ * the two reads had different readers and therefore different failure conditions.
+ *
+ * Two things this KDoc used to claim, and should not be believed:
+ *  - that the guard is scoped to the window it describes. It is applied on every API level, though
+ *    `BundleZip` states outright that from API 30 the staging directory is sandboxed and the race is
+ *    gone.
+ *  - that failing closed "costs nothing" because the next rung is the privileged session.
+ *    `installPackage` does not stop there: past the session rung it continues to the *unprivileged*
+ *    installer, which is the system confirmation dialog. Failing closed costs the silent install.
+ *
+ * Both are real, both are narrower than the bug this file was last edited for, and neither is fixed
+ * here.
  *
  * What makes that true is where the expected hash comes from. It is computed during the copy that
  * writes the file (see [ExtractedApk]), not from reading the file back afterwards: a read-back

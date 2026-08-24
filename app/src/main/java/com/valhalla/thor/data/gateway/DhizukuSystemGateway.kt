@@ -11,7 +11,8 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
-import com.valhalla.thor.data.source.local.installCommand
+import com.valhalla.thor.data.source.local.SessionApk
+import com.valhalla.thor.data.source.local.installViaSessionCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
@@ -28,6 +29,7 @@ import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.first
+import java.io.File
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 
@@ -386,9 +388,16 @@ class DhizukuSystemGateway(
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
 
+        // Through the same session builder as every other install in the app — see the note on
+        // `ShizukuSystemGateway.installApp`. Dhizuku's shell has the harder version of the same
+        // problem: it runs at the device-owner app's uid, so from API 30 on it cannot read another
+        // app's Android/data either, and only the session rung can carry a modern device.
+        val file = File(apkPath)
         val result = DhizukuHelper.execute(
-            installCommand(
-                escapedApkPaths = listOf(apkPath.escapeForShell()),
+            installViaSessionCommand(
+                apks = listOf(
+                    SessionApk(path = apkPath, sizeBytes = file.length(), name = file.name)
+                ),
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
                 installerArg = installerArg,
