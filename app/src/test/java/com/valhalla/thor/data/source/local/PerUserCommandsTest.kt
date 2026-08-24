@@ -32,7 +32,7 @@ import java.lang.reflect.Modifier
  * no user at all. Nothing below can see a call site: `RootSystemGateway`, `ShizukuHelper` and
  * `DhizukuHelper` all reach `android.*` in their constructors and there is no mockk and no
  * Robolectric on this source set to stand in for them, so "does `installApp` actually call
- * [installCommand]?" is unanswerable here and is deliberately not faked.
+ * [uninstallCommand]?" is unanswerable here and is deliberately not faked.
  *
  * Two things close as much of that gap as a JVM test honestly can:
  *
@@ -50,12 +50,12 @@ class PerUserCommandsTest {
 
     private val pkg = "com.example.app"
 
-    /** Two APK paths that are digit-free, so a `10` in an assertion can only be the user id. */
+    /**
+     * A digit-free APK path, so a `10` in an assertion can only be the user id. Its one remaining
+     * use is the reflective fabricator below, which needs *some* `List<String>` to pass; the split
+     * path and the installer argument that used to sit beside it went with `installCommand`.
+     */
     private val baseApk = "/data/local/tmp/base.apk"
-    private val splitApk = "/data/local/tmp/split_config.en.apk"
-
-    /** Exactly what `PreferenceRepository.getInstallerArg()` returns when auto-reinstall is on. */
-    private val playInstallerArg = " -i com.android.vending"
 
     /** The `--user <id>` a command names, or null if it names none — which is the bug. */
     private fun userArgOf(command: String): Int? =
@@ -223,134 +223,19 @@ class PerUserCommandsTest {
         assertTrue(clearCachePaths("'weird.pkg'", 10).all { it.contains("'weird.pkg'") })
     }
 
-    // --- pm install / install-multiple: uninstall's trap entered from the other side ---
-
-    /**
-     * `makeInstallParams` opens with `params.userId = UserHandle.USER_ALL` and leaves it there when
-     * the option loop never sees a `--user`; the session is then created with `USER_SYSTEM` plus
-     * `INSTALL_ALL_USERS`. So the bare form is not "install for the shell's user" and not "install
-     * for user 0" — it pushes the package onto **every user of the device** and exits 0, which from
-     * a work profile means an APK appearing in the personal profile nobody chose to install it into.
-     */
-    @Test
-    fun `installing names the user`() {
-        assertEquals(10, userArgOf(installCommand(listOf(baseApk), 10)))
-        assertEquals(10, userArgOf(installCommand(listOf(baseApk, splitApk), 10)))
-    }
-
-    /**
-     * The verb follows the path count rather than a parameter of its own, because the four call
-     * sites this replaced each branched on that count and built two separate command strings from
-     * it — and one operation reaching `pm` down two hand-written paths is precisely where a flag
-     * ends up present on one of them only.
-     */
-    @Test
-    fun `the verb follows the number of APKs`() {
-        assertTrue(installCommand(listOf(baseApk), 10).startsWith("pm install --user "))
-        assertTrue(
-            installCommand(listOf(baseApk, splitApk), 10).startsWith("pm install-multiple --user ")
-        )
-    }
-
-    /**
-     * A split install that loses one of its APKs is not a smaller install: `install-multiple`
-     * commits a session that has to contain every split the base declares, so a dropped path fails
-     * the commit outright. Every path given is passed on, in order.
-     */
-    @Test
-    fun `every APK path survives`() {
-        val command = installCommand(listOf(baseApk, splitApk), 10)
-        assertTrue(command.endsWith(" $baseApk $splitApk"))
-    }
-
-    /**
-     * The flags that were constants at all six call sites, and stayed constants. `-r` is what makes
-     * this an update rather than an `INSTALL_FAILED_ALREADY_EXISTS`, and `-g` is what grants the
-     * runtime permissions the installed app declares — losing either turns a working install into a
-     * failure or into an app that silently cannot do anything, neither of which the `--user` fix is
-     * allowed to cost.
-     */
-    @Test
-    fun `the constant install flags survive alongside the user`() {
-        val command = installCommand(listOf(baseApk), 10)
-        assertTrue("-r was dropped: this stops being an update", command.contains(" -r"))
-        assertTrue("-g was dropped: the app installs with no permissions", command.contains(" -g"))
-    }
-
-    /**
-     * `-d` is `--downgrade`: permissive only, so it must appear exactly when it was asked for.
-     * Present unasked it lets a lower versionCode silently replace a higher one; absent when asked
-     * it turns Thor's own "install anyway" confirmation into `INSTALL_FAILED_VERSION_DOWNGRADE`.
-     */
-    @Test
-    fun `downgrade is opt-in`() {
-        assertFalse(installCommand(listOf(baseApk), 10).contains(" -d"))
-        assertTrue(installCommand(listOf(baseApk), 10, canDowngrade = true).contains(" -d"))
-    }
-
-    /**
-     * The installer argument arrives from `getInstallerArg()` already carrying its leading space,
-     * and the builder re-spaces it so that a caller passing it trimmed — or a future
-     * `getInstallerArg` that stops padding — cannot emit `-g-i com.android.vending`. `pm` answers
-     * that with a usage error, which the installer surfaces to the user as a plain install failure
-     * with no hint that the attribution flag is what broke it. Both spellings therefore have to
-     * produce the same command.
-     */
-    @Test
-    fun `the installer attribution cannot fuse onto the preceding flag`() {
-        val padded = installCommand(listOf(baseApk), 10, installerArg = playInstallerArg)
-        val trimmed = installCommand(listOf(baseApk), 10, installerArg = playInstallerArg.trim())
-
-        assertEquals(padded, trimmed)
-        assertFalse("the -i argument fused onto -g", padded.contains("-g-i"))
-        assertTrue(padded.contains(" -i com.android.vending "))
-    }
-
-    /** Auto-reinstall off is the default, and it must add nothing at all — not even a stray space. */
-    @Test
-    fun `no installer argument means no installer argument`() {
-        assertEquals(
-            "pm install --user 10 -r -g $baseApk",
-            installCommand(listOf(baseApk), 10)
-        )
-    }
-
-    /** All four options together, in the order `pm` parses them, spelled out once. */
-    @Test
-    fun `the fully loaded install command`() {
-        assertEquals(
-            "pm install-multiple --user 10 -r -g -d -i com.android.vending $baseApk $splitApk",
-            installCommand(
-                escapedApkPaths = listOf(baseApk, splitApk),
-                userId = 10,
-                canDowngrade = true,
-                installerArg = playInstallerArg,
-            )
-        )
-    }
-
-    /**
-     * `PackageManagerShellCommand` parses options until the first positional and treats everything
-     * after it as an APK path, so a `--user` that drifted behind the paths would not be an error —
-     * it would be read as another file to install, and the install would fall back to the
-     * all-users seed with no diagnostic at all.
-     */
-    @Test
-    fun `the user is named before the APK paths`() {
-        val command = installCommand(listOf(baseApk, splitApk), 10, canDowngrade = true)
-        assertTrue(command.indexOf("--user") < command.indexOf(baseApk))
-    }
-
-    /**
-     * An empty path list is a programming error, not a runtime condition — every caller returns
-     * early when the copy-to-temp step produced no files. Failing here rather than handing
-     * `pm install --user 10 -r -g ` to a privileged shell keeps the mistake in the stack trace of
-     * whoever made it.
-     */
-    @Test(expected = IllegalArgumentException::class)
-    fun `an install with no APK is refused`() {
-        installCommand(emptyList(), 10)
-    }
+    // `installCommand` used to be tested here, across ten cases. It is gone, and so are they —
+    // its invariants moved to `InstallSessionCommandsTest` along with the builder that replaced it,
+    // `installViaSessionCommand`. That file asserts the same `--user`, the same constant `-r -g`,
+    // the same opt-in `-d`, the same installer-argument fusion guard, the same path ordering and the
+    // same refusal of an empty set.
+    //
+    // Worth recording why the move happened, because these tests were green the whole time. They
+    // pinned `pm install-multiple --user 10 -r -g …` exactly, character for character — and
+    // `install-multiple` is not a verb `pm` has ever implemented. A test that pins the wrong command
+    // precisely is indistinguishable, from the outside, from one that pins the right command
+    // precisely; the assertion cannot tell you which it did. What that assertion needed was the one
+    // question a string test cannot ask, so `InstallSessionCommandsTest` asks it the only way
+    // available: negatively, by asserting the verb appears nowhere at all.
 
     // --- pm path: the read half of Fix Store ---
 
@@ -593,7 +478,7 @@ class PerUserCommandsTest {
      * Reflection that finds nothing passes every assertion in a `for` loop, so a renamed file (the
      * compiled class is `PerUserCommandsKt`, derived from the file name) or a Kotlin release that
      * changes how top-level functions are emitted would turn the sweep into a no-op with a green
-     * tick. Naming the eight builders that existed when it was written proves it is looking at the
+     * tick. Naming the seven builders that existed when it was written proves it is looking at the
      * right class and seeing real methods. It is `containsAll`, never an equality: adding a builder
      * must not have to be remembered here, which is the entire point of doing this by reflection.
      */
@@ -610,7 +495,6 @@ class PerUserCommandsTest {
                     "clearCachePaths",
                     "uninstallCommand",
                     "setAppEnabledCommand",
-                    "installCommand",
                     "pmPathCommand",
                     "forceStopCommand",
                     "backgroundRestrictionCommand",
@@ -631,7 +515,7 @@ class PerUserCommandsTest {
      * Every builder declared in `PerUserCommands.kt`.
      *
      * `internal` top-level functions compile to public static methods on the file class, with the
-     * module name mangled onto the end (`installCommand$app_fossDebug`), so the sweep matches on
+     * module name mangled onto the end (`uninstallCommand$app_fossDebug`), so the sweep matches on
      * shape rather than on names it would otherwise have to predict. Synthetic members are dropped
      * because Kotlin emits a `$default` bridge for every function with a default argument and it
      * takes a bitmask and a marker this fabricator has no business filling in — the name is checked

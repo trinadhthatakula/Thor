@@ -20,6 +20,8 @@ import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
 import com.valhalla.thor.data.source.local.clearCachePaths
 import com.valhalla.thor.data.source.local.forceStopCommand
+import com.valhalla.thor.data.source.local.SessionApk
+import com.valhalla.thor.data.source.local.installViaSessionCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
@@ -1190,6 +1192,13 @@ class RootSystemGateway(
      * temp file and pipes the bytes in, so neither `pm` nor `installd` ever opens a
      * `/data/data` path — the install works regardless of where the temp APKs live.
      * On failure the real `pm` reason is routed to stderr so it surfaces in the error.
+     *
+     * The script itself now comes from [installViaSessionCommand], shared with the Shizuku and
+     * Dhizuku shell rungs. Those two were written *after* this method and after GH#159 was fixed
+     * here, and they were written the old way — naming a path to `pm`, and reaching for a
+     * `pm install-multiple` verb that no Android implements. A fix that lives inside one gateway is
+     * a fix the next gateway has to be told about; this one is now spelled once. What stays here is
+     * only what needs the filesystem.
      */
     private suspend fun installViaSession(
         apkPaths: List<String>,
@@ -1204,47 +1213,18 @@ class RootSystemGateway(
         apkPaths.firstOrNull { File(it).length() == 0L }?.let {
             return Result.failure(Exception("APK file is missing or empty: $it"))
         }
-        val currentUser = thorUserId
-        val downgrade = if (canDowngrade) " -d" else ""
-        
-        val installerArg = preferenceRepository.getInstallerArg()
-
-        val sb = StringBuilder()
-        // Run the whole thing in a subshell so our `exit` codes exit the SUBSHELL, not
-        // libsu's long-lived root shell. Exiting the parent shell would kill it before
-        // libsu appends its end-marker, leaving it unable to read the real exit code
-        // (it then falls back to code 1) — and would break every later root command.
-        sb.append("(\n")
-        // pipefail so a failed `cat` (missing/unreadable APK) in the install-write
-        // pipeline below propagates to the || abort branch instead of being masked by
-        // pm install-write's exit code.
-        sb.append("set -o pipefail\n")
-        // Create the session (targeting the current user, like every other pm command in
-        // this gateway); capture stdout+stderr so a failure reason isn't lost, then pull
-        // the numeric id out of "…created install session [<id>]".
-        sb.append("CREATE_OUT=\$(pm install-create -r -g").append(installerArg).append(" --user ").append(currentUser).append(downgrade).append(" 2>&1)\n")
-        sb.append("SID=\$(printf '%s\\n' \"\$CREATE_OUT\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
-        sb.append("if [ -z \"\$SID\" ]; then echo \"pm install-create failed: \$CREATE_OUT\" 1>&2; exit 101; fi\n")
-        // Stream each APK's bytes into the session via stdin.
-        for (path in apkPaths) {
-            val size = File(path).length()
-            val escPath = path.escapeForShell()
-            val escName = File(path).name.escapeForShell()
-            sb.append("WERR=\$(cat ").append(escPath)
-                .append(" | pm install-write -S ").append(size)
-                .append(" \"\$SID\" ").append(escName).append(" - 2>&1 1>/dev/null)")
-                .append(" || { pm install-abandon \"\$SID\" 2>/dev/null;")
-                .append(" echo \"pm install-write failed: \$WERR\" 1>&2; exit 102; }\n")
+        val staged = apkPaths.map { path ->
+            val file = File(path)
+            SessionApk(path = path, sizeBytes = file.length(), name = file.name)
         }
-        // Commit; anything but a Success line is a failure — surface pm's reason.
-        sb.append("COMMIT=\$(pm install-commit \"\$SID\" 2>&1)\n")
-        sb.append("case \"\$COMMIT\" in\n")
-        sb.append("  *Success*) exit 0 ;;\n")
-        sb.append("  *) pm install-abandon \"\$SID\" 2>/dev/null;")
-            .append(" echo \"pm install-commit failed: \$COMMIT\" 1>&2; exit 103 ;;\n")
-        sb.append("esac\n")
-        sb.append(")\n")
-        return runCommand(sb.toString())
+        return runCommand(
+            installViaSessionCommand(
+                apks = staged,
+                userId = thorUserId,
+                canDowngrade = canDowngrade,
+                installerArg = preferenceRepository.getInstallerArg(),
+            )
+        )
     }
 
     // getAppCacheSize() used to sit here, on all three gateways, with no caller in the app. It was

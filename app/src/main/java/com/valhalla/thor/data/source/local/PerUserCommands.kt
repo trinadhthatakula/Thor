@@ -118,51 +118,23 @@ internal fun uninstallCommand(escapedPackage: String, userId: Int): String =
 internal fun setAppEnabledCommand(escapedPackage: String, userId: Int, isDisabled: Boolean): String =
     "pm ${if (isDisabled) "disable" else "enable"} --user $userId $escapedPackage"
 
-/**
- * `pm install` / `pm install-multiple`, scoped to [userId] — [uninstallCommand]'s trap entered from
- * the other side.
- *
- * `PackageManagerShellCommand.makeInstallParams` opens with `params.userId = UserHandle.USER_ALL`
- * and leaves it there when the option loop never sees a `--user`; the session is then created with
- * `params.userId = UserHandle.USER_SYSTEM; sessionParams.installFlags |= INSTALL_ALL_USERS`. A bare
- * `pm install <apk>` therefore does not install for the shell's user, and does not install only for
- * user 0: it installs the package for **every user on the device**, and exits 0. That is the same
- * `USER_ALL` seed and the same silent widening to all users that [uninstallCommand] documents,
- * reached from the opposite direction — which is why the two now sit in one file. They are a pair,
- * and a pair that drifts is how a profile ends up holding an app nobody there chose to install.
- *
- * The verb follows `escapedApkPaths.size` rather than being a parameter of its own. The four
- * installer call sites already branched on that count and built two separate command strings from
- * it, so `--user` would have had to be added twice per site; one operation reaching `pm` down two
- * hand-written paths is precisely where a flag ends up present on one of them only.
- *
- * [installerArg] arrives pre-formatted from `PreferenceRepository.getInstallerArg` — either empty or
- * `" -i com.android.vending"` — and is re-spaced here so that a caller passing it untrimmed cannot
- * emit `-g-i com.android.vending`, which `pm` rejects with a usage error the installer would report
- * as an install failure. [canDowngrade] is `-d`: permissive-only, it allows a lower versionCode to
- * replace a higher one and changes nothing otherwise. `-r` and `-g` are constants at all six call
- * sites, so they are not parameters.
- *
- * Deliberately no `--install-reason` and no hard-coded `-i com.android.vending`. That is the Fix
- * Store line — a different operation, meaning "re-attribute this app to Play" — and all three
- * gateways already name a user in it.
- *
- * An empty [escapedApkPaths] is a programming error, not a runtime condition: every caller returns
- * early when the copy-to-temp step produced no files, and a command with no APK argument would
- * otherwise be handed to a privileged shell to fail on.
- */
-internal fun installCommand(
-    escapedApkPaths: List<String>,
-    userId: Int,
-    canDowngrade: Boolean = false,
-    installerArg: String = "",
-): String {
-    require(escapedApkPaths.isNotEmpty()) { "installCommand needs at least one APK path" }
-    val verb = if (escapedApkPaths.size == 1) "install" else "install-multiple"
-    val downgrade = if (canDowngrade) " -d" else ""
-    val installer = installerArg.trim().let { if (it.isEmpty()) "" else " $it" }
-    return "pm $verb --user $userId -r -g$downgrade$installer ${escapedApkPaths.joinToString(" ")}"
-}
+// `installCommand` used to sit here, emitting `pm install <path>` for one APK and
+// `pm install-multiple <paths>` for a set. Both spellings were wrong, in ways that had nothing to do
+// with the `--user` scoping this file exists for:
+//
+//  - a path argument is not opened by the shell that typed the command. `PackageManagerShellCommand`
+//    resolves it through `ShellCommand.openFileForSystem`, which opens it with the caller's
+//    credentials and then checks the result against `u:r:system_server:s0` — two permissions where
+//    the shell only has one to give.
+//  - `install-multiple` is not a `pm` verb at all. It appears nowhere in
+//    `PackageManagerShellCommand`, not even in its help text; `adb install-multiple` is implemented
+//    on the host. Every split set built here failed on an unknown verb.
+//
+// It is deleted rather than fixed in place because there is nothing to fix: a shell installs through
+// a session, and a session is not a one-line command. `installViaSessionCommand` in
+// `InstallSessionCommands.kt` is that session, it carries this file's `--user` argument forward, and
+// all six call sites now reach it. The name is gone so that the next person adding an install cannot
+// find a shorter helper that looks like it works.
 
 /**
  * `pm path`, scoped to [userId] — *whose* copy of the package the answer describes.
@@ -189,8 +161,8 @@ internal fun pmPathCommand(escapedPackage: String, userId: Int): String =
  *
  * `ActivityManagerShellCommand.runForceStop` seeds `UserHandle.USER_ALL`, so a bare
  * `am force-stop <pkg>` kills the package for **every user on the device** rather than for the
- * shell's — the same seed and the same unnamed-user class as [uninstallCommand] and
- * [installCommand].
+ * shell's — the same seed and the same unnamed-user class as [uninstallCommand] and the install
+ * session built by `installViaSessionCommand`.
  *
  * The stakes are lower here and this should not pretend otherwise: force-stop destroys no data and
  * the process returns on the next start, so the cost of the bare form is another profile's app

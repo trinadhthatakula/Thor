@@ -18,7 +18,11 @@ import android.os.Build
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
-import com.valhalla.thor.data.source.local.installCommand
+import com.valhalla.thor.data.source.local.SessionApk
+import com.valhalla.thor.data.source.local.installViaSessionCommand
+import com.valhalla.thor.data.source.local.privileged.PrivilegedInstallerTransport
+import com.valhalla.thor.data.source.local.privileged.PrivilegedPackageInstallers
+import com.valhalla.thor.data.source.local.privileged.SHELL_INSTALLER_PACKAGE_NAME
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.util.Logger
 import androidx.core.content.ContextCompat
@@ -28,6 +32,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Single
 import kotlin.time.Duration.Companion.milliseconds
+import java.io.File
 
 @SuppressLint("PrivateApi")
 @Single
@@ -340,15 +345,20 @@ class ShizukuReflector(
     }
 
     /**
-     * Installs an APK using the 'pm install' command via Shizuku, **for [thorUserId]**.
-     * Note: The file at [apkPath] must be readable by the shell user (e.g. /sdcard/).
+     * Installs an APK through a `PackageInstaller` session via Shizuku, **for [thorUserId]**.
+     * The file at [apkPath] must be readable by the shell user (e.g. `/sdcard/`).
      *
-     * The command is built by `installCommand` rather than written here. This one had no caller
-     * when the user id was swept through the gateways, which is exactly why it is worth naming a
-     * user in: a bare `pm install` is not "install for the shell's user" — `makeInstallParams`
-     * leaves `params.userId = UserHandle.USER_ALL` and the session is created with
-     * `INSTALL_ALL_USERS`, so the first person to call this would have installed the APK for every
-     * user on the device without anything in the exit code saying so.
+     * The command is built by [installViaSessionCommand] rather than written here. This one had no
+     * caller when the user id was swept through the gateways, which is exactly why it is worth
+     * naming a user in: a bare `pm install` is not "install for the shell's user" —
+     * `makeInstallParams` leaves `params.userId = UserHandle.USER_ALL` and the session is created
+     * with `INSTALL_ALL_USERS`, so the first person to call this would have installed the APK for
+     * every user on the device without anything in the exit code saying so.
+     *
+     * It is also why the shape matters. This used to issue `pm install <path>`, and the note above
+     * used to say shell-readable was the requirement. It is not the whole requirement: a path
+     * argument is opened *for system_server*, so it must clear the shell's permissions and
+     * system_server's SELinux domain. Streaming the bytes in leaves only the first.
      *
      * @param apkPath Absolute path to the APK file.
      * @param canDowngrade Whether to allow downgrade.
@@ -356,8 +366,11 @@ class ShizukuReflector(
      */
     fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
         return try {
-            val command = installCommand(
-                escapedApkPaths = listOf(apkPath.escapeForShell()),
+            val file = File(apkPath)
+            val command = installViaSessionCommand(
+                apks = listOf(
+                    SessionApk(path = apkPath, sizeBytes = file.length(), name = file.name)
+                ),
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
             )
@@ -424,7 +437,9 @@ class ShizukuReflector(
                     // runtime uses the genuine framework class parent-first, so the reflected
                     // installExistingPackage lookup must target that same class.
                     Class.forName("android.content.pm.IPackageInstaller"),
-                    ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller(),
+                    PrivilegedPackageInstallers.privilegedPackageInstaller(
+                        PrivilegedInstallerTransport.SHIZUKU
+                    ),
                     "installExistingPackage",
                     packageName,
                     installFlags,
@@ -447,39 +462,28 @@ class ShizukuReflector(
         }
     }
 
-    fun getPackageInstaller(): PackageInstaller {
-        val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-        // Thor's own user, unconditionally. This used to be `if (Shizuku.getUid() == 0) <this user>
-        // else 0`, which asked what privilege Shizuku holds when the question is which user the
-        // session acts on — and the two are unrelated. The `else 0` branch is the normal setup
-        // (Shizuku at shell uid 2000), so on a work-profile device every operation this installer
-        // carries was scoped to the primary user: `uninstall` with DELETE_SYSTEM_APP and no
-        // DELETE_ALL_USERS bit removed a system app for user 0, the profile the user never touched.
-        val userId = thorUserId
-
-        // The reason for use "com.android.shell" as installer package under adb is that
-        // getMySessions will check installer package's owner
-        return ShizukuPackageInstallerUtils.createPackageInstaller(
-            iPackageInstaller,
-            "com.android.shell",
-            userId
-        )
-    }
-
     /**
-     * Create a privileged PackageInstaller using the provided installer package name.
-     * This mirrors `getPackageInstaller()` but allows specifying the installer package
-     * (so sessions can be created as belonging to the app's package).
+     * A privileged `PackageInstaller` for the **sessionless** operations — `uninstall` and friends,
+     * which transact through the wrapped `IPackageInstaller` itself.
+     *
+     * Do not open a session on this. `PackageInstaller.openSession` hands the session binder to
+     * `Session` unwrapped, so the writes leave as Thor's own uid while the session belongs to the
+     * transport's; [com.valhalla.thor.data.source.local.privileged.PrivilegedPackageInstallers.handleFor]
+     * is the entry point that pairs an installer with an opener that wraps.
      */
-    fun createPackageInstallerFor(installerPackageName: String): PackageInstaller {
-        val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-        // Thor's own user, for the reason [getPackageInstaller] gives.
-        val userId = thorUserId
-
-        return ShizukuPackageInstallerUtils.createPackageInstaller(
-            iPackageInstaller,
-            installerPackageName,
-            userId
+    fun getPackageInstaller(): PackageInstaller =
+        PrivilegedPackageInstallers.packageInstaller(
+            transport = PrivilegedInstallerTransport.SHIZUKU,
+            // The reason for using the shell package as installer package under adb is that
+            // getMySessions will check installer package's owner.
+            installerPackageName = SHELL_INSTALLER_PACKAGE_NAME,
+            // Thor's own user, unconditionally. This used to be `if (Shizuku.getUid() == 0) <this
+            // user> else 0`, which asked what privilege Shizuku holds when the question is which
+            // user the session acts on — and the two are unrelated. The `else 0` branch is the
+            // normal setup (Shizuku at shell uid 2000), so on a work-profile device every operation
+            // this installer carries was scoped to the primary user: `uninstall` with
+            // DELETE_SYSTEM_APP and no DELETE_ALL_USERS bit removed a system app for user 0, the
+            // profile the user never touched.
+            userId = thorUserId,
         )
-    }
 }
