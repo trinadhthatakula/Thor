@@ -76,8 +76,9 @@ internal fun transportFor(mode: InstallMode): PrivilegedInstallerTransport? = wh
  *   the session was created by uid 2000. An unreadable uid arrives here as `-1` and takes the same
  *   branch as a root Shizuku: Thor's own name. Both are preserved verbatim from
  *   `getShizukuPackageInstaller()`.
- * - **Dhizuku** names the *device owner's* package ([dhizukuOwnerPackageName]) and never shell, and
- *   never Thor. This one is a behaviour change, and a necessary one — see below.
+ * - **Dhizuku** names the *device owner's* package ([dhizukuOwnerPackageName]) and never shell;
+ *   Thor's own name survives only as the last-resort fallback described below. This one is a
+ *   behaviour change, and a necessary one — see below.
  *
  * On any transport, the name has to belong to the uid that calls `createSession`.
  * `PackageInstallerService.createSessionInternal` takes the `isRootOrShell(callingUid)` branch for
@@ -90,11 +91,16 @@ internal fun transportFor(mode: InstallMode): PrivilegedInstallerTransport? = wh
  * its installer on `ShizukuBinderWrapper`, so on a Dhizuku-only device the call died before reaching
  * system_server at all. Fixing the transport is what makes this name load-bearing for the first time.
  *
- * The owner package is also what earns the *silent* install:
- * `PackageInstallerSession.isInstallerDeviceOwnerOrAffiliatedProfileOwner()` calls
- * `canSilentlyInstallPackage(mInstallSource.mInstallerPackageName, mInstallerUid)`, passing the
- * name as well as the uid, so a session that does not name the device owner still ends at the
- * confirmation dialog even though the uid is right.
+ * The name is **not** what earns the *silent* install — it only has to be non-null.
+ * `PackageInstallerSession.isInstallerDeviceOwnerOrAffiliatedProfileOwner()` does hand it over
+ * (`canSilentlyInstallPackage(mInstallSource.mInstallerPackageName, mInstallerUid)`), but
+ * `DevicePolicyManagerService` null-checks that argument and then decides purely from the uid: it
+ * builds `new CallerIdentity(callerUid, null, null)` and never compares the name to the device
+ * owner's, identically from API 29 through 36. On API 28 the equivalent check takes no name at all
+ * (`isActiveAdminWithPolicy(mInstallerUid, USES_POLICY_PROFILE_OWNER)`). So silence is the uid's to
+ * grant; the *owner's* name is what `mAppOps.checkPackage` above demands, which is why naming Thor
+ * here refuses the session outright rather than merely downgrading it to the dialog — and why that
+ * null check is the reason the fallback below returns [thorPackageName] rather than `null`.
  *
  * [dhizukuOwnerPackageName] is nullable because `Dhizuku.getOwnerPackageName()` throws until the
  * owner component has been received. `null` falls back to [thorPackageName]: no better name exists

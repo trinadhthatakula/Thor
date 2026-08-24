@@ -158,7 +158,8 @@ class InstallSessionCommandsTest {
     // --- the flags that decide who gets the app ---
 
     /**
-     * The `--user` trap [installCommand] documents, entered through `install-create` instead.
+     * The `--user` trap the deleted `installCommand` documented, entered through `install-create`
+     * instead.
      * `makeInstallParams` opens with `params.userId = UserHandle.USER_ALL` and leaves it there when
      * the option loop never sees a `--user`, after which the session is created with `USER_SYSTEM`
      * plus `INSTALL_ALL_USERS` — so a bare `install-create` puts the package on **every user of the
@@ -193,7 +194,7 @@ class InstallSessionCommandsTest {
     }
 
     /**
-     * The same fusion hazard [installCommand] guards against, which the hand-written root script
+     * The same fusion hazard the deleted `installCommand` guarded against, which the root script
      * did not. `getInstallerArg()` returns `" -i com.android.vending"` with a leading space; a
      * caller passing it trimmed — or a future `getInstallerArg` that stops padding — would emit
      * `-g-i com.android.vending`, which `pm` answers with a usage error that surfaces to the user as

@@ -52,6 +52,11 @@ import java.lang.reflect.Modifier
  * privileged installer, without naming which transport it belongs to. The shape assertions are the
  * only defence available against the exact regression this fixes, which was a Dhizuku call site
  * quietly reusing a Shizuku helper.
+ *
+ * The constant-pool scans below are part of that shape check and share its ceiling: they see which
+ * names a compiled class mentions, never which value flows into a call. Where that distinction
+ * matters — the session-binder wrap — the test says so in its own KDoc rather than implying a
+ * guarantee it cannot give.
  */
 class PrivilegedPackageInstallersTest {
 
@@ -329,26 +334,33 @@ class PrivilegedPackageInstallersTest {
         )
     }
 
+    /**
+     * Fix 2, and only the coarse half of it.
+     *
+     * A constant-pool scan can prove that this file still reaches for the *hidden*
+     * `IPackageInstallerSession` — i.e. that nobody put the rung back on the platform's own
+     * `PackageInstaller.openSession(int)`, which builds `Session` around an unwrapped binder and is
+     * where the reported bug lived. It cannot prove the binder handed to that constructor is the
+     * wrapped one, because the needle survives the subtle revert:
+     * `Bypass.newInstance(…, arrayOf(Class.forName("android.content.pm.IPackageInstallerSession")),`
+     * `rawSession)` loads the same string from the parameter array while writing exactly the defect
+     * back. That revert has been tried against this test and it passes.
+     *
+     * Pinning the dataflow would need either a bytecode-level check of one method or an injectable
+     * wrapper seam, and neither survives contact with `Bypass`, which needs real Android classes.
+     * The evidence for the wrapping itself is therefore the device run — Shizuku on hardware,
+     * Dhizuku on an emulator, both silent — not this test. Read this as a tripwire on the *shape* of
+     * `openSession`, not as a guard on its correctness.
+     */
     @Test
-    fun `openSession still wraps the session binder`() {
+    fun `openSession opens on the hidden session interface, not the public facade`() {
         val compiled = classFileBytes(PrivilegedPackageInstallers::class.java)
 
-        // Fix 2. This string is loaded only by openSession — once to build the wrapped
-        // IPackageInstallerSession and once to name the PackageInstaller.Session constructor's
-        // parameter type. Going back to the platform's own PackageInstaller.openSession(id), which
-        // hands Session an unwrapped binder, removes both and fails here.
         assertTrue(
-            "PrivilegedPackageInstallers no longer names IPackageInstallerSession — the session binder " +
-                "is not being wrapped, so every write on the session transacts as Thor and the " +
-                "privileged rung dies with \"Session does not belong to uid N\"",
+            "PrivilegedPackageInstallers no longer names IPackageInstallerSession — the rung is back " +
+                "on PackageInstaller.openSession(int), so the session binder cannot be wrapped at " +
+                "all and every write on it transacts as Thor: \"Session does not belong to uid N\"",
             compiled.contains("android.content.pm.IPackageInstallerSession")
-        )
-
-        // The session is opened on the hidden interface, not on the public PackageInstaller facade;
-        // the facade is what cannot wrap.
-        assertTrue(
-            "PrivilegedPackageInstallers no longer names IPackageInstaller",
-            compiled.contains("android.content.pm.IPackageInstaller")
         )
     }
 
