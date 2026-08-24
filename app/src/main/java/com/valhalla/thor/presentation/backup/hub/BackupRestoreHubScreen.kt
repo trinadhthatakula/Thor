@@ -89,6 +89,7 @@ import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
 import com.valhalla.thor.presentation.utils.ArchiveIconModel
 import com.valhalla.thor.presentation.widgets.AppIcon
+import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
@@ -476,9 +477,14 @@ private fun ArchiveItemCard(
     val context = LocalContext.current
     val formattedSize =
         remember(item.sizeBytes) { Formatter.formatShortFileSize(context, item.sizeBytes) }
-    val formattedDate = remember(item.dateModifiedEpochSec) {
+    // The locale comes off this Context's Configuration, not from Locale.getDefault() — below API 33
+    // the process default is the *device's* language whatever the in-app picker chose, which would put
+    // an English date next to the size above it, formatted by android.text.format.Formatter from this
+    // same Context. See AppLocale.localeOf and AppInfoDetailsScreen.formatTime.
+    val locale = AppLocale.localeOf(context)
+    val formattedDate = remember(item.dateModifiedEpochSec, locale) {
         if (item.dateModifiedEpochSec > 0) {
-            DateFormat.getDateInstance(DateFormat.MEDIUM)
+            DateFormat.getDateInstance(DateFormat.MEDIUM, locale)
                 .format(Date(item.dateModifiedEpochSec * 1000))
         } else {
             ""
