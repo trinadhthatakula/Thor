@@ -14,6 +14,7 @@ import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
 import com.valhalla.thor.data.backup.PartialArchiveLedger
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
+import com.valhalla.thor.data.source.local.room.ComponentOverrideDao
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
 import com.valhalla.thor.domain.repository.AppArchiveStore
@@ -81,6 +82,10 @@ class AppModule {
 
     @Single
     fun extensionDataDao(appDatabase: AppDatabase) = appDatabase.extensionDataDao()
+
+    @Single
+    fun componentOverrideDao(appDatabase: AppDatabase): ComponentOverrideDao =
+        appDatabase.componentOverrideDao()
 
     // RealShellRepository comes from the Odin library (com.valhalla.superuser.ktx), outside the
     // scan scope — the component scan only sees com.valhalla.thor.

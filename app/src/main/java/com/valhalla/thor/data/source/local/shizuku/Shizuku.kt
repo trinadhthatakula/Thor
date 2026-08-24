@@ -281,6 +281,17 @@ object Shizuku {
 
     val isRoot get() = Shizuku.getUid() == 0
 
+    /**
+     * The uid Shizuku's service runs as, or `null` if it could not be read.
+     *
+     * [isRoot] throws when the binder has gone since the last availability check — `Shizuku.getUid()`
+     * is a live transaction, not a cached field — so a caller that has to *decide* something on the
+     * uid, rather than merely branch inside an already-privileged operation, needs the failure to be
+     * a value it can reason about. Every such caller here reads `null` as "not root", because the
+     * alternative is offering a control that throws a `SecurityException` on every press.
+     */
+    fun uidOrNull(): Int? = runCatching { Shizuku.getUid() }.getOrNull()
+
     private fun asInterface(className: String, original: IBinder): Any {
         val clazz = Class.forName("$className\$Stub")
         return Bypass.invoke(

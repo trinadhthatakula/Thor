@@ -16,8 +16,14 @@ import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.asComponentState
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.componentCommandFailure
+import com.valhalla.thor.data.source.local.escapedComponentSpecOrNull
+import com.valhalla.thor.data.source.local.setComponentStateCommand
+import com.valhalla.thor.data.source.local.startActivityCommand
+import com.valhalla.thor.data.source.local.stopServiceCommand
 import com.valhalla.thor.data.source.local.clearCachePaths
 import com.valhalla.thor.data.source.local.forceStopCommand
 import com.valhalla.thor.data.source.local.SessionApk
@@ -29,6 +35,7 @@ import com.valhalla.thor.data.source.local.setAppEnabledCommand
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
+import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -1424,6 +1431,76 @@ class RootSystemGateway(
      */
     private fun getPackageUserId(packageName: String): Int? =
         getApplicationInfoCompat(packageName)?.let { userIdOf(it.uid) }
+
+    // --- Per-component control -------------------------------------------------------------
+    //
+    // Root is the mode all three of these were written for: uid 0 is the only uid PMS and AMS will
+    // accept them from. See the block comment on SystemGateway for why there is no second rung to
+    // fall back to when they fail.
+
+    override suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState,
+        userId: Int,
+    ): Result<Unit> {
+        val spec = escapedComponentSpecOrNull(packageName, className)
+            ?: return Result.failure(
+                IllegalArgumentException("Invalid component: $packageName/$className")
+            )
+        return runComponentCommand(setComponentStateCommand(spec, userId, state.asComponentState()))
+    }
+
+    override suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+        userId: Int,
+    ): Result<Unit> {
+        val spec = escapedComponentSpecOrNull(packageName, className)
+            ?: return Result.failure(
+                IllegalArgumentException("Invalid component: $packageName/$className")
+            )
+        return runComponentCommand(startActivityCommand(spec, userId))
+    }
+
+    override suspend fun stopService(
+        packageName: String,
+        className: String,
+        userId: Int,
+    ): Result<Unit> {
+        val spec = escapedComponentSpecOrNull(packageName, className)
+            ?: return Result.failure(
+                IllegalArgumentException("Invalid component: $packageName/$className")
+            )
+        return runComponentCommand(stopServiceCommand(spec, userId))
+    }
+
+    /**
+     * Run a component command and judge it by its *output*, not only by its exit code.
+     *
+     * Separate from [runCommand] because that one reads `ShellResult.isSuccess`, and for `am start`
+     * that is very nearly a constant: a launch refused for a permission denial still exits 0 on most
+     * releases while printing `Security exception:` and a stack trace. [componentCommandFailure]
+     * holds the rule, so that the rule is one function and is JVM-testable.
+     */
+    private suspend fun runComponentCommand(cmd: String): Result<Unit> {
+        val result = shellRepository.exec(cmd)
+        if (result.code == ShellResult.JOB_NOT_EXECUTED) {
+            return Result.failure(
+                java.io.IOException(
+                    result.stderr.joinToString("\n").ifBlank { "Root shell unavailable" }
+                )
+            )
+        }
+        val output = (result.stdout + result.stderr).joinToString("\n")
+        val failure = componentCommandFailure(result.code, output)
+        return if (failure == null) {
+            Result.success(Unit)
+        } else {
+            Logger.e("RootSystemGateway", "Component command failed: $cmd -> $failure")
+            Result.failure(java.io.IOException(failure))
+        }
+    }
 
     /**
      * Raw shell execution for extensions, via the root shell.

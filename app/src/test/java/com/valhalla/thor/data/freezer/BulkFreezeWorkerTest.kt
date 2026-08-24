@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.freezer
 
+import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -189,6 +190,20 @@ private class RecordingSystemRepository(
         unreachable("executeShellCommand")
 
     override suspend fun probeObb(packageName: String): ObbProbe = unreachable("probeObb")
+
+    override suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState,
+    ): Result<Unit> = unreachable("setComponentEnabled")
+
+    override suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+    ): Result<Unit> = unreachable("forceLaunchActivity")
+
+    override suspend fun stopService(packageName: String, className: String): Result<Unit> =
+        unreachable("stopService")
 
     private fun unreachable(name: String): Nothing =
         throw UnsupportedOperationException("$name is not reachable from a bulk freeze worker")

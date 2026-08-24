@@ -554,6 +554,57 @@
     <string name="cd_collapse">Collapse</string>
     <string name="cd_expand">Expand</string>
     <string name="components_none_declared">None declared</string>
+
+    <!-- Component control (App info → Components).
+         "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
+         guarded by a permission Thor does not hold. It needs root; the platform grants the waiver to
+         uid 0 alone, so a Shizuku running as shell cannot do it either. -->
+    <string name="component_action_open">Open</string>
+    <string name="component_action_force_open">Force open</string>
+    <string name="component_action_copy">Copy class name</string>
+    <string name="component_action_stop_now">Stop now</string>
+    <string name="component_action_disable">Disable</string>
+    <string name="component_action_enable">Enable</string>
+    <string name="component_action_reset">Reset to default</string>
+    <string name="component_action_forget">Forget</string>
+    <string name="cd_component_actions">Actions for %1$s</string>
+
+    <string name="component_badge_restricted">Restricted by Thor</string>
+    <string name="component_badge_drift">Changed elsewhere</string>
+    <string name="component_badge_disabled">Disabled</string>
+    <string name="component_badge_not_exported">Not exported</string>
+    <string name="component_badge_off_by_default">Off by default</string>
+
+    <string name="component_blocker_no_privilege">Turn on Root or Shizuku to change components.</string>
+    <string name="component_blocker_shizuku_not_root">Changing components needs Shizuku started as root. A shell-mode Shizuku cannot.</string>
+    <string name="component_blocker_dhizuku">Dhizuku cannot change individual components. Use Root or a root-mode Shizuku.</string>
+    <string name="component_control_requires_root_shizuku">Shizuku is running as shell, not root. Changing components needs root.</string>
+    <string name="component_control_unsupported_dhizuku">Dhizuku cannot control individual components.</string>
+
+    <string name="component_launched">Opened %1$s</string>
+    <string name="component_service_stopped">Stopped %1$s</string>
+    <string name="component_disabled_success">Disabled %1$s</string>
+    <string name="component_enabled_success">Enabled %1$s</string>
+    <string name="component_reset_success">%1$s reset to default</string>
+    <string name="component_forgotten">Stopped tracking %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="one">%1$d component restricted by Thor</item>
+        <item quantity="other">%1$d components restricted by Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="one">Restored %1$d component</item>
+        <item quantity="other">Restored %1$d components</item>
+    </plurals>
+    <string name="component_restore_all_partial" tools:ignore="PluralsCandidate">Restored %1$d of %2$d — the rest are still restricted</string>
+    <string name="component_restore_all_action">Restore all</string>
+    <string name="component_restore_all_title">Restore every component?</string>
+    <string name="component_restore_all_message">Every component Thor disabled — in this app and in every other — goes back to how it shipped. Components changed by other tools are left alone.</string>
+
+    <string name="component_disclaimer_title">Disable a component?</string>
+    <string name="component_disclaimer_message">%1$s stays part of the app; it just stops running. Apps rarely expect this, so a feature may break with no error, or the app may crash. Thor records what it disables so you can undo it later.</string>
+    <string name="component_disclaimer_confirm">Disable it</string>
+
     <string name="section_native_libs_title">Native Libraries (.so)</string>
     <string name="no_native_libs_found">No native libraries found</string>
     <string name="section_req_features_title">Required Features</string>

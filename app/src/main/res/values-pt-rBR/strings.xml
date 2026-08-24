@@ -578,4 +578,36 @@
     <string name="backup_hub_action_delete">Excluir</string>
     <string name="backup_hub_action_share">Compartilhar</string>
 
+    <!-- Component control. Only the rows where Brazilian usage diverges from values-pt:
+         repor/predefinição → restaurar/padrão, restringido → restrito, aplicação → aplicativo,
+         "está a correr" → "está rodando", "noutro sítio" → "em outro lugar". Everything else in
+         that block — Abrir, Parar agora, Desativar, Ativar, Esquecer, the badges, the Dhizuku
+         blockers — reads the same in both and resolves through values-pt. -->
+    <string name="component_action_force_open">Forçar abertura</string>
+    <string name="component_action_reset">Restaurar padrão</string>
+
+    <string name="component_badge_restricted">Restrito pelo Thor</string>
+    <string name="component_badge_drift">Alterado em outro lugar</string>
+    <string name="component_badge_off_by_default">Desativado por padrão</string>
+
+    <string name="component_control_requires_root_shizuku">O Shizuku está rodando como shell, não como root. Alterar componentes exige root.</string>
+
+    <string name="component_reset_success">%1$s restaurado para o padrão</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="one">%1$d componente restrito pelo Thor</item>
+        <item quantity="other">%1$d componentes restritos pelo Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="one">%1$d componente restaurado</item>
+        <item quantity="other">%1$d componentes restaurados</item>
+    </plurals>
+    <string name="component_restore_all_partial">Restaurados %1$d de %2$d — os demais continuam restritos</string>
+    <string name="component_restore_all_action">Restaurar tudo</string>
+    <string name="component_restore_all_title">Restaurar todos os componentes?</string>
+    <string name="component_restore_all_message">Todos os componentes que o Thor desativou — neste aplicativo e em todos os outros — voltam ao estado original. Os componentes alterados por outras ferramentas ficam intactos.</string>
+
+    <string name="component_disclaimer_message">%1$s continua fazendo parte do aplicativo; apenas deixa de ser executado. Os aplicativos raramente contam com isso, então um recurso pode parar de funcionar sem nenhum erro, ou o aplicativo pode travar. O Thor registra o que desativa para que você possa desfazer depois.</string>
+    <string name="component_disclaimer_confirm">Desativar mesmo assim</string>
+
 </resources>

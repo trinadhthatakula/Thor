@@ -772,4 +772,54 @@
     <string name="clear_all_caches_requires_usage_access">O Shizuku não consegue limpar a cache de todas as aplicações sem acesso à utilização. É preciso indicar ao Android quantos bytes deve libertar, e só essa permissão consegue medir quanta cache existe. Conceda acesso à utilização ao Thor nas Definições e tente novamente.</string>
     <string name="clear_all_caches_unsupported_dhizuku">O Dhizuku não consegue limpar caches. Não tem shell onde executar a limpeza de cache do Android, e a API de Device Owner não tem equivalente. Mude para Root ou Shizuku.</string>
 
+    <!-- Component control (App info → Components).
+         "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
+         guarded by a permission Thor does not hold. It needs root; the platform grants the waiver to
+         uid 0 alone, so a Shizuku running as shell cannot do it either. -->
+    <string name="component_action_open">Abrir</string>
+    <string name="component_action_force_open">Forçar a abertura</string>
+    <string name="component_action_copy">Copiar o nome da classe</string>
+    <string name="component_action_stop_now">Parar agora</string>
+    <string name="component_action_disable">Desativar</string>
+    <string name="component_action_enable">Ativar</string>
+    <string name="component_action_reset">Repor a predefinição</string>
+    <string name="component_action_forget">Esquecer</string>
+    <string name="cd_component_actions">Ações para %1$s</string>
+
+    <string name="component_badge_restricted">Restringido pelo Thor</string>
+    <string name="component_badge_drift">Alterado noutro sítio</string>
+    <string name="component_badge_disabled">Desativado</string>
+    <string name="component_badge_not_exported">Não exportado</string>
+    <string name="component_badge_off_by_default">Desativado de origem</string>
+
+    <string name="component_blocker_no_privilege">Ative o Root ou o Shizuku para alterar componentes.</string>
+    <string name="component_blocker_shizuku_not_root">Alterar componentes exige que o Shizuku tenha sido iniciado como root. Um Shizuku em modo shell não consegue.</string>
+    <string name="component_blocker_dhizuku">O Dhizuku não consegue alterar componentes individuais. Use Root ou um Shizuku em modo root.</string>
+    <string name="component_control_requires_root_shizuku">O Shizuku está a correr como shell, não como root. Alterar componentes exige root.</string>
+    <string name="component_control_unsupported_dhizuku">O Dhizuku não consegue controlar componentes individuais.</string>
+
+    <string name="component_launched">%1$s aberto</string>
+    <string name="component_service_stopped">%1$s parado</string>
+    <string name="component_disabled_success">%1$s desativado</string>
+    <string name="component_enabled_success">%1$s ativado</string>
+    <string name="component_reset_success">%1$s reposto na predefinição</string>
+    <string name="component_forgotten">O Thor deixou de acompanhar %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="one">%1$d componente restringido pelo Thor</item>
+        <item quantity="other">%1$d componentes restringidos pelo Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="one">%1$d componente reposto</item>
+        <item quantity="other">%1$d componentes repostos</item>
+    </plurals>
+    <string name="component_restore_all_partial">Repostos %1$d de %2$d — os restantes continuam restringidos</string>
+    <string name="component_restore_all_action">Repor tudo</string>
+    <string name="component_restore_all_title">Repor todos os componentes?</string>
+    <string name="component_restore_all_message">Todos os componentes que o Thor desativou — nesta aplicação e em todas as outras — voltam ao estado de origem. Os componentes alterados por outras ferramentas ficam intactos.</string>
+
+    <string name="component_disclaimer_title">Desativar o componente?</string>
+    <string name="component_disclaimer_message">%1$s continua a fazer parte da aplicação; apenas deixa de ser executado. As aplicações raramente contam com isso, por isso uma funcionalidade pode deixar de funcionar sem qualquer erro, ou a aplicação pode falhar. O Thor regista o que desativa para que possa desfazer mais tarde.</string>
+    <string name="component_disclaimer_confirm">Desativá-lo</string>
+
 </resources>

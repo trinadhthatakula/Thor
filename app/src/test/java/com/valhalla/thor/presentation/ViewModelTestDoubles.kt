@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation
 
 import android.content.ContextWrapper
+import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
@@ -13,6 +14,7 @@ import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
@@ -190,6 +192,18 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         note("probeObb:$packageName")
         return obbProbe
     }
+
+    override suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState
+    ) = record("setComponentEnabled:$packageName:$className:$state")
+
+    override suspend fun forceLaunchActivity(packageName: String, className: String) =
+        record("forceLaunchActivity:$packageName:$className")
+
+    override suspend fun stopService(packageName: String, className: String) =
+        record("stopService:$packageName:$className")
 }
 
 /** Backed by a [MutableStateFlow] so a test can push a rescan mid-run if it needs one. */
@@ -205,6 +219,15 @@ class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepositor
      */
     val details = mutableMapOf<String, DetailedAppInfo>()
 
+    /**
+     * Component reads, by package.
+     *
+     * Falls back to whatever [details] already holds for the package, so a test that plants a
+     * `DetailedAppInfo` gets a consistent answer from both reads without saying it twice. `null` —
+     * the read failed — stays reachable by planting neither.
+     */
+    val componentSnapshots = mutableMapOf<String, ComponentSnapshot>()
+
     override fun getAllApps(): Flow<List<AppInfo>> = apps
 
     override suspend fun getAppDetails(packageName: String): AppInfo? =
@@ -212,6 +235,9 @@ class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepositor
 
     override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? =
         details[packageName]
+
+    override suspend fun getComponentDetails(packageName: String): ComponentSnapshot? =
+        componentSnapshots[packageName] ?: details[packageName]?.components
 
     override suspend fun getApkDetails(apkPath: String): AppInfo? = null
 
@@ -537,6 +563,10 @@ class FakePreferenceRepository(
 
     override suspend fun setExtensionConsentAccepted(accepted: Boolean) {
         write { it.copy(extensionConsentAccepted = accepted) }
+    }
+
+    override suspend fun setComponentControlConsentAccepted(accepted: Boolean) {
+        write { it.copy(componentControlConsentAccepted = accepted) }
     }
 
     override suspend fun setAutoReinstallEnabled(enabled: Boolean) {

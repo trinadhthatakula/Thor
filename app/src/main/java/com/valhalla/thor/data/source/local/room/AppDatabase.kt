@@ -17,8 +17,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ExtensionDataEntity::class,
         FreezeProfileEntity::class,
         FreezeProfileAppEntity::class,
+        ComponentOverrideEntity::class,
     ],
-    version = 6,
+    version = 7,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
@@ -26,6 +27,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // 5 → 6 adds the two freeze-profile tables and touches nothing that already exists, so
         // Room can generate it: a shipped database gets the new tables and keeps its watchlist.
         AutoMigration(from = 5, to = 6),
+        // 6 → 7 is the same shape: one new table, `component_overrides`, and no change to any
+        // existing column. No `spec =` because there is nothing for a spec to describe — a
+        // pure table-add needs no @DeleteColumn/@RenameTable hint.
+        AutoMigration(from = 6, to = 7),
     ],
     exportSchema = true
 )
@@ -35,6 +40,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun freezerDao(): FreezerDao
     abstract fun extensionDataDao(): ExtensionDataDao
     abstract fun freezeProfileDao(): FreezeProfileDao
+    abstract fun componentOverrideDao(): ComponentOverrideDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {

@@ -4,7 +4,9 @@
 package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.ObbProbe
@@ -94,6 +96,20 @@ private class RecordingSystemRepository : SystemRepository {
         error("off the freeze path")
 
     override suspend fun probeObb(packageName: String): ObbProbe = error("off the freeze path")
+
+    override suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState,
+    ): Result<Unit> = error("off the freeze path")
+
+    override suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+    ): Result<Unit> = error("off the freeze path")
+
+    override suspend fun stopService(packageName: String, className: String): Result<Unit> =
+        error("off the freeze path")
 }
 
 /**
@@ -119,6 +135,9 @@ private class FakeAppRepository(private val details: (String) -> AppInfo?) : App
     override suspend fun updateInstallSizes(sizes: Map<String, Long>) {
         error("off the freeze path")
     }
+
+    override suspend fun getComponentDetails(packageName: String): ComponentSnapshot? =
+        error("off the freeze path")
 }
 
 /**

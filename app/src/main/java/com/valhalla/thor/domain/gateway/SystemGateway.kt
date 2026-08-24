@@ -56,6 +56,66 @@ interface SystemGateway {
      */
     suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit>
 
+    // Per-component control
+    //
+    // All three verbs below need the privileged transport to be executing at **uid 0**, and all
+    // three are therefore implemented for real only by Root and by a Shizuku that was itself started
+    // as root. This is not an accident of Thor's plumbing:
+    //
+    //  - `PackageManagerService.setEnabledSetting` lets `Process.SHELL_UID` through a carve-out that
+    //    requires `className == null`; with a class name it throws
+    //    `SecurityException("Shell cannot change component state for …")`. Reaching
+    //    `IPackageManager.setComponentEnabledSetting` by reflection lands on the same check with the
+    //    same calling uid, so there is no second rung to fall back to — which is the one thing that
+    //    makes these different from every other verb on this interface.
+    //  - `ActivityManager.canAccessUnexportedComponents` waives the export and permission checks for
+    //    `ROOT_UID` and `SYSTEM_UID` only. `START_ANY_ACTIVITY` is `signature` and is not declared by
+    //    `packages/Shell` in any release from 9 to 16.
+    //  - Dhizuku's `DevicePolicyManager` has no component-enabled API at all.
+    //
+    // A mode that cannot do one of these must fail with a message naming the reason. Reporting
+    // success it has no evidence for is the failure mode `clearAllCaches` above was written to
+    // document.
+
+    /**
+     * Sets one component's enabled state for [userId].
+     *
+     * @param state the `pm` sub-command to use — `enable`, `disable`, or `default-state`. `default`
+     * is not a synonym for `enable`: it removes the override, which puts a component that ships
+     * disabled back to disabled. See `ComponentCommands.enableStateFor`.
+     */
+    suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState,
+        userId: Int,
+    ): Result<Unit>
+
+    /**
+     * Launches one activity for [userId], ignoring whether it is exported or permission-guarded.
+     *
+     * Only for the components Thor cannot launch with an ordinary `startActivity` — an exported,
+     * unguarded activity should never reach here, because a plain `Intent` needs no privilege, shows
+     * the app's own task animation, and cannot fail on a device with no root.
+     */
+    suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+        userId: Int,
+    ): Result<Unit>
+
+    /**
+     * Stops one running service for [userId].
+     *
+     * Transient by construction: nothing stops the app from starting it again a moment later. It is
+     * the "stop now" half of the pair, and the persistent half is [setComponentEnabled].
+     */
+    suspend fun stopService(
+        packageName: String,
+        className: String,
+        userId: Int,
+    ): Result<Unit>
+
     /**
      * Runs a raw shell command through this privilege mechanism and returns the
      * (exitCode, output) pair. Used by the extension ShellExecutor so extensions
@@ -64,3 +124,13 @@ interface SystemGateway {
      */
     suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>>
 }
+
+/**
+ * The three states a component can be put in, as this interface names them.
+ *
+ * A domain mirror of `ComponentCommands.ComponentState`, which is `internal` to the data layer and
+ * carries the `pm` verb. The duplication is the price of the rule in this file's header: the gateway
+ * contract has no Android *and* no data-layer dependencies, and a shell verb string is a data-layer
+ * detail.
+ */
+enum class ComponentEnabledState { ENABLED, DISABLED, DEFAULT }

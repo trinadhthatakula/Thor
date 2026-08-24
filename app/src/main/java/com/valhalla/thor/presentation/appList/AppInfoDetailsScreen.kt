@@ -33,6 +33,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -79,6 +81,9 @@ import com.valhalla.thor.presentation.widgets.appHeaderIconGlowInset
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.ComponentControlBlocker
+import com.valhalla.thor.domain.model.ComponentDetail
+import com.valhalla.thor.domain.model.ComponentType
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionDetail
@@ -954,6 +959,22 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
 
 @Composable
 private fun ComponentsTabScreen(details: DetailedAppInfo) {
+    val packageName = details.appInfo.packageName
+    // Keyed on the package, so opening a second app's details from the same host (the wide-layout
+    // detail pane reuses one host) gets its own instance rather than the previous app's ledger and
+    // in-flight state. Same scoping AppBackupSheet already uses.
+    val viewModel: ComponentControlViewModel = koinViewModel(key = packageName)
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(packageName, details.components) {
+        viewModel.load(packageName, details.components)
+    }
+
+    ObserveAsEvents(viewModel.events) { msg ->
+        Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
+    }
+
     // rememberSaveable so the search query survives rotation / config change.
     var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
 
@@ -980,19 +1001,18 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
             )
         )
 
-        val (filteredActivities, filteredServices, filteredReceivers, filteredProviders) =
-            remember(searchQuery, details) {
-                val filter = { items: List<String> ->
-                    if (searchQuery.isEmpty()) items
-                    else items.filter { it.contains(searchQuery, ignoreCase = true) }
-                }
-                ComponentLists(
-                    activities = filter(details.activities),
-                    services = filter(details.services),
-                    receivers = filter(details.receivers),
-                    providers = filter(details.providers)
-                )
+        val filtered = remember(searchQuery, state.snapshot) {
+            val filter = { items: List<ComponentDetail> ->
+                if (searchQuery.isEmpty()) items
+                else items.filter { it.className.contains(searchQuery, ignoreCase = true) }
             }
+            ComponentLists(
+                activities = filter(state.snapshot.activities),
+                services = filter(state.snapshot.services),
+                receivers = filter(state.snapshot.receivers),
+                providers = filter(state.snapshot.providers)
+            )
+        }
 
         // rememberSaveable so the expanded/collapsed sections survive rotation / config changes.
         var activitiesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
@@ -1001,7 +1021,6 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
         var providersExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
         val clipboard = LocalClipboard.current
-        val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
         val classNameLabel = stringResource(R.string.class_name_label)
         val onCopyClassName: (String) -> Unit = { className ->
@@ -1019,14 +1038,20 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
             ).show()
         }
 
+        ComponentControlBanner(
+            blocker = state.capability.blocker,
+            restrictedCount = state.restrictedCount,
+            onRestoreAll = viewModel::requestRestoreAll
+        )
+
         val activitiesTitle =
-            stringResource(R.string.section_activities_title, filteredActivities.size)
+            stringResource(R.string.section_activities_title, filtered.activities.size)
         val servicesTitle =
-            stringResource(R.string.section_services_title, filteredServices.size)
+            stringResource(R.string.section_services_title, filtered.services.size)
         val receiversTitle =
-            stringResource(R.string.section_receivers_title, filteredReceivers.size)
+            stringResource(R.string.section_receivers_title, filtered.receivers.size)
         val providersTitle =
-            stringResource(R.string.section_providers_title, filteredProviders.size)
+            stringResource(R.string.section_providers_title, filtered.providers.size)
 
         LazyColumn(
             modifier = Modifier
@@ -1035,36 +1060,157 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
         ) {
             componentSection(
                 keyPrefix = "activities",
+                type = ComponentType.ACTIVITY,
                 title = activitiesTitle,
-                items = filteredActivities,
+                items = filtered.activities,
+                state = state,
                 expanded = activitiesExpanded,
                 onToggle = { activitiesExpanded = !activitiesExpanded },
-                onCopy = onCopyClassName
+                onCopy = onCopyClassName,
+                viewModel = viewModel
             )
             componentSection(
                 keyPrefix = "services",
+                type = ComponentType.SERVICE,
                 title = servicesTitle,
-                items = filteredServices,
+                items = filtered.services,
+                state = state,
                 expanded = servicesExpanded,
                 onToggle = { servicesExpanded = !servicesExpanded },
-                onCopy = onCopyClassName
+                onCopy = onCopyClassName,
+                viewModel = viewModel
             )
             componentSection(
                 keyPrefix = "receivers",
+                type = ComponentType.RECEIVER,
                 title = receiversTitle,
-                items = filteredReceivers,
+                items = filtered.receivers,
+                state = state,
                 expanded = receiversExpanded,
                 onToggle = { receiversExpanded = !receiversExpanded },
-                onCopy = onCopyClassName
+                onCopy = onCopyClassName,
+                viewModel = viewModel
             )
             componentSection(
                 keyPrefix = "providers",
+                type = ComponentType.PROVIDER,
                 title = providersTitle,
-                items = filteredProviders,
+                items = filtered.providers,
+                state = state,
                 expanded = providersExpanded,
                 onToggle = { providersExpanded = !providersExpanded },
-                onCopy = onCopyClassName
+                onCopy = onCopyClassName,
+                viewModel = viewModel
             )
+        }
+    }
+
+    state.pendingConsent?.let { pending ->
+        AlertDialog(
+            onDismissRequest = viewModel::onDisclaimerDismissed,
+            title = { Text(stringResource(R.string.component_disclaimer_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.component_disclaimer_message,
+                        pending.component.shortName
+                    )
+                )
+            },
+            confirmButton = {
+                Button(onClick = viewModel::onDisclaimerConfirmed) {
+                    Text(stringResource(R.string.component_disclaimer_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::onDisclaimerDismissed) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (state.showRestoreAllConfirm) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissRestoreAll,
+            title = { Text(stringResource(R.string.component_restore_all_title)) },
+            text = { Text(stringResource(R.string.component_restore_all_message)) },
+            confirmButton = {
+                Button(onClick = viewModel::confirmRestoreAll) {
+                    Text(stringResource(R.string.component_restore_all_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissRestoreAll) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+/**
+ * The one-line status strip above the four sections.
+ *
+ * Renders nothing when there is nothing to say — the common case for a rooted device that has not
+ * changed anything yet. When Thor cannot act it explains why *once*, at the top, rather than
+ * repeating a disabled control on every one of several hundred rows; and when Thor has changed
+ * something it says how much and offers the single undo.
+ */
+@Composable
+private fun ComponentControlBanner(
+    blocker: ComponentControlBlocker,
+    restrictedCount: Int,
+    onRestoreAll: () -> Unit
+) {
+    val blockerText = when (blocker) {
+        ComponentControlBlocker.NONE -> null
+        // "Still checking" is not a refusal, and saying so would be wrong a fraction of a second
+        // later. The controls are simply inert until the probe lands.
+        ComponentControlBlocker.NOT_READY -> null
+        ComponentControlBlocker.NO_PRIVILEGE ->
+            stringResource(R.string.component_blocker_no_privilege)
+
+        ComponentControlBlocker.SHIZUKU_NOT_ROOT ->
+            stringResource(R.string.component_blocker_shizuku_not_root)
+
+        ComponentControlBlocker.DHIZUKU_UNSUPPORTED ->
+            stringResource(R.string.component_blocker_dhizuku)
+    }
+
+    if (blockerText == null && restrictedCount == 0) return
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        if (blockerText != null) {
+            Text(
+                text = blockerText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+        if (restrictedCount > 0) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = androidx.compose.ui.res.pluralStringResource(
+                        R.plurals.component_restricted_count,
+                        restrictedCount,
+                        restrictedCount
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onRestoreAll) {
+                    Text(stringResource(R.string.component_restore_all_action))
+                }
+            }
         }
     }
 }
@@ -1079,11 +1225,14 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
  */
 private fun LazyListScope.componentSection(
     keyPrefix: String,
+    type: ComponentType,
     title: String,
-    items: List<String>,
+    items: List<ComponentDetail>,
+    state: ComponentControlUiState,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onCopy: (String) -> Unit
+    onCopy: (String) -> Unit,
+    viewModel: ComponentControlViewModel
 ) {
     item(key = "$keyPrefix-header", contentType = "component_header") {
         Row(
@@ -1140,9 +1289,9 @@ private fun LazyListScope.componentSection(
                 // Index is part of the key: a package's component list can contain duplicate class
                 // names (PackageManager returns them un-deduped), and a duplicate LazyColumn key
                 // throws IllegalArgumentException and crashes the screen.
-                key = { index, className -> "$keyPrefix-$index-$className" },
+                key = { index, component -> "$keyPrefix-$index-${component.className}" },
                 contentType = { _, _ -> "component" }
-            ) { index, className ->
+            ) { index, component ->
                 val isLast = index == items.lastIndex
                 Box(
                     modifier = Modifier
@@ -1156,22 +1305,13 @@ private fun LazyListScope.componentSection(
                         .padding(horizontal = 16.dp)
                         .padding(bottom = if (isLast) 12.dp else 0.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onCopy(className) }
-                            .padding(vertical = 6.dp, horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = className,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontFamily = firaMonoFontFamily,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                    ComponentRow(
+                        type = type,
+                        component = component,
+                        state = state,
+                        onCopy = onCopy,
+                        viewModel = viewModel
+                    )
                 }
             }
         }
@@ -1179,6 +1319,222 @@ private fun LazyListScope.componentSection(
 
     item(key = "$keyPrefix-spacer") {
         Spacer(modifier = Modifier.height(12.dp))
+    }
+}
+
+/**
+ * One component: its name, what is unusual about it, and what can be done to it.
+ *
+ * The whole row stays tap-to-copy, as it always was — the class name is the reason most people open
+ * this tab, and moving that onto the overflow to make room for the new controls would trade a
+ * one-tap action people already use for one they may never use. The new affordances are additive: a
+ * trailing Open button for activities, and an overflow for everything else.
+ */
+@Composable
+private fun ComponentRow(
+    type: ComponentType,
+    component: ComponentDetail,
+    state: ComponentControlUiState,
+    onCopy: (String) -> Unit,
+    viewModel: ComponentControlViewModel
+) {
+    val context = LocalContext.current
+    var menuExpanded by remember { mutableStateOf(false) }
+    val capability = state.capability
+    val isBusy = state.busyClassName == component.className
+    val isDrifted = state.isDrifted(component)
+    val isThors = state.overrides.containsKey(component.className)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onCopy(component.className) }
+            .padding(vertical = 6.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = component.className,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (component.enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontFamily = firaMonoFontFamily
+            )
+            ComponentBadges(
+                component = component,
+                isThors = isThors,
+                isDrifted = isDrifted
+            )
+        }
+
+        if (isBusy) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .size(16.dp),
+                strokeWidth = 2.dp
+            )
+        } else if (type == ComponentType.ACTIVITY) {
+            val canLaunch = capability.canLaunch(component) && component.enabled
+            TextButton(
+                onClick = { viewModel.launch(context, component) },
+                enabled = canLaunch
+            ) {
+                Text(
+                    text = if (component.launchRequiresRoot)
+                        stringResource(R.string.component_action_force_open)
+                    else stringResource(R.string.component_action_open),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+
+        Box {
+            IconButton(
+                onClick = { menuExpanded = true },
+                modifier = Modifier.minimumInteractiveComponentSize()
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.more_vert),
+                    contentDescription = stringResource(
+                        R.string.cd_component_actions,
+                        component.shortName
+                    ),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.component_action_copy)) },
+                    onClick = {
+                        menuExpanded = false
+                        onCopy(component.className)
+                    }
+                )
+                // Offered for an *exported* activity too: an ordinary startActivity still fails when
+                // the target app is frozen or suspended, and the shell route is the way through.
+                if (type == ComponentType.ACTIVITY &&
+                    capability.canForceLaunch &&
+                    !component.launchRequiresRoot
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.component_action_force_open)) },
+                        onClick = {
+                            menuExpanded = false
+                            viewModel.forceLaunch(component)
+                        }
+                    )
+                }
+                if (type == ComponentType.SERVICE && capability.canStopService) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.component_action_stop_now)) },
+                        onClick = {
+                            menuExpanded = false
+                            viewModel.stopService(component)
+                        }
+                    )
+                }
+                if (capability.canSetComponentState) {
+                    if (component.enabled) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.component_action_disable)) },
+                            onClick = {
+                                menuExpanded = false
+                                viewModel.requestDisable(type, component)
+                            }
+                        )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.component_action_enable)) },
+                            onClick = {
+                                menuExpanded = false
+                                viewModel.enable(component)
+                            }
+                        )
+                    }
+                    if (component.isOverridden) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.component_action_reset)) },
+                            onClick = {
+                                menuExpanded = false
+                                viewModel.resetToDefault(component)
+                            }
+                        )
+                    }
+                }
+                if (isDrifted) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.component_action_forget)) },
+                        onClick = {
+                            menuExpanded = false
+                            viewModel.forget(component)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The chips under a component's name.
+ *
+ * Only what is *unusual* gets a chip. An enabled, exported activity that ships enabled is the
+ * overwhelming majority of rows and carries none — a list where every row is decorated tells the
+ * reader nothing about which rows to look at.
+ */
+@Composable
+private fun ComponentBadges(
+    component: ComponentDetail,
+    isThors: Boolean,
+    isDrifted: Boolean
+) {
+    val chips = buildList {
+        when {
+            // Thor's own row wins over the generic "disabled": it is the one the user can undo, and
+            // saying who did it is the entire point of keeping the ledger.
+            isThors && !component.enabled -> add(
+                stringResource(R.string.component_badge_restricted) to
+                        MaterialTheme.colorScheme.tertiaryContainer
+            )
+
+            isDrifted -> add(
+                stringResource(R.string.component_badge_drift) to
+                        MaterialTheme.colorScheme.secondaryContainer
+            )
+
+            !component.enabled -> add(
+                stringResource(R.string.component_badge_disabled) to
+                        MaterialTheme.colorScheme.errorContainer
+            )
+        }
+        if (!component.exported) {
+            add(
+                stringResource(R.string.component_badge_not_exported) to
+                        MaterialTheme.colorScheme.surfaceContainerHighest
+            )
+        }
+        if (!component.manifestDefaultEnabled) {
+            add(
+                stringResource(R.string.component_badge_off_by_default) to
+                        MaterialTheme.colorScheme.surfaceContainerHighest
+            )
+        }
+    }
+    if (chips.isEmpty()) return
+
+    Row(
+        modifier = Modifier.padding(top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        chips.forEach { (text, color) ->
+            StatusChip(text = text, color = color)
+        }
     }
 }
 
@@ -1326,10 +1682,10 @@ private fun InfoCard(
 }
 
 private data class ComponentLists(
-    val activities: List<String>,
-    val services: List<String>,
-    val receivers: List<String>,
-    val providers: List<String>
+    val activities: List<ComponentDetail>,
+    val services: List<ComponentDetail>,
+    val receivers: List<ComponentDetail>,
+    val providers: List<ComponentDetail>
 )
 
 /**

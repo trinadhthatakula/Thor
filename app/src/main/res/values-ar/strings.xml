@@ -761,4 +761,59 @@
     <string name="cd_move_up">تحريك لأعلى</string>
     <string name="cd_move_down">تحريك لأسفل</string>
 
+    <!-- تبويب المكونات -->
+    <string name="component_action_open">فتح</string>
+    <string name="component_action_force_open">فرض الفتح</string>
+    <string name="component_action_copy">نسخ اسم الفئة</string>
+    <string name="component_action_stop_now">إيقاف الآن</string>
+    <string name="component_action_disable">تعطيل</string>
+    <string name="component_action_enable">تفعيل</string>
+    <string name="component_action_reset">إعادة التعيين إلى الافتراضي</string>
+    <string name="component_action_forget">إيقاف التتبّع</string>
+    <string name="cd_component_actions">إجراءات %1$s</string>
+
+    <string name="component_badge_restricted">مقيَّد بواسطة Thor</string>
+    <string name="component_badge_drift">تغيّر من مكان آخر</string>
+    <string name="component_badge_disabled">معطَّل</string>
+    <string name="component_badge_not_exported">غير مُصدَّر</string>
+    <string name="component_badge_off_by_default">معطَّل افتراضيًا</string>
+
+    <string name="component_blocker_no_privilege">فعِّل Root أو Shizuku لتغيير المكونات.</string>
+    <string name="component_blocker_shizuku_not_root">يتطلب تغيير المكونات تشغيل Shizuku بصلاحية Root. لا يمكن ذلك إذا كان Shizuku يعمل في وضع الصدفة (shell).</string>
+    <string name="component_blocker_dhizuku">لا يستطيع Dhizuku تغيير المكونات الفردية. استخدم Root أو Shizuku في وضع Root.</string>
+    <string name="component_control_requires_root_shizuku">يعمل Shizuku في وضع الصدفة (shell) لا بصلاحية Root. ويتطلب تغيير المكونات صلاحية Root.</string>
+    <string name="component_control_unsupported_dhizuku">لا يستطيع Dhizuku التحكم في المكونات الفردية.</string>
+
+    <string name="component_launched">تم فتح %1$s</string>
+    <string name="component_service_stopped">تم إيقاف %1$s</string>
+    <string name="component_disabled_success">تم تعطيل %1$s</string>
+    <string name="component_enabled_success">تم تفعيل %1$s</string>
+    <string name="component_reset_success">تمت إعادة %1$s إلى الوضع الافتراضي</string>
+    <string name="component_forgotten">تم إيقاف تتبّع %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="zero">لا توجد مكونات مقيَّدة بواسطة Thor</item>
+        <item quantity="one">مكوّن واحد مقيَّد بواسطة Thor</item>
+        <item quantity="two">مكوّنان مقيَّدان بواسطة Thor</item>
+        <item quantity="few">%1$d مكونات مقيَّدة بواسطة Thor</item>
+        <item quantity="many">%1$d مكوّنًا مقيَّدًا بواسطة Thor</item>
+        <item quantity="other">%1$d مكوّن مقيَّد بواسطة Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="zero">لم تتم استعادة أي مكوّن</item>
+        <item quantity="one">تمت استعادة مكوّن واحد</item>
+        <item quantity="two">تمت استعادة مكوّنين</item>
+        <item quantity="few">تمت استعادة %1$d مكونات</item>
+        <item quantity="many">تمت استعادة %1$d مكوّنًا</item>
+        <item quantity="other">تمت استعادة %1$d مكوّن</item>
+    </plurals>
+    <string name="component_restore_all_partial">تمت استعادة %1$d من %2$d — والباقي ما زال مقيَّدًا</string>
+    <string name="component_restore_all_action">استعادة الكل</string>
+    <string name="component_restore_all_title">استعادة كل المكونات؟</string>
+    <string name="component_restore_all_message">كل مكوّن عطّله Thor — في هذا التطبيق وفي كل التطبيقات الأخرى — سيعود إلى حالته الأصلية كما جاء بها التطبيق. أما المكونات التي غيّرتها أدوات أخرى فتبقى دون تغيير.</string>
+
+    <string name="component_disclaimer_title">تعطيل مكوّن؟</string>
+    <string name="component_disclaimer_message">يبقى %1$s جزءًا من التطبيق، لكنه يتوقف عن العمل فقط. نادرًا ما تتوقع التطبيقات ذلك، لذا قد تتعطل إحدى الميزات دون أي رسالة خطأ، أو قد ينهار التطبيق. ويسجّل Thor كل ما يعطّله حتى تتمكن من التراجع لاحقًا.</string>
+    <string name="component_disclaimer_confirm">تعطيله</string>
+
 </resources>
