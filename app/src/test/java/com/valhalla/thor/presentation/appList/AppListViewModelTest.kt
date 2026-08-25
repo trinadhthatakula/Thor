@@ -901,7 +901,11 @@ class AppListViewModelTest {
      */
     @Test
     fun `a delete that raises after the restore reports the unfreeze and then the failure`() = runTest {
-        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        // A distinct appName, not the default null: `unfrozenLabel` is `app?.appName ?: packageName`,
+        // so with the default the two branches of that elvis both produce "a" and collapsing it to
+        // bare `packageName` would ship green — putting com.google.android.gm in the toast where
+        // Gmail belongs.
+        appRepository.apps.value = listOf(userApp("a", enabled = false, appName = "App A"))
         freezer.add("a")
         freezer.failRemoveWith("a", IllegalStateException("disk is full"))
         // LOW, so the settle delay is ZERO and the scan lands under `runCurrent` — the app has to be
@@ -916,7 +920,7 @@ class AppListViewModelTest {
 
         assertEquals(
             listOf(
-                AppListEvent.ShowMessage(UiText.StringResource(R.string.unfrozen_success, "a")),
+                AppListEvent.ShowMessage(UiText.StringResource(R.string.unfrozen_success, "App A")),
                 AppListEvent.ShowMessage(UiText.StringResource(R.string.error_format, "disk is full"))
             ),
             seen
@@ -932,9 +936,10 @@ class AppListViewModelTest {
      * The ordering the two steps after the restore have to keep, which no per-fake list can show.
      *
      * The shortcut is retired *before* the row goes. Both steps can throw and the question is only
-     * which residue is worse: greying a shortcut for an app still on the watchlist costs the launcher
-     * tile until the next tap, whereas dropping the row first and then failing to grey the shortcut
-     * leaves a live freeze-from-the-launcher route for an app Thor no longer tracks.
+     * which residue the user can act on: greying first keeps the row, so the app stays listed in the
+     * freezer and the same toggle retries the pair, whereas dropping the row first and then failing to
+     * grey leaves an orphaned live shortcut for an app that is no longer listed anywhere that could
+     * retry the disable.
      */
     @Test
     fun `the shortcut is retired before the row it belongs to`() = runTest {

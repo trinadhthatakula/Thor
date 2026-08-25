@@ -7,6 +7,7 @@ import android.content.Context
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.valhalla.thor.R
@@ -63,17 +64,23 @@ sealed class UiText {
         }
 
         @Composable
-        fun resolve(): String = pluralStringResource(resId, quantity, *formatArgs)
+        fun resolve(): String =
+            if (formatArgs.any { it is UiText }) resolve(LocalContext.current)
+            else pluralStringResource(resId, quantity, *formatArgs)
 
         fun resolve(context: Context): String =
-            context.resources.getQuantityString(resId, quantity, *formatArgs)
+            context.resources.getQuantityString(resId, quantity, *formatArgs.resolved(context))
     }
 
     @Composable
     fun asString(): String {
         return when (this) {
             is DynamicString -> value
-            is StringResource -> stringResource(resId, *args)
+            // Delegating rather than mapping the args in place: resolving a nested [UiText] means
+            // calling the @Composable overload from inside a `map` lambda, which is not composable.
+            is StringResource ->
+                if (args.any { it is UiText }) asString(LocalContext.current)
+                else stringResource(resId, *args)
             is PluralsResource -> resolve()
         }
     }
@@ -81,11 +88,42 @@ sealed class UiText {
     fun asString(context: Context): String {
         return when (this) {
             is DynamicString -> value
-            is StringResource -> context.getString(resId, *args)
+            is StringResource -> context.getString(resId, *args.resolved(context))
             is PluralsResource -> resolve(context)
         }
     }
 }
+
+/**
+ * Renders any [UiText] sitting in a format-argument list before it reaches `String.format`.
+ *
+ * `error_format` and `log_failed` are both `%1$s`, and a view model composing one of them has no
+ * `Context` with which to render an inner [UiText.StringResource] — so the inner message has to
+ * travel *as* a `UiText` and can only be resolved at the point of display, which is here.
+ *
+ * Without this, `String.format` falls back to `toString()` on the argument.
+ * [UiText.DynamicString] is a data class, so the user reads `Error: DynamicString(value=…)`;
+ * [UiText.StringResource] declares none, so they read
+ * `Error: com.valhalla.thor.util.UiText$StringResource@…`, which minification shortens without
+ * making it any more meaningful. Both were reachable from the Apps tab's quick actions.
+ *
+ * Returns `this` untouched in the overwhelmingly common no-nesting case, so the allocation only
+ * happens where it is needed.
+ */
+private fun Array<out Any>.resolved(context: Context): Array<out Any> =
+    resolvedWith { it.asString(context) }
+
+/**
+ * [resolved] with the rendering step handed in, which is the whole of it that a unit test can reach.
+ *
+ * `asString(Context)` cannot be called from a JVM unit test — this module has no Robolectric, so
+ * every `android.content.Context` member throws "not mocked" — and the mapping is the part that can
+ * silently regress to `toString()`. Splitting it out means the array walk is pinned by a test even
+ * though its one production caller is not.
+ */
+internal fun Array<out Any>.resolvedWith(render: (UiText) -> String): Array<out Any> =
+    if (none { it is UiText }) this
+    else map { if (it is UiText) render(it) else it }.toTypedArray()
 
 class UiTextException(val uiText: UiText) : Exception()
 

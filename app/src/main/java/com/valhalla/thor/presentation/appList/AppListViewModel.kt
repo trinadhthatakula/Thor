@@ -736,16 +736,25 @@ class AppListViewModel(
                         allSystemApps = restore(state.allSystemApps)
                     )
                 }
-                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
-                // live shortcut for an app no longer in the freezer would let it drive a freeze
-                // from the launcher.
+                // Grey the shortcut before dropping the row. A pinned shortcut can only be disabled,
+                // never removed — `disableShortcuts` is the whole of what the app gets — so both
+                // orders leave residue when their second step throws, and the only question is which
+                // residue the user can get out of.
                 //
-                // Before the delete, not after, so that invariant survives a throw in either step.
-                // Both orders can fail, and the question is only which residue is worse: greying a
-                // shortcut for an app still on the watchlist costs the launcher tile until the next
-                // tap re-runs a restore that is by then a no-op, whereas dropping the row first and
-                // then failing to grey the shortcut leaves precisely the live-shortcut-for-an-
-                // untracked-app the comment above exists to forbid.
+                // Greying first: the disable throws, the row survives, the app is still listed in the
+                // freezer, so the same toggle retries the whole pair and the guard above has already
+                // said what failed. Row first: the delete lands, the disable throws, and the app is
+                // gone from the freezer screen — which is the surface that would have retried the
+                // disable. What is left is an orphaned live shortcut and no route back to it.
+                //
+                // Note what that orphan does *not* do, because an earlier version of this comment had
+                // it backwards. A per-app shortcut carries ACTION_LAUNCH, and
+                // FreezerLaunchActivity.launchApp answers it with forceUnfreeze-then-start, so a stale
+                // one thaws an app — it cannot freeze one. And it is not self-healing either: a
+                // shortcut greyed by `disableShortcuts` shows `shortcut_no_longer_frozen` instead of
+                // firing, so the way back is a fresh "Add to home screen", not the next tap. The cost
+                // of getting this order wrong is a launcher tile that outlives the watchlist row it
+                // was made for, not a freeze nobody asked for.
                 appShortcuts.disableAppShortcut(packageName)
                 freezerRepository.remove(packageName)
                 _events.send(
