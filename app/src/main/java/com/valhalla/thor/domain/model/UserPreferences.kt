@@ -71,13 +71,6 @@ data class UserPreferences(
     val extensionsUnlocked: Boolean = false,
     val extensionConsentAccepted: Boolean = false,
 
-    // Per-component control (App info → Components). Disabling a component is the one action in Thor
-    // that can break an app without the app ever appearing changed — it stays installed, enabled and
-    // launchable while some part of it silently stops working. The first disable therefore asks once,
-    // and this records that it was answered. Read-only actions (Open, Force open, Stop now) never
-    // consult it; nothing here gates them.
-    val componentControlConsentAccepted: Boolean = false,
-
     // Auto Reinstall Config
     val autoReinstallEnabled: Boolean = false,
 

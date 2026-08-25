@@ -200,10 +200,6 @@ class PreferenceRepositoryImpl(
         val EXTENSIONS_UNLOCKED = booleanPreferencesKey("extensions_unlocked")
         val EXTENSION_CONSENT_ACCEPTED = booleanPreferencesKey("extension_consent_accepted")
 
-        // Component control
-        val COMPONENT_CONTROL_CONSENT_ACCEPTED =
-            booleanPreferencesKey("component_control_consent_accepted")
-
         // Auto Reinstall
         val AUTO_REINSTALL_ENABLED = booleanPreferencesKey("auto_reinstall_enabled")
 
@@ -412,14 +408,6 @@ class PreferenceRepositoryImpl(
     override suspend fun setExtensionConsentAccepted(accepted: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             it[Keys.EXTENSION_CONSENT_ACCEPTED] = accepted
-        }
-    }
-
-    // --- Component control ---
-
-    override suspend fun setComponentControlConsentAccepted(accepted: Boolean) {
-        context.dataStore.guardedWrite(SETTINGS_STORE) {
-            it[Keys.COMPONENT_CONTROL_CONSENT_ACCEPTED] = accepted
         }
     }
 
@@ -670,8 +658,6 @@ internal fun Preferences.toUserPreferences(
         appGridDensity = appGridDensity,
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
         extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
-        componentControlConsentAccepted =
-            prefs[Keys.COMPONENT_CONTROL_CONSENT_ACCEPTED] ?: false,
         autoReinstallEnabled = prefs[Keys.AUTO_REINSTALL_ENABLED] ?: false,
         exportDirUri = prefs[Keys.EXPORT_DIR_URI],
         appInfoActionsOrder = AppInfoActionId.fromSavedNamesOrDefault(

@@ -844,5 +844,7 @@
     <string name="component_disclaimer_title">Wyłączyć komponent?</string>
     <string name="component_disclaimer_message">%1$s nadal pozostanie częścią aplikacji; przestanie tylko działać. Aplikacje rzadko się tego spodziewają, więc jakaś funkcja może przestać działać bez żadnego błędu albo aplikacja może ulec awarii. Thor zapisuje, co wyłącza, aby można było to później cofnąć.</string>
     <string name="component_disclaimer_confirm">Wyłącz go</string>
+    <string name="component_disclaimer_dont_ask_session">Nie pytaj ponownie w tej sesji</string>
+    <string name="component_disabled_unrecorded">Wyłączono %1$s, ale Thor nie zdołał tego zapisać — Przywróć wszystkie tego nie obejmie</string>
 
 </resources>

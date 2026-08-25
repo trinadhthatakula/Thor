@@ -17,7 +17,7 @@ import com.valhalla.thor.domain.model.ComponentOverride
 import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.ComponentType
 import com.valhalla.thor.domain.repository.AppRepository
-import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.usecase.ComponentActionOutcome
 import com.valhalla.thor.domain.usecase.ComponentControlUseCase
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
@@ -58,12 +58,6 @@ data class ComponentControlUiState(
     val overrides: Map<String, ComponentOverride> = emptyMap(),
     /** The component a privileged call is running against, if any. One at a time, by design. */
     val busyClassName: String? = null,
-    /**
-     * Starts `true` so the disclaimer cannot flash on screen during the first frame, before the
-     * preference has been read. A dialog that appears and vanishes unread is worse than one that
-     * appears a beat late.
-     */
-    val consentAccepted: Boolean = true,
     val pendingConsent: PendingComponentDisable? = null,
     val showRestoreAllConfirm: Boolean = false,
 ) {
@@ -86,7 +80,7 @@ class ComponentControlViewModel(
     private val appRepository: AppRepository,
     private val componentControl: ComponentControlUseCase,
     private val capabilityProvider: ComponentCapabilityProvider,
-    private val preferenceRepository: PreferenceRepository,
+    private val consentSession: ComponentConsentSession,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -100,14 +94,6 @@ class ComponentControlViewModel(
 
     private var ledgerJob: Job? = null
     private var refreshJob: Job? = null
-
-    init {
-        viewModelScope.launch {
-            preferenceRepository.userPreferences.collect { prefs ->
-                _uiState.update { it.copy(consentAccepted = prefs.componentControlConsentAccepted) }
-            }
-        }
-    }
 
     /**
      * Bind to [packageName]. Safe to call again — the host drives it from a `LaunchedEffect`.
@@ -135,7 +121,6 @@ class ComponentControlViewModel(
                     // open while a second, identical PackageManager round-trip ran.
                     isLoading = initial.isEmpty,
                     snapshot = initial,
-                    consentAccepted = it.consentAccepted,
                 )
             }
             ledgerJob = viewModelScope.launch {
@@ -247,12 +232,18 @@ class ComponentControlViewModel(
     /**
      * Ask to switch a component off.
      *
-     * Routed through the disclaimer on the first ever disable. The check is here rather than in the
-     * composable so that every entry point to a disable — row menu, and anything added later —
-     * inherits it instead of each host remembering to ask.
+     * Routed through the disclaimer **every time**, unless the user has silenced it for this session.
+     * The check is here rather than in the composable so that every entry point to a disable — row
+     * menu, and anything added later — inherits it instead of each host remembering to ask.
+     *
+     * Reading a plain in-memory flag is what makes this correct rather than merely convenient: there
+     * is no load to await, so there is no window in which the answer is unknown and no default to
+     * choose for that window. The previous version read a persisted preference and defaulted the
+     * unread state to *accepted*, which skipped the disclaimer outright for a disable requested
+     * before DataStore had emitted.
      */
     fun requestDisable(type: ComponentType, component: ComponentDetail) {
-        if (!_uiState.value.consentAccepted) {
+        if (!consentSession.isDisclaimerSilenced) {
             _uiState.update {
                 it.copy(pendingConsent = PendingComponentDisable(type, component))
             }
@@ -261,15 +252,16 @@ class ComponentControlViewModel(
         performDisable(type, component)
     }
 
-    fun onDisclaimerConfirmed() {
+    /**
+     * @param dontAskAgain the checkbox on the dialog — silence the disclaimer until Thor is killed.
+     */
+    fun onDisclaimerConfirmed(dontAskAgain: Boolean) {
         val pending = _uiState.value.pendingConsent ?: return
         _uiState.update { it.copy(pendingConsent = null) }
-        viewModelScope.launch {
-            // Persisted before the action runs, not after it succeeds: the question asked was "do
-            // you understand what disabling does", and the answer does not become un-given because
-            // this particular component refused.
-            preferenceRepository.setComponentControlConsentAccepted(true)
-        }
+        // Recorded before the action runs, not after it succeeds: the question asked was "do you
+        // understand what disabling does", and the answer does not become un-given because this
+        // particular component refused.
+        if (dontAskAgain) consentSession.silenceForSession()
         performDisable(pending.type, pending.component)
     }
 
@@ -281,14 +273,21 @@ class ComponentControlViewModel(
         val packageName = _uiState.value.packageName
         if (packageName.isEmpty()) return
         runExclusively(component.className) {
-            componentControl.disable(packageName, type, component)
-                .onSuccess {
-                    _events.send(
-                        UiText.StringResource(R.string.component_disabled_success, component.shortName)
+            val outcome = componentControl.disable(packageName, type, component)
+            report(
+                outcome = outcome,
+                packageName = packageName,
+                // The one place the ledger's failure has to be said out loud. The component is off
+                // either way, but with no row to find it by, Restore All will never offer it back.
+                success = if (outcome.ledgerError == null) {
+                    UiText.StringResource(R.string.component_disabled_success, component.shortName)
+                } else {
+                    UiText.StringResource(
+                        R.string.component_disabled_unrecorded,
+                        component.shortName
                     )
-                    refreshSnapshot(packageName)
-                }
-                .onFailure { e -> sendFailure(e) }
+                },
+            )
         }
     }
 
@@ -296,14 +295,14 @@ class ComponentControlViewModel(
         val packageName = _uiState.value.packageName
         if (packageName.isEmpty()) return
         runExclusively(component.className) {
-            componentControl.enable(packageName, component)
-                .onSuccess {
-                    _events.send(
-                        UiText.StringResource(R.string.component_enabled_success, component.shortName)
-                    )
-                    refreshSnapshot(packageName)
-                }
-                .onFailure { e -> sendFailure(e) }
+            report(
+                outcome = componentControl.enable(packageName, component),
+                packageName = packageName,
+                success = UiText.StringResource(
+                    R.string.component_enabled_success,
+                    component.shortName
+                ),
+            )
         }
     }
 
@@ -311,14 +310,38 @@ class ComponentControlViewModel(
         val packageName = _uiState.value.packageName
         if (packageName.isEmpty()) return
         runExclusively(component.className) {
-            componentControl.resetToDefault(packageName, component.className)
-                .onSuccess {
-                    _events.send(
-                        UiText.StringResource(R.string.component_reset_success, component.shortName)
-                    )
-                    refreshSnapshot(packageName)
-                }
-                .onFailure { e -> sendFailure(e) }
+            report(
+                outcome = componentControl.resetToDefault(packageName, component.className),
+                packageName = packageName,
+                success = UiText.StringResource(
+                    R.string.component_reset_success,
+                    component.shortName
+                ),
+            )
+        }
+    }
+
+    /**
+     * Announce a verb's result, letting the **platform** decide whether it worked.
+     *
+     * A ledger failure is not a failed action: the component really did change state. For the
+     * restoring verbs it is not even worth a message, because a row left behind on an enabled
+     * component is drift, and the list already labels that "Changed elsewhere" and offers Forget.
+     * Logged rather than shown, so the cause is still recoverable from a bug report.
+     */
+    private suspend fun report(
+        outcome: ComponentActionOutcome,
+        packageName: String,
+        success: UiText,
+    ) {
+        outcome.ledgerError?.let { e ->
+            Logger.e(TAG, "Ledger write failed after a successful component change", e)
+        }
+        if (outcome.isPlatformSuccess) {
+            _events.send(success)
+            refreshSnapshot(packageName)
+        } else {
+            outcome.platform.exceptionOrNull()?.let { sendFailure(it) }
         }
     }
 
@@ -326,11 +349,14 @@ class ComponentControlViewModel(
     fun forget(component: ComponentDetail) {
         val packageName = _uiState.value.packageName
         if (packageName.isEmpty()) return
-        viewModelScope.launch {
+        launchReporting(component.className) {
             componentControl.forget(packageName, component.className)
-            _events.send(
-                UiText.StringResource(R.string.component_forgotten, component.shortName)
-            )
+                .onSuccess {
+                    _events.send(
+                        UiText.StringResource(R.string.component_forgotten, component.shortName)
+                    )
+                }
+                .onFailure { e -> sendFailure(e) }
         }
     }
 
@@ -352,7 +378,7 @@ class ComponentControlViewModel(
     fun confirmRestoreAll() {
         val packageName = _uiState.value.packageName
         _uiState.update { it.copy(showRestoreAllConfirm = false) }
-        viewModelScope.launch {
+        launchReporting("restoreAll") {
             val outcome = withContext(ioDispatcher) { componentControl.restoreAll() }
             _events.send(
                 if (outcome.isComplete) {
@@ -373,6 +399,33 @@ class ComponentControlViewModel(
     }
 
     /**
+     * Launch on [viewModelScope] with the failure path every action on this screen needs.
+     *
+     * The `catch` is load-bearing, not defensive habit. `viewModelScope` installs no exception
+     * handler, so anything that escapes a `launch` block reaches the thread's default handler and
+     * **takes the process down**. Every verb here reaches Room or a privileged shell, either of which
+     * can throw, and a crash is the one outcome worse than a failed disable — it loses the whole
+     * screen while leaving whatever already happened in place.
+     *
+     * Every launch in this class goes through here for that reason. The two that did not — Forget
+     * and Restore All — were each one `SQLiteFullException` away from killing Thor from a tap.
+     * `CancellationException` is rethrown so cancellation stays cancellation rather than being
+     * reported to the user as an error.
+     */
+    private fun launchReporting(tag: String, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(TAG, "Component action failed for $tag", e)
+                sendFailure(e)
+            }
+        }
+    }
+
+    /**
      * Run one privileged action at a time, marking its row busy for the duration.
      *
      * Serialising is not just cosmetic: `pm` and `am` reach the same `PackageManagerService` state,
@@ -380,24 +433,16 @@ class ComponentControlViewModel(
      * that loses one of them. The busy marker also stops a double-tap becoming two disables and two
      * ledger writes.
      *
-     * The `catch` is load-bearing, not defensive habit. Every verb returns a `Result`, but the
-     * ledger write that follows a successful one happens inside `Result.onSuccess`, which does not
-     * catch — so a Room failure there (`SQLiteFullException`, a disk-I/O error) throws straight out
-     * of the use case. Without a catch that lands in `viewModelScope`'s uncaught handler and takes
-     * the process down, *after* the privileged change already succeeded. Reported like any other
-     * failure instead; `CancellationException` is rethrown so cancellation stays cancellation.
+     * The marker is cleared in a `finally` that only touches a [MutableStateFlow], which is why it
+     * is safe here: it never suspends, so it still runs when the scope is cancelled mid-action. A
+     * suspending cleanup in that position would silently not run on exactly that path.
      */
     private fun runExclusively(className: String, block: suspend () -> Unit) {
         if (_uiState.value.busyClassName != null) return
         _uiState.update { it.copy(busyClassName = className) }
-        viewModelScope.launch {
+        launchReporting(className) {
             try {
                 block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e("ComponentControlViewModel", "Component action failed for $className", e)
-                sendFailure(e)
             } finally {
                 _uiState.update { it.copy(busyClassName = null) }
             }
@@ -406,5 +451,9 @@ class ComponentControlViewModel(
 
     private suspend fun sendFailure(e: Throwable) {
         _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+    }
+
+    private companion object {
+        const val TAG = "ComponentControlViewModel"
     }
 }

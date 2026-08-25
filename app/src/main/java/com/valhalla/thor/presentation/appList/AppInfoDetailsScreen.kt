@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,9 +30,11 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -65,6 +68,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -1109,19 +1113,29 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
     }
 
     state.pendingConsent?.let { pending ->
+        // Keyed on the component so the tick does not carry over from a dialog the user dismissed
+        // onto the next component they pick — a silenced disclaimer would then be a decision made
+        // for a different component than the one shown.
+        var dontAskAgain by remember(pending.component.className) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = viewModel::onDisclaimerDismissed,
             title = { Text(stringResource(R.string.component_disclaimer_title)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.component_disclaimer_message,
-                        pending.component.shortName
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.component_disclaimer_message,
+                            pending.component.shortName
+                        )
                     )
-                )
+                    DontAskAgainRow(
+                        checked = dontAskAgain,
+                        onCheckedChange = { dontAskAgain = it },
+                    )
+                }
             },
             confirmButton = {
-                Button(onClick = viewModel::onDisclaimerConfirmed) {
+                Button(onClick = { viewModel.onDisclaimerConfirmed(dontAskAgain) }) {
                     Text(stringResource(R.string.component_disclaimer_confirm))
                 }
             },
@@ -1705,6 +1719,59 @@ private data class ComponentLists(
  * through `android.text.format.Formatter.formatShortFileSize(context, …)` and therefore has always
  * read its locale off the Context.
  */
+/**
+ * The "don't ask again this session" option on the component disclaimer.
+ *
+ * The whole row toggles, not just the box: a 20dp target inside a dialog is below the 48dp minimum,
+ * and the label is the part the eye goes to.
+ *
+ * `toggleable` rather than `clickable`, for the reason [FixStoreSheet][com.valhalla.thor.presentation.main.FixStoreSheet]'s
+ * row and [SettingsSwitchRow][com.valhalla.thor.presentation.settings.SettingsSwitchRow] both state:
+ * `clickable` contributes an on-click action and no *state*, and the box's own handler has to be null
+ * or the two nodes can disagree on a fast double-tap — so between them nothing would announce whether
+ * the option is ticked. `Role.Checkbox` is what puts the state in the announcement.
+ *
+ * That matters more here than on a selection row. This box decides whether the warning in this very
+ * dialog stops appearing, so a screen-reader user who cannot hear its state can silence the one
+ * warning standing between a mis-tap and an app that is broken while still looking healthy — without
+ * knowing they did it.
+ *
+ * Extracted from the dialog rather than left inline so the semantics are assertable; the dialog needs
+ * a bound view model, this needs nothing.
+ */
+@Composable
+internal fun DontAskAgainRow(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            // Asked for explicitly, because the null handler above gives it up: material3's
+            // `Checkbox` applies `minimumInteractiveComponentSize()` only while `onCheckedChange`
+            // is non-null, so the fix for the announcement silently traded WCAG 4.1.2 for 2.5.8 —
+            // measured at 24dp, exactly half the minimum. Widening the row to full width only ever
+            // fixed the horizontal axis.
+            .heightIn(min = 48.dp)
+            .clip(MaterialTheme.shapes.small)
+            .toggleable(
+                value = checked,
+                onValueChange = onCheckedChange,
+                role = Role.Checkbox,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Null: the row above owns the toggle. A live handler here would be a second semantics node,
+        // and a second thing to disagree with the row.
+        Checkbox(checked = checked, onCheckedChange = null)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.component_disclaimer_dont_ask_session),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
 private fun formatTime(timestamp: Long, context: Context): String {
     if (timestamp == 0L) return context.getString(R.string.not_available)
     return try {

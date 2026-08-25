@@ -741,5 +741,7 @@
     <string name="component_disclaimer_title">禁用此组件？</string>
     <string name="component_disclaimer_message">%1$s 仍会保留在应用中，只是不再运行。应用通常不会预料到这种情况，因此某项功能可能会在没有任何错误提示的情况下失效，应用也可能崩溃。Thor 会记录它禁用过的内容，方便你之后撤销。</string>
     <string name="component_disclaimer_confirm">确认禁用</string>
+    <string name="component_disclaimer_dont_ask_session">本次会话不再询问</string>
+    <string name="component_disabled_unrecorded">已禁用 %1$s，但 Thor 未能记录此次更改——“全部恢复”不会包含它</string>
 
 </resources>
