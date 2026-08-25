@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -66,6 +67,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -1125,28 +1127,10 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
                             pending.component.shortName
                         )
                     )
-                    // The whole row toggles, not just the box: a 20dp target inside a dialog is
-                    // below the 48dp minimum, and the label is the part the eye goes to.
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(MaterialTheme.shapes.small)
-                            .clickable { dontAskAgain = !dontAskAgain },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = dontAskAgain,
-                            // Null so the row's click is the single source of the toggle; a handler
-                            // here would make the box independently clickable and able to disagree
-                            // with the row on a fast double-tap.
-                            onCheckedChange = null,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(R.string.component_disclaimer_dont_ask_session),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+                    DontAskAgainRow(
+                        checked = dontAskAgain,
+                        onCheckedChange = { dontAskAgain = it },
+                    )
                 }
             },
             confirmButton = {
@@ -1734,6 +1718,53 @@ private data class ComponentLists(
  * through `android.text.format.Formatter.formatShortFileSize(context, …)` and therefore has always
  * read its locale off the Context.
  */
+/**
+ * The "don't ask again this session" option on the component disclaimer.
+ *
+ * The whole row toggles, not just the box: a 20dp target inside a dialog is below the 48dp minimum,
+ * and the label is the part the eye goes to.
+ *
+ * `toggleable` rather than `clickable`, for the reason [FixStoreSheet][com.valhalla.thor.presentation.main.FixStoreSheet]'s
+ * row and [SettingsSwitchRow][com.valhalla.thor.presentation.settings.SettingsSwitchRow] both state:
+ * `clickable` contributes an on-click action and no *state*, and the box's own handler has to be null
+ * or the two nodes can disagree on a fast double-tap — so between them nothing would announce whether
+ * the option is ticked. `Role.Checkbox` is what puts the state in the announcement.
+ *
+ * That matters more here than on a selection row. This box decides whether the warning in this very
+ * dialog stops appearing, so a screen-reader user who cannot hear its state can silence the one
+ * warning standing between a mis-tap and an app that is broken while still looking healthy — without
+ * knowing they did it.
+ *
+ * Extracted from the dialog rather than left inline so the semantics are assertable; the dialog needs
+ * a bound view model, this needs nothing.
+ */
+@Composable
+internal fun DontAskAgainRow(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .toggleable(
+                value = checked,
+                onValueChange = onCheckedChange,
+                role = Role.Checkbox,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Null: the row above owns the toggle. A live handler here would be a second semantics node,
+        // and a second thing to disagree with the row.
+        Checkbox(checked = checked, onCheckedChange = null)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.component_disclaimer_dont_ask_session),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
 private fun formatTime(timestamp: Long, context: Context): String {
     if (timestamp == 0L) return context.getString(R.string.not_available)
     return try {
