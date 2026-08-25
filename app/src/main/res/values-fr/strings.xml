@@ -747,7 +747,7 @@
         <item quantity="one">%1$d composant rétabli</item>
         <item quantity="other">%1$d composants rétablis</item>
     </plurals>
-    <string name="component_restore_all_partial">%1$d composants rétablis sur %2$d — les autres restent restreints</string>
+    <string name="component_restore_all_partial">Rétablissement : %1$d sur %2$d — les autres restent restreints</string>
     <string name="component_restore_all_action">Tout rétablir</string>
     <string name="component_restore_all_title">Rétablir tous les composants ?</string>
     <string name="component_restore_all_message">Chaque composant désactivé par Thor — dans cette application comme dans toutes les autres — retrouve l\'état d\'origine. Les composants modifiés par d\'autres outils ne sont pas touchés.</string>

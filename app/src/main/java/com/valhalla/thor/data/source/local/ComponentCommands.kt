@@ -261,8 +261,13 @@ internal fun componentCommandFailure(
         return (cause ?: lines[headerIndex]).take(MAX_FAILURE_LINE_CHARS)
     }
 
-    // Only the standard kind may draw a conclusion from the code; see the note above.
-    if (kind == ComponentCommandKind.STANDARD && exitCode != 0) {
+    // Only the standard kind may draw a conclusion from a code the *command* chose — but a negative
+    // code is not one of those. `am` and `pm` exit 0..255; a negative code is Thor's own transport
+    // sentinel, set by `ShizukuHelper` for a dead binder, a timeout, or a thrown exception, and it
+    // means the command never ran at all. Without this, a stopservice issued through a binder that
+    // has just died returns "Shizuku binder is null" — no marker, no conclusion — and is reported to
+    // the user as a service successfully stopped.
+    if (exitCode != 0 && (kind == ComponentCommandKind.STANDARD || exitCode < 0)) {
         return lines.firstOrNull()?.take(MAX_FAILURE_LINE_CHARS) ?: "exit $exitCode"
     }
     return null

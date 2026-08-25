@@ -414,6 +414,37 @@ class ComponentCommandsTest {
     }
 
     /**
+     * The one code a stopservice *must* still read: a negative one, which `am` never returns.
+     * `ShizukuHelper` uses it for a dead binder, a timeout, and a thrown exception, and its output
+     * carries none of the three markers — so "ignore the exit code" taken literally reports a
+     * service Thor never reached as a service it stopped.
+     */
+    @Test
+    fun `a dead transport is a failure even for stopservice`() {
+        assertEquals(
+            "Shizuku binder is null",
+            componentCommandFailure(
+                exitCode = -1,
+                output = "Shizuku binder is null",
+                kind = ComponentCommandKind.STOP_SERVICE,
+            )
+        )
+    }
+
+    /** …and with no output at all there is still a verdict, rather than a silent success. */
+    @Test
+    fun `a silent transport failure still reports for stopservice`() {
+        assertEquals(
+            "exit -1",
+            componentCommandFailure(
+                exitCode = -1,
+                output = "",
+                kind = ComponentCommandKind.STOP_SERVICE,
+            )
+        )
+    }
+
+    /**
      * The asynchronous wording, for a service whose `onDestroy` has not returned yet. It is the
      * third success marker and the only one with no test of its own — without this, deleting it
      * from the list turns every slow stop into an error Toast and the suite stays green.
