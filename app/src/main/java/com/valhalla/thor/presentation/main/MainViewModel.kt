@@ -35,6 +35,7 @@ import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
+import com.valhalla.thor.util.asUiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
@@ -588,8 +589,9 @@ class MainViewModel(
                 .onFailure { e ->
                     Logger.e("MainViewModel", "clearAllCaches failed", e)
                     _uiState.update { it.copy(cacheClear = null) }
-                    val errorText = if (e is UiTextException) e.uiText else UiText.DynamicString(e.message ?: "")
-                    _effect.send(MainSideEffect.Message(UiText.StringResource(R.string.error_format, errorText)))
+                    // Same unwrap the freezer surfaces use: a UiTextException already carries a whole
+                    // sentence, so wrapping it in `error_format` would read "Error: Skipped: …".
+                    _effect.send(MainSideEffect.Message(e.asUiText()))
                 }
         }
     }
@@ -631,12 +633,12 @@ class MainViewModel(
                         if (result.isSuccess) {
                             _effect.send(MainSideEffect.LaunchApp(app.packageName))
                         } else {
+                            // asUiText, not `.message`: a refusal arrives as a UiTextException whose
+                            // message is null, which renders as a bare "Error: ".
                             _effect.send(
                                 MainSideEffect.Message(
-                                    UiText.StringResource(
-                                        R.string.error_format,
-                                        result.exceptionOrNull()?.message ?: ""
-                                    )
+                                    result.exceptionOrNull()?.asUiText()
+                                        ?: UiText.StringResource(R.string.error_format, "")
                                 )
                             )
                         }
@@ -1304,15 +1306,7 @@ class MainViewModel(
                     triggerSupportPromptIfNeeded()
                 }
                 .onFailure { e ->
-                    val errorText = if (e is UiTextException) e.uiText else UiText.DynamicString(e.message ?: "")
-                    _effect.send(
-                        MainSideEffect.Message(
-                            UiText.StringResource(
-                                R.string.error_format,
-                                errorText
-                            )
-                        )
-                    )
+                    _effect.send(MainSideEffect.Message(e.asUiText()))
                 }
         else {
             _effect.send(MainSideEffect.Message(UiText.StringResource(R.string.error_app_info_missing)))

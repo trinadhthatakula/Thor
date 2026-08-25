@@ -666,15 +666,16 @@ class MainViewModelTest {
 
         // UiTextException carries the whole message and has a null `message`, so the generic branch
         // would render it as "Error: " with nothing after the colon.
+        //
+        // The carried message alone, with no `error_format` around it. This assertion used to expect
+        // that StringResource nested *inside* error_format, which was the defect and not the fix:
+        // String.format has no idea what a UiText is, so it called toString(), and the message this
+        // test is named after reached the user as
+        // "Error: com.valhalla.thor.util.UiText$StringResource@4f2a1c" — obfuscated further in
+        // release. Unwrapped it is also the right sentence, a refusal being one already: prefixing it
+        // would read "Error: Skipped: …".
         assertEquals(
-            listOf(
-                MainSideEffect.Message(
-                    UiText.StringResource(
-                        R.string.error_format,
-                        UiText.StringResource(R.string.error_unsafe_skipped)
-                    )
-                )
-            ),
+            listOf(MainSideEffect.Message(UiText.StringResource(R.string.error_unsafe_skipped))),
             effects
         )
     }
@@ -821,13 +822,14 @@ class MainViewModelTest {
         assertNull(vm.uiState.value.cacheClear)
         // The whole effect, not just its arity: a success message is also one effect, and the point
         // of this path is that the reason reaches the user rather than a silent sheet close.
+        //
+        // The reason goes in as a String. It used to go in as a DynamicString, and DynamicString is a
+        // data class, so String.format's toString() fallback turned the sentence that "says why" into
+        // "Error: DynamicString(value=no privileged gateway)".
         assertEquals(
             listOf(
                 MainSideEffect.Message(
-                    UiText.StringResource(
-                        R.string.error_format,
-                        UiText.DynamicString("no privileged gateway")
-                    )
+                    UiText.StringResource(R.string.error_format, "no privileged gateway")
                 )
             ),
             effects

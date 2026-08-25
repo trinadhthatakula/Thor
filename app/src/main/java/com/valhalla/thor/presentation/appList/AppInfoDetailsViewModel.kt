@@ -468,13 +468,31 @@ class AppInfoDetailsViewModel(
                 // From here on the app is running again and cannot be un-run. Everything below is
                 // bookkeeping, and the guard reports it as such.
                 restored = true
+                // The same optimistic patch AppListViewModel.toggleFreezerMembership applies, and for
+                // the same reason: past this line the app is thawed, and both statements below can
+                // throw. Left behind them a throw would skip it, leaving the sheet drawing the `frozen`
+                // chip over an app the guard has just toasted as unfrozen — the screen contradicting
+                // its own toast on the one path where the toast is certainly true.
+                //
+                // Stated here rather than left to refreshDetails, which re-reads through the package
+                // manager and races the enable: the new state is not always visible to
+                // getDetailedAppInfo immediately (FreezerLaunchActivity retries ~10×150ms for exactly
+                // that), whereas a restoreApp that returned success is knowledge.
+                _uiState.update { state ->
+                    state.copy(
+                        detailedInfo = state.detailedInfo?.let {
+                            it.copy(appInfo = it.appInfo.copy(enabled = true, isSuspended = false))
+                        }
+                    )
+                }
                 // Grey the launcher shortcut *before* dropping the row, matching
                 // AppListViewModel.toggleFreezerMembership — see the comment there for the argument.
                 // Short version: a pinned shortcut can only ever be greyed, never removed, so both
-                // orders leave residue on a throw and the question is which residue is worse. A greyed
-                // shortcut for an app still on the watchlist costs a launcher tile until the next tap;
-                // a dropped row with a live shortcut leaves the launcher able to drive a freeze for an
-                // app Thor is no longer tracking.
+                // orders leave residue on a throw and the question is which residue is worse. Greying
+                // first keeps the pair consistent and the removal retryable; dropping the row first
+                // and then failing to grey leaves an orphaned live shortcut for an app that is no
+                // longer on the watchlist, and no route back to it — the freezer screen no longer
+                // lists the app, so the toggle that would retry the disable is gone.
                 appShortcuts.disableAppShortcut(packageName)
                 freezerRepository.remove(packageName)
                 // refreshDetails re-reads membership, but only when details are loaded — set it here

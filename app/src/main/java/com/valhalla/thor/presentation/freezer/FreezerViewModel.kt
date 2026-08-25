@@ -278,10 +278,11 @@ class FreezerViewModel(
                             failures += e
                             return@forEach
                         }
-                    // Pinned shortcuts can only be greyed, never removed — leaving a live one for an
-                    // app no longer in the freezer would let the launcher drive a freeze from it.
-                    // Before the delete, not after, so that holds even when one of the two throws:
-                    // see AppListViewModel.toggleFreezerMembership for the full argument.
+                    // Pinned shortcuts can only be greyed, never removed, so a throw between these two
+                    // leaves residue whichever order they run in. Greying first is the order whose
+                    // residue the user can still act on: the row survives, so the app stays listed and
+                    // the same action retries the pair. See AppListViewModel.toggleFreezerMembership
+                    // for the full argument, including what an orphaned shortcut does and does not do.
                     appShortcuts.disableAppShortcut(pkg)
                     freezerRepository.remove(pkg)
                     succeeded += pkg

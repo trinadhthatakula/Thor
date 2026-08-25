@@ -439,10 +439,19 @@ class AppInfoDetailsViewModelTest {
         )
     }
 
-    /** The same shape on the removal path: restore succeeded, the row would not go. */
+    /**
+     * The same shape on the removal path: restore succeeded, the row would not go.
+     *
+     * Also the only pin this surface has on the order of the two steps after the restore. The other
+     * three removal surfaces pin it with a shared `CallTrace`; this file has none, so without the
+     * `disabled` assertion below, swapping `disableAppShortcut` and `remove` back to row-first ships
+     * green across the whole suite.
+     */
     @Test
     fun `a removal whose delete raises still reports the unfreeze`() = runTest {
-        loaded(userApp("a", enabled = false))
+        // appName distinct from the package, so the label expression is pinned too — `?: packageName`
+        // and bare `packageName` are indistinguishable when userApp() leaves appName null.
+        loaded(userApp("a", enabled = false, appName = "App A"))
         freezer.add("a")
         freezer.failRemoveWith("a", IllegalStateException("disk is full"))
         val vm = viewModel()
@@ -456,12 +465,24 @@ class AppInfoDetailsViewModelTest {
         assertEquals(
             "the app is back — say that, then say the record did not keep up",
             listOf(
-                UiText.StringResource(R.string.unfrozen_success, "a"),
+                UiText.StringResource(R.string.unfrozen_success, "App A"),
                 UiText.StringResource(R.string.error_format, "disk is full")
             ),
             seen
         )
         assertTrue("and the row is still there, so the next tap can retry it", freezer.contains("a"))
+        assertEquals(
+            "the shortcut is greyed before the row is dropped, so a row-first order fails here",
+            listOf("a"),
+            shortcuts.disabled
+        )
+        // The screen must not contradict the toast it just showed. `refreshDetails` never runs on
+        // this path — the delete throws first — so the only thing that can clear the `frozen` chip is
+        // the optimistic patch taken the moment `restoreApp` reported success.
+        assertTrue(
+            "the sheet shows the app running, as the toast says it is",
+            vm.uiState.value.detailedInfo?.appInfo?.enabled == true
+        )
     }
 
     /**
