@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.click
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.percentOffset
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.valhalla.thor.R
 import org.junit.Assert.assertEquals
@@ -114,6 +116,22 @@ class DontAskAgainRowTest {
         rule.onNodeWithText(label).performClick()
 
         assertEquals(listOf(false), reported)
+    }
+
+    /**
+     * The row is big enough to hit.
+     *
+     * The other half of the trade material3 makes here: `Checkbox` applies
+     * `minimumInteractiveComponentSize()` **only while `onCheckedChange != null`**, so the null
+     * handler that fixes the announcement also gives up the 48dp target the box was reserving. A
+     * `toggleable` row is the standard fix for the semantics and silently swaps WCAG 4.1.2 for 2.5.8
+     * unless the row asks for the height back.
+     */
+    @Test
+    fun theTouchTargetIsAtLeast48dp() {
+        setRow(checked = false)
+
+        rule.onNodeWithText(label).assertHeightIsAtLeast(48.dp)
     }
 
     /**

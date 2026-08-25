@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1746,6 +1747,12 @@ internal fun DontAskAgainRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // Asked for explicitly, because the null handler above gives it up: material3's
+            // `Checkbox` applies `minimumInteractiveComponentSize()` only while `onCheckedChange`
+            // is non-null, so the fix for the announcement silently traded WCAG 4.1.2 for 2.5.8 —
+            // measured at 24dp, exactly half the minimum. Widening the row to full width only ever
+            // fixed the horizontal axis.
+            .heightIn(min = 48.dp)
             .clip(MaterialTheme.shapes.small)
             .toggleable(
                 value = checked,
