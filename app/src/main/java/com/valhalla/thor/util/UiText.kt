@@ -9,6 +9,7 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import com.valhalla.thor.R
 
 sealed class UiText {
     data class DynamicString(val value: String) : UiText()
@@ -87,3 +88,26 @@ sealed class UiText {
 }
 
 class UiTextException(val uiText: UiText) : Exception()
+
+/**
+ * The message to show for a throw, whichever kind of throw it is.
+ *
+ * Exists because [UiTextException] carries its rendered message in [UiTextException.uiText] and
+ * leaves `message` null, so `error_format` applied to one renders a bare "Error: " — a toast that
+ * tells the user something failed and nothing else. Every handler that formats an exception therefore
+ * has to ask, and the ones that forgot were not distinguishable by reading them: the omission only
+ * surfaces at runtime, on a refusal, as an empty error.
+ *
+ * A function rather than the same `if` repeated at each catch, because the repetition is what let the
+ * sites drift apart in the first place — the freezer surfaces had it in three places and not in six,
+ * and which behaviour you got depended on which screen you tapped.
+ *
+ * Covers both ways a refusal reaches a handler, since a surface can see either. A tier refusal is
+ * *returned* — `FreezeAppUseCase` wraps it in a failed `Result` rather than throwing it — and reaches
+ * `Result.onFailure`; anything else that goes wrong in the same block is *thrown* and reaches the
+ * `launchGuarded` catch instead. Two sites unwrapping the same type by hand is what produced the
+ * empty-toast asymmetry, so both go through here.
+ */
+fun Throwable.asUiText(): UiText =
+    if (this is UiTextException) uiText
+    else UiText.StringResource(R.string.error_format, message ?: "")

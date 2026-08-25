@@ -39,10 +39,11 @@ import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.presentation.launchGuarded
 import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
-import com.valhalla.thor.util.UiTextException
+import com.valhalla.thor.util.asUiText
 import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -497,7 +498,25 @@ class AppListViewModel(
     }
 
     fun freezeApp(packageName: String, appName: String?, freeze: Boolean) {
-        viewModelScope.launch {
+        // `launchGuarded`, not a bare `launch`, because of the freezer read inside `onSuccess`
+        // below. `Result.onSuccess` catches nothing — its lambda is a plain inline lambda — so a
+        // Room throw from `contains()` (SQLiteFullException, SQLiteDiskIOException,
+        // SQLiteDatabaseCorruptException) walks straight out of it, out of the launch, and into the
+        // thread's default handler, because `:app` installs no `CoroutineExceptionHandler`. One
+        // freeze on a full disk was process death.
+        //
+        // The report here is deliberately unadorned. Everything on this path that can fail in a way
+        // worth naming already names itself: both privileged calls return a `Result` and the
+        // `onFailure` branch renders it, and the freezer read degrades on its own rather than
+        // aborting (see below). What is left to reach this handler is an unexpected throw with
+        // nothing to add to it, so it is shown as-is instead of being dressed up as a claim about
+        // what did or did not happen to the app.
+        launchGuarded(
+            onFailure = { e ->
+                Logger.e("AppListViewModel", "freeze toggle for $packageName failed", e)
+                _events.trySend(AppListEvent.ShowMessage(e.asUiText()))
+            }
+        ) {
             // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
             // view model rather than by AppRiskDialog declining to render a confirm button.
             // Unfreezing keeps the raw call: it must never be blocked.
@@ -517,8 +536,30 @@ class AppListViewModel(
                 }
 
                 if (freeze) {
-                    val inFreezer = withContext(ioDispatcher) {
-                        freezerRepository.contains(packageName)
+                    // "Not in the freezer" is the safe answer when the read fails — the same
+                    // fallback observeFreezerMembership's `catch` takes, for the same reason. The
+                    // app is already frozen by the time this runs, and all this Boolean decides is
+                    // whether to offer to track it. Guessing `true` would leave a frozen app off
+                    // the watchlist without a word, which is the stranding this feature exists to
+                    // prevent; guessing `false` costs at worst one prompt for an app already on it,
+                    // and `FreezerDao.insert` is `OnConflictStrategy.IGNORE`, so confirming that
+                    // prompt is a no-op rather than a duplicate row. Caught here rather than left
+                    // to the guard above because the guard can only abandon the block — and
+                    // abandoning it here would drop the freeze report the user is owed for a
+                    // freeze that succeeded.
+                    val inFreezer = try {
+                        withContext(ioDispatcher) {
+                            freezerRepository.contains(packageName)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e(
+                            "AppListViewModel",
+                            "freezer membership read for $packageName failed",
+                            e
+                        )
+                        false
                     }
                     if (!inFreezer) {
                         _events.send(
@@ -545,14 +586,9 @@ class AppListViewModel(
                     )
                 }
             }.onFailure { e ->
-                // A UiTextException already carries the message to show (the tier refusal) and
-                // has a null `message`, which error_format would render as a bare "Error: ".
-                _events.send(
-                    AppListEvent.ShowMessage(
-                        if (e is UiTextException) e.uiText
-                        else UiText.StringResource(R.string.error_format, e.message ?: "")
-                    )
-                )
+                // The tier refusal arrives here as a UiTextException, which carries its message in
+                // `uiText` and leaves `message` null — see [asUiText].
+                _events.send(AppListEvent.ShowMessage(e.asUiText()))
             }
         }
     }
@@ -568,7 +604,26 @@ class AppListViewModel(
      * Unfreeze-all reaches it. Refusing here would strand a frozen app off the list it belongs on.
      */
     fun addToFreezer(packageName: String) {
-        viewModelScope.launch(ioDispatcher) {
+        launchGuarded(
+            // `ioDispatcher` passed through rather than dropped: this is a Room write, and letting
+            // it default to `Dispatchers.Main.immediate` would move it to the main thread without
+            // anything failing to say so, because Room's suspend DAO functions dispatch internally
+            // and would keep working.
+            context = ioDispatcher,
+            // The app is *already frozen* when this runs — the prompt this confirms only appears
+            // after [freezeApp] succeeded — so a failed insert has undone nothing. What is lost is
+            // the row that makes a frozen app recoverable: gone from the freezer screen and out of
+            // Unfreeze-all's reach, which iterates the watchlist. That is worth reporting, but it
+            // is emphatically not "the freeze failed", and no existing string says "it is frozen,
+            // Thor just could not write it down" — one Room failure is not worth an English-only
+            // ninth string across eight locales. So the throw is reported verbatim instead: on the
+            // failures that actually reach here (a full disk, a failing one) its message names the
+            // disk, which is the part the user can act on.
+            onFailure = { e ->
+                Logger.e("AppListViewModel", "adding $packageName to the freezer failed", e)
+                _events.trySend(AppListEvent.ShowMessage(e.asUiText()))
+            }
+        ) {
             freezerRepository.add(packageName)
             _events.send(
                 AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
@@ -594,7 +649,52 @@ class AppListViewModel(
      * before the gate existed can always be taken back off.
      */
     fun toggleFreezerMembership(packageName: String) {
-        viewModelScope.launch(ioDispatcher) {
+        // Non-null once the restore has come back successful, holding the label to report it with.
+        // `onFailure` is not suspend and cannot re-derive which side of the irreversible step a
+        // throw landed on, and the two sides mean opposite things: before the restore nothing has
+        // happened to the app and a Room throw means the tap did nothing, while after it the app
+        // really is thawed and only Thor's record of it is missing. Reporting both the same way
+        // would tell a user whose app just came back that the unfreeze failed.
+        var unfrozenLabel: String? = null
+        launchGuarded(
+            // `ioDispatcher` passed through rather than dropped: this body runs the three watchlist
+            // calls *and* the privileged restore, and the default context would put all four on
+            // `Dispatchers.Main.immediate` with nothing failing to report it.
+            context = ioDispatcher,
+            // All three Room calls in this body report by throwing, and the delete is the one that
+            // matters: it runs after `restoreApp`/`forceUnfreeze` has already succeeded, so an
+            // escaping throw used to land between the irreversible act and the record of it — and
+            // then kill the process, leaving exactly the frozen-but-untracked stranding this
+            // method's KDoc promises to prevent, arrived at from the other direction.
+            onFailure = { e ->
+                Logger.e("AppListViewModel", "freezer membership toggle for $packageName failed", e)
+                val unfrozen = unfrozenLabel
+                if (unfrozen != null) {
+                    // Two facts, in the order they matter, the same as
+                    // AppInfoDetailsViewModel.addOrRemoveFromFreezer — the other surface that takes an
+                    // app off the watchlist, and one that must not answer the same failure
+                    // differently. The restore returned success, so the app is enabled and
+                    // unsuspended, and saying so first is the only claim here that is certainly true;
+                    // a bare "Error: …" on its own would read as "the unfreeze failed" over an app the
+                    // user can see running.
+                    //
+                    // Then the throw, rather than stopping at the good news. The undropped row is
+                    // survivable — it keeps the app on the freezer screen and inside Unfreeze-all's
+                    // reach, and the next tap retries the delete after a restore that is by then a
+                    // no-op — but "survivable" is not "not worth mentioning": whatever broke the
+                    // delete is a failing disk, and that is the part the user can act on.
+                    _events.trySend(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(R.string.unfrozen_success, unfrozen)
+                        )
+                    )
+                }
+                // Nothing has happened to the app on the other side of the restore — the membership
+                // read that chooses the branch, or the insert that only ever adds a row (adding never
+                // freezes) — so on that path this is the whole report.
+                _events.trySend(AppListEvent.ShowMessage(e.asUiText()))
+            }
+        ) {
             if (freezerRepository.contains(packageName)) {
                 // Restore before dropping the row, and before reporting success. The privileged call
                 // is the only step that can fail and the Room delete is durable, so removing first
@@ -615,15 +715,17 @@ class AppListViewModel(
                             UiText.StringResource(R.string.error_format, e.message ?: "")
                         )
                     )
-                    return@launch
+                    return@launchGuarded
                 }
-                freezerRepository.remove(packageName)
-                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
-                // live shortcut for an app no longer in the freezer would let it drive a freeze
-                // from the launcher.
-                appShortcuts.disableAppShortcut(packageName)
+                // Latched between the privileged call and the durable one, which is the only place
+                // it can be right: past here the app is thawed whatever the rest of this block does.
+                unfrozenLabel = app?.appName ?: packageName
                 // Same optimistic local patch freezeApp does, so the row stops reading as frozen
-                // without waiting for a full rescan.
+                // without waiting for a full rescan. Ordered ahead of the two steps that can throw,
+                // because it cannot: it is a CAS over two `List.map`s, touching neither Room nor the
+                // shortcut service. Left behind them, a throw from either would skip it and leave the
+                // list drawing the app as frozen while the guard above says "Unfrozen X" — the screen
+                // contradicting its own toast, on the one path where the toast is certainly true.
                 _rawState.update { state ->
                     fun restore(list: List<AppInfo>) = list.map {
                         if (it.packageName == packageName) it.copy(enabled = true, isSuspended = false)
@@ -634,6 +736,18 @@ class AppListViewModel(
                         allSystemApps = restore(state.allSystemApps)
                     )
                 }
+                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
+                // live shortcut for an app no longer in the freezer would let it drive a freeze
+                // from the launcher.
+                //
+                // Before the delete, not after, so that invariant survives a throw in either step.
+                // Both orders can fail, and the question is only which residue is worse: greying a
+                // shortcut for an app still on the watchlist costs the launcher tile until the next
+                // tap re-runs a restore that is by then a no-op, whereas dropping the row first and
+                // then failing to grey the shortcut leaves precisely the live-shortcut-for-an-
+                // untracked-app the comment above exists to forbid.
+                appShortcuts.disableAppShortcut(packageName)
+                freezerRepository.remove(packageName)
                 _events.send(
                     AppListEvent.ShowMessage(
                         UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
@@ -655,7 +769,7 @@ class AppListViewModel(
                     _events.send(
                         AppListEvent.ShowMessage(UiText.StringResource(R.string.error_unsafe_skipped))
                     )
-                    return@launch
+                    return@launchGuarded
                 }
                 freezerRepository.add(packageName)
                 _events.send(

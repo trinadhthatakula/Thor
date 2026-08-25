@@ -695,7 +695,40 @@ class MainViewModel(
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
                             if (result.isSuccess) {
                                 addLog(UiText.StringResource(R.string.log_uninstall_success))
-                                freezerRepository.add(action.appInfo.packageName)
+                                // The uninstall above has already happened and nothing here can undo
+                                // it; this row is only Thor's record of it. Room reports a full or
+                                // failing disk by throwing (SQLiteFullException,
+                                // SQLiteDiskIOException), `FreezerRepositoryImpl` is a pass-through
+                                // that does not catch, and `:app` installs no
+                                // CoroutineExceptionHandler — so unguarded, an uninstall ends in
+                                // process death *after* it succeeded, with the logger left open and
+                                // never completed and a ✔ line as the user's last sight of it.
+                                // `MultiAppAction.Uninstall` had the identical hole and is guarded
+                                // the same way; the two are the same bug at the single- and
+                                // batch-app entry points, not one special case.
+                                //
+                                // Losing the row is not cosmetic either: the watchlist entry is the
+                                // handle the Freezer unfreezes from (`pm install-existing`), and
+                                // `importableDisabledApps` deliberately refuses to offer an
+                                // uninstalled package back, so there is no second route that would
+                                // pick this app up later.
+                                //
+                                // Reported as an error line and not as a failed uninstall, because
+                                // the uninstall did not fail — the "✔ Uninstall successful" line
+                                // directly above stands, and `triggerSupportPromptIfNeeded` below
+                                // still runs for the same reason.
+                                try {
+                                    freezerRepository.add(action.appInfo.packageName)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Logger.e(
+                                        "MainViewModel",
+                                        "uninstalled ${action.appInfo.packageName}, but adding it to the freezer failed",
+                                        e
+                                    )
+                                    addLog(UiText.StringResource(R.string.log_error, e.message ?: ""))
+                                }
                                 triggerSupportPromptIfNeeded()
                             } else {
                                 addLog(UiText.StringResource(R.string.log_priv_uninstall_failed))
@@ -857,21 +890,74 @@ class MainViewModel(
                     manageAppUseCase.clearCache(it.packageName).map { }
                 }
 
-                is MultiAppAction.Uninstall -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_uninstalling_batch),
-                    action.appList
-                ) { appInfo ->
-                    if (appInfo.packageName == BuildConfig.APPLICATION_ID) {
-                        // Same reasoning as the Kill branch, with a worse ending: this one succeeds.
-                        Result.failure(UiTextException(UiText.StringResource(R.string.error_self_skipped)))
-                    } else if (appInfo.freezeTier == FreezeTier.BLOCKED) {
-                        Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
-                    } else {
-                        val result = manageAppUseCase.uninstallApp(appInfo.packageName)
-                        if (result.isSuccess && appInfo.isSystem) {
-                            freezerRepository.add(appInfo.packageName)
+                is MultiAppAction.Uninstall -> {
+                    // The uninstalls this batch could not write down. Collected and reported once at
+                    // the end rather than per app: what lands here is a full or failing disk, so it
+                    // repeats for every system app in the selection, and N copies of it spliced
+                    // between the step lines and their results would bury the per-app transcript the
+                    // batch exists to produce.
+                    val unrecorded = mutableListOf<Throwable>()
+                    performLoggedMultiAction(
+                        UiText.StringResource(R.string.log_uninstalling_batch),
+                        action.appList
+                    ) { appInfo ->
+                        if (appInfo.packageName == BuildConfig.APPLICATION_ID) {
+                            // Same reasoning as the Kill branch, with a worse ending: this one succeeds.
+                            Result.failure(UiTextException(UiText.StringResource(R.string.error_self_skipped)))
+                        } else if (appInfo.freezeTier == FreezeTier.BLOCKED) {
+                            Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
+                        } else {
+                            val result = manageAppUseCase.uninstallApp(appInfo.packageName)
+                            if (result.isSuccess && appInfo.isSystem) {
+                                // Guarded here rather than around `block(app)` in
+                                // [performLoggedMultiAction], even though a throw out of `block` is
+                                // process death for all six actions routed through that helper and
+                                // not just this one — after N system apps are already gone, with the
+                                // partial-progress line and `finishLogger` never reached.
+                                //
+                                // The helper has exactly one way to describe an app: the Result this
+                                // lambda hands back, and it prints " -> Failed" for anything that is
+                                // not a success. Catching there would therefore have to report an
+                                // uninstall that really happened as one that did not, in the batch's
+                                // own transcript — a lie on the record, which is worse than the crash
+                                // it replaces. Only Thor's bookkeeping is missing, so `result` is
+                                // still returned as the success it is and the shortfall is said once,
+                                // separately, below.
+                                try {
+                                    freezerRepository.add(appInfo.packageName)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Logger.e(
+                                        "MainViewModel",
+                                        "uninstalled ${appInfo.packageName}, but adding it to the freezer failed",
+                                        e
+                                    )
+                                    unrecorded += e
+                                }
+                            }
+                            result
                         }
-                        result
+                    }
+                    // After the batch rather than inside it: every app's own result and the
+                    // "Operation Complete" line are already printed, so this reads as a closing fact
+                    // about the run instead of interrupting a step, and the dialog auto-scrolls on
+                    // each new line so it is what the user ends up looking at.
+                    //
+                    // One line carrying the first throw's message — the answer
+                    // `FreezerViewModel.removeFromFreezer` gives in its `1 ->` branch, and
+                    // deliberately *not* what it does past one. That function has a third branch for
+                    // the many-failure case (`removed_from_freezer_partial_failure`, "Removed x/y
+                    // (z failed)"), and there is no import- or uninstall-shaped string of that form:
+                    // a "%d apps were uninstalled but not recorded" sentence would need one that does
+                    // not exist, and adding it means eight locales carrying an English-only entry
+                    // that lint will not report — so the count is dropped rather than half-
+                    // translated. They are the same disk error repeated in any case, and the
+                    // " -> Success" lines above are what keep this from reading as a failed
+                    // uninstall. The per-app `Logger.e` is debug-only, so the transcript is the whole
+                    // record here; what it does not preserve is *which* apps lost their row.
+                    unrecorded.firstOrNull()?.let { failure ->
+                        addLog(UiText.StringResource(R.string.log_error, failure.message ?: ""))
                     }
                 }
 

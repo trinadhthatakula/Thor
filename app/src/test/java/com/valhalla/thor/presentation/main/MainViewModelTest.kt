@@ -396,6 +396,91 @@ class MainViewModelTest {
         assertTrue(freezer.added.isEmpty())
     }
 
+    /**
+     * The watchlist write that used to be process death (fix/freezer-bookkeeping-crashes).
+     *
+     * The uninstall has already happened when this runs and nothing can undo it. Room reports a full
+     * or failing disk by throwing, `FreezerRepositoryImpl` does not catch, and `:app` installs no
+     * `CoroutineExceptionHandler` — so unguarded, the row that makes a system app recoverable took
+     * the process with it *after* the uninstall succeeded, leaving the logger open, never completed,
+     * and a ✔ line as the user's last sight of it.
+     *
+     * Without the guard this does not fail an assertion, it kills the test's coroutine.
+     */
+    @Test
+    fun `a system uninstall Thor cannot write down still closes its log`() = runTest {
+        freezer.failAddWith("com.sys", IllegalStateException("disk is full"))
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.Uninstall(systemApp("com.sys")))
+        advanceUntilIdle()
+
+        val logs = vm.uiState.value.loggerState.logs
+        // The uninstall did not fail, so the line that says it worked stands — and the shortfall is
+        // named separately rather than rewriting that line into a failure.
+        assertTrue(
+            "the successful uninstall is still on the record: $logs",
+            logs.contains(UiText.StringResource(R.string.log_uninstall_success))
+        )
+        assertTrue(
+            "and the disk is named: $logs",
+            logs.contains(UiText.StringResource(R.string.log_error, "disk is full"))
+        )
+        // The half that was process death: the run reaching its end at all.
+        assertTrue("the logger completed", vm.uiState.value.loggerState.isComplete)
+    }
+
+    /**
+     * The same hole at the batch entry point, which is what makes this a class and not a special
+     * case. The middle app's row is the one that fails, so the test also pins that the run does not
+     * abandon the apps behind it.
+     *
+     * **Two** failures, not one, and with different messages. One failure cannot tell a collapsed
+     * report from a per-app one — both print the line once — so `assertEquals(1, …)` would have been
+     * a statement about the rig rather than about the code. Distinct messages then say which of the
+     * two survived: the production code takes `unrecorded.firstOrNull()`, so the second app's error
+     * must be absent, not merely un-repeated.
+     */
+    @Test
+    fun `a batch uninstall carries on past a row it cannot write and reports it once`() = runTest {
+        freezer.failAddWith("com.b", IllegalStateException("disk is full"))
+        freezer.failAddWith("com.c", IllegalStateException("database is locked"))
+        val vm = viewModel()
+
+        vm.onMultiAppAction(
+            MultiAppAction.Uninstall(
+                listOf(systemApp("com.a"), systemApp("com.b"), systemApp("com.c"))
+            )
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            "all three are uninstalled — the throw is bookkeeping, not the act",
+            listOf("uninstallApp:com.a", "uninstallApp:com.b", "uninstallApp:com.c"),
+            system.calls
+        )
+        assertEquals("and the one that could be written down was", listOf("com.a"), freezer.added)
+        val logs = vm.uiState.value.loggerState.logs
+        assertEquals(
+            "one closing line, not one per app: it is the same disk each time",
+            1,
+            logs.count { it == UiText.StringResource(R.string.log_error, "disk is full") }
+        )
+        assertEquals(
+            "and it is the first throw's message that survives, not the last: $logs",
+            0,
+            logs.count { it == UiText.StringResource(R.string.log_error, "database is locked") }
+        )
+        // Where the line sits, which is the reason it is collected instead of printed in place: it
+        // closes the run rather than interrupting a step, and the dialog auto-scrolls to it.
+        assertTrue(
+            "the shortfall is reported after the batch finishes, not spliced into it: $logs",
+            logs.indexOf(UiText.StringResource(R.string.log_op_complete)) <
+                logs.indexOf(UiText.StringResource(R.string.log_error, "disk is full"))
+        )
+        assertTrue("the logger completed", vm.uiState.value.loggerState.isComplete)
+    }
+
     @Test
     fun `a debuggable app that fails to reinstall is reported as debuggable, not as a raw error`() = runTest {
         system.failWith("reinstallAppWithGoogle:com.debuggable", RuntimeException("INSTALL_FAILED"))

@@ -30,9 +30,10 @@ import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.presentation.launchGuarded
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
-import com.valhalla.thor.util.UiTextException
+import com.valhalla.thor.util.asUiText
 import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -277,10 +278,12 @@ class FreezerViewModel(
                             failures += e
                             return@forEach
                         }
-                    freezerRepository.remove(pkg)
                     // Pinned shortcuts can only be greyed, never removed — leaving a live one for an
                     // app no longer in the freezer would let the launcher drive a freeze from it.
+                    // Before the delete, not after, so that holds even when one of the two throws:
+                    // see AppListViewModel.toggleFreezerMembership for the full argument.
                     appShortcuts.disableAppShortcut(pkg)
+                    freezerRepository.remove(pkg)
                     succeeded += pkg
                 } catch (e: CancellationException) {
                     throw e
@@ -382,14 +385,16 @@ class FreezerViewModel(
                             )
                             return@launch
                         }
-                    freezerRepository.remove(packageName)
+                    // Shortcut first, then the row — the same order as the bulk path above and
+                    // AppListViewModel.toggleFreezerMembership.
                     appShortcuts.disableAppShortcut(packageName)
+                    freezerRepository.remove(packageName)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.e("FreezeViewModel", "toggling watchlist membership for $packageName", e)
-                emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitToast(e.asUiText())
             }
         }
     }
@@ -591,8 +596,35 @@ class FreezerViewModel(
      * and is what lets Unfreeze-all reach it.
      */
     fun addToFreezer(packageName: String) {
-        viewModelScope.launch(ioDispatcher) {
+        // [launchGuarded], not the [runProfileWrite] helper thirty lines up, even though both catch
+        // the same class of Room throw. That helper is about *profile* writes: its reason to exist
+        // is the `@StringRes constraintMessage` naming which constraint the write could trip, and a
+        // watchlist insert can trip neither of the two it was written for — `FreezerDao.insert` is
+        // `OnConflictStrategy.IGNORE`, so re-adding a tracked app is a no-op rather than a
+        // SQLiteConstraintException, and its "that name is already taken" branch is unreachable
+        // nonsense here. It is also `suspend`, so it cannot close the hole that is actually open:
+        // the crash is the unguarded *coroutine*, and only something owning the `launch` catches
+        // what escapes it.
+        //
+        // `context = ioDispatcher` because adopting the guard must not quietly move the Room write
+        // onto Main — nothing would fail if it did, since Room's suspend DAO functions dispatch
+        // internally.
+        launchGuarded(
+            context = ioDispatcher,
+            onFailure = { e ->
+                // The freeze already happened: this prompt is only raised after one succeeded, per
+                // the doc above. What failed is Thor's record of it, so the toast must not say the
+                // freeze did — the app is frozen and simply untracked, which means `Unfreeze all`
+                // will not reach it until the row is added again. No existing string says that
+                // sentence and a new one is eight locales of debt, so report the throw plainly
+                // rather than invent a claim about the action.
+                Logger.e("FreezeViewModel", "adding $packageName to the freezer failed", e)
+                tryEmitToast(e.asUiText())
+            }
+        ) {
             freezerRepository.add(packageName)
+            // After the write, never before: "Added to Freezer" emitted first would be the only
+            // thing the user is told about a row that then failed to land.
             emitToast(UiText.StringResource(R.string.added_to_freezer_success))
         }
     }
@@ -623,12 +655,9 @@ class FreezerViewModel(
                     }
                 }
                 .onFailure { e ->
-                    // A UiTextException already carries the message to show (the tier refusal)
-                    // and has a null `message`, which error_format renders as a bare "Error: ".
-                    emitToast(
-                        if (e is UiTextException) e.uiText
-                        else UiText.StringResource(R.string.error_format, e.message ?: "")
-                    )
+                    // The tier refusal arrives here as a UiTextException, which carries its message
+                    // in `uiText` and leaves `message` null — see [asUiText].
+                    emitToast(e.asUiText())
                 }
         }
     }
@@ -659,6 +688,33 @@ class FreezerViewModel(
     // --- Feedback ---
 
     private suspend fun emitToast(text: UiText) = _events.send(FreezerEvent.ShowToast(text))
+
+    /**
+     * [emitToast] from somewhere that cannot suspend.
+     *
+     * [launchGuarded]'s `onFailure` is declared `(Throwable) -> Unit`, not a suspending function, so
+     * `send` is simply not callable there — the handler does run inside the guard's `catch`, and so
+     * inside the coroutine, but a plain lambda offers no suspension point to use it from. The channel
+     * is `Channel.BUFFERED`, so `trySend` only refuses once 64 events are queued with nothing
+     * collecting them, and a dropped error toast in that state is a far smaller loss than the process
+     * death this whole guard exists to prevent.
+     *
+     * The refusal is logged rather than dropped on the floor, because this view model is created
+     * eagerly by `MainScreen` and so can accumulate events long before the Freezer tab is ever
+     * opened. Worth being exact about what that buys, though: `Logger` gates every level on
+     * `Logger.isDebug`, which `ThorApplication` sets to `BuildConfig.DEBUG ||
+     * BuildConfig.PRIVILEGE_TRACE`, so on the builds users run the line is not emitted either. The
+     * log is a bug-report aid for a `PRIVILEGE_TRACE` build, not a promise that the message survives
+     * in release. Making a refused toast visible to a user with nothing collecting the channel would
+     * need a different mechanism than a toast, and 64 queued undelivered events is not a state worth
+     * one.
+     */
+    private fun tryEmitToast(text: UiText) {
+        val delivered = _events.trySend(FreezerEvent.ShowToast(text)).isSuccess
+        if (!delivered) {
+            Logger.e("FreezeViewModel", "dropped a freezer toast: the event channel refused it")
+        }
+    }
 
     private fun observePreferences() {
         viewModelScope.launch {
@@ -716,16 +772,57 @@ class FreezerViewModel(
      * the user chose.
      */
     fun addAppsToFreezer(packageNames: List<String>) {
-        viewModelScope.launch(ioDispatcher) {
-            packageNames.forEach { pkg ->
-                freezerRepository.add(pkg)
+        launchGuarded(
+            context = ioDispatcher,
+            // The per-item catch below is what stops one package abandoning the rest, so this outer
+            // net only ever sees a throw from *outside* the loop — the report itself. It still says
+            // something, because an import that reports nothing at all is indistinguishable from an
+            // import that did nothing.
+            onFailure = { e ->
+                Logger.e("FreezeViewModel", "reporting the disabled-apps import failed", e)
+                tryEmitToast(e.asUiText())
             }
-            emitToast(
-                UiText.PluralsResource(
-                    R.plurals.added_to_freezer_count_success,
-                    packageNames.size
-                )
-            )
+        ) {
+            var succeeded = 0
+            val failures = mutableListOf<Throwable>()
+            packageNames.forEach { pkg ->
+                // Inside the loop, per package, exactly as [removeFromFreezer]'s guard is: N inserts
+                // are N chances for a full or failing disk to throw, and a guard around the whole
+                // loop would let the first one lose every package after it — the user's entire
+                // import gone to one row. [launchGuarded] cannot serve as this per-item guard: it
+                // starts a coroutine, which would turn an ordered walk into N concurrent writes and
+                // have the report below read its counts before any of them landed.
+                try {
+                    freezerRepository.add(pkg)
+                    succeeded++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.e("FreezeViewModel", "importing $pkg into the freezer failed", e)
+                    failures += e
+                }
+            }
+            // `succeeded`, not `packageNames.size`: the old count was the size of the request, so it
+            // announced "Added 12 apps to Freezer" over an import where not one row had landed.
+            //
+            // A partial import reports *both* facts, in two toasts, rather than collapsing to the
+            // error. There is no "Added x/y (z failed)" string to mirror [removeFromFreezer]'s third
+            // branch — the only string of that shape says *Removed*, which over an import would tell
+            // the user the opposite of what happened, and minting one costs eight locales — but
+            // suppressing the count entirely was the worse half of that trade: 11 of 12 rows landing
+            // read as a total failure, over a screen that was about to show all 11. So the count goes
+            // out when there is one, and the throw goes out after it, which is the same
+            // two-facts-in-order convention `AppInfoDetailsViewModel`'s guards use for the same
+            // succeeded-then-threw shape.
+            if (succeeded > 0) {
+                emitToast(UiText.PluralsResource(R.plurals.added_to_freezer_count_success, succeeded))
+            }
+            if (failures.isNotEmpty()) {
+                // Say what the database said. Every app in this list was already disabled before the
+                // import — that is the dialog's whole precondition — so a failure here costs
+                // watchlist rows, not the freeze.
+                emitToast(UiText.StringResource(R.string.error_format, failures.first().message ?: ""))
+            }
         }
     }
 
@@ -733,11 +830,52 @@ class FreezerViewModel(
 
     fun isPinSupported(): Boolean = appShortcuts.isPinSupported()
 
+    /**
+     * All three pin entry points below are guarded for the same reason the watchlist writes above
+     * are, and it is the same defect rather than a related one: `ShortcutManagerCompat` reports by
+     * throwing — `IllegalStateException` from a background caller, `IllegalArgumentException` on a
+     * malformed id, and whatever the launcher's own binder raises — and `:app` installs no
+     * `CoroutineExceptionHandler`, so a bare `launch` around one of these made a failed pin request
+     * process death.
+     *
+     * Which throws *reach* this guard is a property of the port method, not of the guard, and the
+     * three below are deliberately the three that throw into their caller:
+     * [AppShortcutController.pinAppShortcutSuspend] suspends, and `pinBulkShortcut` /
+     * `disableAppShortcut` run on the caller's thread. The two fire-and-forget members —
+     * `pinAppShortcut` and `refreshAppShortcut` — hand their body to `FreezerShortcutManager`'s own
+     * `SupervisorJob` scope and return, so no caller-side guard can ever see their failure; they are
+     * caught in `FreezerShortcutManager.launchSafely` instead, which is also the only place that can
+     * cover their non-view-model callers (`AutoFreezeManager`, `FreezerLaunchActivity`,
+     * `ThorApplication`). [pinAppToLauncher] therefore calls the *suspending* pin rather than the
+     * fire-and-forget one, so a refusal the user is waiting on still becomes a message.
+     *
+     * `context = defaultDispatcher`, never the [ioDispatcher] the watchlist sites use: these decode
+     * and rasterize bitmaps, which is why they were on Default to begin with, and adopting the guard
+     * must not quietly re-file CPU work onto the IO pool any more than it may move Room onto Main.
+     *
+     * Reported through [tryEmitToast] with `error_format` rather than silently: a pin the user asked
+     * for and did not get is worth a line, and inventing a "couldn't pin that shortcut" string costs
+     * eight locales for a failure this rare.
+     */
+    private fun launchPin(what: String, block: suspend () -> Unit) {
+        launchGuarded(
+            context = defaultDispatcher,
+            onFailure = { e ->
+                Logger.e("FreezeViewModel", "pinning $what to the launcher failed", e)
+                tryEmitToast(e.asUiText())
+            }
+        ) { block() }
+    }
+
     fun pinAppToLauncher(app: AppInfo) {
         if (app.isSystem) return // v1: user apps only
         // Grayscale icon decode + binder pin request — keep it off Main to avoid jank.
-        viewModelScope.launch(defaultDispatcher) {
-            appShortcuts.pinAppShortcut(app.packageName, app.appName ?: app.packageName)
+        //
+        // The suspending pin, not the fire-and-forget one: `launchPin` is already off Main, which is
+        // the only thing `pinAppShortcut` buys, and it swallows the outcome into the manager's scope
+        // where this guard cannot see it. Same call the bulk loop below makes, for the same reason.
+        launchPin(app.packageName) {
+            appShortcuts.pinAppShortcutSuspend(app.packageName, app.appName ?: app.packageName)
         }
     }
 
@@ -745,20 +883,47 @@ class FreezerViewModel(
         // Pin sequentially (suspending) off Main: a rapid loop of the fire-and-forget pinAppShortcut
         // would spawn N concurrent bitmap decodes + binder pin requests and risk OOM / overwhelming
         // the shortcut service. A small gap keeps the per-shortcut system prompts orderly too.
-        viewModelScope.launch(defaultDispatcher) {
+        launchPin("every freezer app") {
+            var refused: Throwable? = null
             _uiState.value.freezerApps
                 .filter { !it.isSystem }
                 .forEach {
-                    appShortcuts.pinAppShortcutSuspend(it.packageName, it.appName ?: it.packageName)
+                    // Per app, so one launcher refusing a single shortcut does not abandon the rest
+                    // of the run — the same per-item isolation [addAppsToFreezer]'s loop has, and for
+                    // the same reason. The outer guard then only ever sees a throw from outside the
+                    // loop.
+                    try {
+                        appShortcuts.pinAppShortcutSuspend(
+                            it.packageName,
+                            it.appName ?: it.packageName
+                        )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e("FreezeViewModel", "pinning ${it.packageName} failed", e)
+                        // Kept for one line after the loop. Isolating the failure must not also hide
+                        // it: `Logger` is gated on `Logger.isDebug`, false in every build users run,
+                        // so catching per app and only logging meant a run in which the launcher
+                        // refused *every* shortcut reported nothing at all — no toast, no logcat —
+                        // against a [launchPin] doc that promises a pin the user asked for and did
+                        // not get is worth a line. First throw only, and no count: they are the same
+                        // refusal repeated, N lines would bury each other, and a "%d shortcuts could
+                        // not be pinned" sentence needs a string that does not exist in any of the
+                        // eight locales.
+                        if (refused == null) refused = e
+                    }
                     delay(100)
                 }
+            // Rethrown rather than reported here, so the one place that formats a pin failure stays
+            // [launchPin]'s `onFailure` instead of becoming two places that must agree.
+            refused?.let { throw it }
         }
     }
 
     fun pinBulkShortcut(freeze: Boolean) {
         // Rasterizes a 216x216 tile bitmap + issues a binder pin request; keep it off Main
         // to avoid click-time jank, matching pinAppToLauncher / pinAllToLauncher.
-        viewModelScope.launch(defaultDispatcher) {
+        launchPin(if (freeze) "Freeze all" else "Unfreeze all") {
             appShortcuts.pinBulkShortcut(
                 if (freeze) FreezerShortcutContract.ACTION_FREEZE_ALL
                 else FreezerShortcutContract.ACTION_UNFREEZE_ALL
