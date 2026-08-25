@@ -1336,7 +1336,24 @@ class MainViewModel(
             is AppClickAction.ClearData -> UiText.StringResource(R.string.data_cleared_success, appName)
             is AppClickAction.Suspend -> UiText.StringResource(R.string.suspended_success, appName)
             is AppClickAction.UnSuspend -> UiText.StringResource(R.string.unsuspended_success, appName)
-            else -> UiText.StringResource(R.string.action_completed_format, action.javaClass.simpleName, appName)
+            // Exhaustive on purpose, with no `else`. [quickAction] routes exactly the seven actions
+            // above, so these eight are unreachable — and the `else` that used to cover them filled a
+            // *translated* sentence ("%1$s completed: %2$s") with `action.javaClass.simpleName`, a
+            // raw Kotlin identifier. That was wrong twice over: the identifier is untranslated in all
+            // eight locales, and release builds run R8 with no keep rule for AppClickAction (the
+            // blanket `-keep class com.valhalla.thor.**` is commented out), so the name arrives
+            // obfuscated and the toast reads "b completed: Instagram".
+            //
+            // Listing them makes a *newly* routed action a compile error here, rather than a mystery
+            // toast that only misbehaves in the build users install.
+            is AppClickAction.Launch,
+            is AppClickAction.Share,
+            is AppClickAction.Uninstall,
+            is AppClickAction.Reinstall,
+            is AppClickAction.AppInfoSettings,
+            is AppClickAction.ManagePermissions,
+            is AppClickAction.AddToHomeScreen,
+            AppClickAction.ReinstallAll -> UiText.StringResource(R.string.done)
         }
     }
 

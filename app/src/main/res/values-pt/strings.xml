@@ -447,9 +447,7 @@
     <string name="extension_install_failed">A verificação falhou: %1$s</string>
 
 
-    <!-- UiText Messages -->
-    <string name="action_completed_format">%1$s concluído: %2$s</string>
-    <string name="frozen_success">%1$s congelada</string>
+    <!-- UiText Messages -->    <string name="frozen_success">%1$s congelada</string>
     <string name="unfrozen_success">%1$s descongelada</string>
     <string name="added_to_freezer_success">Adicionada ao Congelador</string>
     <plurals name="unfrozen_count_success">

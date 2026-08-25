@@ -443,9 +443,7 @@
     <string name="extension_install_failed">Verification failed: %1$s</string>
 
 
-    <!-- UiText Messages -->
-    <string name="action_completed_format">%1$s completed: %2$s</string>
-    <string name="frozen_success">Frozen %1$s</string>
+    <!-- UiText Messages -->    <string name="frozen_success">Frozen %1$s</string>
     <string name="unfrozen_success">Unfrozen %1$s</string>
     <string name="added_to_freezer_success">Added to Freezer</string>
     <plurals name="unfrozen_count_success">
