@@ -609,5 +609,6 @@
 
     <string name="component_disclaimer_message">%1$s continua fazendo parte do aplicativo; apenas deixa de ser executado. Os aplicativos raramente contam com isso, então um recurso pode parar de funcionar sem nenhum erro, ou o aplicativo pode travar. O Thor registra o que desativa para que você possa desfazer depois.</string>
     <string name="component_disclaimer_confirm">Desativar mesmo assim</string>
+    <string name="component_disabled_unrecorded">O Thor não conseguiu registrar a desativação de %1$s — Restaurar tudo não vai incluí-la</string>
 
 </resources>

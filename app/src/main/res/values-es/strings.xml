@@ -755,5 +755,7 @@
     <string name="component_disclaimer_title">¿Desactivar un componente?</string>
     <string name="component_disclaimer_message">%1$s sigue formando parte de la aplicación; simplemente deja de ejecutarse. Las aplicaciones rara vez esperan esto, así que una función puede dejar de funcionar sin dar ningún error, o la aplicación puede cerrarse de forma inesperada. Thor registra lo que desactiva para que puedas deshacerlo más tarde.</string>
     <string name="component_disclaimer_confirm">Desactivarlo</string>
+    <string name="component_disclaimer_dont_ask_session">No volver a preguntar en esta sesión</string>
+    <string name="component_disabled_unrecorded">Se desactivó %1$s, pero Thor no pudo registrar el cambio: Restaurar todo no lo incluirá</string>
 
 </resources>

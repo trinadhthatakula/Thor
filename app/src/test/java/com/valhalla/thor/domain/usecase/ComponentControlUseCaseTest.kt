@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -80,7 +82,8 @@ class ComponentControlUseCaseTest {
 
         val result = useCase.disable(pkg, ComponentType.SERVICE, component(className = "Sync"))
 
-        assertTrue(result.isSuccess)
+        assertTrue(result.isPlatformSuccess)
+        assertNull("a clean run reported a ledger error", result.ledgerError)
         assertEquals(
             listOf("setComponentEnabled:$pkg:Sync:DISABLED"),
             system.calls,
@@ -103,7 +106,7 @@ class ComponentControlUseCaseTest {
 
         val result = useCase.disable(pkg, ComponentType.RECEIVER, component(className = "Boot"))
 
-        assertTrue(result.isFailure)
+        assertTrue(result.platform.isFailure)
         assertTrue("the ledger recorded a disable that never happened", ledger.rows.isEmpty())
     }
 
@@ -137,7 +140,7 @@ class ComponentControlUseCaseTest {
 
         val result = useCase.enable(pkg, component(className = "Sync"))
 
-        assertTrue(result.isSuccess)
+        assertTrue(result.isPlatformSuccess)
         assertEquals(listOf("setComponentEnabled:$pkg:Sync:DEFAULT"), system.calls)
         assertTrue(ledger.rows.isEmpty())
     }
@@ -158,7 +161,7 @@ class ComponentControlUseCaseTest {
 
         val result = useCase.enable(pkg, component(className = "Sync"))
 
-        assertTrue(result.isFailure)
+        assertTrue(result.platform.isFailure)
         assertEquals(1, ledger.rows.size)
     }
 
@@ -178,7 +181,7 @@ class ComponentControlUseCaseTest {
 
         val result = useCase.resetToDefault(pkg, "Sync")
 
-        assertTrue(result.isFailure)
+        assertTrue(result.platform.isFailure)
         assertEquals(1, ledger.rows.size)
     }
 
@@ -220,6 +223,87 @@ class ComponentControlUseCaseTest {
 
         assertTrue(system.calls.isEmpty())
         assertTrue(ledger.rows.isEmpty())
+    }
+
+    // --- the ledger failing is not the platform failing ---
+
+    /**
+     * The inversion this outcome type exists to prevent.
+     *
+     * Chaining the ledger write inside `Result.onSuccess` meant a Room failure threw out through the
+     * `Result`, so the caller reported a *failed disable* for a component that was already off. The
+     * user is then told nothing happened, retries, and gets the same error — while the component has
+     * been disabled the whole time.
+     */
+    @Test
+    fun `a ledger failure does not turn a successful disable into a failure`() = runTest {
+        val system = FakeSystem()
+        val ledger = FakeLedger(writeFailure = IllegalStateException("database or disk is full"))
+        val useCase = ComponentControlUseCase(system, ledger)
+
+        val result = useCase.disable(pkg, ComponentType.SERVICE, component(className = "Sync"))
+
+        assertTrue("the platform call succeeded and must be reported as such", result.isPlatformSuccess)
+        assertNotNull("the lost record has to be reported separately", result.ledgerError)
+        assertEquals(listOf("setComponentEnabled:$pkg:Sync:DISABLED"), system.calls)
+        assertTrue("nothing could be written, so there is no row", ledger.rows.isEmpty())
+    }
+
+    /** Same for the restoring direction, where the leftover row shows up as drift in the UI. */
+    @Test
+    fun `a ledger failure does not turn a successful enable into a failure`() = runTest {
+        val ledger = FakeLedger(
+            rows = mutableListOf(row("Sync", restoreToEnabled = true)),
+            writeFailure = IllegalStateException("disk I/O error"),
+        )
+        val useCase = ComponentControlUseCase(FakeSystem(), ledger)
+
+        val result = useCase.enable(pkg, component(className = "Sync"))
+
+        assertTrue(result.isPlatformSuccess)
+        assertNotNull(result.ledgerError)
+        assertEquals("the row survives, which the UI reads as drift", 1, ledger.rows.size)
+    }
+
+    /** A ledger write that throws must be reported, not thrown — the caller launches this from the UI. */
+    @Test
+    fun `forget reports a ledger failure rather than throwing`() = runTest {
+        val useCase = ComponentControlUseCase(
+            FakeSystem(),
+            FakeLedger(
+                rows = mutableListOf(row("Sync", restoreToEnabled = true)),
+                writeFailure = IllegalStateException("disk I/O error"),
+            ),
+        )
+
+        val result = useCase.forget(pkg, "Sync")
+
+        assertTrue(result.isFailure)
+    }
+
+    /**
+     * One unwritable row must not abort the sweep, and must not be counted as restored.
+     *
+     * Counting it would report "restored 2 of 2" while a row was still in the table telling the
+     * screen a component is restricted — a completion message the user's own screen contradicts.
+     */
+    @Test
+    fun `restore all under-reports a row whose ledger delete failed`() = runTest {
+        val system = FakeSystem()
+        val useCase = ComponentControlUseCase(
+            system,
+            FakeLedger(
+                rows = mutableListOf(row("Sync", restoreToEnabled = true)),
+                writeFailure = IllegalStateException("database or disk is full"),
+            ),
+        )
+
+        val outcome = useCase.restoreAll()
+
+        assertEquals("the platform call was still made", 1, system.calls.size)
+        assertEquals(0, outcome.restored)
+        assertEquals(1, outcome.attempted)
+        assertFalse("an unforgettable row cannot be a complete run", outcome.isComplete)
     }
 
     // --- restoreAll ---
@@ -376,6 +460,15 @@ class ComponentControlUseCaseTest {
  */
 private class FakeLedger(
     val rows: MutableList<ComponentOverride> = mutableListOf(),
+    /**
+     * Makes every write throw, standing in for the database being full or damaged.
+     *
+     * The real repository hands Room calls straight through, so this is not a hypothetical: `upsert`
+     * and `delete` can both throw `SQLiteFullException` or a disk-I/O error, and the production code
+     * used to let that throw travel out through a `Result` the caller read as the *platform* call
+     * having failed.
+     */
+    private val writeFailure: Throwable? = null,
 ) : ComponentOverrideRepository {
 
     private val revision = MutableStateFlow(0)
@@ -391,12 +484,14 @@ private class FakeLedger(
         type: ComponentType,
         restoreToEnabled: Boolean,
     ) {
+        writeFailure?.let { throw it }
         rows.removeAll { it.packageName == packageName && it.className == className }
         rows += ComponentOverride(packageName, className, type, restoreToEnabled, disabledAt = 0L)
         revision.value++
     }
 
     override suspend fun forget(packageName: String, className: String) {
+        writeFailure?.let { throw it }
         rows.removeAll { it.packageName == packageName && it.className == className }
         revision.value++
     }

@@ -565,10 +565,6 @@ class FakePreferenceRepository(
         write { it.copy(extensionConsentAccepted = accepted) }
     }
 
-    override suspend fun setComponentControlConsentAccepted(accepted: Boolean) {
-        write { it.copy(componentControlConsentAccepted = accepted) }
-    }
-
     override suspend fun setAutoReinstallEnabled(enabled: Boolean) {
         write { it.copy(autoReinstallEnabled = enabled) }
     }

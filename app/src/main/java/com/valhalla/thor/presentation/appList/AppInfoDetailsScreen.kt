@@ -32,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -1109,19 +1110,47 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
     }
 
     state.pendingConsent?.let { pending ->
+        // Keyed on the component so the tick does not carry over from a dialog the user dismissed
+        // onto the next component they pick — a silenced disclaimer would then be a decision made
+        // for a different component than the one shown.
+        var dontAskAgain by remember(pending.component.className) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = viewModel::onDisclaimerDismissed,
             title = { Text(stringResource(R.string.component_disclaimer_title)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.component_disclaimer_message,
-                        pending.component.shortName
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.component_disclaimer_message,
+                            pending.component.shortName
+                        )
                     )
-                )
+                    // The whole row toggles, not just the box: a 20dp target inside a dialog is
+                    // below the 48dp minimum, and the label is the part the eye goes to.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable { dontAskAgain = !dontAskAgain },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = dontAskAgain,
+                            // Null so the row's click is the single source of the toggle; a handler
+                            // here would make the box independently clickable and able to disagree
+                            // with the row on a fast double-tap.
+                            onCheckedChange = null,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.component_disclaimer_dont_ask_session),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
             },
             confirmButton = {
-                Button(onClick = viewModel::onDisclaimerConfirmed) {
+                Button(onClick = { viewModel.onDisclaimerConfirmed(dontAskAgain) }) {
                     Text(stringResource(R.string.component_disclaimer_confirm))
                 }
             },

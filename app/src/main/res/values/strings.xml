@@ -604,6 +604,8 @@
     <string name="component_disclaimer_title">Disable a component?</string>
     <string name="component_disclaimer_message">%1$s stays part of the app; it just stops running. Apps rarely expect this, so a feature may break with no error, or the app may crash. Thor records what it disables so you can undo it later.</string>
     <string name="component_disclaimer_confirm">Disable it</string>
+    <string name="component_disclaimer_dont_ask_session">Don\'t ask again this session</string>
+    <string name="component_disabled_unrecorded">Disabled %1$s, but Thor could not record the change — Restore all will not include it</string>
 
     <string name="section_native_libs_title">Native Libraries (.so)</string>
     <string name="no_native_libs_found">No native libraries found</string>
