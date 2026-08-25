@@ -34,9 +34,11 @@ import com.valhalla.thor.presentation.FakeStorageStatsProvider
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.bulkResultMessage
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -91,11 +93,29 @@ class AppListViewModelTest {
     private lateinit var privilege: FakePrivilegeStateProvider
     private lateinit var fileStore: FakeAppBundleFileStore
 
+    /**
+     * Hoisted out of [viewModel] so the watchlist tests at the bottom can rig it to raise and read
+     * back what it was asked to do. It was built inline while nothing needed either.
+     */
+    private lateinit var shortcuts: FakeAppShortcutController
+
+    /**
+     * The three fakes' calls in one ordered list, as `FreezerViewModelTest` keeps one.
+     *
+     * `system.calls`, `freezer.removed` and `shortcuts.disabled` each say what happened to them;
+     * none of them says what happened *first*, and the membership toggle's contract is almost entirely
+     * ordering — restore before the row goes, the shortcut retired before the row it belongs to. On
+     * the happy path the per-fake lists are identical whichever way round those ran.
+     */
+    private lateinit var trace: MutableList<String>
+
     @Before
     fun setUp() {
+        trace = mutableListOf()
         appRepository = FakeAppRepository()
-        system = FakeSystemRepository()
-        freezer = FakeFreezerRepository()
+        system = FakeSystemRepository(trace)
+        freezer = FakeFreezerRepository(trace = trace)
+        shortcuts = FakeAppShortcutController(trace = trace)
         privilege = FakePrivilegeStateProvider()
         fileStore = FakeAppBundleFileStore()
     }
@@ -116,7 +136,10 @@ class AppListViewModelTest {
         intensity: AnimationIntensity = AnimationIntensity.MEDIUM,
         filterType: FilterType = FilterType.Source,
         permissions: FakePermissionRepository = FakePermissionRepository(),
-        installedApps: FakeInstalledAppsPermissionGate = FakeInstalledAppsPermissionGate()
+        installedApps: FakeInstalledAppsPermissionGate = FakeInstalledAppsPermissionGate(),
+        // Overridable so one test can inject a dispatcher that is *not* the main one and check that
+        // a Room write reached it. Defaults to the main one, as every other test wants.
+        ioDispatcher: CoroutineDispatcher = mainDispatcherRule.dispatcher
     ): AppListViewModel {
         val prefs = FakePreferenceRepository(
             UserPreferences(animationIntensity = intensity, appFilterType = filterType)
@@ -136,7 +159,7 @@ class AppListViewModelTest {
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
             preferenceRepository = prefs,
             freezerRepository = freezer,
-            appShortcuts = FakeAppShortcutController(),
+            appShortcuts = shortcuts,
             appRepository = appRepository,
             permissionRepository = permissions,
             storageStats = FakeStorageStatsProvider(),
@@ -149,7 +172,7 @@ class AppListViewModelTest {
                 mainDispatcherRule.dispatcher
             ),
             defaultDispatcher = mainDispatcherRule.dispatcher,
-            ioDispatcher = mainDispatcherRule.dispatcher
+            ioDispatcher = ioDispatcher
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
         return vm
@@ -787,6 +810,229 @@ class AppListViewModelTest {
         assertEquals(
             listOf(AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))),
             events
+        )
+    }
+
+    // --- The watchlist writes that used to be process death (fix/freezer-bookkeeping-crashes) ---
+    //
+    // Five of this view model's six watchlist calls sat in bare `viewModelScope.launch`es. Room
+    // reports a full or failing disk by throwing, `FreezerRepositoryImpl` does not catch, and `:app`
+    // installs no `CoroutineExceptionHandler`, so one freeze on a bad disk ended the process. Only
+    // `observeFreezerMembership` was covered, by a `Flow.catch`.
+    //
+    // Without their guards these do not fail an assertion, they kill the test's coroutine — which is
+    // the right way for a crash pin to read.
+
+    /** Collects one-off events for the duration of the test, as the screen does. */
+    private fun TestScope.freezerEvents(vm: AppListViewModel): List<AppListEvent> {
+        val seen = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { seen += it } }
+        return seen
+    }
+
+    /**
+     * The read inside `Result.onSuccess`, which is where this file's sharpest instance lived:
+     * `onSuccess`'s lambda is a plain inline lambda and catches nothing, so a throw from the freezer
+     * read walked straight out of it and out of the launch.
+     *
+     * It degrades to "not tracked" rather than aborting, and the reason is the freeze that already
+     * succeeded: abandoning the block would drop the report the user is owed for it. Guessing the
+     * other way would hide a frozen app off the watchlist, and `FreezerDao.insert` is
+     * `OnConflictStrategy.IGNORE`, so the prompt costs a no-op at worst.
+     */
+    @Test
+    fun `a freeze whose membership read raises still finishes and offers to track the app`() =
+        runTest {
+            appRepository.apps.value = listOf(userApp("a", enabled = true))
+            freezer.failContainsWith("a", IllegalStateException("disk I O error"))
+            val vm = viewModel()
+            runCurrent()
+            val seen = freezerEvents(vm)
+
+            vm.freezeApp("a", appName = "App A", freeze = true)
+            runCurrent()
+
+            assertEquals(
+                "the freeze itself went through — the read is a passenger on it",
+                listOf("setAppDisabled:a:true"),
+                system.calls.filter { it.startsWith("setAppDisabled") }
+            )
+            assertEquals(
+                "and the run finishes with the prompt rather than a crash",
+                listOf(AppListEvent.ShowFreezerPrompt(FreezerPrompt("a", "App A"))),
+                seen
+            )
+        }
+
+    /** The prompt's own confirmation, on the disk that would not take the row. */
+    @Test
+    fun `an add that raises is reported rather than killing the process`() = runTest {
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        freezer.failAddWith("a", IllegalStateException("disk is full"))
+        val vm = viewModel()
+        runCurrent()
+        val seen = freezerEvents(vm)
+
+        vm.addToFreezer("a")
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                AppListEvent.ShowMessage(
+                    UiText.StringResource(R.string.error_format, "disk is full")
+                )
+            ),
+            seen
+        )
+    }
+
+    /**
+     * The delete that lands *after* the restore, which is the bookkeeping inversion this branch is
+     * named for: the app really is thawed and only Thor's record of it failed.
+     *
+     * Reporting that as a bare "Error: …" would tell a user whose app just came back that the unfreeze
+     * failed, so the guard leads with the true half. It does not stop there: the failure follows, in
+     * its own message, because the row surviving is a state the user can see on the freezer screen and
+     * would otherwise have no account of. Two messages rather than one is the point — the tap did two
+     * things and they did not agree, and either message alone is a half-truth.
+     *
+     * The same pair, in the same order, as `AppInfoDetailsViewModel.addOrRemoveFromFreezer`; the two
+     * surfaces are reachable from the same app row and must not describe one outcome two ways.
+     */
+    @Test
+    fun `a delete that raises after the restore reports the unfreeze and then the failure`() = runTest {
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        freezer.add("a")
+        freezer.failRemoveWith("a", IllegalStateException("disk is full"))
+        // LOW, so the settle delay is ZERO and the scan lands under `runCurrent` — the app has to be
+        // resolvable in `_rawState` for this test to be about the patch rather than about the
+        // unresolvable-package fallback.
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        val seen = freezerEvents(vm)
+
+        vm.toggleFreezerMembership("a")
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                AppListEvent.ShowMessage(UiText.StringResource(R.string.unfrozen_success, "a")),
+                AppListEvent.ShowMessage(UiText.StringResource(R.string.error_format, "disk is full"))
+            ),
+            seen
+        )
+        assertTrue("the row is still there for the next tap to retry", freezer.contains("a"))
+        assertTrue(
+            "and the list agrees with the toast rather than still drawing the app as frozen",
+            vm.uiState.value.allUserApps.single { it.packageName == "a" }.enabled
+        )
+    }
+
+    /**
+     * The ordering the two steps after the restore have to keep, which no per-fake list can show.
+     *
+     * The shortcut is retired *before* the row goes. Both steps can throw and the question is only
+     * which residue is worse: greying a shortcut for an app still on the watchlist costs the launcher
+     * tile until the next tap, whereas dropping the row first and then failing to grey the shortcut
+     * leaves a live freeze-from-the-launcher route for an app Thor no longer tracks.
+     */
+    @Test
+    fun `the shortcut is retired before the row it belongs to`() = runTest {
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        freezer.add("a")
+        // LOW for the same reason as above: the resolved path runs `restoreApp`, the fallback runs
+        // `forceUnfreeze`, and the order under test is only interesting on the one the screen takes.
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        trace.clear() // the scaffolding above is not part of the run
+
+        vm.toggleFreezerMembership("a")
+        runCurrent()
+
+        assertEquals(listOf("a"), freezer.removed)
+        assertEquals(listOf("a"), shortcuts.disabled)
+        assertTrue(
+            "the restore comes first — the row is the handle it would be retried from: $trace",
+            trace.indexOfFirst { it.startsWith("setAppDisabled") } <
+                trace.indexOf("shortcut.disable:a")
+        )
+        assertTrue(
+            "and the shortcut goes before the row, not after it: $trace",
+            trace.indexOf("shortcut.disable:a") < trace.indexOf("freezer.remove:a")
+        )
+    }
+
+    /**
+     * The guard's other arm — a throw *before* the irreversible step, where `unfrozenLabel` is still
+     * null and there is no success to lead with.
+     *
+     * The membership read is the seam and it is the first thing the body does, so nothing has been
+     * asked of the app when it raises. Both halves matter. One plain error, because prefixing it with
+     * `unfrozen_success` here would announce a thaw that never happened; and no privileged call at
+     * all, because the read is what picks between restoring and adding — a caller that degraded it to
+     * "not tracked" would answer this tap by freezing the app instead.
+     */
+    @Test
+    fun `a membership read that raises reports plainly and touches nothing`() = runTest {
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        freezer.add("a")
+        freezer.failContainsWith("a", IllegalStateException("database is locked"))
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        val seen = freezerEvents(vm)
+
+        vm.toggleFreezerMembership("a")
+        runCurrent()
+
+        assertEquals(
+            "no unfrozen_success in front of it — the app was never touched",
+            listOf(
+                AppListEvent.ShowMessage(
+                    UiText.StringResource(R.string.error_format, "database is locked")
+                )
+            ),
+            seen
+        )
+        // Filtered rather than `isEmpty`: the initial load leaves its privilege probes in `calls`.
+        assertTrue(
+            "and nothing was asked of the app, in either direction",
+            system.calls.none { it.startsWith("setAppDisabled") || it.startsWith("setAppSuspended") }
+        )
+        // `getAllPackageNames`, not `contains`: the read under test is the one that is rigged to
+        // throw, so asking it would fail the test from the assertion rather than from the code.
+        assertTrue("the row is untouched", freezer.getAllPackageNames().contains("a"))
+        assertTrue(freezer.removed.isEmpty())
+        assertTrue(shortcuts.disabled.isEmpty())
+    }
+
+    /**
+     * That the watchlist writes reach the injected `ioDispatcher` and not the main thread.
+     *
+     * Every other test in the suite passes `mainDispatcherRule.dispatcher` in as both dispatchers, so
+     * a `launchGuarded` that dropped its `context =` argument would be invisible to all of them —
+     * and the production comments at those call sites say why it would also be invisible on device:
+     * Room's suspend DAO functions dispatch internally, so a write left on
+     * `Dispatchers.Main.immediate` keeps working and nothing fails to say so. A distinct dispatcher
+     * is the only thing that can tell the two apart.
+     *
+     * Sharing `testScheduler` keeps `runCurrent()` in charge of both, so this stays a statement about
+     * which dispatcher the body ran on rather than about timing.
+     */
+    @Test
+    fun `the watchlist write runs on the io dispatcher, not on main`() = runTest {
+        val io = StandardTestDispatcher(testScheduler, name = "io")
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        val vm = viewModel(AnimationIntensity.LOW, ioDispatcher = io)
+        runCurrent()
+
+        vm.addToFreezer("a")
+        runCurrent()
+
+        assertEquals(listOf("a"), freezer.added)
+        assertEquals(
+            "the insert woke up on the injected dispatcher: ${freezer.ranOn}",
+            io,
+            freezer.ranOn["freezer.add:a"]
         )
     }
 }

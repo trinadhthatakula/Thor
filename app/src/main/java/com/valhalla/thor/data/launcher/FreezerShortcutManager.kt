@@ -82,6 +82,39 @@ class FreezerShortcutManager(
         }
     }
 
+    /**
+     * `scope.launch` for the fire-and-forget port methods, with the throw caught where the caller
+     * cannot reach it.
+     *
+     * A view-model-side guard is worthless for these: the method returns the moment
+     * [CoroutineScope.launch] schedules the body, so the caller's `try`/`catch` — or
+     * `launchGuarded`'s — has already completed successfully by the time the body runs. The throw
+     * then surfaces on [scope], which is `SupervisorJob() + ioDispatcher` with **no**
+     * `CoroutineExceptionHandler`: a `SupervisorJob` stops a failing child from cancelling its
+     * siblings, not from being *reported*, so it goes on to Android's default uncaught handler and
+     * ends the process. That is the same reasoning [rebuildPinnedIcons] already carries; this hoists
+     * it so every launch in this class is covered by one rule instead of one of five being right.
+     *
+     * Everything routed through here is a best-effort launcher cosmetic — an icon repaint, a pin
+     * request the platform never confirms anyway — so continuing is the correct answer. It is not a
+     * silent one at the layer that matters: [ShortcutManagerCompat.requestPinShortcut] only ever
+     * reports the *accept*, so there is nothing a caller could have been told about a refusal even
+     * if the throw could reach it. Logged rather than surfaced for that reason, and because a
+     * `Context` is all this class has — no channel, no UI.
+     */
+    private fun launchSafely(what: String, block: suspend () -> Unit) {
+        scope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                // Never swallowed: this only arrives when the process-lifetime scope itself dies.
+                throw e
+            } catch (e: Exception) {
+                Logger.e("FreezerShortcut", "$what failed", e)
+            }
+        }
+    }
+
     override fun isPinSupported(): Boolean =
         ShortcutManagerCompat.isRequestPinShortcutSupported(context)
 
@@ -89,7 +122,9 @@ class FreezerShortcutManager(
      *  (grey while frozen, full colour while enabled). Runs off the caller's thread — the icon
      *  decode is heavy — so any surface (dialog, details, freezer) can call this directly. */
     override fun pinAppShortcut(packageName: String, label: String) {
-        scope.launch { pinAppShortcutSuspend(packageName, label) }
+        launchSafely("pinning a shortcut for $packageName") {
+            pinAppShortcutSuspend(packageName, label)
+        }
     }
 
     /** Suspending pin so bulk callers can pin sequentially instead of spawning N concurrent bitmap
@@ -105,7 +140,9 @@ class FreezerShortcutManager(
     /** Update an already-pinned per-app shortcut so its icon reflects the app's current state.
      *  No-op if no such shortcut exists. Call after any freeze/unfreeze of the package. */
     override fun refreshAppShortcut(packageName: String) {
-        scope.launch { updateShortcutIcon(packageName) }
+        launchSafely("repainting the shortcut icon for $packageName") {
+            updateShortcutIcon(packageName)
+        }
     }
 
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut. */
@@ -118,7 +155,11 @@ class FreezerShortcutManager(
     /** Publish (or remove) the Freeze-all + Unfreeze-all long-press dynamic shortcuts. */
     fun syncDynamicShortcuts(enabled: Boolean) {
         // Binder IPC — called from Main (cold-start + Settings); keep it off the caller's thread.
-        scope.launch {
+        //
+        // Guarded for the same reason as the two above, and this one is the worst of the three to
+        // leave bare: a cold-start caller means a throw here is a crash *on launch*, before the
+        // user has touched anything.
+        launchSafely(if (enabled) "publishing the bulk shortcuts" else "removing the bulk shortcuts") {
             if (enabled) {
                 ShortcutManagerCompat.setDynamicShortcuts(
                     context,
@@ -191,6 +232,11 @@ class FreezerShortcutManager(
             // binder-death RuntimeException would otherwise escape to Android's default
             // uncaught handler and kill the process — and would also terminate the collector
             // for the rest of the process lifetime. Log and continue.
+            //
+            // Kept *inside* the collected body rather than folded into [launchSafely], which now
+            // covers the other launches in this class: the guard has to sit inside `collect` for
+            // the collector to survive its own failure. Wrapping the launch instead would stop the
+            // crash and still leave every pinned icon stale until the process restarts.
             Logger.e("FreezerShortcut", "pinned icon rebuild failed", e)
         }
     }

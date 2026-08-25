@@ -47,6 +47,7 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +58,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.io.File
 import java.nio.file.Files
+import kotlin.coroutines.ContinuationInterceptor
 
 // Hand-written fakes, matching the rest of the suite — no mocking library. The point of a
 // privileged-action fake is that the *call it was asked to make* is the assertion, so these record
@@ -233,8 +235,27 @@ class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepositor
     override suspend fun getAppDetails(packageName: String): AppInfo? =
         apps.value.firstOrNull { it.packageName == packageName }
 
-    override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? =
-        details[packageName]
+    private val detailFailures = mutableMapOf<String, Throwable>()
+
+    /**
+     * Make the detail read of [packageName] raise, as the package manager does.
+     *
+     * `getDetailedAppInfo` funnels into `PackageManager`, which reports by throwing — `DeadObjectException`
+     * when `system_server` restarts under it, `NameNotFoundException` when the app is uninstalled
+     * between the tap and the read. It is the seam `AppInfoDetailsViewModel.refreshDetails` cannot
+     * degrade the way it degrades the watchlist read, and so the only remaining collaborator that can
+     * throw *after* a freeze or unfreeze has already been applied — which is the case worth pinning,
+     * because that is where a bare "Error: …" would tell a user their action failed over an app that is
+     * demonstrably frozen.
+     */
+    fun failDetailsWith(packageName: String, error: Throwable) {
+        detailFailures[packageName] = error
+    }
+
+    override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? {
+        detailFailures[packageName]?.let { throw it }
+        return details[packageName]
+    }
 
     override suspend fun getComponentDetails(packageName: String): ComponentSnapshot? =
         componentSnapshots[packageName] ?: details[packageName]?.components
@@ -260,8 +281,22 @@ class FakeFreezerRepository(
     val added = mutableListOf<String>()
     val removed = mutableListOf<String>()
 
+    /**
+     * The dispatcher each write actually ran on, keyed the same way as [trace].
+     *
+     * Recorded because nothing else in the suite can see it. Every view model here is built with one
+     * dispatcher injected everywhere, so a `launchGuarded(context = ioDispatcher)` that silently
+     * lost its context would pass every test — and losing it is not a hypothetical: the production
+     * comments at those call sites all say the same thing, that Room's suspend DAO functions
+     * dispatch internally, so a write left on `Dispatchers.Main.immediate` keeps working and nothing
+     * fails to say so. The only way to catch it is to inject a *distinct* dispatcher and ask the
+     * write which one it woke up on.
+     */
+    val ranOn = mutableMapOf<String, ContinuationInterceptor?>()
+
     private val addFailures = mutableMapOf<String, Throwable>()
     private val removeFailures = mutableMapOf<String, Throwable>()
+    private val containsFailures = mutableMapOf<String, Throwable>()
 
     /**
      * Make the write of [packageName] raise.
@@ -278,11 +313,26 @@ class FakeFreezerRepository(
         removeFailures[packageName] = error
     }
 
+    /**
+     * As [failAddWith], for the membership *read*.
+     *
+     * Worth a seam of its own even though nothing is written: Room raises
+     * `SQLiteDiskIOException`/`SQLiteFullException` out of a `SELECT` as readily as out of an
+     * `INSERT`, and the read is the more dangerous of the two here because it runs on paths that had
+     * not touched the database yet — opening a details sheet, or deciding which way a toggle points.
+     * A caller that treats "the query threw" as "not in the freezer" is making a claim, and only a
+     * throwing read can tell whether it makes the right one.
+     */
+    fun failContainsWith(packageName: String, error: Throwable) {
+        containsFailures[packageName] = error
+    }
+
     override fun getAll(): Flow<List<String>> = packages.map { it.toList() }
 
     override suspend fun getAllPackageNames(): List<String> = packages.value.toList()
 
     override suspend fun add(packageName: String) {
+        ranOn["freezer.add:$packageName"] = currentCoroutineContext()[ContinuationInterceptor]
         addFailures[packageName]?.let { throw it }
         added += packageName
         trace?.add("freezer.add:$packageName")
@@ -290,6 +340,7 @@ class FakeFreezerRepository(
     }
 
     override suspend fun remove(packageName: String) {
+        ranOn["freezer.remove:$packageName"] = currentCoroutineContext()[ContinuationInterceptor]
         // Before the bookkeeping: a delete that raised deleted nothing, so [removed] stays the
         // list of rows that actually went.
         removeFailures[packageName]?.let { throw it }
@@ -307,7 +358,14 @@ class FakeFreezerRepository(
         packages.update { it - packageNames }
     }
 
-    override suspend fun contains(packageName: String): Boolean = packageName in packages.value
+    // Deliberately not traced, unlike [add] and [remove]. Tests call `contains` directly as a
+    // precondition assertion — `FreezerViewModelTest` does it twice inside a test that then asserts
+    // the trace by exact list equality — so recording it here would make the assertion depend on how
+    // many times the *test* happened to look, which is not a property of the code under test.
+    override suspend fun contains(packageName: String): Boolean {
+        containsFailures[packageName]?.let { throw it }
+        return packageName in packages.value
+    }
 }
 
 /**
@@ -826,7 +884,18 @@ class FakeAppShortcutController(
     val pinned = mutableListOf<String>()
     val pinnedBulkActions = mutableListOf<String>()
 
+    /**
+     * Failures the *port* absorbed instead of handing to its caller — see [pinAppShortcut].
+     *
+     * Recorded rather than dropped so a test can still say "the launcher refused and the caller was
+     * not told", which is a claim about the seam and not merely an absence.
+     */
+    val absorbedFailures = mutableListOf<Throwable>()
+
     private val disableFailures = mutableMapOf<String, Throwable>()
+    private val pinFailures = mutableMapOf<String, Throwable>()
+    private val refreshFailures = mutableMapOf<String, Throwable>()
+    private var bulkPinFailure: Throwable? = null
 
     /**
      * Make disabling [packageName]'s shortcut raise, as `ShortcutManagerCompat` does — it reports a
@@ -836,27 +905,81 @@ class FakeAppShortcutController(
         disableFailures[packageName] = error
     }
 
+    /**
+     * As [failDisableWith], for a *pin* request.
+     *
+     * The pin path raises for reasons the disable path does not — the launcher declining the request
+     * outright, and the rate limit that `ShortcutManagerCompat` enforces per app per interval — and it
+     * is the one a user reaches by asking for many shortcuts at once, which is exactly the shape where
+     * one refusal must not cost the whole run.
+     *
+     * Keyed on the package, so it covers both pin members — but only [pinAppShortcutSuspend] raises
+     * it at the caller; the fire-and-forget [pinAppShortcut] absorbs it, as in production.
+     */
+    fun failPinWith(packageName: String, error: Throwable) {
+        pinFailures[packageName] = error
+    }
+
+    /** As [failPinWith], for the one bulk tile, which has no package to key on. */
+    fun failBulkPinWith(error: Throwable) {
+        bulkPinFailure = error
+    }
+
+    /**
+     * As [failDisableWith], for the refresh — but note that this failure never reaches the caller.
+     *
+     * `refreshAppShortcut` is fire-and-forget, so setting this asserts the opposite of what the other
+     * hooks do: that a stale launcher icon is *not* reported to whoever asked for the freeze, and is
+     * absorbed by the port instead. See [refreshAppShortcut] for why, and [absorbedFailures] for
+     * where it lands. For a genuine post-success throw in `toggleFreezerState`, use
+     * `FakeFreezerRepository.failContainsWith` — the watchlist read at the same point in that method
+     * does raise into its caller.
+     */
+    fun failRefreshWith(packageName: String, error: Throwable) {
+        refreshFailures[packageName] = error
+    }
+
     override fun disableAppShortcut(packageName: String) {
         disableFailures[packageName]?.let { throw it }
         disabled += packageName
         trace?.add("shortcut.disable:$packageName")
     }
 
+    /**
+     * Absorbs its failure rather than raising it, because that is what the real one does.
+     *
+     * `FreezerShortcutManager.refreshAppShortcut` hands the work to the manager's own
+     * `SupervisorJob` scope and returns the moment it is *scheduled*, so the throw arrives after the
+     * caller's frame — and therefore after any `try`/`catch` or `launchGuarded` around the call —
+     * has already completed successfully. `FreezerShortcutManager.launchSafely` is the only frame
+     * that can see it, which is also the only place that covers the callers that are not view models
+     * at all (`AutoFreezeManager`, `FreezerLaunchActivity`, `ThorApplication`).
+     *
+     * A fake that threw here would make every caller-side guard around this method look
+     * load-bearing while catching nothing in production — the exact mistake the sweep in
+     * `fix/freezer-bookkeeping-crashes` made first time round, green tests and all. [absorbedFailures]
+     * keeps the refusal assertable without lying about who gets told.
+     */
     override fun refreshAppShortcut(packageName: String) {
+        refreshFailures[packageName]?.let { absorbedFailures += it; return }
         refreshed += packageName
     }
 
     override fun isPinSupported(): Boolean = pinSupported
 
+    /** Fire-and-forget, so it absorbs rather than raises — see [refreshAppShortcut]. */
     override fun pinAppShortcut(packageName: String, label: String) {
+        pinFailures[packageName]?.let { absorbedFailures += it; return }
         pinned += packageName
     }
 
     override suspend fun pinAppShortcutSuspend(packageName: String, label: String) {
+        pinFailures[packageName]?.let { throw it }
         pinned += packageName
     }
 
     override fun pinBulkShortcut(action: String) {
+        bulkPinFailure?.let { throw it }
         pinnedBulkActions += action
     }
 }
