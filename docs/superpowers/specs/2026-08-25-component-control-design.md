@@ -148,7 +148,9 @@ one. The predicate is `launchRequiresRoot = !exported || permission != null`.
 2. **Open** and **Force Open** on activity rows.
 3. **Disable / Enable / Reset to default** on every component type.
 4. **Stop now** on service rows (transient; `am stopservice`).
-5. A bookkeeping ledger of what Thor disabled, with a per-app **Restore all**.
+5. A bookkeeping ledger of what Thor disabled, with a **Restore all**. ⚠️ **Shipped wider than this
+   line says:** the button is *offered* per app, but it restores **every** row in the ledger, across
+   every package — see §6.4.
 
 **Out** (with reasons, so nobody re-derives them): wakelock restriction (§1.3), Intent Firewall
 (§9.1), enforcement/re-apply after update or boot (explicitly chosen against — the ledger is
@@ -376,6 +378,15 @@ proven pattern, minus its hard-exit-on-decline behaviour (declining simply cance
 
 When the ledger holds rows for the current package, the Components tab header shows
 `N restricted by Thor · Restore all`. Restoring walks the ledger and applies `restoreToEnabled`.
+
+⚠️ **Correction, from the shipped implementation.** The trigger is per-package but the *action* is
+not: `ComponentControlUseCase.restoreAll` calls `ComponentOverrideRepository.getAll()`, so it restores
+every row in every package. A per-package restore would be the smaller promise, but the ledger's
+reason to exist is that a component disabled weeks ago in a forgotten app is otherwise unfindable, so
+the wider scope was chosen deliberately and `component_restore_all_message` names it ("in this app and
+in every other") before anything happens. Read the count in the header as *"this app's share of what
+the button will undo"*, not as its scope. Anything written against the narrower reading — user docs
+especially — is wrong.
 
 Honesty requirement, borrowed verbatim from App Manager's documentation: **Thor only tracks what
 Thor changed.** A component disabled by another tool shows as disabled but is not in the ledger, and

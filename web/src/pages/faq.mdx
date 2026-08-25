@@ -8,6 +8,8 @@ index:
     label: Getting started
   - id: freezing
     label: Freezing and debloating
+  - id: components
+    label: Component control
   - id: installing
     label: Installing apps
   - id: privacy-licence-distribution
@@ -172,6 +174,106 @@ Freezes everything on your watchlist, in one tap from the notification shade. On
 newer, opening the shade shows how many apps are currently freezable; the tile subtitle that count
 sits in does not exist before that. The tile only freezes — unfreeze from the app or from a
 launcher shortcut.
+
+<h2 id="components">Component control</h2>
+
+<h3 id="what-is-component-control">What is component control?</h3>
+
+Surgery one level below freezing. Freezing switches off a whole app; component control switches off a
+single **piece** of one — one activity, service, broadcast receiver or content provider out of the
+many an app declares.
+
+Open any app's **App Details** screen and the four component sections list what that app declares:
+Activities, Services, Broadcast Receivers and Content Providers. Each row carries its own actions —
+open it, copy its class name, stop a running service, or switch the component off.
+
+The usual reason to want it: an app you otherwise like ships one receiver that keeps waking it up, or
+one activity you would rather nothing could launch.
+
+<h3 id="component-privilege">What privilege does component control need?</h3>
+
+**Root, or a Shizuku that was itself started as root.** A shell-mode Shizuku cannot do it, and
+Dhizuku cannot do it at all.
+
+That is not a limitation Thor chose. `PackageManagerService` has a carve-out letting the shell uid
+change an app's state at the **package** level, and it explicitly rejects the same call when it names
+a class — "Shell cannot change component state for …". Reaching the same binder call by reflection
+arrives at the same check with the same uid, so there is no fallback to write. Force-opening an
+activity and stopping a service are root-only for the equivalent reason: the platform waives the
+export and permission checks for root and the system alone. Dhizuku is not a partial case but an
+empty one, because `DevicePolicyManager` has no component-enabled API at all.
+
+Thor says which of those three is in the way, on the screen, rather than showing a row of dead
+switches.
+
+**One thing needs no privilege whatsoever:** opening an activity that is exported and not guarded by
+a permission. Anybody may launch those, Thor included, so Thor simply does — no shell, no root, and
+the app sees an ordinary caller. That is why some rows say **Open** and others say **Force open**.
+
+<h3 id="what-disabling-does">What does disabling a component actually do?</h3>
+
+The component stays part of the app. It just stops running — and nothing tells the app that.
+
+This is the sharpest tool in Thor for exactly that reason. Apps rarely expect a component to be
+unavailable, so a feature can break with no error message at all, or the app can crash on the path
+that needed it. There is no partial-credit outcome to inspect afterwards: the app still looks
+installed, enabled and perfectly normal while some piece of it silently does not work.
+
+Thor asks before every disable because of that. The **Don't ask again this session** checkbox lasts
+until Thor is killed rather than forever — deliberately, so that one tap cannot disarm the warning
+permanently.
+
+<Callout tone="warning" title="No safety net at this level">
+  <p>
+    Freezing a system app is checked against the Universal Android Debloater database first. There is
+    no equivalent database for individual components, and nothing gates them. Disable one thing, use
+    the app, and confirm it still does what you need before the next one.
+  </p>
+</Callout>
+
+<h3 id="component-reversible">Can I undo it?</h3>
+
+Yes, and the details are worth knowing.
+
+Thor keeps a record of every component it switched off, and restoring puts the component back to
+**the state its developer shipped**, not simply "on". A component that ships disabled is restored to
+disabled — switching it on would invent a state the app never had.
+
+**Restore all covers every app, not just the one you are looking at.** The button sits next to a
+count for the app currently open, so that surprises people; the confirmation dialog spells the scope
+out before anything happens. Being device-wide is the point of keeping the record at all, because a
+component you switched off weeks ago in an app you have since forgotten is otherwise unfindable.
+
+A partial run says so — "Restored 6 of 9" — and leaves exactly the rows that are still switched off,
+so pressing it again retries those rather than starting a second, different operation.
+
+<h3 id="component-persistence">Does it survive a reboot? An app update?</h3>
+
+Both. Component state lives in Android's own per-user `package-restrictions.xml` rather than in Thor,
+so it persists the same way freezing does. An app update keeps it too: the system drops only the
+names that no longer exist in the new APK.
+
+Clearing the app's data does **not** reset it, unless that app specifically asked for it to by
+declaring `android:resetEnabledSettingsOnAppDataCleared`.
+
+<h3 id="app-re-enable">Can the app just turn its component back on?</h3>
+
+Yes. An app may change its own components' state with no permission at all, and some do so routinely
+as part of how they work. Thor's disable changes a component's state; it is not a lock on it.
+
+Thor does not pretend otherwise — it shows you when it happens. A component Thor recorded as disabled
+which is enabled now is labelled **Changed elsewhere**, with **Forget** offered to drop the stale
+record. The same label covers an app update or another root tool putting the component back.
+
+<h3 id="component-only-thor">Does Thor show components another tool disabled?</h3>
+
+It shows their state, but it does not claim them. A component disabled by something else appears as
+disabled — Thor reads the real state from the system each time you open the screen — but it carries no
+**Restricted by Thor** badge, and **Restore all does not touch it**.
+
+Thor only undoes what Thor did. Anything else is somebody else's change, and quietly reverting it
+would be Thor asserting a preference nobody gave it. **Reset to default** is there for when you do
+want to clear such an override by hand.
 
 <h2 id="installing">Installing apps</h2>
 

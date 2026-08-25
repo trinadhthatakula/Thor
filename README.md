@@ -47,6 +47,7 @@
 - **Safe System App Debloating & Freezing** — freezes a system app by disabling it (`pm disable`), which keeps its data, and only removes it for the current user (`pm uninstall -k --user`, which keeps the data too) where the device itself refuses to disable system packages — some OEM builds do, whatever the Android version — plus Dhizuku, whose gateway is not yet converted. Unfreezing undoes either mechanic (`pm install-existing`, then `pm enable`)
 - **Adaptive UI Layouts** — vertical navigation rail for tablets/foldables, optimized viewport layouts, and split landscape detail screens
 - **Safety Gating** — blocks freezing of system apps marked as **Unsafe** by UAD to prevent bootloops, and warns on **Expert** packages
+- **Per-Component Control** — disable, enable or reset to default an individual activity, service, broadcast receiver or content provider; open an exported activity with no privilege at all, force-open an unexported or permission-guarded one, and stop a single running service. Every disable is recorded so **Restore all** can put components back to the state their developer shipped — device-wide, not just for the app on screen — and a component something else changed is labelled *Changed elsewhere* rather than silently reverted. Needs Root or a Shizuku started as root: the platform rejects per-component changes from the shell uid, and Dhizuku exposes no API for them
 - Root Support
 - Shizuku Support
 - Dhizuku Support

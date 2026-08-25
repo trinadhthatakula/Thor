@@ -1,8 +1,8 @@
 ---
 layout: ../layouts/PageLayout.astro
 title: Features
-description: Every feature in Thor — three privilege engines, the installer, the freezer and its safety gate, batch operations, and what each mode can do.
-lead: Eight areas, in the order they matter. Each one says what works, what does not, and which privilege mode you need for it.
+description: Every feature in Thor — three privilege engines, the installer, the freezer and its safety gate, per-component control, batch operations, and what each mode can do.
+lead: Nine areas, in the order they matter. Each one says what works, what does not, and which privilege mode you need for it.
 index:
   - id: privilege-engines
     label: Privilege engines
@@ -10,6 +10,8 @@ index:
     label: App installer
   - id: freezer
     label: Freezer and debloat
+  - id: components
+    label: Component control
   - id: batch-operations
     label: Batch operations
   - id: app-list
@@ -114,8 +116,11 @@ actually available — there is nothing to choose between otherwise.
 | **Reboot device** | Yes | No | No |
 | **Show per-app cache size** | Yes | No | No |
 | **Export split APKs** | Yes | No | No |
+| **Disable or enable one component** | Yes | Root-mode only | No |
+| **Force-open a component** | Yes | Root-mode only | No |
+| **Stop a single service** | Yes | Root-mode only | No |
 
-Four rows are not uniform, and those are the ones worth stating plainly rather than burying:
+Several rows are not uniform, and those are the ones worth stating plainly rather than burying:
 
 - **Reboot is Root-only.** Shizuku and Dhizuku return an explicit error rather than pretending.
 - **Cache size reads as 0 under Shizuku and Dhizuku.** Measuring it needs `du` on the app's private
@@ -125,6 +130,10 @@ Four rows are not uniform, and those are the ones worth stating plainly rather t
 - **Dhizuku permission grants can be refused on multi-user devices**, because the Device Owner runs
   as user 0 and may not hold `INTERACT_ACROSS_USERS`. Thor surfaces the real failure rather than
   silently mutating the wrong user's copy.
+- **The three component rows are the only ones where "Shizuku" is not one answer.** They need uid 0,
+  so a Shizuku started as root can do them and a shell-mode Shizuku cannot — the same app, the same
+  connection, a different answer depending on how its service was started.
+  [Component control](#components) has the detail.
 
 <h3 id="hidden-api-bypass">The hidden-API bypass</h3>
 
@@ -356,6 +365,124 @@ bad data file would strand every frozen system app on the device.
   own. **This is a known limitation with an open follow-up.** The candidate fix is to have every
   unsuspend path clear all known suspender identities, but no approach has been settled on and no
   release carries it yet.
+
+<h2 id="components">Component control</h2>
+
+One level below the Freezer. Freezing switches off a whole app; this switches off a single **piece**
+of one — one activity, service, broadcast receiver or content provider out of the many an app
+declares. The app stays installed, launchable and, as far as it can tell, untouched.
+
+The four sections on an app's **App Details** screen list what it declares, each with a count:
+Activities, Services, Broadcast Receivers and Content Providers. Every row is individually
+actionable.
+
+<h3 id="component-actions">What a row offers</h3>
+
+- **Open** or **Force open** — never both, and which one appears is decided per row rather than by
+  which button you press. An activity that is exported and carries no `android:permission` is
+  reachable with an ordinary `startActivity`, so Thor uses one: no shell, no privilege, and the app
+  sees a normal caller. Anything unexported, or guarded by a permission Thor does not hold, is
+  **Force open** and goes through the privileged path. Force open is also the answer when an exported
+  activity refuses an ordinary launch — a frozen or suspended app, for instance.
+- **Stop now** — on a service that is running.
+- **Disable** and **Enable**, the core of the feature.
+- **Reset to default** — removes the override entirely rather than asserting "on". This is what to
+  use on a component whose state something **else** set, where switching it on would be Thor stating a
+  preference it was never given.
+- **Copy class name**, because the fully-qualified name is what you need to search for anything.
+- **Forget** — drops Thor's record of a component without touching the component. Offered when the
+  two have drifted apart.
+
+Rows are badged with what is true of them: **Restricted by Thor**, **Changed elsewhere**,
+**Disabled**, **Not exported**, **Off by default**. Only one privileged action runs at a time —
+`pm` and `am` reach the same `PackageManagerService` state, and two disables racing on one package
+can interleave into a write that loses one of them.
+
+<h3 id="component-privilege-requirement">Why it needs root, precisely</h3>
+
+**Root, or a Shizuku started as root.** Not a shell-mode Shizuku, not Dhizuku. This is the one place
+in Thor where "Shizuku" is not a single answer, so the app checks the uid its Shizuku service
+actually runs as rather than the transport.
+
+- **Setting component state is uid 0 only.** `PackageManagerService.setEnabledSetting` has a carve-out
+  permitting the shell uid to make **package**-level changes and explicitly rejecting anything that
+  names a class: `SecurityException("Shell cannot change component state for …")`. Reaching
+  `IPackageManager.setComponentEnabledSetting` by reflection instead of through `pm` arrives at the
+  same check with the same uid, so there is no fallback worth writing.
+- **Force-opening is uid 0 only.** `ActivityManager.canAccessUnexportedComponents` waives the export
+  and permission checks for root and system alone, and `START_ANY_ACTIVITY` is a signature permission
+  the Shell package does not declare on any release from 9 to 16.
+- **Stopping a service is uid 0 only here.** The platform would in fact let any uid stop an
+  **exported** service, so a shell-mode Shizuku could stop some of them. That narrower path is
+  deliberately not offered: it cannot be verified across OEMs, and a **Stop** button that silently
+  does nothing on half the rows is worse than one that is honestly absent.
+- **Dhizuku is an empty case, not a partial one.** `DevicePolicyManager` exposes no component-enabled
+  API at all, and a Device Owner's only launch-related privilege is a background-launch exemption,
+  which is not an export waiver.
+
+When one of those is in the way, the screen says which — "Changing components needs Shizuku started
+as root", "Dhizuku cannot change individual components" — instead of showing a row of dead switches.
+An unreadable Shizuku uid resolves to **not capable**, because painting controls that throw on every
+press is the worse way to be wrong.
+
+<h3 id="component-ledger">What Thor records, and what it deliberately does not know</h3>
+
+Every disable is written to a local record so it can be found again. Two things about it are design
+decisions rather than details:
+
+- **The restore target is the manifest default read at the moment of the disable, not "on".** A
+  component that ships disabled is restored to disabled. Switching it on would invent a state the app
+  never had.
+- **Restoring writes `default-state` wherever the manifest already says enabled**, rather than an
+  explicit `ENABLED`. An explicit override is a real row in `package-restrictions.xml` that outlives
+  the app update which removed the component, pins the component on if a later version ships it
+  disabled on purpose, and reads as a deviation to anything auditing the device. Writing the default
+  leaves the app exactly as its developer shipped it, with no trace Thor was ever there.
+
+**Thor only tracks what Thor changed.** A component disabled by another tool shows its real state —
+read from the system on every open, not cached — but carries no **Restricted by Thor** badge and is
+untouched by Restore all.
+
+The record is bookkeeping, not enforcement, and Thor treats it that way. An app update, another root
+tool, a `pm clear`, or the app itself can put a component back; an app needs no permission to change
+its own components' state, and some do it as a matter of course. When Thor's record and reality
+disagree, the row says **Changed elsewhere** and offers **Forget**. If a disable succeeds but the
+record of it cannot be written, Thor says that out loud too — the component is off either way, but
+with no row to find it by, Restore all will never offer it back.
+
+<h3 id="component-restore">Restoring</h3>
+
+**Restore all is device-wide, not per-app.** The button appears beside a count for the app you have
+open, which makes the scope worth stating twice: it restores every component Thor disabled in every
+app, and the confirmation dialog says so before anything happens. Device-wide is the entire point of
+keeping the record — a component switched off weeks ago in an app since forgotten is otherwise
+unfindable.
+
+A partial run reports "Restored 6 of 9" rather than choosing between calling that a success or a
+failure, and it leaves behind exactly the rows still overridden. Pressing it again therefore retries
+those and nothing else; setting component state is idempotent, so a retry on an already-restored
+component costs nothing. A row is counted as restored only when both the platform change and the
+record deletion land, so the number can never claim more than the screen shows.
+
+<h3 id="component-safety">Safety</h3>
+
+This is the sharpest tool in Thor, and the only one that can break an app without the app ever
+appearing changed. A component that is not running is not an error the app can report — a feature can
+stop working with no message, or the app can crash on the path that needed it.
+
+So Thor asks **every time**, and the "Don't ask again" checkbox lasts only until Thor is killed. That
+is deliberate: a permanent answer disarms the warning forever on the strength of one tap that may
+have been a mis-tap, while a session covers the real use case — one sitting spent trimming several
+apps — and comes back for the next one.
+
+<Callout tone="warning" title="No database backs this one">
+  <p>
+    Freezing a system app is checked against the Universal Android Debloater database first. There is
+    no equivalent list for individual components and nothing gates them, because no such data exists
+    to gate them with. Disable one thing, use the app, confirm it still does what you need, then do
+    the next.
+  </p>
+</Callout>
 
 <h2 id="batch-operations">Batch operations</h2>
 
