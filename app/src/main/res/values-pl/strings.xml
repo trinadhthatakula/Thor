@@ -456,9 +456,7 @@
     <string name="extension_install_failed">Weryfikacja nie powiodła się: %1$s</string>
 
 
-    <!-- UiText Messages -->
-    <string name="action_completed_format">Ukończono %1$s: %2$s</string>
-    <string name="frozen_success">Zamrożono aplikację %1$s</string>
+    <!-- UiText Messages -->    <string name="frozen_success">Zamrożono aplikację %1$s</string>
     <string name="unfrozen_success">Odmrożono aplikację %1$s</string>
     <string name="added_to_freezer_success">Dodano do Zamrażarki</string>
     <plurals name="unfrozen_count_success">

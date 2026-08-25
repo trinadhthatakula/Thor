@@ -31,6 +31,24 @@ sealed class UiText {
             result = 31 * result + args.contentHashCode()
             return result
         }
+
+        /**
+         * Names the resource rather than the object.
+         *
+         * The absence of this is what made the nested-format-argument bug *invisible* rather than
+         * merely wrong: a `UiText` that reached `String.format` printed as
+         * `com.valhalla.thor.util.UiText$StringResource@4f2a1c`, which reads like a crash artefact
+         * instead of "someone passed the wrong type here", and minification shortens it further.
+         * [Array.resolvedWith] now stops such an argument reaching `String.format` at all; this
+         * makes the *next* leak — into a log line, a string template, an assertion diff — legible.
+         *
+         * [resId] stays an unresolved int, because resolving it to a name needs a `Context` this
+         * object does not have. It still identifies the string: the same int appears in the
+         * generated `R` class and in the expected value of a failing assertion.
+         */
+        override fun toString(): String =
+            if (args.isEmpty()) "UiText.StringResource(resId=$resId)"
+            else "UiText.StringResource(resId=$resId, args=${args.contentToString()})"
     }
 
     /**
@@ -62,6 +80,14 @@ sealed class UiText {
             result = 31 * result + args.contentHashCode()
             return result
         }
+
+        /**
+         * Same reasoning as [StringResource.toString], plus [quantity] — which [equals] compares
+         * but [formatArgs] can silently stand in for, so a diff that shows only `args` would leave
+         * out the half that actually differs.
+         */
+        override fun toString(): String =
+            "UiText.PluralsResource(resId=$resId, quantity=$quantity, args=${args.contentToString()})"
 
         @Composable
         fun resolve(): String =
@@ -125,7 +151,23 @@ internal fun Array<out Any>.resolvedWith(render: (UiText) -> String): Array<out 
     if (none { it is UiText }) this
     else map { if (it is UiText) render(it) else it }.toTypedArray()
 
-class UiTextException(val uiText: UiText) : Exception()
+class UiTextException(val uiText: UiText) : Exception() {
+    /**
+     * A diagnostic in [toString], deliberately **not** in `message`.
+     *
+     * `message` has to stay null. A dozen handlers still render a failure as
+     * `StringResource(error_format, e.message ?: "")`, so giving this exception a message would put
+     * `UiText.StringResource(resId=…)` on screen in a toast — trading an empty error for a worse
+     * one. Those handlers are correct as they stand, because this type is only ever *returned* in a
+     * `Result.failure` by the freeze gates, and every site that can receive one already calls
+     * [asUiText]; a `message` would change what the other twelve print without fixing anything.
+     *
+     * `toString` reaches `Logger`, `printStackTrace` and debugger views, and none of those read
+     * `message`. So the diagnostic goes where it costs nothing user-facing — until now a swallowed
+     * `UiTextException` logged as a bare `UiTextException` with no stated reason at all.
+     */
+    override fun toString(): String = "UiTextException($uiText)"
+}
 
 /**
  * The message to show for a throw, whichever kind of throw it is.

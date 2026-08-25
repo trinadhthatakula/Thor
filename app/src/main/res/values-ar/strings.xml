@@ -280,9 +280,7 @@
     <string name="extension_version_prefix">إصدار %1$s</string>
 
 
-    <!-- UiText Messages -->
-    <string name="action_completed_format">تم إكمال %1$s: %2$s</string>
-    <string name="frozen_success">تم تجميد %1$s</string>
+    <!-- UiText Messages -->    <string name="frozen_success">تم تجميد %1$s</string>
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
