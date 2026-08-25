@@ -291,4 +291,177 @@ class ComponentCommandsTest {
         val failure = requireNotNull(componentCommandFailure(0, "Error: " + "x".repeat(500)))
         assertEquals(200, failure.length)
     }
+
+    /**
+     * `ShellCommand.exec` announces an exception with a header line and puts the exception itself on
+     * the next one, so a plain first-match scan reports "Exception occurred while executing
+     * 'start':" — a sentence that tells the user nothing. The specific markers are searched across
+     * the whole output before the generic one is considered.
+     *
+     * Verbatim stderr from an Android 17 `am start` of an unexported activity at the shell uid.
+     */
+    @Test
+    fun `the specific marker beats the exception header above it`() {
+        val output = """
+            Starting: Intent { cmp=com.google.android.deskclock/com.android.deskclock.ringtone.RingtoneSearchActivity }
+
+            Exception occurred while executing 'start':
+            java.lang.SecurityException: Permission Denial: starting Intent { cmp=com.google.android.deskclock/com.android.deskclock.ringtone.RingtoneSearchActivity } from null (pid=7714, uid=2000) not exported from uid 10175
+            	at com.android.server.wm.ActivityStarter.executeRequest(ActivityStarter.java:1299)
+        """.trimIndent()
+        val failure = requireNotNull(componentCommandFailure(exitCode = 255, output = output))
+        assertTrue("the header was reported instead of the denial", failure.contains("SecurityException"))
+        assertFalse(failure.contains("Exception occurred while executing"))
+    }
+
+    /**
+     * With no marker matching anywhere, the line *after* the header is reported rather than the
+     * header — that is where `ShellCommand.exec` puts the exception, and a bare exception type still
+     * says more than "something happened".
+     */
+    @Test
+    fun `the line after the header is reported in preference to the header`() {
+        val output = """
+            Stopping service: Intent { cmp=com.example.app/.SyncService }
+            Exception occurred while executing 'stopservice':
+            java.lang.NullPointerException
+        """.trimIndent()
+        assertEquals(
+            "java.lang.NullPointerException",
+            componentCommandFailure(exitCode = 255, output = output),
+        )
+    }
+
+    /** …and the header itself when there is no line after it worth reporting. */
+    @Test
+    fun `the header stands alone when only a stack frame follows it`() {
+        val output = """
+            Exception occurred while executing 'stopservice':
+            	at com.android.server.am.ActivityManagerShellCommand.onCommand(AMSC.java:12)
+        """.trimIndent()
+        val failure = requireNotNull(componentCommandFailure(exitCode = 255, output = output))
+        assertTrue(failure.startsWith("Exception occurred while executing"))
+    }
+
+    /**
+     * The failure a "Restore all" hits for a component an app update has removed, verbatim from an
+     * Android 17 `pm default-state`. The message names the component and is the whole point of
+     * reporting a line at all — before `Exception:` was a marker, the user got the header instead.
+     */
+    @Test
+    fun `a missing component names itself`() {
+        val output = """
+
+            Exception occurred while executing 'default-state':
+            java.lang.IllegalArgumentException: Component class com.does.not.Exist does not exist in com.google.android.deskclock
+            	at com.android.server.pm.PackageManagerService.setEnabledSettings(PackageManagerService.java:4257)
+        """.trimIndent()
+        val failure = requireNotNull(componentCommandFailure(exitCode = 255, output = output))
+        assertTrue(failure.contains("IllegalArgumentException"))
+        assertTrue(failure.contains("com.does.not.Exist"))
+    }
+
+    // --- the stopservice verdict ---
+    //
+    // `am stopservice` exits **255 whatever happens**. Verified on an Android 17 emulator for a
+    // service that was stopped, one that was not running, and a component that does not exist,
+    // through both `am` and `cmd activity stop-service`, with and without `--user`. Every one of
+    // them printed `Stopping service: Intent { … }` to stdout, exited 255, and differed only in the
+    // sentence written to stderr. So for this kind the code is not evidence, and the whole verdict
+    // is the marker — which is also why the Shizuku gateway had to stop using `execute()`, whose
+    // stdout-or-stderr contract drops the only line that carries the answer.
+
+    @Test
+    fun `a stopped service is a success despite exit 255`() {
+        assertNull(
+            componentCommandFailure(
+                exitCode = 255,
+                output = "Stopping service: Intent { cmp=com.example.app/.SyncService }\nService stopped",
+                kind = ComponentCommandKind.STOP_SERVICE,
+            )
+        )
+    }
+
+    /**
+     * The most likely outcome of the press, and the one that must not be an error: most services in
+     * a component list are not running when the user is looking at them, and "stop this service" is
+     * satisfied by a service that is already stopped.
+     */
+    @Test
+    fun `a service that was not running is a success`() {
+        assertNull(
+            componentCommandFailure(
+                exitCode = 255,
+                output = "Stopping service: Intent { cmp=com.example.app/.SyncService }\n" +
+                    "Service not stopped: was not running.",
+                kind = ComponentCommandKind.STOP_SERVICE,
+            )
+        )
+    }
+
+    /** The one real failure `ActivityManagerShellCommand` reports, and it has to survive. */
+    @Test
+    fun `an error stopping the service is still a failure`() {
+        val failure = componentCommandFailure(
+            exitCode = 255,
+            output = "Stopping service: Intent { cmp=com.example.app/.SyncService }\n" +
+                "Error stopping service",
+            kind = ComponentCommandKind.STOP_SERVICE,
+        )
+        assertEquals("Error stopping service", failure)
+    }
+
+    /** A refusal reaches the user even though the code it came with is the same 255 as a success. */
+    @Test
+    fun `a security exception on stopservice is a failure`() {
+        val failure = componentCommandFailure(
+            exitCode = 255,
+            output = "Stopping service: Intent { cmp=com.example.app/.SyncService }\n" +
+                "java.lang.SecurityException: Permission Denial",
+            kind = ComponentCommandKind.STOP_SERVICE,
+        )
+        assertNotNull(failure)
+        assertTrue(failure!!.contains("SecurityException"))
+    }
+
+    /**
+     * The echo alone — which is all the Shizuku path could ever see before `executeCombined` — is
+     * *not* a failure. Reading exit 255 as one is exactly the defect: every single "Stop now" press
+     * reported "Stopping service: Intent { … }" as its error message.
+     */
+    @Test
+    fun `the bare intent echo at exit 255 is not a failure`() {
+        assertNull(
+            componentCommandFailure(
+                exitCode = 255,
+                output = "Stopping service: Intent { cmp=com.example.app/.SyncService }",
+                kind = ComponentCommandKind.STOP_SERVICE,
+            )
+        )
+    }
+
+    /**
+     * The exemption is scoped to the stopservice kind and nothing else. The same output judged as a
+     * standard command is a failure, which is what keeps `pm disable` and `am start` — both of which
+     * *do* set a meaningful code — from silently inheriting the exemption.
+     */
+    @Test
+    fun `the standard kind still reads a non-zero exit as a failure`() {
+        assertEquals(
+            "Stopping service: Intent { cmp=com.example.app/.SyncService }",
+            componentCommandFailure(
+                exitCode = 255,
+                output = "Stopping service: Intent { cmp=com.example.app/.SyncService }",
+            )
+        )
+    }
+
+    /** …and the standard kind is what a caller that names no kind gets. */
+    @Test
+    fun `the default kind is standard`() {
+        assertEquals(
+            componentCommandFailure(1, "boom", ComponentCommandKind.STANDARD),
+            componentCommandFailure(1, "boom"),
+        )
+    }
 }

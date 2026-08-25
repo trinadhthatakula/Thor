@@ -15,6 +15,7 @@ import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
 import com.valhalla.thor.data.source.local.SessionApk
 import com.valhalla.thor.data.source.local.asComponentState
+import com.valhalla.thor.data.source.local.ComponentCommandKind
 import com.valhalla.thor.data.source.local.componentCommandFailure
 import com.valhalla.thor.data.source.local.escapedComponentSpecOrNull
 import com.valhalla.thor.data.source.local.installViaSessionCommand
@@ -110,7 +111,11 @@ class ShizukuSystemGateway(
         packageName: String,
         className: String,
         userId: Int,
-    ): Result<Unit> = runComponentCommand(packageName, className) { spec ->
+    ): Result<Unit> = runComponentCommand(
+        packageName,
+        className,
+        ComponentCommandKind.STOP_SERVICE,
+    ) { spec ->
         stopServiceCommand(spec, userId)
     }
 
@@ -124,10 +129,18 @@ class ShizukuSystemGateway(
      * An unreadable uid refuses. `Shizuku.getUid()` throws when the binder has gone since the last
      * availability check, and the alternative — assuming root — paints working controls that throw a
      * `SecurityException` on every press.
+     *
+     * [ShizukuHelper.executeCombined] rather than `execute`, and this is the only caller of it in
+     * the codebase. `execute` returns stdout *or* stderr, preferring stdout whenever it has
+     * anything — and every command here writes its *outcome* to stderr while writing a content-free
+     * echo ("Starting: Intent { … }", "Stopping service: Intent { … }") to stdout. Through `execute`
+     * the verdict never sees the sentence it exists to read, which made every "Stop now" report a
+     * failure and every refused force-launch report the echo instead of the denial.
      */
     private suspend fun runComponentCommand(
         packageName: String,
         className: String,
+        kind: ComponentCommandKind = ComponentCommandKind.STANDARD,
         build: (escapedSpec: String) -> String,
     ): Result<Unit> = withContext(ioDispatcher) {
         val isRoot = runCatching { ShizukuHelper.isRoot }.getOrDefault(false)
@@ -140,9 +153,9 @@ class ShizukuSystemGateway(
             ?: return@withContext Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        val (code, output) = runCatching { ShizukuHelper.execute(build(spec)) }
+        val (code, output) = runCatching { ShizukuHelper.executeCombined(build(spec)) }
             .getOrElse { return@withContext Result.failure(it) }
-        val failure = componentCommandFailure(code, output.orEmpty())
+        val failure = componentCommandFailure(code, output, kind)
         if (failure == null) {
             Result.success(Unit)
         } else {

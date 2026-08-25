@@ -97,6 +97,7 @@ class ComponentControlViewModel(
     val events: Flow<UiText> = _events.receiveAsFlow()
 
     private var ledgerJob: Job? = null
+    private var refreshJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -112,34 +113,48 @@ class ComponentControlViewModel(
      * The ledger collector is cancelled and restarted rather than filtered, because this view model
      * is scoped per package by its Koin key and a second collector on the old package would keep
      * overwriting the state with rows that belong to a screen the user has left.
+     *
+     * **A repeat call for the package already bound still re-reads the snapshot**, and only skips
+     * the state reset and the collector restart. That is what makes drift visible: the ledger is
+     * bookkeeping, so an app update, another root tool or a `pm clear` can re-enable a component
+     * behind Thor's back, and the disagreement is only computable against a *fresh*
+     * `getComponentEnabledSetting`. Returning early on a rebind — which is every reopen of the
+     * sheet — left the row still claiming "Restricted by Thor" until the process was restarted.
      */
     fun load(packageName: String, initial: ComponentSnapshot = ComponentSnapshot()) {
-        if (_uiState.value.packageName == packageName && ledgerJob?.isActive == true) return
-        ledgerJob?.cancel()
-        _uiState.update {
-            ComponentControlUiState(
-                packageName = packageName,
-                // Seeded from the snapshot the detail loader already fetched, so the list renders
-                // on the first frame. Without it the tab would blank itself on every open while a
-                // second, identical PackageManager round-trip ran.
-                isLoading = initial.isEmpty,
-                snapshot = initial,
-                consentAccepted = it.consentAccepted,
-            )
-        }
-        ledgerJob = viewModelScope.launch {
-            componentControl.observeOverrides(packageName).collect { rows ->
-                _uiState.update { it.copy(overrides = rows.associateBy { row -> row.className }) }
+        val alreadyBound = _uiState.value.packageName == packageName && ledgerJob?.isActive == true
+        if (!alreadyBound) {
+            ledgerJob?.cancel()
+            _uiState.update {
+                ComponentControlUiState(
+                    packageName = packageName,
+                    // Seeded from the snapshot the detail loader already fetched, so the list
+                    // renders on the first frame. Without it the tab would blank itself on every
+                    // open while a second, identical PackageManager round-trip ran.
+                    isLoading = initial.isEmpty,
+                    snapshot = initial,
+                    consentAccepted = it.consentAccepted,
+                )
+            }
+            ledgerJob = viewModelScope.launch {
+                componentControl.observeOverrides(packageName).collect { rows ->
+                    _uiState.update { it.copy(overrides = rows.associateBy { row -> row.className }) }
+                }
             }
         }
-        viewModelScope.launch {
+        // Cancelled and restarted so that repeated rebinds cannot stack PackageManager round-trips
+        // whose results then land out of order.
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             // The capability read awaits the privilege probe; the snapshot is a PackageManager
             // round-trip. Neither depends on the other, but the snapshot is what the list renders,
             // so it lands first and the controls light up a moment later rather than the list
             // waiting on the probe.
             refreshSnapshot(packageName)
             val capability = capabilityProvider.capability()
-            _uiState.update { it.copy(capability = capability) }
+            // Same guard refreshSnapshot carries, for the same reason: a load() for another package
+            // may have landed while the probe was settling.
+            _uiState.update { if (it.packageName != packageName) it else it.copy(capability = capability) }
         }
     }
 

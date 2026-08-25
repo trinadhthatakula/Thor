@@ -119,6 +119,21 @@ internal fun startActivityCommand(escapedComponent: String, userId: Int): String
 internal fun stopServiceCommand(escapedComponent: String, userId: Int): String =
     "am stopservice --user $userId -n $escapedComponent"
 
+/**
+ * Which rule [componentCommandFailure] should judge a command's output by.
+ *
+ * There are two, not three, because `pm enable|disable|default-state` and `am start` agree on the
+ * only thing that matters here: a non-zero exit code means something went wrong. `am stopservice`
+ * does not agree, so it gets its own rule rather than a special case bolted into the shared one.
+ */
+internal enum class ComponentCommandKind {
+    /** `pm enable|disable|default-state` and `am start`. Exit code *and* output markers. */
+    STANDARD,
+
+    /** `am stopservice`, whose exit code carries no information at all. Markers only. */
+    STOP_SERVICE,
+}
+
 /** The `pm` verb for a state the gateway contract names. */
 internal fun ComponentEnabledState.asComponentState(): ComponentState = when (this) {
     ComponentEnabledState.ENABLED -> ComponentState.ENABLED
@@ -127,20 +142,38 @@ internal fun ComponentEnabledState.asComponentState(): ComponentState = when (th
 }
 
 /**
- * Substrings that mark a component command as having failed, whatever its exit code said.
+ * Substrings that name *what* went wrong, and are therefore worth showing the user verbatim.
  *
  * `Warning:` is deliberately absent. `am start` answers a perfectly successful launch of an
  * already-running activity with "Warning: Activity not started, its current task has been brought
  * to the front", and treating that as a failure would report an error for the single most common
  * repeat press in the whole feature.
  */
-private val COMPONENT_FAILURE_MARKERS = listOf(
+private val SPECIFIC_FAILURE_MARKERS = listOf(
     "Security exception",
     "SecurityException",
-    "Exception occurred while executing",
+    // Any thrown exception that carries a message: `java.lang.IllegalArgumentException: Component
+    // class … does not exist in …` is what a "Restore all" hits for a component an app update has
+    // removed, and it is the most useful sentence in the whole output. The colon is what keeps this
+    // from also matching the content-free header below, which reads "Exception occurred while …".
+    "Exception:",
     "Error:",
     "Error type",
+    "Error stopping service",
 )
+
+/**
+ * The header `ShellCommand.exec` prints *above* a thrown exception.
+ *
+ * "Exception occurred while executing 'start':" names no cause, and it is the line a naive
+ * first-match scan picks because it comes first. It is searched for only after
+ * [SPECIFIC_FAILURE_MARKERS] have failed to match anywhere, and even then the line *after* it is
+ * preferred — that is where the exception itself is.
+ */
+private const val FAILURE_HEADER_MARKER = "Exception occurred while executing"
+
+/** A stack frame, which is never worth reporting on its own. */
+private const val STACK_FRAME_PREFIX = "at "
 
 /**
  * The failure line from a component command's output, or `null` if it succeeded.
@@ -154,23 +187,75 @@ private val COMPONENT_FAILURE_MARKERS = listOf(
  *  - a non-zero code with no marker in the output is still a failure, which is why the code is
  *    checked too rather than replaced.
  *
+ * …and for [ComponentCommandKind.STOP_SERVICE] the exit code is not merely unreliable, it is
+ * **constant**. `am stopservice` exits **255 in every case** — verified on Android 17 for a service
+ * that was stopped, a service that was not running, and a component that does not exist, through
+ * both `am` and `cmd activity stop-service`, with and without `--user`. The only thing that
+ * distinguishes them is a sentence `ActivityManagerShellCommand` writes to **stderr**:
+ *
+ * ```
+ * Service stopped                          → stopped it
+ * Service not stopped: was not running.    → nothing to stop
+ * Error stopping service                   → the one real failure
+ * ```
+ *
+ * So that kind judges on markers alone. "Was not running" counts as success rather than as an
+ * error: the button says stop the service, and a service that is not running is stopped. Reporting
+ * a failure there would put an error Toast on the *most* likely outcome of the press, since most
+ * services in a component list are not running when the user is looking at them.
+ *
+ * The corollary is that stderr has to reach this function. It does for root — `RootSystemGateway`
+ * concatenates `ShellResult.stdout + stderr` — and for Shizuku only through
+ * `ShizukuHelper.executeCombined`; plain `execute()` returns stdout *or* stderr, and `stopservice`
+ * always writes to both.
+ *
  * Returns the first marked line rather than the whole output: `ShellCommand.exec` prints the entire
  * stack trace on an exception, and a Toast is not the place for forty frames. Activity Launcher's
  * `Toast.makeText(ctx, "…: " + e, LENGTH_LONG)` is the shape being avoided.
  */
-internal fun componentCommandFailure(exitCode: Int, output: String): String? {
-    val marked = output.lineSequence()
-        .map { it.trim() }
-        .firstOrNull { line -> COMPONENT_FAILURE_MARKERS.any { line.contains(it) } }
-    if (marked != null) return marked.take(MAX_FAILURE_LINE_CHARS)
-    if (exitCode != 0) {
-        return output.lineSequence()
-            .map { it.trim() }
-            .firstOrNull { it.isNotEmpty() }
-            ?.take(MAX_FAILURE_LINE_CHARS)
-            ?: "exit $exitCode"
+internal fun componentCommandFailure(
+    exitCode: Int,
+    output: String,
+    kind: ComponentCommandKind = ComponentCommandKind.STANDARD,
+): String? {
+    val lines = output.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+
+    if (kind == ComponentCommandKind.STOP_SERVICE &&
+        lines.any { line -> STOP_SERVICE_SUCCESS_MARKERS.any { line.startsWith(it) } }
+    ) {
+        return null
+    }
+
+    lines.firstOrNull { line -> SPECIFIC_FAILURE_MARKERS.any { line.contains(it) } }
+        ?.let { return it.take(MAX_FAILURE_LINE_CHARS) }
+
+    val headerIndex = lines.indexOfFirst { it.contains(FAILURE_HEADER_MARKER) }
+    if (headerIndex >= 0) {
+        // The line after the header is the exception itself — reported in preference to the header,
+        // which names no cause. Guarded against an output whose next line is already a stack frame.
+        val cause = lines.getOrNull(headerIndex + 1)?.takeUnless { it.startsWith(STACK_FRAME_PREFIX) }
+        return (cause ?: lines[headerIndex]).take(MAX_FAILURE_LINE_CHARS)
+    }
+
+    // Only the standard kind may draw a conclusion from the code; see the note above.
+    if (kind == ComponentCommandKind.STANDARD && exitCode != 0) {
+        return lines.firstOrNull()?.take(MAX_FAILURE_LINE_CHARS) ?: "exit $exitCode"
     }
     return null
 }
+
+/**
+ * The stderr sentences that mean `am stopservice` did its job.
+ *
+ * "Service not stopped: was not running." is in here on purpose — it is the *no-op* answer, not the
+ * failure one, and the failure answer has its own marker in [SPECIFIC_FAILURE_MARKERS]. Note that
+ * it does not contain "Service stopped" as a substring ("Service **not** stopped"), so the two
+ * cannot be confused by a `contains` check either.
+ */
+private val STOP_SERVICE_SUCCESS_MARKERS = listOf(
+    "Service stopped",
+    "Service stopping",
+    "Service not stopped: was not running",
+)
 
 private const val MAX_FAILURE_LINE_CHARS = 200

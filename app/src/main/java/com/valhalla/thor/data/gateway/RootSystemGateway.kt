@@ -19,6 +19,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.asComponentState
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.ComponentCommandKind
 import com.valhalla.thor.data.source.local.componentCommandFailure
 import com.valhalla.thor.data.source.local.escapedComponentSpecOrNull
 import com.valhalla.thor.data.source.local.setComponentStateCommand
@@ -1472,7 +1473,10 @@ class RootSystemGateway(
             ?: return Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(stopServiceCommand(spec, userId))
+        return runComponentCommand(
+            stopServiceCommand(spec, userId),
+            ComponentCommandKind.STOP_SERVICE,
+        )
     }
 
     /**
@@ -1480,10 +1484,17 @@ class RootSystemGateway(
      *
      * Separate from [runCommand] because that one reads `ShellResult.isSuccess`, and for `am start`
      * that is very nearly a constant: a launch refused for a permission denial still exits 0 on most
-     * releases while printing `Security exception:` and a stack trace. [componentCommandFailure]
-     * holds the rule, so that the rule is one function and is JVM-testable.
+     * releases while printing `Security exception:` and a stack trace — while `am stopservice` exits
+     * 255 even when it worked. [componentCommandFailure] holds both rules, so that the rules are one
+     * function and are JVM-testable.
+     *
+     * `stdout + stderr` and not one of them: on Android 17 `am` writes the outcome of every one of
+     * these commands to **stderr** and leaves stdout with nothing but the echo of the intent.
      */
-    private suspend fun runComponentCommand(cmd: String): Result<Unit> {
+    private suspend fun runComponentCommand(
+        cmd: String,
+        kind: ComponentCommandKind = ComponentCommandKind.STANDARD,
+    ): Result<Unit> {
         val result = shellRepository.exec(cmd)
         if (result.code == ShellResult.JOB_NOT_EXECUTED) {
             return Result.failure(
@@ -1493,7 +1504,7 @@ class RootSystemGateway(
             )
         }
         val output = (result.stdout + result.stderr).joinToString("\n")
-        val failure = componentCommandFailure(result.code, output)
+        val failure = componentCommandFailure(result.code, output, kind)
         return if (failure == null) {
             Result.success(Unit)
         } else {
