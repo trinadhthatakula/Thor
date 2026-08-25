@@ -47,8 +47,6 @@ class ComponentControlUseCase(
     fun observeOverrides(packageName: String): Flow<List<ComponentOverride>> =
         overrides.observe(packageName)
 
-    suspend fun allOverrides(): List<ComponentOverride> = overrides.getAll()
-
     /** Switch [component] off and record it. */
     suspend fun disable(
         packageName: String,

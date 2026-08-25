@@ -1024,18 +1024,21 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
         val coroutineScope = rememberCoroutineScope()
         val classNameLabel = stringResource(R.string.class_name_label)
         val onCopyClassName: (String) -> Unit = { className ->
+            // Toast inside the coroutine, after the await — see AppInfoSheet for why. setClipEntry
+            // suspends, so a Toast beside the launch reports a copy that has not happened yet and
+            // may never happen if the scope is cancelled.
             coroutineScope.launch {
                 clipboard.setClipEntry(
                     ClipEntry(
                         android.content.ClipData.newPlainText(classNameLabel, className)
                     )
                 )
+                Toast.makeText(
+                    context,
+                    R.string.toast_copied_class_name,
+                    Toast.LENGTH_SHORT
+                ).show()
             }
-            Toast.makeText(
-                context,
-                (R.string.toast_copied_class_name),
-                Toast.LENGTH_SHORT
-            ).show()
         }
 
         ComponentControlBanner(

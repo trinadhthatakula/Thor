@@ -158,8 +158,29 @@ private val SPECIFIC_FAILURE_MARKERS = listOf(
     // from also matching the content-free header below, which reads "Exception occurred while …".
     "Exception:",
     "Error:",
-    "Error type",
     "Error stopping service",
+)
+
+/**
+ * Markers that prove a failure but do not describe one, searched only after
+ * [SPECIFIC_FAILURE_MARKERS] have failed to match on *any* line.
+ *
+ * `ActivityManagerShellCommand` prints its numeric code on the line **above** the sentence:
+ *
+ * ```
+ * Starting: Intent { cmp=pkg/.Foo }
+ * Error type 3
+ * Error: Activity class {pkg/.Foo} does not exist.
+ * ```
+ *
+ * Both lines are marked, and the scan takes the first *line* that matches any marker rather than
+ * the first *marker* that matches any line — so keeping "Error type" in the list above would let
+ * line 2 beat line 3 and report "Error type 3" to the user. That is the same content-free-header
+ * failure mode [FAILURE_HEADER_MARKER] exists to avoid, reintroduced through the marker list.
+ * Splitting the tiers is what orders them by usefulness instead of by position.
+ */
+private val WEAK_FAILURE_MARKERS = listOf(
+    "Error type",
 )
 
 /**
@@ -227,6 +248,9 @@ internal fun componentCommandFailure(
     }
 
     lines.firstOrNull { line -> SPECIFIC_FAILURE_MARKERS.any { line.contains(it) } }
+        ?.let { return it.take(MAX_FAILURE_LINE_CHARS) }
+
+    lines.firstOrNull { line -> WEAK_FAILURE_MARKERS.any { line.contains(it) } }
         ?.let { return it.take(MAX_FAILURE_LINE_CHARS) }
 
     val headerIndex = lines.indexOfFirst { it.contains(FAILURE_HEADER_MARKER) }

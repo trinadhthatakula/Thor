@@ -19,7 +19,9 @@ import com.valhalla.thor.domain.model.ComponentType
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.ComponentControlUseCase
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -377,6 +379,13 @@ class ComponentControlViewModel(
      * and two disables racing on one package can interleave into a `package-restrictions.xml` write
      * that loses one of them. The busy marker also stops a double-tap becoming two disables and two
      * ledger writes.
+     *
+     * The `catch` is load-bearing, not defensive habit. Every verb returns a `Result`, but the
+     * ledger write that follows a successful one happens inside `Result.onSuccess`, which does not
+     * catch — so a Room failure there (`SQLiteFullException`, a disk-I/O error) throws straight out
+     * of the use case. Without a catch that lands in `viewModelScope`'s uncaught handler and takes
+     * the process down, *after* the privileged change already succeeded. Reported like any other
+     * failure instead; `CancellationException` is rethrown so cancellation stays cancellation.
      */
     private fun runExclusively(className: String, block: suspend () -> Unit) {
         if (_uiState.value.busyClassName != null) return
@@ -384,6 +393,11 @@ class ComponentControlViewModel(
         viewModelScope.launch {
             try {
                 block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e("ComponentControlViewModel", "Component action failed for $className", e)
+                sendFailure(e)
             } finally {
                 _uiState.update { it.copy(busyClassName = null) }
             }

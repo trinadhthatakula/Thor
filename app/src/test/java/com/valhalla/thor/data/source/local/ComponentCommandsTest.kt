@@ -231,6 +231,37 @@ class ComponentCommandsTest {
     }
 
     /**
+     * The output above never arrives alone. `ActivityManagerShellCommand` prints its numeric code
+     * on the line *before* the sentence, and both lines are marked — so a scan that takes the first
+     * matching *line* reports "Error type 3", which names neither the component nor the reason.
+     * Captured verbatim from an API 37 emulator.
+     */
+    @Test
+    fun `the numeric code does not beat the sentence below it`() {
+        val output = """
+            Starting: Intent { cmp=com.example.app/com.example.app.SecretActivity }
+            Error type 3
+            Error: Activity class {com.example.app/com.example.app.SecretActivity} does not exist.
+        """.trimIndent()
+        val failure = componentCommandFailure(exitCode = 1, output = output)
+        assertNotNull(failure)
+        assertTrue(
+            "expected the descriptive line, got: $failure",
+            failure!!.startsWith("Error: Activity class"),
+        )
+    }
+
+    /** …but on its own it is still the only evidence there is, and better than the bare echo. */
+    @Test
+    fun `the numeric code is reported when nothing better is present`() {
+        val output = """
+            Starting: Intent { cmp=com.example.app/.MainActivity }
+            Error type 3
+        """.trimIndent()
+        assertEquals("Error type 3", componentCommandFailure(exitCode = 1, output = output))
+    }
+
+    /**
      * The single most common repeat press in the feature: opening an activity that is already the
      * foreground task. `am` calls that a warning and it is a complete success — treating it as a
      * failure would put an error Toast on the happy path.
@@ -377,6 +408,23 @@ class ComponentCommandsTest {
             componentCommandFailure(
                 exitCode = 255,
                 output = "Stopping service: Intent { cmp=com.example.app/.SyncService }\nService stopped",
+                kind = ComponentCommandKind.STOP_SERVICE,
+            )
+        )
+    }
+
+    /**
+     * The asynchronous wording, for a service whose `onDestroy` has not returned yet. It is the
+     * third success marker and the only one with no test of its own — without this, deleting it
+     * from the list turns every slow stop into an error Toast and the suite stays green.
+     */
+    @Test
+    fun `a service that is still stopping is a success`() {
+        assertNull(
+            componentCommandFailure(
+                exitCode = 255,
+                output = "Stopping service: Intent { cmp=com.example.app/.SyncService }\n" +
+                    "Service stopping",
                 kind = ComponentCommandKind.STOP_SERVICE,
             )
         )

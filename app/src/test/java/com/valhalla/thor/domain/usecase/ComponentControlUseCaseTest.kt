@@ -162,6 +162,26 @@ class ComponentControlUseCaseTest {
         assertEquals(1, ledger.rows.size)
     }
 
+    /**
+     * The third verb with the same `.onSuccess { forget }` contract, and the one whose failure half
+     * was unverified — `disable` and `enable` both had a test for it. A ledger row dropped after a
+     * refused `pm default-state` would strand the component: still overridden, no longer listed, so
+     * "Restore all" can never reach it.
+     */
+    @Test
+    fun `a failed reset keeps the ledger row`() = runTest {
+        val ledger = FakeLedger(rows = mutableListOf(row("Sync", restoreToEnabled = true)))
+        val useCase = ComponentControlUseCase(
+            FakeSystem(respond = { Result.failure(IllegalStateException("denied")) }),
+            ledger,
+        )
+
+        val result = useCase.resetToDefault(pkg, "Sync")
+
+        assertTrue(result.isFailure)
+        assertEquals(1, ledger.rows.size)
+    }
+
     /** "Enable" on a component that ships off asks the platform for the explicit state. */
     @Test
     fun `enabling a ships-off component asks for ENABLED`() = runTest {
