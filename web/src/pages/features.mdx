@@ -452,17 +452,22 @@ with no row to find it by, Restore all will never offer it back.
 
 <h3 id="component-restore">Restoring</h3>
 
-**Restore all is device-wide, not per-app.** The button appears beside a count for the app you have
+**Restore all is cross-app, not per-app.** The button appears beside a count for the app you have
 open, which makes the scope worth stating twice: it restores every component Thor disabled in every
-app, and the confirmation dialog says so before anything happens. Device-wide is the entire point of
-keeping the record — a component switched off weeks ago in an app since forgotten is otherwise
-unfindable.
+app, and the confirmation dialog says so before anything happens. Reaching across apps is the entire
+point of keeping the record — a component switched off weeks ago in an app since forgotten is
+otherwise unfindable.
+
+It is not, however, device-wide. The record is scoped to the Android user Thor is running in, so rows
+belonging to another user or a work profile are left alone.
 
 A partial run reports "Restored 6 of 9" rather than choosing between calling that a success or a
-failure, and it leaves behind exactly the rows still overridden. Pressing it again therefore retries
-those and nothing else; setting component state is idempotent, so a retry on an already-restored
-component costs nothing. A row is counted as restored only when both the platform change and the
-record deletion land, so the number can never claim more than the screen shows.
+failure, and it leaves behind exactly the rows that did not fully complete. Pressing it again
+therefore retries those and nothing else; setting component state is idempotent, so a retry on an
+already-restored component costs nothing. A row counts as restored only when **both** the platform
+change and the record deletion land — so a component that was put back while its row could not be
+deleted is left on the list for another pass rather than counted. The number can never claim more
+than the screen shows.
 
 <h3 id="component-safety">Safety</h3>
 

@@ -241,11 +241,16 @@ disabled — switching it on would invent a state the app never had.
 
 **Restore all covers every app, not just the one you are looking at.** The button sits next to a
 count for the app currently open, so that surprises people; the confirmation dialog spells the scope
-out before anything happens. Being device-wide is the point of keeping the record at all, because a
-component you switched off weeks ago in an app you have since forgotten is otherwise unfindable.
+out before anything happens. Covering every app is the point of keeping the record at all, because a
+component you switched off weeks ago in an app you have since forgotten is otherwise unfindable. It
+is every app for **the Android user Thor is running in** — records belonging to another user or a
+work profile are not touched.
 
-A partial run says so — "Restored 6 of 9" — and leaves exactly the rows that are still switched off,
-so pressing it again retries those rather than starting a second, different operation.
+A partial run says so — "Restored 6 of 9" — and leaves behind exactly the entries that did not fully
+complete, so pressing it again retries those rather than starting a second, different operation. An
+entry counts as done only when the component is back **and** its record is cleared, so a component
+that was restored while its record could not be deleted stays on the list for one more pass. Thor
+would rather retry something harmless than report a number your own screen contradicts.
 
 <h3 id="component-persistence">Does it survive a reboot? An app update?</h3>
 

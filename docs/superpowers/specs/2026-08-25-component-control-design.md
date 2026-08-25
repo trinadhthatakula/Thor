@@ -381,7 +381,9 @@ When the ledger holds rows for the current package, the Components tab header sh
 
 ⚠️ **Correction, from the shipped implementation.** The trigger is per-package but the *action* is
 not: `ComponentControlUseCase.restoreAll` calls `ComponentOverrideRepository.getAll()`, so it restores
-every row in every package. A per-package restore would be the smaller promise, but the ledger's
+every row in every package — though **not** every Android user, because `getAll()` filters on
+`thorUserId`, so another user's or a work profile's rows are untouched. "Cross-app" is exact here and
+"device-wide" is not. A per-package restore would be the smaller promise, but the ledger's
 reason to exist is that a component disabled weeks ago in a forgotten app is otherwise unfindable, so
 the wider scope was chosen deliberately and `component_restore_all_message` names it ("in this app and
 in every other") before anything happens. Read the count in the header as *"this app's share of what
