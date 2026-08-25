@@ -10,6 +10,7 @@ import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.data.source.local.thorUserId
+import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
@@ -292,6 +293,42 @@ class SystemRepositoryImpl(
         permissionName: String
     ): Result<Unit> = withContext(ioDispatcher) {
         runGatewayAction { it.revokePermission(packageName, permissionName) }
+    }
+
+    // --- Per-component control -------------------------------------------------------------
+    //
+    // Routed, not root-gated. `clearCache` above short-circuits on `isRootAvailable()` because there
+    // Shizuku and Dhizuku genuinely have nothing to try; here a Shizuku *can* succeed — when it was
+    // started as root — and a pre-gate on `isRootAvailable()` would refuse that working
+    // configuration on a device with no `su` binary at all. The gateway is where the uid is known,
+    // so the gateway is where the refusal is made, and `componentCapability` is what stops the UI
+    // from offering the control in the first place.
+    //
+    // [thorUserId] rather than 0: `pm`'s enable/disable/default-state trio seeds
+    // `UserHandle.USER_SYSTEM`, so an unqualified command issued from a work profile edits the
+    // personal profile's copy of the package and exits 0. Same trap the clear/suspend paths already
+    // carry, same fix.
+
+    override suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.setComponentEnabled(packageName, className, state, thorUserId) }
+    }
+
+    override suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.forceLaunchActivity(packageName, className, thorUserId) }
+    }
+
+    override suspend fun stopService(
+        packageName: String,
+        className: String,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.stopService(packageName, className, thorUserId) }
     }
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> =

@@ -60,6 +60,45 @@ class DhizukuSystemGateway(
         return runCatching { DhizukuHelper.execute(command) }
     }
 
+    // --- Per-component control -------------------------------------------------------------
+    //
+    // Empty, not partial. `DevicePolicyManager` exposes no component-enabled API of any kind — a
+    // Device Owner can suspend, hide, block-uninstall and set permission policy for a *package*,
+    // and none of those reach an individual class. Its only launch-related privilege is a
+    // background-activity-launch exemption, which is not an export waiver:
+    // `ActivityManager.canAccessUnexportedComponents` is granted to `ROOT_UID` and `SYSTEM_UID`
+    // alone, and Dhizuku's shell runs as its own app uid — further from uid 0 than Shizuku's 2000,
+    // not closer.
+    //
+    // Three explicit refusals rather than a shared helper, so that each one is visible at the site a
+    // reader looks for it and none of them can be quietly turned into an unverified "try the shell
+    // and see". A refusal that names the reason is the whole contribution this mode can make here.
+
+    override suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: com.valhalla.thor.domain.gateway.ComponentEnabledState,
+        userId: Int,
+    ): Result<Unit> = Result.failure(
+        Exception(context.getString(R.string.component_control_unsupported_dhizuku))
+    )
+
+    override suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+        userId: Int,
+    ): Result<Unit> = Result.failure(
+        Exception(context.getString(R.string.component_control_unsupported_dhizuku))
+    )
+
+    override suspend fun stopService(
+        packageName: String,
+        className: String,
+        userId: Int,
+    ): Result<Unit> = Result.failure(
+        Exception(context.getString(R.string.component_control_unsupported_dhizuku))
+    )
+
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         return if (reflector.forceStop(packageName)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Force stop failed. Shell command and reflection both denied."))

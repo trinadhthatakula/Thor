@@ -10,10 +10,15 @@ import kotlinx.serialization.Serializable
 @Immutable
 data class DetailedAppInfo(
     val appInfo: AppInfo,
-    val activities: List<String> = emptyList(),
-    val services: List<String> = emptyList(),
-    val receivers: List<String> = emptyList(),
-    val providers: List<String> = emptyList(),
+    /**
+     * The four component lists.
+     *
+     * Was four `List<String>` of class names. The names alone could be listed and copied and
+     * nothing else, because every question the Components tab now asks of a row — is it exported,
+     * is it switched off, is it guarded by a permission — was thrown away by the mapper one line
+     * after `PackageManager` handed it over.
+     */
+    val components: ComponentSnapshot = ComponentSnapshot(),
     val permissions: List<PermissionDetail> = emptyList(),
     val nativeLibs: List<String> = emptyList(),
     val reqFeatures: List<String> = emptyList(),

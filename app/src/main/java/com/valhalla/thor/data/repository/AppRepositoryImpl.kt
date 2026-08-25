@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.repository
 
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -16,6 +17,8 @@ import com.valhalla.thor.data.source.local.UadHelper
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.ComponentDetail
+import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.model.ScanVerdict
@@ -581,10 +584,7 @@ class AppRepositoryImpl(
                     pm.getPackageInfo(packageName, flags.toInt())
                 }
 
-                val activities = packInfo.activities?.map { it.name } ?: emptyList()
-                val services = packInfo.services?.map { it.name } ?: emptyList()
-                val receivers = packInfo.receivers?.map { it.name } ?: emptyList()
-                val providers = packInfo.providers?.map { it.name } ?: emptyList()
+                val components = componentSnapshotOf(packageName, packInfo)
                 val reqFeatures = packInfo.reqFeatures?.map {
                     if (it.name != null) {
                         it.name
@@ -657,10 +657,7 @@ class AppRepositoryImpl(
 
                 DetailedAppInfo(
                     appInfo = appInfo,
-                    activities = activities,
-                    services = services,
-                    receivers = receivers,
-                    providers = providers,
+                    components = components,
                     permissions = permissions,
                     nativeLibs = nativeLibs,
                     reqFeatures = reqFeatures,
@@ -672,6 +669,92 @@ class AppRepositoryImpl(
                 null
             }
         }
+
+    override suspend fun getComponentDetails(packageName: String): ComponentSnapshot? =
+        withContext(ioDispatcher) {
+            try {
+                val flags = COMPONENT_QUERY_FLAGS
+                val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageInfo(packageName, flags.toInt())
+                }
+                componentSnapshotOf(packageName, packInfo)
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) e.printStackTrace()
+                null
+            }
+        }
+
+    /**
+     * Map one already-fetched [PackageInfo] onto the four [ComponentDetail] lists.
+     *
+     * The caller must have fetched with [COMPONENT_QUERY_FLAGS] — specifically with
+     * `MATCH_DISABLED_COMPONENTS` and `MATCH_DISABLED_UNTIL_USED_COMPONENTS`, without which
+     * `PackageManager` silently omits every component that is currently switched off, which are
+     * precisely the ones this screen exists to show and switch back on.
+     *
+     * The effective state comes from [PackageManager.getComponentEnabledSetting] rather than from a
+     * second, flagless `getPackageInfo` differenced against the first. Both would answer "is this
+     * component live", but the diff answers it wrongly in two situations that matter here:
+     *  - **A frozen app.** A package-level disable makes `PackageUserState.isMatch` reject *every*
+     *    component, so the flagless query comes back empty and the diff marks all several hundred
+     *    rows DISABLED. `getComponentEnabledSetting` is per-component and untouched by the package
+     *    state, so a frozen app still shows which of its components the user had individually
+     *    turned off.
+     *  - **An explicit `ENABLED` on a component the manifest already enables.** Indistinguishable
+     *    from `DEFAULT` by any diff, but it is a real stored override, and it is the one this
+     *    screen must offer "Reset to default" for.
+     *
+     * It costs one binder call per component. That is the same shape as the permission loop above
+     * (two calls per requested permission) and it runs on [ioDispatcher]; a `getComponentEnabledSetting`
+     * that throws for a component the parser produced but PMS does not recognise degrades that one
+     * row to its manifest default rather than failing the screen.
+     */
+    private fun componentSnapshotOf(
+        packageName: String,
+        packInfo: android.content.pm.PackageInfo,
+    ): ComponentSnapshot {
+        // PackageManager can hand back the same component twice; the tab used to compensate by
+        // putting the list index in the LazyColumn key, which made every row's identity change as
+        // soon as a filter was typed.
+        fun <T : android.content.pm.ComponentInfo> List<T>?.mapComponents(
+            permissionOf: (T) -> String?,
+        ): List<ComponentDetail> = this.orEmpty()
+            .distinctBy { it.name }
+            .map { info ->
+                val manifestDefaultEnabled = info.enabled
+                val setting = try {
+                    pm.getComponentEnabledSetting(ComponentName(packageName, info.name))
+                } catch (_: Exception) {
+                    PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+                }
+                ComponentDetail(
+                    className = info.name,
+                    exported = info.exported,
+                    enabled = when (setting) {
+                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+                        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> manifestDefaultEnabled
+                        else -> false
+                    },
+                    manifestDefaultEnabled = manifestDefaultEnabled,
+                    hasExplicitState = setting != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                    permission = permissionOf(info),
+                )
+            }
+
+        return ComponentSnapshot(
+            activities = packInfo.activities?.toList().mapComponents { it.permission },
+            services = packInfo.services?.toList().mapComponents { it.permission },
+            receivers = packInfo.receivers?.toList().mapComponents { it.permission },
+            // A provider has no single entry permission: `android:permission` is shorthand for
+            // setting both halves, and either half alone is enough to keep a caller out.
+            providers = packInfo.providers?.toList().mapComponents {
+                it.readPermission ?: it.writePermission
+            },
+        )
+    }
 
     override suspend fun getApkDetails(apkPath: String): AppInfo? = withContext(ioDispatcher) {
         val flags = PackageManager.GET_PERMISSIONS
@@ -704,5 +787,24 @@ class AppRepositoryImpl(
          */
         const val LABEL_CACHE_PREFS = "app_label_cache"
         const val KEY_LABEL_LOCALE = "label_locale_key"
+
+        /**
+         * The flags a component query needs to see components that are switched **off**.
+         *
+         * Without `MATCH_DISABLED_COMPONENTS` and `MATCH_DISABLED_UNTIL_USED_COMPONENTS`,
+         * `PackageManager` omits exactly the rows the Components tab exists to switch back on, and
+         * omits them silently — the list simply comes back shorter. `MATCH_UNINSTALLED_PACKAGES`
+         * keeps the query working for a package that is installed for another user but frozen or
+         * archived for this one.
+         */
+        val COMPONENT_QUERY_FLAGS: Long = (
+                PackageManager.GET_ACTIVITIES or
+                        PackageManager.GET_SERVICES or
+                        PackageManager.GET_RECEIVERS or
+                        PackageManager.GET_PROVIDERS or
+                        PackageManager.MATCH_UNINSTALLED_PACKAGES or
+                        PackageManager.MATCH_DISABLED_COMPONENTS or
+                        PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS
+                ).toLong()
     }
 }

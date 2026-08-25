@@ -791,4 +791,58 @@
     <string name="clear_all_caches_requires_usage_access">Shizuku nie może wyczyścić pamięci podręcznej wszystkich aplikacji bez dostępu do danych o użyciu. Androidowi trzeba podać, ile bajtów ma odzyskać, a tylko to uprawnienie pozwala zmierzyć, ile pamięci podręcznej jest. Przyznaj aplikacji Thor dostęp do danych o użyciu w Ustawieniach i spróbuj ponownie.</string>
     <string name="clear_all_caches_unsupported_dhizuku">Dhizuku nie może czyścić pamięci podręcznej. Nie ma powłoki, w której uruchomiłby androidowe czyszczenie pamięci podręcznej, a API Device Owner nie ma odpowiednika. Przełącz się na Root lub Shizuku.</string>
 
+    <!-- Component control (App info → Components).
+         "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
+         guarded by a permission Thor does not hold. It needs root; the platform grants the waiver to
+         uid 0 alone, so a Shizuku running as shell cannot do it either. -->
+    <string name="component_action_open">Otwórz</string>
+    <string name="component_action_force_open">Wymuś otwarcie</string>
+    <string name="component_action_copy">Kopiuj nazwę klasy</string>
+    <string name="component_action_stop_now">Zatrzymaj teraz</string>
+    <string name="component_action_disable">Wyłącz</string>
+    <string name="component_action_enable">Włącz</string>
+    <string name="component_action_reset">Przywróć stan domyślny</string>
+    <string name="component_action_forget">Zapomnij</string>
+    <string name="cd_component_actions">Akcje dla %1$s</string>
+
+    <string name="component_badge_restricted">Ograniczony przez aplikację Thor</string>
+    <string name="component_badge_drift">Zmieniony gdzie indziej</string>
+    <string name="component_badge_disabled">Wyłączony</string>
+    <string name="component_badge_not_exported">Nieeksportowany</string>
+    <string name="component_badge_off_by_default">Domyślnie wyłączony</string>
+
+    <string name="component_blocker_no_privilege">Włącz Root lub Shizuku, aby zmieniać komponenty.</string>
+    <string name="component_blocker_shizuku_not_root">Zmienianie komponentów wymaga Shizuku uruchomionego jako root. Shizuku w trybie powłoki tego nie potrafi.</string>
+    <string name="component_blocker_dhizuku">Dhizuku nie może zmieniać pojedynczych komponentów. Użyj trybu Root lub Shizuku w trybie root.</string>
+    <string name="component_control_requires_root_shizuku">Shizuku działa jako powłoka, a nie jako root. Zmienianie komponentów wymaga dostępu root.</string>
+    <string name="component_control_unsupported_dhizuku">Dhizuku nie może sterować pojedynczymi komponentami.</string>
+
+    <string name="component_launched">Otwarto %1$s</string>
+    <string name="component_service_stopped">Zatrzymano %1$s</string>
+    <string name="component_disabled_success">Wyłączono %1$s</string>
+    <string name="component_enabled_success">Włączono %1$s</string>
+    <string name="component_reset_success">%1$s — przywrócono stan domyślny</string>
+    <string name="component_forgotten">Przestano śledzić %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="one">%1$d komponent ograniczony przez aplikację Thor</item>
+        <item quantity="few">%1$d komponenty ograniczone przez aplikację Thor</item>
+        <item quantity="many">%1$d komponentów ograniczonych przez aplikację Thor</item>
+        <item quantity="other">%1$d komponentu ograniczonego przez aplikację Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="one">Przywrócono %1$d komponent</item>
+        <item quantity="few">Przywrócono %1$d komponenty</item>
+        <item quantity="many">Przywrócono %1$d komponentów</item>
+        <item quantity="other">Przywrócono %1$d komponentu</item>
+    </plurals>
+    <string name="component_restore_all_partial">Przywrócono %1$d z %2$d — reszta nadal jest ograniczona</string>
+    <string name="component_restore_all_action">Przywróć wszystkie</string>
+    <string name="component_restore_all_title">Przywrócić wszystkie komponenty?</string>
+    <string name="component_restore_all_message">Każdy komponent wyłączony przez aplikację Thor — w tej aplikacji i we wszystkich pozostałych — wróci do stanu, w jakim został dostarczony. Komponenty zmienione przez inne narzędzia zostaną nietknięte.</string>
+
+    <string name="component_disclaimer_title">Wyłączyć komponent?</string>
+    <string name="component_disclaimer_message">%1$s nadal pozostanie częścią aplikacji; przestanie tylko działać. Aplikacje rzadko się tego spodziewają, więc jakaś funkcja może przestać działać bez żadnego błędu albo aplikacja może ulec awarii. Thor zapisuje, co wyłącza, aby można było to później cofnąć.</string>
+    <string name="component_disclaimer_confirm">Wyłącz go</string>
+
 </resources>

@@ -698,4 +698,48 @@
     <string name="cd_move_up">上移</string>
     <string name="cd_move_down">下移</string>
 
+    <string name="component_action_open">打开</string>
+    <string name="component_action_force_open">强制打开</string>
+    <string name="component_action_copy">复制类名</string>
+    <string name="component_action_stop_now">立即停止</string>
+    <string name="component_action_disable">禁用</string>
+    <string name="component_action_enable">启用</string>
+    <string name="component_action_reset">恢复默认</string>
+    <string name="component_action_forget">不再跟踪</string>
+    <string name="cd_component_actions">%1$s 的操作</string>
+
+    <string name="component_badge_restricted">已被 Thor 限制</string>
+    <string name="component_badge_drift">已在别处更改</string>
+    <string name="component_badge_disabled">已禁用</string>
+    <string name="component_badge_not_exported">未导出</string>
+    <string name="component_badge_off_by_default">默认关闭</string>
+
+    <string name="component_blocker_no_privilege">开启 Root 或 Shizuku 才能更改组件。</string>
+    <string name="component_blocker_shizuku_not_root">更改组件需要以 root 身份启动的 Shizuku。shell 模式的 Shizuku 无法做到。</string>
+    <string name="component_blocker_dhizuku">Dhizuku 无法更改单个组件。请使用 Root 或 root 模式的 Shizuku。</string>
+    <string name="component_control_requires_root_shizuku">Shizuku 正以 shell 身份运行，而非 root。更改组件需要 root 权限。</string>
+    <string name="component_control_unsupported_dhizuku">Dhizuku 无法控制单个组件。</string>
+
+    <string name="component_launched">已打开 %1$s</string>
+    <string name="component_service_stopped">已停止 %1$s</string>
+    <string name="component_disabled_success">已禁用 %1$s</string>
+    <string name="component_enabled_success">已启用 %1$s</string>
+    <string name="component_reset_success">%1$s 已恢复默认</string>
+    <string name="component_forgotten">已停止跟踪 %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="other">Thor 已限制 %1$d 个组件</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="other">已恢复 %1$d 个组件</item>
+    </plurals>
+    <string name="component_restore_all_partial">已恢复 %2$d 个组件中的 %1$d 个 — 其余仍处于受限状态</string>
+    <string name="component_restore_all_action">全部恢复</string>
+    <string name="component_restore_all_title">恢复所有组件？</string>
+    <string name="component_restore_all_message">Thor 禁用过的每一个组件 — 无论在此应用中还是在其他应用中 — 都会恢复为出厂时的状态。由其他工具更改的组件不会受到影响。</string>
+
+    <string name="component_disclaimer_title">禁用此组件？</string>
+    <string name="component_disclaimer_message">%1$s 仍会保留在应用中，只是不再运行。应用通常不会预料到这种情况，因此某项功能可能会在没有任何错误提示的情况下失效，应用也可能崩溃。Thor 会记录它禁用过的内容，方便你之后撤销。</string>
+    <string name="component_disclaimer_confirm">确认禁用</string>
+
 </resources>

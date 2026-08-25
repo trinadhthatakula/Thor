@@ -710,4 +710,50 @@
     <string name="cd_move_up">Mover hacia arriba</string>
     <string name="cd_move_down">Mover hacia abajo</string>
 
+    <string name="component_action_open">Abrir</string>
+    <string name="component_action_force_open">Forzar apertura</string>
+    <string name="component_action_copy">Copiar el nombre de la clase</string>
+    <string name="component_action_stop_now">Detener ahora</string>
+    <string name="component_action_disable">Desactivar</string>
+    <string name="component_action_enable">Activar</string>
+    <string name="component_action_reset">Restablecer al valor predeterminado</string>
+    <string name="component_action_forget">Olvidar</string>
+    <string name="cd_component_actions">Acciones para %1$s</string>
+
+    <string name="component_badge_restricted">Restringido por Thor</string>
+    <string name="component_badge_drift">Cambiado en otro sitio</string>
+    <string name="component_badge_disabled">Desactivado</string>
+    <string name="component_badge_not_exported">No exportado</string>
+    <string name="component_badge_off_by_default">Desactivado de forma predeterminada</string>
+
+    <string name="component_blocker_no_privilege">Activa Root o Shizuku para cambiar componentes.</string>
+    <string name="component_blocker_shizuku_not_root">Para cambiar componentes hace falta Shizuku iniciado como root. Un Shizuku en modo shell no puede.</string>
+    <string name="component_blocker_dhizuku">Dhizuku no puede cambiar componentes individuales. Usa Root o un Shizuku en modo root.</string>
+    <string name="component_control_requires_root_shizuku">Shizuku se está ejecutando como shell, no como root. Cambiar componentes requiere root.</string>
+    <string name="component_control_unsupported_dhizuku">Dhizuku no puede controlar componentes individuales.</string>
+
+    <string name="component_launched">Se abrió %1$s</string>
+    <string name="component_service_stopped">Se detuvo %1$s</string>
+    <string name="component_disabled_success">Se desactivó %1$s</string>
+    <string name="component_enabled_success">Se activó %1$s</string>
+    <string name="component_reset_success">%1$s se restableció al valor predeterminado</string>
+    <string name="component_forgotten">Se dejó de hacer seguimiento de %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="one">%1$d componente restringido por Thor</item>
+        <item quantity="other">%1$d componentes restringidos por Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="one">Se restauró %1$d componente</item>
+        <item quantity="other">Se restauraron %1$d componentes</item>
+    </plurals>
+    <string name="component_restore_all_partial">Restauración: %1$d de %2$d — el resto sigue restringido</string>
+    <string name="component_restore_all_action">Restaurar todo</string>
+    <string name="component_restore_all_title">¿Restaurar todos los componentes?</string>
+    <string name="component_restore_all_message">Todos los componentes que Thor desactivó — en esta aplicación y en todas las demás — vuelven al estado con el que venían de fábrica. Los componentes cambiados por otras herramientas se quedan tal cual.</string>
+
+    <string name="component_disclaimer_title">¿Desactivar un componente?</string>
+    <string name="component_disclaimer_message">%1$s sigue formando parte de la aplicación; simplemente deja de ejecutarse. Las aplicaciones rara vez esperan esto, así que una función puede dejar de funcionar sin dar ningún error, o la aplicación puede cerrarse de forma inesperada. Thor registra lo que desactiva para que puedas deshacerlo más tarde.</string>
+    <string name="component_disclaimer_confirm">Desactivarlo</string>
+
 </resources>

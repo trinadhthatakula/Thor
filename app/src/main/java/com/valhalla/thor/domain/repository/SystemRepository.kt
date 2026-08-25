@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.domain.repository
 
+import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.ObbProbe
 
 interface SystemRepository {
@@ -48,6 +49,42 @@ interface SystemRepository {
     suspend fun getAppPaths(packageName: String): Result<List<String>>
     suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit>
     suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit>
+
+    // Per-component control
+    //
+    // Routed through the active gateway like everything else, but with one difference worth stating
+    // once: the fallback chain does not help here. Root, and a Shizuku that was itself started as
+    // root, are the only transports the platform accepts these from — see the block comment on
+    // `SystemGateway`. A device with Shizuku at the shell uid gets a refusal that names the reason,
+    // and the UI is expected to have asked `componentCapability` first so that the refusal is a
+    // backstop rather than the normal path.
+
+    /**
+     * Sets one component's enabled state for the Android user Thor is running in.
+     *
+     * @param state `DEFAULT` removes the override and lets `android:enabled` decide again; it is not
+     * a synonym for `ENABLED`, and for a component that ships disabled it switches it back off.
+     */
+    suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState,
+    ): Result<Unit>
+
+    /**
+     * Launches an activity that an ordinary `startActivity` cannot reach — unexported, or guarded by
+     * a permission Thor does not hold.
+     *
+     * Callers must not route an exported, unguarded activity here. That one needs no privilege at
+     * all, and sending it down this path makes a launch that works on every device fail on most of
+     * them.
+     */
+    suspend fun forceLaunchActivity(packageName: String, className: String): Result<Unit>
+
+    /**
+     * Stops one running service. Transient: nothing stops the app starting it again immediately.
+     */
+    suspend fun stopService(packageName: String, className: String): Result<Unit>
 
     /**
      * Raw shell execution via the active privilege gateway (used by extensions).

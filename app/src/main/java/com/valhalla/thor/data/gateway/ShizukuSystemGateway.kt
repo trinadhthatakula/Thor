@@ -14,11 +14,19 @@ import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
 import com.valhalla.thor.data.source.local.SessionApk
+import com.valhalla.thor.data.source.local.asComponentState
+import com.valhalla.thor.data.source.local.ComponentCommandKind
+import com.valhalla.thor.data.source.local.componentCommandFailure
+import com.valhalla.thor.data.source.local.escapedComponentSpecOrNull
 import com.valhalla.thor.data.source.local.installViaSessionCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
 import com.valhalla.thor.data.source.local.pmPathCommand
+import com.valhalla.thor.data.source.local.setComponentStateCommand
+import com.valhalla.thor.data.source.local.startActivityCommand
+import com.valhalla.thor.data.source.local.stopServiceCommand
 import com.valhalla.thor.data.source.local.thorUserId
+import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -65,6 +73,95 @@ class ShizukuSystemGateway(
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
         // Runs through Shizuku's privileged process (shell uid), same path as in-app actions.
         return runCatching { ShizukuHelper.execute(command) }
+    }
+
+    // --- Per-component control -------------------------------------------------------------
+    //
+    // The one group of verbs on this interface with no shell rung and no reflection rung at the
+    // shell uid. `PackageManagerService.setEnabledSetting` carves out `Process.SHELL_UID` only for
+    // calls with a null class name — a per-component call throws
+    // `SecurityException("Shell cannot change component state for …")` — and
+    // `ActivityManager.canAccessUnexportedComponents` waives the launch checks for `ROOT_UID` and
+    // `SYSTEM_UID` alone. Going through `reflector` instead of through `pm`/`am` changes nothing:
+    // the binder call arrives at the same check carrying the same calling uid.
+    //
+    // A Shizuku that was started **as root** (`su -c sh /storage/…/starter.sh`, or Magisk's Shizuku
+    // module) runs its service at uid 0 and can do all three. That is the only case that succeeds
+    // here, and asking `Shizuku.getUid()` is the only way to tell the two apart — availability is
+    // permission-plus-`pingBinder`, which is equally true at uid 2000.
+
+    override suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState,
+        userId: Int,
+    ): Result<Unit> = runComponentCommand(packageName, className) { spec ->
+        setComponentStateCommand(spec, userId, state.asComponentState())
+    }
+
+    override suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+        userId: Int,
+    ): Result<Unit> = runComponentCommand(packageName, className) { spec ->
+        startActivityCommand(spec, userId)
+    }
+
+    override suspend fun stopService(
+        packageName: String,
+        className: String,
+        userId: Int,
+    ): Result<Unit> = runComponentCommand(
+        packageName,
+        className,
+        ComponentCommandKind.STOP_SERVICE,
+    ) { spec ->
+        stopServiceCommand(spec, userId)
+    }
+
+    /**
+     * Refuse unless this Shizuku is uid 0, then run [build] and judge it by its output.
+     *
+     * The refusal is a resource string, not an English literal, because it is read by the user and
+     * every caller funnels a failure's `message` into `R.string.error_format` — an untranslated
+     * sentence inside a translated one is the shape `clearAllCaches` above already documents.
+     *
+     * An unreadable uid refuses. `Shizuku.getUid()` throws when the binder has gone since the last
+     * availability check, and the alternative — assuming root — paints working controls that throw a
+     * `SecurityException` on every press.
+     *
+     * [ShizukuHelper.executeCombined] rather than `execute`, and this is the only caller of it in
+     * the codebase. `execute` returns stdout *or* stderr, preferring stdout whenever it has
+     * anything — and every command here writes its *outcome* to stderr while writing a content-free
+     * echo ("Starting: Intent { … }", "Stopping service: Intent { … }") to stdout. Through `execute`
+     * the verdict never sees the sentence it exists to read, which made every "Stop now" report a
+     * failure and every refused force-launch report the echo instead of the denial.
+     */
+    private suspend fun runComponentCommand(
+        packageName: String,
+        className: String,
+        kind: ComponentCommandKind = ComponentCommandKind.STANDARD,
+        build: (escapedSpec: String) -> String,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        val isRoot = runCatching { ShizukuHelper.isRoot }.getOrDefault(false)
+        if (!isRoot) {
+            return@withContext Result.failure(
+                Exception(context.getString(R.string.component_control_requires_root_shizuku))
+            )
+        }
+        val spec = escapedComponentSpecOrNull(packageName, className)
+            ?: return@withContext Result.failure(
+                IllegalArgumentException("Invalid component: $packageName/$className")
+            )
+        val (code, output) = runCatching { ShizukuHelper.executeCombined(build(spec)) }
+            .getOrElse { return@withContext Result.failure(it) }
+        val failure = componentCommandFailure(code, output, kind)
+        if (failure == null) {
+            Result.success(Unit)
+        } else {
+            Logger.e("ShizukuSystemGateway", "Component command failed: $failure")
+            Result.failure(Exception(failure))
+        }
     }
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
