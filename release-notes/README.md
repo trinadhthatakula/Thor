@@ -181,8 +181,9 @@ When a bump takes the count past 20, delete the oldest `v*` directories in the s
 GitHub release bodies are already on GitHub, F-Droid's changelog history lives in
 `fastlane/metadata/android/*/changelogs/<versionCode>.txt` — **which is never pruned** — and every
 script here takes the version as an argument. Before deleting, confirm the same with
-`rg -n 'release-notes/v<old>' --glob '!release-notes/**' .`, then re-run
-`.github/scripts/test/run-tests.sh`.
+`rg -n 'release-notes/v<old>' --glob '!release-notes/**' .`. Run
+`.github/scripts/test/run-tests.sh` **after** the deletion as well as before it — a run against the
+pre-pruning tree says nothing about the tree you are committing.
 
 ---
 
