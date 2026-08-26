@@ -174,6 +174,16 @@ Use the `v` form; the fallback exists only for old directories.
 * Include real short commit hashes (e.g. `(5f3d34d)`) — this file is the open-source accountability
   record. Internal work (docs, CI, tests) belongs here too, in a lower section.
 
+### 🗑️ Retention — this directory keeps the last **20** releases
+
+When a bump takes the count past 20, delete the oldest `v*` directories in the same
+`chore(release)` commit until 20 remain. Nothing reads a past release's directory: the published
+GitHub release bodies are already on GitHub, F-Droid's changelog history lives in
+`fastlane/metadata/android/*/changelogs/<versionCode>.txt` — **which is never pruned** — and every
+script here takes the version as an argument. Before deleting, confirm the same with
+`rg -n 'release-notes/v<old>' --glob '!release-notes/**' .`, then re-run
+`.github/scripts/test/run-tests.sh`.
+
 ---
 
 ## ⚠️ Traps that have already cost a release
