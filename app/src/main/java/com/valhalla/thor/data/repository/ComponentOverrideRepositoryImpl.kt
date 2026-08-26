@@ -61,7 +61,8 @@ class ComponentOverrideRepositoryImpl(
  * component Thor disabled — leaving it disabled with nothing to restore it from, which is the one
  * outcome this table exists to prevent. Being filed under the wrong heading costs a misplaced row.
  */
-private fun ComponentOverrideEntity.toDomain(): ComponentOverride = ComponentOverride(
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal fun ComponentOverrideEntity.toDomain(): ComponentOverride = ComponentOverride(
     packageName = packageName,
     className = className,
     type = ComponentType.entries.firstOrNull { it.name == componentType } ?: ComponentType.ACTIVITY,

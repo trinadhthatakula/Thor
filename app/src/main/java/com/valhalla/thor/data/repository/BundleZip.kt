@@ -118,7 +118,8 @@ internal fun isSafeEntryFileName(name: String): Boolean =
  * simply under-declare it. So a pre-check on [java.util.zip.ZipEntry.size] is an optimisation
  * and this is the actual bound.
  */
-private fun InputStream.readAtMost(limit: Long): ByteArray? {
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal fun InputStream.readAtMost(limit: Long): ByteArray? {
     val out = ByteArrayOutputStream()
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
     var total = 0L

@@ -553,7 +553,8 @@ private const val MANIFEST = "thor-backup-*.json"
  * overwrite the first one's description; that makes its exact name unassertable, and pinning the
  * shape is what is actually worth pinning.
  */
-private fun stableNames(writes: List<String>): List<String> = writes.map { entry ->
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal fun stableNames(writes: List<String>): List<String> = writes.map { entry ->
     val name = entry.substringBefore(':')
     val isManifest = name.startsWith(BackupIndex.FILE_NAME_PREFIX) &&
             name.endsWith(BackupIndex.FILE_NAME_SUFFIX)

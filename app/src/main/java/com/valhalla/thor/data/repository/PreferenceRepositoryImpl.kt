@@ -92,7 +92,8 @@ private val writeFailureLatch = MutableStateFlow(false)
  * user deliberately armed *silently* is precisely what `SecurityViewModel` is written not to do, so
  * the loss is recorded here, carried on [UserPreferences.settingsLost], and said out loud.
  */
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
     name = SETTINGS_STORE,
     corruptionHandler = ReplaceFileCorruptionHandler {
         Logger.e(TAG, "$SETTINGS_STORE was unreadable; replacing it with an empty file", it)
@@ -125,7 +126,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
  * this file holds falls back to "we have not offered yet", which re-offers the recovery prompt
  * rather than withholding anything.
  */
-private val Context.localState: DataStore<Preferences> by preferencesDataStore(
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal val Context.localState: DataStore<Preferences> by preferencesDataStore(
     name = LOCAL_STORE,
     corruptionHandler = ReplaceFileCorruptionHandler {
         Logger.e(TAG, "$LOCAL_STORE was unreadable; replacing it with an empty file", it)
