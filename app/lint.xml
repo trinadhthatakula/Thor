@@ -67,4 +67,30 @@
     <issue id="SdCardPath">
         <ignore path="src/test/**" />
     </issue>
+
+    <!--
+      SyntheticAccessor is the one check in this file that is being turned *on*: it ships
+      enabledByDefault = false, so naming a severity here is what enables it, and warningsAsErrors
+      then makes it fatal. :bypass took the equivalent step in its own build.gradle.kts lint block;
+      :app puts it here because that is where this module keeps a rule's reason next to the rule.
+
+      Measured on :app:lintStoreRelease before the fixes: 62 findings from 14 declarations. Eight are
+      top-level `private` declarations reached from a class in the same file — the file facade
+      (FooKt) is a separate JVM class, so every such reference costs an access$ bridge — and six are
+      `private` class members reached from a lambda or coroutine body that compiles to its own class.
+      All 14 are now `internal`, which is where the count came from: 33 for dataStore and 8 for
+      SUSPEND_USER_ID alone. Counted for storeRelease, with checkTestSources = true and the store
+      source set in scope; the doc's older "43 main / 51 storeDebug" was measured 2026-08-07 and the
+      module has grown since. Do not quote a SyntheticAccessor count without naming the variant.
+
+      What it is worth, measured rather than assumed: the *release* dex holds 21 access$ methods out
+      of 30,682 total, against 3,563 in storeDebug — R8 inlines almost all of them. Only three of the
+      62 findings named a bridge that actually survives to the shipped APK (ThorRootService's
+      clearAppData, dumpPackage and setAppSuspendedAs, kept verbatim because the class is), and the
+      other 18 survivors belong to Odin, which checkDependencies = false puts out of scope anyway. So
+      the follow-up doc's "method count against the 64K limit" framing overstates this by ~20x. It is
+      enabled regardless, for the reason it is enabled everywhere else here: a debug build carries
+      every one of those bridges, and pinning at zero is cheap while re-privatising later is not.
+    -->
+    <issue id="SyntheticAccessor" severity="warning" />
 </lint>

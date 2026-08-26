@@ -340,7 +340,8 @@ class AppBundleFileStoreImpl(
      * `MediaColumns.DISPLAY_NAME`, not `Downloads.DISPLAY_NAME` — the same string, from a class that has
      * existed since API 1, so this helper needs no API gate of its own.
      */
-    private fun displayNameOf(resolver: ContentResolver, uri: Uri): String? = try {
+    // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
+    internal fun displayNameOf(resolver: ContentResolver, uri: Uri): String? = try {
         resolver.query(
             uri,
             arrayOf(MediaStore.MediaColumns.DISPLAY_NAME),

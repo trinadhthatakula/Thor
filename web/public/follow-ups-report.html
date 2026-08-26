@@ -1062,20 +1062,20 @@
 
         <!-- Pick 4: Static Analysis :app SyntheticAccessors -->
         <div class="action-card">
-          <span class="rank-badge">#4 HYGIENE</span>
+          <span class="rank-badge">#4 SHIPPED 2026-08-26</span>
           <div class="card-top">
-            <h4 class="card-title">Fix 43 <code>SyntheticAccessor</code> Warnings in <code>:app</code></h4>
+            <h4 class="card-title">Fix <code>SyntheticAccessor</code> Warnings in <code>:app</code> — done, 62 not 43</h4>
           </div>
           <div class="card-meta">
-            <span class="meta-chip">Impact: 3.0 / 5.0</span>
+            <span class="meta-chip">Impact: 1.0 / 5.0 (revised down)</span>
             <span class="meta-chip ease-high">Effort: ≈ 1 Hour</span>
-            <span class="meta-chip">DEX Optimization</span>
+            <span class="meta-chip">Rot prevention, not DEX optimization</span>
           </div>
           <p class="card-body">
-            Following the successful fix of 18 <code>SyntheticAccessor</code> warnings in <code>:bypass</code> (Band A #12), widening Companion methods from <code>private</code> to <code>internal</code> across <code>:app</code> eliminates 43 synthetic bytecode bridges, reducing APK method count against the 64K limit.
+            Closed by widening 15 declarations from <code>private</code> to <code>internal</code> and enabling the check in <code>app/lint.xml</code>, following <code>:bypass</code> (Band A #12). Two corrections to this card's original claim, both measured: the count was <strong>62 findings from 14 declarations</strong>, not 43 — and the <strong>APK payoff was overstated by ~20x</strong>. The release dex holds 21 <code>access$</code> methods out of 30,682 against 3,563 in debug, so R8 had already inlined nearly all of them; the fix removed <strong>3</strong>. Worth doing to stop the count rotting, not as a 64K-limit lever.
           </p>
           <div class="card-footer">
-            <span>Target: <code>app/src/main/java</code></span>
+            <span>Target: <code>app/src/main/java</code>, <code>app/lint.xml</code></span>
             <strong style="color: var(--primary);">Static Analysis</strong>
           </div>
         </div>
@@ -1426,18 +1426,18 @@
       },
       {
         id: "synthetic_app",
-        title: "Static Analysis: 43 SyntheticAccessors in :app",
+        title: "Static Analysis: SyntheticAccessors in :app (62, not 43)",
         doc: "static-analysis-switched-off-by-default.md",
-        files: "app/build.gradle.kts, app/src/main/java/**/*.kt",
-        status: "open",
-        statusText: "Open (Hygiene)",
-        impact: 3.0,
+        files: "app/lint.xml, app/src/main/java/**/*.kt, app/src/store/**, app/src/test/**",
+        status: "shipped",
+        statusText: "Fixed & Shipped 2026-08-26",
+        impact: 1.0,
         ease: 4.8,
         effort: "≈ 1 Hour",
         category: "quality",
-        summary: "43 SyntheticAccessor warnings in :app main source generate synthetic accessor bridge methods that inflate DEX method count.",
-        rootCause: "Companion methods and nested classes declared private accessed across outer/companion boundaries.",
-        solution: "Widen visibility from private to internal across affected companion methods, matching the fix applied to :bypass in Band A #12.",
+        summary: "62 findings from 14 declarations (not 43 — that was a 2026-08-05 measurement of a smaller tree), plus 4 more in test sources that only the debug lint variants report. Measured payoff is far smaller than this entry originally claimed: the release dex carries 21 access$ methods out of 30,682 against 3,563 in debug, so R8 already inlined nearly all of them and the fix removed 3.",
+        rootCause: "Two shapes. Eight top-level private declarations reached from a class in the same file — Kotlin hosts those on the file facade (FooKt), a different JVM class — and six private class members reached from a lambda or coroutine body that compiles to its own class. No companion objects were involved in :app.",
+        solution: "Widened all 15 to internal and enabled the check via <issue id=\"SyntheticAccessor\" severity=\"warning\"/> in app/lint.xml, in the same change because warningsAsErrors makes enabling it alone a red build. Justified as rot prevention, not as a 64K-limit or APK-size lever.",
         hardwareRequired: false
       },
       {

@@ -136,7 +136,8 @@ sealed class UiText {
  * Returns `this` untouched in the overwhelmingly common no-nesting case, so the allocation only
  * happens where it is needed.
  */
-private fun Array<out Any>.resolved(context: Context): Array<out Any> =
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal fun Array<out Any>.resolved(context: Context): Array<out Any> =
     resolvedWith { it.asString(context) }
 
 /**

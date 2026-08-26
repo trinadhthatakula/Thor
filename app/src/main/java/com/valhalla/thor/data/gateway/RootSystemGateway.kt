@@ -86,7 +86,8 @@ private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
  * parse and flag read finally name one user. It keeps its own symbol rather than being spelled
  * [thorUserId] at each site so that the set of places which must agree stays one grep.
  */
-private val SUSPEND_USER_ID: Int get() = thorUserId
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal val SUSPEND_USER_ID: Int get() = thorUserId
 
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
