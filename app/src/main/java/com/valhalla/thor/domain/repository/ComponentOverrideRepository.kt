@@ -19,7 +19,9 @@ interface ComponentOverrideRepository {
     /** The rows for one package, as a stream so the "N restricted by Thor" header cannot lag. */
     fun observe(packageName: String): Flow<List<ComponentOverride>>
 
-    /** Every row, for the cross-app restore. */
+    /**
+     * Every row **for that user**, for the cross-app restore — which is not the same as device-wide.
+     */
     suspend fun getAll(): List<ComponentOverride>
 
     /**

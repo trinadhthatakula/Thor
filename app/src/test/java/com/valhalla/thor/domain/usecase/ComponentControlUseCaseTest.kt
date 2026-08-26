@@ -334,11 +334,12 @@ class ComponentControlUseCaseTest {
     }
 
     /**
-     * A partial run is the interesting one. The rows that failed have to stay — they are still
-     * disabled and this ledger is the only record of that — and the count reported has to be the
-     * number actually restored, not the number tried. The banner says "N restricted by Thor" from
-     * the same rows, so a run that cleared them all regardless would show 0 while N components were
-     * still switched off.
+     * A partial run is the interesting one. The row that stays behind here failed at the platform, so
+     * it really is still disabled and this ledger is the only record of that — but that is one of two
+     * ways to survive the sweep, and `restore all under-reports a row whose ledger delete failed`
+     * covers the other. Either way the count reported has to be the number actually restored, not the
+     * number tried. The banner says "N restricted by Thor" from the same rows, so a run that cleared
+     * them all regardless would show 0 while N components were still switched off.
      */
     @Test
     fun `a partial restore keeps the rows it could not restore`() = runTest {
