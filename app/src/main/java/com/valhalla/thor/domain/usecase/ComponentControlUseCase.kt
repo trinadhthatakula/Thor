@@ -136,10 +136,12 @@ class ComponentControlUseCase(
     /**
      * Put every component Thor disabled back the way it found it.
      *
-     * Each row is restored to its own `restoreToEnabled`, and a row is forgotten only when its own
-     * call succeeds. A partial failure therefore leaves exactly the rows that are still overridden,
-     * which is what makes pressing Restore All again a safe retry rather than a second, different
-     * operation.
+     * Each row is restored to its own `restoreToEnabled`, and a row is forgotten only when **both**
+     * its platform call and its ledger delete succeed. A partial failure therefore leaves exactly the
+     * rows that did not fully complete, which is what makes pressing Restore All again a safe retry
+     * rather than a second, different operation. That set is wider than "the components still
+     * disabled": one the platform put back whose row could not be deleted stays behind too, and the
+     * next press restores an already-restored component, which costs nothing.
      *
      * A row counts as restored only when **both** halves land. Counting a successful platform call
      * whose ledger delete failed would report "restored 3 of 3" while a row was still sitting in the
