@@ -1060,7 +1060,7 @@
           </div>
         </div>
 
-        <!-- Pick 4: Static Analysis :app SyntheticAccessors -->
+        <!-- Pick 4: Static Analysis :app SyntheticAccessor -->
         <div class="action-card">
           <span class="rank-badge">#4 SHIPPED 2026-08-26</span>
           <div class="card-top">
@@ -1072,10 +1072,10 @@
             <span class="meta-chip">Rot prevention, not DEX optimization</span>
           </div>
           <p class="card-body">
-            Closed by widening 15 declarations from <code>private</code> to <code>internal</code> and enabling the check in <code>app/lint.xml</code>, following <code>:bypass</code> (Band A #12). Two corrections to this card's original claim, both measured: the count was <strong>62 findings from 14 declarations</strong>, not 43 — and the <strong>APK payoff was overstated by ~20x</strong>. The release dex holds 21 <code>access$</code> methods out of 30,682 against 3,563 in debug, so R8 had already inlined nearly all of them; the fix removed <strong>3</strong>. Worth doing to stop the count rotting, not as a 64K-limit lever.
+            Closed by widening 15 declarations from <code>private</code> to <code>internal</code> and enabling the check in <code>app/lint.xml</code>, following <code>:bypass</code> (Band A #12). The 15 are <strong>11 in <code>main</code>, 3 in the <code>store</code> flavour and 1 in test sources</strong> — that last one reported by neither <code>lintStoreRelease</code> nor a failing build, so it is invisible to CI. Two corrections to this card's original claim, both measured: the count was <strong>62 findings from 14 declarations</strong> (the 15th is the test one), not 43 — and the <strong>APK payoff was overstated by ~20x</strong>. The release dex holds 21 <code>access$</code> methods out of 30,682 against 3,563 in debug, so R8 had already inlined nearly all of them; the fix removed <strong>3</strong>. Worth doing to stop the count rotting, not as a 64K-limit lever.
           </p>
           <div class="card-footer">
-            <span>Target: <code>app/src/main/java</code>, <code>app/lint.xml</code></span>
+            <span>Target: <code>app/lint.xml</code>, <code>app/src/main</code>, <code>app/src/store</code>, <code>app/src/test</code></span>
             <strong style="color: var(--primary);">Static Analysis</strong>
           </div>
         </div>
@@ -1426,7 +1426,7 @@
       },
       {
         id: "synthetic_app",
-        title: "Static Analysis: SyntheticAccessors in :app (62, not 43)",
+        title: "Static Analysis: SyntheticAccessor in :app (62 findings, not 43)",
         doc: "static-analysis-switched-off-by-default.md",
         files: "app/lint.xml, app/src/main/java/**/*.kt, app/src/store/**, app/src/test/**",
         status: "shipped",
