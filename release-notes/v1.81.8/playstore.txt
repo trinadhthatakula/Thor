@@ -1,5 +1,0 @@
-- Added User/System app filtering in Freezer Settings.
-- Automatically import disabled apps outside the Freezer.
-- Root dashboard option to clear user/system app caches.
-- Upgraded app sharing to export actual APK/APKS files.
-- Fixed AppList state filtering bugs.
