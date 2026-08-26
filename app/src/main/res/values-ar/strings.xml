@@ -805,7 +805,7 @@
         <item quantity="many">تمت استعادة %1$d مكوّنًا</item>
         <item quantity="other">تمت استعادة %1$d مكوّن</item>
     </plurals>
-    <string name="component_restore_all_partial">تمت استعادة %1$d من %2$d — والباقي ما زال مقيَّدًا</string>
+    <string name="component_restore_all_partial">تمت استعادة %1$d من %2$d — حاول مرة أخرى لاستعادة الباقي</string>
     <string name="component_restore_all_action">استعادة الكل</string>
     <string name="component_restore_all_title">استعادة كل المكونات؟</string>
     <string name="component_restore_all_message">كل مكوّن عطّله Thor — في هذا التطبيق وفي كل التطبيقات الأخرى — سيعود إلى حالته الأصلية كما جاء بها التطبيق. أما المكونات التي غيّرتها أدوات أخرى فتبقى دون تغيير.</string>

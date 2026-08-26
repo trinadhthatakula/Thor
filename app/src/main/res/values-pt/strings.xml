@@ -811,7 +811,7 @@
         <item quantity="one">%1$d componente reposto</item>
         <item quantity="other">%1$d componentes repostos</item>
     </plurals>
-    <string name="component_restore_all_partial">Reposição: %1$d de %2$d — os restantes continuam restringidos</string>
+    <string name="component_restore_all_partial">Reposição: %1$d de %2$d — tente novamente para repor os restantes</string>
     <string name="component_restore_all_action">Repor tudo</string>
     <string name="component_restore_all_title">Repor todos os componentes?</string>
     <string name="component_restore_all_message">Todos os componentes que o Thor desativou — nesta aplicação e em todas as outras — voltam ao estado de origem. Os componentes alterados por outras ferramentas ficam intactos.</string>

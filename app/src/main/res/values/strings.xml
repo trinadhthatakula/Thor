@@ -594,7 +594,16 @@
         <item quantity="one">Restored %1$d component</item>
         <item quantity="other">Restored %1$d components</item>
     </plurals>
-    <string name="component_restore_all_partial" tools:ignore="PluralsCandidate">Restored %1$d of %2$d — the rest are still restricted</string>
+    <!--
+      "try again", not "the rest are still restricted": a row survives Restore All in two ways, and
+      only one of them leaves the component switched off. The other is a platform call that succeeded
+      whose ledger delete failed — that component is back on, and if it belongs to the app on screen
+      the refresh that follows this message relabels its row "Changed elsewhere", so the old wording
+      contradicted the very screen it appeared over. Naming the state is wrong for half the set;
+      naming the remedy is true for both, because the row that stayed behind is what makes the next
+      press a retry and setComponentEnabled is idempotent. See ComponentControlUseCase.restoreAll.
+    -->
+    <string name="component_restore_all_partial" tools:ignore="PluralsCandidate">Restored %1$d of %2$d — try again to finish the rest</string>
     <string name="component_restore_all_action">Restore all</string>
     <string name="component_restore_all_title">Restore every component?</string>
     <string name="component_restore_all_message">Every component Thor disabled — in this app and in every other — goes back to how it shipped. Components changed by other tools are left alone.</string>

@@ -745,7 +745,7 @@
         <item quantity="one">Se restauró %1$d componente</item>
         <item quantity="other">Se restauraron %1$d componentes</item>
     </plurals>
-    <string name="component_restore_all_partial">Restauración: %1$d de %2$d — el resto sigue restringido</string>
+    <string name="component_restore_all_partial">Restauración: %1$d de %2$d — inténtalo de nuevo para restaurar el resto</string>
     <string name="component_restore_all_action">Restaurar todo</string>
     <string name="component_restore_all_title">¿Restaurar todos los componentes?</string>
     <string name="component_restore_all_message">Todos los componentes que Thor desactivó — en esta aplicación y en todas las demás — vuelven al estado con el que venían de fábrica. Los componentes cambiados por otras herramientas se quedan tal cual.</string>

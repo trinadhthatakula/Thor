@@ -731,7 +731,7 @@
     <plurals name="component_restore_all_success">
         <item quantity="other">已恢复 %1$d 个组件</item>
     </plurals>
-    <string name="component_restore_all_partial">已恢复 %2$d 个组件中的 %1$d 个 — 其余仍处于受限状态</string>
+    <string name="component_restore_all_partial">已恢复 %2$d 个组件中的 %1$d 个 — 请重试以恢复其余组件</string>
     <string name="component_restore_all_action">全部恢复</string>
     <string name="component_restore_all_title">恢复所有组件？</string>
     <string name="component_restore_all_message">Thor 禁用过的每一个组件 — 无论在此应用中还是在其他应用中 — 都会恢复为出厂时的状态。由其他工具更改的组件不会受到影响。</string>
