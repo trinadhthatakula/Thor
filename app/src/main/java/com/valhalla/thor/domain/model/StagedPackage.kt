@@ -13,8 +13,10 @@ import java.io.File
  * device, and in a privileged install mode there is no OS confirmation dialog. Reading that URI
  * twice — once to build the sheet the user approves, once to install — lets the provider serve
  * two different files: a clean APK for the "4 permissions" the sheet shows, spyware for the
- * `pm install -r -g` that follows. So the bytes the user was shown are the bytes that get
- * installed, and the URI is never opened again.
+ * privileged install that follows. So the bytes the user was shown are the bytes that get
+ * installed, and the URI is never opened again. Whether that install also *grants* those
+ * permissions is now the user's `grantAllPermissionsOnInstall` answer (GH#445) and does not change
+ * the argument here: the sheet is a claim about what the substituted APK would be free to ask for.
  *
  * @param file app-private copy of the input. It OUTLIVES the analysis that produced it — whoever
  *   asked for the analysis owns it and must delete it on every exit path (installed, failed,

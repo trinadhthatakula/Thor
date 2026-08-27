@@ -29,6 +29,8 @@
     <string name="show_extensions_tile_desc">Pokaż Rozszerzenia na ekranie głównym</string>
     <string name="auto_reinstall">Automatyczna reinstalacja aplikacji</string>
     <string name="auto_reinstall_desc">Automatycznie zachowuj Google Play Store jako zarejestrowany instalator, aby umożliwić aktualizacje w tle</string>
+    <string name="grant_all_permissions">Przyznaj wszystkie uprawnienia przy instalacji</string>
+    <string name="grant_all_permissions_desc">Nadaj aplikacji wszystkie żądane uprawnienia zaraz po instalacji, bez pytania. Domyślnie wyłączone; w obu przypadkach aktualizacje zachowują już przyznane uprawnienia</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Domyślna karta</string>
     <string name="default_tab_desc">Ekran otwierany przez aplikację Thor po uruchomieniu</string>

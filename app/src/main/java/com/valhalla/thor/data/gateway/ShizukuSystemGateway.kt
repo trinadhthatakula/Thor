@@ -513,6 +513,7 @@ class ShizukuSystemGateway(
             apks = listOf(SessionApk(path = apkPath, sizeBytes = file.length(), name = file.name)),
             userId = thorUserId,
             canDowngrade = canDowngrade,
+            grantAllPermissions = preferenceRepository.shouldGrantAllPermissionsOnInstall(),
             installerArg = installerArg,
         )
 

@@ -29,6 +29,8 @@
     <string name="show_extensions_tile_desc">Mostrar Extensões no ecrã principal</string>
     <string name="auto_reinstall">Reinstalar aplicações automaticamente</string>
     <string name="auto_reinstall_desc">Preservar automaticamente a Google Play Store como instalador registado, para permitir atualizações em segundo plano</string>
+    <string name="grant_all_permissions">Conceder todas as permissões ao instalar</string>
+    <string name="grant_all_permissions_desc">Dar à aplicação todas as permissões que pede assim que for instalada, sem perguntar. Desativado por predefinição; em ambos os casos, as atualizações mantêm as permissões já concedidas</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Separador predefinido</string>
     <string name="default_tab_desc">O ecrã que o Thor abre ao arrancar</string>

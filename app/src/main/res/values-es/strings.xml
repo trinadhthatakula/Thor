@@ -494,6 +494,8 @@
     <string name="freeze_system_app_disable_failed">No se puede congelar %1$s. Nada en este dispositivo ha rechazado la petición, así que es más probable que sea un fallo de Thor que una restricción. La aplicación sigue instalada y sin cambios: informa del problema, por favor.</string>
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
+    <string name="grant_all_permissions">Conceder todos los permisos al instalar</string>
+    <string name="grant_all_permissions_desc">Dar a la aplicación todos los permisos que solicita en cuanto se instala, sin preguntar. Desactivado de forma predeterminada; en ambos casos, las actualizaciones conservan los permisos que ya habías concedido</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
     <string name="legacy_extension_desc">Se ha detectado una versión heredada de la extensión Stormbringer (escrita incorrectamente como \"Strombringer\"). Por favor, desinstálala para evitar conflictos e instala la versión actualizada.</string>
     <string name="action_export">Exportar</string>

@@ -658,6 +658,7 @@ class InstallerRepositoryImpl(
         eventBus.emit(InstallState.Installing(0.5f))
 
         val installerArg = preferenceRepository.getInstallerArg()
+        val grantAll = preferenceRepository.shouldGrantAllPermissionsOnInstall()
 
         return try {
             // The shell rung, and normally the one that decides the outcome: the PackageInstaller
@@ -699,6 +700,7 @@ class InstallerRepositoryImpl(
                 },
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
+                grantAllPermissions = grantAll,
                 installerArg = installerArg,
             )
             val result = ShizukuHelper.execute(integrityGuardedInstall(digests, command))
@@ -745,6 +747,7 @@ class InstallerRepositoryImpl(
         eventBus.emit(InstallState.Installing(0.5f))
 
         val installerArg = preferenceRepository.getInstallerArg()
+        val grantAll = preferenceRepository.shouldGrantAllPermissionsOnInstall()
 
         return try {
             // Same rung, same seed, same fix as installWithShizuku above — and the same pairing
@@ -769,6 +772,7 @@ class InstallerRepositoryImpl(
                 },
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
+                grantAllPermissions = grantAll,
                 installerArg = installerArg,
             )
             val result = DhizukuHelper.execute(integrityGuardedInstall(digests, command))
@@ -809,6 +813,15 @@ class InstallerRepositoryImpl(
 
         eventBus.emit(InstallState.Parsing)
 
+        // No install-time permission grant here, and deliberately not wired to
+        // `UserPreferences.grantAllPermissionsOnInstall` either. `SessionParams` exposes no public
+        // way to ask for one — the shell's `-g` is `INSTALL_GRANT_ALL_REQUESTED_PERMISSIONS`, a bit
+        // in the hidden `installFlags` field — and a session created with a flag the caller is not
+        // allowed to set fails outright rather than degrading, so reaching for it would turn a
+        // convenience toggle into an install that stops working. This rung has never granted
+        // anything and is not the rung GH#445 was about; it is the *fallback*, reached only when the
+        // shell rung above returns false. Consequence worth knowing: with the toggle on, a package
+        // that lands here comes up ungranted, the same as with it off.
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
         )
@@ -1161,8 +1174,11 @@ internal fun writeEntriesWithinBudget(
  * The Shizuku/Dhizuku rungs have to stage into shared storage (see installWithShizuku), where on
  * API 28-29 — minSdk is 28, and Android/data was not sandboxed until 11 — any app holding
  * WRITE_EXTERNAL_STORAGE can watch the directory with a FileObserver and swap base.apk before
- * `pm` reads it. `pm install -r -g` would then install the attacker's package, silently and with
- * every runtime permission granted, while the sheet showed the app the user actually picked.
+ * `pm` reads it. The session would then install the attacker's package, silently — and, if the user
+ * has turned `grantAllPermissionsOnInstall` on, with every runtime permission already granted —
+ * while the sheet showed the app the user actually picked. Note which half of that this guard is
+ * for: turning the grant off narrows the blast radius, it does not close the swap, so the check
+ * still has to run on every install regardless of what the toggle says.
  *
  * Running the check inside the same shell invocation is the point: doing it from Thor's process
  * would put a binder round trip and a process spawn between the check and the read. A window

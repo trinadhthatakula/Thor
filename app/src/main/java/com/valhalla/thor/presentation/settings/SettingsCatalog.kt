@@ -134,6 +134,11 @@ enum class SettingsRowId(
 
     // ── Installing & sharing ────────────────────────────────────────────────────────────────────
     AUTO_REINSTALL(SettingsCategory.INSTALLING, R.string.auto_reinstall, R.string.auto_reinstall_desc),
+    GRANT_ALL_PERMISSIONS(
+        SettingsCategory.INSTALLING,
+        R.string.grant_all_permissions,
+        R.string.grant_all_permissions_desc,
+    ),
     ANY_FILE_OPENER(
         SettingsCategory.INSTALLING,
         R.string.any_file_opener,

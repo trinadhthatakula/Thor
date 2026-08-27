@@ -439,6 +439,7 @@ class DhizukuSystemGateway(
                 ),
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
+                grantAllPermissions = preferenceRepository.shouldGrantAllPermissionsOnInstall(),
                 installerArg = installerArg,
             )
         )

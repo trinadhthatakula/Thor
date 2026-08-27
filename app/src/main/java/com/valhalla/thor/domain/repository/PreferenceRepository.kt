@@ -140,6 +140,20 @@ interface PreferenceRepository {
     suspend fun setAutoReinstallEnabled(enabled: Boolean)
     suspend fun getInstallerArg(): String
 
+    // --- Installing ---
+    suspend fun setGrantAllPermissionsOnInstall(enabled: Boolean)
+
+    /**
+     * One-shot read of [UserPreferences.grantAllPermissionsOnInstall], for the install path.
+     *
+     * A read rather than a collect, and a separate method rather than `userPreferences.first()` at
+     * each call site, for the same reason [getInstallerArg] is one: the five places that build an
+     * install command are not composables and must not hold a subscription, and a default that
+     * differs between them is the failure mode this is guarding — `false` here has to mean "the user
+     * did not ask for this", never "this caller forgot to look".
+     */
+    suspend fun shouldGrantAllPermissionsOnInstall(): Boolean
+
     // --- Customization ---
     suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>)
     suspend fun setAppInfoActionVisibility(actionId: AppInfoActionId, isVisible: Boolean)

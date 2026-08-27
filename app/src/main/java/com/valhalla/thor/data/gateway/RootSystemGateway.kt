@@ -1231,6 +1231,7 @@ class RootSystemGateway(
                 apks = staged,
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
+                grantAllPermissions = preferenceRepository.shouldGrantAllPermissionsOnInstall(),
                 installerArg = preferenceRepository.getInstallerArg(),
             )
         )

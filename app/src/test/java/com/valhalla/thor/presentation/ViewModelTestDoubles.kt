@@ -629,6 +629,18 @@ class FakePreferenceRepository(
 
     override suspend fun getInstallerArg(): String = ""
 
+    override suspend fun setGrantAllPermissionsOnInstall(enabled: Boolean) {
+        write { it.copy(grantAllPermissionsOnInstall = enabled) }
+    }
+
+    // Reads the stored value rather than returning a constant `false`: this is the seam GH#445 ran
+    // through, so a fake that answers "no" whatever was written would let a caller that never
+    // forwards the preference pass every test. Straight off `prefs` rather than through
+    // `userPreferences`, which [firstReadDelayMs] can hold open — that delay models a slow *startup*
+    // read and has nothing to say about a one-shot read on the install path.
+    override suspend fun shouldGrantAllPermissionsOnInstall(): Boolean =
+        prefs.value.grantAllPermissionsOnInstall
+
     override suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>) {
         write { it.copy(appInfoActionsOrder = order) }
     }
