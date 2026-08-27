@@ -199,6 +199,47 @@ class InstallGrantCallSitesTest {
         )
     }
 
+    /**
+     * One [InstallerViewModel] outlives one pick — `BackupRestoreHubScreen` parses through a single
+     * instance repeatedly, and `parsePackage` is written for that case, cancelling the previous
+     * analysis and discarding its staged copy. The override has to be discarded with them, or a
+     * ticked box carries "grant everything" from an APK the user trusted onto the next one they
+     * have not looked at yet.
+     *
+     * Back to `null`, not `false`: an install nobody answered for follows the saved setting, and
+     * `false` would answer for them in the other direction.
+     */
+    @Test
+    fun `a new package clears the previous package's answer`() {
+        val source = stripComments(sourceOf(VIEW_MODEL))
+        val parse = source.substringAfter("fun parsePackage(").substringBefore("\n    private")
+
+        // The slice, before it is trusted. `substringBefore` returns everything when its delimiter
+        // is gone, so a rename downstream would silently widen this to the rest of the file and the
+        // assertions below would start passing on a reset made somewhere else entirely.
+        assertTrue(
+            "the parsePackage slice missed its own body — the extraction is reading the wrong span",
+            parse.contains("analysisJob")
+        )
+        assertFalse(
+            "the parsePackage slice ran past the end of the function, so this test no longer says " +
+                "where the reset happens",
+            parse.contains("fun startInstallation")
+        )
+
+        assertTrue(
+            "parsePackage does not reset _grantAllOverride, so the checkbox answer for one APK " +
+                "silently applies to the next one picked in the same installer session.",
+            parse.contains("_grantAllOverride.value = null")
+        )
+        assertFalse(
+            "parsePackage resets the override to a concrete answer. Null is the reset: it means " +
+                "nobody was asked about this package, which is what defers to the saved setting.",
+            parse.contains("_grantAllOverride.value = false") ||
+                parse.contains("_grantAllOverride.value = true")
+        )
+    }
+
     @Test
     fun `the installer never writes the setting`() {
         // The user's requirement, and not something the type system defends: the setter is on the

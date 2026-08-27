@@ -86,8 +86,12 @@ internal const val SESSION_COMMIT_FAILED_EXIT_CODE = 103
  *   `USER_SYSTEM` plus `INSTALL_ALL_USERS` — installing on every user of the device, and exiting 0.
  * @param canDowngrade adds `-d`. Permissive only, so it is opt-in.
  * @param grantAllPermissions adds `-g`, granting every runtime permission the package declares at
- *   install time without asking the user. **Default `false`, and every caller must pass the user's
- *   answer explicitly rather than lean on that default.** It was unconditional until GH#445: an app
+ *   install time without asking the user. **Required, with no default**, so that a caller cannot
+ *   omit the user's answer: this used to say "every caller must pass it explicitly" and leave a
+ *   `false` default in the signature, which is a rule a reviewer enforces rather than the compiler.
+ *   The safe direction is not the point — a caller that silently takes `false` ignores a user who
+ *   turned the setting on, which is the same shape of unasked decision, pointing the other way. It
+ *   was unconditional until GH#445: an app
  *   installed through Thor came up with location, contacts and microphone already granted, which is
  *   neither what the platform installer does nor anything the UI said was happening. `-r` on its own
  *   does not touch permissions already granted, so an update keeps what the user had chosen —
@@ -104,7 +108,7 @@ internal fun installViaSessionCommand(
     apks: List<SessionApk>,
     userId: Int,
     canDowngrade: Boolean = false,
-    grantAllPermissions: Boolean = false,
+    grantAllPermissions: Boolean,
     installerArg: String = "",
 ): String {
     require(apks.isNotEmpty()) { "installViaSessionCommand needs at least one APK" }

@@ -354,7 +354,11 @@ class InstallSessionCommandsTest {
     @Test
     fun `paths are escaped here, and only here`() {
         val awkward = SessionApk("/data/cache/it's here/base.apk", sizeBytes = 1)
-        val script = installViaSessionCommand(listOf(awkward), userId = 0)
+        val script = installViaSessionCommand(
+            listOf(awkward),
+            userId = 0,
+            grantAllPermissions = false,
+        )
 
         assertTrue(
             "single quotes in a path must be neutralised, not passed through: $script",
@@ -370,7 +374,7 @@ class InstallSessionCommandsTest {
      */
     @Test(expected = IllegalArgumentException::class)
     fun `an install with no APK is refused`() {
-        installViaSessionCommand(emptyList(), userId = 0)
+        installViaSessionCommand(emptyList(), userId = 0, grantAllPermissions = false)
     }
 
     // --- the extraction is behaviour-preserving for the one rung that already worked ---
@@ -416,8 +420,9 @@ class InstallSessionCommandsTest {
     }
 
     /**
-     * What Thor actually runs now, spelled out for the same reason as the test above: the default is
-     * the path essentially every install takes, so it is the one that has to be legible at a glance.
+     * What Thor actually runs now, spelled out for the same reason as the test above: with the
+     * setting off and the installer's box unticked this is the path essentially every install takes,
+     * so it is the one that has to be legible at a glance.
      *
      * Pinned as a whole script rather than as "the other one minus `-g`" so that a change to the
      * grant cannot be mistaken for a change to anything else. The `-r` is still there — an update
@@ -442,6 +447,9 @@ class InstallSessionCommandsTest {
 
         """.trimIndent()
 
-        assertEquals(expected, installViaSessionCommand(listOf(base), userId = 0))
+        assertEquals(
+            expected,
+            installViaSessionCommand(listOf(base), userId = 0, grantAllPermissions = false),
+        )
     }
 }

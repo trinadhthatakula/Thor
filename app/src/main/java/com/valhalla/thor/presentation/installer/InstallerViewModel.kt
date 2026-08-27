@@ -133,6 +133,12 @@ class InstallerViewModel(
     fun parsePackage(uri: Uri) {
         pendingUri = uri
         ownsInstall = true
+        // A new package is a new question. Without this the box stays ticked from the previous
+        // pick, and "grant everything" carries from an APK the user trusted to one they have not
+        // looked at yet — this VM outlives a single pick (BackupRestoreHubScreen parses through
+        // one instance repeatedly), so that is the ordinary path, not an edge case. Back to null
+        // rather than false: the saved setting is what an unanswered install follows.
+        _grantAllOverride.value = null
         // A second pick replaces the first; the first's copy has no further use. Two things can
         // hold that copy, and both have to be released here.
         //
