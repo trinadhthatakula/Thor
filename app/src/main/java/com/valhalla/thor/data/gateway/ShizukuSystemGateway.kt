@@ -500,7 +500,11 @@ class ShizukuSystemGateway(
      * exited 0, the mirror image of the `DELETE_ALL_USERS` trap `uninstallCommand` documents. Every
      * other privileged command in this gateway already named a user; the install path did not.
      */
-    override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
+    override suspend fun installApp(
+        apkPath: String,
+        canDowngrade: Boolean,
+        grantAllPermissions: Boolean?,
+    ): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
 
         // Through the same session builder as every other install in the app. This override has no
@@ -513,7 +517,10 @@ class ShizukuSystemGateway(
             apks = listOf(SessionApk(path = apkPath, sizeBytes = file.length(), name = file.name)),
             userId = thorUserId,
             canDowngrade = canDowngrade,
-            grantAllPermissions = preferenceRepository.shouldGrantAllPermissionsOnInstall(),
+            // Caller's answer if it has one, saved setting otherwise — never `== true`, which
+            // would read "no answer" as "no" and override a user who turned the setting on.
+            grantAllPermissions = grantAllPermissions
+                ?: preferenceRepository.shouldGrantAllPermissionsOnInstall(),
             installerArg = installerArg,
         )
 

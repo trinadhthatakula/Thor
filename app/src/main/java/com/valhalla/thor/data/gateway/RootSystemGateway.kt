@@ -1182,12 +1182,20 @@ class RootSystemGateway(
         return runCommand(uninstallCommand(escapedPackage, thorUserId))
     }
 
-    override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
-        return installViaSession(listOf(apkPath), canDowngrade)
+    override suspend fun installApp(
+        apkPath: String,
+        canDowngrade: Boolean,
+        grantAllPermissions: Boolean?,
+    ): Result<Unit> {
+        return installViaSession(listOf(apkPath), canDowngrade, grantAllPermissions)
     }
 
-    suspend fun installMultipleApks(apkPaths: List<String>, canDowngrade: Boolean): Result<Unit> {
-        return installViaSession(apkPaths, canDowngrade)
+    suspend fun installMultipleApks(
+        apkPaths: List<String>,
+        canDowngrade: Boolean,
+        grantAllPermissions: Boolean? = null,
+    ): Result<Unit> {
+        return installViaSession(apkPaths, canDowngrade, grantAllPermissions)
     }
 
     /**
@@ -1211,7 +1219,8 @@ class RootSystemGateway(
      */
     private suspend fun installViaSession(
         apkPaths: List<String>,
-        canDowngrade: Boolean
+        canDowngrade: Boolean,
+        grantAllPermissions: Boolean?,
     ): Result<Unit> {
         if (apkPaths.isEmpty()) {
             return Result.failure(Exception("No APK paths provided for install"))
@@ -1231,7 +1240,11 @@ class RootSystemGateway(
                 apks = staged,
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
-                grantAllPermissions = preferenceRepository.shouldGrantAllPermissionsOnInstall(),
+                // The caller's answer if it has one, the saved setting otherwise. Not
+                // `grantAllPermissions == true`: that would read a missing answer as "no" and
+                // override a user who had turned the setting on.
+                grantAllPermissions = grantAllPermissions
+                    ?: preferenceRepository.shouldGrantAllPermissionsOnInstall(),
                 installerArg = preferenceRepository.getInstallerArg(),
             )
         )

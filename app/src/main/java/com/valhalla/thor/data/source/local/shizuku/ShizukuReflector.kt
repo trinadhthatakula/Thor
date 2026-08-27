@@ -362,9 +362,20 @@ class ShizukuReflector(
      *
      * @param apkPath Absolute path to the APK file.
      * @param canDowngrade Whether to allow downgrade.
+     * @param grantAllPermissions Whether to hand the package every runtime permission it declares,
+     *   at install time, without asking — `pm install-create -g`, the GH#445 flag. Required, with
+     *   no default, and that is the point: this class is a reflection layer with no
+     *   `PreferenceRepository` and no `suspend` to read one from, so it cannot resolve the question
+     *   itself. A default here would answer it silently for whoever calls this first. There is no
+     *   such caller yet, so the cost of requiring an answer is zero and the cost of defaulting is
+     *   an install that quietly disagrees with the user's setting.
      * @return true if installation command exited with 0 (Success).
      */
-    fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
+    fun installPackage(
+        apkPath: String,
+        canDowngrade: Boolean = false,
+        grantAllPermissions: Boolean,
+    ): Boolean {
         return try {
             val file = File(apkPath)
             val command = installViaSessionCommand(
@@ -373,6 +384,7 @@ class ShizukuReflector(
                 ),
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
+                grantAllPermissions = grantAllPermissions,
             )
             val result = Shizuku.execute(command)
             result.first == 0

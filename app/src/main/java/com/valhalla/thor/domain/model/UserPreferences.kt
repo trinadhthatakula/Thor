@@ -87,6 +87,13 @@ data class UserPreferences(
      *
      * Turning it on is a convenience for the person restoring a hundred apps at once and re-granting
      * each by hand. It reaches only the shell rung; see `installViaSessionCommand`.
+     *
+     * This is the *default*, not the last word. The portable installer shows a checkbox seeded from
+     * this value that the user may flip for one install, and that answer never comes back here — a
+     * decision about one APK must not quietly become the rule for every install after it. Which way
+     * round matters: an install with no answer of its own reads this field, so a caller that has
+     * nobody to ask passes `null` rather than `false`. See
+     * `InstallerRepository.installPackage`'s `grantAllPermissions`.
      */
     val grantAllPermissionsOnInstall: Boolean = false,
 

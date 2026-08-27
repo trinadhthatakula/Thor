@@ -496,6 +496,7 @@
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="grant_all_permissions">Conceder todos los permisos al instalar</string>
     <string name="grant_all_permissions_desc">Dar a la aplicación todos los permisos que solicita en cuanto se instala, sin preguntar. Desactivado de forma predeterminada; en ambos casos, las actualizaciones conservan los permisos que ya habías concedido</string>
+    <string name="grant_all_permissions_install">Conceder todos los permisos solicitados</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
     <string name="legacy_extension_desc">Se ha detectado una versión heredada de la extensión Stormbringer (escrita incorrectamente como \"Strombringer\"). Por favor, desinstálala para evitar conflictos e instala la versión actualizada.</string>
     <string name="action_export">Exportar</string>

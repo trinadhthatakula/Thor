@@ -120,6 +120,7 @@ class InstallerRepositoryImpl(
         uri: Uri,
         mode: InstallMode,
         canDowngrade: Boolean,
+        grantAllPermissions: Boolean?,
     ) =
         withContext(ioDispatcher) {
             try {
@@ -144,13 +145,13 @@ class InstallerRepositoryImpl(
 
                 when (mode) {
                     InstallMode.ROOT -> {
-                        installWithRoot(staged, canDowngrade)
+                        installWithRoot(staged, canDowngrade, grantAllPermissions)
                     }
 
                     InstallMode.SHIZUKU -> {
                         // 1. Try Shell command first
                         val shellSuccess = try {
-                            installWithShizuku(staged, canDowngrade)
+                            installWithShizuku(staged, canDowngrade, grantAllPermissions)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
                             // A refusal is a verdict about the archive, not a failure of this rung.
@@ -208,7 +209,7 @@ class InstallerRepositoryImpl(
                     InstallMode.DHIZUKU -> {
                         // 1. Try Shell command first
                         val shellSuccess = try {
-                            installWithDhizuku(staged, canDowngrade)
+                            installWithDhizuku(staged, canDowngrade, grantAllPermissions)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
                             if (e is InstallRefusedException) throw e
@@ -586,6 +587,7 @@ class InstallerRepositoryImpl(
     private suspend fun installWithRoot(
         staged: StagedPackage,
         canDowngrade: Boolean,
+        grantAllPermissions: Boolean?,
     ) {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -607,10 +609,12 @@ class InstallerRepositoryImpl(
             // because they have to stage into shared storage; the session paths read the staged
             // file directly and never expose it at all. Those are all four write paths.
             val apkPaths = tempFiles.map { it.file.absolutePath }
+            // The gateway resolves a null against the saved setting; this rung has no reason to
+            // resolve it first, and doing so would put a second copy of that rule in the app.
             val result = if (apkPaths.size == 1) {
-                rootGateway.installApp(apkPaths[0], canDowngrade)
+                rootGateway.installApp(apkPaths[0], canDowngrade, grantAllPermissions)
             } else {
-                rootGateway.installMultipleApks(apkPaths, canDowngrade)
+                rootGateway.installMultipleApks(apkPaths, canDowngrade, grantAllPermissions)
             }
 
             if (result.isSuccess) {
@@ -629,7 +633,11 @@ class InstallerRepositoryImpl(
         }
     }
 
-    private suspend fun installWithShizuku(staged: StagedPackage, canDowngrade: Boolean): Boolean {
+    private suspend fun installWithShizuku(
+        staged: StagedPackage,
+        canDowngrade: Boolean,
+        grantAllPermissions: Boolean?,
+    ): Boolean {
         eventBus.emit(InstallState.Installing(0f))
 
         // Shared storage, because the *shell* has to be able to read these files: uid 2000 cannot
@@ -658,7 +666,12 @@ class InstallerRepositoryImpl(
         eventBus.emit(InstallState.Installing(0.5f))
 
         val installerArg = preferenceRepository.getInstallerArg()
-        val grantAll = preferenceRepository.shouldGrantAllPermissionsOnInstall()
+        // The caller's answer for this one install if it gave one — the portable installer's
+        // checkbox — and the saved setting otherwise. Not `grantAllPermissions == true`: a missing
+        // answer means "nobody was asked", which is not the same as "the user said no", and
+        // collapsing the two would override anyone who had turned the setting on.
+        val grantAll = grantAllPermissions
+            ?: preferenceRepository.shouldGrantAllPermissionsOnInstall()
 
         return try {
             // The shell rung, and normally the one that decides the outcome: the PackageInstaller
@@ -722,7 +735,11 @@ class InstallerRepositoryImpl(
         }
     }
 
-    private suspend fun installWithDhizuku(staged: StagedPackage, canDowngrade: Boolean): Boolean {
+    private suspend fun installWithDhizuku(
+        staged: StagedPackage,
+        canDowngrade: Boolean,
+        grantAllPermissions: Boolean?,
+    ): Boolean {
         eventBus.emit(InstallState.Installing(0f))
 
         // Shared storage for the same reason as the Shizuku path, and guarded the same way — but
@@ -747,7 +764,9 @@ class InstallerRepositoryImpl(
         eventBus.emit(InstallState.Installing(0.5f))
 
         val installerArg = preferenceRepository.getInstallerArg()
-        val grantAll = preferenceRepository.shouldGrantAllPermissionsOnInstall()
+        // Same resolution rule as installWithShizuku above, and the same reason for it.
+        val grantAll = grantAllPermissions
+            ?: preferenceRepository.shouldGrantAllPermissionsOnInstall()
 
         return try {
             // Same rung, same seed, same fix as installWithShizuku above — and the same pairing
@@ -813,15 +832,16 @@ class InstallerRepositoryImpl(
 
         eventBus.emit(InstallState.Parsing)
 
-        // No install-time permission grant here, and deliberately not wired to
-        // `UserPreferences.grantAllPermissionsOnInstall` either. `SessionParams` exposes no public
-        // way to ask for one — the shell's `-g` is `INSTALL_GRANT_ALL_REQUESTED_PERMISSIONS`, a bit
-        // in the hidden `installFlags` field — and a session created with a flag the caller is not
-        // allowed to set fails outright rather than degrading, so reaching for it would turn a
-        // convenience toggle into an install that stops working. This rung has never granted
-        // anything and is not the rung GH#445 was about; it is the *fallback*, reached only when the
-        // shell rung above returns false. Consequence worth knowing: with the toggle on, a package
-        // that lands here comes up ungranted, the same as with it off.
+        // No install-time permission grant here, and deliberately wired to neither
+        // `UserPreferences.grantAllPermissionsOnInstall` nor the portable installer's per-install
+        // checkbox, which is the same answer arriving by a different route. `SessionParams` exposes
+        // no public way to ask for one — the shell's `-g` is
+        // `INSTALL_GRANT_ALL_REQUESTED_PERMISSIONS`, a bit in the hidden `installFlags` field — and
+        // a session created with a flag the caller is not allowed to set fails outright rather than
+        // degrading, so reaching for it would turn a convenience toggle into an install that stops
+        // working. This rung has never granted anything and is not the rung GH#445 was about; it is
+        // the *fallback*, reached only when the shell rung above returns false. Consequence worth
+        // knowing: with the box ticked, a package that lands here comes up ungranted anyway.
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
         )

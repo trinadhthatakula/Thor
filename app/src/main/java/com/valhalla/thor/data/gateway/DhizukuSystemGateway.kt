@@ -424,7 +424,11 @@ class DhizukuSystemGateway(
      * process `pm` runs in; the missing `--user` is interpreted by `PackageManagerService`, which
      * neither knows nor cares who invoked the command.
      */
-    override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
+    override suspend fun installApp(
+        apkPath: String,
+        canDowngrade: Boolean,
+        grantAllPermissions: Boolean?,
+    ): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
 
         // Through the same session builder as every other install in the app — see the note on
@@ -439,7 +443,10 @@ class DhizukuSystemGateway(
                 ),
                 userId = thorUserId,
                 canDowngrade = canDowngrade,
-                grantAllPermissions = preferenceRepository.shouldGrantAllPermissionsOnInstall(),
+                // Caller's answer if it has one, saved setting otherwise — never `== true`, which
+                // would read "no answer" as "no" and override a user who turned the setting on.
+                grantAllPermissions = grantAllPermissions
+                    ?: preferenceRepository.shouldGrantAllPermissionsOnInstall(),
                 installerArg = installerArg,
             )
         )
