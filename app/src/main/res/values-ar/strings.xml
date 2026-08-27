@@ -528,6 +528,9 @@
     <string name="freeze_system_app_disable_failed">لا يمكن تجميد %1$s. لم يرفض أي شيء في هذا الجهاز الطلب، لذا فالأرجح أن هذا خلل في Thor وليس قيدًا من النظام. بقي التطبيق مثبّتًا دون تغيير — نرجو الإبلاغ عن المشكلة.</string>
     <string name="auto_reinstall">إعادة التثبيت التلقائي للتطبيقات</string>
     <string name="auto_reinstall_desc">الحفاظ تلقائيًا على متجر Google Play كمثبت رئيسي لتمكين التحديثات في الخلفية</string>
+    <string name="grant_all_permissions">منح كل الأذونات عند التثبيت</string>
+    <string name="grant_all_permissions_desc">منح التطبيق كل إذن يطلبه فور تثبيته، دون أي مطالبة — يقتصر ذلك على التثبيت عبر الروت أو Shizuku أو Dhizuku. مُعطَّل افتراضيًا، ويمكنك تغييره من المُثبِّت لعملية تثبيت واحدة؛ وفي الحالتين تحتفظ التحديثات بالأذونات التي سبق أن منحتها</string>
+    <string name="grant_all_permissions_install">منح كل الأذونات المطلوبة</string>
     <string name="legacy_extension_title">تم اكتشاف امتداد قديم</string>
     <string name="legacy_extension_desc">تم تثبيت إصدار قديم من امتداد Stormbringer (باسم خاطئ \"Strombringer\") الملحق. يرجى إلغاء تثبيته لتجنب التعارض وتثبيت امتداد Stormbringer المحدث.</string>
     <string name="action_export">تصدير</string>

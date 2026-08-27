@@ -36,6 +36,9 @@
     <string name="show_extensions_tile_desc">Mostrar Extensões na tela inicial</string>
     <string name="auto_reinstall">Reinstalar aplicativos automaticamente</string>
     <string name="auto_reinstall_desc">Preservar automaticamente a Google Play Store como instalador registrado, para permitir atualizações em segundo plano</string>
+    <string name="grant_all_permissions">Conceder todas as permissões ao instalar</string>
+    <string name="grant_all_permissions_desc">Dar ao aplicativo todas as permissões que ele pede assim que for instalado, sem perguntar — apenas em instalações com root, Shizuku ou Dhizuku. Desativado por padrão, e o instalador permite alterar isso para uma única instalação; nos dois casos, as atualizações mantêm as permissões já concedidas</string>
+    <string name="grant_all_permissions_install">Conceder todas as permissões solicitadas</string>
     <string name="default_tab">Aba padrão</string>
     <string name="default_tab_desc">A tela que o Thor abre ao iniciar</string>
     <string name="biometric_lock_desc">Exigir autenticação ao iniciar</string>

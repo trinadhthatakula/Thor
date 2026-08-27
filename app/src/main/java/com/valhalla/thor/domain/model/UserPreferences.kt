@@ -74,6 +74,29 @@ data class UserPreferences(
     // Auto Reinstall Config
     val autoReinstallEnabled: Boolean = false,
 
+    /**
+     * Whether a privileged install hands the package every runtime permission it declares, without
+     * asking — `pm install-create -g`, the same thing `adb install -g` does.
+     *
+     * Off, and off is the only safe default: `-g` was unconditional until GH#445, so an app
+     * installed through Thor started with location, contacts, microphone and the rest already
+     * granted, in a build whose whole selling point is that the user decides what an app may do. The
+     * platform's own installer never does this, so the grant was invisible — nothing in the UI said
+     * it had happened, and the only place it showed up was the app's own permission screen after the
+     * fact.
+     *
+     * Turning it on is a convenience for the person restoring a hundred apps at once and re-granting
+     * each by hand. It reaches only the shell rung; see `installViaSessionCommand`.
+     *
+     * This is the *default*, not the last word. The portable installer shows a checkbox seeded from
+     * this value that the user may flip for one install, and that answer never comes back here — a
+     * decision about one APK must not quietly become the rule for every install after it. Which way
+     * round matters: an install with no answer of its own reads this field, so a caller that has
+     * nobody to ask passes `null` rather than `false`. See
+     * `InstallerRepository.installPackage`'s `grantAllPermissions`.
+     */
+    val grantAllPermissionsOnInstall: Boolean = false,
+
     // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
     val exportDirUri: String? = null,
 

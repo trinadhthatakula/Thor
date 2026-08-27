@@ -24,7 +24,18 @@ interface SystemGateway {
 
     // Advanced
     suspend fun uninstallApp(packageName: String): Result<Unit>
-    suspend fun installApp(apkPath: String, canDowngrade: Boolean = false): Result<Unit>
+    /**
+     * @param grantAllPermissions the answer for THIS install to "grant every runtime permission
+     *   the package declares, without asking" (`pm install-create -g`, GH#445). `null` — the
+     *   default — means "no answer for this install, use the saved setting", which is what every
+     *   caller that has no user in front of it wants. Deliberately not defaulting to `false`: that
+     *   would silently override a user who had turned the setting on.
+     */
+    suspend fun installApp(
+        apkPath: String,
+        canDowngrade: Boolean = false,
+        grantAllPermissions: Boolean? = null,
+    ): Result<Unit>
     suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit>
     suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit>
     suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit>

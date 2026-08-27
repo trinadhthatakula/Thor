@@ -27,14 +27,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -66,6 +69,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -96,6 +100,7 @@ fun PortableInstaller(
     val state by viewModel.installState.collectAsStateWithLifecycle(initialValue = InstallState.Idle)
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val installerMode by viewModel.installMode.collectAsStateWithLifecycle()
+    val grantAllPermissions by viewModel.grantAllPermissions.collectAsStateWithLifecycle()
 
     var lastMeta by remember { mutableStateOf<AppMetadata?>(null) }
     LaunchedEffect(state) {
@@ -543,6 +548,52 @@ fun PortableInstaller(
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // Only for the rungs that can act on it. `-g` is a shell-install flag: in
+                    // NORMAL mode the system installer asks for permissions its own way and has
+                    // never taken orders from this box, and in EXTERNAL another app does the
+                    // installing entirely. Shown there it would be a control that does nothing,
+                    // and — worse for a privacy setting — one the user could reasonably read as
+                    // proof that Thor is granting everything.
+                    if (installerMode == InstallMode.ROOT ||
+                        installerMode == InstallMode.SHIZUKU ||
+                        installerMode == InstallMode.DHIZUKU
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                // The whole row, not just the box: a 20dp checkbox is a poor
+                                // target, and `toggleable` here keeps the row one node for
+                                // TalkBack instead of a label sitting beside an unlabelled box.
+                                .toggleable(
+                                    value = grantAllPermissions,
+                                    role = Role.Checkbox,
+                                    onValueChange = { viewModel.setGrantAllPermissions(it) }
+                                )
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                // Material3 applies minimumInteractiveComponentSize() to a
+                                // Checkbox only while its own onCheckedChange is non-null, so
+                                // handing the click to the row silently halves the target to
+                                // 24dp. The row it moved to has to carry the 48dp itself.
+                                .defaultMinSize(minHeight = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // null, not a second onCheckedChange: two clickable nodes here would
+                            // read to TalkBack as two controls for one answer.
+                            Checkbox(
+                                checked = grantAllPermissions,
+                                onCheckedChange = null
+                            )
+                            Text(
+                                text = stringResource(R.string.grant_all_permissions_install),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
 

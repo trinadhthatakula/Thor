@@ -234,6 +234,10 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setAutoReinstallEnabled(enabled) }
     }
 
+    fun setGrantAllPermissionsOnInstall(enabled: Boolean) {
+        viewModelScope.launch { preferenceRepository.setGrantAllPermissionsOnInstall(enabled) }
+    }
+
     /**
      * Applying the locale is conditional on the write, because these two steps disagree about how
      * long they last: `applyLocale` changes the running process now, the preference is what brings

@@ -225,9 +225,11 @@ class PerUserCommandsTest {
 
     // `installCommand` used to be tested here, across ten cases. It is gone, and so are they —
     // its invariants moved to `InstallSessionCommandsTest` along with the builder that replaced it,
-    // `installViaSessionCommand`. That file asserts the same `--user`, the same constant `-r -g`,
-    // the same opt-in `-d`, the same installer-argument fusion guard, the same path ordering and the
-    // same refusal of an empty set.
+    // `installViaSessionCommand`. That file asserts the same `--user`, the same constant `-r`, the
+    // same opt-in `-d`, the same installer-argument fusion guard, the same path ordering and the
+    // same refusal of an empty set. One invariant did not survive the move intact: `-g` used to be
+    // as constant as `-r` and is now opt-in per GH#445, so it is asserted there the way `-d` is,
+    // absent unless asked for.
     //
     // Worth recording why the move happened, because these tests were green the whole time. They
     // pinned `pm install-multiple --user 10 -r -g …` exactly, character for character — and

@@ -450,6 +450,24 @@ fun SettingsCategoryScreen(
                         onCheckedChange = { viewModel.setAutoReinstallEnabled(it) }
                     )
 
+                    // Gated on `hasPrivilege` because there is nothing for it to change without one:
+                    // with no privilege every install goes through the system installer, which asks
+                    // for permissions the ordinary way and has never taken orders from this toggle.
+                    // Left tappable-looking with no privilege it would read as "Thor is granting
+                    // everything and I cannot stop it", which is the opposite of what it does.
+                    SettingsRowId.GRANT_ALL_PERMISSIONS -> SettingsSwitchRow(
+                        icon = R.drawable.danger,
+                        title = stringResource(R.string.grant_all_permissions),
+                        subtitle = privilegeAwareSubtitle(
+                            hasPrivilege,
+                            R.string.grant_all_permissions_desc
+                        ),
+                        checked = prefs.grantAllPermissionsOnInstall,
+                        enabled = hasPrivilege,
+                        highlighted = lit,
+                        onCheckedChange = { viewModel.setGrantAllPermissionsOnInstall(it) }
+                    )
+
                     // Reads its state from `uiState`, not `prefs`: this switch is backed by
                     // PackageManager component state rather than DataStore. See AnyFileOpenerController.
                     SettingsRowId.ANY_FILE_OPENER -> SettingsSwitchRow(

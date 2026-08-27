@@ -62,8 +62,9 @@ class InstallSessionCommandsTest {
         apks: List<SessionApk> = listOf(base),
         userId: Int = 10,
         canDowngrade: Boolean = false,
+        grantAllPermissions: Boolean = false,
         installerArg: String = "",
-    ) = installViaSessionCommand(apks, userId, canDowngrade, installerArg)
+    ) = installViaSessionCommand(apks, userId, canDowngrade, grantAllPermissions, installerArg)
 
     // --- the defect itself: no path may reach pm ---
 
@@ -174,16 +175,52 @@ class InstallSessionCommandsTest {
     }
 
     /**
-     * `-r` is what makes this an update rather than `INSTALL_FAILED_ALREADY_EXISTS`, and `-g` is
-     * what grants the runtime permissions the installed app declares. They belong on
+     * `-r` is what makes this an update rather than `INSTALL_FAILED_ALREADY_EXISTS`. It belongs on
      * `install-create`, not on `install-write`: the session's parameters are fixed when it is
      * created, so a flag written on a later verb is silently ignored.
      */
     @Test
-    fun `the update and grant flags are set when the session is created`() {
+    fun `the update flag is set when the session is created`() {
         val createLine = command().lineSequence().first { it.startsWith("CREATE_OUT=") }
         assertTrue("-r was dropped: this stops being an update", createLine.contains(" -r"))
-        assertTrue("-g was dropped: the app installs with no permissions", createLine.contains(" -g"))
+    }
+
+    /**
+     * GH#445, and the test that used to assert the defect.
+     *
+     * `-g` is `INSTALL_GRANT_ALL_REQUESTED_PERMISSIONS`: every runtime permission the package
+     * declares, granted at install time, with no prompt and nothing in the UI saying so. It was
+     * unconditional here, which is how apps installed through Thor came up already holding location
+     * and contacts. The old assertion read `"-g was dropped: the app installs with no permissions"`
+     * — a failure message that describes the *correct* behaviour as a bug, which is exactly why the
+     * suite stayed green over a privacy defect.
+     *
+     * Permissive, so opt-in, and the same shape as [`downgrade is opt-in`] one test below.
+     */
+    @Test
+    fun `granting every requested permission is opt-in`() {
+        assertFalse(
+            "-g appeared without being asked for: this is GH#445",
+            command().contains(" -g")
+        )
+        assertTrue(command(grantAllPermissions = true).contains(" -g"))
+    }
+
+    /**
+     * The grant, when it is asked for, has to be a parameter of the *session*.
+     *
+     * Same reason `-r` is checked on the create line: `install-write` and `install-commit` take the
+     * session as given. A `-g` that landed on either would be dropped without a word, and the toggle
+     * would read as on while granting nothing.
+     */
+    @Test
+    fun `the grant flag is set when the session is created`() {
+        val script = command(grantAllPermissions = true)
+        val createLine = script.lineSequence().first { it.startsWith("CREATE_OUT=") }
+        assertTrue(createLine.contains(" -g"))
+        assertFalse(
+            script.lineSequence().any { !it.startsWith("CREATE_OUT=") && it.contains(" -g") }
+        )
     }
 
     /** `-d` is permissive-only, so it must appear exactly when it was asked for and never otherwise. */
@@ -197,23 +234,34 @@ class InstallSessionCommandsTest {
      * The same fusion hazard the deleted `installCommand` guarded against, which the root script
      * did not. `getInstallerArg()` returns `" -i com.android.vending"` with a leading space; a
      * caller passing it trimmed — or a future `getInstallerArg` that stops padding — would emit
-     * `-g-i com.android.vending`, which `pm` answers with a usage error that surfaces to the user as
+     * `-r-i com.android.vending`, which `pm` answers with a usage error that surfaces to the user as
      * a plain install failure with no hint that the attribution flag is what broke it.
+     *
+     * Checked with the grant both off and on, because the flag `-i` follows is no longer a constant:
+     * it is `-g` when the user has opted in and `-r` when they have not, so a re-spacing that only
+     * held in one of the two would break on whichever half nobody tested.
      */
     @Test
     fun `the installer attribution cannot fuse onto the preceding flag`() {
-        val padded = command(installerArg = playInstallerArg)
-        val trimmed = command(installerArg = playInstallerArg.trim())
+        for (grant in listOf(false, true)) {
+            val padded = command(grantAllPermissions = grant, installerArg = playInstallerArg)
+            val trimmed =
+                command(grantAllPermissions = grant, installerArg = playInstallerArg.trim())
 
-        assertEquals(padded, trimmed)
-        assertFalse("the -i argument fused onto -g", padded.contains("-g-i"))
-        assertTrue(padded.contains(" -i com.android.vending "))
+            assertEquals(padded, trimmed)
+            assertFalse("the -i argument fused onto -r", padded.contains("-r-i"))
+            assertFalse("the -i argument fused onto -g", padded.contains("-g-i"))
+            assertTrue(padded.contains(" -i com.android.vending "))
+        }
     }
 
     /** Auto-reinstall off is the default, and must add nothing at all — not even a stray space. */
     @Test
     fun `no installer argument means no installer argument`() {
-        assertTrue(command().contains("pm install-create -r -g --user 10 2>&1"))
+        assertTrue(command().contains("pm install-create -r --user 10 2>&1"))
+        assertTrue(
+            command(grantAllPermissions = true).contains("pm install-create -r -g --user 10 2>&1")
+        )
     }
 
     // --- the failure handling that keeps a failure legible and a session from leaking ---
@@ -306,7 +354,11 @@ class InstallSessionCommandsTest {
     @Test
     fun `paths are escaped here, and only here`() {
         val awkward = SessionApk("/data/cache/it's here/base.apk", sizeBytes = 1)
-        val script = installViaSessionCommand(listOf(awkward), userId = 0)
+        val script = installViaSessionCommand(
+            listOf(awkward),
+            userId = 0,
+            grantAllPermissions = false,
+        )
 
         assertTrue(
             "single quotes in a path must be neutralised, not passed through: $script",
@@ -322,7 +374,7 @@ class InstallSessionCommandsTest {
      */
     @Test(expected = IllegalArgumentException::class)
     fun `an install with no APK is refused`() {
-        installViaSessionCommand(emptyList(), userId = 0)
+        installViaSessionCommand(emptyList(), userId = 0, grantAllPermissions = false)
     }
 
     // --- the extraction is behaviour-preserving for the one rung that already worked ---
@@ -336,6 +388,12 @@ class InstallSessionCommandsTest {
      * Spelled out in full rather than asserted piecewise on purpose. Everything above checks one
      * property at a time and would pass for a script that satisfied all of them separately while
      * being a different script; this is the one place the whole thing is visible at once.
+     *
+     * Asserted with `grantAllPermissions = true` because that — and only that — is what the hand-
+     * built script did. GH#445 made the grant a user setting; opting into it must still produce the
+     * historical script character for character, so the toggle stays a toggle and does not quietly
+     * become a second install path. The default form is pinned by
+     * [`the same script without the permission grant`] below, and the two differ by ` -g` alone.
      */
     @Test
     fun `the script the root gateway used to build by hand`() {
@@ -355,6 +413,43 @@ class InstallSessionCommandsTest {
 
         """.trimIndent()
 
-        assertEquals(expected, installViaSessionCommand(listOf(base), userId = 0))
+        assertEquals(
+            expected,
+            installViaSessionCommand(listOf(base), userId = 0, grantAllPermissions = true)
+        )
+    }
+
+    /**
+     * What Thor actually runs now, spelled out for the same reason as the test above: with the
+     * setting off and the installer's box unticked this is the path essentially every install takes,
+     * so it is the one that has to be legible at a glance.
+     *
+     * Pinned as a whole script rather than as "the other one minus `-g`" so that a change to the
+     * grant cannot be mistaken for a change to anything else. The `-r` is still there — an update
+     * still replaces the installed package, and replacing it does not disturb permissions the user
+     * had already granted, which is the half of GH#445 that had to keep working.
+     */
+    @Test
+    fun `the same script without the permission grant`() {
+        val expected = """
+            (
+            set -o pipefail
+            CREATE_OUT=${'$'}(pm install-create -r --user 0 2>&1)
+            SID=${'$'}(printf '%s\n' "${'$'}CREATE_OUT" | sed -n 's/.*\[\([0-9]*\)\].*/\1/p')
+            if [ -z "${'$'}SID" ]; then echo "pm install-create failed: ${'$'}CREATE_OUT" 1>&2; exit 101; fi
+            WERR=${'$'}(cat '/data/cache/install/base.apk' | pm install-write -S 4096 "${'$'}SID" 'base.apk' - 2>&1 1>/dev/null) || { pm install-abandon "${'$'}SID" 2>/dev/null; echo "pm install-write failed: ${'$'}WERR" 1>&2; exit 102; }
+            COMMIT=${'$'}(pm install-commit "${'$'}SID" 2>&1)
+            case "${'$'}COMMIT" in
+              *Success*) exit 0 ;;
+              *) pm install-abandon "${'$'}SID" 2>/dev/null; echo "pm install-commit failed: ${'$'}COMMIT" 1>&2; exit 103 ;;
+            esac
+            )
+
+        """.trimIndent()
+
+        assertEquals(
+            expected,
+            installViaSessionCommand(listOf(base), userId = 0, grantAllPermissions = false),
+        )
     }
 }

@@ -68,7 +68,7 @@ class AppAnalyzerImpl(
         //
         // That copy is also the ONE read of the caller's URI: the install runs off this file,
         // so a hostile provider cannot serve a clean APK to the sheet the user approves and
-        // spyware to the `pm install -r -g` that follows. See StagedPackage.
+        // spyware to the privileged install that follows. See StagedPackage.
         val bundleFile = File(stagingDir, "staged_$token")
         val apkFile = File(context.cacheDir, "analysis_$token.apk")
 

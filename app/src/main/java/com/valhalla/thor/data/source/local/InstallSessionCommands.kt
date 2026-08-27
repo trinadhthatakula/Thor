@@ -85,8 +85,21 @@ internal const val SESSION_COMMIT_FAILED_EXIT_CODE = 103
  *   `UserHandle.USER_ALL` and, if the option loop never sees a `--user`, creates the session with
  *   `USER_SYSTEM` plus `INSTALL_ALL_USERS` — installing on every user of the device, and exiting 0.
  * @param canDowngrade adds `-d`. Permissive only, so it is opt-in.
+ * @param grantAllPermissions adds `-g`, granting every runtime permission the package declares at
+ *   install time without asking the user. **Required, with no default**, so that a caller cannot
+ *   omit the user's answer: this used to say "every caller must pass it explicitly" and leave a
+ *   `false` default in the signature, which is a rule a reviewer enforces rather than the compiler.
+ *   The safe direction is not the point — a caller that silently takes `false` ignores a user who
+ *   turned the setting on, which is the same shape of unasked decision, pointing the other way. It
+ *   was unconditional until GH#445: an app
+ *   installed through Thor came up with location, contacts and microphone already granted, which is
+ *   neither what the platform installer does nor anything the UI said was happening. `-r` on its own
+ *   does not touch permissions already granted, so an update keeps what the user had chosen —
+ *   dropping `-g` costs nothing on the update path and only stops the silent grant on the new-install
+ *   one.
  * @param installerArg the attribution flag, e.g. `" -i com.android.vending"`, with or without its
- *   leading space. Re-spaced here so it cannot fuse onto the preceding `-g`.
+ *   leading space. Re-spaced here so it cannot fuse onto the flag before it — which used to be a
+ *   constant `-g` and is now `-g` or `-r`, so the hazard did not go away with the constant.
  * @return a script whose exit code is 0 on success, or one of
  *   [SESSION_CREATE_FAILED_EXIT_CODE] / [SESSION_WRITE_FAILED_EXIT_CODE] /
  *   [SESSION_COMMIT_FAILED_EXIT_CODE], with the `pm` output on stderr.
@@ -95,17 +108,19 @@ internal fun installViaSessionCommand(
     apks: List<SessionApk>,
     userId: Int,
     canDowngrade: Boolean = false,
+    grantAllPermissions: Boolean,
     installerArg: String = "",
 ): String {
     require(apks.isNotEmpty()) { "installViaSessionCommand needs at least one APK" }
 
     val downgrade = if (canDowngrade) " -d" else ""
+    val grant = if (grantAllPermissions) " -g" else ""
     val installer = installerArg.trim().let { if (it.isEmpty()) "" else " $it" }
 
     val sb = StringBuilder()
     sb.append("(\n")
     sb.append("set -o pipefail\n")
-    sb.append("CREATE_OUT=\$(pm install-create -r -g").append(installer)
+    sb.append("CREATE_OUT=\$(pm install-create -r").append(grant).append(installer)
         .append(" --user ").append(userId).append(downgrade).append(" 2>&1)\n")
     // install-create prints "Success: created install session [<id>]".
     sb.append("SID=\$(printf '%s\\n' \"\$CREATE_OUT\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")

@@ -205,6 +205,10 @@ class PreferenceRepositoryImpl(
         // Auto Reinstall
         val AUTO_REINSTALL_ENABLED = booleanPreferencesKey("auto_reinstall_enabled")
 
+        // Installing
+        val GRANT_ALL_PERMISSIONS_ON_INSTALL =
+            booleanPreferencesKey("grant_all_permissions_on_install")
+
         // Customization
         val APP_INFO_ACTIONS_ORDER = stringPreferencesKey("app_info_actions_order")
         val HIDDEN_APP_INFO_ACTIONS = stringSetPreferencesKey("hidden_app_info_actions")
@@ -420,6 +424,15 @@ class PreferenceRepositoryImpl(
     override suspend fun getInstallerArg(): String {
         return if (userPreferences.first().autoReinstallEnabled) " -i com.android.vending" else ""
     }
+
+    override suspend fun setGrantAllPermissionsOnInstall(enabled: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.GRANT_ALL_PERMISSIONS_ON_INSTALL] = enabled
+        }
+    }
+
+    override suspend fun shouldGrantAllPermissionsOnInstall(): Boolean =
+        userPreferences.first().grantAllPermissionsOnInstall
 
     // --- Customization ---
 
@@ -661,6 +674,7 @@ internal fun Preferences.toUserPreferences(
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
         extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
         autoReinstallEnabled = prefs[Keys.AUTO_REINSTALL_ENABLED] ?: false,
+        grantAllPermissionsOnInstall = prefs[Keys.GRANT_ALL_PERMISSIONS_ON_INSTALL] ?: false,
         exportDirUri = prefs[Keys.EXPORT_DIR_URI],
         appInfoActionsOrder = AppInfoActionId.fromSavedNamesOrDefault(
             prefs[Keys.APP_INFO_ACTIONS_ORDER]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }

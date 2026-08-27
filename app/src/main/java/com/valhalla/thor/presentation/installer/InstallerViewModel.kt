@@ -15,14 +15,18 @@ import com.valhalla.thor.domain.model.isVersionDowngrade
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
@@ -35,6 +39,7 @@ class InstallerViewModel(
     private val eventBus: InstallerEventBus,
     private val packageManager: PackageManager,
     private val systemRepository: SystemRepository,
+    private val preferenceRepository: PreferenceRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -45,6 +50,33 @@ class InstallerViewModel(
 
     private val _availableModes = MutableStateFlow(listOf(InstallMode.NORMAL))
     val availableModes: StateFlow<List<InstallMode>> = _availableModes.asStateFlow()
+
+    // The user's answer *for this install* to the GH#445 grant, or null while they have not given
+    // one. Null rather than a copy of the setting seeded at construction, so that until the box is
+    // touched it tracks Settings live rather than showing whatever the setting happened to say when
+    // this screen opened.
+    private val _grantAllOverride = MutableStateFlow<Boolean?>(null)
+
+    /**
+     * Whether this install will grant every runtime permission the package declares — the state of
+     * the installer's own checkbox.
+     *
+     * Starts at the saved setting and stays with it until the user ticks or unticks the box; from
+     * then on their answer wins for this screen and this screen only. Nothing here writes back to
+     * [PreferenceRepository], deliberately: a one-off decision about one APK must not silently
+     * become the default for every install that follows.
+     */
+    val grantAllPermissions: StateFlow<Boolean> =
+        combine(preferenceRepository.userPreferences, _grantAllOverride) { prefs, override ->
+            override ?: prefs.grantAllPermissionsOnInstall
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            // `false` is the right initial value and not merely a placeholder: it is
+            // UserPreferences' own default for this flag, so the box cannot flash ticked during
+            // the first DataStore read and mislead someone who installs before it lands.
+            initialValue = false,
+        )
 
     var currentPackageName: String? = null
         private set
@@ -101,6 +133,12 @@ class InstallerViewModel(
     fun parsePackage(uri: Uri) {
         pendingUri = uri
         ownsInstall = true
+        // A new package is a new question. Without this the box stays ticked from the previous
+        // pick, and "grant everything" carries from an APK the user trusted to one they have not
+        // looked at yet — this VM outlives a single pick (BackupRestoreHubScreen parses through
+        // one instance repeatedly), so that is the ordinary path, not an edge case. Back to null
+        // rather than false: the saved setting is what an unanswered install follows.
+        _grantAllOverride.value = null
         // A second pick replaces the first; the first's copy has no further use. Two things can
         // hold that copy, and both have to be released here.
         //
@@ -188,6 +226,13 @@ class InstallerViewModel(
         _installMode.value = mode
     }
 
+    /**
+     * Records the user's answer for this install only. Does not touch the saved setting.
+     */
+    fun setGrantAllPermissions(enabled: Boolean) {
+        _grantAllOverride.value = enabled
+    }
+
     fun startInstallation() {
         val uri = pendingUri ?: return
         // No staged copy means no analysis succeeded, and installing would mean reading the URI
@@ -214,8 +259,16 @@ class InstallerViewModel(
         // happy path for the first time.
         val allowDowngrade = isDowngrade || (versionCodeUnknown && mode != InstallMode.NORMAL)
 
+        // The override, not `grantAllPermissions.value`. They agree whenever the user has touched
+        // the box, and where they differ the override is the safe one: [grantAllPermissions] is a
+        // WhileSubscribed StateFlow, so with no collector it holds its `false` initial value, and
+        // sending that would turn "the user never answered" into "the user said no" and override a
+        // setting that said yes. Passing null hands that resolution to the repository, which reads
+        // the setting itself.
+        val grantAll = _grantAllOverride.value
+
         viewModelScope.launch {
-            repository.installPackage(staged, uri, mode, allowDowngrade)
+            repository.installPackage(staged, uri, mode, allowDowngrade, grantAll)
         }
     }
 }
