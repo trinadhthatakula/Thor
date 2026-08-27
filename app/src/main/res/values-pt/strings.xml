@@ -30,7 +30,7 @@
     <string name="auto_reinstall">Reinstalar aplicações automaticamente</string>
     <string name="auto_reinstall_desc">Preservar automaticamente a Google Play Store como instalador registado, para permitir atualizações em segundo plano</string>
     <string name="grant_all_permissions">Conceder todas as permissões ao instalar</string>
-    <string name="grant_all_permissions_desc">Dar à aplicação todas as permissões que pede assim que for instalada, sem perguntar. Desativado por predefinição; em ambos os casos, as atualizações mantêm as permissões já concedidas</string>
+    <string name="grant_all_permissions_desc">Dar à aplicação todas as permissões que pede assim que for instalada, sem perguntar — apenas em instalações com root, Shizuku ou Dhizuku. Desativado por predefinição, e o instalador permite alterá-lo para uma única instalação; em ambos os casos, as atualizações mantêm as permissões já concedidas</string>
     <string name="grant_all_permissions_install">Conceder todas as permissões pedidas</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Separador predefinido</string>

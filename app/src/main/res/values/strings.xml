@@ -29,7 +29,7 @@
     <string name="auto_reinstall">Auto Reinstall Apps</string>
     <string name="auto_reinstall_desc">Automatically preserve Google Play Store as the installer of record to enable background updates</string>
     <string name="grant_all_permissions">Grant All Permissions on Install</string>
-    <string name="grant_all_permissions_desc">Give an app every permission it requests the moment it is installed, with no prompt. Off by default; either way, updates keep the permissions you had already granted</string>
+    <string name="grant_all_permissions_desc">Give an app every permission it requests the moment it is installed, with no prompt — root, Shizuku and Dhizuku installs only. Off by default, and the installer lets you change it for a single install; either way, updates keep the permissions you had already granted</string>
     <string name="grant_all_permissions_install">Grant all requested permissions</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Default Tab</string>

@@ -495,7 +495,7 @@
     <string name="auto_reinstall">Réinstallation automatique d\'applications</string>
     <string name="auto_reinstall_desc">Conserver automatiquement Google Play Store comme installateur enregistré pour activer les mises à jour en arrière-plan</string>
     <string name="grant_all_permissions">Accorder toutes les autorisations à l\'installation</string>
-    <string name="grant_all_permissions_desc">Donner à l\'application toutes les autorisations qu\'elle demande dès son installation, sans invite. Désactivé par défaut ; dans les deux cas, les mises à jour conservent les autorisations déjà accordées</string>
+    <string name="grant_all_permissions_desc">Donner à l\'application toutes les autorisations qu\'elle demande dès son installation, sans invite ; uniquement pour les installations via root, Shizuku ou Dhizuku. Désactivé par défaut, et l\'installateur permet de le modifier pour une seule installation ; dans les deux cas, les mises à jour conservent les autorisations déjà accordées</string>
     <string name="grant_all_permissions_install">Accorder toutes les autorisations demandées</string>
     <string name="legacy_extension_title">Extension obsolète détectée</string>
     <string name="legacy_extension_desc">Une version obsolète de l\'extension Stormbringer (orthographiée par erreur \"Strombringer\") est installée. Veuillez la désinstaller pour éviter les conflits et installer la version mise à jour.</string>
