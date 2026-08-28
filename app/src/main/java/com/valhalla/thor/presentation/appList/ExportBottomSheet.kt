@@ -61,6 +61,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
@@ -69,6 +70,7 @@ import com.valhalla.thor.presentation.common.JobRunningFrame
 import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -76,6 +78,16 @@ import org.koin.compose.koinInject
 
 /** How long a finished export stays on screen before the sheet closes itself. */
 private const val SUCCESS_LINGER_MS = 3_000L
+
+internal const val PRESENTATION_OBB_FAILURE_REASON = "game data could not be checked"
+
+internal suspend fun probeObbForPresentation(probe: suspend () -> ObbProbe): ObbProbe = try {
+    probe()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: PrivilegeExecutionException) {
+    ObbProbe.Undetermined(PRESENTATION_OBB_FAILURE_REASON)
+}
 
 /**
  * Destination picker + explainer for exporting an installed app's bundle. Self-contained
@@ -131,7 +143,9 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
     LaunchedEffect(Unit) { targetLabel = exportUseCase.currentTargetLabel() }
 
     LaunchedEffect(appInfo.packageName) {
-        obbProbe = systemRepository.probeObb(appInfo.packageName)
+        obbProbe = probeObbForPresentation {
+            systemRepository.probeObb(appInfo.packageName)
+        }
     }
 
     // Pick up an export of this app that is already running — the user backgrounded the sheet and came

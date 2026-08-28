@@ -238,12 +238,14 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
      * says `None` would let a consumer that collapses them pass.
      */
     var obbProbe: ObbProbe = ObbProbe.None
+    var obbProbeFailure: Throwable? = null
 
     override suspend fun probeObb(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): ObbProbe {
         note("probeObb:$packageName", execution)
+        obbProbeFailure?.let { throw it }
         return obbProbe
     }
 

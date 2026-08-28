@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.AnalyzedPackage
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.isVersionDowngrade
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
@@ -19,6 +20,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +33,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+
+internal suspend fun runInstallerPresentationBoundary(
+    eventBus: InstallerEventBus,
+    install: suspend () -> Unit,
+) {
+    try {
+        install()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: PrivilegeExecutionException) {
+        eventBus.emit(
+            InstallState.Error(UiText.StringResource(R.string.unknown_error_occurred))
+        )
+    }
+}
 
 @KoinViewModel
 class InstallerViewModel(
@@ -268,7 +285,9 @@ class InstallerViewModel(
         val grantAll = _grantAllOverride.value
 
         viewModelScope.launch {
-            repository.installPackage(staged, uri, mode, allowDowngrade, grantAll)
+            runInstallerPresentationBoundary(eventBus) {
+                repository.installPackage(staged, uri, mode, allowDowngrade, grantAll)
+            }
         }
     }
 }

@@ -8,6 +8,13 @@ import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.ShellCommandTimedOut
+import com.valhalla.thor.domain.model.ShellLaneBusy
+import com.valhalla.thor.domain.model.ShellLaneDegraded
+import com.valhalla.thor.domain.model.ShellTransportDied
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
@@ -310,6 +317,23 @@ class AppInfoDetailsViewModelTest {
     }
 
     @Test
+    fun `typed OBB failures settle the real ViewModel on the stable unavailable verdict`() = runTest {
+        loaded(userApp("a"))
+        val vm = viewModel()
+
+        executionFailures().forEach { failure ->
+            system.obbProbeFailure = failure
+            vm.loadAppDetails("a")
+            runCurrent()
+
+            assertEquals(
+                ObbProbe.Undetermined(PRESENTATION_OBB_FAILURE_REASON),
+                vm.uiState.value.obbProbe,
+            )
+        }
+    }
+
+    @Test
     fun `the verdict is absent until the probe answers, not None`() = runTest {
         loaded(userApp("a"))
         val vm = viewModel()
@@ -361,6 +385,13 @@ class AppInfoDetailsViewModelTest {
 
         assertEquals(ObbProbe.None, vm.uiState.value.obbProbe)
     }
+
+    private fun executionFailures(): List<PrivilegeExecutionException> = listOf(
+        ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE),
+        ShellLaneDegraded(PrivilegeExecutionLane.INTERACTIVE),
+        ShellTransportDied(PrivilegeExecutionLane.INTERACTIVE),
+        ShellCommandTimedOut(PrivilegeCommandClass("obb.probe")),
+    )
 
     // --- The Room throws that used to be process death (fix/freezer-bookkeeping-crashes) ---
     //

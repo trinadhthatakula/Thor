@@ -192,11 +192,11 @@ class AppArchiveInstallerImpl(
             // from every one of its own catch sites, so this is a live path.
             throw e
         } catch (e: Throwable) {
-            e.rethrowIfPrivilegeExecutionFailure()
+            val outcome = archiveInstallFailure(e)
             // Throwable rather than Exception, matching `installPackage`'s own outer catch: an
             // `Error` escaping here would kill the restore worker instead of failing one install.
             Logger.e(TAG, "install of $packageName threw", e)
-            return ArchiveInstallOutcome.Failed(e.message ?: "the install failed")
+            return outcome
         }
 
         val stampAfter = installStamp(packageName)
@@ -263,6 +263,11 @@ class AppArchiveInstallerImpl(
          */
         private const val INSTALL_WAIT_MS = 10 * 60 * 1000L
     }
+}
+
+internal fun archiveInstallFailure(failure: Throwable): ArchiveInstallOutcome.Failed {
+    failure.rethrowIfPrivilegeExecutionFailure()
+    return ArchiveInstallOutcome.Failed(failure.message ?: "the install failed")
 }
 
 /** Stated when the bus reported an error but carried no words with it. */

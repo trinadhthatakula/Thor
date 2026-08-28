@@ -41,6 +41,11 @@ import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
+internal fun <T> Result<T>.getOrNullPreservingPrivilegeExecution(): T? {
+    exceptionOrNull()?.rethrowIfPrivilegeExecutionFailure()
+    return getOrNull()
+}
+
 /**
  * Builds a shareable/exportable app bundle in the cache dir in the requested [BundleFormat]:
  * a monolithic `.apk` copy, or a zip of base + splits + sidecars as `.apks` (metadata.json +
@@ -402,12 +407,10 @@ class AppBundleBuilderImpl(
                 destPath = dest.absolutePath
             ) ?: return null
 
-            val shellResult = systemRepository.executeShellCommand(
+            val result = systemRepository.executeShellCommand(
                 command,
                 execution.copy(commandClass = OBB_COPY),
-            )
-            shellResult.exceptionOrNull()?.rethrowIfPrivilegeExecutionFailure()
-            val result = shellResult.getOrNull()
+            ).getOrNullPreservingPrivilegeExecution()
             if (result == null || result.first != 0) return null
             // The shell reported success; verify the bytes actually arrived. A `cp` that hits a
             // full volume can still exit 0 on some toybox builds, and a size that no longer
@@ -433,11 +436,9 @@ class AppBundleBuilderImpl(
             // observes cancellation at all.
             throw e
         } catch (_: Exception) {
-            val rootCopy = systemRepository.copyFileWithRoot(
+            systemRepository.copyFileWithRoot(
                 sourcePath, destFile.absolutePath, execution,
-            )
-            rootCopy.exceptionOrNull()?.rethrowIfPrivilegeExecutionFailure()
-            rootCopy.isSuccess
+            ).getOrNullPreservingPrivilegeExecution() != null
         }
     }
 

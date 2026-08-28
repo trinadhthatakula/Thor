@@ -42,6 +42,16 @@ internal fun Throwable.rethrowIfPrivilegeExecutionFailure() {
     if (this is CancellationException || this is PrivilegeExecutionException) throw this
 }
 
+internal fun obbProbeFromExecutionResult(
+    result: Result<Pair<Int, String?>>,
+): ObbProbe = result.fold(
+    onSuccess = { (exitCode, output) -> parseObbProbe(exitCode, output) },
+    onFailure = { failure ->
+        failure.rethrowIfPrivilegeExecutionFailure()
+        ObbProbe.Undetermined(failure.message ?: "no privileged shell is available")
+    },
+)
+
 internal suspend inline fun <T> resultPreservingCancellation(
     action: suspend () -> Result<T>,
 ): Result<T> = try {
@@ -451,12 +461,8 @@ class SystemRepositoryImpl(
             )
 
         val probeExecution = execution.copy(commandClass = OBB_PROBE)
-        val verdict = executeShellCommand(command, probeExecution).fold(
-            onSuccess = { (exitCode, output) -> parseObbProbe(exitCode, output) },
-            onFailure = { failure ->
-                failure.rethrowIfPrivilegeExecutionFailure()
-                ObbProbe.Undetermined(failure.message ?: "no privileged shell is available")
-            }
+        val verdict = obbProbeFromExecutionResult(
+            executeShellCommand(command, probeExecution),
         )
         // The verdict is the only thing a user or a bug report can see about this, and until now it
         // reached them as a UI state with the reason thrown away — "Thor can't read this app's game

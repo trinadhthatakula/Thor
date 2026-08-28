@@ -56,6 +56,14 @@ import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
+internal fun rootInstallState(result: Result<Unit>): InstallState = result.fold(
+    onSuccess = { InstallState.Success },
+    onFailure = { failure ->
+        failure.rethrowIfPrivilegeExecutionFailure()
+        InstallState.Error(UiText.DynamicString(failure.message ?: "Root install failed"))
+    },
+)
+
 @Single(binds = [InstallerRepository::class])
 class InstallerRepositoryImpl(
     private val context: Context,
@@ -627,15 +635,11 @@ class InstallerRepositoryImpl(
                 )
             }
 
-            result.exceptionOrNull()?.rethrowIfPrivilegeExecutionFailure()
-            if (result.isSuccess) {
+            val terminalState = rootInstallState(result)
+            if (terminalState == InstallState.Success) {
                 eventBus.emit(InstallState.Installing(1.0f))
-                eventBus.emit(InstallState.Success)
-            } else {
-                eventBus.emit(
-                    InstallState.Error(UiText.DynamicString(result.exceptionOrNull()?.message ?: "Root install failed"))
-                )
             }
+            eventBus.emit(terminalState)
         } catch (e: Exception) {
             e.rethrowIfPrivilegeExecutionFailure()
             eventBus.emit(InstallState.Error(UiText.DynamicString("Root install error: ${e.message}")))
