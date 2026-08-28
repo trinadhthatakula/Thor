@@ -6,6 +6,7 @@ package com.valhalla.thor.data.gateway.root
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellTransportDied
 import java.util.concurrent.CancellationException
@@ -140,6 +141,28 @@ class OwnedRootShellExecutorTest {
     }
 
     @Test
+    fun `close failure preserves typed transport result and releases ownership`() = runTest {
+        val first = FakeRootShellSession(
+            ExecutionSchedule.TransportDeath,
+            closeFailure = IllegalStateException("synthetic close failure"),
+        )
+        val second = FakeRootShellSession(ExecutionSchedule.Complete(success()))
+        val factory = FakeRootShellSessionFactory(first, second)
+        val executor = executor(factory)
+
+        val failure = captureFailure<ShellTransportDied> {
+            executor.execute(command("archive.transport-close-failure"))
+        }
+        val replacementResult = executor.execute(command("archive.after-close-failure"))
+
+        assertEquals(PrivilegeExecutionLane.ARCHIVE, failure.lane)
+        assertEquals("the failed close must still be attempted once", 1, first.closeCount)
+        assertEquals("ownership must advance to one replacement", 2, factory.openCount)
+        assertEquals("the replacement generation must remain open", 0, second.closeCount)
+        assertEquals(0, replacementResult.exitCode)
+    }
+
+    @Test
     fun `external cancellation closes used generation and rethrows cancellation`() = runTest {
         val completion = CompletableDeferred<RootCommandResult>()
         val session = FakeRootShellSession(ExecutionSchedule.AwaitCompletion(completion))
@@ -153,6 +176,51 @@ class OwnedRootShellExecutorTest {
 
         assertTrue("the command coroutine must remain cancelled", commandJob.isCancelled)
         assertEquals("cancellation must close the generation in use", 1, session.closeCount)
+    }
+
+    @Test
+    fun `session cancellation reports ShellCommandCancelled with command class`() = runTest {
+        val session = FakeRootShellSession(ExecutionSchedule.Cancelled)
+        val executor = executor(FakeRootShellSessionFactory(session))
+        val commandClass = PrivilegeCommandClass("archive.cancelled")
+
+        val failure = captureFailure<ShellCommandCancelled> {
+            executor.execute(command(commandClass.value))
+        }
+
+        assertEquals(commandClass, failure.commandClass)
+        assertEquals("typed cancellation must close the generation in use", 1, session.closeCount)
+    }
+
+    @Test
+    fun `null timeout runs while explicit zero times out immediately`() = runTest {
+        val session = FakeRootShellSession(
+            ExecutionSchedule.Complete(success()),
+            ExecutionSchedule.Complete(success()),
+        )
+        val factory = FakeRootShellSessionFactory(session)
+        val executor = executor(factory)
+
+        val unbounded = executor.execute(command("archive.no-timeout", timeout = null))
+        val failure = captureFailure<ShellCommandTimedOut> {
+            executor.execute(command("archive.zero-timeout", timeout = Duration.ZERO))
+        }
+
+        assertEquals("a null timeout must permit execution", 0, unbounded.exitCode)
+        assertEquals(
+            PrivilegeCommandClass("archive.zero-timeout"),
+            failure.commandClass,
+        )
+        assertEquals(
+            "zero timeout must expire before a second submission",
+            1,
+            session.submissionCount
+        )
+        assertEquals(
+            "an explicit zero timeout must close the used generation",
+            1,
+            session.closeCount
+        )
     }
 
     @Test
@@ -183,40 +251,42 @@ class OwnedRootShellExecutorTest {
     @Test
     fun `late cleanup from generation one cannot close generation two`() = runTest {
         val cleanupDispatcher = QueuedDispatcher()
-        val firstCompletion = CompletableDeferred<RootCommandResult>()
-        val first = FakeRootShellSession(ExecutionSchedule.AwaitCompletion(firstCompletion))
+        val first = FakeRootShellSession(ExecutionSchedule.Complete(success()))
         val second = FakeRootShellSession(ExecutionSchedule.Complete(success()))
         val factory = FakeRootShellSessionFactory(first, second)
-        val executor = OwnedRootShellExecutor(
-            lane = PrivilegeExecutionLane.ARCHIVE,
+        val owner = RootShellGenerationOwner(
             sessionFactory = factory,
             ioDispatcher = cleanupDispatcher,
         )
+        val generationOne = owner.healthySessionOrOpen()
 
-        val cancelled = launch {
-            try {
-                executor.execute(command("archive.generation-one"))
-            } catch (_: CancellationException) {
-                // The observed behavior is the generation cleanup below.
-            }
-        }
+        val cleanup = async { owner.invalidateExactGeneration(generationOne) }
         runCurrent()
-        cancelled.cancel()
-        runCurrent()
-        val replacement = async { executor.execute(command("archive.generation-two")) }
-        runCurrent()
+        val generationTwo = owner.healthySessionOrOpen()
 
-        assertEquals("the replacement must wait for exact-generation cleanup", 1, factory.openCount)
+        assertEquals(
+            "one successor generation must exist before old cleanup runs",
+            2,
+            factory.openCount
+        )
+        assertEquals("generation one must still await queued close", 0, first.closeCount)
+        assertEquals("generation two must remain open", 0, second.closeCount)
+
         cleanupDispatcher.runNext()
         runCurrent()
-        assertEquals("one successor generation must open", 2, factory.openCount)
-        assertEquals("generation one must close exactly once", 1, first.closeCount)
-        assertEquals("generation-one cleanup must not close generation two", 0, second.closeCount)
-        assertEquals(0, replacement.await().exitCode)
+        cleanup.await()
+        owner.invalidateExactGeneration(generationOne)
 
-        firstCompletion.complete(success())
-        runCurrent()
-        assertEquals("a late completion must not close the replacement", 0, second.closeCount)
+        assertEquals("generation one must close exactly once", 1, first.closeCount)
+        assertEquals(
+            "late generation-one invalidation must not close generation two",
+            0,
+            second.closeCount
+        )
+        assertTrue(
+            "the replacement lease must own generation two",
+            generationTwo.session === second
+        )
     }
 
     @Test
@@ -309,6 +379,7 @@ class OwnedRootShellExecutorTest {
 
     private class FakeRootShellSession(
         vararg schedules: ExecutionSchedule,
+        private val closeFailure: Exception? = null,
     ) : RootShellSession {
         private val scheduledExecutions = ArrayDeque(schedules.toList())
         private var alive = true
@@ -333,12 +404,15 @@ class OwnedRootShellExecutorTest {
                     alive = false
                     throw RootShellTransportException()
                 }
+
+                ExecutionSchedule.Cancelled -> throw CancellationException("synthetic cancellation")
             }
         }
 
         override fun close() {
             closeCount += 1
             alive = false
+            closeFailure?.let { throw it }
         }
     }
 
@@ -349,6 +423,7 @@ class OwnedRootShellExecutorTest {
         ) : ExecutionSchedule
 
         data object TransportDeath : ExecutionSchedule
+        data object Cancelled : ExecutionSchedule
     }
 
     private companion object {

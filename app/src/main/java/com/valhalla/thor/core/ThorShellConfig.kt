@@ -4,8 +4,6 @@
 package com.valhalla.thor.core
 
 import com.valhalla.superuser.Shell
-import com.valhalla.thor.BuildConfig
-import com.valhalla.thor.core.ThorShellConfig.init
 
 /**
  * Centralized configuration for the Root Shell.
@@ -14,8 +12,9 @@ import com.valhalla.thor.core.ThorShellConfig.init
 object ThorShellConfig {
 
     fun init() {
-        // Set logging based on build type
-        Shell.enableVerboseLogging = BuildConfig.DEBUG
+        // Odin's verbose mode logs raw commands and collected output process-wide. Keep it disabled
+        // for every build because interactive and owned background shells can execute concurrently.
+        Shell.enableVerboseLogging = false
 
         // Do NOT set FLAG_MOUNT_MASTER — but not for the reason it is tempting to write down. The
         // flag cannot "block root acquisition" on its own: Odin's BuilderImpl.start() wraps the

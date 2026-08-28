@@ -18,30 +18,56 @@ import kotlinx.coroutines.withTimeout
 
 internal class OwnedRootShellExecutor(
     private val lane: PrivilegeExecutionLane,
-    private val sessionFactory: RootShellSessionFactory,
-    private val ioDispatcher: CoroutineDispatcher,
+    sessionFactory: RootShellSessionFactory,
+    ioDispatcher: CoroutineDispatcher,
 ) : RootCommandExecutor {
     private val mutex = Mutex()
-    private var currentLease: SessionLease? = null
-    private var generation: Long = 0
+    private val generationOwner = RootShellGenerationOwner(sessionFactory, ioDispatcher)
 
     override suspend fun execute(command: RootCommand): RootCommandResult = mutex.withLock {
-        val lease = healthySessionOrOpen()
+        var lease: RootShellGenerationOwner.SessionLease? = null
         try {
+            lease = generationOwner.healthySessionOrOpen()
             executeWithOptionalTimeout(lease, command)
         } catch (timeout: TimeoutCancellationException) {
-            invalidateExactGeneration(lease)
+            lease?.let { generationOwner.invalidateExactGeneration(it) }
             throw ShellCommandTimedOut(command.execution.commandClass)
         } catch (cancelled: CancellationException) {
-            invalidateExactGeneration(lease)
+            lease?.let { generationOwner.invalidateExactGeneration(it) }
             throw ShellCommandCancelled(command.execution.commandClass, cancelled)
         } catch (transport: RootShellTransportException) {
-            invalidateExactGeneration(lease)
+            lease?.let { generationOwner.invalidateExactGeneration(it) }
             throw ShellTransportDied(lane, transport)
         }
     }
 
-    private suspend fun healthySessionOrOpen(): SessionLease {
+    private suspend fun executeWithOptionalTimeout(
+        lease: RootShellGenerationOwner.SessionLease,
+        command: RootCommand,
+    ): RootCommandResult {
+        val timeout = command.execution.commandTimeout
+        return if (timeout == null) {
+            lease.session.execute(command.text)
+        } else {
+            withTimeout(timeout) {
+                lease.session.execute(command.text)
+            }
+        }
+    }
+}
+
+/**
+ * Owns generation identity separately from command admission so cleanup can be tested at the
+ * dispatcher boundary. Production callers serialize all methods through [OwnedRootShellExecutor].
+ */
+internal class RootShellGenerationOwner(
+    private val sessionFactory: RootShellSessionFactory,
+    private val ioDispatcher: CoroutineDispatcher,
+) {
+    private var currentLease: SessionLease? = null
+    private var generation: Long = 0
+
+    suspend fun healthySessionOrOpen(): SessionLease {
         currentLease?.let { lease ->
             if (lease.session.isAlive) return lease
             invalidateExactGeneration(lease)
@@ -54,41 +80,21 @@ internal class OwnedRootShellExecutor(
         ).also { currentLease = it }
     }
 
-    private suspend fun executeWithOptionalTimeout(
-        lease: SessionLease,
-        command: RootCommand,
-    ): RootCommandResult {
-        val timeout = command.execution.commandTimeout
-        return if (timeout == null) {
-            lease.session.execute(command.text)
-        } else {
-            withTimeout(timeout) {
-                lease.session.execute(command.text)
-            }
-        }
-    }
-
-    private suspend fun invalidateExactGeneration(lease: SessionLease) {
+    suspend fun invalidateExactGeneration(lease: SessionLease) {
         val ownedLease = currentLease
         if (ownedLease?.generation != lease.generation || ownedLease.session !== lease.session) return
 
+        currentLease = null
         withContext(NonCancellable + ioDispatcher) {
-            val latestLease = currentLease
-            if (
-                latestLease?.generation == lease.generation &&
-                latestLease.session === lease.session
-            ) {
-                currentLease = null
-                try {
-                    lease.session.close()
-                } catch (_: Exception) {
-                    // The failed generation is already detached; preserve the command outcome.
-                }
+            try {
+                lease.session.close()
+            } catch (_: Exception) {
+                // The failed generation is already detached; preserve the command outcome.
             }
         }
     }
 
-    private data class SessionLease(
+    data class SessionLease(
         val generation: Long,
         val session: RootShellSession,
     )
