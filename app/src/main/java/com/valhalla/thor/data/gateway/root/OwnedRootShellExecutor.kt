@@ -6,6 +6,7 @@ package com.valhalla.thor.data.gateway.root
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
+import com.valhalla.thor.domain.model.ShellLaneUnavailable
 import com.valhalla.thor.domain.model.ShellTransportDied
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -43,8 +44,12 @@ internal class OwnedRootShellExecutor(
                 throw ShellCommandCancelled(command.execution.commandClass, cancelled)
             }
         } catch (transport: RootShellTransportException) {
-            lease?.let { generationOwner.invalidateExactGeneration(it) }
-            throw ShellTransportDied(lane, transport)
+            val cause = transport.cause ?: transport
+            if (lease == null) {
+                throw ShellLaneUnavailable(lane, cause)
+            }
+            generationOwner.invalidateExactGeneration(lease)
+            throw ShellTransportDied(lane, cause)
         }
     }
 

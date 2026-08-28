@@ -12,11 +12,14 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
 import com.valhalla.thor.data.backup.PartialArchiveLedger
+import com.valhalla.thor.data.gateway.root.OwnedRootShellExecutor
+import com.valhalla.thor.data.gateway.root.RootShellSessionFactory
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.ComponentOverrideDao
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import kotlinx.coroutines.CoroutineDispatcher
@@ -91,6 +94,28 @@ class AppModule {
     // scan scope — the component scan only sees com.valhalla.thor.
     @Single
     fun shellRepository(): ShellRepository = RealShellRepository()
+
+    @Single
+    @Named("archive")
+    internal fun archiveRootShellExecutor(
+        sessionFactory: RootShellSessionFactory,
+        @Named("io") ioDispatcher: CoroutineDispatcher,
+    ): OwnedRootShellExecutor = OwnedRootShellExecutor(
+        lane = PrivilegeExecutionLane.ARCHIVE,
+        sessionFactory = sessionFactory,
+        ioDispatcher = ioDispatcher,
+    )
+
+    @Single
+    @Named("sweep")
+    internal fun sweepRootShellExecutor(
+        sessionFactory: RootShellSessionFactory,
+        @Named("io") ioDispatcher: CoroutineDispatcher,
+    ): OwnedRootShellExecutor = OwnedRootShellExecutor(
+        lane = PrivilegeExecutionLane.SWEEP,
+        sessionFactory = sessionFactory,
+        ioDispatcher = ioDispatcher,
+    )
 
     // Bound here rather than annotated on the class: FileArchiveBreadcrumbStore takes a File so it
     // stays JVM-testable, and there is no File in the graph for the scan to inject. With

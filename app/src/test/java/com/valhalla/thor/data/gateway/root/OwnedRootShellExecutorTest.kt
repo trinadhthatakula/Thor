@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
+import com.valhalla.thor.domain.model.ShellLaneUnavailable
 import com.valhalla.thor.domain.model.ShellTransportDied
 import java.util.concurrent.CancellationException
 import kotlin.time.Duration
@@ -142,6 +143,33 @@ class OwnedRootShellExecutorTest {
         assertEquals("the process exit must be preserved", 23, failedCommand.exitCode)
         assertEquals("a normal process failure must retain the generation", 1, factory.openCount)
         assertEquals("a normal process failure must not close the session", 0, session.closeCount)
+    }
+
+    @Test
+    fun `open failure is unavailable while post-open failure is transport death`() = runTest {
+        val openCause = IllegalStateException("synthetic open failure")
+        val unavailable = captureFailure<ShellLaneUnavailable> {
+            executor { throw RootShellTransportException(openCause) }
+                .execute(command("archive.open"))
+        }
+
+        val session = FakeRootShellSession(ExecutionSchedule.TransportDeath)
+        val died = captureFailure<ShellTransportDied> {
+            executor(FakeRootShellSessionFactory(session))
+                .execute(command("archive.transport"))
+        }
+
+        assertEquals(PrivilegeExecutionLane.ARCHIVE, unavailable.lane)
+        assertTrue(
+            "the open cause must remain available for diagnostics",
+            unavailable.cause === openCause
+        )
+        assertEquals(PrivilegeExecutionLane.ARCHIVE, died.lane)
+        assertTrue(
+            "post-open transport death must retain its typed cause",
+            died.cause is RootShellTransportException
+        )
+        assertEquals("post-open transport death must close its generation", 1, session.closeCount)
     }
 
     @Test
