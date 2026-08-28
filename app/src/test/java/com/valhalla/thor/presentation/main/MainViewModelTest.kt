@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -366,7 +367,11 @@ class MainViewModelTest {
     fun `cancellation leaves the freeze logger complete without converting cancellation to success`() = runTest {
         lateinit var targetJob: Job
         val suspendingSystem = object : SystemRepository by system {
-            override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
+            override suspend fun setAppDisabled(
+                packageName: String,
+                isDisabled: Boolean,
+                execution: PrivilegeExecutionContext,
+            ): Result<Unit> {
                 targetJob = currentCoroutineContext()[Job]!!
                 awaitCancellation()
             }

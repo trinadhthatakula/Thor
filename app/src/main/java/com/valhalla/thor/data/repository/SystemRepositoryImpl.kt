@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.capabilityProbeCommand
 import com.valhalla.thor.domain.model.classSizeCommand
@@ -34,6 +35,18 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+
+internal suspend inline fun <T> resultPreservingCancellation(
+    action: suspend () -> Result<T>,
+): Result<T> = try {
+    action()
+} catch (cancelled: CancellationException) {
+    // CancellationException is an Exception in Kotlin and must not be swallowed. Bulk operations
+    // need a cancelled command to remain unresolved rather than becoming an ordinary failed result.
+    throw cancelled
+} catch (failure: Exception) {
+    Result.failure(failure)
+}
 
 @Single(binds = [SystemRepository::class, AppDataProbe::class])
 class SystemRepositoryImpl(
@@ -120,25 +133,17 @@ class SystemRepositoryImpl(
     ): Result<T> {
         return getActiveGateway().fold(
             onSuccess = { gateway ->
-                try {
-                    action(gateway)
-                } catch (e: CancellationException) {
-                    // CancellationException is an Exception in Kotlin and must not be swallowed.
-                    // BulkFreezeRunner's per-package workers rely on this rethrow: without it a
-                    // deadline-cancelled worker returns Result.failure(CancellationException)
-                    // instead of throwing, and the package is counted as failed rather than
-                    // unresolved.
-                    throw e
-                } catch (e: Exception) {
-                    Result.failure(e)
-                }
+                resultPreservingCancellation { action(gateway) }
             },
             onFailure = { Result.failure(it) }
         )
     }
 
-    override suspend fun forceStopApp(packageName: String): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.forceStopApp(packageName) }
+    override suspend fun forceStopApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.forceStopApp(packageName, execution) }
     }
 
     // Root-gated rather than routed through runGatewayAction, and deliberately so: no other
@@ -147,14 +152,17 @@ class SystemRepositoryImpl(
     // signature-level, so PackageManagerService answers Shizuku's call by logging that it is
     // silently ignoring it. This follows `copyFileWithRoot` and `getAppPaths`, the two operations
     // that were already root-only for a reason of their own.
-    override suspend fun clearCache(packageName: String): Result<Long?> = withContext(ioDispatcher) {
+    override suspend fun clearCache(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> = withContext(ioDispatcher) {
         if (!rootGateway.isRootAvailable()) {
             return@withContext Result.failure(
                 Exception("Clearing one app's cache requires Root. Shizuku and Dhizuku can only clear every app's cache at once.")
             )
         }
         measuringCacheFreed({ storageStats.cacheBytes(packageName) }) {
-            rootGateway.clearCache(packageName)
+            rootGateway.clearCache(packageName, execution)
         }
     }
 
@@ -198,36 +206,51 @@ class SystemRepositoryImpl(
     ): Result<Long?> {
         val before = measure()
         val result = clear(before)
-        if (result.isFailure) return Result.failure(result.exceptionOrNull() ?: Exception("Cache clear failed"))
+        if (result.isFailure) return Result.failure(
+            result.exceptionOrNull() ?: Exception("Cache clear failed")
+        )
         val after = measure()
         if (before == null || after == null) return Result.success(null)
         val freed = before - after
         return Result.success(if (freed >= 0) freed else null)
     }
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.clearAppData(packageName) }
+    override suspend fun clearAppData(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.clearAppData(packageName, execution) }
     }
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> =
-        withContext(ioDispatcher) {
-            runGatewayAction { it.setAppDisabled(packageName, isDisabled) }
-        }
+    override suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.setAppDisabled(packageName, isDisabled, execution) }
+    }
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> =
-        withContext(ioDispatcher) {
-            runGatewayAction { it.setAppSuspended(packageName, isSuspended) }
-        }
+    override suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.setAppSuspended(packageName, isSuspended, execution) }
+    }
 
     override suspend fun setAppRestricted(
         packageName: String,
-        isRestricted: Boolean
+        isRestricted: Boolean,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.setAppRestricted(packageName, isRestricted) }
+        runGatewayAction { it.setAppRestricted(packageName, isRestricted, execution) }
     }
 
-    override suspend fun uninstallApp(packageName: String): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.uninstallApp(packageName) }
+    override suspend fun uninstallApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.uninstallApp(packageName, execution) }
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> = withContext(ioDispatcher) {
@@ -247,18 +270,24 @@ class SystemRepositoryImpl(
     // remain available individually as `forceStopApp` and `clearCache`, each returning its own
     // real `Result`.
 
-    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.reinstallAppWithGoogle(packageName) }
+    override suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        runGatewayAction { it.reinstallAppWithGoogle(packageName, execution) }
     }
 
     override suspend fun copyFileWithRoot(
         sourcePath: String,
-        destinationPath: String
+        destinationPath: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
         if (rootGateway.isRootAvailable()) {
             try {
-                rootGateway.copyFile(sourcePath, destinationPath)
+                rootGateway.copyFile(sourcePath, destinationPath, execution)
                 Result.success(Unit)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -267,15 +296,20 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun getAppPaths(packageName: String): Result<List<String>> = withContext(ioDispatcher) {
+    override suspend fun getAppPaths(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<List<String>> = withContext(ioDispatcher) {
         try {
             if (rootGateway.isRootAvailable()) {
-                val paths = rootGateway.getAppPaths(packageName)
+                val paths = rootGateway.getAppPaths(packageName, execution)
                 if (paths.isNotEmpty()) Result.success(paths)
                 else Result.failure(Exception("No paths found"))
             } else {
                 Result.failure(Exception("Root required to fetch split paths reliably"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -283,16 +317,18 @@ class SystemRepositoryImpl(
 
     override suspend fun grantPermission(
         packageName: String,
-        permissionName: String
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.grantPermission(packageName, permissionName) }
+        runGatewayAction { it.grantPermission(packageName, permissionName, execution) }
     }
 
     override suspend fun revokePermission(
         packageName: String,
-        permissionName: String
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.revokePermission(packageName, permissionName) }
+        runGatewayAction { it.revokePermission(packageName, permissionName, execution) }
     }
 
     // --- Per-component control -------------------------------------------------------------
@@ -313,28 +349,35 @@ class SystemRepositoryImpl(
         packageName: String,
         className: String,
         state: ComponentEnabledState,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.setComponentEnabled(packageName, className, state, thorUserId) }
+        runGatewayAction {
+            it.setComponentEnabled(packageName, className, state, thorUserId, execution)
+        }
     }
 
     override suspend fun forceLaunchActivity(
         packageName: String,
         className: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.forceLaunchActivity(packageName, className, thorUserId) }
+        runGatewayAction { it.forceLaunchActivity(packageName, className, thorUserId, execution) }
     }
 
     override suspend fun stopService(
         packageName: String,
         className: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.stopService(packageName, className, thorUserId) }
+        runGatewayAction { it.stopService(packageName, className, thorUserId, execution) }
     }
 
-    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> =
-        withContext(ioDispatcher) {
-            runGatewayAction { it.executeShellCommand(command) }
-        }
+    override suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Pair<Int, String?>> = withContext(ioDispatcher) {
+        runGatewayAction { it.executeShellCommand(command, execution) }
+    }
 
     /**
      * Deliberately built on [executeShellCommand] rather than on `runGatewayAction` directly: the

@@ -3,10 +3,22 @@
 
 package com.valhalla.thor.domain.repository
 
+import com.valhalla.thor.data.repository.resultPreservingCancellation
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.ShellCommandCancelled
+import com.valhalla.thor.presentation.FakeSystemRepository
+import java.io.File
+import java.util.concurrent.CancellationException
+import java.lang.reflect.Method
+import java.util.UUID
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
-import java.lang.reflect.Method
 
 /**
  * A lock on the one method [SystemRepository] is not allowed to grow back.
@@ -36,6 +48,31 @@ import java.lang.reflect.Method
  */
 class SystemRepositorySurfaceTest {
 
+    @Test
+    fun `package and shell methods preserve the complete execution context`() = runTest {
+        val execution = PrivilegeExecutionContext(
+            lane = PrivilegeExecutionLane.SWEEP,
+            commandClass = PrivilegeCommandClass("sweep.structural"),
+            packageName = "com.example.target",
+            workRequestId = UUID.fromString("11111111-1111-1111-1111-111111111111"),
+            sweepRequestId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
+            commandTimeout = 17.seconds,
+        )
+        val repository = FakeSystemRepository()
+
+        repository.setAppDisabled("com.example.target", true, execution)
+        repository.setAppSuspended("com.example.target", true, execution)
+        repository.forceStopApp("com.example.target", execution)
+        repository.clearCache("com.example.target", execution)
+        repository.reinstallAppWithGoogle("com.example.target", execution)
+        repository.executeShellCommand("true", execution)
+
+        assertEquals(
+            List(6) { execution },
+            repository.executions.map { it.second },
+        )
+    }
+
     /**
      * Matched on the de-mangled name, and there are **two** manglings in play here — the second one
      * is why the guard below exists and it caught this on the first run.
@@ -48,6 +85,23 @@ class SystemRepositorySurfaceTest {
      * `aggressiveCleanup` returned `Result<Unit>` too, so against raw names the assertion below was
      * green whether or not the method was there.
      */
+    @Test
+    fun `ShellCommandCancelled remains structured cancellation`() = runTest {
+        val cancellation = ShellCommandCancelled(
+            PrivilegeCommandClass("sweep.cancelled"),
+            CancellationException("cancelled by caller"),
+        )
+
+        val caught = try {
+            resultPreservingCancellation<Unit> { throw cancellation }
+            null
+        } catch (actual: CancellationException) {
+            actual
+        }
+
+        assertSame(cancellation, caught)
+    }
+
     @Test
     fun `aggressiveCleanup is gone`() {
         val names = surfaceNames()

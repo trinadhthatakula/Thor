@@ -23,6 +23,7 @@ import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionIndex
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.SortBy
@@ -90,6 +91,9 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     /** Every call reaching the privilege layer, in order, as `"method:arg[:arg]"`. */
     val calls = mutableListOf<String>()
 
+    /** Context paired with every context-aware privilege call, in call order. */
+    val executions = mutableListOf<Pair<String, PrivilegeExecutionContext>>()
+
     private val failures = mutableMapOf<String, Throwable>()
 
     /**
@@ -114,14 +118,18 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
      * append to [calls] and nothing else, so a test observing the privilege layer through [trace] or
      * steering it through [onCall] could neither see nor intercept them.
      */
-    private fun note(call: String) {
+    private fun note(call: String, execution: PrivilegeExecutionContext? = null) {
         calls += call
+        execution?.let { executions += call to it }
         trace?.add(call)
         onCall?.invoke(call)
     }
 
-    private fun record(call: String): Result<Unit> {
-        note(call)
+    private fun record(
+        call: String,
+        execution: PrivilegeExecutionContext? = null,
+    ): Result<Unit> {
+        note(call, execution)
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -132,52 +140,85 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     var cacheFreedBytes: Long? = null
 
     /** [record] for the two operations that return a byte count; [failWith] still applies. */
-    private fun recordBytes(call: String): Result<Long?> = record(call).map { cacheFreedBytes }
+    private fun recordBytes(
+        call: String,
+        execution: PrivilegeExecutionContext? = null,
+    ): Result<Long?> = record(call, execution).map { cacheFreedBytes }
 
     override suspend fun isRootAvailable(): Boolean = true
     override suspend fun isShizukuAvailable(): Boolean = false
     override suspend fun isDhizukuAvailable(): Boolean = false
 
-    override suspend fun forceStopApp(packageName: String) = record("forceStopApp:$packageName")
+    override suspend fun forceStopApp(packageName: String, execution: PrivilegeExecutionContext) =
+        record("forceStopApp:$packageName", execution)
 
-    override suspend fun clearCache(packageName: String) = recordBytes("clearCache:$packageName")
+    override suspend fun clearCache(packageName: String, execution: PrivilegeExecutionContext) =
+        recordBytes("clearCache:$packageName", execution)
 
     override suspend fun clearAllCaches() = recordBytes("clearAllCaches")
 
-    override suspend fun clearAppData(packageName: String) = record("clearAppData:$packageName")
+    override suspend fun clearAppData(packageName: String, execution: PrivilegeExecutionContext) =
+        record("clearAppData:$packageName", execution)
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean) =
-        record("setAppDisabled:$packageName:$isDisabled")
+    override suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext,
+    ) = record("setAppDisabled:$packageName:$isDisabled", execution)
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean) =
-        record("setAppSuspended:$packageName:$isSuspended")
+    override suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext,
+    ) = record("setAppSuspended:$packageName:$isSuspended", execution)
 
-    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean) =
-        record("setAppRestricted:$packageName:$isRestricted")
+    override suspend fun setAppRestricted(
+        packageName: String,
+        isRestricted: Boolean,
+        execution: PrivilegeExecutionContext,
+    ) = record("setAppRestricted:$packageName:$isRestricted", execution)
 
-    override suspend fun uninstallApp(packageName: String) = record("uninstallApp:$packageName")
+    override suspend fun uninstallApp(packageName: String, execution: PrivilegeExecutionContext) =
+        record("uninstallApp:$packageName", execution)
 
     override suspend fun rebootDevice(reason: String) = record("rebootDevice:$reason")
 
-    override suspend fun reinstallAppWithGoogle(packageName: String) =
-        record("reinstallAppWithGoogle:$packageName")
+    override suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("reinstallAppWithGoogle:$packageName", execution)
 
-    override suspend fun copyFileWithRoot(sourcePath: String, destinationPath: String) =
-        record("copyFileWithRoot:$sourcePath:$destinationPath")
+    override suspend fun copyFileWithRoot(
+        sourcePath: String,
+        destinationPath: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("copyFileWithRoot:$sourcePath:$destinationPath", execution)
 
-    override suspend fun grantPermission(packageName: String, permissionName: String) =
-        record("grantPermission:$packageName:$permissionName")
+    override suspend fun grantPermission(
+        packageName: String,
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("grantPermission:$packageName:$permissionName", execution)
 
-    override suspend fun revokePermission(packageName: String, permissionName: String) =
-        record("revokePermission:$packageName:$permissionName")
+    override suspend fun revokePermission(
+        packageName: String,
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("revokePermission:$packageName:$permissionName", execution)
 
-    override suspend fun getAppPaths(packageName: String): Result<List<String>> {
-        note("getAppPaths:$packageName")
+    override suspend fun getAppPaths(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<List<String>> {
+        note("getAppPaths:$packageName", execution)
         return Result.success(emptyList())
     }
 
-    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
-        note("executeShellCommand:$command")
+    override suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Pair<Int, String?>> {
+        note("executeShellCommand:$command", execution)
         return Result.success(0 to null)
     }
 
@@ -198,14 +239,21 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     override suspend fun setComponentEnabled(
         packageName: String,
         className: String,
-        state: ComponentEnabledState
-    ) = record("setComponentEnabled:$packageName:$className:$state")
+        state: ComponentEnabledState,
+        execution: PrivilegeExecutionContext,
+    ) = record("setComponentEnabled:$packageName:$className:$state", execution)
 
-    override suspend fun forceLaunchActivity(packageName: String, className: String) =
-        record("forceLaunchActivity:$packageName:$className")
+    override suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("forceLaunchActivity:$packageName:$className", execution)
 
-    override suspend fun stopService(packageName: String, className: String) =
-        record("stopService:$packageName:$className")
+    override suspend fun stopService(
+        packageName: String,
+        className: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("stopService:$packageName:$className", execution)
 }
 
 /** Backed by a [MutableStateFlow] so a test can push a rescan mid-run if it needs one. */

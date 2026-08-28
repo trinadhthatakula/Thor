@@ -24,7 +24,7 @@ class ManageAppUseCase(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.FORCE_STOP, execution) {
-        systemRepository.forceStopApp(packageName)
+        systemRepository.forceStopApp(packageName, execution)
     }
 
     /** Root only, and the `Long?` is bytes freed — see [SystemRepository.clearCache]. */
@@ -32,7 +32,7 @@ class ManageAppUseCase(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Long?> = withPackageLease(packageName, PackageOperationOwner.CLEAR_CACHE, execution) {
-        systemRepository.clearCache(packageName)
+        systemRepository.clearCache(packageName, execution)
     }
 
     /** Every app's cache, under any mode that can. The `Long?` is bytes freed. */
@@ -42,7 +42,7 @@ class ManageAppUseCase(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.CLEAR_DATA, execution) {
-        systemRepository.clearAppData(packageName)
+        systemRepository.clearAppData(packageName, execution)
     }
 
     /**
@@ -60,7 +60,7 @@ class ManageAppUseCase(
         disabled: Boolean,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, freezeOwner(disabled), execution) {
-        setAppDisabledUncoordinated(packageName, disabled)
+        setAppDisabledUncoordinated(packageName, disabled, execution)
     }
 
     /** Ungated for the same reasons as [setAppDisabled]; see [FreezeAppUseCase]. */
@@ -69,7 +69,7 @@ class ManageAppUseCase(
         suspended: Boolean,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, freezeOwner(suspended), execution) {
-        setAppSuspendedUncoordinated(packageName, suspended)
+        setAppSuspendedUncoordinated(packageName, suspended, execution)
     }
 
     /**
@@ -84,10 +84,14 @@ class ManageAppUseCase(
     ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.UNFREEZE, execution) {
         val plan = restorePlanFor(enabled, isSuspended)
         if (plan.unsuspend) {
-            val unsuspend = setAppSuspendedUncoordinated(packageName, false)
+            val unsuspend = setAppSuspendedUncoordinated(packageName, false, execution)
             if (unsuspend.isFailure) return@withPackageLease unsuspend
         }
-        if (plan.enable) setAppDisabledUncoordinated(packageName, false) else Result.success(Unit)
+        if (plan.enable) setAppDisabledUncoordinated(
+            packageName,
+            false,
+            execution
+        ) else Result.success(Unit)
     }
 
     /**
@@ -100,16 +104,16 @@ class ManageAppUseCase(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.UNFREEZE, execution) {
-        val unsuspend = setAppSuspendedUncoordinated(packageName, false)
+        val unsuspend = setAppSuspendedUncoordinated(packageName, false, execution)
         if (unsuspend.isFailure) return@withPackageLease unsuspend
-        setAppDisabledUncoordinated(packageName, false)
+        setAppDisabledUncoordinated(packageName, false, execution)
     }
 
     suspend fun uninstallApp(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.UNINSTALL, execution) {
-        systemRepository.uninstallApp(packageName)
+        systemRepository.uninstallApp(packageName, execution)
     }
 
     /**
@@ -121,18 +125,20 @@ class ManageAppUseCase(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.REINSTALL, execution) {
-        systemRepository.reinstallAppWithGoogle(packageName)
+        systemRepository.reinstallAppWithGoogle(packageName, execution)
     }
 
     private suspend fun setAppDisabledUncoordinated(
         packageName: String,
         disabled: Boolean,
-    ): Result<Unit> = systemRepository.setAppDisabled(packageName, disabled)
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = systemRepository.setAppDisabled(packageName, disabled, execution)
 
     private suspend fun setAppSuspendedUncoordinated(
         packageName: String,
         suspended: Boolean,
-    ): Result<Unit> = systemRepository.setAppSuspended(packageName, suspended)
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = systemRepository.setAppSuspended(packageName, suspended, execution)
 
     private suspend fun <T> withPackageLease(
         packageName: String,

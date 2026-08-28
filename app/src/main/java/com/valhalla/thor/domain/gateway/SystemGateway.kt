@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.domain.gateway
 
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+
 /**
  * The Contract: This defines every privileged action Thor can perform.
  * No Android dependencies (Context, Toast, Intent) allowed here.
@@ -15,15 +17,42 @@ interface SystemGateway {
     suspend fun isDhizukuAvailable(): Boolean
 
     // Core Actions
-    suspend fun forceStopApp(packageName: String): Result<Unit>
-    suspend fun clearAppData(packageName: String): Result<Unit>
-    suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit>
-    suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit>
-    suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit>
+    suspend fun forceStopApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun clearAppData(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun setAppRestricted(
+        packageName: String,
+        isRestricted: Boolean,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
     suspend fun rebootDevice(reason: String): Result<Unit>
 
     // Advanced
-    suspend fun uninstallApp(packageName: String): Result<Unit>
+    suspend fun uninstallApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
     /**
      * @param grantAllPermissions the answer for THIS install to "grant every runtime permission
      *   the package declares, without asking" (`pm install-create -g`, GH#445). `null` — the
@@ -36,9 +65,23 @@ interface SystemGateway {
         canDowngrade: Boolean = false,
         grantAllPermissions: Boolean? = null,
     ): Result<Unit>
-    suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit>
-    suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit>
-    suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit>
+
+    suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun grantPermission(
+        packageName: String,
+        permissionName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun revokePermission(
+        packageName: String,
+        permissionName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
 
     /**
      * Clears **every** app's cache on the primary volume — system and user apps alike — until the
@@ -100,6 +143,7 @@ interface SystemGateway {
         className: String,
         state: ComponentEnabledState,
         userId: Int,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
     /**
@@ -113,6 +157,7 @@ interface SystemGateway {
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
     /**
@@ -125,6 +170,7 @@ interface SystemGateway {
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
     /**
@@ -133,7 +179,10 @@ interface SystemGateway {
      * execute with the same Root/Shizuku/Dhizuku privilege as in-app actions.
      * Returns failure only when the command could not be executed at all.
      */
-    suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>>
+    suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Pair<Int, String?>>
 }
 
 /**

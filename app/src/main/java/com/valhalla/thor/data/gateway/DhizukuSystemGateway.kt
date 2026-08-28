@@ -19,6 +19,7 @@ import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import kotlinx.coroutines.CoroutineDispatcher
@@ -55,7 +56,10 @@ class DhizukuSystemGateway(
         DhizukuHelper.isDhizukuAvailable(context)
     }
 
-    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
+    override suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Pair<Int, String?>> {
         // Runs through Dhizuku's device-owner process (DhizukuAPI.newProcess).
         return runCatching { DhizukuHelper.execute(command) }
     }
@@ -79,6 +83,7 @@ class DhizukuSystemGateway(
         className: String,
         state: com.valhalla.thor.domain.gateway.ComponentEnabledState,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = Result.failure(
         Exception(context.getString(R.string.component_control_unsupported_dhizuku))
     )
@@ -87,6 +92,7 @@ class DhizukuSystemGateway(
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = Result.failure(
         Exception(context.getString(R.string.component_control_unsupported_dhizuku))
     )
@@ -95,11 +101,15 @@ class DhizukuSystemGateway(
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = Result.failure(
         Exception(context.getString(R.string.component_control_unsupported_dhizuku))
     )
 
-    override suspend fun forceStopApp(packageName: String): Result<Unit> {
+    override suspend fun forceStopApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return if (reflector.forceStop(packageName)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Force stop failed. Shell command and reflection both denied."))
     }
@@ -125,12 +135,19 @@ class DhizukuSystemGateway(
         )
     }
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> {
+    override suspend fun clearAppData(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return if (reflector.clearData(packageName)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Clear data failed. Shell pm clear and reflection both failed."))
     }
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
+    override suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         // FLAG_SYSTEM alone, never OR'd with FLAG_UPDATED_SYSTEM_APP — DhizukuReflector.isSystemApp
         // is written that way, matching AppInfoMapper, AppFreezeStateReader.candidateOf and both
         // other gateways. The destructive-fallback gate below is keyed on this same answer, so a
@@ -397,7 +414,10 @@ class DhizukuSystemGateway(
      * clears. Reporting failure there is still right — the app is on the device and the caller
      * falls back to the platform's own uninstall dialog — the message just has to say so.
      */
-    override suspend fun uninstallApp(packageName: String): Result<Unit> {
+    override suspend fun uninstallApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         val removal = reflector.uninstallApp(packageName)
         if (!reflector.isAppInstalled(packageName)) return Result.success(Unit)
         if (removal.succeeded) {
@@ -457,7 +477,10 @@ class DhizukuSystemGateway(
         }
     }
 
-    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
+    override suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         if (packageName == com.valhalla.thor.BuildConfig.APPLICATION_ID)
             return Result.failure(Exception("Cannot reinstall Thor"))
 
@@ -497,14 +520,19 @@ class DhizukuSystemGateway(
         }
     }
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
+    override suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return if (reflector.setAppSuspended(packageName, isSuspended)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Set suspended state failed."))
     }
 
     override suspend fun setAppRestricted(
         packageName: String,
-        isRestricted: Boolean
+        isRestricted: Boolean,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         return if (reflector.setAppRestricted(packageName, isRestricted)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Set restricted state failed."))
@@ -512,7 +540,8 @@ class DhizukuSystemGateway(
 
     override suspend fun grantPermission(
         packageName: String,
-        permissionName: String
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
@@ -559,7 +588,8 @@ class DhizukuSystemGateway(
 
     override suspend fun revokePermission(
         packageName: String,
-        permissionName: String
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))

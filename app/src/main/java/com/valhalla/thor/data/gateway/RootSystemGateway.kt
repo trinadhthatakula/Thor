@@ -13,8 +13,6 @@ import com.valhalla.superuser.Shell
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.rootservice.IThorRootService
-import com.valhalla.superuser.ktx.ShellRepository
-import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.asComponentState
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
@@ -36,17 +34,22 @@ import com.valhalla.thor.data.source.local.setAppEnabledCommand
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
+import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.RootCommandExecutor
+import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -62,6 +65,10 @@ private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 // Upper bound for the RootService bind handshake. A null binder or a callback that never
 // arrives must not pin connectionMutex forever and deadlock every later privileged op (H2).
 private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
+
+internal fun PrivilegeExecutionContext.forRootCommand(
+    commandClass: PrivilegeCommandClass,
+): PrivilegeExecutionContext = copy(commandClass = commandClass)
 
 /**
  * The Android user every suspend and unsuspend in this gateway writes, verifies, and reads the
@@ -90,18 +97,13 @@ private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
 internal val SUSPEND_USER_ID: Int get() = thorUserId
 
 /**
- * Modern implementation of SystemGateway using the reactive ShellRepository.
- * No more static blocking calls.
+ * Root implementation whose commands all cross [RootCommandExecutor].
  */
 @Single
-class RootSystemGateway(
+class RootSystemGateway internal constructor(
     private val context: Context,
-    private val shellRepository: ShellRepository,
+    private val rootCommands: RootCommandExecutor,
     private val preferenceRepository: PreferenceRepository,
-    // Covers three sites, not every shell call: clearAppData, setAppSuspended and
-    // reinstallAppWithGoogle hop onto this, while the other overrides reach the shell through
-    // runCommand, which adds no withContext and so runs on — and stays on — the caller's context.
-    // There is deliberately no matching "main" parameter; see the bind site in getRootService.
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemGateway {
 
@@ -171,14 +173,22 @@ class RootSystemGateway(
             }
             .isSuccess
 
-    private suspend fun getRootService(): IThorRootService? = connectionMutex.withLock {
-        if (!isDaemonReset) {
-            isDaemonReset = true
-            // Kill any old daemon so the newly compiled root service is loaded and executed
-            runCatching {
-                shellRepository.exec("pkill -f ${context.packageName}:root")
+    private suspend fun getRootService(execution: PrivilegeExecutionContext): IThorRootService? =
+        connectionMutex.withLock {
+            if (!isDaemonReset) {
+                isDaemonReset = true
+                // Kill any old daemon so the newly compiled root service is loaded and executed
+                try {
+                    execute(
+                        "pkill -f ${context.packageName}:root",
+                        execution.forRootCommand(ROOT_SERVICE_RESET),
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // A stale daemon is optional; binding below remains the source of truth.
+                }
             }
-        }
 
         rootService?.let { binder ->
             if (binder.asBinder().isBinderAlive) {
@@ -273,8 +283,20 @@ class RootSystemGateway(
             if (cached != null && !cached.isRoot) {
                 cached.close()
             }
-        } catch (_: Throwable) {}
-        return shellRepository.isRootGranted()
+        } catch (_: Throwable) {
+        }
+        return try {
+            val result = execute(
+                "id -u",
+                PrivilegeExecutionContext().forRootCommand(ROOT_AVAILABILITY),
+            )
+            result.exitCode == 0 &&
+                result.stdout.singleOrNull { it.isNotBlank() }?.trim() == ROOT_UID
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
     }
 
     override suspend fun isShizukuAvailable(): Boolean = false
@@ -283,7 +305,10 @@ class RootSystemGateway(
     // killBackgroundProcesses' KILL_BACKGROUND_PROCESSES is satisfied via elevated privilege
     // (root shell) rather than a manifest grant.
     @SuppressLint("MissingPermission")
-    override suspend fun forceStopApp(packageName: String): Result<Unit> {
+    override suspend fun forceStopApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
@@ -311,7 +336,9 @@ class RootSystemGateway(
         // Thor's own user — while a bare `am force-stop` reads USER_ALL and kills the package
         // everywhere. Naming [thorUserId] is what makes the post-check evidence about the process
         // the command was aimed at.
-        val shellResult = runCommand(forceStopCommand(escapedPackage, thorUserId))
+        val shellResult = runCommand(
+            forceStopCommand(escapedPackage, thorUserId), execution, FORCE_STOP,
+        )
         // The exit code alone decided this, and it cannot say no:
         // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so it
         // reports that the command parsed, never that a process died. `shellResult.isSuccess` was
@@ -351,7 +378,7 @@ class RootSystemGateway(
         // shell command itself failed, or it exited 0 and the app kept running anyway. The old
         // message asserted the first unconditionally, which the guard above has just made false.
         val shellVerdict = if (shellResult.isSuccess) {
-            "`am force-stop` exited 0"
+            "the shell force-stop exited 0"
         } else {
             "the shell command failed"
         }
@@ -384,13 +411,16 @@ class RootSystemGateway(
      * a real error — so there is no asynchronous framework call here and no `IPackageDataObserver`
      * to wait on. A readback would re-`stat` what the shell already reported on.
      */
-    suspend fun clearCache(packageName: String): Result<Unit> {
+    suspend fun clearCache(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
         val command = "rm -rf ${clearCachePaths(escapedPackage, thorUserId).joinToString(" ")}"
-        return runCommand(command)
+        return runCommand(command, execution, CACHE_CLEAR)
     }
 
     /**
@@ -429,11 +459,13 @@ class RootSystemGateway(
             // whether it reclaimed gigabytes or bailed out on `freeStorage`'s first line. Root
             // therefore reported success on a no-op and never ran the rung that works — measured on
             // four devices, all answering "there was no cache left to clear".
-            val trim = runCommand("pm trim-caches $targetFreeBytes")
+            val trim = runCommand(
+                "pm trim-caches $targetFreeBytes", PrivilegeExecutionContext(), CACHE_TRIM,
+            )
             if (trim.isFailure) {
                 Logger.w(
                     "RootSystemGateway",
-                    "pm trim-caches $targetFreeBytes failed: ${trim.exceptionOrNull()?.message}"
+                    "Root cache trim did not complete"
                 )
             }
         }
@@ -441,15 +473,20 @@ class RootSystemGateway(
         // name would need escaping is covered too — `*` never matches a path separator, so this
         // cannot reach outside the three parents.
         val sweep = clearCachePaths(escapedPackage = "*", userId = thorUserId).joinToString(" ")
-        return runCommand("rm -rf $sweep")
+        return runCommand("rm -rf $sweep", PrivilegeExecutionContext(), CACHE_SWEEP)
     }
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(ioDispatcher) {
+    override suspend fun clearAppData(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
-        val shellResult = runCommand(clearAppDataCommand(escapedPackage, thorUserId))
+        val shellResult = runCommand(
+            clearAppDataCommand(escapedPackage, thorUserId), execution, CLEAR_APP_DATA,
+        )
         if (shellResult.isSuccess) return@withContext shellResult
 
         // Fallback to ThorRootService AIDL daemon. `clearAppDataForUser` and not the older
@@ -457,7 +494,7 @@ class RootSystemGateway(
         // itself and the one-argument entry point wipes user 0 unconditionally. A daemon left over
         // from an older build has no such transaction code and answers false, which lands on the
         // failure below — the right way round for a call that destroys data.
-        val service = getRootService()
+        val service = getRootService(execution)
         // The failure below now names *which* way the AIDL rung produced nothing. "AIDL failed" —
         // the whole of what it used to say — folded three different diagnoses into one sentence of
         // a bug report about data that is still there: no daemon at all (the bind was refused or
@@ -496,7 +533,7 @@ class RootSystemGateway(
         }
 
         return@withContext Result.failure(
-            Exception("Root clear app data of $packageName failed: `pm clear` failed and $daemonVerdict.")
+            Exception("Root clear app data of $packageName failed: the shell step failed and $daemonVerdict.")
         )
     }
 
@@ -565,7 +602,11 @@ class RootSystemGateway(
      * Every rung is verified by **re-reading `ApplicationInfo`**, never by the shell exit code: `pm`
      * happily prints Success for a no-op and returns non-zero from commands that did take effect.
      */
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
+    override suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
@@ -577,13 +618,17 @@ class RootSystemGateway(
 
         if (isSystem) {
             return if (isDisabled) {
-                freezeSystemApp(packageName, escapedPackage, currentUser)
+                freezeSystemApp(packageName, escapedPackage, currentUser, execution)
             } else {
-                unfreezeSystemApp(packageName, escapedPackage, currentUser)
+                unfreezeSystemApp(packageName, escapedPackage, currentUser, execution)
             }
         }
 
-        val shellResult = runCommand(setAppEnabledCommand(escapedPackage, currentUser, isDisabled))
+        val shellResult = runCommand(
+            setAppEnabledCommand(escapedPackage, currentUser, isDisabled),
+            execution,
+            APP_ENABLED_STATE,
+        )
 
         // Not a bare `if (isSuccess) return it` — the exit code is not the judge here; see the KDoc.
         // `enabled != isDisabled` reads oddly and is the whole test: it is "the state we asked for
@@ -640,6 +685,7 @@ class RootSystemGateway(
         packageName: String,
         escapedPackage: String,
         currentUser: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         // Already frozen — by us, by an older build, or by another tool. Short-circuit before any
         // rung runs: re-freezing a package that is merely disabled must never walk down into the
@@ -651,14 +697,16 @@ class RootSystemGateway(
 
         // --- Rung 1: pm disable. Keeps the package installed for the user, so its data survives.
         // The result is kept rather than discarded because the gate below turns on *why* a rung
-        // failed: runCommand folds stderr into the exception message, which is where a
-        // PackageManagerService SecurityException lands.
-        val disableResult = runCommand(setAppEnabledCommand(escapedPackage, currentUser, isDisabled = true))
+        // failed: its typed result is used only to decide whether policy allows the next rung.
+        val disableResult = runCommand(
+            setAppEnabledCommand(escapedPackage, currentUser, isDisabled = true),
+            execution, APP_ENABLED_STATE,
+        )
         when (readEffectivelyEnabled(packageName)) {
             false -> {
                 Logger.i(
                     "RootSystemGateway",
-                    "freeze $packageName: rung 1 `pm disable --user $currentUser` took effect — app data preserved"
+                    "freeze $packageName: disable step took effect — app data preserved"
                 )
                 return Result.success(Unit)
             }
@@ -671,9 +719,9 @@ class RootSystemGateway(
                 // package for this user on a state nobody can confirm. Fail closed: a retry
                 // re-reads and, if rung 1 actually landed, short-circuits above.
                 val e = java.io.IOException(
-                    "Root freeze of $packageName: `pm disable --user $currentUser` ran but the package " +
-                        "state could no longer be read, so `pm uninstall -k --user $currentUser` was NOT " +
-                        "attempted — it would uninstall the package for this user on a state we cannot confirm."
+                    "Root freeze of $packageName: the disable step ran but the package state could " +
+                            "no longer be read, so the uninstall fallback was NOT attempted — it would " +
+                            "uninstall the package for this user on a state we cannot confirm."
                 )
                 Logger.e("RootSystemGateway", e.message.orEmpty(), e)
                 return Result.failure(e)
@@ -705,10 +753,10 @@ class RootSystemGateway(
             )
         ) {
             val refused = java.io.IOException(
-                "Root freeze of $packageName failed: `pm disable --user $currentUser` did not take " +
-                    "effect and the package is still enabled. Root can disable any package, so this is " +
-                    "a real refusal rather than a platform limit — the `pm uninstall -k --user " +
-                    "$currentUser` fallback is not permitted here, and the package was left installed."
+                "Root freeze of $packageName failed: the disable step did not take effect and the " +
+                        "package is still enabled. Root can disable any package, so this is a real refusal " +
+                        "rather than a platform limit — the uninstall fallback is not permitted here, and " +
+                        "the package was left installed."
             )
             Logger.e("RootSystemGateway", refused.message.orEmpty(), refused)
             return Result.failure(refused)
@@ -718,23 +766,25 @@ class RootSystemGateway(
         // /data/user/N/<pkg> and an unfreeze returns the app factory-fresh, which is the bug this
         // whole change exists to remove. With it, the data directories keep the same inodes across
         // uninstall → install-existing (measured).
-        runCommand("pm uninstall -k --user $currentUser $escapedPackage")
+        runCommand(
+            "pm uninstall -k --user $currentUser $escapedPackage", execution, UNINSTALL,
+        )
         // Nothing is left to try, so anything but "definitely still enabled" is the state we asked
         // for: a null read can now only mean the package is no longer resolvable for this user,
         // which is precisely what `pm uninstall -k --user` produces.
         if (readEffectivelyEnabled(packageName) != true) {
             Logger.w(
                 "RootSystemGateway",
-                "freeze $packageName: rung 1 `pm disable` had no effect; fell back to rung 2 " +
-                    "`pm uninstall -k --user $currentUser` — data directories survive; the package " +
-                    "stops resolving without MATCH_UNINSTALLED_PACKAGES"
+                "freeze $packageName: disable had no effect; the uninstall fallback took effect — " +
+                        "data directories survive; the package stops resolving without " +
+                        "MATCH_UNINSTALLED_PACKAGES"
             )
             return Result.success(Unit)
         }
 
         val failure = java.io.IOException(
-            "Root freeze of $packageName failed: neither `pm disable --user $currentUser` nor " +
-                "`pm uninstall -k --user $currentUser` changed the package's state."
+            "Root freeze of $packageName failed: neither the disable step nor the uninstall " +
+                    "fallback changed the package's state."
         )
         Logger.e("RootSystemGateway", failure.message.orEmpty(), failure)
         return Result.failure(failure)
@@ -755,13 +805,14 @@ class RootSystemGateway(
         packageName: String,
         escapedPackage: String,
         currentUser: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
-        val tried = mutableListOf<String>()
+        var attemptedSteps = 0
 
         fun unreadable(): Result<Unit> {
             val e = java.io.IOException(
                 "Root unfreeze of $packageName failed: the package could not be read back" +
-                    (if (tried.isEmpty()) "." else " after ${tried.joinToString(", ") { "`$it`" }}.")
+                        (if (attemptedSteps == 0) "." else " after $attemptedSteps recovery step(s).")
             )
             Logger.e("RootSystemGateway", e.message.orEmpty(), e)
             return Result.failure(e)
@@ -773,8 +824,11 @@ class RootSystemGateway(
         // `pm disable` rung existed, plus any package that still falls back to it). FLAG_INSTALLED
         // is clear, so put the package back for the user first.
         if (step == RootFreezeChain.UnfreezeStep.INSTALL_EXISTING) {
-            runCommand("pm install-existing --user $currentUser $escapedPackage")
-            tried += "pm install-existing --user $currentUser"
+            runCommand(
+                "pm install-existing --user $currentUser $escapedPackage",
+                execution, INSTALL_EXISTING,
+            )
+            attemptedSteps++
             step = readUnfreezeStep(packageName) ?: return unreadable()
         }
 
@@ -782,8 +836,11 @@ class RootSystemGateway(
         // restored above with its old disabled enabled-setting intact. install-existing does not
         // clear that setting, which is why this runs *after* rung 1 rather than instead of it.
         if (step == RootFreezeChain.UnfreezeStep.ENABLE) {
-            runCommand(setAppEnabledCommand(escapedPackage, currentUser, isDisabled = false))
-            tried += "pm enable --user $currentUser"
+            runCommand(
+                setAppEnabledCommand(escapedPackage, currentUser, isDisabled = false),
+                execution, APP_ENABLED_STATE,
+            )
+            attemptedSteps++
             step = readUnfreezeStep(packageName) ?: return unreadable()
         }
 
@@ -792,8 +849,8 @@ class RootSystemGateway(
             Logger.i(
                 "RootSystemGateway",
                 "unfreeze $packageName: installed and enabled" +
-                    (if (tried.isEmpty()) " already, no rung run"
-                    else " via ${tried.joinToString(", ") { "`$it`" }}")
+                        (if (attemptedSteps == 0) " already, no recovery step run"
+                        else " after $attemptedSteps recovery step(s)")
             )
             return Result.success(Unit)
         }
@@ -804,7 +861,7 @@ class RootSystemGateway(
                     RootFreezeChain.UnfreezeStep.INSTALL_EXISTING -> "not installed for user $currentUser"
                     else -> "disabled"
                 }
-            } after ${tried.joinToString(", ") { "`$it`" }.ifBlank { "no command" }}."
+            } after $attemptedSteps recovery step(s)."
         )
         Logger.e("RootSystemGateway", failure.message.orEmpty(), failure)
         return Result.failure(failure)
@@ -886,7 +943,11 @@ class RootSystemGateway(
      * or a `FLAG_SUSPENDED` that positively reads false; "could not tell" is a failure, and the
      * failure names the owner so the user learns *which* privilege holds the app.
      */
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> = withContext(ioDispatcher) {
+    override suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
@@ -911,7 +972,7 @@ class RootSystemGateway(
             // Thor's. A daemon left over from an older build has no transaction code for this and
             // answers false, which lands on the failure below rather than on another user's app.
             if (hasReflection) {
-                val service = getRootService()
+                val service = getRootService(execution)
                 if (service != null) {
                     val taskResult = runCatching {
                         service.setAppSuspendedAsForUser(packageName, true, null, SUSPEND_USER_ID)
@@ -951,12 +1012,14 @@ class RootSystemGateway(
             // changed. It is also fresh by the same argument [setAppDisabled] makes, only stronger:
             // this rung runs on API 28 alone, which has no `ApplicationInfo` cache, so the read is a
             // plain binder round trip to PMS.
-            val shell = runCommand("pm suspend --user $SUSPEND_USER_ID $escapedPackage")
+            val shell = runCommand(
+                "pm suspend --user $SUSPEND_USER_ID $escapedPackage", execution, APP_SUSPEND,
+            )
             return@withContext if (shell.isSuccess && readSuspendedFlag(packageName) == true) shell
             else Result.failure(
                 Exception(
                     if (shell.isSuccess) {
-                        "Root suspend of $packageName is unverified: `pm suspend` exited 0 but " +
+                        "Root suspend of $packageName is unverified: the shell step exited 0 but " +
                             "FLAG_SUSPENDED does not read back as set for user $SUSPEND_USER_ID."
                     } else {
                         "Root suspend failed for $packageName."
@@ -965,7 +1028,7 @@ class RootSystemGateway(
             )
         }
 
-        return@withContext unsuspendPackage(packageName, escapedPackage, hasReflection)
+        return@withContext unsuspendPackage(packageName, escapedPackage, hasReflection, execution)
     }
 
     /**
@@ -987,6 +1050,7 @@ class RootSystemGateway(
         packageName: String,
         escapedPackage: String,
         hasReflection: Boolean,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         // Already unsuspended — by us, by another tool, or never suspended at all. A *positive*
         // false, not the fail-open shortcut this change deletes: an unreadable flag is null, which
@@ -1002,7 +1066,7 @@ class RootSystemGateway(
         // `PackageManagerService.java:6689`), which the app process does not hold — and the only
         // thing that can name an arbitrary owner, since the reflective overload it calls does not
         // exist before API 29.
-        val service = if (hasReflection) getRootService() else null
+        val service = if (hasReflection) getRootService(execution) else null
 
         // Past the early return above, the package is either suspended or unreadable — so a parse
         // that names nobody contradicts the flag and cannot be taken at face value. A dump in a
@@ -1022,41 +1086,39 @@ class RootSystemGateway(
                 val accepted = runCatching {
                     service.setAppSuspendedAsForUser(packageName, false, owner, SUSPEND_USER_ID)
                 }.onFailure { e ->
-                    Logger.e("RootSystemGateway", "AIDL unsuspend of $packageName as $owner failed", e)
+                    Logger.e("RootSystemGateway", "AIDL unsuspend of $packageName for one recorded owner failed", e)
                 }.getOrDefault(false)
                 if (!accepted) {
                     Logger.w(
                         "RootSystemGateway",
-                        "unsuspend $packageName: the daemon could not confirm the removal of $owner"
+                        "unsuspend $packageName: the daemon could not confirm one owner removal"
                     )
                 }
             }
 
             val remaining = readSuspenders(service, packageName) ?: return unsuspendFailure(
                 "Root unsuspend of $packageName is unverified: the platform's suspension record " +
-                    "could not be read back after asking to remove ${recorded.joinToString()}, so " +
+                    "could not be read back after asking to remove ${recorded.size} record(s), so " +
                     "Thor will not report a success it cannot see."
             )
             if (remaining.isNotEmpty()) {
                 return unsuspendFailure(
-                    "Root unsuspend of $packageName failed: ${remaining.joinToString()} still " +
-                        "holds a suspension entry after Thor asked to remove " +
-                        "${recorded.joinToString()}, so the app stays paused."
+                    "Root unsuspend of $packageName failed: ${remaining.size} suspension record(s) " +
+                        "remain after Thor asked to remove ${recorded.size}, so the app stays paused."
                 )
             }
             // The record names nobody, so the flag may only veto, never vouch: null here means the
             // package could not be read, which the record has already answered for.
             if (readSuspendedFlag(packageName) == true) {
                 return unsuspendFailure(
-                    "Root unsuspend of $packageName failed: removing ${recorded.joinToString()} " +
-                        "left nothing recorded as suspending it for user $SUSPEND_USER_ID, yet the " +
+                    "Root unsuspend of $packageName failed: removing ${recorded.size} suspender " +
+                        "record(s) left nothing recorded for user $SUSPEND_USER_ID, yet the " +
                         "package still reports FLAG_SUSPENDED."
                 )
             }
             Logger.i(
                 "RootSystemGateway",
-                "unsuspend $packageName: verified — ${recorded.joinToString()} removed and nothing " +
-                    "is recorded as suspending it"
+                "unsuspend $packageName: verified — ${recorded.size} suspender record(s) removed"
             )
             return Result.success(Unit)
         }
@@ -1077,7 +1139,9 @@ class RootSystemGateway(
                 Logger.e("RootSystemGateway", "AIDL unsuspend failed", e)
             }
         }
-        runCommand("pm unsuspend --user $SUSPEND_USER_ID $escapedPackage")
+        runCommand(
+            "pm unsuspend --user $SUSPEND_USER_ID $escapedPackage", execution, APP_UNSUSPEND,
+        )
         return when (readSuspendedFlag(packageName)) {
             false -> {
                 Logger.i(
@@ -1089,8 +1153,8 @@ class RootSystemGateway(
             }
 
             true -> unsuspendFailure(
-                "Root unsuspend of $packageName failed: it is still suspended after `pm unsuspend` " +
-                    "and a sweep of every identity Thor records, and the platform's suspension " +
+                "Root unsuspend of $packageName failed: it is still suspended after the direct " +
+                        "shell step and a sweep of every identity Thor records, and the platform's " +
                     "record could not be read to find out which one owns it."
             )
 
@@ -1126,7 +1190,7 @@ class RootSystemGateway(
         if (!dump.contains("Package [$packageName]")) {
             Logger.w(
                 "RootSystemGateway",
-                "dumpsys package $packageName returned no package block; suspender state unknown"
+                "Package suspender state could not be read for $packageName"
             )
             return null
         }
@@ -1149,7 +1213,8 @@ class RootSystemGateway(
 
     override suspend fun setAppRestricted(
         packageName: String,
-        isRestricted: Boolean
+        isRestricted: Boolean,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
@@ -1160,16 +1225,25 @@ class RootSystemGateway(
         // every user — it landed on whoever happened to be in the foreground when the shell ran,
         // which on a work-profile device is the parent while Thor and the app it is restricting
         // live in the profile. See [backgroundRestrictionCommand] for the AOSP path.
-        return runCommand(backgroundRestrictionCommand(escapedPackage, thorUserId, isRestricted))
+        return runCommand(
+            backgroundRestrictionCommand(escapedPackage, thorUserId, isRestricted),
+            execution, BACKGROUND_RESTRICTION,
+        )
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {
         val escapedReason = reason.escapeForShell()
         // executeResult returns success if ANY of the commands succeed in the chain logic
-        return runCommand("svc power reboot $escapedReason || reboot $escapedReason")
+        return runCommand(
+            "svc power reboot $escapedReason || reboot $escapedReason",
+            PrivilegeExecutionContext(), DEVICE_REBOOT,
+        )
     }
 
-    override suspend fun uninstallApp(packageName: String): Result<Unit> {
+    override suspend fun uninstallApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
@@ -1179,7 +1253,9 @@ class RootSystemGateway(
         // [uninstallCommand], and `Shizuku.uninstallApp` already reaches it the same way. Two
         // gateways spelling the destructive command themselves is how one of them keeps the `--user`
         // and the other loses it.
-        return runCommand(uninstallCommand(escapedPackage, thorUserId))
+        return runCommand(
+            uninstallCommand(escapedPackage, thorUserId), execution, UNINSTALL,
+        )
     }
 
     override suspend fun installApp(
@@ -1208,7 +1284,7 @@ class RootSystemGateway(
      * with exit 255 (GH#159). Here the root shell's own `cat` reads the app-private
      * temp file and pipes the bytes in, so neither `pm` nor `installd` ever opens a
      * `/data/data` path — the install works regardless of where the temp APKs live.
-     * On failure the real `pm` reason is routed to stderr so it surfaces in the error.
+     * Command output remains inside the execution boundary; callers receive a generic failure.
      *
      * The script itself now comes from [installViaSessionCommand], shared with the Shizuku and
      * Dhizuku shell rungs. Those two were written *after* this method and after GH#159 was fixed
@@ -1228,8 +1304,8 @@ class RootSystemGateway(
         // Abort before opening a session if any APK is missing/unreadable: otherwise a
         // 0-byte File.length() below would stream `-S 0` into pm install-write and only
         // fail later at commit with a cryptic reason.
-        apkPaths.firstOrNull { File(it).length() == 0L }?.let {
-            return Result.failure(Exception("APK file is missing or empty: $it"))
+        if (apkPaths.any { File(it).length() == 0L }) {
+            return Result.failure(Exception("An APK file is missing or empty"))
         }
         val staged = apkPaths.map { path ->
             val file = File(path)
@@ -1246,7 +1322,9 @@ class RootSystemGateway(
                 grantAllPermissions = grantAllPermissions
                     ?: preferenceRepository.shouldGrantAllPermissionsOnInstall(),
                 installerArg = preferenceRepository.getInstallerArg(),
-            )
+            ),
+            PrivilegeExecutionContext(),
+            INSTALL_SESSION,
         )
     }
 
@@ -1261,7 +1339,10 @@ class RootSystemGateway(
      * Modernized Reinstall Logic.
      * Replaces the 'sed' and 'tr' pipes with proper Kotlin string manipulation.
      */
-    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
+    override suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         if (packageName == BuildConfig.APPLICATION_ID)
             return Result.failure(Exception("Cannot reinstall Thor"))
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
@@ -1271,7 +1352,7 @@ class RootSystemGateway(
         return withContext(ioDispatcher) {
             try {
                 // 1. Get the APK path(s)
-                val paths = getAppPaths(packageName)
+                val paths = getAppPaths(packageName, execution)
                 if (paths.isEmpty()) {
                     return@withContext Result.failure(Exception("Could not find APK path for $packageName"))
                 }
@@ -1284,7 +1365,9 @@ class RootSystemGateway(
                 // 3. Execute the reinstallation command
                 val command =
                     "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
-                runCommand(command)
+                runCommand(command, execution, REINSTALL)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Logger.e("RootSystemGateway", "Reinstall with Google failed for $packageName", e)
                 Result.failure(e)
@@ -1295,14 +1378,18 @@ class RootSystemGateway(
     /**
      * Copies a file using Root privileges.
      */
-    suspend fun copyFile(source: String, destination: String) {
+    suspend fun copyFile(
+        source: String,
+        destination: String,
+        execution: PrivilegeExecutionContext,
+    ) {
         val escapedSource = source.escapeForShell()
         val escapedDest = destination.escapeForShell()
         val command = "cp $escapedSource $escapedDest"
-        val result = runCommand(command)
+        val result = runCommand(command, execution, COPY_FILE)
 
         if (result.isFailure) {
-            throw Exception("Root copy failed: $command")
+            throw Exception("Root copy failed")
         }
     }
 
@@ -1318,13 +1405,19 @@ class RootSystemGateway(
      * empty list now means "this user has no such package", which is what the caller already
      * assumed it meant when it turns it into "Could not find APK path".
      */
-    suspend fun getAppPaths(packageName: String): List<String> {
+    suspend fun getAppPaths(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): List<String> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return emptyList()
         }
         val escapedPackage = packageName.escapeForShell()
-        val result = shellRepository.exec(pmPathCommand(escapedPackage, thorUserId))
-        val lines = if (result.isSuccess) result.stdout else emptyList()
+        val result = execute(
+            pmPathCommand(escapedPackage, thorUserId),
+            execution.forRootCommand(APP_PATHS),
+        )
+        val lines = if (result.exitCode == 0) result.stdout else emptyList()
 
         return lines
             .filter { it.isNotBlank() }
@@ -1334,7 +1427,8 @@ class RootSystemGateway(
 
     override suspend fun grantPermission(
         packageName: String,
-        permissionName: String
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
@@ -1343,7 +1437,9 @@ class RootSystemGateway(
             ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to grant on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
-        val res = runCommand("pm grant --user $userId $escapedPackage $escapedPerm")
+        val res = runCommand(
+            "pm grant --user $userId $escapedPackage $escapedPerm", execution, PERMISSION_GRANT,
+        )
         if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
 
         // The app-ops are a *parallel route* to package visibility, not a follow-up to the grant,
@@ -1358,16 +1454,17 @@ class RootSystemGateway(
         // `runProbe`, not `runCommand`: at most one of the three spellings exists on any given
         // device, so two of them failing is the *success* path. `filter` and not `any`, so all three
         // are still issued — short-circuiting on the first that lands would change what Thor writes.
-        // The accepted command is named, not just counted, because *which* spelling the ROM answered
-        // is the one thing the per-command error lines carried that a bare tally would drop.
+        // Keep only an aggregate count: the individual command text may contain package-sensitive
+        // shell arguments and must not cross the execution boundary into logs.
         val appOpGrants = installedAppsAppOpGrantCommands(escapedPackage, userId)
-        val acceptedGrants = appOpGrants.filter { runProbe(it) }
+        val acceptedGrants = appOpGrants.filter {
+            runProbe(it, execution, PERMISSION_APP_OP_GRANT)
+        }
         val appOpsTaken = acceptedGrants.size
         Logger.d(
             "RootSystemGateway",
             "GET_INSTALLED_APPS app-op grant for $packageName (user $userId): " +
-                "$appOpsTaken of ${appOpGrants.size} spellings accepted" +
-                if (acceptedGrants.isEmpty()) "" else " — ${acceptedGrants.joinToString("; ")}"
+                    "$appOpsTaken of ${appOpGrants.size} spellings accepted"
         )
 
         // The report follows the gate that actually opened, for every package and not just Thor's
@@ -1395,7 +1492,8 @@ class RootSystemGateway(
 
     override suspend fun revokePermission(
         packageName: String,
-        permissionName: String
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
@@ -1404,7 +1502,9 @@ class RootSystemGateway(
             ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
-        val res = runCommand("pm revoke --user $userId $escapedPackage $escapedPerm")
+        val res = runCommand(
+            "pm revoke --user $userId $escapedPackage $escapedPerm", execution, PERMISSION_REVOKE,
+        )
         if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
 
         // The revoke half of the parallel route, and the reason it cannot be left out: the app-op
@@ -1413,14 +1513,15 @@ class RootSystemGateway(
         // whatever the revoke returned, for the same reason the grant is: on these ROMs the shell's
         // verdict on a vendor permission is not the state of the gate.
         // `runProbe` for the same reason as the grant: `filter` issues all three either way, and the
-        // failures are not errors — see the aggregate below, which names the spelling that landed.
+        // failures are not errors — see the aggregate count below.
         val appOpResets = installedAppsAppOpRevokeCommands(escapedPackage, userId)
-        val acceptedResets = appOpResets.filter { runProbe(it) }
+        val acceptedResets = appOpResets.filter {
+            runProbe(it, execution, PERMISSION_APP_OP_RESET)
+        }
         Logger.d(
             "RootSystemGateway",
             "GET_INSTALLED_APPS app-op reset for $packageName (user $userId): " +
-                "${acceptedResets.size} of ${appOpResets.size} spellings accepted" +
-                if (acceptedResets.isEmpty()) "" else " — ${acceptedResets.joinToString("; ")}"
+                    "${acceptedResets.size} of ${appOpResets.size} spellings accepted"
         )
 
         // And unlike the grant, the fold stays narrow: `pm revoke` is the verdict. All three app-op
@@ -1459,30 +1560,38 @@ class RootSystemGateway(
         className: String,
         state: ComponentEnabledState,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         val spec = escapedComponentSpecOrNull(packageName, className)
             ?: return Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(setComponentStateCommand(spec, userId, state.asComponentState()))
+        return runComponentCommand(
+            setComponentStateCommand(spec, userId, state.asComponentState()),
+            execution, COMPONENT_STATE,
+        )
     }
 
     override suspend fun forceLaunchActivity(
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         val spec = escapedComponentSpecOrNull(packageName, className)
             ?: return Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(startActivityCommand(spec, userId))
+        return runComponentCommand(
+            startActivityCommand(spec, userId), execution, ACTIVITY_LAUNCH,
+        )
     }
 
     override suspend fun stopService(
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         val spec = escapedComponentSpecOrNull(packageName, className)
             ?: return Result.failure(
@@ -1490,6 +1599,8 @@ class RootSystemGateway(
             )
         return runComponentCommand(
             stopServiceCommand(spec, userId),
+            execution,
+            SERVICE_STOP,
             ComponentCommandKind.STOP_SERVICE,
         )
     }
@@ -1497,7 +1608,7 @@ class RootSystemGateway(
     /**
      * Run a component command and judge it by its *output*, not only by its exit code.
      *
-     * Separate from [runCommand] because that one reads `ShellResult.isSuccess`, and for `am start`
+     * Separate from [runCommand] because component commands need output-aware interpretation; for `am start`
      * that is very nearly a constant: a launch refused for a permission denial still exits 0 on most
      * releases while printing `Security exception:` and a stack trace — while `am stopservice` exits
      * 255 even when it worked. [componentCommandFailure] holds both rules, so that the rules are one
@@ -1507,88 +1618,127 @@ class RootSystemGateway(
      * these commands to **stderr** and leaves stdout with nothing but the echo of the intent.
      */
     private suspend fun runComponentCommand(
-        cmd: String,
+        command: String,
+        execution: PrivilegeExecutionContext,
+        commandClass: PrivilegeCommandClass,
         kind: ComponentCommandKind = ComponentCommandKind.STANDARD,
     ): Result<Unit> {
-        val result = shellRepository.exec(cmd)
-        if (result.code == ShellResult.JOB_NOT_EXECUTED) {
-            return Result.failure(
-                java.io.IOException(
-                    result.stderr.joinToString("\n").ifBlank { "Root shell unavailable" }
-                )
-            )
+        val result = try {
+            execute(command, execution.forRootCommand(commandClass))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return Result.failure(java.io.IOException("Root component command unavailable"))
         }
         val output = (result.stdout + result.stderr).joinToString("\n")
-        val failure = componentCommandFailure(result.code, output, kind)
+        val failure = componentCommandFailure(result.exitCode, output, kind)
         return if (failure == null) {
             Result.success(Unit)
         } else {
-            Logger.e("RootSystemGateway", "Component command failed: $cmd -> $failure")
-            Result.failure(java.io.IOException(failure))
+            Logger.e("RootSystemGateway", "Component command failed")
+            Result.failure(java.io.IOException("Root component command failed"))
         }
     }
 
-    /**
-     * Raw shell execution for extensions, via the root shell.
-     */
-    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
-        val result = shellRepository.exec(command)
-        // JOB_NOT_EXECUTED (-1) means the shell could not run at all (lost root/session). Surface
-        // that as a real failure so callers (e.g. ThorShellExecutor) map it to (-1, msg), rather
-        // than masquerading as a command that ran. Any command that DID run returns its real exit
-        // code (0 or non-zero) — matching the Shizuku/Dhizuku gateways which already pass the real
-        // code through — so extensions can finally see it (this path used to hard-code 0).
-        if (result.code == ShellResult.JOB_NOT_EXECUTED) {
-            return Result.failure(
-                java.io.IOException(result.stderr.joinToString("\n").ifBlank { "Root shell unavailable" })
-            )
+    /** Raw shell execution for extensions, via the routed root shell. */
+    override suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Pair<Int, String?>> {
+        val result = try {
+            execute(command, execution.forRootCommand(RAW_SHELL))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return Result.failure(java.io.IOException("Root shell unavailable"))
         }
         val output = result.stdout.joinToString("\n").ifBlank { result.stderr.joinToString("\n") }
-        return Result.success(result.code to output)
+        return Result.success(result.exitCode to output)
     }
 
-    /**
-     * Helper to bridge ShellRepository's Result<List<String>> to Result<Unit>
-     */
-    private suspend fun runCommand(cmd: String): Result<Unit> {
-        val result = shellRepository.exec(cmd)
-        return if (result.isSuccess) {
+    private suspend fun runCommand(
+        command: String,
+        execution: PrivilegeExecutionContext,
+        commandClass: PrivilegeCommandClass,
+    ): Result<Unit> {
+        val result = try {
+            execute(command, execution.forRootCommand(commandClass))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return Result.failure(java.io.IOException("Root command unavailable"))
+        }
+        return if (result.exitCode == 0) {
             Result.success(Unit)
         } else {
-            val message = result.stderr.joinToString("\n")
-                .ifBlank { "Shell command failed with code ${result.code}: $cmd" }
-            val exception = java.io.IOException(message)
-            Logger.e("RootSystemGateway", "Command execution failed: $cmd", exception)
+            val exception =
+                java.io.IOException("Root command failed with exit code ${result.exitCode}")
+            Logger.e("RootSystemGateway", "Root command failed", exception)
             Result.failure(exception)
         }
     }
 
-    /**
-     * Run [cmd] for its exit code alone, without logging a non-zero one as an error.
-     *
-     * For commands whose failure is the *ordinary* outcome. `installedAppsAppOpGrantCommands` and its
-     * revoke twin each fire three spellings of one app-op precisely because no device defines all
-     * three, so routing them through [runCommand] put two or three `Logger.e` lines — each with a
-     * synthesized `IOException` and a stack trace — into the log on every AOSP device, for the path
-     * that worked. `Command execution failed: appops set …` beside a successful grant is what a
-     * maintainer reads first in a bug report, and the callers' own comments already call it normal.
-     * Both callers log one debug-level aggregate instead, which is the line that carries the answer.
-     */
-    private suspend fun runProbe(cmd: String): Boolean = shellRepository.exec(cmd).isSuccess
+    private suspend fun runProbe(
+        command: String,
+        execution: PrivilegeExecutionContext,
+        commandClass: PrivilegeCommandClass,
+    ): Boolean = try {
+        execute(command, execution.forRootCommand(commandClass)).exitCode == 0
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
 
-    private fun getApplicationInfoCompat(packageName: String): android.content.pm.ApplicationInfo? = runCatching {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.getApplicationInfo(
-                packageName,
-                android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
-            )
-        } else {
-            context.packageManager.getApplicationInfo(
-                packageName,
-                android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
-            )
-        }
-    }.getOrNull()
+    private suspend fun execute(
+        command: String,
+        context: PrivilegeExecutionContext,
+    ): RootCommandResult = rootCommands.execute(RootCommand(command, context))
+
+    private companion object {
+        const val ROOT_UID = "0"
+        val ROOT_SERVICE_RESET = PrivilegeCommandClass("root.service.reset")
+        val ROOT_AVAILABILITY = PrivilegeCommandClass("root.availability")
+        val FORCE_STOP = PrivilegeCommandClass("package.force-stop")
+        val CACHE_CLEAR = PrivilegeCommandClass("package.cache-clear")
+        val CACHE_TRIM = PrivilegeCommandClass("cache.trim")
+        val CACHE_SWEEP = PrivilegeCommandClass("cache.sweep")
+        val CLEAR_APP_DATA = PrivilegeCommandClass("package.clear-data")
+        val APP_ENABLED_STATE = PrivilegeCommandClass("package.enabled-state")
+        val INSTALL_EXISTING = PrivilegeCommandClass("package.install-existing")
+        val APP_SUSPEND = PrivilegeCommandClass("package.suspend")
+        val APP_UNSUSPEND = PrivilegeCommandClass("package.unsuspend")
+        val BACKGROUND_RESTRICTION = PrivilegeCommandClass("package.background-restriction")
+        val DEVICE_REBOOT = PrivilegeCommandClass("device.reboot")
+        val UNINSTALL = PrivilegeCommandClass("package.uninstall")
+        val INSTALL_SESSION = PrivilegeCommandClass("package.install-session")
+        val REINSTALL = PrivilegeCommandClass("package.reinstall")
+        val COPY_FILE = PrivilegeCommandClass("file.copy")
+        val APP_PATHS = PrivilegeCommandClass("package.paths")
+        val PERMISSION_GRANT = PrivilegeCommandClass("permission.grant")
+        val PERMISSION_APP_OP_GRANT = PrivilegeCommandClass("permission.app-op-grant")
+        val PERMISSION_REVOKE = PrivilegeCommandClass("permission.revoke")
+        val PERMISSION_APP_OP_RESET = PrivilegeCommandClass("permission.app-op-reset")
+        val COMPONENT_STATE = PrivilegeCommandClass("component.state")
+        val ACTIVITY_LAUNCH = PrivilegeCommandClass("component.activity-launch")
+        val SERVICE_STOP = PrivilegeCommandClass("component.service-stop")
+        val RAW_SHELL = PrivilegeCommandClass("extension.raw-shell")
+    }
+
+    private fun getApplicationInfoCompat(packageName: String): android.content.pm.ApplicationInfo? =
+        runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getApplicationInfo(
+                    packageName,
+                    android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+                )
+            } else {
+                context.packageManager.getApplicationInfo(
+                    packageName,
+                    android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+                )
+            }
+        }.getOrNull()
 
     // getCurrentUserId(), its @Volatile cache and the generation counter that guarded the cache all
     // lived here. Every one of them existed to make `am get-current-user` — a shell round trip whose
