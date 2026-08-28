@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import java.io.File
 
 /**
@@ -30,5 +31,6 @@ interface AppBundleBuilder {
         cacheSubDir: String = "share_temp",
         format: BundleFormat = BundleFormat.autoFor(appInfo),
         fileName: String? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<File>
 }

@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import java.io.File
 
 /** How an install-from-archive ended. */
@@ -67,7 +68,11 @@ interface AppArchiveInstaller {
      * Waits on the install result rather than polling `isInstalled()`: §8.2. Returns only once the
      * install has landed, failed, or the wait has run out.
      */
-    suspend fun installBundle(bundle: File, packageName: String): ArchiveInstallOutcome
+    suspend fun installBundle(
+        bundle: File,
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): ArchiveInstallOutcome
 
     /**
      * Place [bundle]'s expansions into `Android/obb/<pkg>/` for an app that is **already installed**

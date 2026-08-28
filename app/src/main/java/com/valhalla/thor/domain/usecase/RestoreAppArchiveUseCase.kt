@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveMember
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
@@ -139,6 +140,7 @@ internal class RestoreAppArchiveUseCase(
         classes: List<DataClass>,
         installFirst: Boolean,
         restoreObb: Boolean,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
         appLabel: String = header.packageName,
         onProgress: (ThorJobProgress) -> Unit = {},
     ): ArchiveRestoreOutcome {
@@ -195,7 +197,7 @@ internal class RestoreAppArchiveUseCase(
                 onProgress(ThorJobProgress(ThorJobStage.INSTALLING, appLabel))
                 markRestoreStarted()
                 Logger.i(TAG, "Installing bundle: ${bundle?.absolutePath} for pkg=$pkg")
-                when (val outcome = installer.installBundle(bundle!!, pkg)) {
+                when (val outcome = installer.installBundle(bundle!!, pkg, execution)) {
                     ArchiveInstallOutcome.Installed -> {
                         Logger.i(TAG, "Bundle installed successfully")
                     }

@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
@@ -45,7 +46,9 @@ class DhizukuSystemGateway(
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemGateway {
 
-    override suspend fun isRootAvailable() = false
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ) = false
 
     override suspend fun isShizukuAvailable(): Boolean = false
 
@@ -61,7 +64,13 @@ class DhizukuSystemGateway(
         execution: PrivilegeExecutionContext,
     ): Result<Pair<Int, String?>> {
         // Runs through Dhizuku's device-owner process (DhizukuAPI.newProcess).
-        return runCatching { DhizukuHelper.execute(command) }
+        return try {
+            Result.success(DhizukuHelper.execute(command))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        }
     }
 
     // --- Per-component control -------------------------------------------------------------
@@ -125,7 +134,10 @@ class DhizukuSystemGateway(
      * doors, all shut, so this says so in a sentence the user can act on instead of failing with a
      * shell error that reads like a bug.
      */
-    override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+    override suspend fun clearAllCaches(
+        targetFreeBytes: Long?,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         // Out of resources, for the same reason the system-app freeze refusal below is: the user
         // reads this one and acts on it. `MainViewModel.quickAction` drops `e.message` into
         // R.string.error_format, which would otherwise put an English sentence inside a translated
@@ -394,7 +406,10 @@ class DhizukuSystemGateway(
         reflector.getApplicationInfoOrNull(packageName)
             ?.let { !(it.enabled && (it.flags and ApplicationInfo.FLAG_INSTALLED) != 0) } ?: true
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> {
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return Result.failure(Exception("Dhizuku: Reboot not supported directly. Use Root mode instead."))
     }
 
@@ -448,6 +463,7 @@ class DhizukuSystemGateway(
         apkPath: String,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
 

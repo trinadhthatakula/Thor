@@ -547,7 +547,10 @@ private class FakeSystem(
         return respond(call)
     }
 
-    override suspend fun isRootAvailable(): Boolean = unreachable("isRootAvailable")
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ): Boolean = unreachable("isRootAvailable")
+
     override suspend fun isShizukuAvailable(): Boolean = unreachable("isShizukuAvailable")
     override suspend fun isDhizukuAvailable(): Boolean = unreachable("isDhizukuAvailable")
 
@@ -576,7 +579,9 @@ private class FakeSystem(
         execution: PrivilegeExecutionContext
     ): Result<Long?> = unreachable("clearCache")
 
-    override suspend fun clearAllCaches(): Result<Long?> = unreachable("clearAllCaches")
+    override suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> = unreachable("clearAllCaches")
 
     override suspend fun clearAppData(
         packageName: String,
@@ -596,7 +601,10 @@ private class FakeSystem(
     ): Result<Unit> =
         unreachable("uninstallApp")
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> = unreachable("rebootDevice")
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = unreachable("rebootDevice")
 
     override suspend fun reinstallAppWithGoogle(
         packageName: String,
@@ -634,7 +642,10 @@ private class FakeSystem(
     ): Result<Pair<Int, String?>> =
         unreachable("executeShellCommand")
 
-    override suspend fun probeObb(packageName: String): ObbProbe = unreachable("probeObb")
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe = unreachable("probeObb")
 
     private fun unreachable(name: String): Nothing =
         throw UnsupportedOperationException("$name is off the component-control path")

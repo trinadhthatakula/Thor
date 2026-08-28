@@ -10,8 +10,11 @@ import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.usecase.ArchiveRestoreOutcome
 import java.util.Base64
+import java.util.UUID
 import javax.crypto.SecretKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -34,6 +37,25 @@ class AppArchiveWorkerTest {
     // Real, not a fake: PBKDF2 and HMAC are JCE, so the check under test is the shipped one. Four
     // rounds keeps it instant; `AppArchiveCipherTest` pins the shipped count.
     private val cipher = AppArchiveCipher()
+
+    @Test
+    fun `archive worker context carries its lane package work id and semantic class`() {
+        val workRequestId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+        val commandClass = PrivilegeCommandClass("archive.backup")
+
+        val execution = archiveExecutionContext(
+            commandClass = commandClass,
+            packageName = "com.example.target",
+            workRequestId = workRequestId,
+        )
+
+        assertEquals(PrivilegeExecutionLane.ARCHIVE, execution.lane)
+        assertEquals(commandClass, execution.commandClass)
+        assertEquals("com.example.target", execution.packageName)
+        assertSame(workRequestId, execution.workRequestId)
+        assertNull(execution.sweepRequestId)
+        assertNull(execution.commandTimeout)
+    }
 
     // region wrongKeyReason
 

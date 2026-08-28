@@ -21,6 +21,9 @@ import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.RESTORE_PACKAGE_KEY
 import com.valhalla.thor.domain.model.RESTORE_URI_KEY
 import com.valhalla.thor.domain.model.ThorJobKind
@@ -42,6 +45,7 @@ import com.valhalla.thor.domain.usecase.RestoreAppArchiveUseCase
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.util.Base64
+import java.util.UUID
 import javax.crypto.SecretKey
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -49,6 +53,19 @@ import org.koin.android.annotation.KoinWorker
 import org.koin.core.annotation.Named
 
 private const val TAG = "AppArchiveWorker"
+private val ARCHIVE_BACKUP = PrivilegeCommandClass("archive.backup")
+private val ARCHIVE_RESTORE = PrivilegeCommandClass("archive.restore")
+
+internal fun archiveExecutionContext(
+    commandClass: PrivilegeCommandClass,
+    packageName: String,
+    workRequestId: UUID,
+): PrivilegeExecutionContext = PrivilegeExecutionContext(
+    lane = PrivilegeExecutionLane.ARCHIVE,
+    commandClass = commandClass,
+    packageName = packageName,
+    workRequestId = workRequestId,
+)
 
 /**
  * §7.2 behind a foreground service.
@@ -130,6 +147,7 @@ internal class ArchiveBackupWorker(
     override suspend fun runJob(): Result {
         val request = ArchiveBackupRequest.fromMap(inputData.keyValueMap)
             ?: return fail("this backup's request could not be read")
+        val execution = archiveExecutionContext(ARCHIVE_BACKUP, request.packageName, id)
         // Single-use, and gone if the process died: see ArchiveKeyHolder. No retry, ever.
         val key = keys.take(id.toString())
             ?: return fail("this backup's key is no longer in memory — start it again")
@@ -149,7 +167,7 @@ internal class ArchiveBackupWorker(
         var bundle: File? = null
         return try {
             val probe = if (request.includeBundle) {
-                systemRepository.probeObb(request.packageName)
+                systemRepository.probeObb(request.packageName, execution)
             } else {
                 ObbProbe.None
             }
@@ -160,6 +178,7 @@ internal class ArchiveBackupWorker(
                     // at launch, and a second spelling of it would make the sweep miss.
                     cacheSubDir = ArchiveBundleCacheDir.NAME,
                     format = BundleFormat.XAPK,
+                    execution = execution,
                 ).getOrElse {
                     return fail("the app's installer bundle could not be built: ${it.message}")
                 }
@@ -298,6 +317,7 @@ internal class ArchiveRestoreWorker(
                 Logger.e(TAG, "ArchiveRestoreRequest could not be read from input data")
                 return fail("this restore's request could not be read")
             }
+        val execution = archiveExecutionContext(ARCHIVE_RESTORE, request.packageName, id)
         val key = keys.take(id.toString())
             ?: run {
                 Logger.e(TAG, "ArchiveRestoreKey is missing from memory for id $id")
@@ -312,6 +332,7 @@ internal class ArchiveRestoreWorker(
                 Logger.e(TAG, "Archive source open failed: NotAnArchive")
                 return fail("that file is not a Thor backup")
             }
+
             ArchiveOpenOutcome.Unreadable -> {
                 Logger.e(TAG, "Archive source open failed: Unreadable")
                 return fail("Thor could not read that backup file")
@@ -357,6 +378,7 @@ internal class ArchiveRestoreWorker(
                         classes = request.orderedClasses(),
                         installFirst = allowed.installFirst,
                         restoreObb = request.restoreObb,
+                        execution = execution,
                         appLabel = app?.appName ?: request.packageName,
                         onProgress = ::publish,
                     )

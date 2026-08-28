@@ -42,6 +42,7 @@ import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
@@ -108,6 +109,7 @@ class RootSystemGateway internal constructor(
 ) : SystemGateway {
 
     private var rootService: IThorRootService? = null
+    internal var userIdProvider: () -> Int = { thorUserId }
     private val connectionMutex = Mutex()
     private var isDaemonReset = false
     private var activeConnection: ServiceConnection? = null
@@ -277,7 +279,9 @@ class RootSystemGateway internal constructor(
     }
 
     // A root check is strictly asynchronous. Invalidate any cached non-root shell so fresh su grants are recognized.
-    override suspend fun isRootAvailable(): Boolean {
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ): Boolean {
         try {
             val cached = Shell.cachedShell
             if (cached != null && !cached.isRoot) {
@@ -285,18 +289,12 @@ class RootSystemGateway internal constructor(
             }
         } catch (_: Throwable) {
         }
-        return try {
-            val result = execute(
-                "id -u",
-                PrivilegeExecutionContext().forRootCommand(ROOT_AVAILABILITY),
-            )
-            result.exitCode == 0 &&
-                result.stdout.singleOrNull { it.isNotBlank() }?.trim() == ROOT_UID
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            false
-        }
+        val result = execute(
+            "id -u",
+            execution.forRootCommand(ROOT_AVAILABILITY),
+        )
+        return result.exitCode == 0 &&
+            result.stdout.singleOrNull { it.isNotBlank() }?.trim() == ROOT_UID
     }
 
     override suspend fun isShizukuAvailable(): Boolean = false
@@ -337,7 +335,7 @@ class RootSystemGateway internal constructor(
         // everywhere. Naming [thorUserId] is what makes the post-check evidence about the process
         // the command was aimed at.
         val shellResult = runCommand(
-            forceStopCommand(escapedPackage, thorUserId), execution, FORCE_STOP,
+            forceStopCommand(escapedPackage, userIdProvider()), execution, FORCE_STOP,
         )
         // The exit code alone decided this, and it cannot say no:
         // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so it
@@ -419,7 +417,8 @@ class RootSystemGateway internal constructor(
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
-        val command = "rm -rf ${clearCachePaths(escapedPackage, thorUserId).joinToString(" ")}"
+        val command =
+            "rm -rf ${clearCachePaths(escapedPackage, userIdProvider()).joinToString(" ")}"
         return runCommand(command, execution, CACHE_CLEAR)
     }
 
@@ -451,7 +450,10 @@ class RootSystemGateway internal constructor(
      * across every user's tree would be the largest instance of it. A user's other profiles are not
      * Thor's to empty on a tile tap taken in this one.
      */
-    override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+    override suspend fun clearAllCaches(
+        targetFreeBytes: Long?,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         if (targetFreeBytes != null) {
             // The verdict is logged and then dropped on the floor, and that is the fix. This used to
             // `return trim` on success, which made the sweep below unreachable: `runTrimCaches` waits
@@ -460,8 +462,9 @@ class RootSystemGateway internal constructor(
             // therefore reported success on a no-op and never ran the rung that works — measured on
             // four devices, all answering "there was no cache left to clear".
             val trim = runCommand(
-                "pm trim-caches $targetFreeBytes", PrivilegeExecutionContext(), CACHE_TRIM,
+                "pm trim-caches $targetFreeBytes", execution, CACHE_TRIM,
             )
+            if (trim.exceptionOrNull() is PrivilegeExecutionException) return trim
             if (trim.isFailure) {
                 Logger.w(
                     "RootSystemGateway",
@@ -472,8 +475,9 @@ class RootSystemGateway internal constructor(
         // The glob is expanded by the shell running as uid 0, not by Thor, so an app whose package
         // name would need escaping is covered too — `*` never matches a path separator, so this
         // cannot reach outside the three parents.
-        val sweep = clearCachePaths(escapedPackage = "*", userId = thorUserId).joinToString(" ")
-        return runCommand("rm -rf $sweep", PrivilegeExecutionContext(), CACHE_SWEEP)
+        val sweep =
+            clearCachePaths(escapedPackage = "*", userId = userIdProvider()).joinToString(" ")
+        return runCommand("rm -rf $sweep", execution, CACHE_SWEEP)
     }
 
     override suspend fun clearAppData(
@@ -517,7 +521,7 @@ class RootSystemGateway internal constructor(
         val daemonVerdict: String
         if (service != null) {
             val aidlCall = runCatching {
-                service.clearAppDataForUser(packageName, thorUserId)
+                service.clearAppDataForUser(packageName, userIdProvider())
             }.onFailure { e ->
                 Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
             }
@@ -614,7 +618,7 @@ class RootSystemGateway internal constructor(
         val isSystem = appInfo != null && (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
         val escapedPackage = packageName.escapeForShell()
 
-        val currentUser = thorUserId
+        val currentUser = userIdProvider()
 
         if (isSystem) {
             return if (isDisabled) {
@@ -1226,17 +1230,20 @@ class RootSystemGateway internal constructor(
         // which on a work-profile device is the parent while Thor and the app it is restricting
         // live in the profile. See [backgroundRestrictionCommand] for the AOSP path.
         return runCommand(
-            backgroundRestrictionCommand(escapedPackage, thorUserId, isRestricted),
+            backgroundRestrictionCommand(escapedPackage, userIdProvider(), isRestricted),
             execution, BACKGROUND_RESTRICTION,
         )
     }
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> {
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         val escapedReason = reason.escapeForShell()
         // executeResult returns success if ANY of the commands succeed in the chain logic
         return runCommand(
             "svc power reboot $escapedReason || reboot $escapedReason",
-            PrivilegeExecutionContext(), DEVICE_REBOOT,
+            execution, DEVICE_REBOOT,
         )
     }
 
@@ -1254,7 +1261,7 @@ class RootSystemGateway internal constructor(
         // gateways spelling the destructive command themselves is how one of them keeps the `--user`
         // and the other loses it.
         return runCommand(
-            uninstallCommand(escapedPackage, thorUserId), execution, UNINSTALL,
+            uninstallCommand(escapedPackage, userIdProvider()), execution, UNINSTALL,
         )
     }
 
@@ -1262,16 +1269,18 @@ class RootSystemGateway internal constructor(
         apkPath: String,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
-        return installViaSession(listOf(apkPath), canDowngrade, grantAllPermissions)
+        return installViaSession(listOf(apkPath), canDowngrade, grantAllPermissions, execution)
     }
 
     suspend fun installMultipleApks(
         apkPaths: List<String>,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> {
-        return installViaSession(apkPaths, canDowngrade, grantAllPermissions)
+        return installViaSession(apkPaths, canDowngrade, grantAllPermissions, execution)
     }
 
     /**
@@ -1297,6 +1306,7 @@ class RootSystemGateway internal constructor(
         apkPaths: List<String>,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         if (apkPaths.isEmpty()) {
             return Result.failure(Exception("No APK paths provided for install"))
@@ -1314,7 +1324,7 @@ class RootSystemGateway internal constructor(
         return runCommand(
             installViaSessionCommand(
                 apks = staged,
-                userId = thorUserId,
+                userId = userIdProvider(),
                 canDowngrade = canDowngrade,
                 // The caller's answer if it has one, the saved setting otherwise. Not
                 // `grantAllPermissions == true`: that would read a missing answer as "no" and
@@ -1323,7 +1333,7 @@ class RootSystemGateway internal constructor(
                     ?: preferenceRepository.shouldGrantAllPermissionsOnInstall(),
                 installerArg = preferenceRepository.getInstallerArg(),
             ),
-            PrivilegeExecutionContext(),
+            execution,
             INSTALL_SESSION,
         )
     }
@@ -1360,7 +1370,7 @@ class RootSystemGateway internal constructor(
                 val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
 
                 // 2. The user to reinstall for — Thor's own, matching every other `--user` here.
-                val currentUser = thorUserId
+                val currentUser = userIdProvider()
 
                 // 3. Execute the reinstallation command
                 val command =
@@ -1388,9 +1398,7 @@ class RootSystemGateway internal constructor(
         val command = "cp $escapedSource $escapedDest"
         val result = runCommand(command, execution, COPY_FILE)
 
-        if (result.isFailure) {
-            throw Exception("Root copy failed")
-        }
+        result.getOrThrow()
     }
 
     /**
@@ -1414,7 +1422,7 @@ class RootSystemGateway internal constructor(
         }
         val escapedPackage = packageName.escapeForShell()
         val result = execute(
-            pmPathCommand(escapedPackage, thorUserId),
+            pmPathCommand(escapedPackage, userIdProvider()),
             execution.forRootCommand(APP_PATHS),
         )
         val lines = if (result.exitCode == 0) result.stdout else emptyList()
@@ -1627,8 +1635,8 @@ class RootSystemGateway internal constructor(
             execute(command, execution.forRootCommand(commandClass))
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            return Result.failure(java.io.IOException("Root component command unavailable"))
+        } catch (failure: Exception) {
+            return Result.failure(failure)
         }
         val output = (result.stdout + result.stderr).joinToString("\n")
         val failure = componentCommandFailure(result.exitCode, output, kind)
@@ -1645,12 +1653,18 @@ class RootSystemGateway internal constructor(
         command: String,
         execution: PrivilegeExecutionContext,
     ): Result<Pair<Int, String?>> {
+        val routedExecution =
+            if (execution.commandClass.value == DEFAULT_COMMAND_CLASS) {
+                execution.forRootCommand(RAW_SHELL)
+            } else {
+                execution
+            }
         val result = try {
-            execute(command, execution.forRootCommand(RAW_SHELL))
+            execute(command, routedExecution)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            return Result.failure(java.io.IOException("Root shell unavailable"))
+        } catch (failure: Exception) {
+            return Result.failure(failure)
         }
         val output = result.stdout.joinToString("\n").ifBlank { result.stderr.joinToString("\n") }
         return Result.success(result.exitCode to output)
@@ -1665,8 +1679,8 @@ class RootSystemGateway internal constructor(
             execute(command, execution.forRootCommand(commandClass))
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            return Result.failure(java.io.IOException("Root command unavailable"))
+        } catch (failure: Exception) {
+            return Result.failure(failure)
         }
         return if (result.exitCode == 0) {
             Result.success(Unit)
@@ -1682,13 +1696,10 @@ class RootSystemGateway internal constructor(
         command: String,
         execution: PrivilegeExecutionContext,
         commandClass: PrivilegeCommandClass,
-    ): Boolean = try {
-        execute(command, execution.forRootCommand(commandClass)).exitCode == 0
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        false
-    }
+    ): Boolean = execute(
+        command,
+        execution.forRootCommand(commandClass),
+    ).exitCode == 0
 
     private suspend fun execute(
         command: String,
@@ -1697,6 +1708,7 @@ class RootSystemGateway internal constructor(
 
     private companion object {
         const val ROOT_UID = "0"
+        const val DEFAULT_COMMAND_CLASS = "interactive.command"
         val ROOT_SERVICE_RESET = PrivilegeCommandClass("root.service.reset")
         val ROOT_AVAILABILITY = PrivilegeCommandClass("root.availability")
         val FORCE_STOP = PrivilegeCommandClass("package.force-stop")

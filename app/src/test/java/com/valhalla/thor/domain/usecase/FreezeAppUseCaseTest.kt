@@ -60,7 +60,10 @@ private class RecordingSystemRepository : SystemRepository {
 
     // Nothing else belongs on a freeze path. These throw rather than record so a stray call is a
     // loud failure instead of a line in `calls` that no assertion happens to look at.
-    override suspend fun isRootAvailable(): Boolean = error("off the freeze path")
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ): Boolean = error("off the freeze path")
+
     override suspend fun isShizukuAvailable(): Boolean = error("off the freeze path")
     override suspend fun isDhizukuAvailable(): Boolean = error("off the freeze path")
     override suspend fun forceStopApp(
@@ -75,7 +78,9 @@ private class RecordingSystemRepository : SystemRepository {
     ): Result<Long?> =
         error("off the freeze path")
 
-    override suspend fun clearAllCaches(): Result<Long?> = error("off the freeze path")
+    override suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> = error("off the freeze path")
 
     override suspend fun clearAppData(
         packageName: String,
@@ -95,7 +100,10 @@ private class RecordingSystemRepository : SystemRepository {
     ): Result<Unit> =
         error("off the freeze path")
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> = error("off the freeze path")
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = error("off the freeze path")
 
     override suspend fun reinstallAppWithGoogle(
         packageName: String,
@@ -133,7 +141,10 @@ private class RecordingSystemRepository : SystemRepository {
     ): Result<Pair<Int, String?>> =
         error("off the freeze path")
 
-    override suspend fun probeObb(packageName: String): ObbProbe = error("off the freeze path")
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe = error("off the freeze path")
 
     override suspend fun setComponentEnabled(
         packageName: String,

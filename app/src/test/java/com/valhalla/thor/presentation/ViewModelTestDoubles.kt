@@ -145,7 +145,11 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         execution: PrivilegeExecutionContext? = null,
     ): Result<Long?> = record(call, execution).map { cacheFreedBytes }
 
-    override suspend fun isRootAvailable(): Boolean = true
+    override suspend fun isRootAvailable(execution: PrivilegeExecutionContext): Boolean {
+        note("isRootAvailable", execution)
+        return true
+    }
+
     override suspend fun isShizukuAvailable(): Boolean = false
     override suspend fun isDhizukuAvailable(): Boolean = false
 
@@ -155,7 +159,8 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     override suspend fun clearCache(packageName: String, execution: PrivilegeExecutionContext) =
         recordBytes("clearCache:$packageName", execution)
 
-    override suspend fun clearAllCaches() = recordBytes("clearAllCaches")
+    override suspend fun clearAllCaches(execution: PrivilegeExecutionContext) =
+        recordBytes("clearAllCaches", execution)
 
     override suspend fun clearAppData(packageName: String, execution: PrivilegeExecutionContext) =
         record("clearAppData:$packageName", execution)
@@ -181,7 +186,10 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     override suspend fun uninstallApp(packageName: String, execution: PrivilegeExecutionContext) =
         record("uninstallApp:$packageName", execution)
 
-    override suspend fun rebootDevice(reason: String) = record("rebootDevice:$reason")
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("rebootDevice:$reason", execution)
 
     override suspend fun reinstallAppWithGoogle(
         packageName: String,
@@ -231,8 +239,11 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
      */
     var obbProbe: ObbProbe = ObbProbe.None
 
-    override suspend fun probeObb(packageName: String): ObbProbe {
-        note("probeObb:$packageName")
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe {
+        note("probeObb:$packageName", execution)
         return obbProbe
     }
 
@@ -733,7 +744,8 @@ class FakeAppBundleBuilder(
         appInfo: AppInfo,
         cacheSubDir: String,
         format: BundleFormat,
-        fileName: String?
+        fileName: String?,
+        execution: PrivilegeExecutionContext,
     ): Result<File> {
         onBuild(appInfo)
         return Result.failure(UnsupportedOperationException("bundle building needs a device"))

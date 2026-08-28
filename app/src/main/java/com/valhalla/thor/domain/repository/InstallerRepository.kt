@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.repository
 
 import android.net.Uri
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.StagedPackage
 
 enum class InstallMode {
@@ -42,5 +43,6 @@ interface InstallerRepository {
         mode: InstallMode,
         canDowngrade: Boolean = false,
         grantAllPermissions: Boolean? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     )
 }

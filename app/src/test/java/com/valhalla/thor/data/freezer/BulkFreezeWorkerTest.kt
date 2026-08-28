@@ -152,7 +152,9 @@ private class RecordingSystemRepository(
     // Nothing below is reachable from a bulk freeze worker. These throw rather than returning a
     // benign default so that a worker which starts calling one of them fails loudly here, instead
     // of recording nothing and still passing every assertion above.
-    override suspend fun isRootAvailable(): Boolean = unreachable("isRootAvailable")
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ): Boolean = unreachable("isRootAvailable")
 
     override suspend fun isShizukuAvailable(): Boolean = unreachable("isShizukuAvailable")
 
@@ -169,7 +171,9 @@ private class RecordingSystemRepository(
         execution: PrivilegeExecutionContext
     ): Result<Long?> = unreachable("clearCache")
 
-    override suspend fun clearAllCaches(): Result<Long?> = unreachable("clearAllCaches")
+    override suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> = unreachable("clearAllCaches")
 
     override suspend fun clearAppData(
         packageName: String,
@@ -189,7 +193,10 @@ private class RecordingSystemRepository(
     ): Result<Unit> =
         unreachable("uninstallApp")
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> = unreachable("rebootDevice")
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = unreachable("rebootDevice")
 
     override suspend fun reinstallAppWithGoogle(
         packageName: String,
@@ -227,7 +234,10 @@ private class RecordingSystemRepository(
     ): Result<Pair<Int, String?>> =
         unreachable("executeShellCommand")
 
-    override suspend fun probeObb(packageName: String): ObbProbe = unreachable("probeObb")
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe = unreachable("probeObb")
 
     override suspend fun setComponentEnabled(
         packageName: String,

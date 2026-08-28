@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.InstalledAppFacts
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
 import com.valhalla.thor.domain.model.evaluateArchiveRestoreGate
@@ -191,7 +192,11 @@ class ArchiveRoundTripTest {
     private class CapturingInstaller : AppArchiveInstaller {
         var installedBytes: ByteArray? = null
 
-        override suspend fun installBundle(bundle: File, packageName: String): ArchiveInstallOutcome {
+        override suspend fun installBundle(
+            bundle: File,
+            packageName: String,
+            execution: PrivilegeExecutionContext,
+        ): ArchiveInstallOutcome {
             installedBytes = bundle.readBytes()
             return ArchiveInstallOutcome.Installed
         }

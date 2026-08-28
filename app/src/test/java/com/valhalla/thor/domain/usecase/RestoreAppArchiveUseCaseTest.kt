@@ -12,6 +12,9 @@ import com.valhalla.thor.domain.model.ArchiveMember
 import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.ThorJobProgress
@@ -32,6 +35,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -39,6 +43,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.UUID
 import java.io.IOException
 import java.io.InputStream
 import java.util.Base64
@@ -208,8 +213,15 @@ class RestoreAppArchiveUseCaseTest {
         private val placement: ObbPlacement = ObbPlacement.Placed(2),
         private val calls: MutableList<String>,
     ) : AppArchiveInstaller {
-        override suspend fun installBundle(bundle: File, packageName: String): ArchiveInstallOutcome {
+        var installExecution: PrivilegeExecutionContext? = null
+
+        override suspend fun installBundle(
+            bundle: File,
+            packageName: String,
+            execution: PrivilegeExecutionContext,
+        ): ArchiveInstallOutcome {
             calls += "install"
+            installExecution = execution
             return outcome
         }
 
@@ -435,6 +447,30 @@ class RestoreAppArchiveUseCaseTest {
         assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
         assertEquals("install", calls.first())
         assertTrue(calls.toString(), calls.contains("swap:${DataClass.CE.id}"))
+    }
+
+    @Test
+    fun `install-first forwards the complete execution context`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(calls = calls)
+        val execution = PrivilegeExecutionContext(
+            lane = PrivilegeExecutionLane.ARCHIVE,
+            commandClass = PrivilegeCommandClass("archive.restore"),
+            packageName = header.packageName,
+            workRequestId = UUID.fromString("11111111-1111-1111-1111-111111111111"),
+        )
+
+        useCase(FakeGateway(), installer, RecordingBreadcrumbs())(
+            source = source,
+            header = header,
+            key = key,
+            classes = listOf(DataClass.CE),
+            installFirst = true,
+            restoreObb = false,
+            execution = execution,
+        )
+
+        assertSame(execution, installer.installExecution)
     }
 
     @Test

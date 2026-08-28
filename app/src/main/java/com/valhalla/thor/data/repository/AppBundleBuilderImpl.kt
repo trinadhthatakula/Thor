@@ -19,6 +19,8 @@ import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.ObbExportStagingDir
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.bundleFileNameFor
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -57,6 +59,7 @@ class AppBundleBuilderImpl(
         cacheSubDir: String,
         format: BundleFormat,
         fileName: String?,
+        execution: PrivilegeExecutionContext,
     ): Result<File> = withContext(ioDispatcher) {
         // Per-package subdir. Bulk share builds each selected app sequentially into
         // the same cacheSubDir and hands all the resulting content:// URIs to
@@ -96,7 +99,7 @@ class AppBundleBuilderImpl(
                 // autoFor() never picks this format for one.
                 val sourcePath = appInfo.publicSourceDir ?: appInfo.sourceDir
                     ?: throw IllegalStateException("No source path found")
-                if (!copyFileSafely(sourcePath, finalFile)) {
+                if (!copyFileSafely(sourcePath, finalFile, execution)) {
                     throw IllegalStateException("Failed to copy base APK")
                 }
             } else {
@@ -124,7 +127,7 @@ class AppBundleBuilderImpl(
                 // which wipes the staging dir with it.
                 val apkFiles = plan.map { (path, name) ->
                     val destFile = File(tempSplitDir, name)
-                    if (!copyFileSafely(path, destFile)) {
+                    if (!copyFileSafely(path, destFile, execution)) {
                         throw IllegalStateException("Failed to copy APK: $name")
                     }
                     destFile
@@ -135,7 +138,7 @@ class AppBundleBuilderImpl(
 
                 // Only .xapk carries expansions, so only .xapk pays for the probe.
                 val probe = if (format == BundleFormat.XAPK) {
-                    systemRepository.probeObb(appInfo.packageName)
+                    systemRepository.probeObb(appInfo.packageName, execution)
                 } else {
                     ObbProbe.None
                 }
@@ -186,7 +189,12 @@ class AppBundleBuilderImpl(
                     }
                     requireStagedExpansions(
                         requested = obbFiles,
-                        staged = stageExpansions(appInfo.packageName, obbFiles, obbStagingDir)
+                        staged = stageExpansions(
+                            appInfo.packageName,
+                            obbFiles,
+                            obbStagingDir,
+                            execution
+                        )
                     )
                 }
 
@@ -378,7 +386,8 @@ class AppBundleBuilderImpl(
     private suspend fun stageExpansions(
         packageName: String,
         files: List<ObbFile>,
-        stagingDir: File
+        stagingDir: File,
+        execution: PrivilegeExecutionContext,
     ): List<ZipSource>? {
         stagingDir.deleteRecursively()
         if (!stagingDir.mkdirs()) return null
@@ -393,7 +402,10 @@ class AppBundleBuilderImpl(
                 destPath = dest.absolutePath
             ) ?: return null
 
-            val result = systemRepository.executeShellCommand(command).getOrNull()
+            val result = systemRepository.executeShellCommand(
+                command,
+                execution.copy(commandClass = OBB_COPY),
+            ).getOrNull()
             if (result == null || result.first != 0) return null
             // The shell reported success; verify the bytes actually arrived. A `cp` that hits a
             // full volume can still exit 0 on some toybox builds, and a size that no longer
@@ -405,7 +417,11 @@ class AppBundleBuilderImpl(
         }
     }
 
-    private suspend fun copyFileSafely(sourcePath: String, destFile: File): Boolean {
+    private suspend fun copyFileSafely(
+        sourcePath: String,
+        destFile: File,
+        execution: PrivilegeExecutionContext,
+    ): Boolean {
         return try {
             copyCancellable(File(sourcePath), destFile)
             true
@@ -415,7 +431,9 @@ class AppBundleBuilderImpl(
             // observes cancellation at all.
             throw e
         } catch (_: Exception) {
-            systemRepository.copyFileWithRoot(sourcePath, destFile.absolutePath).isSuccess
+            systemRepository.copyFileWithRoot(
+                sourcePath, destFile.absolutePath, execution,
+            ).isSuccess
         }
     }
 
@@ -474,6 +492,7 @@ class AppBundleBuilderImpl(
     private companion object {
         const val FALLBACK_ICON_PX = 192
         const val COPY_BUFFER_BYTES = 8192
+        val OBB_COPY = PrivilegeCommandClass("obb.copy")
     }
 }
 

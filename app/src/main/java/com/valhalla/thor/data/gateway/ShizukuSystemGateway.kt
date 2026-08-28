@@ -57,7 +57,9 @@ class ShizukuSystemGateway(
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemGateway {
 
-    override suspend fun isRootAvailable() = false
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ) = false
 
     // Shizuku.checkSelfPermission()/pingBinder() are blocking binder IPC; confine them to IO
     // at the gateway boundary so this probe is main-safe regardless of the caller's dispatcher.
@@ -76,7 +78,13 @@ class ShizukuSystemGateway(
         execution: PrivilegeExecutionContext,
     ): Result<Pair<Int, String?>> {
         // Runs through Shizuku's privileged process (shell uid), same path as in-app actions.
-        return runCatching { ShizukuHelper.execute(command) }
+        return try {
+            Result.success(ShizukuHelper.execute(command))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        }
     }
 
     // --- Per-component control -------------------------------------------------------------
@@ -178,7 +186,10 @@ class ShizukuSystemGateway(
         return runAction { reflector.forceStop(packageName) }
     }
 
-    override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+    override suspend fun clearAllCaches(
+        targetFreeBytes: Long?,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         // No sweep fallback, unlike Root: shell uid 2000 cannot delete another package's cache
         // directory, so without a target there is nothing left to try.
         //
@@ -500,7 +511,10 @@ class ShizukuSystemGateway(
         return runAction { reflector.setAppRestricted(packageName, isRestricted) }
     }
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> {
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return Result.failure(Exception("Reboot requires Root. Shizuku cannot perform this action."))
     }
 
@@ -529,6 +543,7 @@ class ShizukuSystemGateway(
         apkPath: String,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
 

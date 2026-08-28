@@ -36,7 +36,9 @@ class ManageAppUseCase(
     }
 
     /** Every app's cache, under any mode that can. The `Long?` is bytes freed. */
-    suspend fun clearAllCaches(): Result<Long?> = systemRepository.clearAllCaches()
+    suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Long?> = systemRepository.clearAllCaches(execution)
 
     suspend fun clearAppData(
         packageName: String,

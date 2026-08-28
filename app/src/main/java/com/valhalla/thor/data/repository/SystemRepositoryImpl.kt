@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.capabilityProbeCommand
@@ -39,7 +40,10 @@ import org.koin.core.annotation.Single
 internal suspend inline fun <T> resultPreservingCancellation(
     action: suspend () -> Result<T>,
 ): Result<T> = try {
-    action()
+    val result = action()
+    val failure = result.exceptionOrNull()
+    if (failure is CancellationException) throw failure
+    result
 } catch (cancelled: CancellationException) {
     // CancellationException is an Exception in Kotlin and must not be swallowed. Bulk operations
     // need a cancelled command to remain unresolved rather than becoming an ordinary failed result.
@@ -58,8 +62,10 @@ class SystemRepositoryImpl(
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemRepository, AppDataProbe {
 
-    override suspend fun isRootAvailable(): Boolean = withContext(ioDispatcher) {
-        rootGateway.isRootAvailable()
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ): Boolean = withContext(ioDispatcher) {
+        rootGateway.isRootAvailable(execution)
     }
 
     // The gateway probes confine their blocking binder IPC to IO themselves, so no extra
@@ -82,13 +88,15 @@ class SystemRepositoryImpl(
 
     // Cached entry point. Returns the cached gateway while fresh, otherwise resolves and (on
     // success) refreshes the cache. Resolution semantics live in resolveActiveGateway().
-    private suspend fun getActiveGateway(): Result<SystemGateway> {
+    private suspend fun getActiveGateway(
+        execution: PrivilegeExecutionContext,
+    ): Result<SystemGateway> {
         val now = SystemClock.elapsedRealtime()
         cachedGateway?.let { cached ->
             if (now < cachedGatewayExpiryMs) return Result.success(cached)
         }
 
-        val result = resolveActiveGateway()
+        val result = resolveActiveGateway(execution)
         result.fold(
             onSuccess = {
                 cachedGateway = it
@@ -107,21 +115,31 @@ class SystemRepositoryImpl(
     // not three). The root probe in particular can spawn a shell, so avoiding the eager
     // "probe all three every call" pattern removes redundant IPC on every batched app action.
     // Selection semantics are identical to probing all three up front.
-    private suspend fun resolveActiveGateway(): Result<SystemGateway> {
+    private suspend fun resolveActiveGateway(
+        execution: PrivilegeExecutionContext,
+    ): Result<SystemGateway> {
         val prefs = preferenceRepository.userPreferences.first()
 
         // 1. Try User Preference — probe only the preferred source.
         when (prefs.preferredPrivilegeMode) {
-            PrivilegeMode.ROOT -> if (rootGateway.isRootAvailable()) return Result.success(rootGateway)
-            PrivilegeMode.SHIZUKU -> if (shizukuGateway.isShizukuAvailable()) return Result.success(shizukuGateway)
-            PrivilegeMode.DHIZUKU -> if (dhizukuGateway.isDhizukuAvailable()) return Result.success(dhizukuGateway)
+            PrivilegeMode.ROOT -> if (rootGateway.isRootAvailable(execution)) return Result.success(
+                rootGateway
+            )
+
+            PrivilegeMode.SHIZUKU -> if (shizukuGateway.isShizukuAvailable()) return Result.success(
+                shizukuGateway
+            )
+
+            PrivilegeMode.DHIZUKU -> if (dhizukuGateway.isDhizukuAvailable()) return Result.success(
+                dhizukuGateway
+            )
             // NONE is never persisted as a preference; null means "auto". Both fall through.
             PrivilegeMode.NONE, null -> Unit
         }
 
         // 2. Fallback to Auto-Detection — stop at the first available source.
         return when {
-            rootGateway.isRootAvailable() -> Result.success(rootGateway)
+            rootGateway.isRootAvailable(execution) -> Result.success(rootGateway)
             shizukuGateway.isShizukuAvailable() -> Result.success(shizukuGateway)
             dhizukuGateway.isDhizukuAvailable() -> Result.success(dhizukuGateway)
             else -> Result.failure(IllegalStateException("No privileged gateway available (Root, Shizuku or Dhizuku required)"))
@@ -129,9 +147,10 @@ class SystemRepositoryImpl(
     }
 
     private suspend inline fun <T> runGatewayAction(
+        execution: PrivilegeExecutionContext,
         crossinline action: suspend (SystemGateway) -> Result<T>
     ): Result<T> {
-        return getActiveGateway().fold(
+        return getActiveGateway(execution).fold(
             onSuccess = { gateway ->
                 resultPreservingCancellation { action(gateway) }
             },
@@ -143,7 +162,7 @@ class SystemRepositoryImpl(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.forceStopApp(packageName, execution) }
+        runGatewayAction(execution) { it.forceStopApp(packageName, execution) }
     }
 
     // Root-gated rather than routed through runGatewayAction, and deliberately so: no other
@@ -156,7 +175,7 @@ class SystemRepositoryImpl(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Long?> = withContext(ioDispatcher) {
-        if (!rootGateway.isRootAvailable()) {
+        if (!rootGateway.isRootAvailable(execution)) {
             return@withContext Result.failure(
                 Exception("Clearing one app's cache requires Root. Shizuku and Dhizuku can only clear every app's cache at once.")
             )
@@ -166,7 +185,9 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun clearAllCaches(): Result<Long?> = withContext(ioDispatcher) {
+    override suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> = withContext(ioDispatcher) {
         measuringCacheFreed({ storageStats.totalCacheBytes() }) { before ->
             // The trim target is built from the *same* reading the freed figure is computed from,
             // which is why the before-value is handed down here rather than measured again. A
@@ -177,7 +198,7 @@ class SystemRepositoryImpl(
             // `null` is the no-usage-access case. Root goes on to sweep the directories by name;
             // Shizuku has no such rung and fails with a message naming the permission.
             val target = before?.let { storageStats.cacheTrimTargetBytes(it) }
-            runGatewayAction { it.clearAllCaches(target) }
+            runGatewayAction(execution) { it.clearAllCaches(target, execution) }
         }
     }
 
@@ -219,7 +240,7 @@ class SystemRepositoryImpl(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.clearAppData(packageName, execution) }
+        runGatewayAction(execution) { it.clearAppData(packageName, execution) }
     }
 
     override suspend fun setAppDisabled(
@@ -227,7 +248,7 @@ class SystemRepositoryImpl(
         isDisabled: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.setAppDisabled(packageName, isDisabled, execution) }
+        runGatewayAction(execution) { it.setAppDisabled(packageName, isDisabled, execution) }
     }
 
     override suspend fun setAppSuspended(
@@ -235,7 +256,7 @@ class SystemRepositoryImpl(
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.setAppSuspended(packageName, isSuspended, execution) }
+        runGatewayAction(execution) { it.setAppSuspended(packageName, isSuspended, execution) }
     }
 
     override suspend fun setAppRestricted(
@@ -243,19 +264,22 @@ class SystemRepositoryImpl(
         isRestricted: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.setAppRestricted(packageName, isRestricted, execution) }
+        runGatewayAction(execution) { it.setAppRestricted(packageName, isRestricted, execution) }
     }
 
     override suspend fun uninstallApp(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.uninstallApp(packageName, execution) }
+        runGatewayAction(execution) { it.uninstallApp(packageName, execution) }
     }
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> = withContext(ioDispatcher) {
-        if (rootGateway.isRootAvailable()) {
-            rootGateway.rebootDevice(reason)
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        if (rootGateway.isRootAvailable(execution)) {
+            rootGateway.rebootDevice(reason, execution)
         } else {
             Result.failure(Exception("Reboot requires Root access"))
         }
@@ -274,7 +298,7 @@ class SystemRepositoryImpl(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.reinstallAppWithGoogle(packageName, execution) }
+        runGatewayAction(execution) { it.reinstallAppWithGoogle(packageName, execution) }
     }
 
     override suspend fun copyFileWithRoot(
@@ -282,7 +306,7 @@ class SystemRepositoryImpl(
         destinationPath: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        if (rootGateway.isRootAvailable()) {
+        if (rootGateway.isRootAvailable(execution)) {
             try {
                 rootGateway.copyFile(sourcePath, destinationPath, execution)
                 Result.success(Unit)
@@ -301,7 +325,7 @@ class SystemRepositoryImpl(
         execution: PrivilegeExecutionContext,
     ): Result<List<String>> = withContext(ioDispatcher) {
         try {
-            if (rootGateway.isRootAvailable()) {
+            if (rootGateway.isRootAvailable(execution)) {
                 val paths = rootGateway.getAppPaths(packageName, execution)
                 if (paths.isNotEmpty()) Result.success(paths)
                 else Result.failure(Exception("No paths found"))
@@ -320,7 +344,7 @@ class SystemRepositoryImpl(
         permissionName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.grantPermission(packageName, permissionName, execution) }
+        runGatewayAction(execution) { it.grantPermission(packageName, permissionName, execution) }
     }
 
     override suspend fun revokePermission(
@@ -328,7 +352,7 @@ class SystemRepositoryImpl(
         permissionName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.revokePermission(packageName, permissionName, execution) }
+        runGatewayAction(execution) { it.revokePermission(packageName, permissionName, execution) }
     }
 
     // --- Per-component control -------------------------------------------------------------
@@ -351,7 +375,7 @@ class SystemRepositoryImpl(
         state: ComponentEnabledState,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction {
+        runGatewayAction(execution) {
             it.setComponentEnabled(packageName, className, state, thorUserId, execution)
         }
     }
@@ -361,7 +385,14 @@ class SystemRepositoryImpl(
         className: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.forceLaunchActivity(packageName, className, thorUserId, execution) }
+        runGatewayAction(execution) {
+            it.forceLaunchActivity(
+                packageName,
+                className,
+                thorUserId,
+                execution
+            )
+        }
     }
 
     override suspend fun stopService(
@@ -369,14 +400,21 @@ class SystemRepositoryImpl(
         className: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.stopService(packageName, className, thorUserId, execution) }
+        runGatewayAction(execution) {
+            it.stopService(
+                packageName,
+                className,
+                thorUserId,
+                execution
+            )
+        }
     }
 
     override suspend fun executeShellCommand(
         command: String,
         execution: PrivilegeExecutionContext,
     ): Result<Pair<Int, String?>> = withContext(ioDispatcher) {
-        runGatewayAction { it.executeShellCommand(command, execution) }
+        runGatewayAction(execution) { it.executeShellCommand(command, execution) }
     }
 
     /**
@@ -388,7 +426,10 @@ class SystemRepositoryImpl(
      * No `withContext(ioDispatcher)` here: [executeShellCommand] already makes that hop, and
      * everything either side of it is pure string work.
      */
-    override suspend fun probeObb(packageName: String): ObbProbe {
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe {
         // Two distinct refusals, named separately: obbProbeCommand returns null for an unusable
         // package name *or* an unusable storage root, and folding them together reported the package
         // name as the cause of a missing external volume. The reason is the diagnostic, so it has to
@@ -404,7 +445,8 @@ class SystemRepositoryImpl(
                 }
             )
 
-        val verdict = executeShellCommand(command).fold(
+        val probeExecution = execution.copy(commandClass = OBB_PROBE)
+        val verdict = executeShellCommand(command, probeExecution).fold(
             onSuccess = { (exitCode, output) -> parseObbProbe(exitCode, output) },
             onFailure = { ObbProbe.Undetermined(it.message ?: "no privileged shell is available") }
         )
@@ -421,6 +463,7 @@ class SystemRepositoryImpl(
                 is ObbProbe.None -> "None"
                 is ObbProbe.Present ->
                     "Present(${verdict.files.size} obb, ${verdict.otherEntryCount} other)"
+
                 is ObbProbe.Undetermined -> "Undetermined(${verdict.reason})"
             }
         )
@@ -470,5 +513,6 @@ class SystemRepositoryImpl(
         // TTL for the resolved-gateway cache; ~3s comfortably covers a single batch operation
         // while keeping privilege/availability staleness bounded.
         private const val GATEWAY_CACHE_TTL_MS = 3_000L
+        val OBB_PROBE = PrivilegeCommandClass("obb.probe")
     }
 }

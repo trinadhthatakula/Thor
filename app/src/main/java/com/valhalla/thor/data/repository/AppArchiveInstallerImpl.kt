@@ -9,6 +9,7 @@ import androidx.core.net.toUri
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.repository.AppArchiveInstaller
@@ -48,6 +49,7 @@ class AppArchiveInstallerImpl(
     override suspend fun installBundle(
         bundle: File,
         packageName: String,
+        execution: PrivilegeExecutionContext,
     ): ArchiveInstallOutcome = withContext(ioDispatcher) {
         if (!bundle.isFile || bundle.length() == 0L) {
             return@withContext ArchiveInstallOutcome.Failed("the archive's app bundle is missing")
@@ -64,7 +66,7 @@ class AppArchiveInstallerImpl(
         // one's. `Idle` is what it sees instead, and the predicate skips it.
         eventBus.reset()
 
-        installAndAwait(bundle, packageName, mode)
+        installAndAwait(bundle, packageName, mode, execution)
     }
 
     /**
@@ -138,6 +140,7 @@ class AppArchiveInstallerImpl(
         bundle: File,
         packageName: String,
         mode: InstallMode,
+        execution: PrivilegeExecutionContext,
     ): ArchiveInstallOutcome {
         // Read before the install, because for an update the answer changes and nothing afterwards
         // can reconstruct it. `InstallerRepositoryImpl.awaitInstalled` reads the same stamp for the
@@ -167,6 +170,7 @@ class AppArchiveInstallerImpl(
                         uri = bundle.toUri(),
                         mode = mode,
                         canDowngrade = true,
+                        execution = execution,
                     )
                     // `latest` is the last word the bus was given; `terminal.value` is only the
                     // last word this watcher has caught up with. They differ on exactly the path

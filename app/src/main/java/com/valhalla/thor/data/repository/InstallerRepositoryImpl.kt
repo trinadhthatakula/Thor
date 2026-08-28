@@ -28,6 +28,7 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
@@ -121,6 +122,7 @@ class InstallerRepositoryImpl(
         mode: InstallMode,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
     ) =
         withContext(ioDispatcher) {
             try {
@@ -145,7 +147,9 @@ class InstallerRepositoryImpl(
 
                 when (mode) {
                     InstallMode.ROOT -> {
-                        installWithRoot(staged, canDowngrade, grantAllPermissions)
+                        installWithRoot(
+                            staged, canDowngrade, grantAllPermissions, execution,
+                        )
                     }
 
                     InstallMode.SHIZUKU -> {
@@ -588,6 +592,7 @@ class InstallerRepositoryImpl(
         staged: StagedPackage,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
     ) {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -612,9 +617,13 @@ class InstallerRepositoryImpl(
             // The gateway resolves a null against the saved setting; this rung has no reason to
             // resolve it first, and doing so would put a second copy of that rule in the app.
             val result = if (apkPaths.size == 1) {
-                rootGateway.installApp(apkPaths[0], canDowngrade, grantAllPermissions)
+                rootGateway.installApp(
+                    apkPaths[0], canDowngrade, grantAllPermissions, execution,
+                )
             } else {
-                rootGateway.installMultipleApks(apkPaths, canDowngrade, grantAllPermissions)
+                rootGateway.installMultipleApks(
+                    apkPaths, canDowngrade, grantAllPermissions, execution,
+                )
             }
 
             if (result.isSuccess) {

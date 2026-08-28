@@ -7,6 +7,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.ExportTargetChoice
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.resolveExportTarget
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
@@ -54,8 +55,9 @@ class ExportAppUseCase(
     suspend operator fun invoke(
         appInfo: AppInfo,
         format: BundleFormat = BundleFormat.autoFor(appInfo),
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<String> = withContext(ioDispatcher) {
-        exportInto(appInfo, format, openSession(SINGLE_STAGING_DIR))
+        exportInto(appInfo, format, openSession(SINGLE_STAGING_DIR), execution = execution)
     }
 
     /**
@@ -84,6 +86,7 @@ class ExportAppUseCase(
         format: BundleFormat,
         session: ExportSession,
         fileName: String? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<String> = withContext(ioDispatcher) {
         var staged: File? = null
         try {
@@ -92,6 +95,7 @@ class ExportAppUseCase(
                 cacheSubDir = session.stagingSubDir,
                 format = format,
                 fileName = fileName,
+                execution = execution,
             ).getOrElse { return@withContext Result.failure(it) }
             staged = file
 

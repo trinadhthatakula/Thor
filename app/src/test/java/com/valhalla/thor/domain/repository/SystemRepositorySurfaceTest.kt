@@ -60,6 +60,10 @@ class SystemRepositorySurfaceTest {
         )
         val repository = FakeSystemRepository()
 
+        repository.isRootAvailable(execution)
+        repository.clearAllCaches(execution)
+        repository.rebootDevice("review", execution)
+        repository.probeObb("com.example.target", execution)
         repository.setAppDisabled("com.example.target", true, execution)
         repository.setAppSuspended("com.example.target", true, execution)
         repository.forceStopApp("com.example.target", execution)
@@ -68,7 +72,7 @@ class SystemRepositorySurfaceTest {
         repository.executeShellCommand("true", execution)
 
         assertEquals(
-            List(6) { execution },
+            List(10) { execution },
             repository.executions.map { it.second },
         )
     }
@@ -94,6 +98,24 @@ class SystemRepositorySurfaceTest {
 
         val caught = try {
             resultPreservingCancellation<Unit> { throw cancellation }
+            null
+        } catch (actual: CancellationException) {
+            actual
+        }
+
+        assertSame(cancellation, caught)
+    }
+
+    @Test
+    fun `CancellationException returned inside Result failure remains structured cancellation`() =
+        runTest {
+            val cancellation = ShellCommandCancelled(
+                PrivilegeCommandClass("archive.cancelled"),
+                CancellationException("cancelled by caller"),
+            )
+
+            val caught = try {
+                resultPreservingCancellation<Unit> { Result.failure(cancellation) }
             null
         } catch (actual: CancellationException) {
             actual

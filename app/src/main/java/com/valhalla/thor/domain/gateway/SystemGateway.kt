@@ -12,7 +12,10 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 interface SystemGateway {
 
     // Status Checks
-    suspend fun isRootAvailable(): Boolean
+    suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Boolean
+
     suspend fun isShizukuAvailable(): Boolean
     suspend fun isDhizukuAvailable(): Boolean
 
@@ -45,7 +48,10 @@ interface SystemGateway {
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
-    suspend fun rebootDevice(reason: String): Result<Unit>
+    suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
 
     // Advanced
     suspend fun uninstallApp(
@@ -64,6 +70,7 @@ interface SystemGateway {
         apkPath: String,
         canDowngrade: Boolean = false,
         grantAllPermissions: Boolean? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
     suspend fun reinstallAppWithGoogle(
@@ -108,7 +115,10 @@ interface SystemGateway {
      * on to prune static shared libraries and uninstall instant apps. `null` means a mode that can
      * only express this as a trim must fail; Root has a direct sweep it can fall back on.
      */
-    suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit>
+    suspend fun clearAllCaches(
+        targetFreeBytes: Long?,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
 
     // Per-component control
     //

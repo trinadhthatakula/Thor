@@ -9,7 +9,10 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 
 interface SystemRepository {
 
-    suspend fun isRootAvailable(): Boolean
+    suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Boolean
+
     suspend fun isShizukuAvailable(): Boolean
     suspend fun isDhizukuAvailable(): Boolean
 
@@ -37,7 +40,9 @@ interface SystemRepository {
      * Clears **every** app's cache — system and user apps alike — under any privilege mode that can.
      * The `Long?` is bytes freed, on the same terms as [clearCache].
      */
-    suspend fun clearAllCaches(): Result<Long?>
+    suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Long?>
 
     suspend fun clearAppData(
         packageName: String,
@@ -68,7 +73,10 @@ interface SystemRepository {
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext()
     ): Result<Unit>
 
-    suspend fun rebootDevice(reason: String): Result<Unit>
+    suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
 
     // Composite Actions
     // `aggressiveCleanup(packageName)` was declared here and is deliberately gone; see the note at
@@ -182,5 +190,8 @@ interface SystemRepository {
      * Never throws. Every failure — bad package name, gateway error, truncated reply — is
      * `Undetermined`, which callers must not collapse into `None`.
      */
-    suspend fun probeObb(packageName: String): ObbProbe
+    suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): ObbProbe
 }

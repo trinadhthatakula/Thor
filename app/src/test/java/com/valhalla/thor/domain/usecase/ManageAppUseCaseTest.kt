@@ -161,6 +161,7 @@ class ManageAppUseCaseTest {
             commandTimeout = 17.seconds,
         )
 
+        useCase.clearAllCaches(execution).getOrThrow()
         useCase.forceStop(PACKAGE_NAME, execution).getOrThrow()
         useCase.clearCache(PACKAGE_NAME, execution).getOrThrow()
         useCase.clearAppData(PACKAGE_NAME, execution).getOrThrow()
@@ -289,17 +290,30 @@ private class RecordingManageSystemRepository(
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = record("reinstallAppWithGoogle($packageName)", execution)
 
-    override suspend fun isRootAvailable(): Boolean = error("off the manage-app path")
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ): Boolean = error("off the manage-app path")
+
     override suspend fun isShizukuAvailable(): Boolean = error("off the manage-app path")
     override suspend fun isDhizukuAvailable(): Boolean = error("off the manage-app path")
-    override suspend fun clearAllCaches(): Result<Long?> = error("off the manage-app path")
+    override suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> {
+        calls += "clearAllCaches"
+        executions += "clearAllCaches" to execution
+        return Result.success(0L)
+    }
+
     override suspend fun setAppRestricted(
         packageName: String,
         isRestricted: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = error("off the manage-app path")
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> =
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> =
         error("off the manage-app path")
 
     override suspend fun copyFileWithRoot(
@@ -351,5 +365,8 @@ private class RecordingManageSystemRepository(
     ): Result<Pair<Int, String?>> =
         error("off the manage-app path")
 
-    override suspend fun probeObb(packageName: String): ObbProbe = error("off the manage-app path")
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe = error("off the manage-app path")
 }
