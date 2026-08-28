@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -34,6 +35,9 @@ import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -111,6 +115,7 @@ class MainViewModelTest {
     private fun TestScope.viewModel(
         preferenceRepository: FakePreferenceRepository = prefs,
         runner: BackupRunner = backupRunner(preferenceRepository),
+        systemRepository: SystemRepository = system,
         // Granted by default because that is the case every other test in this file is indifferent
         // to: with the op held, an unmeasured clear is described without mentioning permissions. The
         // one test that cares about the ungranted branch passes false.
@@ -124,7 +129,7 @@ class MainViewModelTest {
         bundleBuilder: FakeAppBundleBuilder = FakeAppBundleBuilder(),
     ): MainViewModel {
         val vm = MainViewModel(
-            manageAppUseCase = ManageAppUseCase(system),
+            manageAppUseCase = ManageAppUseCase(systemRepository),
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             shareAppUseCase = ShareAppUseCase(
                 bundleBuilder,
@@ -337,6 +342,44 @@ class MainViewModelTest {
         assertEquals(3, state.processed)
         assertEquals(1, state.failed)
         assertTrue(state.isComplete)
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `an exception leaves the freeze logger complete with counts from before the exit`() = runTest {
+        system.onCall = { throw IllegalStateException("privilege call crashed") }
+        val vm = viewModel()
+
+        try {
+            vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("com.a"))))
+            advanceUntilIdle()
+        } finally {
+            val state = vm.uiState.value.freezeLoggerState
+            assertTrue(state.isComplete)
+            assertEquals(0, state.processed)
+            assertEquals(0, state.failed)
+        }
+    }
+
+    @Test
+    fun `cancellation leaves the freeze logger complete without converting cancellation to success`() = runTest {
+        lateinit var actionJob: Job
+        val suspendingSystem = object : SystemRepository by system {
+            override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
+                actionJob = currentCoroutineContext()[Job]!!
+                awaitCancellation()
+            }
+        }
+        val vm = viewModel(systemRepository = suspendingSystem)
+
+        vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("com.a"))))
+        actionJob.cancel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value.freezeLoggerState
+        assertTrue(actionJob.isCancelled)
+        assertTrue(state.isComplete)
+        assertEquals(0, state.processed)
+        assertEquals(0, state.failed)
     }
 
     @Test

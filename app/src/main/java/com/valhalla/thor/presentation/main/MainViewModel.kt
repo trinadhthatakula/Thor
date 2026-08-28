@@ -39,6 +39,7 @@ import com.valhalla.thor.util.asUiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -1071,43 +1072,52 @@ class MainViewModel(
 
         var processed = 0
         var failed = 0
-        withContext(ioDispatcher) {
-            targets.forEach { app ->
-                val result = if (isFreeze) {
-                    if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
-                    else manageAppUseCase.setAppDisabled(app.packageName, true)
-                } else {
-                    // `forceUnfreeze`, not the state-aware `restoreApp(_, app.enabled,
-                    // app.isSuspended)` this used to call. Both clear suspend AND disable; the
-                    // difference is that `restoreApp` decides which halves to attempt from the flags,
-                    // and on this path the flags are stale by construction.
-                    //
-                    // Nothing patches `isSuspended` on an app list after a bulk freeze — not this
-                    // function (it updates only the logger counters and never refreshes the lists on
-                    // completion), not `AppListViewModel`'s bulk branch, not the QS tile. So the
-                    // freeze-then-unfreeze round trip that is the *primary* way suspend mode gets
-                    // used — `useSuspend = true` above, then Unfreeze over the same selection —
-                    // hands `restorePlanFor` a snapshot that still calls every app active. It plans
-                    // nothing, returns `Result.success`, and this loop counts a success for each app
-                    // while all of them are still suspended: "Unfroze 12" over 12 paused apps.
-                    //
-                    // FreezerViewModel already documents this trap twice and answers it the same way.
-                    // The cost is one redundant unsuspend per already-active app, which root and
-                    // Shizuku answer from the flag alone.
-                    manageAppUseCase.forceUnfreeze(app.packageName)
-                }
-                processed++
-                if (result.isFailure) failed++
-                val p = processed
-                val f = failed
-                _uiState.update {
-                    it.copy(freezeLoggerState = it.freezeLoggerState.copy(processed = p, failed = f))
+        try {
+            withContext(ioDispatcher) {
+                targets.forEach { app ->
+                    coroutineContext.ensureActive()
+                    val result = if (isFreeze) {
+                        if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
+                        else manageAppUseCase.setAppDisabled(app.packageName, true)
+                    } else {
+                        // `forceUnfreeze`, not the state-aware `restoreApp(_, app.enabled,
+                        // app.isSuspended)` this used to call. Both clear suspend AND disable; the
+                        // difference is that `restoreApp` decides which halves to attempt from the flags,
+                        // and on this path the flags are stale by construction.
+                        //
+                        // Nothing patches `isSuspended` on an app list after a bulk freeze — not this
+                        // function (it updates only the logger counters and never refreshes the lists on
+                        // completion), not `AppListViewModel`'s bulk branch, not the QS tile. So the
+                        // freeze-then-unfreeze round trip that is the *primary* way suspend mode gets
+                        // used — `useSuspend = true` above, then Unfreeze over the same selection —
+                        // hands `restorePlanFor` a snapshot that still calls every app active. It plans
+                        // nothing, returns `Result.success`, and this loop counts a success for each app
+                        // while all of them are still suspended: "Unfroze 12" over 12 paused apps.
+                        //
+                        // FreezerViewModel already documents this trap twice and answers it the same way.
+                        // The cost is one redundant unsuspend per already-active app, which root and
+                        // Shizuku answer from the flag alone.
+                        manageAppUseCase.forceUnfreeze(app.packageName)
+                    }
+                    processed++
+                    if (result.isFailure) failed++
+                    val p = processed
+                    val f = failed
+                    _uiState.update {
+                        it.copy(freezeLoggerState = it.freezeLoggerState.copy(processed = p, failed = f))
+                    }
                 }
             }
-        }
-
-        _uiState.update {
-            it.copy(freezeLoggerState = it.freezeLoggerState.copy(isComplete = true))
+        } finally {
+            _uiState.update {
+                it.copy(
+                    freezeLoggerState = it.freezeLoggerState.copy(
+                        processed = processed,
+                        failed = failed,
+                        isComplete = true,
+                    )
+                )
+            }
         }
         if (processed - failed > 0) {
             triggerSupportPromptIfNeeded()
