@@ -19,6 +19,7 @@ import java.util.concurrent.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -261,6 +262,50 @@ class RootCommandRouterTest {
     }
 
     @Test
+    fun `cancelled degraded command before MainShell submission submits nothing`() = runTest {
+        val reachedSubmissionBoundary = CompletableDeferred<Unit>()
+        val allowSubmission = CompletableDeferred<Unit>()
+        val main = FakeShellRepository(
+            beforeSubmission = {
+                reachedSubmissionBoundary.complete(Unit)
+                allowSubmission.await()
+            },
+        ) { shellSuccess() }
+        val fixture = fixture(
+            main = main,
+            archiveFactory = unavailableFactory("archive unavailable"),
+        )
+        val terminal = CompletableDeferred<Throwable>()
+        val pending = launch {
+            try {
+                fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.backup"))
+            } catch (failure: Throwable) {
+                terminal.complete(failure)
+            }
+        }
+        reachedSubmissionBoundary.await()
+        assertEquals(
+            PrivilegeExecutionLane.ARCHIVE,
+            fixture.statuses.statuses.value
+                .getValue(PrivilegeExecutionLane.ARCHIVE)
+                .fallbackOwner,
+        )
+
+        pending.cancel(CancellationException("cancel before submission"))
+        runCurrent()
+        assertEquals("cancellation must win before submission", 0, main.submissionCount)
+        allowSubmission.complete(Unit)
+        pending.join()
+
+        assertTrue(terminal.await() is ShellCommandCancelled)
+        assertEquals(
+            "a cancelled pre-submission command must stay unsubmitted",
+            0,
+            main.submissionCount
+        )
+    }
+
+    @Test
     fun `timed out degraded sweep cannot execute after terminal failure is published`() = runTest {
         val callback = CompletableDeferred<ShellResult>()
         val events = mutableListOf<String>()
@@ -312,6 +357,54 @@ class RootCommandRouterTest {
     }
 
     @Test
+    fun `timed out degraded command before MainShell submission submits nothing`() = runTest {
+        val reachedSubmissionBoundary = CompletableDeferred<Unit>()
+        val allowSubmission = CompletableDeferred<Unit>()
+        val main = FakeShellRepository(
+            beforeSubmission = {
+                reachedSubmissionBoundary.complete(Unit)
+                allowSubmission.await()
+            },
+        ) { shellSuccess() }
+        val fixture = fixture(
+            main = main,
+            sweepFactory = unavailableFactory("sweep unavailable"),
+        )
+
+        supervisorScope {
+            val pending = async {
+                fixture.router.execute(
+                    command(
+                        lane = PrivilegeExecutionLane.SWEEP,
+                        commandClass = "sweep.clear_cache",
+                        timeout = 5.seconds,
+                    ),
+                )
+            }
+            reachedSubmissionBoundary.await()
+            assertEquals(
+                PrivilegeExecutionLane.SWEEP,
+                fixture.statuses.statuses.value
+                    .getValue(PrivilegeExecutionLane.SWEEP)
+                    .fallbackOwner,
+            )
+
+            advanceTimeBy(5.seconds)
+            runCurrent()
+            assertEquals("the deadline must win before submission", 0, main.submissionCount)
+            allowSubmission.complete(Unit)
+            val failure = captureFailure<ShellCommandTimedOut> { pending.await() }
+
+            assertEquals(PrivilegeCommandClass("sweep.clear_cache"), failure.commandClass)
+            assertEquals(
+                "a timed-out pre-submission command must stay unsubmitted",
+                0,
+                main.submissionCount
+            )
+        }
+    }
+
+    @Test
     fun `foreign timeout during degraded fallback remains cancellation after drain`() = runTest {
         val callback = CompletableDeferred<ShellResult>()
         val fixture = fixture(
@@ -350,6 +443,42 @@ class RootCommandRouterTest {
 
         assertTrue(terminal.await() is ShellCommandCancelled)
         pending.join()
+    }
+
+    @Test
+    fun `interactive rejection follows the actual owner across fallback handoff`() = runTest {
+        val archiveCompletion = CompletableDeferred<ShellResult>()
+        val sweepCompletion = CompletableDeferred<ShellResult>()
+        val completions = ArrayDeque(listOf(archiveCompletion, sweepCompletion))
+        val fixture = fixture(
+            main = FakeShellRepository { completions.removeFirst().await() },
+            archiveFactory = unavailableFactory("archive unavailable"),
+            sweepFactory = unavailableFactory("sweep unavailable"),
+        )
+        val archive = async {
+            fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.backup"))
+        }
+        runCurrent()
+        val sweep = async {
+            fixture.router.execute(command(PrivilegeExecutionLane.SWEEP, "sweep.clear_cache"))
+        }
+        runCurrent()
+
+        val archiveBusy = captureFailure<ShellLaneBusy> {
+            fixture.router.execute(command(PrivilegeExecutionLane.INTERACTIVE, "package.freeze"))
+        }
+        assertEquals(PrivilegeExecutionLane.ARCHIVE, archiveBusy.owner)
+
+        archiveCompletion.complete(shellSuccess())
+        runCurrent()
+        val sweepBusy = captureFailure<ShellLaneBusy> {
+            fixture.router.execute(command(PrivilegeExecutionLane.INTERACTIVE, "package.unfreeze"))
+        }
+        assertEquals(PrivilegeExecutionLane.SWEEP, sweepBusy.owner)
+
+        sweepCompletion.complete(shellSuccess())
+        archive.await()
+        sweep.await()
     }
 
     @Test
@@ -440,7 +569,8 @@ class RootCommandRouterTest {
     ): Fixture {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val statuses = DefaultRootLaneStatusSource()
-        val mainExecutor = MainShellCommandExecutor(main)
+        main.attach(this)
+        val mainExecutor = MainShellCommandExecutor(main, main)
         val fallback = RootFallbackCoordinator(statuses)
         val router = RootCommandRouter(
             main = mainExecutor,
@@ -534,16 +664,37 @@ class RootCommandRouterTest {
     }
 
     private class FakeShellRepository(
+        private val beforeSubmission: suspend (String) -> Unit = {},
         private val executeBlock: suspend (String) -> ShellResult,
-    ) : ShellRepository {
+    ) : ShellRepository, MainShellJobFactory {
+        private lateinit var callbackScope: CoroutineScope
         val commands = mutableListOf<String>()
         val submissionCount: Int get() = commands.size
+
+        fun attach(scope: CoroutineScope) {
+            callbackScope = scope
+        }
+
+        override suspend fun create(command: RootCommand): MainShellPendingCommand {
+            beforeSubmission(command.text)
+            return MainShellPendingCommand { completion ->
+                commands += command.text
+                callbackScope.launch {
+                    try {
+                        completion(Result.success(executeBlock(command.text)))
+                    } catch (failure: Throwable) {
+                        completion(Result.failure(failure))
+                    }
+                }
+            }
+        }
 
         override suspend fun isRootGranted(): Boolean = true
 
         override suspend fun exec(vararg commands: String): ShellResult {
             require(commands.size == 1)
             return commands.single().let { command ->
+                beforeSubmission(command)
                 this.commands += command
                 executeBlock(command)
             }

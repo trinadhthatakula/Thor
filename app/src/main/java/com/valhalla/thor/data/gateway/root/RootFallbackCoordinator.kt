@@ -3,16 +3,19 @@
 
 package com.valhalla.thor.data.gateway.root
 
+import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
 import java.util.concurrent.CancellationException
-import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Single
@@ -21,18 +24,14 @@ import org.koin.core.annotation.Single
 internal class RootFallbackCoordinator(
     private val statuses: DefaultRootLaneStatusSource,
 ) {
-    private val mainShellMutex = Mutex()
-    private val activeOwner = AtomicReference<PrivilegeExecutionLane?>(null)
+    private val coordinationState = MutableStateFlow<MainShellLease?>(null)
 
     suspend fun executeInteractive(
         main: MainShellCommandExecutor,
         command: RootCommand,
     ): RootCommandResult {
         check(command.execution.lane == PrivilegeExecutionLane.INTERACTIVE)
-        if (!mainShellMutex.tryLock()) {
-            throw ShellLaneBusy(activeOwner.get() ?: PrivilegeExecutionLane.INTERACTIVE)
-        }
-        activeOwner.set(PrivilegeExecutionLane.INTERACTIVE)
+        val lease = acquireInteractiveImmediately()
         statuses.commandStarted(
             lane = PrivilegeExecutionLane.INTERACTIVE,
             commandClass = command.execution.commandClass,
@@ -44,7 +43,7 @@ internal class RootFallbackCoordinator(
             throw ShellCommandCancelled(command.execution.commandClass, cancelled)
         } finally {
             statuses.commandFinished(PrivilegeExecutionLane.INTERACTIVE)
-            release(PrivilegeExecutionLane.INTERACTIVE)
+            release(lease)
         }
     }
 
@@ -57,8 +56,7 @@ internal class RootFallbackCoordinator(
             "Interactive MainShell commands must use immediate admission"
         }
 
-        mainShellMutex.lock()
-        activeOwner.set(lane)
+        val lease = acquireWhenAvailable(lane)
         try {
             currentCoroutineContext().ensureActive()
             statuses.commandStarted(
@@ -69,7 +67,7 @@ internal class RootFallbackCoordinator(
             return executeSubmittedCommandToDrain(main, command)
         } finally {
             statuses.commandFinished(lane)
-            release(lane)
+            release(lease)
         }
     }
 
@@ -81,16 +79,12 @@ internal class RootFallbackCoordinator(
             val timeout = command.execution.commandTimeout
             val outcome = if (timeout == null) {
                 CommandOutcome.Completed(
-                    withContext(NonCancellable) {
-                        main.execute(command)
-                    },
+                    executeCancellableUntilSubmitted(main, command),
                 )
             } else {
                 withTimeoutOrNull(timeout) {
                     CommandOutcome.Completed(
-                        withContext(NonCancellable) {
-                            main.execute(command)
-                        },
+                        executeCancellableUntilSubmitted(main, command),
                     )
                 } ?: CommandOutcome.TimedOut
             }
@@ -106,10 +100,58 @@ internal class RootFallbackCoordinator(
         }
     }
 
-    private fun release(owner: PrivilegeExecutionLane) {
-        mainShellMutex.unlock()
-        activeOwner.compareAndSet(owner, null)
+    private suspend fun executeCancellableUntilSubmitted(
+        main: MainShellCommandExecutor,
+        command: RootCommand,
+    ): RootCommandResult {
+        val pending = main.prepare(command)
+        val completion = CompletableDeferred<Result<ShellResult>>()
+        val submissionGate = CompletableDeferred(Unit)
+        var submissionWon = false
+        try {
+            select {
+                submissionGate.onAwait {
+                    // Selection and cancellation compete atomically. Once this clause wins,
+                    // submission is committed and its callback must drain before release.
+                    pending.submit(completion::complete)
+                    submissionWon = true
+                }
+            }
+            val outcome = withContext(NonCancellable) { completion.await() }
+            return main.toCommandResult(command, outcome)
+        } catch (cancelled: CancellationException) {
+            if (submissionWon) {
+                withContext(NonCancellable) { completion.await() }
+            }
+            throw cancelled
+        }
     }
+
+    private fun acquireInteractiveImmediately(): MainShellLease {
+        val requested = MainShellLease(PrivilegeExecutionLane.INTERACTIVE)
+        while (true) {
+            val active = coordinationState.value
+            if (active != null) throw ShellLaneBusy(active.owner)
+            if (coordinationState.compareAndSet(expect = null, update = requested)) return requested
+        }
+    }
+
+    private suspend fun acquireWhenAvailable(owner: PrivilegeExecutionLane): MainShellLease {
+        val requested = MainShellLease(owner)
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            if (coordinationState.compareAndSet(expect = null, update = requested)) return requested
+            coordinationState.first { active -> active == null }
+        }
+    }
+
+    private fun release(lease: MainShellLease) {
+        check(coordinationState.compareAndSet(expect = lease, update = null)) {
+            "MainShell lease ownership changed before release"
+        }
+    }
+
+    private class MainShellLease(val owner: PrivilegeExecutionLane)
 
     private sealed interface CommandOutcome {
         data class Completed(val result: RootCommandResult) : CommandOutcome
