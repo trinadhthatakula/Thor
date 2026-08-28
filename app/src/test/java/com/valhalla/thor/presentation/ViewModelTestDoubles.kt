@@ -200,7 +200,11 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         sourcePath: String,
         destinationPath: String,
         execution: PrivilegeExecutionContext,
-    ) = record("copyFileWithRoot:$sourcePath:$destinationPath", execution)
+    ): Result<Unit> {
+        val call = "copyFileWithRoot:$sourcePath:$destinationPath"
+        note(call, execution)
+        return rootCopyFailure?.let { Result.failure(it) } ?: Result.success(Unit)
+    }
 
     override suspend fun grantPermission(
         packageName: String,
@@ -227,7 +231,7 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         execution: PrivilegeExecutionContext,
     ): Result<Pair<Int, String?>> {
         note("executeShellCommand:$command", execution)
-        return Result.success(0 to null)
+        return shellCommandFailure?.let { Result.failure(it) } ?: Result.success(0 to null)
     }
 
     /**
@@ -240,11 +244,19 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     var obbProbe: ObbProbe = ObbProbe.None
     var obbProbeFailure: Throwable? = null
 
+    /** Optional barrier used when a test must observe the caller's suspended probe job. */
+    var beforeObbProbeResult: (suspend () -> Unit)? = null
+
+    /** Exact failures returned by the two collapsing export adapters. */
+    var rootCopyFailure: Throwable? = null
+    var shellCommandFailure: Throwable? = null
+
     override suspend fun probeObb(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): ObbProbe {
         note("probeObb:$packageName", execution)
+        beforeObbProbeResult?.invoke()
         obbProbeFailure?.let { throw it }
         return obbProbe
     }

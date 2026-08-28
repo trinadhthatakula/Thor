@@ -11,6 +11,7 @@ import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
 import com.valhalla.thor.domain.model.ShellLaneDegraded
@@ -25,7 +26,12 @@ import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
+import androidx.lifecycle.viewModelScope
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -35,6 +41,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -331,6 +339,56 @@ class AppInfoDetailsViewModelTest {
                 vm.uiState.value.obbProbe,
             )
         }
+    }
+
+    @Test
+    fun `the real detail load keeps structured OBB cancellation identity`() = runTest {
+        loaded(userApp("a"))
+        val cancellation = ShellCommandCancelled(
+            PrivilegeCommandClass("obb.probe"),
+            CancellationException("cancelled"),
+        )
+        system.obbProbeFailure = cancellation
+        val vm = viewModel()
+        runCurrent()
+        val parent = vm.viewModelScope.coroutineContext[Job]!!
+        val existingChildren = parent.children.toSet()
+
+        vm.loadAppDetails("a")
+        val loadJob = (parent.children.toSet() - existingChildren).single()
+        val completion = CompletableDeferred<Throwable?>()
+        loadJob.invokeOnCompletion(completion::complete)
+        runCurrent()
+
+        assertTrue("the public load must reach the OBB collaborator", "probeObb:a" in system.calls)
+        assertSame(cancellation, completion.await())
+        assertNull(vm.uiState.value.obbProbe)
+    }
+
+    @Test
+    fun `the real detail load leaves an ordinary OBB failure unchanged`() {
+        val failure = IllegalStateException("ordinary OBB failure")
+        val completion = AtomicReference<Throwable?>()
+
+        val thrown = assertThrows(IllegalStateException::class.java) {
+            runTest {
+                loaded(userApp("a"))
+                system.obbProbeFailure = failure
+                val vm = viewModel()
+                runCurrent()
+                val parent = vm.viewModelScope.coroutineContext[Job]!!
+                val existingChildren = parent.children.toSet()
+
+                vm.loadAppDetails("a")
+                val loadJob = (parent.children.toSet() - existingChildren).single()
+                loadJob.invokeOnCompletion(completion::set)
+                runCurrent()
+            }
+        }
+
+        assertSame(failure, thrown)
+        assertSame(failure, completion.get())
+        assertTrue("the public load must reach the OBB collaborator", "probeObb:a" in system.calls)
     }
 
     @Test
