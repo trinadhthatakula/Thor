@@ -266,7 +266,7 @@ class RootCommandRouterTest {
         val reachedSubmissionBoundary = CompletableDeferred<Unit>()
         val allowSubmission = CompletableDeferred<Unit>()
         val main = FakeShellRepository(
-            beforeSubmission = {
+            beforePendingJob = {
                 reachedSubmissionBoundary.complete(Unit)
                 allowSubmission.await()
             },
@@ -361,7 +361,7 @@ class RootCommandRouterTest {
         val reachedSubmissionBoundary = CompletableDeferred<Unit>()
         val allowSubmission = CompletableDeferred<Unit>()
         val main = FakeShellRepository(
-            beforeSubmission = {
+            beforePendingJob = {
                 reachedSubmissionBoundary.complete(Unit)
                 allowSubmission.await()
             },
@@ -444,6 +444,154 @@ class RootCommandRouterTest {
         assertTrue(terminal.await() is ShellCommandCancelled)
         pending.join()
     }
+
+    @Test
+    fun `asynchronous MainShell acquisition failure clears status and releases lease`() = runTest {
+        val acquisitionStarted = CompletableDeferred<Unit>()
+        val failAcquisition = CompletableDeferred<Unit>()
+        val acquisitionCause = IllegalStateException("MainShell acquisition failed")
+        val main = FakeShellRepository(
+            beforePendingJob = {
+                acquisitionStarted.complete(Unit)
+                failAcquisition.await()
+                throw acquisitionCause
+            },
+        ) { shellSuccess() }
+        val fixture = fixture(
+            main = main,
+            archiveFactory = unavailableFactory("archive unavailable"),
+        )
+
+        supervisorScope {
+            val pending = async {
+                fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.backup"))
+            }
+            acquisitionStarted.await()
+            val active = fixture.statuses.statuses.value
+                .getValue(PrivilegeExecutionLane.ARCHIVE)
+            assertEquals(PrivilegeCommandClass("archive.backup"), active.activeCommandClass)
+            assertEquals(PrivilegeExecutionLane.ARCHIVE, active.fallbackOwner)
+
+            failAcquisition.complete(Unit)
+            val failure = captureFailure<ShellTransportDied> { pending.await() }
+            assertEquals(PrivilegeExecutionLane.ARCHIVE, failure.lane)
+            assertTrue(failure.cause === acquisitionCause)
+        }
+
+        val terminal = fixture.statuses.statuses.value
+            .getValue(PrivilegeExecutionLane.ARCHIVE)
+        assertNull(terminal.activeCommandClass)
+        assertNull(terminal.fallbackOwner)
+        assertEquals(0, main.submissionCount)
+        assertEquals(
+            0,
+            fixture.router.execute(
+                command(PrivilegeExecutionLane.INTERACTIVE, "package.unfreeze"),
+            ).exitCode,
+        )
+    }
+
+    @Test
+    fun `local timeout during MainShell acquisition releases lease without hanging`() = runTest {
+        val acquisitionStarted = CompletableDeferred<Unit>()
+        val acquisitionNeverCompletes = CompletableDeferred<Unit>()
+        val main = FakeShellRepository(
+            beforePendingJob = {
+                acquisitionStarted.complete(Unit)
+                acquisitionNeverCompletes.await()
+            },
+        ) { shellSuccess() }
+        val fixture = fixture(
+            main = main,
+            sweepFactory = unavailableFactory("sweep unavailable"),
+        )
+
+        supervisorScope {
+            val pending = async {
+                fixture.router.execute(
+                    command(
+                        lane = PrivilegeExecutionLane.SWEEP,
+                        commandClass = "sweep.clear_cache",
+                        timeout = 5.seconds,
+                    ),
+                )
+            }
+            acquisitionStarted.await()
+            advanceTimeBy(5.seconds)
+            runCurrent()
+
+            val failure = captureFailure<ShellCommandTimedOut> { pending.await() }
+            assertEquals(PrivilegeCommandClass("sweep.clear_cache"), failure.commandClass)
+        }
+
+        val terminal = fixture.statuses.statuses.value
+            .getValue(PrivilegeExecutionLane.SWEEP)
+        assertNull(terminal.activeCommandClass)
+        assertNull(terminal.fallbackOwner)
+        assertEquals(0, main.submissionCount)
+        assertEquals(
+            0,
+            fixture.router.execute(
+                command(PrivilegeExecutionLane.INTERACTIVE, "package.freeze"),
+            ).exitCode,
+        )
+    }
+
+    @Test
+    fun `enclosing timeout during MainShell acquisition releases lease without hanging`() =
+        runTest {
+            val acquisitionStarted = CompletableDeferred<Unit>()
+            val acquisitionNeverCompletes = CompletableDeferred<Unit>()
+            val main = FakeShellRepository(
+                beforePendingJob = {
+                    acquisitionStarted.complete(Unit)
+                    acquisitionNeverCompletes.await()
+                },
+            ) { shellSuccess() }
+            val fixture = fixture(
+                main = main,
+                archiveFactory = unavailableFactory("archive unavailable"),
+            )
+            val terminalFailure = CompletableDeferred<Throwable>()
+
+            val pending = launch {
+                try {
+                    withTimeout(5.seconds) {
+                        try {
+                            fixture.router.execute(
+                                command(
+                                    lane = PrivilegeExecutionLane.ARCHIVE,
+                                    commandClass = "archive.backup",
+                                    timeout = 30.seconds,
+                                ),
+                            )
+                        } catch (failure: Throwable) {
+                            terminalFailure.complete(failure)
+                            throw failure
+                        }
+                    }
+                } catch (_: Throwable) {
+                    // The assertion inspects the executor-boundary failure captured above.
+                }
+            }
+            acquisitionStarted.await()
+            advanceTimeBy(5.seconds)
+            runCurrent()
+
+            assertTrue(terminalFailure.await() is ShellCommandCancelled)
+            pending.join()
+            val terminal = fixture.statuses.statuses.value
+                .getValue(PrivilegeExecutionLane.ARCHIVE)
+            assertNull(terminal.activeCommandClass)
+            assertNull(terminal.fallbackOwner)
+            assertEquals(0, main.submissionCount)
+            assertEquals(
+                0,
+                fixture.router.execute(
+                    command(PrivilegeExecutionLane.INTERACTIVE, "package.unfreeze"),
+                ).exitCode,
+            )
+        }
 
     @Test
     fun `interactive rejection follows the actual owner across fallback handoff`() = runTest {
@@ -664,7 +812,7 @@ class RootCommandRouterTest {
     }
 
     private class FakeShellRepository(
-        private val beforeSubmission: suspend (String) -> Unit = {},
+        private val beforePendingJob: suspend (String) -> Unit = {},
         private val executeBlock: suspend (String) -> ShellResult,
     ) : ShellRepository, MainShellJobFactory {
         private lateinit var callbackScope: CoroutineScope
@@ -676,7 +824,7 @@ class RootCommandRouterTest {
         }
 
         override suspend fun create(command: RootCommand): MainShellPendingCommand {
-            beforeSubmission(command.text)
+            beforePendingJob(command.text)
             return MainShellPendingCommand { completion ->
                 commands += command.text
                 callbackScope.launch {
@@ -694,7 +842,6 @@ class RootCommandRouterTest {
         override suspend fun exec(vararg commands: String): ShellResult {
             require(commands.size == 1)
             return commands.single().let { command ->
-                beforeSubmission(command)
                 this.commands += command
                 executeBlock(command)
             }

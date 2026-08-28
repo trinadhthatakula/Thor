@@ -3,7 +3,7 @@
 
 package com.valhalla.thor.data.gateway.root
 
-import com.valhalla.superuser.Shell
+import com.valhalla.superuser.ktx.getShellAwait
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.domain.model.ShellTransportDied
@@ -21,9 +21,10 @@ internal fun interface MainShellJobFactory {
 @Single(binds = [MainShellJobFactory::class])
 internal class OdinMainShellJobFactory : MainShellJobFactory {
     override suspend fun create(command: RootCommand): MainShellPendingCommand {
+        val shell = getShellAwait()
         val stdout = ArrayList<String?>()
         val stderr = ArrayList<String?>()
-        val job = Shell.cmd(command.text).to(stdout, stderr)
+        val job = shell.newJob().add(command.text).to(stdout, stderr)
         return MainShellPendingCommand { completion ->
             try {
                 job.submit(null) { result ->
@@ -57,7 +58,13 @@ internal class MainShellCommandExecutor(
         return toCommandResult(command, Result.success(result))
     }
 
-    suspend fun prepare(command: RootCommand): MainShellPendingCommand = jobFactory.create(command)
+    suspend fun prepare(command: RootCommand): MainShellPendingCommand = try {
+        jobFactory.create(command)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        throw ShellTransportDied(command.execution.lane, failure)
+    }
 
     fun toCommandResult(
         command: RootCommand,
