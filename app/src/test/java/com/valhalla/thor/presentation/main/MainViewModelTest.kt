@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.main
 
+import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
@@ -362,20 +363,24 @@ class MainViewModelTest {
 
     @Test
     fun `cancellation leaves the freeze logger complete without converting cancellation to success`() = runTest {
-        lateinit var actionJob: Job
+        lateinit var targetJob: Job
         val suspendingSystem = object : SystemRepository by system {
             override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
-                actionJob = currentCoroutineContext()[Job]!!
+                targetJob = currentCoroutineContext()[Job]!!
                 awaitCancellation()
             }
         }
         val vm = viewModel(systemRepository = suspendingSystem)
+        val existingJobs = vm.viewModelScope.coroutineContext[Job]!!.children.toSet()
 
         vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("com.a"))))
-        actionJob.cancel()
+        val actionJob = vm.viewModelScope.coroutineContext[Job]!!.children.single { it !in existingJobs }
+        targetJob.cancel()
         advanceUntilIdle()
 
         val state = vm.uiState.value.freezeLoggerState
+        // Assert the outer launch, not the child we explicitly cancelled. Catching the child's
+        // CancellationException would otherwise let this action complete successfully.
         assertTrue(actionJob.isCancelled)
         assertTrue(state.isComplete)
         assertEquals(0, state.processed)
