@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.ArchiveBundleInfo
 import com.valhalla.thor.domain.model.ArchiveCompression
 import com.valhalla.thor.domain.model.ArchiveHeader
@@ -12,9 +13,12 @@ import com.valhalla.thor.domain.model.ArchiveMember
 import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PackageOperationBusy
+import com.valhalla.thor.domain.model.PackageOperationOwner
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.ShellLaneUnavailable
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.ThorJobProgress
@@ -25,8 +29,11 @@ import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
 import com.valhalla.thor.domain.repository.ArchiveSource
+import com.valhalla.thor.presentation.FakeSystemRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
@@ -136,6 +143,7 @@ class RestoreAppArchiveUseCaseTest {
         private val signer: String? = SIGNER,
         /** Runs inside [stagingFile], before the file is handed back. The cancellation seam. */
         private val onStagingFile: () -> Unit = {},
+        private val beforeExtract: suspend () -> Unit = {},
         /**
          * The staging name to hand back as a **directory**. Opening one for write throws
          * `FileNotFoundException`, which is how a JVM test reaches the ENOSPC path: an
@@ -193,6 +201,7 @@ class RestoreAppArchiveUseCaseTest {
         override suspend fun signerSha256(packageName: String) = signer
 
         override suspend fun extractInto(packageName: String, dataClass: DataClass, tar: File, compressed: Boolean): Boolean {
+            beforeExtract()
             extractCompressed[dataClass] = compressed
             return record("extract", dataClass)
         }
@@ -272,7 +281,8 @@ class RestoreAppArchiveUseCaseTest {
         gateway: AppDataArchiveGateway,
         installer: AppArchiveInstaller,
         breadcrumbs: ArchiveBreadcrumbStore,
-    ) = RestoreAppArchiveUseCase(gateway, installer, breadcrumbs, cipher)
+        coordinator: DefaultPackageOperationCoordinator = DefaultPackageOperationCoordinator(),
+    ) = RestoreAppArchiveUseCase(gateway, installer, breadcrumbs, cipher, coordinator)
 
     @Test
     fun `each internal class is extracted, swapped, chowned and relabelled in that order`() = runTest {
@@ -608,7 +618,10 @@ class RestoreAppArchiveUseCaseTest {
 
         val outcome = useCase(
             FakeGateway(),
-            FakeInstaller(outcome = ArchiveInstallOutcome.Failed("INSTALL_FAILED_VERSION_DOWNGRADE"), calls = calls),
+            FakeInstaller(
+                outcome = ArchiveInstallOutcome.Failed("INSTALL_FAILED_VERSION_DOWNGRADE"),
+                calls = calls
+            ),
             RecordingBreadcrumbs(),
         )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
 
@@ -619,8 +632,9 @@ class RestoreAppArchiveUseCaseTest {
     }
 
     @Test
-    fun `an install that landed without its game data still restores the data, and warns`() = runTest {
-        // The fourth outcome, added after this task's brief was written. The package is installed and
+    fun `an install that landed without its game data still restores the data, and warns`() =
+        runTest {
+            // The fourth outcome, added after this task's brief was written. The package is installed and
         // current — only its expansions are missing — so stopping here would leave the user with an
         // installed, empty app and no path forward. The warning has to survive, because a game whose
         // expansions are missing starts and then crashes.
@@ -1107,6 +1121,75 @@ class RestoreAppArchiveUseCaseTest {
             val completed = outcome as ArchiveRestoreOutcome.Completed
             assertEquals(emptyList<String>(), completed.warnings)
         }
+
+    @Test
+    fun `restore owns one package lease while an archive phase is blocked`() = runTest {
+        val coordinator = DefaultPackageOperationCoordinator()
+        val enteredExtract = CompletableDeferred<Unit>()
+        val releaseExtract = CompletableDeferred<Unit>()
+        val (header, source) = archive(listOf(DataClass.CE))
+        val restore = async {
+            useCase(
+                FakeGateway(
+                    beforeExtract = {
+                        enteredExtract.complete(Unit)
+                        releaseExtract.await()
+                    },
+                ),
+                FakeInstaller(calls = calls),
+                RecordingBreadcrumbs(),
+                coordinator,
+            )(
+                source,
+                header,
+                key,
+                listOf(DataClass.CE),
+                installFirst = false,
+                restoreObb = false,
+            )
+        }
+        enteredExtract.await()
+
+        val mutations = ManageAppUseCase(FakeSystemRepository(), coordinator)
+        val samePackage = mutations.forceStop("com.example.app")
+        val otherPackage = mutations.forceStop("com.example.other")
+        releaseExtract.complete(Unit)
+        val outcome = restore.await()
+
+        val busy = samePackage.exceptionOrNull()
+        assertTrue(busy.toString(), busy is PackageOperationBusy)
+        assertEquals(PackageOperationOwner.ARCHIVE_RESTORE, (busy as PackageOperationBusy).owner)
+        assertTrue(otherPackage.toString(), otherPackage.isSuccess)
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+    }
+
+    @Test
+    fun `restore preserves a typed archive failure and releases its package lease`() = runTest {
+        val coordinator = DefaultPackageOperationCoordinator()
+        val failure = ShellLaneUnavailable(PrivilegeExecutionLane.ARCHIVE)
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val thrown = runCatching {
+            useCase(
+                FakeGateway(beforeExtract = { throw failure }),
+                FakeInstaller(calls = calls),
+                RecordingBreadcrumbs(),
+                coordinator,
+            )(
+                source,
+                header,
+                key,
+                listOf(DataClass.CE),
+                installFirst = false,
+                restoreObb = false,
+            )
+        }.exceptionOrNull()
+
+        assertSame(failure, thrown)
+        val mutation = ManageAppUseCase(FakeSystemRepository(), coordinator)
+            .forceStop("com.example.app")
+        assertTrue(mutation.toString(), mutation.isSuccess)
+    }
 
     private companion object {
         const val SIGNER = "AB"

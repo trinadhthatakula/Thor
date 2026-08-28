@@ -17,6 +17,11 @@ import com.valhalla.thor.domain.model.ArchiveSkip
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
+import com.valhalla.thor.domain.model.PackageLeaseResult
+import com.valhalla.thor.domain.model.PackageOperationBusy
+import com.valhalla.thor.domain.model.PackageOperationOwner
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
@@ -26,6 +31,7 @@ import com.valhalla.thor.domain.model.thorbakFileName
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppDataProbe
+import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.io.OutputStream
@@ -64,6 +70,7 @@ internal class BackupAppArchiveUseCase(
     private val cipher: AppArchiveCipher,
     /** §7.4 only: the pre-flight space check needs a size before it stages a class. */
     private val probe: AppDataProbe,
+    private val packageOperationCoordinator: PackageOperationCoordinator,
 ) {
 
     /**
@@ -99,6 +106,43 @@ internal class BackupAppArchiveUseCase(
         usableStagingBytes: Long = 0L,
         appLabel: String = request.packageName,
         onProgress: (ThorJobProgress) -> Unit = {},
+    ): ArchiveBackupOutcome = when (
+        val lease = packageOperationCoordinator.withPackageLease(
+            packageName = request.packageName,
+            owner = PackageOperationOwner.ARCHIVE_BACKUP,
+            admissionTimeout = PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+        ) {
+            runBackup(
+                request = request,
+                key = key,
+                bundle = bundle,
+                bundleObbCapture = bundleObbCapture,
+                bundleObbCount = bundleObbCount,
+                versionCode = versionCode,
+                versionName = versionName,
+                usableStagingBytes = usableStagingBytes,
+                appLabel = appLabel,
+                onProgress = onProgress,
+            )
+        }
+    ) {
+        is PackageLeaseResult.Acquired -> lease.value
+        is PackageLeaseResult.Busy -> ArchiveBackupOutcome.Failed(
+            PackageOperationBusy(lease.owner).message ?: "Package operation busy: ${lease.owner}",
+        )
+    }
+
+    private suspend fun runBackup(
+        request: ArchiveBackupRequest,
+        key: SecretKey,
+        bundle: File?,
+        bundleObbCapture: String,
+        bundleObbCount: Int,
+        versionCode: Long,
+        versionName: String?,
+        usableStagingBytes: Long,
+        appLabel: String,
+        onProgress: (ThorJobProgress) -> Unit,
     ): ArchiveBackupOutcome {
         val fileName = thorbakFileName(request.packageName, versionCode)
         val destination = archiveStore.openArchive(fileName) ?: return ArchiveBackupOutcome.NoDestination
@@ -269,9 +313,13 @@ internal class BackupAppArchiveUseCase(
             // Rethrow so the coroutine machinery sees the cancellation. The finally below discards
             // the partial destination before the coroutine unwinds further.
             throw e
-        } catch (e: Exception) {
-            Logger.e(TAG, "backup of ${request.packageName} failed", e)
-            return ArchiveBackupOutcome.Failed(e.message ?: "the backup failed")
+        } catch (e: PrivilegeExecutionException) {
+            // Root-lane failures are typed at the execution boundary. Preserve the exact instance so
+            // the worker can map it without losing the lane or command classification.
+            throw e
+        } catch (_: Exception) {
+            Logger.e(TAG, "archive backup failed package=${request.packageName}")
+            return ArchiveBackupOutcome.Failed("the backup failed")
         } finally {
             // Ends the `Deflater`'s native buffers on every path, including the cancelled and the
             // already-finished one (`ZipOutputStream.finish` is idempotent, and `close()` reaches

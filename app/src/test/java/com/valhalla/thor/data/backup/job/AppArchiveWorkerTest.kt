@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.usecase.ArchiveRestoreOutcome
+import java.io.File
 import java.util.Base64
 import java.util.UUID
 import javax.crypto.SecretKey
@@ -37,6 +38,16 @@ class AppArchiveWorkerTest {
     // Real, not a fake: PBKDF2 and HMAC are JCE, so the check under test is the shipped one. Four
     // rounds keeps it instant; `AppArchiveCipherTest` pins the shipped count.
     private val cipher = AppArchiveCipher()
+
+    @Test
+    fun `archive restore diagnostics do not include the user-selected URI`() {
+        val source = workerSource()
+
+        assertTrue(
+            "archive restore diagnostics expose the selected URI",
+            !source.contains("uri=" + '$' + "{request.uriString}"),
+        )
+    }
 
     @Test
     fun `archive worker context carries its lane package work id and semantic class`() {
@@ -76,7 +87,7 @@ class AppArchiveWorkerTest {
 
         assertEquals(
             "this backup could not be opened with the passphrase this restore was started with — " +
-                "open the file again and unlock it",
+                    "open the file again and unlock it",
             wrongKeyReason(header(archiveKey), jobKey, cipher),
         )
     }
@@ -387,6 +398,19 @@ class AppArchiveWorkerTest {
         verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
         members = emptyList(),
     )
+
+    private fun workerSource(): String {
+        var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (directory != null) {
+            val source = File(
+                directory,
+                "app/src/main/java/com/valhalla/thor/data/backup/job/AppArchiveWorker.kt",
+            )
+            if (source.isFile) return source.readText()
+            directory = directory.parentFile
+        }
+        error("could not locate AppArchiveWorker.kt from ${System.getProperty("user.dir")}")
+    }
 
     private companion object {
         const val PASSPHRASE = "hunter2"

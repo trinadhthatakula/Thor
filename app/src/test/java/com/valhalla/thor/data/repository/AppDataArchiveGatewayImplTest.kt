@@ -3,7 +3,13 @@
 
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.presentation.FakeSystemRepository
+import java.io.File
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -94,5 +100,83 @@ class AppDataArchiveGatewayImplTest {
     @Test
     fun `staging root itself fails the containment check`() {
         assertFalse(isInsideStagingRoot(stagingRoot, stagingRoot))
+    }
+
+    @Test
+    fun `every archive phase has its stable archive route`() {
+        val source = productionSource()
+        val commandClasses = listOf(
+            "archive.force_stop",
+            "archive.list",
+            "archive.verify",
+            "archive.tar",
+            "archive.stage_chown",
+            "archive.extract",
+            "archive.swap",
+            "archive.chown",
+            "archive.restorecon",
+        )
+
+        commandClasses.forEach { commandClass ->
+            assertTrue("missing archive route $commandClass", source.contains("\"$commandClass\""))
+        }
+        assertTrue(
+            "archive commands must use the ARCHIVE lane",
+            source.contains("PrivilegeExecutionLane.ARCHIVE"),
+        )
+    }
+
+    @Test
+    fun `archive command adapters attach the stable route metadata`() = runTest {
+        val repository = FakeSystemRepository()
+        val packageName = "com.example.target"
+
+        repository.forceStopForArchive(packageName)
+        ArchiveCommandPhase.entries
+            .filterNot { it == ArchiveCommandPhase.FORCE_STOP }
+            .forEach { phase ->
+                repository.executeArchiveCommand(
+                    command = "sensitive command",
+                    packageName = packageName,
+                    phase = phase,
+                )
+            }
+
+        assertEquals(ArchiveCommandPhase.entries.size, repository.executions.size)
+        ArchiveCommandPhase.entries.zip(repository.executions).forEach { (phase, recorded) ->
+            val execution = recorded.second
+            assertEquals(phase.commandClass, execution.commandClass)
+            assertEquals(PrivilegeExecutionLane.ARCHIVE, execution.lane)
+            assertEquals(packageName, execution.packageName)
+            assertNull(execution.commandTimeout)
+        }
+    }
+
+    @Test
+    fun `archive diagnostics never include raw commands or output`() {
+        val source = productionSource()
+        val forbidden = listOf(
+            '$' + "command",
+            "result.second",
+            "output:",
+        ).filter(source::contains)
+
+        assertTrue(
+            "archive diagnostics expose raw shell data through $forbidden",
+            forbidden.isEmpty(),
+        )
+    }
+
+    private fun productionSource(): String {
+        var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (directory != null) {
+            val source = File(
+                directory,
+                "app/src/main/java/com/valhalla/thor/data/repository/AppDataArchiveGatewayImpl.kt",
+            )
+            if (source.isFile) return source.readText()
+            directory = directory.parentFile
+        }
+        error("could not locate AppDataArchiveGatewayImpl.kt from ${System.getProperty("user.dir")}")
     }
 }

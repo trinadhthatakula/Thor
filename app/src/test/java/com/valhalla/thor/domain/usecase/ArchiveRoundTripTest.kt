@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.backup.CHUNK_PLAINTEXT_BYTES
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.data.repository.ZipArchiveSource
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
@@ -249,7 +250,13 @@ class ArchiveRoundTripTest {
             salt = cipher.newSalt(),
         )
         val key = cipher.deriveKey(passphrase, request.salt)
-        val outcome = BackupAppArchiveUseCase(gateway, store, cipher, NoProbe())(
+        val outcome = BackupAppArchiveUseCase(
+            gateway,
+            store,
+            cipher,
+            NoProbe(),
+            DefaultPackageOperationCoordinator(),
+        )(
             request = request,
             key = key,
             bundle = bundle,
@@ -290,7 +297,13 @@ class ArchiveRoundTripTest {
                     decision,
                 )
 
-                RestoreAppArchiveUseCase(reader, CapturingInstaller(), NoopBreadcrumbs(), cipher)(
+                RestoreAppArchiveUseCase(
+                    reader,
+                    CapturingInstaller(),
+                    NoopBreadcrumbs(),
+                    cipher,
+                    DefaultPackageOperationCoordinator(),
+                )(
                     source = source,
                     header = header,
                     key = (unlocked as ArchiveUnlockOutcome.Unlocked).key,
@@ -378,7 +391,13 @@ class ArchiveRoundTripTest {
             )
 
             val unlocked = openArchive.unlock(header, passphrase) as ArchiveUnlockOutcome.Unlocked
-            RestoreAppArchiveUseCase(reader, installer, NoopBreadcrumbs(), cipher)(
+            RestoreAppArchiveUseCase(
+                reader,
+                installer,
+                NoopBreadcrumbs(),
+                cipher,
+                DefaultPackageOperationCoordinator(),
+            )(
                 source = source,
                 header = header,
                 key = unlocked.key,
@@ -411,7 +430,13 @@ class ArchiveRoundTripTest {
         val restored = ZipArchiveSource(tampered, tampered.name).use { source ->
             val header = (openArchive.readHeader(source) as ArchiveHeaderOutcome.Read).header
             val unlocked = openArchive.unlock(header, passphrase) as ArchiveUnlockOutcome.Unlocked
-            RestoreAppArchiveUseCase(reader, CapturingInstaller(), NoopBreadcrumbs(), cipher)(
+            RestoreAppArchiveUseCase(
+                reader,
+                CapturingInstaller(),
+                NoopBreadcrumbs(),
+                cipher,
+                DefaultPackageOperationCoordinator(),
+            )(
                 source = source,
                 header = header,
                 key = unlocked.key,

@@ -324,7 +324,11 @@ internal class ArchiveRestoreWorker(
                 return fail("this restore's key is no longer in memory — start it again")
             }
 
-        Logger.i(TAG, "Running restore job for package=${request.packageName}, classes=${request.classes}, uri=${request.uriString}, restoreObb=${request.restoreObb}")
+        Logger.i(
+            TAG,
+            "Running restore job package=${request.packageName}, classes=${request.classes}, " +
+                "restoreObb=${request.restoreObb}",
+        )
 
         val source = when (val opened = sources.open(request.uriString)) {
             is ArchiveOpenOutcome.Opened -> opened.source
