@@ -13,9 +13,11 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.domain.repository.SystemRepository
+import java.lang.reflect.InvocationTargetException
 import kotlin.time.Duration
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,6 +25,31 @@ import org.junit.Test
 private const val PACKAGE_NAME = "com.example.app"
 
 class ManageAppUseCaseTest {
+
+    @Test
+    fun `coordinator is a required non-null constructor dependency`() {
+        val constructor = ManageAppUseCase::class.java.getDeclaredConstructor(
+            SystemRepository::class.java,
+            PackageOperationCoordinator::class.java,
+        )
+        val repository = RecordingManageSystemRepository { null }
+
+        val failure = runCatching {
+            constructor.newInstance(repository, null)
+        }.exceptionOrNull()
+
+        assertTrue(
+            "a null coordinator must be rejected by the constructor",
+            failure is InvocationTargetException && failure.cause is NullPointerException,
+        )
+        assertFalse(
+            "a default coordinator would make Koin resolution optional",
+            ManageAppUseCase::class.java.declaredConstructors.any { candidate ->
+                candidate.parameterTypes.lastOrNull()?.name ==
+                        "kotlin.jvm.internal.DefaultConstructorMarker"
+            },
+        )
+    }
 
     @Test
     fun `forceUnfreeze holds one UNFREEZE lease across unsuspend and enable`() = runTest {
@@ -214,7 +241,9 @@ private class RecordingManageSystemRepository(
         isRestricted: Boolean,
     ): Result<Unit> = error("off the manage-app path")
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> = error("off the manage-app path")
+    override suspend fun rebootDevice(reason: String): Result<Unit> =
+        error("off the manage-app path")
+
     override suspend fun copyFileWithRoot(
         sourcePath: String,
         destinationPath: String,

@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.freezer
 
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -54,7 +55,7 @@ class BulkFreezeWorkerTest {
                 else Result.success(Unit)
             }
 
-            val result = ManageAppUseCase(repository).forceUnfreeze(PKG)
+            val result = ManageAppUseCase(repository, DefaultPackageOperationCoordinator()).forceUnfreeze(PKG)
 
             assertTrue(result.isFailure)
             // The unsuspend failure itself, not a fresh one wrapped around it: which leg failed
@@ -74,7 +75,7 @@ class BulkFreezeWorkerTest {
             if (call.startsWith("setAppDisabled")) Result.failure(cause) else Result.success(Unit)
         }
 
-        val result = ManageAppUseCase(repository).forceUnfreeze(PKG)
+        val result = ManageAppUseCase(repository, DefaultPackageOperationCoordinator()).forceUnfreeze(PKG)
 
         assertTrue(result.isFailure)
         assertSame(cause, result.exceptionOrNull())
@@ -96,7 +97,7 @@ class BulkFreezeWorkerTest {
         var propagated: CancellationException? = null
 
         try {
-            ManageAppUseCase(repository).forceUnfreeze(PKG)
+            ManageAppUseCase(repository, DefaultPackageOperationCoordinator()).forceUnfreeze(PKG)
         } catch (e: CancellationException) {
             propagated = e
         }

@@ -18,7 +18,7 @@ import org.koin.core.annotation.Factory
 @Factory
 class ManageAppUseCase(
     private val systemRepository: SystemRepository,
-    private val packageOperationCoordinator: PackageOperationCoordinator? = null,
+    private val packageOperationCoordinator: PackageOperationCoordinator,
 ) {
     suspend fun forceStop(
         packageName: String,
@@ -140,10 +140,9 @@ class ManageAppUseCase(
         execution: PrivilegeExecutionContext,
         block: suspend () -> Result<T>,
     ): Result<T> {
-        val coordinator = packageOperationCoordinator ?: return block()
         var operationResult: Result<T>? = null
         return when (
-            val lease = coordinator.withPackageLease(
+            val lease = packageOperationCoordinator.withPackageLease(
                 packageName = packageName,
                 owner = owner,
                 admissionTimeout = execution.lane.admissionTimeout(),

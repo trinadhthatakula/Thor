@@ -9,6 +9,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.data.backup.job.JobSheetTarget
 import com.valhalla.thor.data.backup.job.JobSheetTargets
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.Installers
@@ -130,7 +131,7 @@ class MainViewModelTest {
         bundleBuilder: FakeAppBundleBuilder = FakeAppBundleBuilder(),
     ): MainViewModel {
         val vm = MainViewModel(
-            manageAppUseCase = ManageAppUseCase(systemRepository),
+            manageAppUseCase = ManageAppUseCase(systemRepository, DefaultPackageOperationCoordinator()),
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             shareAppUseCase = ShareAppUseCase(
                 bundleBuilder,

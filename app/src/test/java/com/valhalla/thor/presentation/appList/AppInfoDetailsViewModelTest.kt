@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.appList
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
@@ -68,7 +69,7 @@ class AppInfoDetailsViewModelTest {
     }
 
     private fun viewModel(): AppInfoDetailsViewModel {
-        val manageAppUseCase = ManageAppUseCase(system)
+        val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         return AppInfoDetailsViewModel(
             appRepository = appRepository,
             systemRepository = system,

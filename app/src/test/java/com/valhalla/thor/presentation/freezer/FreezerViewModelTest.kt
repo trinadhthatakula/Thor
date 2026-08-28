@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.freezer
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezerMode
@@ -104,7 +105,7 @@ class FreezerViewModelTest {
     }
 
     private fun viewModel(): FreezerViewModel {
-        val manageAppUseCase = ManageAppUseCase(system)
+        val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         return FreezerViewModel(
             freezerRepository = freezer,
             freezeProfileRepository = profiles,

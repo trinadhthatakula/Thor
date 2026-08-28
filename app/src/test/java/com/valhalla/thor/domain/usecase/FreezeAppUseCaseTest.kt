@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.ComponentSnapshot
@@ -160,7 +161,7 @@ private class FakeAppRepository(private val details: (String) -> AppInfo?) : App
 class FreezeAppUseCaseTest {
 
     private val system = RecordingSystemRepository()
-    private val manage = ManageAppUseCase(system)
+    private val manage = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
     private var details: (String) -> AppInfo? = { error("this test set no tier") }
     private val repository = FakeAppRepository { details(it) }
     private val gate = FreezeAppUseCase(repository, manage)

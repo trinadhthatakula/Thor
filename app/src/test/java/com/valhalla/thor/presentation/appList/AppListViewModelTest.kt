@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.appList
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkResult
@@ -144,7 +145,7 @@ class AppListViewModelTest {
         val prefs = FakePreferenceRepository(
             UserPreferences(animationIntensity = intensity, appFilterType = filterType)
         )
-        val manageAppUseCase = ManageAppUseCase(system)
+        val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         val exportAppUseCase = ExportAppUseCase(
             FakeAppBundleBuilder(),
             prefs,

@@ -13,6 +13,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -227,6 +228,204 @@ class DefaultPackageOperationCoordinatorTest {
         }
         assertEquals(PackageLeaseResult.Acquired("entered"), next)
     }
+
+    @Test
+    fun `release at timeout deadline never orphans package lease`() =
+        runTest(StandardTestDispatcher()) {
+            val coordinator = DefaultPackageOperationCoordinator()
+            var laterWaiterEntered = false
+            val holder = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.ARCHIVE_BACKUP,
+                    admissionTimeout = Duration.ZERO,
+                ) {
+                    delay(PrivilegeExecutionTimeouts.SWEEP_ADMISSION)
+                }
+            }
+            runCurrent()
+            val deadlineWaiter = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.FORCE_STOP,
+                    admissionTimeout = PrivilegeExecutionTimeouts.SWEEP_ADMISSION,
+                ) {
+                    "deadline waiter entered"
+                }
+            }
+            val laterWaiter = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.CLEAR_DATA,
+                    admissionTimeout = PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+                ) {
+                    laterWaiterEntered = true
+                    "later waiter entered"
+                }
+            }
+            runCurrent()
+
+            advanceTimeBy(PrivilegeExecutionTimeouts.SWEEP_ADMISSION)
+            val handoffContender = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.UNINSTALL,
+                    admissionTimeout = Duration.ZERO,
+                ) {
+                    error("a zero-time contender must not overlap the deadline handoff")
+                }
+            }
+            runCurrent()
+
+            assertEquals(
+                PackageLeaseResult.Busy(PackageOperationOwner.FORCE_STOP),
+                handoffContender.await(),
+            )
+            assertTrue(holder.await() is PackageLeaseResult.Acquired<*>)
+            assertTrue(deadlineWaiter.isCompleted)
+            assertTrue("the deadline handoff orphaned the package lease", laterWaiterEntered)
+            assertEquals(PackageLeaseResult.Acquired("later waiter entered"), laterWaiter.await())
+            assertEquals(0, coordinator.entryCount())
+        }
+
+    @Test
+    fun `cancelled handoff promotes later waiter without deadlock`() =
+        runTest(StandardTestDispatcher()) {
+            val coordinator = DefaultPackageOperationCoordinator()
+            val releaseOwner = CompletableDeferred<Unit>()
+            var cancelledWaiterEntered = false
+            var laterWaiterEntered = false
+            val holder = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.ARCHIVE_BACKUP,
+                    admissionTimeout = Duration.ZERO,
+                ) {
+                    releaseOwner.await()
+                }
+            }
+            runCurrent()
+            val cancelledWaiter = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.ARCHIVE_RESTORE,
+                    admissionTimeout = PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+                ) {
+                    cancelledWaiterEntered = true
+                }
+            }
+            val laterWaiter = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.CLEAR_DATA,
+                    admissionTimeout = PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+                ) {
+                    laterWaiterEntered = true
+                    "later waiter entered"
+                }
+            }
+            runCurrent()
+
+            releaseOwner.complete(Unit)
+            cancelledWaiter.cancel(CancellationException("cancel during handoff"))
+            val handoffContender = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.UNINSTALL,
+                    admissionTimeout = Duration.ZERO,
+                ) {
+                    error("a zero-time contender must not overlap the cancellation handoff")
+                }
+            }
+            runCurrent()
+
+            assertEquals(
+                PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA),
+                handoffContender.await(),
+            )
+            assertFalse(cancelledWaiterEntered)
+            assertTrue(holder.await() is PackageLeaseResult.Acquired<*>)
+            assertTrue("cancellation during handoff stranded the later waiter", laterWaiterEntered)
+            assertEquals(PackageLeaseResult.Acquired("later waiter entered"), laterWaiter.await())
+            assertEquals(0, coordinator.entryCount())
+        }
+
+    @Test
+    fun `zero-time contender observes each queued owner handoff`() =
+        runTest(StandardTestDispatcher()) {
+            val coordinator = DefaultPackageOperationCoordinator()
+            val releaseHolder = CompletableDeferred<Unit>()
+            val releaseFirstWaiter = CompletableDeferred<Unit>()
+            val releaseSecondWaiter = CompletableDeferred<Unit>()
+            val holder = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.FORCE_STOP,
+                    admissionTimeout = Duration.ZERO,
+                ) {
+                    releaseHolder.await()
+                }
+            }
+            runCurrent()
+            val firstWaiter = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.ARCHIVE_RESTORE,
+                    admissionTimeout = PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+                ) {
+                    releaseFirstWaiter.await()
+                }
+            }
+            val secondWaiter = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.CLEAR_DATA,
+                    admissionTimeout = PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+                ) {
+                    releaseSecondWaiter.await()
+                }
+            }
+            runCurrent()
+
+            releaseHolder.complete(Unit)
+            val firstContender = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.UNINSTALL,
+                    admissionTimeout = Duration.ZERO,
+                ) {
+                    error("a zero-time contender must not overlap a queued owner")
+                }
+            }
+            runCurrent()
+            assertEquals(
+                PackageLeaseResult.Busy(PackageOperationOwner.ARCHIVE_RESTORE),
+                firstContender.await(),
+            )
+
+            releaseFirstWaiter.complete(Unit)
+            val secondContender = async {
+                coordinator.withPackageLease(
+                    packageName = "com.example.app",
+                    owner = PackageOperationOwner.REINSTALL,
+                    admissionTimeout = Duration.ZERO,
+                ) {
+                    error("a zero-time contender must not overlap a queued owner")
+                }
+            }
+            runCurrent()
+            assertEquals(
+                PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA),
+                secondContender.await(),
+            )
+
+            releaseSecondWaiter.complete(Unit)
+            runCurrent()
+            assertTrue(holder.await() is PackageLeaseResult.Acquired<*>)
+            assertTrue(firstWaiter.await() is PackageLeaseResult.Acquired<*>)
+            assertTrue(secondWaiter.await() is PackageLeaseResult.Acquired<*>)
+            assertEquals(0, coordinator.entryCount())
+        }
 
     @Test
     fun `entry is removed only after last waiter or owner releases it`() =
