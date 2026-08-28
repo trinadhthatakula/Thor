@@ -6,14 +6,19 @@ package com.valhalla.thor.data.gateway.root
 import com.valhalla.superuser.Shell
 import com.valhalla.thor.core.ThorShellConfig
 import java.io.InputStream
+import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -141,6 +146,26 @@ class OdinRootShellSessionTest {
 
         assertTrue("the command coroutine must remain cancelled", pending.isCancelled)
         assertEquals("the cancelled operation must submit only once", 1, shell.submissionCount)
+    }
+
+    @Test
+    fun `adapter submits nothing when entered by an already-cancelled coroutine`() = runTest {
+        val shell = FakeOdinShell(status = Shell.ROOT_SHELL)
+
+        supervisorScope {
+            val cancelled = launch(start = CoroutineStart.UNDISPATCHED) {
+                currentCoroutineContext().cancel(CancellationException("synthetic cancellation"))
+                OdinRootShellSession(shell).execute(OPAQUE_COMMAND)
+            }
+            cancelled.join()
+
+            assertTrue("the adapter caller must remain cancelled", cancelled.isCancelled)
+        }
+        assertEquals(
+            "an already-cancelled adapter call must submit nothing",
+            0,
+            shell.submissionCount
+        )
     }
 
     @Test

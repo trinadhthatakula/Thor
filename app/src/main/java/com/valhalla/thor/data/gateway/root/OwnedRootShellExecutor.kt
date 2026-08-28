@@ -10,11 +10,12 @@ import com.valhalla.thor.domain.model.ShellTransportDied
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal class OwnedRootShellExecutor(
     private val lane: PrivilegeExecutionLane,
@@ -28,13 +29,19 @@ internal class OwnedRootShellExecutor(
         var lease: RootShellGenerationOwner.SessionLease? = null
         try {
             lease = generationOwner.healthySessionOrOpen()
-            executeWithOptionalTimeout(lease, command)
-        } catch (timeout: TimeoutCancellationException) {
-            lease?.let { generationOwner.invalidateExactGeneration(it) }
-            throw ShellCommandTimedOut(command.execution.commandClass)
+            currentCoroutineContext().ensureActive()
+            when (val outcome = executeWithOptionalTimeout(lease, command)) {
+                is CommandExecutionOutcome.Completed -> outcome.result
+                CommandExecutionOutcome.TimedOut -> {
+                    generationOwner.invalidateExactGeneration(lease)
+                    throw ShellCommandTimedOut(command.execution.commandClass)
+                }
+            }
         } catch (cancelled: CancellationException) {
-            lease?.let { generationOwner.invalidateExactGeneration(it) }
-            throw ShellCommandCancelled(command.execution.commandClass, cancelled)
+            withContext(NonCancellable) {
+                lease?.let { generationOwner.invalidateExactGeneration(it) }
+                throw ShellCommandCancelled(command.execution.commandClass, cancelled)
+            }
         } catch (transport: RootShellTransportException) {
             lease?.let { generationOwner.invalidateExactGeneration(it) }
             throw ShellTransportDied(lane, transport)
@@ -44,15 +51,21 @@ internal class OwnedRootShellExecutor(
     private suspend fun executeWithOptionalTimeout(
         lease: RootShellGenerationOwner.SessionLease,
         command: RootCommand,
-    ): RootCommandResult {
+    ): CommandExecutionOutcome {
         val timeout = command.execution.commandTimeout
         return if (timeout == null) {
-            lease.session.execute(command.text)
+            CommandExecutionOutcome.Completed(lease.session.execute(command.text))
         } else {
-            withTimeout(timeout) {
-                lease.session.execute(command.text)
-            }
+            withTimeoutOrNull(timeout) {
+                CommandExecutionOutcome.Completed(lease.session.execute(command.text))
+            } ?: CommandExecutionOutcome.TimedOut
         }
+    }
+
+    private sealed interface CommandExecutionOutcome {
+        data class Completed(val result: RootCommandResult) : CommandExecutionOutcome
+
+        data object TimedOut : CommandExecutionOutcome
     }
 }
 

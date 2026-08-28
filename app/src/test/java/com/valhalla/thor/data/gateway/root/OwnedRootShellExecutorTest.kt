@@ -17,9 +17,12 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -98,6 +101,30 @@ class OwnedRootShellExecutorTest {
         )
         firstCompletion.complete(success())
         holder.await()
+    }
+
+    @Test
+    fun `cancellation after open but before submission closes without submitting`() = runTest {
+        val session = FakeRootShellSession(ExecutionSchedule.Complete(success()))
+        val factory = RootShellSessionFactory {
+            currentCoroutineContext().cancel(CancellationException("synthetic cancellation"))
+            session
+        }
+        val executor = executor(factory)
+
+        val commandJob = launch {
+            executor.execute(command("archive.cancelled-after-open"))
+        }
+        runCurrent()
+        commandJob.join()
+
+        assertTrue("the command coroutine must remain cancelled", commandJob.isCancelled)
+        assertEquals("post-open cancellation must submit nothing", 0, session.submissionCount)
+        assertEquals(
+            "post-open cancellation must close the acquired generation",
+            1,
+            session.closeCount
+        )
     }
 
     @Test
@@ -224,6 +251,22 @@ class OwnedRootShellExecutorTest {
     }
 
     @Test
+    fun `outer timeout with no command timeout reports typed cancellation`() = runTest {
+        assertOuterTimeoutIsTypedCancellation(
+            commandClass = PrivilegeCommandClass("archive.outer-timeout-unbounded"),
+            commandTimeout = null,
+        )
+    }
+
+    @Test
+    fun `outer timeout earlier than command timeout reports typed cancellation`() = runTest {
+        assertOuterTimeoutIsTypedCancellation(
+            commandClass = PrivilegeCommandClass("sweep.outer-timeout-first"),
+            commandTimeout = 30.seconds,
+        )
+    }
+
+    @Test
     fun `deadline closes used generation and reports ShellCommandTimedOut`() = runTest {
         val completion = CompletableDeferred<RootCommandResult>()
         val session = FakeRootShellSession(ExecutionSchedule.AwaitCompletion(completion))
@@ -315,6 +358,49 @@ class OwnedRootShellExecutorTest {
             0,
             unusedReplacement.submissionCount
         )
+    }
+
+    private suspend fun TestScope.assertOuterTimeoutIsTypedCancellation(
+        commandClass: PrivilegeCommandClass,
+        commandTimeout: Duration?,
+    ) {
+        val completion = CompletableDeferred<RootCommandResult>()
+        val session = FakeRootShellSession(ExecutionSchedule.AwaitCompletion(completion))
+        val factory = FakeRootShellSessionFactory(session)
+        val executor = executor(factory)
+
+        supervisorScope {
+            val executorFailure = CompletableDeferred<Throwable>()
+            val pending = launch {
+                try {
+                    withTimeout(10.seconds) {
+                        try {
+                            executor.execute(command(commandClass.value, timeout = commandTimeout))
+                        } catch (failure: Throwable) {
+                            executorFailure.complete(failure)
+                            throw failure
+                        }
+                    }
+                } catch (_: Throwable) {
+                    // The assertion inspects the failure at the executor boundary above. The outer
+                    // timeout may retain its own terminal cancellation after the block exits.
+                }
+            }
+            runCurrent()
+            advanceTimeBy(10.seconds)
+            runCurrent()
+            val failure = executorFailure.await()
+
+            assertTrue(
+                "an outer timeout must map to ShellCommandCancelled, was ${failure::class.java.name}",
+                failure is ShellCommandCancelled,
+            )
+            assertEquals(commandClass, (failure as ShellCommandCancelled).commandClass)
+            pending.join()
+        }
+        assertEquals("an outer timeout must close the generation in use", 1, session.closeCount)
+        assertEquals("an outer timeout must not retry the command", 1, session.submissionCount)
+        assertEquals("an outer timeout must not open a retry generation", 1, factory.openCount)
     }
 
     private fun TestScope.executor(factory: RootShellSessionFactory): OwnedRootShellExecutor =

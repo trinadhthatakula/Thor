@@ -7,6 +7,7 @@ import com.valhalla.superuser.Shell
 import java.util.Collections
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -74,11 +75,22 @@ internal class OdinRootShellSession(
 
     override suspend fun execute(command: String): RootCommandResult =
         suspendCancellableCoroutine { continuation ->
+            if (!continuation.isActive) return@suspendCancellableCoroutine
+
+            val submissionClaimed = AtomicBoolean(false)
+            continuation.invokeOnCancellation {
+                submissionClaimed.compareAndSet(false, true)
+            }
             try {
                 if (!shell.isAlive) {
                     if (continuation.isActive) {
                         continuation.resumeWithException(RootShellTransportException())
                     }
+                    return@suspendCancellableCoroutine
+                }
+                // Cancellation and submission race for one claim. Once submission claims it, the
+                // caller invalidates this exact shell generation rather than retrying the command.
+                if (!submissionClaimed.compareAndSet(false, true)) {
                     return@suspendCancellableCoroutine
                 }
 
