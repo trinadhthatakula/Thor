@@ -3,11 +3,13 @@
 
 package com.valhalla.thor.domain.repository
 
+import com.valhalla.thor.data.repository.rethrowIfPrivilegeExecutionFailure
 import com.valhalla.thor.data.repository.resultPreservingCancellation
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.ShellCommandCancelled
+import com.valhalla.thor.domain.model.ShellLaneBusy
 import com.valhalla.thor.presentation.FakeSystemRepository
 import java.io.File
 import java.util.concurrent.CancellationException
@@ -47,6 +49,26 @@ import org.junit.Test
  * "assert this name is absent" is the one test shape that passes best when it is looking at nothing.
  */
 class SystemRepositorySurfaceTest {
+
+    @Test
+    fun `collapsing adapters rethrow typed execution failures and cancellation unchanged`() {
+        val typedFailure = ShellLaneBusy(PrivilegeExecutionLane.ARCHIVE)
+        val cancellation = ShellCommandCancelled(
+            PrivilegeCommandClass("archive.copy"),
+            CancellationException("cancelled"),
+        )
+
+        val typedCaught = runCatching {
+            typedFailure.rethrowIfPrivilegeExecutionFailure()
+        }.exceptionOrNull()
+        val cancellationCaught = runCatching {
+            cancellation.rethrowIfPrivilegeExecutionFailure()
+        }.exceptionOrNull()
+
+        assertSame(typedFailure, typedCaught)
+        assertSame(cancellation, cancellationCaught)
+        IllegalStateException("ordinary adapter failure").rethrowIfPrivilegeExecutionFailure()
+    }
 
     @Test
     fun `package and shell methods preserve the complete execution context`() = runTest {

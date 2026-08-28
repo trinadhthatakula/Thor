@@ -110,6 +110,9 @@ class RootSystemGateway internal constructor(
 
     private var rootService: IThorRootService? = null
     internal var userIdProvider: () -> Int = { thorUserId }
+    internal var packageUserIdProvider: (String) -> Int? = { packageName ->
+        getApplicationInfoCompat(packageName)?.let { userIdOf(it.uid) }
+    }
     private val connectionMutex = Mutex()
     private var isDaemonReset = false
     private var activeConnection: ServiceConnection? = null
@@ -1555,7 +1558,7 @@ class RootSystemGateway internal constructor(
      * user 0, which is the original bug.
      */
     private fun getPackageUserId(packageName: String): Int? =
-        getApplicationInfoCompat(packageName)?.let { userIdOf(it.uid) }
+        packageUserIdProvider(packageName)
 
     // --- Per-component control -------------------------------------------------------------
     //

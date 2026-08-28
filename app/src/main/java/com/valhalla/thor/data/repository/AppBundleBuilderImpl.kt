@@ -402,10 +402,12 @@ class AppBundleBuilderImpl(
                 destPath = dest.absolutePath
             ) ?: return null
 
-            val result = systemRepository.executeShellCommand(
+            val shellResult = systemRepository.executeShellCommand(
                 command,
                 execution.copy(commandClass = OBB_COPY),
-            ).getOrNull()
+            )
+            shellResult.exceptionOrNull()?.rethrowIfPrivilegeExecutionFailure()
+            val result = shellResult.getOrNull()
             if (result == null || result.first != 0) return null
             // The shell reported success; verify the bytes actually arrived. A `cp` that hits a
             // full volume can still exit 0 on some toybox builds, and a size that no longer
@@ -431,9 +433,11 @@ class AppBundleBuilderImpl(
             // observes cancellation at all.
             throw e
         } catch (_: Exception) {
-            systemRepository.copyFileWithRoot(
+            val rootCopy = systemRepository.copyFileWithRoot(
                 sourcePath, destFile.absolutePath, execution,
-            ).isSuccess
+            )
+            rootCopy.exceptionOrNull()?.rethrowIfPrivilegeExecutionFailure()
+            rootCopy.isSuccess
         }
     }
 

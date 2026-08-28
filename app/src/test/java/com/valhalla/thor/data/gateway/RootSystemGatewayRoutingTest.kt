@@ -7,6 +7,7 @@ import com.valhalla.thor.data.gateway.root.RootCommand
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
+import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
@@ -103,6 +104,34 @@ class RootSystemGatewayRoutingTest {
         } finally {
             apk.delete()
         }
+    }
+
+    @Test
+    fun `permission app-op probe preserves context and throws typed routing failure`() = runTest {
+        val failure = ShellLaneBusy(PrivilegeExecutionLane.ARCHIVE)
+        val executor = RecordingRootCommandExecutor(failure = failure)
+        val execution = execution("caller.permission")
+        val gateway = gateway(executor).also {
+            it.packageUserIdProvider = { 10 }
+        }
+
+        val caught = try {
+            gateway.grantPermission(
+                packageName = "com.example.target",
+                permissionName = GET_INSTALLED_APPS_PERMISSION,
+                execution = execution,
+            )
+            null
+        } catch (actual: Throwable) {
+            actual
+        }
+
+        assertSame(failure, caught)
+        assertEquals(2, executor.commands.size)
+        assertEquals(
+            execution.copy(commandClass = PrivilegeCommandClass("permission.app-op-grant")),
+            executor.commands.last().execution,
+        )
     }
 
     @Test

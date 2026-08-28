@@ -17,6 +17,7 @@ import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.capabilityProbeCommand
 import com.valhalla.thor.domain.model.classSizeCommand
@@ -36,6 +37,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+
+internal fun Throwable.rethrowIfPrivilegeExecutionFailure() {
+    if (this is CancellationException || this is PrivilegeExecutionException) throw this
+}
 
 internal suspend inline fun <T> resultPreservingCancellation(
     action: suspend () -> Result<T>,
@@ -448,7 +453,10 @@ class SystemRepositoryImpl(
         val probeExecution = execution.copy(commandClass = OBB_PROBE)
         val verdict = executeShellCommand(command, probeExecution).fold(
             onSuccess = { (exitCode, output) -> parseObbProbe(exitCode, output) },
-            onFailure = { ObbProbe.Undetermined(it.message ?: "no privileged shell is available") }
+            onFailure = { failure ->
+                failure.rethrowIfPrivilegeExecutionFailure()
+                ObbProbe.Undetermined(failure.message ?: "no privileged shell is available")
+            }
         )
         // The verdict is the only thing a user or a bug report can see about this, and until now it
         // reached them as a UI state with the reason thrown away — "Thor can't read this app's game

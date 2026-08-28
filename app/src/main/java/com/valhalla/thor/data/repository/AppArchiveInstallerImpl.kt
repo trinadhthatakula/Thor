@@ -192,6 +192,7 @@ class AppArchiveInstallerImpl(
             // from every one of its own catch sites, so this is a live path.
             throw e
         } catch (e: Throwable) {
+            e.rethrowIfPrivilegeExecutionFailure()
             // Throwable rather than Exception, matching `installPackage`'s own outer catch: an
             // `Error` escaping here would kill the restore worker instead of failing one install.
             Logger.e(TAG, "install of $packageName threw", e)

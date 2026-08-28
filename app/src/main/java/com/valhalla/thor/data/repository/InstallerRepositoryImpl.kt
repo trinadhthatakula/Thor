@@ -327,6 +327,7 @@ class InstallerRepositoryImpl(
                     }
                 }
             } catch (e: Throwable) {
+                e.rethrowIfPrivilegeExecutionFailure()
                 // Throwable, matching the per-mode catches above: a bounded read still leaves
                 // OutOfMemoryError reachable through the platform parser, and an Error escaping
                 // to viewModelScope kills the process instead of failing the install.
@@ -626,6 +627,7 @@ class InstallerRepositoryImpl(
                 )
             }
 
+            result.exceptionOrNull()?.rethrowIfPrivilegeExecutionFailure()
             if (result.isSuccess) {
                 eventBus.emit(InstallState.Installing(1.0f))
                 eventBus.emit(InstallState.Success)
@@ -635,7 +637,7 @@ class InstallerRepositoryImpl(
                 )
             }
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
+            e.rethrowIfPrivilegeExecutionFailure()
             eventBus.emit(InstallState.Error(UiText.DynamicString("Root install error: ${e.message}")))
         } finally {
             tempDir.deleteRecursively()
