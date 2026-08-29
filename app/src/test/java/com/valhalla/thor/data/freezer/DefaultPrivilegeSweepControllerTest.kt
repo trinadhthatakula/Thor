@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepSpec
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.RootLaneMode
 import com.valhalla.thor.domain.model.RootLaneStatus
 import com.valhalla.thor.domain.model.RootLaneStatusSource
@@ -41,7 +42,10 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -324,6 +328,227 @@ class DefaultPrivilegeSweepControllerTest {
     }
 
     @Test
+    fun `active requests emits an empty list when no snapshots are retained`() = runTest {
+        val fixture = Fixture()
+
+        assertEquals(
+            emptyList<PrivilegeSweepStatus>(),
+            fixture.controller.activeRequests.firstValue()
+        )
+    }
+
+    @Test
+    fun `active requests maps active and retained terminal snapshots truthfully`() = runTest {
+        val fixture = Fixture()
+        val active = stored(
+            requestId = UUID.fromString("00000000-0000-0000-0000-000000000001"),
+            createdAt = NOW - 1,
+            succeeded = 1,
+        )
+        val terminal = stored(
+            requestId = UUID.fromString("00000000-0000-0000-0000-000000000002"),
+            source = PrivilegeSweepSource.SETTINGS,
+            terminal = StoredSweepTerminal.PARTIAL,
+            succeeded = 1,
+            failed = 1,
+            unresolved = 1,
+        )
+        fixture.store.seed(active)
+        fixture.store.seed(terminal)
+        fixture.work.setState(active.workId, SweepWorkState.ENQUEUED)
+        fixture.work.setState(terminal.workId, SweepWorkState.FAILED)
+
+        val statuses = fixture.controller.activeRequests.firstValue().associateBy { it.requestId }
+
+        assertEquals(setOf(active.requestId, terminal.requestId), statuses.keys)
+        assertEquals(PrivilegeSweepPhase.QUEUED, statuses.getValue(active.requestId).phase)
+        assertEquals(2, statuses.getValue(active.requestId).unresolved)
+        assertEquals(PrivilegeSweepPhase.PARTIAL, statuses.getValue(terminal.requestId).phase)
+        assertEquals(1, statuses.getValue(terminal.requestId).unresolved)
+    }
+
+    @Test
+    fun `active requests react to every WorkInfo and sweep lane status change`() = runTest {
+        val fixture = Fixture()
+        val active = stored(createdAt = NOW - 1)
+        val terminal = stored(
+            source = PrivilegeSweepSource.SETTINGS,
+            terminal = StoredSweepTerminal.SUCCEEDED,
+            succeeded = 3,
+            unresolved = 0,
+        )
+        fixture.store.seed(active)
+        fixture.store.seed(terminal)
+        fixture.work.setState(active.workId, SweepWorkState.ENQUEUED)
+        fixture.work.setState(terminal.workId, SweepWorkState.SUCCEEDED)
+        val emissions = mutableListOf<List<PrivilegeSweepStatus>>()
+        val collection = backgroundScope.launch {
+            fixture.controller.activeRequests.collect(emissions::add)
+        }
+        runCurrent()
+
+        assertEquals(1, fixture.work.activeObservers.getValue(active.workId))
+        assertEquals(1, fixture.work.activeObservers.getValue(terminal.workId))
+        val beforeTerminalWorkChange = emissions.size
+
+        fixture.work.setState(terminal.workId, SweepWorkState.RUNNING)
+        runCurrent()
+
+        assertEquals(beforeTerminalWorkChange + 1, emissions.size)
+        assertEquals(
+            PrivilegeSweepPhase.SUCCEEDED,
+            emissions.last().single { it.requestId == terminal.requestId }.phase,
+        )
+
+        fixture.work.setState(active.workId, SweepWorkState.RUNNING)
+        runCurrent()
+
+        assertEquals(
+            PrivilegeSweepPhase.RUNNING,
+            emissions.last().single { it.requestId == active.requestId }.phase,
+        )
+
+        fixture.rootStatuses.value = fixture.rootStatuses.value.plus(
+            PrivilegeExecutionLane.SWEEP to RootLaneStatus(
+                PrivilegeExecutionLane.SWEEP,
+                RootLaneMode.DEGRADED,
+            )
+        )
+        runCurrent()
+
+        assertTrue(emissions.last().all(PrivilegeSweepStatus::rootLaneDegraded))
+        collection.cancel()
+        runCurrent()
+        assertEquals(0, fixture.work.activeObservers.getValue(active.workId))
+        assertEquals(0, fixture.work.activeObservers.getValue(terminal.workId))
+    }
+
+    @Test
+    fun `active requests maps missing WorkInfo to observer failure`() = runTest {
+        val fixture = Fixture()
+        val request = stored()
+        fixture.store.seed(request)
+
+        val status = fixture.controller.activeRequests.firstValue().single()
+
+        assertEquals(PrivilegeSweepPhase.OBSERVER_FAILURE, status.phase)
+    }
+
+    @Test
+    fun `observe latest filters by source and breaks equal timestamps by request id`() = runTest {
+        val fixture = Fixture()
+        val lowerId = stored(
+            requestId = UUID.fromString("00000000-0000-0000-0000-000000000001"),
+            createdAt = NOW,
+            source = PrivilegeSweepSource.FREEZER,
+        )
+        val higherId = stored(
+            requestId = UUID.fromString("00000000-0000-0000-0000-000000000002"),
+            createdAt = NOW,
+            source = PrivilegeSweepSource.FREEZER,
+        )
+        val newerOtherSource = stored(
+            requestId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
+            createdAt = NOW + 1,
+            source = PrivilegeSweepSource.SETTINGS,
+        )
+        fixture.store.seed(lowerId)
+        fixture.store.seed(higherId)
+        fixture.store.seed(newerOtherSource)
+        fixture.work.setState(lowerId.workId, SweepWorkState.RUNNING)
+        fixture.work.setState(higherId.workId, SweepWorkState.ENQUEUED)
+        fixture.work.setState(newerOtherSource.workId, SweepWorkState.RUNNING)
+
+        val latest = fixture.controller.observeLatest(PrivilegeSweepSource.FREEZER).firstValue()
+
+        assertEquals(higherId.requestId, latest?.requestId)
+        assertEquals(PrivilegeSweepPhase.QUEUED, latest?.phase)
+        assertNull(fixture.controller.observeLatest(PrivilegeSweepSource.PROFILE).firstValue())
+    }
+
+    @Test
+    fun `observe latest reuses observer mapping for WorkInfo and sweep lane changes`() = runTest {
+        val fixture = Fixture()
+        val request = stored(source = PrivilegeSweepSource.FREEZER)
+        fixture.store.seed(request)
+        fixture.work.setState(request.workId, SweepWorkState.ENQUEUED)
+        val emissions = mutableListOf<PrivilegeSweepStatus?>()
+        val collection = backgroundScope.launch {
+            fixture.controller.observeLatest(PrivilegeSweepSource.FREEZER).collect(emissions::add)
+        }
+        runCurrent()
+
+        fixture.work.setState(request.workId, SweepWorkState.RUNNING)
+        runCurrent()
+        assertEquals(PrivilegeSweepPhase.RUNNING, emissions.last()?.phase)
+
+        fixture.rootStatuses.value +=
+            PrivilegeExecutionLane.SWEEP to RootLaneStatus(
+                PrivilegeExecutionLane.SWEEP,
+                RootLaneMode.DEGRADED,
+            )
+        runCurrent()
+
+        assertEquals(true, emissions.last()?.rootLaneDegraded)
+        collection.cancel()
+    }
+
+    @Test
+    fun `observe latest follows retained selection changes without launching duplicate work`() =
+        runTest {
+            val fixture = Fixture()
+            val older = stored(createdAt = NOW - 1, source = PrivilegeSweepSource.FREEZER)
+            fixture.store.seed(older)
+            fixture.work.setState(older.workId, SweepWorkState.ENQUEUED)
+            val emissions = mutableListOf<PrivilegeSweepStatus?>()
+            val collection = backgroundScope.launch {
+                fixture.controller.observeLatest(PrivilegeSweepSource.FREEZER)
+                    .collect(emissions::add)
+            }
+            runCurrent()
+            assertEquals(older.requestId, emissions.last()?.requestId)
+            assertEquals(1, fixture.work.activeObservers.getValue(older.workId))
+
+            val newer = stored(createdAt = NOW, source = PrivilegeSweepSource.FREEZER)
+            fixture.work.setState(newer.workId, SweepWorkState.RUNNING)
+            fixture.store.seed(newer)
+            runCurrent()
+
+            assertEquals(newer.requestId, emissions.last()?.requestId)
+            assertEquals(PrivilegeSweepPhase.RUNNING, emissions.last()?.phase)
+            assertEquals(0, fixture.work.activeObservers.getValue(older.workId))
+            assertEquals(1, fixture.work.activeObservers.getValue(newer.workId))
+            assertTrue(fixture.work.enqueued.isEmpty())
+            collection.cancel()
+        }
+
+    @Test
+    fun `active requests cancel WorkInfo observers for snapshots no longer retained`() = runTest {
+        val fixture = Fixture()
+        val removed = stored(createdAt = NOW - 1)
+        val retained = stored(createdAt = NOW)
+        fixture.store.seed(removed)
+        fixture.store.seed(retained)
+        fixture.work.setState(removed.workId, SweepWorkState.ENQUEUED)
+        fixture.work.setState(retained.workId, SweepWorkState.RUNNING)
+        val collection = backgroundScope.launch {
+            fixture.controller.activeRequests.collect { }
+        }
+        runCurrent()
+        assertEquals(1, fixture.work.activeObservers.getValue(removed.workId))
+        assertEquals(1, fixture.work.activeObservers.getValue(retained.workId))
+
+        fixture.store.delete(removed.requestId)
+        runCurrent()
+
+        assertEquals(0, fixture.work.activeObservers.getValue(removed.workId))
+        assertEquals(1, fixture.work.activeObservers.getValue(retained.workId))
+        collection.cancel()
+        runCurrent()
+        assertEquals(0, fixture.work.activeObservers.getValue(retained.workId))
+    }
+
+    @Test
     fun `reconciler terminalizes orphaned nonterminal snapshots and prunes expired rows`() = runTest {
         val fixture = Fixture()
         val absent = stored(createdAt = NOW - 100)
@@ -484,6 +709,7 @@ class DefaultPrivilegeSweepControllerTest {
         workId: UUID = UUID.randomUUID(),
         operation: PrivilegeSweepOperation = PrivilegeSweepOperation.CLEAR_CACHE,
         createdAt: Long = NOW,
+        source: PrivilegeSweepSource = PrivilegeSweepSource.MAIN,
         terminal: StoredSweepTerminal? = null,
         succeeded: Int = 0,
         failed: Int = 0,
@@ -496,7 +722,7 @@ class DefaultPrivilegeSweepControllerTest {
         operation = operation,
         freezerMode = if (operation == PrivilegeSweepOperation.FREEZE) FreezerMode.FREEZE else null,
         userId = 0,
-        source = PrivilegeSweepSource.MAIN,
+        source = source,
         createdAtEpochMs = createdAt,
         targets = listOf("com.example.alpha", "com.example.beta", "com.example.gamma"),
         terminalState = terminal,
@@ -580,6 +806,7 @@ class DefaultPrivilegeSweepControllerTest {
         val enqueueStarted = CompletableDeferred<Unit>()
         var onEnqueue: ((OneTimeWorkRequest) -> Unit)? = null
         var onEnqueueSettled: ((OneTimeWorkRequest, Boolean) -> Unit)? = null
+        val activeObservers = mutableMapOf<UUID, Int>().withDefault { 0 }
         private val operations = ArrayDeque<TestOperation>()
         private val states = mutableMapOf<UUID, MutableStateFlow<SweepWorkState?>>()
 
@@ -601,8 +828,14 @@ class DefaultPrivilegeSweepControllerTest {
             return operation
         }
 
-        override fun observeState(workId: UUID): Flow<SweepWorkState?> =
-            states.getOrPut(workId) { MutableStateFlow(null) }
+        override fun observeState(workId: UUID): Flow<SweepWorkState?> = flow {
+            activeObservers[workId] = activeObservers.getValue(workId) + 1
+            try {
+                emitAll(states.getOrPut(workId) { MutableStateFlow(null) })
+            } finally {
+                activeObservers[workId] = activeObservers.getValue(workId) - 1
+            }
+        }
 
         override suspend fun currentState(workId: UUID): SweepWorkState? =
             states.getOrPut(workId) { MutableStateFlow(null) }.value

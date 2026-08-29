@@ -19,6 +19,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepSpec
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.RootLaneMode
@@ -50,6 +51,7 @@ import org.koin.core.annotation.Single
 
 /** WorkManager-backed implementation of the durable privilege-sweep boundary. */
 @Single(binds = [PrivilegeSweepController::class])
+@OptIn(ExperimentalCoroutinesApi::class)
 class DefaultPrivilegeSweepController internal constructor(
     private val store: PrivilegeSweepStore,
     private val privilegeState: PrivilegeStateProvider,
@@ -60,6 +62,15 @@ class DefaultPrivilegeSweepController internal constructor(
     private val gate: PrivilegeSweepProcessGate,
     private val rootLaneStatusSource: RootLaneStatusSource,
 ) : PrivilegeSweepController {
+
+    override val activeRequests: Flow<List<PrivilegeSweepStatus>> =
+        store.observeRetained().flatMapLatest { snapshots ->
+            if (snapshots.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                combine(snapshots.map(::observeSnapshot)) { statuses -> statuses.toList() }
+            }
+        }
 
     override suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult {
         if (!privilegeState.state.first { it.isReady }.hasAnyPrivilege) {
@@ -135,23 +146,41 @@ class DefaultPrivilegeSweepController internal constructor(
         return result
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     override fun observe(requestId: UUID): Flow<PrivilegeSweepStatus?> =
         store.observe(requestId).flatMapLatest { snapshot ->
             if (snapshot == null) {
                 flowOf(null)
             } else {
-                combine(
-                    workManager.observeState(snapshot.workId),
-                    rootLaneStatusSource.statuses,
-                ) { workState, laneStatuses ->
-                    snapshot.toStatus(
-                        workState = workState,
-                        rootLaneDegraded = laneStatuses[PrivilegeExecutionLane.SWEEP]?.mode ==
-                                RootLaneMode.DEGRADED,
-                    )
-                }
+                observeSnapshot(snapshot)
             }
+        }
+
+    override fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?> =
+        store.observeRetained().flatMapLatest { snapshots ->
+            val latest = snapshots
+                .asSequence()
+                .filter { it.source == source }
+                .maxWithOrNull(
+                    compareBy(StoredPrivilegeSweep::createdAtEpochMs)
+                        .thenBy { it.requestId.toString() }
+                )
+            if (latest == null) {
+                flowOf(null)
+            } else {
+                observeSnapshot(latest)
+            }
+        }
+
+    private fun observeSnapshot(snapshot: StoredPrivilegeSweep): Flow<PrivilegeSweepStatus> =
+        combine(
+            workManager.observeState(snapshot.workId),
+            rootLaneStatusSource.statuses,
+        ) { workState, laneStatuses ->
+            snapshot.toStatus(
+                workState = workState,
+                rootLaneDegraded = laneStatuses[PrivilegeExecutionLane.SWEEP]?.mode ==
+                        RootLaneMode.DEGRADED,
+            )
         }
 
     private fun StoredPrivilegeSweep.toStatus(
