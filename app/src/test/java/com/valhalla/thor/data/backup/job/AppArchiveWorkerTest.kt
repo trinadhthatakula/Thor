@@ -43,9 +43,14 @@ class AppArchiveWorkerTest {
     fun `archive restore diagnostics do not include the user-selected URI`() {
         val source = workerSource()
 
+        val loggingExpressions = Regex(
+            pattern = """Logger\.\w+\([\s\S]*?\)(?=\s*(?:\n|$))""",
+        ).findAll(source).map { it.value }.toList()
+
+        assertTrue("expected archive worker logger expressions", loggingExpressions.isNotEmpty())
         assertTrue(
             "archive restore diagnostics expose the selected URI",
-            !source.contains("uri=" + '$' + "{request.uriString}"),
+            loggingExpressions.none { "request.uriString" in it },
         )
     }
 

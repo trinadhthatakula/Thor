@@ -43,6 +43,7 @@ import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
@@ -337,9 +338,19 @@ class RootSystemGateway internal constructor(
         // Thor's own user — while a bare `am force-stop` reads USER_ALL and kills the package
         // everywhere. Naming [thorUserId] is what makes the post-check evidence about the process
         // the command was aimed at.
+        val hasExplicitArchiveRoute =
+            execution.lane == PrivilegeExecutionLane.ARCHIVE &&
+                execution.commandClass.value != DEFAULT_COMMAND_CLASS
         val shellResult = runCommand(
-            forceStopCommand(escapedPackage, userIdProvider()), execution, FORCE_STOP,
+            command = forceStopCommand(escapedPackage, userIdProvider()),
+            execution = execution,
+            commandClass = if (hasExplicitArchiveRoute) execution.commandClass else FORCE_STOP,
         )
+        if (hasExplicitArchiveRoute &&
+            shellResult.exceptionOrNull() is PrivilegeExecutionException
+        ) {
+            return shellResult
+        }
         // The exit code alone decided this, and it cannot say no:
         // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so it
         // reports that the command parsed, never that a process died. `shellResult.isSuccess` was

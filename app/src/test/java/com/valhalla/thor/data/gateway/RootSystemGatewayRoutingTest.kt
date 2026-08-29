@@ -43,6 +43,34 @@ class RootSystemGatewayRoutingTest {
     }
 
     @Test
+    fun `archive force stop preserves its semantic class and typed failure identity`() = runTest {
+        val failure = ShellTransportDied(PrivilegeExecutionLane.ARCHIVE)
+        val executor = RecordingRootCommandExecutor(failure = failure)
+        val execution = execution("archive.force_stop").copy(commandTimeout = null)
+
+        val result = gateway(executor).forceStopApp("com.example.target", execution)
+
+        assertSame(failure, result.exceptionOrNull())
+        assertEquals(execution, executor.commands.single().execution)
+    }
+
+    @Test
+    fun `interactive force stop keeps its command class and fallback`() = runTest {
+        val executor = RecordingRootCommandExecutor()
+
+        val result = gateway(executor).forceStopApp(
+            packageName = "com.example.target",
+            execution = PrivilegeExecutionContext(),
+        )
+
+        assertTrue(result.isFailure)
+        assertEquals(
+            PrivilegeCommandClass("package.force-stop"),
+            executor.commands.single().execution.commandClass,
+        )
+    }
+
+    @Test
     fun `raw shell preserves an explicit semantic class and converts the result`() = runTest {
         val executor = RecordingRootCommandExecutor(
             result = RootCommandResult(7, listOf("visible"), listOf("fallback")),
