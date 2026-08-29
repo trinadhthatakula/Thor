@@ -107,6 +107,15 @@ class ThorJobTest {
     }
 
     @Test
+    fun `privilege sweep is appended after every shipped job kind`() {
+        assertEquals(0, ThorJobKind.ARCHIVE_BACKUP.ordinal)
+        assertEquals(1, ThorJobKind.ARCHIVE_RESTORE.ordinal)
+        assertEquals(2, ThorJobKind.APP_EXPORT.ordinal)
+        assertEquals(3, ThorJobKind.PRIVILEGE_SWEEP.ordinal)
+        assertEquals(ThorJobKind.PRIVILEGE_SWEEP, ThorJobKind.entries.last())
+    }
+
+    @Test
     fun `an unknown total reports no percentage rather than zero`() {
         // Same tri-state rule as DataClassSize and ObbProbe: "not known" is not "none". A bar pinned
         // at 0% for a job that is running reads as broken.

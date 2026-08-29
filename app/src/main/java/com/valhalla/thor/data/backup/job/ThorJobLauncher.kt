@@ -247,6 +247,22 @@ internal suspend fun enqueueUniqueJob(
     chainName: String,
     work: OneTimeWorkRequest,
     onAbandoned: (UUID) -> Unit = {},
+): UUID? = enqueueUniqueJob(chainName, work, onAbandoned) {
+    WorkManager.getInstance(context)
+        .beginUniqueWork(chainName, ExistingWorkPolicy.APPEND_OR_REPLACE, work)
+        .enqueue()
+}
+
+/**
+ * Testable operation-producing half of [enqueueUniqueJob]. A sweep supplies its WorkManager adapter
+ * here so its Room-to-WorkManager handoff can hold the shared process gate until this exact
+ * [Operation] settles.
+ */
+internal suspend fun enqueueUniqueJob(
+    chainName: String,
+    work: OneTimeWorkRequest,
+    onAbandoned: (UUID) -> Unit = {},
+    enqueue: () -> Operation,
 ): UUID? {
     val id = work.id
     fun abandon(what: String, cause: Throwable): UUID? {
@@ -256,9 +272,7 @@ internal suspend fun enqueueUniqueJob(
     }
 
     val operation = try {
-        WorkManager.getInstance(context)
-            .beginUniqueWork(chainName, ExistingWorkPolicy.APPEND_OR_REPLACE, work)
-            .enqueue()
+        enqueue()
     } catch (e: Exception) {
         return abandon("enqueue was refused", e)
     }

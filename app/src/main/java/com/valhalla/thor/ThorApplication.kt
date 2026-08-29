@@ -16,6 +16,7 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.job.LaunchSweepBarrier
+import com.valhalla.thor.data.freezer.PrivilegeSweepReconciler
 import com.valhalla.thor.data.permission.SelfPermissionGranter
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
@@ -196,6 +197,7 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val autoFreezeManager: AutoFreezeManager by inject()
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager by inject()
     private val archiveOrphanSweeper: ArchiveOrphanSweeper by inject()
+    private val privilegeSweepReconciler: PrivilegeSweepReconciler by inject()
 
     /**
      * Released once the sweep below is over, and the only thing standing between a re-run export and
@@ -253,6 +255,19 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
             // so it has to follow androidContext(). Also performs WorkManager.initialize(), which
             // is why the manifest removes the androidx.startup initializer.
             workManagerFactory()
+        }
+
+        // WorkManager is initialized by workManagerFactory() above. Reconcile only afterwards, in
+        // the retained application scope, so process death cannot leave a Room snapshot spinning
+        // forever after WorkManager has already pruned or terminalized its row.
+        appScope.launch {
+            try {
+                privilegeSweepReconciler.reconcile()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e("ThorApp", "privilege sweep reconciliation failed", e)
+            }
         }
 
         Bypass.setLogger { message, throwable ->
