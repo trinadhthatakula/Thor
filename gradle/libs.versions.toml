@@ -76,6 +76,10 @@ androidx-lifecycle-viewmodel-navigation3 = { group = "androidx.lifecycle", name 
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+# androidTest-only, and deliberately on the same `room` ref as the runtime: MigrationTestHelper
+# validates a migrated database against the schema JSON the *compiler* exported, so a testing
+# artifact one version off compares against a bundle format the exporter did not write.
+room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 #Kotlin
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }

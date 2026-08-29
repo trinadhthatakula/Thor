@@ -19,6 +19,7 @@ import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.ComponentOverrideDao
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
+import com.valhalla.thor.data.source.local.room.PrivilegeSweepDao
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
@@ -89,6 +90,10 @@ class AppModule {
     @Single
     fun componentOverrideDao(appDatabase: AppDatabase): ComponentOverrideDao =
         appDatabase.componentOverrideDao()
+
+    @Single
+    fun privilegeSweepDao(appDatabase: AppDatabase): PrivilegeSweepDao =
+        appDatabase.privilegeSweepDao()
 
     // RealShellRepository comes from the Odin library (com.valhalla.superuser.ktx), outside the
     // scan scope — the component scan only sees com.valhalla.thor.

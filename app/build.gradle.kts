@@ -411,6 +411,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.junit)
+    // Room's MigrationTestHelper. androidTest only: it opens a real SQLite file at an old schema
+    // version and runs the generated migrations against it, which no JVM stub of SQLite can do.
+    androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
