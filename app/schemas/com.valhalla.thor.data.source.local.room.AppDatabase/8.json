@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 8,
-    "identityHash": "d6b5a7de63a3753892d511d990a9a33a",
+    "identityHash": "68348aec113b5963bff6d67b5a0740ca",
     "entities": [
       {
         "tableName": "apps",
@@ -496,11 +496,66 @@
             ]
           }
         ]
+      },
+      {
+        "tableName": "sweep_request_sources",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`request_id` TEXT NOT NULL, `source_surface` TEXT NOT NULL, `associated_at_epoch_ms` INTEGER NOT NULL, PRIMARY KEY(`request_id`, `source_surface`), FOREIGN KEY(`request_id`) REFERENCES `sweep_requests`(`request_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "requestId",
+            "columnName": "request_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSurface",
+            "columnName": "source_surface",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "associatedAtEpochMs",
+            "columnName": "associated_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "request_id",
+            "source_surface"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sweep_request_sources_request_id",
+            "unique": false,
+            "columnNames": [
+              "request_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sweep_request_sources_request_id` ON `${TABLE_NAME}` (`request_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "sweep_requests",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "request_id"
+            ],
+            "referencedColumns": [
+              "request_id"
+            ]
+          }
+        ]
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd6b5a7de63a3753892d511d990a9a33a')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '68348aec113b5963bff6d67b5a0740ca')"
     ]
   }
 }

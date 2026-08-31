@@ -20,6 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ComponentOverrideEntity::class,
         SweepRequestEntity::class,
         SweepTargetEntity::class,
+        SweepRequestSourceEntity::class,
     ],
     version = 8,
     autoMigrations = [
@@ -33,7 +34,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // existing column. No `spec =` because there is nothing for a spec to describe — a
         // pure table-add needs no @DeleteColumn/@RenameTable hint.
         AutoMigration(from = 6, to = 7),
-        // 7 → 8 adds only the durable sweep request and target tables.
+        // 7 → 8 adds only the durable sweep request, target, and source-association tables.
         AutoMigration(from = 7, to = 8),
     ],
     exportSchema = true

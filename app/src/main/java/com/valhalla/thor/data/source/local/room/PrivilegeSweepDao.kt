@@ -6,6 +6,7 @@ package com.valhalla.thor.data.source.local.room
 import androidx.room.Dao
 import androidx.room.Embedded
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
@@ -35,6 +36,9 @@ interface PrivilegeSweepDao {
     @Insert
     suspend fun insertTargets(targets: List<SweepTargetEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSource(source: SweepRequestSourceEntity)
+
     @Transaction
     @Query(
         """
@@ -57,6 +61,7 @@ interface PrivilegeSweepDao {
     suspend fun createOrFindEquivalent(
         request: SweepRequestEntity,
         targets: List<SweepTargetEntity>,
+        source: SweepRequestSourceEntity,
     ): SweepRequestCreation {
         val packageNames =
             targets.sortedBy(SweepTargetEntity::ordinal).map(SweepTargetEntity::packageName)
@@ -69,10 +74,14 @@ interface PrivilegeSweepDao {
                 .sortedBy(SweepTargetEntity::ordinal)
                 .map(SweepTargetEntity::packageName) == packageNames
         }
-        if (equivalent != null) return SweepRequestCreation(equivalent, created = false)
+        if (equivalent != null) {
+            upsertSource(source.copy(requestId = equivalent.request.requestId))
+            return SweepRequestCreation(equivalent, created = false)
+        }
 
         insertRequest(request)
         insertTargets(targets)
+        upsertSource(source)
         return SweepRequestCreation(
             snapshot = SweepRequestWithTargets(request, targets),
             created = true,
@@ -90,6 +99,18 @@ interface PrivilegeSweepDao {
     @Transaction
     @Query("SELECT * FROM sweep_requests ORDER BY created_at_epoch_ms DESC, request_id DESC")
     fun observeRetained(): Flow<List<SweepRequestWithTargets>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT sweep_requests.* FROM sweep_requests
+        INNER JOIN sweep_request_sources
+            ON sweep_request_sources.request_id = sweep_requests.request_id
+        WHERE sweep_request_sources.source_surface = :sourceSurface
+        ORDER BY sweep_request_sources.associated_at_epoch_ms DESC, sweep_requests.request_id DESC
+        """
+    )
+    fun observeRetained(sourceSurface: String): Flow<List<SweepRequestWithTargets>>
 
     @Query(
         """

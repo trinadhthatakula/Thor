@@ -62,6 +62,9 @@ interface PrivilegeSweepStore {
     suspend fun load(requestId: UUID): StoredPrivilegeSweep?
     fun observe(requestId: UUID): Flow<StoredPrivilegeSweep?>
     fun observeRetained(): Flow<List<StoredPrivilegeSweep>>
+
+    /** Retained requests ordered by the most recent launch association for [source]. */
+    fun observeRetained(source: PrivilegeSweepSource): Flow<List<StoredPrivilegeSweep>>
     suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep?
     suspend fun recordAttempt(requestId: UUID, outcome: SweepAttemptOutcome): Boolean
     suspend fun finish(requestId: UUID, terminal: StoredSweepTerminal, nowMs: Long): Boolean

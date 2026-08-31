@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 
@@ -156,14 +157,8 @@ class DefaultPrivilegeSweepController internal constructor(
         }
 
     override fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?> =
-        store.observeRetained().flatMapLatest { snapshots ->
-            val latest = snapshots
-                .asSequence()
-                .filter { it.source == source }
-                .maxWithOrNull(
-                    compareBy(StoredPrivilegeSweep::createdAtEpochMs)
-                        .thenBy { it.requestId.toString() }
-                )
+        store.observeRetained(source).flatMapLatest { snapshots ->
+            val latest = snapshots.firstOrNull()
             if (latest == null) {
                 flowOf(null)
             } else {
@@ -173,14 +168,32 @@ class DefaultPrivilegeSweepController internal constructor(
 
     private fun observeSnapshot(snapshot: StoredPrivilegeSweep): Flow<PrivilegeSweepStatus> =
         combine(
-            workManager.observeState(snapshot.workId),
+            observePersistedWorkState(snapshot),
             rootLaneStatusSource.statuses,
-        ) { workState, laneStatuses ->
-            snapshot.toStatus(
+        ) { (persisted, workState), laneStatuses ->
+            persisted.toStatus(
                 workState = workState,
                 rootLaneDegraded = laneStatuses[PrivilegeExecutionLane.SWEEP]?.mode ==
                         RootLaneMode.DEGRADED,
             )
+        }
+
+    private fun observePersistedWorkState(
+        snapshot: StoredPrivilegeSweep,
+    ): Flow<Pair<StoredPrivilegeSweep, SweepWorkState?>> =
+        workManager.observeState(snapshot.workId).transformLatest { workState ->
+            if (workState != null || snapshot.terminalState != null) {
+                emit(snapshot to workState)
+                return@transformLatest
+            }
+
+            // Room is committed before WorkManager accepts a launch. Wait for that handoff before
+            // treating an absent WorkInfo as an orphan, then refresh both stores while holding the
+            // same gate. A rejected enqueue deletes its snapshot and therefore emits nothing here.
+            gate.serialized {
+                val persisted = store.load(snapshot.requestId) ?: return@serialized null
+                persisted to workManager.currentState(persisted.workId)
+            }?.let { emit(it) }
         }
 
     private fun StoredPrivilegeSweep.toStatus(

@@ -5,6 +5,7 @@ package com.valhalla.thor.data.repository
 
 import com.valhalla.thor.data.source.local.room.PrivilegeSweepDao
 import com.valhalla.thor.data.source.local.room.SweepRequestEntity
+import com.valhalla.thor.data.source.local.room.SweepRequestSourceEntity
 import com.valhalla.thor.data.source.local.room.SweepRequestWithTargets
 import com.valhalla.thor.data.source.local.room.SweepTargetEntity
 import com.valhalla.thor.domain.model.FreezerMode
@@ -54,7 +55,15 @@ class RoomPrivilegeSweepStore(
                 packageName = packageName,
             )
         }
-        val result = dao.createOrFindEquivalent(request, targets)
+        val result = dao.createOrFindEquivalent(
+            request = request,
+            targets = targets,
+            source = SweepRequestSourceEntity(
+                requestId = requestId,
+                sourceSurface = snapshot.source.name,
+                associatedAtEpochMs = snapshot.createdAtEpochMs,
+            ),
+        )
         val stored = result.snapshot.toDomain()
         return if (result.created) {
             SweepCreateResult.Created(stored)
@@ -71,6 +80,11 @@ class RoomPrivilegeSweepStore(
 
     override fun observeRetained(): Flow<List<StoredPrivilegeSweep>> =
         dao.observeRetained().map { snapshots -> snapshots.map { it.toDomain() } }
+
+    override fun observeRetained(
+        source: PrivilegeSweepSource,
+    ): Flow<List<StoredPrivilegeSweep>> =
+        dao.observeRetained(source.name).map { snapshots -> snapshots.map { it.toDomain() } }
 
     override suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep? =
         dao.resetForRun(requestId.toString())?.toDomain()

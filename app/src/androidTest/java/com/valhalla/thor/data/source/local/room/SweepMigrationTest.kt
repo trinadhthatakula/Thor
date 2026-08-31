@@ -52,9 +52,26 @@ class SweepMigrationTest {
             "INSERT INTO sweep_targets (request_id, ordinal, package_name) VALUES (?, ?, ?)",
             arrayOf<Any?>("request-1", 1, "z.pkg"),
         )
+        migrated.execSQL(
+            """
+            INSERT INTO sweep_request_sources (
+                request_id, source_surface, associated_at_epoch_ms
+            ) VALUES (?, ?, ?)
+            """.trimIndent(),
+            arrayOf<Any?>("request-1", "FREEZER", 1234L),
+        )
+        migrated.execSQL(
+            """
+            INSERT INTO sweep_request_sources (
+                request_id, source_surface, associated_at_epoch_ms
+            ) VALUES (?, ?, ?)
+            """.trimIndent(),
+            arrayOf<Any?>("request-1", "QS_TILE", 2345L),
+        )
 
         assertEquals(1, migrated.rowCount("sweep_requests"))
         assertEquals(2, migrated.rowCount("sweep_targets"))
+        assertEquals(2, migrated.rowCount("sweep_request_sources"))
 
         migrated.execSQL(
             "DELETE FROM sweep_requests WHERE request_id = ?",
@@ -63,6 +80,7 @@ class SweepMigrationTest {
 
         assertEquals(0, migrated.rowCount("sweep_requests"))
         assertEquals(0, migrated.rowCount("sweep_targets"))
+        assertEquals(0, migrated.rowCount("sweep_request_sources"))
         migrated.close()
     }
 

@@ -196,6 +196,11 @@ class DefaultPrivilegeSweepControllerTest {
         val first = assertType<PrivilegeSweepLaunchResult.Accepted>(
             fixture.controller.launch(spec(source = PrivilegeSweepSource.MAIN))
         )
+        val secondaryObservation = async {
+            fixture.controller.observeLatest(PrivilegeSweepSource.QS_TILE).first { it != null }
+        }
+        runCurrent()
+        assertFalse(secondaryObservation.isCompleted)
 
         val second = assertType<PrivilegeSweepLaunchResult.Accepted>(
             fixture.controller.launch(spec(source = PrivilegeSweepSource.QS_TILE))
@@ -207,6 +212,53 @@ class DefaultPrivilegeSweepControllerTest {
         assertEquals(first.workId, second.workId)
         assertEquals(1, fixture.work.enqueued.size)
         assertEquals(1, fixture.store.rows.size)
+        val secondaryStatus = secondaryObservation.await()
+        assertEquals(first.requestId, secondaryStatus?.requestId)
+        assertEquals(PrivilegeSweepSource.MAIN, secondaryStatus?.source)
+    }
+
+    @Test
+    fun `latest source observation follows the newest coalesced association`() = runTest {
+        val fixture = Fixture()
+        val olderActive = assertType<PrivilegeSweepLaunchResult.Accepted>(
+            fixture.controller.launch(
+                spec(
+                    operation = PrivilegeSweepOperation.CLEAR_CACHE,
+                    source = PrivilegeSweepSource.MAIN,
+                )
+            )
+        )
+        fixture.clock.now = NOW + 1
+        val newerTerminal = assertType<PrivilegeSweepLaunchResult.Accepted>(
+            fixture.controller.launch(
+                spec(
+                    operation = PrivilegeSweepOperation.REINSTALL,
+                    source = PrivilegeSweepSource.QS_TILE,
+                )
+            )
+        )
+        fixture.store.finish(
+            newerTerminal.requestId,
+            StoredSweepTerminal.SUCCEEDED,
+            fixture.clock.now,
+        )
+        fixture.clock.now = NOW + 2
+
+        val coalesced = assertType<PrivilegeSweepLaunchResult.Accepted>(
+            fixture.controller.launch(
+                spec(
+                    operation = PrivilegeSweepOperation.CLEAR_CACHE,
+                    source = PrivilegeSweepSource.QS_TILE,
+                )
+            )
+        )
+
+        assertTrue(coalesced.coalesced)
+        assertEquals(olderActive.requestId, coalesced.requestId)
+        assertEquals(
+            olderActive.requestId,
+            fixture.controller.observeLatest(PrivilegeSweepSource.QS_TILE).firstValue()?.requestId,
+        )
     }
 
     @Test
@@ -256,11 +308,11 @@ class DefaultPrivilegeSweepControllerTest {
         fixture.store.seed(request)
         fixture.work.setState(request.workId, SweepWorkState.RUNNING)
         fixture.rootStatuses.value = fixture.rootStatuses.value + (
-            PrivilegeExecutionLane.SWEEP to RootLaneStatus(
-                PrivilegeExecutionLane.SWEEP,
-                RootLaneMode.DEGRADED,
-            )
-        )
+                PrivilegeExecutionLane.SWEEP to RootLaneStatus(
+                    PrivilegeExecutionLane.SWEEP,
+                    RootLaneMode.DEGRADED,
+                )
+                )
 
         val running = fixture.controller.observe(request.requestId).firstValue()
 
@@ -549,44 +601,54 @@ class DefaultPrivilegeSweepControllerTest {
     }
 
     @Test
-    fun `reconciler terminalizes orphaned nonterminal snapshots and prunes expired rows`() = runTest {
-        val fixture = Fixture()
-        val absent = stored(createdAt = NOW - 100)
-        val cancelled = stored(createdAt = NOW - 90)
-        val succeededWithoutRoomTerminal = stored(createdAt = NOW - 80)
-        val running = stored(createdAt = NOW - 70)
-        val expired = stored(
-            createdAt = NOW - 60,
-            terminal = StoredSweepTerminal.SUCCEEDED,
-            retainUntil = NOW,
-        )
-        val retained = stored(
-            createdAt = NOW - 50,
-            terminal = StoredSweepTerminal.PARTIAL,
-            retainUntil = NOW + 1,
-        )
-        listOf(absent, cancelled, succeededWithoutRoomTerminal, running, expired, retained)
-            .forEach(fixture.store::seed)
-        fixture.work.setState(absent.workId, null)
-        fixture.work.setState(cancelled.workId, SweepWorkState.CANCELLED)
-        fixture.work.setState(succeededWithoutRoomTerminal.workId, SweepWorkState.SUCCEEDED)
-        fixture.work.setState(running.workId, SweepWorkState.RUNNING)
+    fun `reconciler terminalizes orphaned nonterminal snapshots and prunes expired rows`() =
+        runTest {
+            val fixture = Fixture()
+            val absent = stored(createdAt = NOW - 100)
+            val cancelled = stored(createdAt = NOW - 90)
+            val succeededWithoutRoomTerminal = stored(createdAt = NOW - 80)
+            val running = stored(createdAt = NOW - 70)
+            val expired = stored(
+                createdAt = NOW - 60,
+                terminal = StoredSweepTerminal.SUCCEEDED,
+                retainUntil = NOW,
+            )
+            val retained = stored(
+                createdAt = NOW - 50,
+                terminal = StoredSweepTerminal.PARTIAL,
+                retainUntil = NOW + 1,
+            )
+            listOf(absent, cancelled, succeededWithoutRoomTerminal, running, expired, retained)
+                .forEach(fixture.store::seed)
+            fixture.work.setState(absent.workId, null)
+            fixture.work.setState(cancelled.workId, SweepWorkState.CANCELLED)
+            fixture.work.setState(succeededWithoutRoomTerminal.workId, SweepWorkState.SUCCEEDED)
+            fixture.work.setState(running.workId, SweepWorkState.RUNNING)
 
-        fixture.reconciler.reconcile()
+            fixture.reconciler.reconcile()
 
-        assertEquals(StoredSweepTerminal.FAILED, fixture.store.rows[absent.requestId]?.terminalState)
-        assertEquals(3, fixture.store.rows[absent.requestId]?.unresolved)
-        assertEquals(StoredSweepTerminal.CANCELLED, fixture.store.rows[cancelled.requestId]?.terminalState)
-        assertEquals(3, fixture.store.rows[cancelled.requestId]?.unresolved)
-        assertEquals(
-            StoredSweepTerminal.FAILED,
-            fixture.store.rows[succeededWithoutRoomTerminal.requestId]?.terminalState,
-        )
-        assertNull(fixture.store.rows[running.requestId]?.terminalState)
-        assertFalse(fixture.store.rows.containsKey(expired.requestId))
-        assertEquals(StoredSweepTerminal.PARTIAL, fixture.store.rows[retained.requestId]?.terminalState)
-        assertTrue(fixture.store.events.indexOf("finish") < fixture.store.events.indexOf("prune"))
-    }
+            assertEquals(
+                StoredSweepTerminal.FAILED,
+                fixture.store.rows[absent.requestId]?.terminalState
+            )
+            assertEquals(3, fixture.store.rows[absent.requestId]?.unresolved)
+            assertEquals(
+                StoredSweepTerminal.CANCELLED,
+                fixture.store.rows[cancelled.requestId]?.terminalState
+            )
+            assertEquals(3, fixture.store.rows[cancelled.requestId]?.unresolved)
+            assertEquals(
+                StoredSweepTerminal.FAILED,
+                fixture.store.rows[succeededWithoutRoomTerminal.requestId]?.terminalState,
+            )
+            assertNull(fixture.store.rows[running.requestId]?.terminalState)
+            assertFalse(fixture.store.rows.containsKey(expired.requestId))
+            assertEquals(
+                StoredSweepTerminal.PARTIAL,
+                fixture.store.rows[retained.requestId]?.terminalState
+            )
+            assertTrue(fixture.store.events.indexOf("finish") < fixture.store.events.indexOf("prune"))
+        }
 
     @Test
     fun `reconciler never overwrites an existing Room terminal state`() = runTest {
@@ -607,30 +669,55 @@ class DefaultPrivilegeSweepControllerTest {
     }
 
     @Test
-    fun `two equivalent concurrent launches settle creator enqueue failure before retrying`() = runTest {
-        val fixture = Fixture()
-        val firstOperation = TestOperation.pending()
-        fixture.work.queueOperation(firstOperation)
-        fixture.work.queueOperation(TestOperation.succeeded())
+    fun `two equivalent concurrent launches settle creator enqueue failure before retrying`() =
+        runTest {
+            val fixture = Fixture()
+            val firstOperation = TestOperation.pending()
+            fixture.work.queueOperation(firstOperation)
+            fixture.work.queueOperation(TestOperation.succeeded())
 
-        val first = async { fixture.controller.launch(spec()) }
-        fixture.work.enqueueStarted.await()
-        val second = async { fixture.controller.launch(spec(source = PrivilegeSweepSource.QS_TILE)) }
+            val first = async { fixture.controller.launch(spec()) }
+            fixture.work.enqueueStarted.await()
+            val second =
+                async { fixture.controller.launch(spec(source = PrivilegeSweepSource.QS_TILE)) }
+            runCurrent()
+
+            assertFalse(first.isCompleted)
+            assertFalse(second.isCompleted)
+            assertEquals(1, fixture.work.enqueued.size)
+
+            firstOperation.fail(IllegalStateException("enqueue failed"))
+            advanceUntilIdle()
+
+            val firstResult = assertType<PrivilegeSweepLaunchResult.Rejected>(first.await())
+            assertType<PrivilegeSweepLaunchRejection.EnqueueFailed>(firstResult.reason)
+            val secondResult = assertType<PrivilegeSweepLaunchResult.Accepted>(second.await())
+            assertFalse(secondResult.coalesced)
+            assertEquals(2, fixture.work.enqueued.size)
+            assertEquals(setOf(secondResult.requestId), fixture.store.rows.keys)
+        }
+
+    @Test
+    fun `observer does not report failure while enqueue handoff is pending`() = runTest {
+        val fixture = Fixture()
+        val operation = TestOperation.pending()
+        fixture.work.queueOperation(operation)
+        val observed = async {
+            fixture.controller.observeLatest(PrivilegeSweepSource.MAIN).first { it != null }
+        }
         runCurrent()
 
-        assertFalse(first.isCompleted)
-        assertFalse(second.isCompleted)
-        assertEquals(1, fixture.work.enqueued.size)
+        val launch = async { fixture.controller.launch(spec()) }
+        fixture.work.enqueueStarted.await()
+        runCurrent()
+        val handoffStatus = observed.takeIf { it.isCompleted }?.await()
 
-        firstOperation.fail(IllegalStateException("enqueue failed"))
+        operation.succeed()
         advanceUntilIdle()
 
-        val firstResult = assertType<PrivilegeSweepLaunchResult.Rejected>(first.await())
-        assertType<PrivilegeSweepLaunchRejection.EnqueueFailed>(firstResult.reason)
-        val secondResult = assertType<PrivilegeSweepLaunchResult.Accepted>(second.await())
-        assertFalse(secondResult.coalesced)
-        assertEquals(2, fixture.work.enqueued.size)
-        assertEquals(setOf(secondResult.requestId), fixture.store.rows.keys)
+        assertType<PrivilegeSweepLaunchResult.Accepted>(launch.await())
+        assertFalse(handoffStatus?.phase == PrivilegeSweepPhase.OBSERVER_FAILURE)
+        assertEquals(PrivilegeSweepPhase.QUEUED, (handoffStatus ?: observed.await())?.phase)
     }
 
     @Test
@@ -871,10 +958,15 @@ class DefaultPrivilegeSweepControllerTest {
         private val sharedEvents: MutableList<String>,
     ) : PrivilegeSweepStore {
         val rows = linkedMapOf<UUID, StoredPrivilegeSweep>()
+        private val sources =
+            mutableMapOf<UUID, MutableMap<PrivilegeSweepSource, Long>>()
         val events = mutableListOf<String>()
         var finishCalls = 0
         private val observed = mutableMapOf<UUID, MutableStateFlow<StoredPrivilegeSweep?>>()
         private val retained = MutableStateFlow<List<StoredPrivilegeSweep>>(emptyList())
+        private val retainedBySource = PrivilegeSweepSource.entries.associateWith {
+            MutableStateFlow<List<StoredPrivilegeSweep>>(emptyList())
+        }
 
         override suspend fun createOrFindEquivalent(
             snapshot: NewPrivilegeSweepSnapshot,
@@ -886,7 +978,12 @@ class DefaultPrivilegeSweepControllerTest {
                         it.userId == snapshot.userId &&
                         it.targets == snapshot.targets
             }
-            if (equivalent != null) return SweepCreateResult.Equivalent(equivalent)
+            if (equivalent != null) {
+                sources.getOrPut(equivalent.requestId, ::mutableMapOf)[snapshot.source] =
+                    snapshot.createdAtEpochMs
+                publish(equivalent.requestId)
+                return SweepCreateResult.Equivalent(equivalent)
+            }
             val stored = StoredPrivilegeSweep(
                 requestId = snapshot.requestId,
                 workId = snapshot.workId,
@@ -905,6 +1002,8 @@ class DefaultPrivilegeSweepControllerTest {
                 retainUntilEpochMs = null,
             )
             rows[stored.requestId] = stored
+            sources.getOrPut(stored.requestId, ::mutableMapOf)[snapshot.source] =
+                snapshot.createdAtEpochMs
             sharedEvents += "persist"
             publish(stored.requestId)
             return SweepCreateResult.Created(stored)
@@ -916,6 +1015,10 @@ class DefaultPrivilegeSweepControllerTest {
             observed.getOrPut(requestId) { MutableStateFlow(rows[requestId]) }
 
         override fun observeRetained(): Flow<List<StoredPrivilegeSweep>> = retained
+
+        override fun observeRetained(
+            source: PrivilegeSweepSource,
+        ): Flow<List<StoredPrivilegeSweep>> = retainedBySource.getValue(source)
 
         override suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep? {
             val current = rows[requestId]?.takeIf { it.terminalState == null } ?: return null
@@ -965,6 +1068,7 @@ class DefaultPrivilegeSweepControllerTest {
 
         override suspend fun delete(requestId: UUID) {
             rows.remove(requestId)
+            sources.remove(requestId)
             publish(requestId)
         }
 
@@ -976,6 +1080,7 @@ class DefaultPrivilegeSweepControllerTest {
             }.map { it.requestId }
             ids.forEach {
                 rows.remove(it)
+                sources.remove(it)
                 publish(it)
             }
             return ids.size
@@ -983,12 +1088,25 @@ class DefaultPrivilegeSweepControllerTest {
 
         fun seed(snapshot: StoredPrivilegeSweep) {
             rows[snapshot.requestId] = snapshot
+            sources.getOrPut(snapshot.requestId, ::mutableMapOf)[snapshot.source] =
+                snapshot.createdAtEpochMs
             publish(snapshot.requestId)
         }
 
         private fun publish(requestId: UUID) {
             observed.getOrPut(requestId) { MutableStateFlow(null) }.value = rows[requestId]
-            retained.value = rows.values.sortedByDescending { it.createdAtEpochMs }
+            val snapshots = rows.values.sortedByDescending { it.createdAtEpochMs }
+            retained.value = snapshots
+            retainedBySource.forEach { (source, flow) ->
+                flow.value = rows.values.mapNotNull { snapshot ->
+                    sources[snapshot.requestId]?.get(source)?.let { associatedAt ->
+                        associatedAt to snapshot
+                    }
+                }.sortedWith(
+                    compareByDescending<Pair<Long, StoredPrivilegeSweep>> { it.first }
+                        .thenByDescending { it.second.requestId.toString() }
+                ).map { it.second }
+            }
         }
     }
 
