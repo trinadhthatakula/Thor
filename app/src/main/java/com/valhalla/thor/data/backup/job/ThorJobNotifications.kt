@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.work.ForegroundInfo
 import androidx.work.WorkManager
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.SweepQueueCancelReceiver
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.presentation.launcher.JobSheetLaunchActivity
@@ -233,16 +234,33 @@ class ThorJobNotifications(private val context: Context) : ThorJobNotificationCa
             // An unknown total is an indeterminate bar, never a bar sitting at 0%.
             val percent = progress.percent
             if (percent == null) setProgress(0, 0, true) else setProgress(100, percent, false)
-            // createCancelPendingIntent needs no receiver of Thor's own, and it cancels the work
-            // rather than just dismissing the notification. It is a live cancel of a running job:
-            // ThorJobLauncher.cancel is not the only route to a CANCELLED WorkInfo, and both
-            // watchers' `workerRan` arms exist for the state this action can leave behind.
             addAction(
                 0,
-                context.getString(android.R.string.cancel),
-                WorkManager.getInstance(context).createCancelPendingIntent(jobId),
+                context.getString(
+                    if (kind == ThorJobKind.PRIVILEGE_SWEEP) {
+                        R.string.cancel_sweep_queue
+                    } else {
+                        android.R.string.cancel
+                    }
+                ),
+                cancellationIntent(kind, jobId),
             )
         }.build()
+
+    private fun cancellationIntent(kind: ThorJobKind, jobId: UUID): PendingIntent =
+        if (kind == ThorJobKind.PRIVILEGE_SWEEP) {
+            PendingIntent.getBroadcast(
+                context,
+                notificationId(kind),
+                Intent(context, SweepQueueCancelReceiver::class.java)
+                    .setAction(SweepQueueCancelReceiver.ACTION_CANCEL_SWEEP_QUEUE),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        } else {
+            // Archive and export jobs retain per-work cancellation. Only sweep cancellation is
+            // queue-wide because every queued sweep snapshot is terminalized in one transaction.
+            WorkManager.getInstance(context).createCancelPendingIntent(jobId)
+        }
 
     private fun titleFor(kind: ThorJobKind) = when (kind) {
         ThorJobKind.ARCHIVE_BACKUP -> R.string.job_backing_up

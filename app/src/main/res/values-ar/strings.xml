@@ -818,5 +818,6 @@
     <string name="component_disclaimer_confirm">تعطيله</string>
     <string name="component_disclaimer_dont_ask_session">لا تسأل مرة أخرى في هذه الجلسة</string>
     <string name="component_disabled_unrecorded">تم تعطيل %1$s، لكن Thor لم يتمكن من تسجيل هذا التعطيل، لذا لن تشمله ميزة استعادة الكل</string>
+    <string name="cancel_sweep_queue">إلغاء قائمة انتظار الإجراءات</string>
 
 </resources>

@@ -744,5 +744,6 @@
     <string name="component_disclaimer_confirm">确认禁用</string>
     <string name="component_disclaimer_dont_ask_session">本次会话不再询问</string>
     <string name="component_disabled_unrecorded">已禁用 %1$s，但 Thor 未能记录此次更改——“全部恢复”不会包含它</string>
+    <string name="cancel_sweep_queue">取消操作队列</string>
 
 </resources>

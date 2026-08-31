@@ -233,6 +233,14 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     // onTerminate so launched work doesn't outlive the process.
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /** Launches process-lifetime work without giving short-lived Android components their own scope. */
+    internal fun launchInApplicationScope(
+        dispatcher: CoroutineDispatcher,
+        block: suspend CoroutineScope.() -> Unit,
+    ) {
+        appScope.launch(dispatcher, block = block)
+    }
+
     // Keep the Lazy handle so we can tear the billing client down only if it was actually
     // created this run — resolving the delegate would otherwise spin up a billing connection at
     // shutdown, the opposite of what we want.

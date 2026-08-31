@@ -61,6 +61,7 @@ class DefaultPrivilegeSweepController internal constructor(
     private val clock: PrivilegeSweepClock,
     private val reconciler: PrivilegeSweepReconciler,
     private val gate: PrivilegeSweepProcessGate,
+    private val queueCanceller: SweepQueueCanceller,
     private val rootLaneStatusSource: RootLaneStatusSource,
 ) : PrivilegeSweepController {
 
@@ -145,6 +146,10 @@ class DefaultPrivilegeSweepController internal constructor(
         // Preserve cancellation, but only after the Operation and rollback invariant above is settled.
         callerJob?.ensureActive()
         return result
+    }
+
+    override suspend fun cancelQueue() {
+        queueCanceller.cancelQueue()
     }
 
     override fun observe(requestId: UUID): Flow<PrivilegeSweepStatus?> =

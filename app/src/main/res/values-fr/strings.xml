@@ -758,5 +758,6 @@
     <string name="component_disclaimer_confirm">Le désactiver</string>
     <string name="component_disclaimer_dont_ask_session">Ne plus demander pendant cette session</string>
     <string name="component_disabled_unrecorded">Thor n\'a pas pu enregistrer la désactivation de %1$s : Tout rétablir ne la proposera pas</string>
+    <string name="cancel_sweep_queue">Annuler la file d’actions</string>
 
 </resources>

@@ -824,5 +824,6 @@
     <string name="component_disclaimer_confirm">Desativá-lo</string>
     <string name="component_disclaimer_dont_ask_session">Não perguntar novamente nesta sessão</string>
     <string name="component_disabled_unrecorded">O Thor não conseguiu registar a desativação de %1$s — Repor tudo não a incluirá</string>
+    <string name="cancel_sweep_queue">Cancelar fila de ações</string>
 
 </resources>

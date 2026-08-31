@@ -857,6 +857,7 @@ class DefaultPrivilegeSweepControllerTest {
             clock = clock,
             reconciler = reconciler,
             gate = gate,
+            queueCanceller = SweepQueueCanceller(store, clock, gate) {},
             rootLaneStatusSource = rootLaneStatusSource,
         )
 

@@ -758,5 +758,6 @@
     <string name="component_disclaimer_confirm">Desactivarlo</string>
     <string name="component_disclaimer_dont_ask_session">No volver a preguntar en esta sesión</string>
     <string name="component_disabled_unrecorded">Se desactivó %1$s, pero Thor no pudo registrar el cambio: Restaurar todo no lo incluirá</string>
+    <string name="cancel_sweep_queue">Cancelar cola de acciones</string>
 
 </resources>

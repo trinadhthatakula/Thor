@@ -22,4 +22,7 @@ interface PrivilegeSweepController {
 
     /** The newest retained request from [source], or null while that source has no retained work. */
     fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?>
+
+    /** Terminalizes and cancels the complete durable sweep queue. */
+    suspend fun cancelQueue()
 }
