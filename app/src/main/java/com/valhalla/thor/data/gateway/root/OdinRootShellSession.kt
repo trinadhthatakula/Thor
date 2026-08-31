@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.gateway.root
 
 import com.valhalla.superuser.Shell
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import java.util.Collections
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
@@ -15,17 +16,30 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import org.koin.core.annotation.Named
-import org.koin.core.annotation.Single
 
-@Single(binds = [RootShellSessionFactory::class])
 internal class OdinRootShellSessionFactory(
-    @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    private val ioDispatcher: CoroutineDispatcher,
+    lane: PrivilegeExecutionLane,
+    private val createBuilder: () -> Shell.Builder = { Shell.Builder.create() },
 ) : RootShellSessionFactory {
+    private val shellFlags = when (lane) {
+        PrivilegeExecutionLane.ARCHIVE -> Shell.FLAG_MOUNT_MASTER
+        PrivilegeExecutionLane.SWEEP -> 0
+        PrivilegeExecutionLane.INTERACTIVE ->
+            error("Odin MainShell owns the interactive lane")
+    }
+
     override suspend fun open(): RootShellSession =
         openOdinRootShellSession(ioDispatcher) {
-            Shell.Builder.create().build()
+            createBuilder()
+                .setFlags(shellFlags)
+                .setTimeout(OWNED_SHELL_INIT_TIMEOUT_SECONDS)
+                .build()
         }
+
+    private companion object {
+        const val OWNED_SHELL_INIT_TIMEOUT_SECONDS = 10L
+    }
 }
 
 internal suspend fun openOdinRootShellSession(

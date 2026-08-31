@@ -5,6 +5,7 @@ package com.valhalla.thor.data.gateway.root
 
 import com.valhalla.superuser.Shell
 import com.valhalla.thor.core.ThorShellConfig
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import java.io.InputStream
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
@@ -72,6 +73,36 @@ class OdinRootShellSessionTest {
             assertTrue("the opening coroutine must remain cancelled", opening.isCancelled)
             assertEquals("a constructed but undelivered shell must be closed", 1, shell.closeCount)
         }
+    }
+
+    @Test
+    fun `archive factory requests mount master with a bounded shell check`() = runTest {
+        val builder = RecordingBuilder(FakeOdinShell(status = Shell.ROOT_SHELL))
+        val factory = OdinRootShellSessionFactory(
+            ioDispatcher = testDispatcher(),
+            lane = PrivilegeExecutionLane.ARCHIVE,
+            createBuilder = { builder },
+        )
+
+        factory.open().close()
+
+        assertEquals(Shell.FLAG_MOUNT_MASTER, builder.flags)
+        assertEquals(10L, builder.timeoutSeconds)
+    }
+
+    @Test
+    fun `sweep factory keeps its shell plain with the same bounded shell check`() = runTest {
+        val builder = RecordingBuilder(FakeOdinShell(status = Shell.ROOT_SHELL))
+        val factory = OdinRootShellSessionFactory(
+            ioDispatcher = testDispatcher(),
+            lane = PrivilegeExecutionLane.SWEEP,
+            createBuilder = { builder },
+        )
+
+        factory.open().close()
+
+        assertEquals(0, builder.flags)
+        assertEquals(10L, builder.timeoutSeconds)
     }
 
     @Test
@@ -198,6 +229,29 @@ class OdinRootShellSessionTest {
             return failure as T
         }
         throw AssertionError("expected ${T::class.java.simpleName}")
+    }
+
+    private class RecordingBuilder(
+        private val shell: Shell,
+    ) : Shell.Builder() {
+        var flags: Int? = null
+            private set
+        var timeoutSeconds: Long? = null
+            private set
+
+        override fun setFlags(flags: Int): Shell.Builder = apply {
+            this.flags = flags
+        }
+
+        override fun setTimeout(timeout: Long): Shell.Builder = apply {
+            timeoutSeconds = timeout
+        }
+
+        override fun setCommands(vararg commands: String?): Shell.Builder = this
+
+        override fun build(): Shell = shell
+
+        override fun build(process: Process?): Shell = shell
     }
 
     private class FakeOdinShell(

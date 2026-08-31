@@ -12,8 +12,8 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
 import com.valhalla.thor.data.backup.PartialArchiveLedger
+import com.valhalla.thor.data.gateway.root.OdinRootShellSessionFactory
 import com.valhalla.thor.data.gateway.root.OwnedRootShellExecutor
-import com.valhalla.thor.data.gateway.root.RootShellSessionFactory
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.ComponentOverrideDao
@@ -103,22 +103,26 @@ class AppModule {
     @Single
     @Named("archive")
     internal fun archiveRootShellExecutor(
-        sessionFactory: RootShellSessionFactory,
         @Named("io") ioDispatcher: CoroutineDispatcher,
     ): OwnedRootShellExecutor = OwnedRootShellExecutor(
         lane = PrivilegeExecutionLane.ARCHIVE,
-        sessionFactory = sessionFactory,
+        sessionFactory = OdinRootShellSessionFactory(
+            ioDispatcher = ioDispatcher,
+            lane = PrivilegeExecutionLane.ARCHIVE,
+        ),
         ioDispatcher = ioDispatcher,
     )
 
     @Single
     @Named("sweep")
     internal fun sweepRootShellExecutor(
-        sessionFactory: RootShellSessionFactory,
         @Named("io") ioDispatcher: CoroutineDispatcher,
     ): OwnedRootShellExecutor = OwnedRootShellExecutor(
         lane = PrivilegeExecutionLane.SWEEP,
-        sessionFactory = sessionFactory,
+        sessionFactory = OdinRootShellSessionFactory(
+            ioDispatcher = ioDispatcher,
+            lane = PrivilegeExecutionLane.SWEEP,
+        ),
         ioDispatcher = ioDispatcher,
     )
 

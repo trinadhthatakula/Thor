@@ -18,6 +18,7 @@ import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.capabilityProbeCommand
 import com.valhalla.thor.domain.model.classSizeCommand
@@ -517,7 +518,12 @@ class SystemRepositoryImpl(
         // uses, so the two cannot drift.
         val command = classSizeCommand(root, measuredExclusions(dataClass))
             ?: return DataClassSize.Undetermined
-        return executeShellCommand(command).fold(
+        val execution = PrivilegeExecutionContext(
+            lane = PrivilegeExecutionLane.ARCHIVE,
+            commandClass = ARCHIVE_MEASURE,
+            packageName = packageName,
+        )
+        return executeShellCommand(command, execution).fold(
             onSuccess = { (exitCode, output) -> parseClassSize(exitCode, output) },
             onFailure = { DataClassSize.Undetermined }
         )
@@ -528,5 +534,6 @@ class SystemRepositoryImpl(
         // while keeping privilege/availability staleness bounded.
         private const val GATEWAY_CACHE_TTL_MS = 3_000L
         val OBB_PROBE = PrivilegeCommandClass("obb.probe")
+        private val ARCHIVE_MEASURE = PrivilegeCommandClass("archive.measure")
     }
 }

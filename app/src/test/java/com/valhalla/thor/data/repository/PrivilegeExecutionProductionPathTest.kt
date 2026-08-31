@@ -20,6 +20,8 @@ import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.DataClass
+import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
@@ -85,6 +87,24 @@ class PrivilegeExecutionProductionPathTest {
             ObbProbe.Undetermined("ordinary probe failure"),
             repository.probeObb("com.example.game"),
         )
+    }
+
+    @Test
+    fun `SystemRepositoryImpl measures private data through the archive lane`() = runTest {
+        val executor = RecordingMeasureExecutor()
+        val repository = systemRepository(executor)
+
+        val size = repository.measureDataClass("com.example.private", DataClass.CE)
+
+        assertEquals(DataClassSize.Empty, size)
+        assertEquals(2, executor.commands.size)
+        assertEquals(PrivilegeExecutionLane.ARCHIVE, executor.commands[0].execution.lane)
+        with(executor.commands[1].execution) {
+            assertEquals(PrivilegeExecutionLane.ARCHIVE, lane)
+            assertEquals(PrivilegeCommandClass("archive.measure"), commandClass)
+            assertEquals("com.example.private", packageName)
+            assertEquals(null, commandTimeout)
+        }
     }
 
     @Test
@@ -228,11 +248,13 @@ class PrivilegeExecutionProductionPathTest {
         assertEquals(1, fixture.repository.calls)
     }
 
-    private fun systemRepository(failure: Throwable): SystemRepositoryImpl {
+    private fun systemRepository(failure: Throwable): SystemRepositoryImpl =
+        systemRepository(ProbeThenFailExecutor(failure))
+
+    private fun systemRepository(executor: RootCommandExecutor): SystemRepositoryImpl {
         val preferences = FakePreferenceRepository(
             UserPreferences(preferredPrivilegeMode = PrivilegeMode.ROOT)
         )
-        val executor = ProbeThenFailExecutor(failure)
         val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined).also {
             it.userIdProvider = { 0 }
         }
@@ -326,6 +348,19 @@ class PrivilegeExecutionProductionPathTest {
             calls++
             if (calls == 1) return RootCommandResult(0, listOf("0"), emptyList())
             throw failure
+        }
+    }
+
+    private class RecordingMeasureExecutor : RootCommandExecutor {
+        val commands = mutableListOf<RootCommand>()
+
+        override suspend fun execute(command: RootCommand): RootCommandResult {
+            commands += command
+            return if (commands.size == 1) {
+                RootCommandResult(0, listOf("0"), emptyList())
+            } else {
+                RootCommandResult(44, emptyList(), emptyList())
+            }
         }
     }
 
