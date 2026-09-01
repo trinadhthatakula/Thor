@@ -830,5 +830,7 @@
     <string name="clear_all_caches_requires_usage_access">Shizuku can\'t clear every app\'s cache without Usage Access. Android has to be told how many bytes to reclaim, and only that permission can measure how much cache there is. Grant Thor usage access in Settings and try again.</string>
     <string name="clear_all_caches_unsupported_dhizuku">Dhizuku can\'t clear caches. It has no shell to run Android\'s cache trim in, and the Device Owner API has no equivalent. Switch to Root or Shizuku.</string>
     <string name="cancel_sweep_queue">Cancel sweep queue</string>
+    <string name="sweep_notification_title">Applying app actions</string>
+    <string name="sweep_result_summary">App actions: %1$d succeeded, %2$d failed, %3$d busy, %4$d unresolved</string>
 
 </resources>

@@ -32,8 +32,13 @@ class ManageAppUseCase(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Long?> = withPackageLease(packageName, PackageOperationOwner.CLEAR_CACHE, execution) {
-        systemRepository.clearCache(packageName, execution)
+        clearCacheUncoordinated(packageName, execution)
     }
+
+    internal suspend fun clearCacheUncoordinated(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> = systemRepository.clearCache(packageName, execution)
 
     /** Every app's cache, under any mode that can. The `Long?` is bytes freed. */
     suspend fun clearAllCaches(
@@ -106,9 +111,16 @@ class ManageAppUseCase(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.UNFREEZE, execution) {
+        forceUnfreezeUncoordinated(packageName, execution)
+    }
+
+    internal suspend fun forceUnfreezeUncoordinated(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         val unsuspend = setAppSuspendedUncoordinated(packageName, false, execution)
-        if (unsuspend.isFailure) return@withPackageLease unsuspend
-        setAppDisabledUncoordinated(packageName, false, execution)
+        if (unsuspend.isFailure) return unsuspend
+        return setAppDisabledUncoordinated(packageName, false, execution)
     }
 
     suspend fun uninstallApp(
@@ -127,40 +139,48 @@ class ManageAppUseCase(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.REINSTALL, execution) {
-        systemRepository.reinstallAppWithGoogle(packageName, execution)
+        reinstallAppWithGoogleUncoordinated(packageName, execution)
     }
 
-    private suspend fun setAppDisabledUncoordinated(
+    internal suspend fun reinstallAppWithGoogleUncoordinated(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = systemRepository.reinstallAppWithGoogle(packageName, execution)
+
+    internal suspend fun setAppDisabledUncoordinated(
         packageName: String,
         disabled: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = systemRepository.setAppDisabled(packageName, disabled, execution)
 
-    private suspend fun setAppSuspendedUncoordinated(
+    internal suspend fun setAppSuspendedUncoordinated(
         packageName: String,
         suspended: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = systemRepository.setAppSuspended(packageName, suspended, execution)
+
+    internal suspend fun <T> withPackageOperation(
+        packageName: String,
+        owner: PackageOperationOwner,
+        execution: PrivilegeExecutionContext,
+        block: suspend () -> T,
+    ): PackageLeaseResult<T> = packageOperationCoordinator.withPackageLease(
+        packageName = packageName,
+        owner = owner,
+        admissionTimeout = execution.lane.admissionTimeout(),
+        block = block,
+    )
 
     private suspend fun <T> withPackageLease(
         packageName: String,
         owner: PackageOperationOwner,
         execution: PrivilegeExecutionContext,
         block: suspend () -> Result<T>,
-    ): Result<T> {
-        var operationResult: Result<T>? = null
-        return when (
-            val lease = packageOperationCoordinator.withPackageLease(
-                packageName = packageName,
-                owner = owner,
-                admissionTimeout = execution.lane.admissionTimeout(),
-            ) {
-                block().also { operationResult = it }
-            }
-        ) {
-            is PackageLeaseResult.Acquired<*> -> checkNotNull(operationResult)
-            is PackageLeaseResult.Busy -> Result.failure(PackageOperationBusy(lease.owner))
-        }
+    ): Result<T> = when (
+        val lease = withPackageOperation(packageName, owner, execution, block)
+    ) {
+        is PackageLeaseResult.Acquired -> lease.value
+        is PackageLeaseResult.Busy -> Result.failure(PackageOperationBusy(lease.owner))
     }
 
     private fun freezeOwner(frozen: Boolean): PackageOperationOwner =

@@ -108,7 +108,7 @@ android {
         versionName = resolveVersionName(code)
 
         vectorDrawables.useSupportLibrary = true
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.valhalla.thor.ThorTestRunner"
         ndk {
             debugSymbolLevel = "SYMBOL_TABLE"
         }
@@ -141,6 +141,7 @@ android {
     }
 
     testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
         unitTests.isIncludeAndroidResources = true
     }
 
@@ -410,10 +411,12 @@ dependencies {
     // the handwritten fakes the existing suite already uses.
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    androidTestUtil(libs.androidx.test.orchestrator)
     androidTestImplementation(libs.androidx.junit)
     // Room's MigrationTestHelper. androidTest only: it opens a real SQLite file at an old schema
     // version and runs the generated migrations against it, which no JVM stub of SQLite can do.
     androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)

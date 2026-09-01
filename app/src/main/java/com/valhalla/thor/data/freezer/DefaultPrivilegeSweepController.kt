@@ -4,14 +4,12 @@
 package com.valhalla.thor.data.freezer
 
 import android.content.Context
-import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.valhalla.thor.data.backup.job.ThorJobNotificationCapability
 import com.valhalla.thor.data.backup.job.enqueueUniqueJob
@@ -268,15 +266,4 @@ internal class WorkManagerPrivilegeSweepWorkManager(
         WorkInfo.State.FAILED -> SweepWorkState.FAILED
         WorkInfo.State.CANCELLED -> SweepWorkState.CANCELLED
     }
-}
-
-/**
- * Safe placeholder until Task 12 adds the sequential sweep lifecycle. No launch surface is migrated
- * before then, so a mistakenly invoked request fails closed instead of mutating a package.
- */
-internal class PrivilegeSweepWorker(
-    appContext: Context,
-    params: WorkerParameters,
-) : CoroutineWorker(appContext, params) {
-    override suspend fun doWork(): Result = Result.failure()
 }

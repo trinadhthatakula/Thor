@@ -102,11 +102,8 @@ class ThorJobNotifications(private val context: Context) : ThorJobNotificationCa
                     context,
                     Manifest.permission.POST_NOTIFICATIONS,
                 ) == PackageManager.PERMISSION_GRANTED
-        val channelImportance = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            NotificationManager.IMPORTANCE_LOW
-        } else {
+        val channelImportance =
             notificationManager.getNotificationChannelCompat(CHANNEL_ID)?.importance
-        }
         return jobNotificationsAvailable(
             appNotificationsEnabled = notificationManager.areNotificationsEnabled(),
             postNotificationsGranted = postNotificationsGranted,
@@ -148,7 +145,7 @@ class ThorJobNotifications(private val context: Context) : ThorJobNotificationCa
      * clear, no key drop, no notification cancel. §8.5's breadcrumb is what covers that for a
      * restore; a backup relies on the launch sweep.
      *
-     * `POST_NOTIFICATIONS` can be revoked while the job runs. If a revocation races a [notify] call,
+     * `POST_NOTIFICATIONS` can be revoked while the job runs. If a revocation races a notification,
      * the resulting [SecurityException] is caught so that a revoked permission does not fail the backup.
      */
     fun update(kind: ThorJobKind, progress: ThorJobProgress, jobId: UUID) {
@@ -266,7 +263,7 @@ class ThorJobNotifications(private val context: Context) : ThorJobNotificationCa
         ThorJobKind.ARCHIVE_BACKUP -> R.string.job_backing_up
         ThorJobKind.ARCHIVE_RESTORE -> R.string.job_restoring
         ThorJobKind.APP_EXPORT -> R.string.job_exporting
-        ThorJobKind.PRIVILEGE_SWEEP -> R.string.freezer
+        ThorJobKind.PRIVILEGE_SWEEP -> R.string.sweep_notification_title
     }
 
     /**

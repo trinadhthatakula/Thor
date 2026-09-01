@@ -52,7 +52,7 @@ import org.koin.core.qualifier.named
 import org.koin.plugin.module.dsl.startKoin
 
 @KoinApplication
-class ThorApplication : Application(), SingletonImageLoader.Factory {
+open class ThorApplication : Application(), SingletonImageLoader.Factory {
 
     /**
      * The application context's locale, at process start **and afterwards**.
@@ -247,8 +247,13 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val billingProcessorLazy = inject<BillingProcessor>()
     private val billingProcessor by billingProcessorLazy
 
+    /** Test applications may suppress process startup before Koin, WorkManager, or Room is touched. */
+    protected open fun shouldStartApplicationRuntime(): Boolean = true
+
     override fun onCreate() {
         super.onCreate()
+        if (!shouldStartApplicationRuntime()) return
+
         // Logger gates every level on this flag, `e` included, so a build with it false emits no
         // Thor logcat at all. PRIVILEGE_TRACE is OR-ed in because the benchmark build type is
         // release-shaped (DEBUG == false) and would otherwise take its startup timings and print
