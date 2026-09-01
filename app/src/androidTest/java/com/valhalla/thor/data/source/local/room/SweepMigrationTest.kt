@@ -30,6 +30,7 @@ class SweepMigrationTest {
         }
 
         val migrated = helper.runMigrationsAndValidate(TEST_DATABASE, 8, true)
+        migrated.setForeignKeyConstraintsEnabled(true)
 
         VERSION_7_TABLES.forEach { table ->
             assertEquals("$table row was not preserved", 1, migrated.rowCount(table))
