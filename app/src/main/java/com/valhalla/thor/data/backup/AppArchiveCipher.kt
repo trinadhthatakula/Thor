@@ -3,11 +3,15 @@
 
 package com.valhalla.thor.data.backup
 
+import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import com.valhalla.thor.domain.model.KDF_SALT_BYTES
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.Base64
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -160,6 +164,24 @@ class AppArchiveCipher {
     fun verify(key: SecretKey, expected: ByteArray): Boolean =
         MessageDigest.isEqual(verifier(key), expected)
 
+    /** HMAC the deterministic schema-v2 manifest, excluding only its stored MAC value. */
+    fun manifestMac(key: SecretKey, header: ArchiveHeader): ByteArray {
+        val mac = Mac.getInstance(MANIFEST_AUTH_ALGORITHM)
+        mac.init(SecretKeySpec(key.encoded, MANIFEST_AUTH_ALGORITHM))
+        return mac.doFinal(ArchiveManifestCodec.canonicalBytes(header))
+    }
+
+    /** Verify schema-v2's complete manifest authentication in constant time. */
+    fun verifyManifest(key: SecretKey, header: ArchiveHeader): Boolean {
+        val authentication = header.authentication ?: return false
+        if (authentication.algorithm != MANIFEST_AUTH_ALGORITHM) return false
+        val expected = runCatching { Base64.getDecoder().decode(authentication.mac) }.getOrNull()
+            ?: return false
+        if (expected.size != MANIFEST_MAC_BYTES) return false
+        return runCatching { MessageDigest.isEqual(manifestMac(key, header), expected) }
+            .getOrDefault(false)
+    }
+
     /**
      * Encrypt [plaintext] into [ciphertext], returning what the header must record.
      *
@@ -167,6 +189,7 @@ class AppArchiveCipher {
      * next member.
      */
     fun encryptMember(
+        dataClass: String,
         memberName: String,
         plaintext: InputStream,
         ciphertext: OutputStream,
@@ -193,7 +216,7 @@ class AppArchiveCipher {
             val isFinal = nextLength == 0
 
             val frame = cipherFor(Cipher.ENCRYPT_MODE, key, nonce, index).run {
-                updateAAD(aad(memberName, index, isFinal))
+                updateAAD(aad(dataClass, memberName, index, isFinal))
                 doFinal(current, 0, currentLength)
             }
             writeFrame(ciphertext, frame)
@@ -223,6 +246,7 @@ class AppArchiveCipher {
      * header must be refused rather than crashed on.
      */
     fun decryptMember(
+        dataClass: String,
         memberName: String,
         ciphertext: InputStream,
         plaintext: OutputStream,
@@ -250,7 +274,7 @@ class AppArchiveCipher {
             }
             val chunk = try {
                 cipherFor(Cipher.DECRYPT_MODE, key, nonce, index).run {
-                    updateAAD(aad(memberName, index, isFinal))
+                    updateAAD(aad(dataClass, memberName, index, isFinal))
                     doFinal(frame)
                 }
             } catch (e: GeneralSecurityException) {
@@ -288,8 +312,28 @@ class AppArchiveCipher {
         return iv
     }
 
-    private fun aad(memberName: String, index: Int, isFinal: Boolean): ByteArray =
-        "$memberName|$index|${if (isFinal) 1 else 0}".toByteArray(Charsets.UTF_8)
+    private fun aad(
+        dataClass: String,
+        memberName: String,
+        index: Int,
+        isFinal: Boolean,
+    ): ByteArray {
+        val bytes = ByteArrayOutputStream()
+        DataOutputStream(bytes).use { out ->
+            out.writeUtf8("thor-data-member-v2")
+            out.writeUtf8(dataClass)
+            out.writeUtf8(memberName)
+            out.writeInt(index)
+            out.writeBoolean(isFinal)
+        }
+        return bytes.toByteArray()
+    }
+
+    private fun DataOutputStream.writeUtf8(value: String) {
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        writeInt(bytes.size)
+        write(bytes)
+    }
 
     private fun writeFrame(out: OutputStream, frame: ByteArray) {
         out.write((frame.size ushr 24) and 0xFF)

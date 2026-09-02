@@ -93,12 +93,20 @@ class RestoreAppArchiveUseCaseTest {
         val nonce = cipher.newNonce()
         val out = ByteArrayOutputStream()
         val name = dataClass.memberName(compressed = compression == ArchiveCompression.GZIP)
-        val stats = cipher.encryptMember(name, ByteArrayInputStream(body.toByteArray()), out, key, nonce)
+        val stats = cipher.encryptMember(
+            dataClass.id,
+            name,
+            ByteArrayInputStream(body.toByteArray()),
+            out,
+            key,
+            nonce,
+        )
         return ArchiveMember(
             dataClass = dataClass.id,
             fileName = name,
             nonce = Base64.getEncoder().encodeToString(nonce),
             plainBytes = stats.plainBytes,
+            cipherBytes = stats.cipherBytes,
             chunkCount = stats.chunkCount,
             compression = compression.id,
         ) to out.toByteArray()

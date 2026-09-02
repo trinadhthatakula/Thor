@@ -388,7 +388,15 @@ internal class RestoreAppArchiveUseCase(
             try {
                 ciphertext.use { input ->
                     staged.outputStream().use { output ->
-                        cipher.decryptMember(member.fileName, input, output, key, nonce, member.chunkCount)
+                        cipher.decryptMember(
+                            member.dataClass,
+                            member.fileName,
+                            input,
+                            output,
+                            key,
+                            nonce,
+                            member.chunkCount,
+                        )
                     }
                 }
                 Logger.d(TAG, "Decrypted ${member.fileName} (${staged.length()} bytes)")

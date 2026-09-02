@@ -374,7 +374,7 @@ internal class BackupAppArchiveUseCase(
             val nonce = cipher.newNonce()
             zip.putNextEntry(ZipEntry(memberName))
             val stats = staged.inputStream().use { input ->
-                cipher.encryptMember(memberName, input, zip, key, nonce)
+                cipher.encryptMember(dataClass.id, memberName, input, zip, key, nonce)
             }
             zip.closeEntry()
 
@@ -383,6 +383,7 @@ internal class BackupAppArchiveUseCase(
                 fileName = memberName,
                 nonce = Base64.getEncoder().encodeToString(nonce),
                 plainBytes = stats.plainBytes,
+                cipherBytes = stats.cipherBytes,
                 chunkCount = stats.chunkCount,
                 compression = if (compressed) ArchiveCompression.GZIP.id else ArchiveCompression.NONE.id,
             )
