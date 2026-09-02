@@ -502,6 +502,7 @@
     <string name="restore_error_not_an_archive">Esse arquivo não é um backup do Thor. Escolha um arquivo .thorbak.</string>
     <string name="restore_error_wrong_passphrase">Essa senha não abre este backup.</string>
     <string name="restore_error_unlock_check_failed">O Thor não conseguiu verificar essa senha. Tente novamente.</string>
+    <string name="restore_error_authentication_failed">Não foi possível autenticar este backup, por isso ele não foi restaurado.</string>
     <string name="restore_failed_passphrase_lost">o Thor não tem mais a senha deste backup — desbloqueie novamente</string>
     <string name="restore_failed_partial">Isso parou no meio, então os dados do aplicativo podem estar incompletos — e, se o Thor tiver instalado o aplicativo a partir deste backup, ele continua instalado. Restaurar novamente é a solução.</string>
     <string name="restore_failed_not_started">Nada foi iniciado, então nada neste dispositivo foi alterado.</string>

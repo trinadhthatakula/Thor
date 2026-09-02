@@ -9,7 +9,10 @@ import com.valhalla.thor.data.backup.PassphraseVault
 import com.valhalla.thor.data.backup.PassphraseVaultStore
 import com.valhalla.thor.data.backup.VaultKeyProvider
 import com.valhalla.thor.data.backup.job.JobRegistry
+import com.valhalla.thor.data.backup.MANIFEST_AUTH_ALGORITHM
+import com.valhalla.thor.data.backup.MANIFEST_MAC_BYTES
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.ArchiveAuthentication
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleInfo
 import com.valhalla.thor.domain.model.ArchiveCompression
@@ -24,6 +27,7 @@ import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.ThorJobKind
@@ -46,6 +50,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -89,7 +94,7 @@ class ArchiveRestoreViewModelTest {
     /**
      * `iterations = 1000`, not [com.valhalla.thor.data.backup.KDF_ITERATIONS].
      *
-     * `unlock` derives with whatever the header declares, so a low count keeps this suite fast — at
+     * `authenticate` derives with whatever the header declares, so a low count keeps this suite fast — at
      * 210 000 rounds the derivations in these tests would add several seconds. The production floor is
      * Task 4's concern; what this file tests is which *answer* a derivation produces.
      */
@@ -99,15 +104,20 @@ class ArchiveRestoreViewModelTest {
         signer: String = SIGNER,
         classes: List<DataClass> = listOf(DataClass.CE, DataClass.DE),
         bundle: ArchiveBundleInfo? = ArchiveBundleInfo(
-            bytes = 4_096L,
+            bytes = BUNDLE_BYTES.size.toLong(),
+            sha256 = BUNDLE_SHA256,
             obbCapture = "present",
             obbCount = 2,
         ),
-        schemaVersion: Int = 1,
+        schemaVersion: Int = 2,
     ): ArchiveHeader {
         val key = cipher.deriveKey(passphrase.toCharArray(), salt, 1000)
-        return ArchiveHeader(
-            schemaVersion = schemaVersion,
+        val authenticatedBundle = bundle?.copy(
+            bytes = BUNDLE_BYTES.size.toLong(),
+            sha256 = BUNDLE_SHA256,
+        )
+        val unsigned = ArchiveHeader(
+            schemaVersion = 2,
             createdAt = 1_700_000_000_000L,
             thorVersionCode = 1950,
             packageName = packageName,
@@ -115,23 +125,37 @@ class ArchiveRestoreViewModelTest {
             versionName = "1.0",
             userId = 0,
             signerSha256 = signer,
-            appBundle = bundle,
+            appBundle = authenticatedBundle,
             kdf = ArchiveKdf(iterations = 1000, salt = Base64.getEncoder().encodeToString(salt)),
             verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
+            authentication = ArchiveAuthentication(
+                algorithm = MANIFEST_AUTH_ALGORITHM,
+                mac = Base64.getEncoder().encodeToString(ByteArray(MANIFEST_MAC_BYTES)),
+            ),
             members = classes.map {
                 ArchiveMember(
                     dataClass = it.id,
                     fileName = "${it.id}.tar.gz.enc",
                     nonce = Base64.getEncoder().encodeToString(ByteArray(8)),
                     plainBytes = 2_048L,
+                    cipherBytes = 2_068L,
                     chunkCount = 1,
                     compression = ArchiveCompression.GZIP.id,
                 )
             },
         )
+        return unsigned.copy(
+            schemaVersion = schemaVersion,
+            authentication = unsigned.authentication!!.copy(
+                mac = Base64.getEncoder().encodeToString(cipher.manifestMac(key, unsigned)),
+            )
+        )
     }
 
     private companion object {
+        val BUNDLE_BYTES = byteArrayOf(1, 2, 3, 4)
+        val BUNDLE_SHA256: String = MessageDigest.getInstance("SHA-256").digest(BUNDLE_BYTES)
+            .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
         const val SIGNER = "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"
         const val OTHER_SIGNER = "CDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCD"
         const val URI = "content://com.example.docs/document/1"
@@ -142,15 +166,18 @@ class ArchiveRestoreViewModelTest {
     private class FakeSource(
         private val headerJson: String?,
         override val displayName: String = "com.example.game-100.thorbak",
+        private val bundleBytes: ByteArray? = BUNDLE_BYTES,
     ) : ArchiveSource {
         var closed = false
-        override fun entryNames(): List<String> = listOfNotNull(headerJson?.let { THORBAK_HEADER_ENTRY })
-        override fun openEntry(name: String): InputStream? =
-            if (name == THORBAK_HEADER_ENTRY && headerJson != null) {
-                ByteArrayInputStream(headerJson.encodeToByteArray())
-            } else {
-                null
-            }
+        override fun entryNames(): List<String> = buildList {
+            if (headerJson != null) add(THORBAK_HEADER_ENTRY)
+            if (bundleBytes != null) add(THORBAK_BUNDLE_ENTRY)
+        }
+        override fun openEntry(name: String): InputStream? = when (name) {
+            THORBAK_HEADER_ENTRY -> headerJson?.encodeToByteArray()?.let(::ByteArrayInputStream)
+            THORBAK_BUNDLE_ENTRY -> bundleBytes?.let(::ByteArrayInputStream)
+            else -> null
+        }
 
         override fun close() {
             closed = true
@@ -310,6 +337,9 @@ class ArchiveRestoreViewModelTest {
         private val slowSignerFor: String? = null,
         private val slowSignerMillis: Long = 1_000L,
     ) : AppDataArchiveGateway {
+        var signerCalls = 0
+            private set
+
         override suspend fun thorUserId(): Int = 0
         override suspend fun externalStorageDir(): String = "/storage/emulated/0"
         override suspend fun stagingFile(name: String): File = File("/tmp/$name")
@@ -353,6 +383,7 @@ class ArchiveRestoreViewModelTest {
          * never reach the line under test.
          */
         override suspend fun signerSha256(packageName: String): String? {
+            signerCalls++
             if (packageName == slowSignerFor) {
                 withContext(NonCancellable) { delay(slowSignerMillis) }
             }
@@ -460,7 +491,9 @@ class ArchiveRestoreViewModelTest {
         probe: AppDataProbe = FakeProbe(),
         privilegeState: PrivilegeState = rooted(),
         launcher: ArchiveJobLauncher = FakeLauncher(),
-        vaultStore: PassphraseVaultStore = FakeVaultStore(),
+        vaultStore: PassphraseVaultStore = FakeVaultStore(
+            Base64.getEncoder().encodeToString(passphrase.encodeToByteArray())
+        ),
         breadcrumbs: ArchiveBreadcrumbStore = FakeBreadcrumbs(),
         registry: JobRegistry = JobRegistry(),
         sources: ArchiveSourceFactory = FakeSources(FakeSource(head?.encode())),
@@ -490,7 +523,7 @@ class ArchiveRestoreViewModelTest {
     // --- opening the file -----------------------------------------------------------------------
 
     @Test
-    fun `a second file replaces the first, and the same file is never read twice`() =
+    fun `a second file replaces the first and repicking the same file does not reopen it`() =
         runTest(dispatcher) {
             // Both halves of one guard. `LaunchedEffect(uriString)` and a recomposition can both call
             // `open` with the file already open, and re-reading would restart the gate under the user
@@ -514,13 +547,13 @@ class ArchiveRestoreViewModelTest {
             vm.open(URI)
             testScheduler.advanceUntilIdle()
 
-            assertEquals(listOf(URI), sources.opens)
+            assertEquals(listOf(URI, URI), sources.opens)
             assertEquals("com.example.game", vm.uiState.value.header?.packageName)
 
             vm.open(other)
             testScheduler.advanceUntilIdle()
 
-            assertEquals(listOf(URI, other), sources.opens)
+            assertEquals(listOf(URI, URI, other, other), sources.opens)
             assertEquals("com.example.other", vm.uiState.value.header?.packageName)
             assertEquals("com.example.other-5.thorbak", vm.uiState.value.fileName)
         }
@@ -558,7 +591,7 @@ class ArchiveRestoreViewModelTest {
             vm.open(other)
             testScheduler.advanceUntilIdle()
 
-            assertEquals(listOf(URI, other), sources.opens)
+            assertEquals(listOf(URI, other, other), sources.opens)
             assertEquals("com.example.other", vm.uiState.value.header?.packageName)
             assertEquals("com.example.other-5.thorbak", vm.uiState.value.fileName)
             // Not a leftover of the cancelled read either: the spinner it turned on is the one thing a
@@ -767,7 +800,7 @@ class ArchiveRestoreViewModelTest {
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
-        assertEquals(2, sources.opens)
+        assertEquals(3, sources.opens)
         assertNull(vm.uiState.value.error)
         assertEquals("com.example.game", vm.uiState.value.header?.packageName)
     }
@@ -841,7 +874,7 @@ class ArchiveRestoreViewModelTest {
         vm.open(other)
         testScheduler.advanceUntilIdle()
 
-        assertEquals(listOf(URI, other), sources.opens)
+        assertEquals(listOf(URI, URI, other, other), sources.opens)
         assertEquals(1, probe.probes)
     }
 
@@ -969,20 +1002,100 @@ class ArchiveRestoreViewModelTest {
     }
 
     @Test
-    fun `an archive from a newer Thor refuses`() = runTest(dispatcher) {
-        val vm = viewModel(head = header(schemaVersion = 99))
+    fun `an unauthenticated schema version is generically refused before the gate`() = runTest(dispatcher) {
+        val gateway = FakeArchiveGateway(SIGNER)
+        val vm = viewModel(head = header(schemaVersion = 1), gateway = gateway)
 
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
-        assertEquals(ArchiveRestoreRefusal.SCHEMA_TOO_NEW, vm.uiState.value.refusal)
+        assertEquals(
+            ArchiveRestoreMessage.Known(ArchiveRestoreReason.AUTHENTICATION_FAILED),
+            vm.uiState.value.error,
+        )
+        assertNull(vm.uiState.value.refusal)
+        assertEquals(0, gateway.signerCalls)
     }
 
     // --- passphrase ----------------------------------------------------------------------------
 
     @Test
+    fun `bad manifest MAC is generically refused before installed facts or gate`() = runTest(dispatcher) {
+        val gateway = FakeArchiveGateway(SIGNER)
+        val valid = header()
+        val badMac = valid.copy(
+            authentication = valid.authentication!!.copy(
+                mac = Base64.getEncoder().encodeToString(ByteArray(MANIFEST_MAC_BYTES) { 7 }),
+            )
+        )
+        val vm = viewModel(
+            head = badMac,
+            gateway = gateway,
+            sources = FakeSources(FakeSource(badMac.encode())),
+        )
+
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            ArchiveRestoreMessage.Known(ArchiveRestoreReason.AUTHENTICATION_FAILED),
+            vm.uiState.value.error,
+        )
+        assertEquals(0, gateway.signerCalls)
+        assertNull(vm.uiState.value.refusal)
+    }
+
+    @Test
+    fun `bad bundle digest is generically refused before installed facts or gate`() = runTest(dispatcher) {
+        val gateway = FakeArchiveGateway(SIGNER)
+        val head = header()
+        val vm = viewModel(
+            head = head,
+            gateway = gateway,
+            sources = FakeSources(
+                FakeSource(head.encode(), bundleBytes = byteArrayOf(9, 9, 9, 9))
+            ),
+        )
+
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            ArchiveRestoreMessage.Known(ArchiveRestoreReason.AUTHENTICATION_FAILED),
+            vm.uiState.value.error,
+        )
+        assertEquals(0, gateway.signerCalls)
+        assertNull(vm.uiState.value.refusal)
+    }
+
+    @Test
+    fun `no installed facts or gate decision are read before archive authentication`() = runTest(dispatcher) {
+        val gateway = FakeArchiveGateway(SIGNER)
+        val vm = viewModel(gateway = gateway, vaultStore = FakeVaultStore())
+
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, gateway.signerCalls)
+        assertNull(vm.uiState.value.refusal)
+        assertFalse(vm.uiState.value.unlocked)
+        assertTrue(vm.uiState.value.passphraseNeeded)
+    }
+
+    @Test
+    fun `restore diagnostics omit throwable details`() {
+        val source = archiveRestoreViewModelSource()
+
+        assertFalse(
+            "archive restore diagnostics pass throwable details to Logger",
+            Regex("""Logger\.(?:e|w)\([^,\n]+,\s*"[^"]*",\s*[^)]+\)""")
+                .containsMatchIn(source),
+        )
+    }
+
+    @Test
     fun `an empty vault asks for the passphrase`() = runTest(dispatcher) {
-        val vm = viewModel()
+        val vm = viewModel(vaultStore = FakeVaultStore())
 
         vm.open(URI)
         testScheduler.advanceUntilIdle()
@@ -1024,7 +1137,7 @@ class ArchiveRestoreViewModelTest {
 
     @Test
     fun `a wrong typed passphrase reports itself and leaves the screen usable`() = runTest(dispatcher) {
-        val vm = viewModel()
+        val vm = viewModel(vaultStore = FakeVaultStore())
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
@@ -1053,7 +1166,7 @@ class ArchiveRestoreViewModelTest {
             // clears its field the moment Unlock is pressed — so retyping and pressing again is the
             // ordinary thing to do. With two derivations in flight, completion order decided the
             // outcome: the wrong one landing second overwrote the right one's success.
-            val vm = viewModel()
+            val vm = viewModel(vaultStore = FakeVaultStore())
             vm.open(URI)
             testScheduler.advanceUntilIdle()
 
@@ -1071,7 +1184,7 @@ class ArchiveRestoreViewModelTest {
 
     @Test
     fun `the right typed passphrase unlocks it`() = runTest(dispatcher) {
-        val vm = viewModel()
+        val vm = viewModel(vaultStore = FakeVaultStore())
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
@@ -1085,7 +1198,7 @@ class ArchiveRestoreViewModelTest {
     @Test
     fun `a rejected passphrase is wiped rather than left in the heap`() = runTest(dispatcher) {
         val typed = "wrong one".toCharArray()
-        val vm = viewModel()
+        val vm = viewModel(vaultStore = FakeVaultStore())
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
@@ -1101,7 +1214,7 @@ class ArchiveRestoreViewModelTest {
     fun `a superseded passphrase is wiped when the next one is accepted`() = runTest(dispatcher) {
         val first = passphrase.toCharArray()
         val second = passphrase.toCharArray()
-        val vm = viewModel()
+        val vm = viewModel(vaultStore = FakeVaultStore())
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
@@ -1118,7 +1231,7 @@ class ArchiveRestoreViewModelTest {
     @Test
     fun `choosing a different passphrase wipes the one that was held`() = runTest(dispatcher) {
         val typed = passphrase.toCharArray()
-        val vm = viewModel()
+        val vm = viewModel(vaultStore = FakeVaultStore())
         vm.open(URI)
         testScheduler.advanceUntilIdle()
         vm.submitPassphrase(typed)
@@ -1568,4 +1681,17 @@ class ArchiveRestoreViewModelTest {
             assertEquals(true, state.installFirst)
             assertEquals(null, state.refusal)
         }
+
+    private fun archiveRestoreViewModelSource(): String {
+        var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (directory != null) {
+            val source = File(
+                directory,
+                "app/src/main/java/com/valhalla/thor/presentation/backup/ArchiveRestoreViewModel.kt",
+            )
+            if (source.isFile) return source.readText()
+            directory = directory.parentFile
+        }
+        error("could not locate ArchiveRestoreViewModel.kt")
+    }
 }

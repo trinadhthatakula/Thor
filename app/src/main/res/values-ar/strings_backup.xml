@@ -189,6 +189,7 @@
       was typed. Says what to do instead of guessing at a cause it does not know.
     -->
     <string name="restore_error_unlock_check_failed">تعذّر على Thor التحقّق من عبارة المرور هذه. حاول مرة أخرى.</string>
+    <string name="restore_error_authentication_failed">تعذّر التحقق من صحة هذه النسخة الاحتياطية، ولم تتم استعادتها.</string>
     <string name="restore_failed_passphrase_lost">لم يعد لدى Thor عبارة المرور لهذه النسخة الاحتياطية — ألغِ قفلها من جديد</string>
     <string name="restore_failed_salt_unreadable">تعذّرت قراءة قيمة الملح (salt) في هذا الأرشيف</string>
     <!--

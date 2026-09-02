@@ -6,19 +6,16 @@ package com.valhalla.thor.data.backup.job
 import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.repository.archiveStagingVolume
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleCacheDir
-import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveRestoreDecision
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BACKUP_PACKAGE_KEY
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
-import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
@@ -36,7 +33,7 @@ import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.SystemRepository
 // `usecase`, not `repository`: `ArchiveHeaderOutcome` is declared alongside OpenArchiveUseCase.
-import com.valhalla.thor.domain.usecase.ArchiveHeaderOutcome
+import com.valhalla.thor.domain.usecase.ArchiveAuthenticationOutcome
 import com.valhalla.thor.domain.usecase.ArchiveRestoreOutcome
 import com.valhalla.thor.domain.usecase.BackupAppArchiveUseCase
 import com.valhalla.thor.domain.usecase.OpenArchiveUseCase
@@ -44,15 +41,15 @@ import com.valhalla.thor.domain.usecase.ReadInstalledAppFactsUseCase
 import com.valhalla.thor.domain.usecase.RestoreAppArchiveUseCase
 import com.valhalla.thor.util.Logger
 import java.io.File
-import java.util.Base64
 import java.util.UUID
-import javax.crypto.SecretKey
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import org.koin.android.annotation.KoinWorker
 import org.koin.core.annotation.Named
 
 private const val TAG = "AppArchiveWorker"
+internal const val ARCHIVE_AUTH_FAILURE_REASON =
+    "this backup could not be authenticated and was not restored"
 private val ARCHIVE_BACKUP = PrivilegeCommandClass("archive.backup")
 private val ARCHIVE_RESTORE = PrivilegeCommandClass("archive.restore")
 
@@ -277,9 +274,6 @@ internal class ArchiveRestoreWorker(
     private val sources: ArchiveSourceFactory,
     private val openArchive: OpenArchiveUseCase,
     private val restore: RestoreAppArchiveUseCase,
-    // For [wrongKeyReason] alone — one HMAC against the header's verifier before anything is
-    // decrypted. The use case has its own reference; this is not a shared piece of state.
-    private val cipher: AppArchiveCipher,
     // Still here after the facts moved out: the progress label is `appName`, and the use case is
     // handed it so the shade shows "Clash of Clans" rather than `com.supercell.clashofclans`.
     private val appRepository: AppRepository,
@@ -344,21 +338,19 @@ internal class ArchiveRestoreWorker(
         }
 
         return source.use {
-            val header = when (val read = openArchive.readHeader(source)) {
-                is ArchiveHeaderOutcome.Read -> read.header
-                is ArchiveHeaderOutcome.NotAnArchive -> {
-                    Logger.e(TAG, "readHeader failed: ${read.reason}")
-                    return@use fail(read.reason)
+            val authenticated = when (val outcome = openArchive.authenticate(source, key)) {
+                is ArchiveAuthenticationOutcome.Authenticated -> outcome
+                ArchiveAuthenticationOutcome.WrongPassphrase,
+                ArchiveAuthenticationOutcome.AuthenticationFailed,
+                -> {
+                    Logger.e(TAG, "Archive authentication failed")
+                    return@use fail(ARCHIVE_AUTH_FAILURE_REASON)
                 }
             }
-            Logger.i(TAG, "Read header: schema=${header.schemaVersion}, classes=${header.heldClasses()}, bundle=${header.appBundle != null}")
+            val header = authenticated.header
             if (header.packageName != request.packageName) {
-                Logger.e(TAG, "Header package mismatch: header=${header.packageName}, request=${request.packageName}")
-                return@use fail("that backup file is not ${request.packageName}'s any more")
-            }
-            wrongKeyReason(header, key, cipher)?.let {
-                Logger.e(TAG, "wrongKeyReason: $it")
-                return@use fail(it)
+                Logger.e(TAG, "Authenticated archive package does not match restore request")
+                return@use fail(ARCHIVE_AUTH_FAILURE_REASON)
             }
 
             val app = appRepository.getAppDetails(request.packageName)
@@ -416,49 +408,6 @@ internal class ArchiveRestoreWorker(
                 is ArchiveRestoreOutcome.Failed -> fail(restoreFailureReason(outcome))
             }
         }
-    }
-}
-
-/**
- * Why the key this job is holding cannot open the archive it just re-read — or null when it can.
- *
- * **This replaced a KDF-count comparison, and the reason matters.** The count check was a proxy for
- * one specific way the key could be wrong: `ThorJobLauncher.startRestore` used to derive with
- * `deriveKey(passphrase, salt)` — no iteration count, so this build's [KDF_ITERATIONS] — while
- * `OpenArchiveUseCase.unlock` passed `header.kdf.iterations`. Any archive not written at today's
- * number therefore unlocked on the confirm screen and then failed every GCM tag inside the job, and
- * what the user read was that their backup was damaged. It was not; the build was. That divergence is
- * now fixed at its source: `ArchiveJobLauncher.startRestore` takes `iterations` and the restore screen
- * passes the header's own. Left in place, the count check would have refused precisely the archives
- * the fix made restorable.
- *
- * What is checked instead is the thing the count was standing in for. `ArchiveHeader.verifier` is
- * `HMAC(key, "thor-data-archive-v1")`, and comparing it answers "is this key this archive's key?"
- * without caring *why* it might not be — a different round count, a different salt, or a `content://`
- * URI whose document was replaced between the confirm screen and the job (§8.3 re-reads the header for
- * exactly that reason, and the package-name check just above catches only the case where the
- * substitute belongs to another app). One HMAC, before a byte of ciphertext is touched.
- *
- * The worker cannot re-derive its way out of a mismatch: it never sees a passphrase, which is the
- * whole reason the key travels through `ArchiveKeyHolder` (§9.2). Refusing before anything is written
- * is the whole of what this layer can do, and the sentence sends the user back to the file rather than
- * leaving them with "damaged".
- *
- * Top-level rather than a method so a JVM test can reach it: nothing inside a `CoroutineWorker` is
- * reachable without an Android runtime, and this module has no Robolectric.
- */
-internal fun wrongKeyReason(header: ArchiveHeader, key: SecretKey, cipher: AppArchiveCipher): String? {
-    // `java.util.Base64`, matching `OpenArchiveUseCase`: `android.util.Base64` throws "not mocked"
-    // under JVM tests and would take this function off the test classpath with it.
-    val expected = runCatching { Base64.getDecoder().decode(header.verifier) }.getOrNull()
-        ?: return "this backup's header could not be read well enough to check the passphrase"
-    // `cipher.verify` is `MessageDigest.isEqual`, so a wrong-length verifier answers false rather
-    // than throwing — which is the right answer here, and is reported the same way.
-    return if (cipher.verify(key, expected)) {
-        null
-    } else {
-        "this backup could not be opened with the passphrase this restore was started with — " +
-            "open the file again and unlock it"
     }
 }
 
