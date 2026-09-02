@@ -289,7 +289,7 @@ class RootSystemGatewayRoutingTest {
     }
 
     @Test
-    fun `MainShellCommandExecutor is the only ShellRepository owner`() {
+    fun `production has no direct ShellRepository dependency`() {
         val sources = productionKotlinSources()
         val owners = sources
             .filterValues { SHELL_REPOSITORY_REFERENCE.containsMatchIn(it) }
@@ -297,10 +297,9 @@ class RootSystemGatewayRoutingTest {
             .map { it.invariantSeparatorsPath.substringAfter("app/src/main/java/") }
             .sorted()
 
-        assertEquals(
-            "ShellRepository must stay behind the reviewed MainShell transport seam",
-            listOf(MAIN_SHELL_EXECUTOR),
-            owners,
+        assertTrue(
+            "MainShell execution must stay behind the callback-backed job seam: $owners",
+            owners.isEmpty(),
         )
     }
 
@@ -377,16 +376,12 @@ class RootSystemGatewayRoutingTest {
     private companion object {
         const val ROOT_SYSTEM_GATEWAY =
             "com/valhalla/thor/data/gateway/RootSystemGateway.kt"
-        const val MAIN_SHELL_EXECUTOR =
-            "com/valhalla/thor/data/gateway/root/MainShellCommandExecutor.kt"
-
         val DIRECT_ODIN_CALLS = listOf(
             "shellRepository.exec(",
             "shellRepository.submit(",
             "shellRepository.enqueue(",
         )
-        val SHELL_REPOSITORY_REFERENCE =
-            Regex("""private\s+val\s+shellRepository\s*:\s*ShellRepository\b""")
+        val SHELL_REPOSITORY_REFERENCE = Regex("""\bShellRepository\b""")
         val RAW_COMMAND_EXPOSURES = listOf(
             "Component command failed: \$cmd",
             "Command execution failed: \$cmd",

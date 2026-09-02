@@ -3,20 +3,15 @@
 
 package com.valhalla.thor.data.gateway.root
 
-import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
 import java.util.concurrent.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Single
 
@@ -79,12 +74,12 @@ internal class RootFallbackCoordinator(
             val timeout = command.execution.commandTimeout
             val outcome = if (timeout == null) {
                 CommandOutcome.Completed(
-                    executeCancellableUntilSubmitted(main, command),
+                    main.execute(command),
                 )
             } else {
                 withTimeoutOrNull(timeout) {
                     CommandOutcome.Completed(
-                        executeCancellableUntilSubmitted(main, command),
+                        main.execute(command),
                     )
                 } ?: CommandOutcome.TimedOut
             }
@@ -97,33 +92,6 @@ internal class RootFallbackCoordinator(
         } catch (cancelled: CancellationException) {
             if (cancelled is ShellCommandCancelled) throw cancelled
             throw ShellCommandCancelled(command.execution.commandClass, cancelled)
-        }
-    }
-
-    private suspend fun executeCancellableUntilSubmitted(
-        main: MainShellCommandExecutor,
-        command: RootCommand,
-    ): RootCommandResult {
-        val pending = main.prepare(command)
-        val completion = CompletableDeferred<Result<ShellResult>>()
-        val submissionGate = CompletableDeferred(Unit)
-        var submissionWon = false
-        try {
-            select {
-                submissionGate.onAwait {
-                    // Selection and cancellation compete atomically. Once this clause wins,
-                    // submission is committed and its callback must drain before release.
-                    pending.submit(completion::complete)
-                    submissionWon = true
-                }
-            }
-            val outcome = withContext(NonCancellable) { completion.await() }
-            return main.toCommandResult(command, outcome)
-        } catch (cancelled: CancellationException) {
-            if (submissionWon) {
-                withContext(NonCancellable) { completion.await() }
-            }
-            throw cancelled
         }
     }
 

@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.data.gateway.root
 
-import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
@@ -14,7 +13,6 @@ import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
 import com.valhalla.thor.domain.model.ShellTransportDied
-import java.io.IOException
 import java.util.concurrent.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -41,7 +39,7 @@ class RootCommandRouterTest {
 
     @Test
     fun `interactive always routes to MainShell`() = runTest {
-        val main = FakeShellRepository { ShellResult(23, listOf("stdout"), listOf("stderr")) }
+        val main = FakeMainShellJobFactory { ShellResult(23, listOf("stdout"), listOf("stderr")) }
         val fixture = fixture(main = main)
 
         val result =
@@ -58,7 +56,7 @@ class RootCommandRouterTest {
     @Test
     fun `MainShell job not executed reports transport death`() = runTest {
         val fixture = fixture(
-            main = FakeShellRepository {
+            main = FakeMainShellJobFactory {
                 ShellResult(
                     ShellResult.JOB_NOT_EXECUTED,
                     emptyList(),
@@ -190,7 +188,7 @@ class RootCommandRouterTest {
         val sweepCompletion = CompletableDeferred<ShellResult>()
         val completions = ArrayDeque(listOf(archiveCompletion, sweepCompletion))
         val fixture = fixture(
-            main = FakeShellRepository { completions.removeFirst().await() },
+            main = FakeMainShellJobFactory { completions.removeFirst().await() },
             archiveFactory = unavailableFactory("archive unavailable"),
             sweepFactory = unavailableFactory("sweep unavailable"),
         )
@@ -219,11 +217,87 @@ class RootCommandRouterTest {
     }
 
     @Test
+    fun `cancelled interactive command drains active callback before releasing MainShell`() = runTest {
+        val interactiveCompletion = CompletableDeferred<ShellResult>()
+        val backgroundCompletion = CompletableDeferred<ShellResult>()
+        val completions = ArrayDeque(listOf(interactiveCompletion, backgroundCompletion))
+        val events = mutableListOf<String>()
+        val fixture = fixture(
+            main = FakeMainShellJobFactory {
+                val label = if (events.isEmpty()) "interactive" else "background"
+                events += "$label-submitted"
+                completions.removeFirst().await().also { events += "$label-drained" }
+            },
+            archiveFactory = unavailableFactory("archive unavailable"),
+        )
+        val terminal = CompletableDeferred<Throwable>()
+        val interactive = launch {
+            try {
+                fixture.router.execute(
+                    command(PrivilegeExecutionLane.INTERACTIVE, "package.unfreeze"),
+                )
+            } catch (failure: Throwable) {
+                events += "interactive-terminal"
+                terminal.complete(failure)
+                throw failure
+            }
+        }
+        runCurrent()
+        assertEquals(1, fixture.main.submissionCount)
+
+        interactive.cancel(CancellationException("user cancelled"))
+        runCurrent()
+
+        assertFalse(
+            "interactive cancellation must not publish before its callback drains",
+            terminal.isCompleted,
+        )
+        val busy = captureFailure<ShellLaneBusy> {
+            fixture.router.execute(command(PrivilegeExecutionLane.INTERACTIVE, "package.freeze"))
+        }
+        assertEquals(PrivilegeExecutionLane.INTERACTIVE, busy.owner)
+
+        val background = async {
+            fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.backup"))
+        }
+        runCurrent()
+        assertEquals(
+            "fallback must not submit while the cancelled interactive callback can still run",
+            1,
+            fixture.main.submissionCount,
+        )
+
+        interactiveCompletion.complete(shellSuccess())
+        runCurrent()
+
+        assertTrue(terminal.await() is ShellCommandCancelled)
+        assertEquals(
+            "the waiting fallback submits only after the interactive callback drains",
+            2,
+            fixture.main.submissionCount,
+        )
+        backgroundCompletion.complete(shellSuccess())
+        background.await()
+        interactive.join()
+
+        assertEquals(
+            listOf(
+                "interactive-submitted",
+                "interactive-drained",
+                "interactive-terminal",
+                "background-submitted",
+                "background-drained",
+            ),
+            events,
+        )
+    }
+
+    @Test
     fun `cancelled degraded command drains active callback before releasing MainShell`() = runTest {
         val callback = CompletableDeferred<ShellResult>()
         val events = mutableListOf<String>()
         val fixture = fixture(
-            main = FakeShellRepository {
+            main = FakeMainShellJobFactory {
                 events += "submitted"
                 callback.await().also { events += "callback-drained" }
             },
@@ -265,7 +339,7 @@ class RootCommandRouterTest {
     fun `cancelled degraded command before MainShell submission submits nothing`() = runTest {
         val reachedSubmissionBoundary = CompletableDeferred<Unit>()
         val allowSubmission = CompletableDeferred<Unit>()
-        val main = FakeShellRepository(
+        val main = FakeMainShellJobFactory(
             beforePendingJob = {
                 reachedSubmissionBoundary.complete(Unit)
                 allowSubmission.await()
@@ -310,7 +384,7 @@ class RootCommandRouterTest {
         val callback = CompletableDeferred<ShellResult>()
         val events = mutableListOf<String>()
         val fixture = fixture(
-            main = FakeShellRepository {
+            main = FakeMainShellJobFactory {
                 events += "submitted"
                 callback.await().also { events += "callback-drained" }
             },
@@ -360,7 +434,7 @@ class RootCommandRouterTest {
     fun `timed out degraded command before MainShell submission submits nothing`() = runTest {
         val reachedSubmissionBoundary = CompletableDeferred<Unit>()
         val allowSubmission = CompletableDeferred<Unit>()
-        val main = FakeShellRepository(
+        val main = FakeMainShellJobFactory(
             beforePendingJob = {
                 reachedSubmissionBoundary.complete(Unit)
                 allowSubmission.await()
@@ -408,7 +482,7 @@ class RootCommandRouterTest {
     fun `foreign timeout during degraded fallback remains cancellation after drain`() = runTest {
         val callback = CompletableDeferred<ShellResult>()
         val fixture = fixture(
-            main = FakeShellRepository { callback.await() },
+            main = FakeMainShellJobFactory { callback.await() },
             archiveFactory = unavailableFactory("archive unavailable"),
         )
         val terminal = CompletableDeferred<Throwable>()
@@ -450,11 +524,14 @@ class RootCommandRouterTest {
         val acquisitionStarted = CompletableDeferred<Unit>()
         val failAcquisition = CompletableDeferred<Unit>()
         val acquisitionCause = IllegalStateException("MainShell acquisition failed")
-        val main = FakeShellRepository(
+        var acquisitionAttempt = 0
+        val main = FakeMainShellJobFactory(
             beforePendingJob = {
-                acquisitionStarted.complete(Unit)
-                failAcquisition.await()
-                throw acquisitionCause
+                if (acquisitionAttempt++ == 0) {
+                    acquisitionStarted.complete(Unit)
+                    failAcquisition.await()
+                    throw acquisitionCause
+                }
             },
         ) { shellSuccess() }
         val fixture = fixture(
@@ -495,10 +572,13 @@ class RootCommandRouterTest {
     fun `local timeout during MainShell acquisition releases lease without hanging`() = runTest {
         val acquisitionStarted = CompletableDeferred<Unit>()
         val acquisitionNeverCompletes = CompletableDeferred<Unit>()
-        val main = FakeShellRepository(
+        var acquisitionAttempt = 0
+        val main = FakeMainShellJobFactory(
             beforePendingJob = {
-                acquisitionStarted.complete(Unit)
-                acquisitionNeverCompletes.await()
+                if (acquisitionAttempt++ == 0) {
+                    acquisitionStarted.complete(Unit)
+                    acquisitionNeverCompletes.await()
+                }
             },
         ) { shellSuccess() }
         val fixture = fixture(
@@ -542,10 +622,13 @@ class RootCommandRouterTest {
         runTest {
             val acquisitionStarted = CompletableDeferred<Unit>()
             val acquisitionNeverCompletes = CompletableDeferred<Unit>()
-            val main = FakeShellRepository(
+            var acquisitionAttempt = 0
+            val main = FakeMainShellJobFactory(
                 beforePendingJob = {
-                    acquisitionStarted.complete(Unit)
-                    acquisitionNeverCompletes.await()
+                    if (acquisitionAttempt++ == 0) {
+                        acquisitionStarted.complete(Unit)
+                        acquisitionNeverCompletes.await()
+                    }
                 },
             ) { shellSuccess() }
             val fixture = fixture(
@@ -599,7 +682,7 @@ class RootCommandRouterTest {
         val sweepCompletion = CompletableDeferred<ShellResult>()
         val completions = ArrayDeque(listOf(archiveCompletion, sweepCompletion))
         val fixture = fixture(
-            main = FakeShellRepository { completions.removeFirst().await() },
+            main = FakeMainShellJobFactory { completions.removeFirst().await() },
             archiveFactory = unavailableFactory("archive unavailable"),
             sweepFactory = unavailableFactory("sweep unavailable"),
         )
@@ -633,7 +716,7 @@ class RootCommandRouterTest {
     fun `lane status never includes raw command or output`() = runTest {
         val callback = CompletableDeferred<ShellResult>()
         val fixture = fixture(
-            main = FakeShellRepository { callback.await() },
+            main = FakeMainShellJobFactory { callback.await() },
             archiveFactory = unavailableFactory("archive unavailable without command data"),
         )
         val rawCommand = "tar /private/archive --passphrase=hunter2"
@@ -673,7 +756,7 @@ class RootCommandRouterTest {
     ) {
         val callback = CompletableDeferred<ShellResult>()
         val fixture = fixture(
-            main = FakeShellRepository { callback.await() },
+            main = FakeMainShellJobFactory { callback.await() },
             archiveFactory = if (lane == PrivilegeExecutionLane.ARCHIVE) {
                 unavailableFactory("archive unavailable")
             } else {
@@ -707,7 +790,7 @@ class RootCommandRouterTest {
     }
 
     private fun TestScope.fixture(
-        main: FakeShellRepository = FakeShellRepository { shellSuccess() },
+        main: FakeMainShellJobFactory = FakeMainShellJobFactory { shellSuccess() },
         archiveFactory: RecordingSessionFactory = RecordingSessionFactory {
             FakeRootShellSession { success() }
         },
@@ -718,7 +801,7 @@ class RootCommandRouterTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val statuses = DefaultRootLaneStatusSource()
         main.attach(this)
-        val mainExecutor = MainShellCommandExecutor(main, main)
+        val mainExecutor = MainShellCommandExecutor(main)
         val fallback = RootFallbackCoordinator(statuses)
         val router = RootCommandRouter(
             main = mainExecutor,
@@ -775,7 +858,7 @@ class RootCommandRouterTest {
     private data class Fixture(
         val router: RootCommandRouter,
         val statuses: DefaultRootLaneStatusSource,
-        val main: FakeShellRepository,
+        val main: FakeMainShellJobFactory,
         val archiveFactory: RecordingSessionFactory,
         val sweepFactory: RecordingSessionFactory,
     )
@@ -811,10 +894,10 @@ class RootCommandRouterTest {
         }
     }
 
-    private class FakeShellRepository(
+    private class FakeMainShellJobFactory(
         private val beforePendingJob: suspend (String) -> Unit = {},
         private val executeBlock: suspend (String) -> ShellResult,
-    ) : ShellRepository, MainShellJobFactory {
+    ) : MainShellJobFactory {
         private lateinit var callbackScope: CoroutineScope
         val commands = mutableListOf<String>()
         val submissionCount: Int get() = commands.size
@@ -835,30 +918,6 @@ class RootCommandRouterTest {
                     }
                 }
             }
-        }
-
-        override suspend fun isRootGranted(): Boolean = true
-
-        override suspend fun exec(vararg commands: String): ShellResult {
-            require(commands.size == 1)
-            return commands.single().let { command ->
-                this.commands += command
-                executeBlock(command)
-            }
-        }
-
-        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-        override suspend fun runCommand(command: String): Result<List<String>> =
-            exec(command).toLegacyResult()
-
-        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-        override suspend fun runCommands(vararg commands: String): Result<List<String>> =
-            exec(*commands).toLegacyResult()
-
-        private fun ShellResult.toLegacyResult(): Result<List<String>> = if (isSuccess) {
-            Result.success(stdout)
-        } else {
-            Result.failure(IOException("synthetic shell failure $code"))
         }
     }
 

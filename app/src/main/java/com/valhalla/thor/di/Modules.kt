@@ -6,8 +6,6 @@ package com.valhalla.thor.di
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.room.Room
-import com.valhalla.superuser.ktx.RealShellRepository
-import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
@@ -94,11 +92,6 @@ class AppModule {
     @Single
     fun privilegeSweepDao(appDatabase: AppDatabase): PrivilegeSweepDao =
         appDatabase.privilegeSweepDao()
-
-    // RealShellRepository comes from the Odin library (com.valhalla.superuser.ktx), outside the
-    // scan scope — the component scan only sees com.valhalla.thor.
-    @Single
-    fun shellRepository(): ShellRepository = RealShellRepository()
 
     @Single
     @Named("archive")
