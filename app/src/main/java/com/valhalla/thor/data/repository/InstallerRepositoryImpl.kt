@@ -64,6 +64,12 @@ internal fun rootInstallState(result: Result<Unit>): InstallState = result.fold(
     },
 )
 
+/** Keep an authenticated archive restore on the exact APK set that was verified. */
+internal fun resolveStagedInstallSet(
+    staged: StagedPackage,
+    fallback: (File, String?) -> List<String>?,
+): List<String>? = staged.installSet ?: fallback(staged.file, staged.displayName)
+
 @Single(binds = [InstallerRepository::class])
 class InstallerRepositoryImpl(
     private val context: Context,
@@ -527,7 +533,7 @@ class InstallerRepositoryImpl(
         return try {
             tempDir.mkdirs()
             val bundleFile = staged.file
-            val installSet = resolveInstallSetFromFile(bundleFile, staged.displayName)
+            val installSet = resolveStagedInstallSet(staged, ::resolveInstallSetFromFile)
             if (installSet == null) {
                 // Monolithic APK: copy the staged file as-is (named base.apk). A copy, not a
                 // rename: the staged file has to survive for a retry, and on the Shizuku/Dhizuku
@@ -967,7 +973,7 @@ class InstallerRepositoryImpl(
                 try {
                     // Genuine bundle: write each resolved split into the session, read via
                     // ZipFile so STORED-with-data-descriptor entries stream correctly.
-                    val installSet = resolveInstallSetFromFile(bundleFile, staged.displayName)
+                    val installSet = resolveStagedInstallSet(staged, ::resolveInstallSetFromFile)
                     if (installSet != null) {
                         val wanted =
                             installSet.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }
