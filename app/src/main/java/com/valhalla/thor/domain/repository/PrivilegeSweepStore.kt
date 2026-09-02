@@ -23,6 +23,7 @@ data class NewPrivilegeSweepSnapshot(
     val source: PrivilegeSweepSource,
     val createdAtEpochMs: Long,
     val targets: List<String>,
+    val sourceAssociations: Set<String> = setOf(source.name),
 ) {
     init {
         require(targets == normalizeSweepTargets(targets)) {
@@ -30,6 +31,9 @@ data class NewPrivilegeSweepSnapshot(
         }
         require((operation == PrivilegeSweepOperation.FREEZE) == (freezerMode != null)) {
             "Only FREEZE requires a resolved freezer mode"
+        }
+        require(source.name in sourceAssociations) {
+            "Sweep source associations must preserve the ordinary source token"
         }
     }
 }
@@ -50,6 +54,7 @@ data class StoredPrivilegeSweep(
     val unresolved: Int,
     val terminalAtEpochMs: Long?,
     val retainUntilEpochMs: Long?,
+    val sourceAssociations: Set<String> = setOf(source.name),
 )
 
 sealed interface SweepCreateResult {

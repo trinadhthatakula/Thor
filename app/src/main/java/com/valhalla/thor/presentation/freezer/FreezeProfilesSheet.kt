@@ -54,7 +54,6 @@ import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
-import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.killableMembers
 
@@ -71,6 +70,15 @@ import com.valhalla.thor.domain.model.killableMembers
  * names one. [onKill] does not go through the runner at all; it hands the resolved app list to the
  * host, which routes it into the same confirm-and-log flow every other force-stop uses.
  */
+internal fun profileRequestIsRunning(
+    profileId: Long,
+    statuses: List<PrivilegeSweepStatus>,
+): Boolean = statuses.any { status ->
+    profileId in status.profileIds &&
+        (status.phase == PrivilegeSweepPhase.QUEUED ||
+            status.phase == PrivilegeSweepPhase.RUNNING)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FreezeProfilesSheet(
@@ -155,16 +163,7 @@ fun FreezeProfilesSheet(
                     FreezeProfileRow(
                         profile = profile,
                         allApps = allApps,
-                        // Durable status records retain their source rather than the deleted
-                        // process-local BulkScope. A profile queue therefore remains visibly busy
-                        // across recreation without keeping a Deferred in this screen.
-                        isRunning = runningRequests.any {
-                            it.source == PrivilegeSweepSource.PROFILE &&
-                                it.phase in setOf(
-                                    PrivilegeSweepPhase.QUEUED,
-                                    PrivilegeSweepPhase.RUNNING,
-                                )
-                        },
+                        isRunning = profileRequestIsRunning(profile.id, runningRequests),
                         hasPrivilege = hasPrivilege,
                         onRun = { op, mode -> onRun(profile.id, op, mode) },
                         onKill = onKill,

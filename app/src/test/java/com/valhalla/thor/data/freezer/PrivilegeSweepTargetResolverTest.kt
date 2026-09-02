@@ -52,6 +52,8 @@ class PrivilegeSweepTargetResolverTest {
         )
 
         assertEquals(listOf("first.package", "second.package"), spec.packageNames)
+        assertEquals(7L, spec.profileId)
+        assertEquals(setOf("PROFILE", "PROFILE:7"), spec.sourceAssociations)
     }
 
     @Test
@@ -109,7 +111,11 @@ class PrivilegeSweepTargetResolverTest {
             PrivilegeSweepSource.FREEZER,
         )
         val explicit = resolver.resolve(
-            BulkRequest(BulkOp.FREEZE, mode = FreezerMode.FREEZE),
+            BulkRequest(
+                BulkOp.FREEZE,
+                scope = BulkScope.Profile(7L),
+                mode = FreezerMode.FREEZE,
+            ),
             PrivilegeSweepSource.PROFILE,
         )
 

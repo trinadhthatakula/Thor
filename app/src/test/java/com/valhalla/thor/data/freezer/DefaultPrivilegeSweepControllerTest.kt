@@ -218,6 +218,84 @@ class DefaultPrivilegeSweepControllerTest {
     }
 
     @Test
+    fun `profile identity reconstructs from persisted source associations`() = runTest {
+        val fixture = Fixture()
+        val accepted = assertType<PrivilegeSweepLaunchResult.Accepted>(
+            fixture.controller.launch(
+                spec(
+                    operation = PrivilegeSweepOperation.FREEZE,
+                    source = PrivilegeSweepSource.PROFILE,
+                    profileId = 7L,
+                )
+            )
+        )
+        fixture.work.setState(accepted.workId, SweepWorkState.RUNNING)
+
+        val reconstructed = fixture.newController()
+            .observeLatest(PrivilegeSweepSource.PROFILE)
+            .first { it != null }
+
+        assertEquals(setOf(7L), reconstructed?.profileIds)
+        assertTrue(
+            fixture.store.rows.getValue(accepted.requestId)
+                .sourceAssociations.containsAll(setOf("PROFILE", "PROFILE:7"))
+        )
+    }
+
+    @Test
+    fun `coalesced identical profiles retain both launched identities while different targets stay separate`() =
+        runTest {
+            val fixture = Fixture()
+            val first = assertType<PrivilegeSweepLaunchResult.Accepted>(
+                fixture.controller.launch(
+                    spec(
+                        operation = PrivilegeSweepOperation.FREEZE,
+                        source = PrivilegeSweepSource.PROFILE,
+                        profileId = 7L,
+                    )
+                )
+            )
+            val sameTargets = assertType<PrivilegeSweepLaunchResult.Accepted>(
+                fixture.controller.launch(
+                    spec(
+                        operation = PrivilegeSweepOperation.FREEZE,
+                        source = PrivilegeSweepSource.PROFILE,
+                        profileId = 8L,
+                    )
+                )
+            )
+            val differentTargets = assertType<PrivilegeSweepLaunchResult.Accepted>(
+                fixture.controller.launch(
+                    spec(
+                        operation = PrivilegeSweepOperation.FREEZE,
+                        packageNames = listOf("com.example.gamma"),
+                        source = PrivilegeSweepSource.PROFILE,
+                        profileId = 9L,
+                    )
+                )
+            )
+
+            assertTrue(sameTargets.coalesced)
+            assertEquals(first.requestId, sameTargets.requestId)
+            assertFalse(differentTargets.coalesced)
+            assertFalse(first.requestId == differentTargets.requestId)
+            assertEquals(
+                setOf(7L, 8L),
+                fixture.store.rows.getValue(first.requestId)
+                    .sourceAssociations
+                    .filter { it.startsWith("PROFILE:") }
+                    .mapTo(linkedSetOf()) { it.substringAfter(':').toLong() },
+            )
+            assertEquals(
+                setOf(9L),
+                fixture.store.rows.getValue(differentTargets.requestId)
+                    .sourceAssociations
+                    .filter { it.startsWith("PROFILE:") }
+                    .mapTo(linkedSetOf()) { it.substringAfter(':').toLong() },
+            )
+        }
+
+    @Test
     fun `latest source observation follows the newest coalesced association`() = runTest {
         val fixture = Fixture()
         val olderActive = assertType<PrivilegeSweepLaunchResult.Accepted>(
@@ -783,12 +861,14 @@ class DefaultPrivilegeSweepControllerTest {
         operation: PrivilegeSweepOperation = PrivilegeSweepOperation.CLEAR_CACHE,
         packageNames: List<String> = listOf("com.example.alpha", "com.example.beta"),
         source: PrivilegeSweepSource = PrivilegeSweepSource.MAIN,
+        profileId: Long? = null,
     ) = PrivilegeSweepSpec(
         operation = operation,
         packageNames = packageNames,
         freezerMode = if (operation == PrivilegeSweepOperation.FREEZE) FreezerMode.FREEZE else null,
         userId = 0,
         source = source,
+        profileId = profileId,
     )
 
     private fun stored(
@@ -822,7 +902,7 @@ class DefaultPrivilegeSweepControllerTest {
     )
 
     private class Fixture(
-        notifications: FakeNotificationCapability = FakeNotificationCapability(),
+        private val notifications: FakeNotificationCapability = FakeNotificationCapability(),
         privileged: Boolean = true,
     ) {
         val events = mutableListOf<String>()
@@ -849,7 +929,9 @@ class DefaultPrivilegeSweepControllerTest {
             override val statuses = rootStatuses
         }
         val reconciler = PrivilegeSweepReconciler(store, work, clock, gate)
-        val controller = DefaultPrivilegeSweepController(
+        val controller = newController()
+
+        fun newController() = DefaultPrivilegeSweepController(
             store = store,
             privilegeState = privilege,
             notifications = notifications,
@@ -960,7 +1042,7 @@ class DefaultPrivilegeSweepControllerTest {
     ) : PrivilegeSweepStore {
         val rows = linkedMapOf<UUID, StoredPrivilegeSweep>()
         private val sources =
-            mutableMapOf<UUID, MutableMap<PrivilegeSweepSource, Long>>()
+            mutableMapOf<UUID, MutableMap<String, Long>>()
         val events = mutableListOf<String>()
         var finishCalls = 0
         private val observed = mutableMapOf<UUID, MutableStateFlow<StoredPrivilegeSweep?>>()
@@ -980,10 +1062,16 @@ class DefaultPrivilegeSweepControllerTest {
                         it.targets == snapshot.targets
             }
             if (equivalent != null) {
-                sources.getOrPut(equivalent.requestId, ::mutableMapOf)[snapshot.source] =
-                    snapshot.createdAtEpochMs
+                snapshot.sourceAssociations.forEach { association ->
+                    sources.getOrPut(equivalent.requestId, ::mutableMapOf)[association] =
+                        snapshot.createdAtEpochMs
+                }
+                val updated = equivalent.copy(
+                    sourceAssociations = equivalent.sourceAssociations + snapshot.sourceAssociations
+                )
+                rows[equivalent.requestId] = updated
                 publish(equivalent.requestId)
-                return SweepCreateResult.Equivalent(equivalent)
+                return SweepCreateResult.Equivalent(updated)
             }
             val stored = StoredPrivilegeSweep(
                 requestId = snapshot.requestId,
@@ -1001,10 +1089,13 @@ class DefaultPrivilegeSweepControllerTest {
                 unresolved = 0,
                 terminalAtEpochMs = null,
                 retainUntilEpochMs = null,
+                sourceAssociations = snapshot.sourceAssociations,
             )
             rows[stored.requestId] = stored
-            sources.getOrPut(stored.requestId, ::mutableMapOf)[snapshot.source] =
-                snapshot.createdAtEpochMs
+            snapshot.sourceAssociations.forEach { association ->
+                sources.getOrPut(stored.requestId, ::mutableMapOf)[association] =
+                    snapshot.createdAtEpochMs
+            }
             sharedEvents += "persist"
             publish(stored.requestId)
             return SweepCreateResult.Created(stored)
@@ -1089,8 +1180,10 @@ class DefaultPrivilegeSweepControllerTest {
 
         fun seed(snapshot: StoredPrivilegeSweep) {
             rows[snapshot.requestId] = snapshot
-            sources.getOrPut(snapshot.requestId, ::mutableMapOf)[snapshot.source] =
-                snapshot.createdAtEpochMs
+            snapshot.sourceAssociations.forEach { association ->
+                sources.getOrPut(snapshot.requestId, ::mutableMapOf)[association] =
+                    snapshot.createdAtEpochMs
+            }
             publish(snapshot.requestId)
         }
 
@@ -1100,7 +1193,7 @@ class DefaultPrivilegeSweepControllerTest {
             retained.value = snapshots
             retainedBySource.forEach { (source, flow) ->
                 flow.value = rows.values.mapNotNull { snapshot ->
-                    sources[snapshot.requestId]?.get(source)?.let { associatedAt ->
+                    sources[snapshot.requestId]?.get(source.name)?.let { associatedAt ->
                         associatedAt to snapshot
                     }
                 }.sortedWith(

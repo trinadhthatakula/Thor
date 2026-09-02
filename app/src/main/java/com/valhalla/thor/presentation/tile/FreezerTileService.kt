@@ -9,8 +9,8 @@ import android.content.res.Resources
 import android.os.Build
 import android.service.quicksettings.TileService
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
 import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
-import com.valhalla.thor.data.freezer.launchSurfaceSweep
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
@@ -47,10 +47,10 @@ class FreezerTileService : TileService() {
 
     private val sweepResolver: PrivilegeSweepTargetResolver by inject()
     private val sweepController: PrivilegeSweepController by inject()
+    private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
     private val privilegeManager: PrivilegeManager by inject()
 
     private var scope: CoroutineScope? = null
-    private val actionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val freezableCount = MutableStateFlow<Int?>(null)
     private var latestStatus: PrivilegeSweepStatus? = null
 
@@ -159,8 +159,6 @@ class FreezerTileService : TileService() {
     override fun onDestroy() {
         scope?.cancel()
         scope = null
-        // Do not cancel actionScope here: it owns only the enqueue handoff, which must survive
-        // SystemUI destroying this TileService immediately after the tap.
         super.onDestroy()
     }
 
@@ -170,14 +168,10 @@ class FreezerTileService : TileService() {
     }
 
     override fun onClick() {
-        actionScope.launch {
-            launchSurfaceSweep(
-                resolver = sweepResolver,
-                controller = sweepController,
-                request = BulkRequest(BulkOp.FREEZE),
-                source = PrivilegeSweepSource.QS_TILE,
-            )
-        }
+        sweepLauncher.launch(
+            request = BulkRequest(BulkOp.FREEZE),
+            source = PrivilegeSweepSource.QS_TILE,
+        )
     }
 
     private suspend fun refreshFreezableCount() {

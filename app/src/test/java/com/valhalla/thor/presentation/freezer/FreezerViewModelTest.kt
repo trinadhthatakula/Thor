@@ -737,6 +737,7 @@ class FreezerViewModelTest {
             busy = 1,
             unresolved = 0,
             rootLaneDegraded = false,
+            profileIds = setOf(1L),
         )
 
         sweepController.emit(status)

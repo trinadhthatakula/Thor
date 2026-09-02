@@ -20,6 +20,11 @@ data class SweepRequestWithTargets(
         entityColumn = "request_id",
     )
     val targets: List<SweepTargetEntity>,
+    @Relation(
+        parentColumn = "request_id",
+        entityColumn = "request_id",
+    )
+    val sources: List<SweepRequestSourceEntity>,
 )
 
 data class SweepRequestCreation(
@@ -37,7 +42,7 @@ interface PrivilegeSweepDao {
     suspend fun insertTargets(targets: List<SweepTargetEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertSource(source: SweepRequestSourceEntity)
+    suspend fun upsertSources(sources: List<SweepRequestSourceEntity>)
 
     @Transaction
     @Query(
@@ -61,7 +66,7 @@ interface PrivilegeSweepDao {
     suspend fun createOrFindEquivalent(
         request: SweepRequestEntity,
         targets: List<SweepTargetEntity>,
-        source: SweepRequestSourceEntity,
+        sources: List<SweepRequestSourceEntity>,
     ): SweepRequestCreation {
         val packageNames =
             targets.sortedBy(SweepTargetEntity::ordinal).map(SweepTargetEntity::packageName)
@@ -75,15 +80,22 @@ interface PrivilegeSweepDao {
                 .map(SweepTargetEntity::packageName) == packageNames
         }
         if (equivalent != null) {
-            upsertSource(source.copy(requestId = equivalent.request.requestId))
-            return SweepRequestCreation(equivalent, created = false)
+            upsertSources(sources.map { it.copy(requestId = equivalent.request.requestId) })
+            return SweepRequestCreation(
+                equivalent.copy(
+                    sources = (equivalent.sources + sources.map {
+                        it.copy(requestId = equivalent.request.requestId)
+                    }).distinctBy(SweepRequestSourceEntity::sourceSurface)
+                ),
+                created = false,
+            )
         }
 
         insertRequest(request)
         insertTargets(targets)
-        upsertSource(source)
+        upsertSources(sources)
         return SweepRequestCreation(
-            snapshot = SweepRequestWithTargets(request, targets),
+            snapshot = SweepRequestWithTargets(request, targets, sources),
             created = true,
         )
     }

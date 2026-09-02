@@ -144,6 +144,33 @@ class PrivilegeSweepTest {
     }
 
     @Test
+    fun `profile spec preserves ordinary and qualified source associations`() {
+        val spec = PrivilegeSweepSpec(
+            operation = PrivilegeSweepOperation.FREEZE,
+            packageNames = listOf("a.pkg"),
+            freezerMode = FreezerMode.FREEZE,
+            userId = 0,
+            source = PrivilegeSweepSource.PROFILE,
+            profileId = 7L,
+        )
+
+        assertEquals(setOf("PROFILE", "PROFILE:7"), spec.sourceAssociations)
+        assertThrows(IllegalArgumentException::class.java) {
+            spec.copy(profileId = null)
+        }
+    }
+
+    @Test
+    fun `profile association parser ignores ordinary and malformed source tokens`() {
+        assertEquals(
+            setOf(7L, 9L),
+            profileIdsFromSourceAssociations(
+                listOf("PROFILE", "PROFILE:7", "MAIN", "PROFILE:bad", "PROFILE:8:extra", "PROFILE:9")
+            )
+        )
+    }
+
+    @Test
     fun `a status reports every count the presentation layer renders`() {
         val status = PrivilegeSweepStatus(
             requestId = UUID.randomUUID(),

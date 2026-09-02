@@ -12,8 +12,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.core.content.pm.ShortcutManagerCompat
 import com.valhalla.thor.R
-import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
-import com.valhalla.thor.data.freezer.launchSurfaceSweep
+import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.BulkOp
@@ -21,7 +20,6 @@ import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
-import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.AppLocale
@@ -59,8 +57,7 @@ class FreezerLaunchActivity : Activity() {
     private val systemRepository: SystemRepository by inject()
     private val manageAppUseCase: ManageAppUseCase by inject()
     private val freezerShortcutManager: FreezerShortcutManager by inject()
-    private val sweepResolver: PrivilegeSweepTargetResolver by inject()
-    private val sweepController: PrivilegeSweepController by inject()
+    private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /**
@@ -113,14 +110,17 @@ class FreezerLaunchActivity : Activity() {
     private fun guardThenBulk(disable: Boolean) {
         scope.launch {
             val result = withTimeoutOrNull(REPORT_WINDOW_MS) {
-                launchSurfaceSweep(
-                    resolver = sweepResolver,
-                    controller = sweepController,
+                sweepLauncher.launch(
                     request = BulkRequest(if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE),
                     source = PrivilegeSweepSource.LAUNCHER,
-                )
+                ).await()
             }
-            toast(getString(result?.let(::shortcutBulkMessageRes) ?: R.string.bulk_run_failed))
+            toast(
+                getString(
+                    result?.let(::shortcutBulkMessageRes)
+                        ?: if (disable) R.string.log_freezing_batch else R.string.log_unfreezing_batch
+                )
+            )
             finish()
         }
     }
@@ -187,8 +187,9 @@ class FreezerLaunchActivity : Activity() {
     private companion object {
         /**
          * How long the trampoline stays alive waiting for a bulk run's outcome. Short because
-         * the window is invisible yet touchable; long enough to cover an ordinary watchlist,
-         * which the runner fans out five wide.
+         * the window is invisible yet touchable; long enough for the Room-to-WorkManager enqueue
+         * handoff in ordinary conditions. The process-owned launcher continues that handoff if this
+         * report window expires.
          */
         const val REPORT_WINDOW_MS = 2_000L
     }

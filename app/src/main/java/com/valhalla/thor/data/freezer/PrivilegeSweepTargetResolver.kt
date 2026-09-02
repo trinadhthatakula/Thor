@@ -22,7 +22,13 @@ import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 /** Android-backed inputs whose snapshots must be taken before a durable sweep is enqueued. */
@@ -77,6 +83,7 @@ class PrivilegeSweepTargetResolver(
             packageNames = targets,
             source = source,
             freezerMode = request.mode,
+            profileId = (request.scope as? BulkScope.Profile)?.id,
         )
     }
 
@@ -85,6 +92,7 @@ class PrivilegeSweepTargetResolver(
         packageNames: Collection<String>,
         source: PrivilegeSweepSource,
         freezerMode: FreezerMode? = null,
+        profileId: Long? = null,
     ): PrivilegeSweepSpec {
         val resolvedMode = if (operation == PrivilegeSweepOperation.FREEZE) {
             freezerMode ?: preferenceRepository.userPreferences.first().freezerMode
@@ -97,6 +105,7 @@ class PrivilegeSweepTargetResolver(
             freezerMode = resolvedMode,
             userId = runtime.userId,
             source = source,
+            profileId = profileId,
         )
     }
 }
@@ -104,6 +113,23 @@ class PrivilegeSweepTargetResolver(
 private fun BulkOp.toSweepOperation(): PrivilegeSweepOperation = when (this) {
     BulkOp.FREEZE -> PrivilegeSweepOperation.FREEZE
     BulkOp.UNFREEZE -> PrivilegeSweepOperation.UNFREEZE
+}
+
+/** Process-owned enqueue scope so short-lived tile/activity surfaces never own the handoff. */
+@Single
+class PrivilegeSweepSurfaceLauncher(
+    private val resolver: PrivilegeSweepTargetResolver,
+    private val controller: PrivilegeSweepController,
+    @Named("io") ioDispatcher: CoroutineDispatcher,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
+
+    fun launch(
+        request: BulkRequest,
+        source: PrivilegeSweepSource,
+    ): Deferred<PrivilegeSweepLaunchResult> = scope.async {
+        launchSurfaceSweep(resolver, controller, request, source)
+    }
 }
 
 /** Reconnects a short-lived surface to accepted work instead of enqueueing a duplicate request. */

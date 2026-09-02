@@ -58,11 +58,13 @@ class RoomPrivilegeSweepStore(
         val result = dao.createOrFindEquivalent(
             request = request,
             targets = targets,
-            source = SweepRequestSourceEntity(
-                requestId = requestId,
-                sourceSurface = snapshot.source.name,
-                associatedAtEpochMs = snapshot.createdAtEpochMs,
-            ),
+            sources = snapshot.sourceAssociations.map { sourceAssociation ->
+                SweepRequestSourceEntity(
+                    requestId = requestId,
+                    sourceSurface = sourceAssociation,
+                    associatedAtEpochMs = snapshot.createdAtEpochMs,
+                )
+            },
         )
         val stored = result.snapshot.toDomain()
         return if (result.created) {
@@ -137,6 +139,7 @@ class RoomPrivilegeSweepStore(
             unresolved = request.unresolved ?: 0,
             terminalAtEpochMs = request.terminalAtEpochMs,
             retainUntilEpochMs = request.retainUntilEpochMs,
+            sourceAssociations = sources.mapTo(linkedSetOf(), SweepRequestSourceEntity::sourceSurface),
         )
     }
 }

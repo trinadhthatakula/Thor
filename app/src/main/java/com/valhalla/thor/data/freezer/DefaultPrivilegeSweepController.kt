@@ -25,6 +25,7 @@ import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.model.SWEEP_REQUEST_ID_KEY
 import com.valhalla.thor.domain.model.THOR_SWEEP_CHAIN
 import com.valhalla.thor.domain.model.normalizeSweepTargets
+import com.valhalla.thor.domain.model.profileIdsFromSourceAssociations
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
@@ -111,6 +112,7 @@ class DefaultPrivilegeSweepController internal constructor(
                         source = spec.source,
                         createdAtEpochMs = clock.nowMs(),
                         targets = targets,
+                        sourceAssociations = spec.sourceAssociations,
                     )
                 )) {
                     is SweepCreateResult.Equivalent -> PrivilegeSweepLaunchResult.Accepted(
@@ -226,6 +228,7 @@ class DefaultPrivilegeSweepController internal constructor(
                 unresolved
             },
             rootLaneDegraded = rootLaneDegraded,
+            profileIds = profileIdsFromSourceAssociations(sourceAssociations),
         )
     }
 
