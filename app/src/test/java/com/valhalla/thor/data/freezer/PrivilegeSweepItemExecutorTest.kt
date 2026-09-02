@@ -120,6 +120,34 @@ class PrivilegeSweepItemExecutorTest {
     }
 
     @Test
+    fun `cache clear replay is accepted and reports final attempt`() = runTest {
+        val repository = FakeSystemRepository()
+        var attempts = 0
+        repository.onCall = { call ->
+            if (call == "clearCache:$PACKAGE" && attempts++ == 0) {
+                throw IllegalStateException("first attempt interrupted")
+            }
+        }
+        val snapshot = stored(operation = PrivilegeSweepOperation.CLEAR_CACHE)
+        val executor = executor(repository)
+
+        val interruptedAttempt = executor.execute(snapshot, PACKAGE)
+        val replayedAttempt = executor.execute(snapshot, PACKAGE)
+
+        assertEquals(SweepAttemptOutcome.FAILED, interruptedAttempt)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, replayedAttempt)
+        assertEquals(
+            listOf("clearCache:$PACKAGE", "clearCache:$PACKAGE"),
+            repository.calls,
+        )
+        assertSweepExecution(
+            snapshot,
+            PrivilegeCommandClass("sweep.clear_cache"),
+            repository.executions.last().second,
+        )
+    }
+
+    @Test
     fun `already converged freeze and unfreeze succeed without mutation`() = runTest {
         val cases = listOf(
             stored(

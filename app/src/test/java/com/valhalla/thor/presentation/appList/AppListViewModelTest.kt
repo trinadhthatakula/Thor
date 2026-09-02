@@ -525,6 +525,26 @@ class AppListViewModelTest {
     }
 
     @Test
+    fun `cache clear and reinstall selections launch durable sweeps`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.ClearCache(listOf(userApp("cache"))))
+        runCurrent()
+        vm.performMultiAction(MultiAppAction.ReInstall(listOf(userApp("reinstall"))))
+        runCurrent()
+
+        assertEquals(
+            listOf(PrivilegeSweepOperation.CLEAR_CACHE, PrivilegeSweepOperation.REINSTALL),
+            controller.launched.map { it.operation },
+        )
+        assertEquals(listOf("cache"), controller.launched[0].packageNames)
+        assertEquals(listOf("reinstall"), controller.launched[1].packageNames)
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
     fun `launch rejection remains as explicit terminal progress instead of a transient toast`() = runTest {
         val controller = FakePrivilegeSweepController().apply {
             nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(

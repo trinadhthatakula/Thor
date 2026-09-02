@@ -6,7 +6,7 @@ package com.valhalla.thor.data.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
+import com.valhalla.thor.data.repository.installerPackageNameOf
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
@@ -46,7 +46,7 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
                 if (!prefs.autoReinstallEnabled) return@launch
 
                 // 2. Inspect Current Installer of Record
-                val currentInstaller = getInstallerOfRecord(context, packageName)
+                val currentInstaller = context.packageManager.installerPackageNameOf(packageName)
                 if (currentInstaller == GOOGLE_PLAY_STORE) {
                     Logger.d(TAG, "Package $packageName is already mapped to Google Play Store.")
                     return@launch
@@ -79,17 +79,4 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
         }
     }
 
-    private fun getInstallerOfRecord(context: Context, packageName: String): String? {
-        val pm = context.packageManager
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching {
-                pm.getInstallSourceInfo(packageName).installingPackageName
-            }.getOrNull()
-        } else {
-            @Suppress("DEPRECATION")
-            runCatching {
-                pm.getInstallerPackageName(packageName)
-            }.getOrNull()
-        }
-    }
 }

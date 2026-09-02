@@ -500,30 +500,22 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `a debuggable app that fails to reinstall is reported as debuggable, not as a raw error`() = runTest {
-        system.failWith("reinstallAppWithGoogle:com.debuggable", RuntimeException("INSTALL_FAILED"))
-        system.failWith("reinstallAppWithGoogle:com.normal", RuntimeException("INSTALL_FAILED"))
-        val vm = viewModel()
+    fun `reinstall selection launches one durable sweep`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
 
         vm.onMultiAppAction(
             MultiAppAction.ReInstall(
-                listOf(userApp("com.debuggable", isDebuggable = true), userApp("com.normal"))
+                listOf(userApp("com.z"), userApp("com.a"))
             )
         )
         advanceUntilIdle()
 
-        // Fix Store cannot work on a debuggable build, and "INSTALL_FAILED" tells the user nothing
-        // actionable. Same underlying failure, two different lines.
-        val logs = vm.uiState.value.loggerState.logs
-        assertTrue(
-            logs.contains(
-                UiText.StringResource(
-                    R.string.log_failed,
-                    UiText.StringResource(R.string.error_debuggable_app)
-                )
-            )
-        )
-        assertTrue(logs.contains(UiText.StringResource(R.string.log_failed, "INSTALL_FAILED")))
+        assertEquals(1, controller.launched.size)
+        assertEquals(PrivilegeSweepOperation.REINSTALL, controller.launched.single().operation)
+        assertEquals(listOf("com.a", "com.z"), controller.launched.single().packageNames)
+        assertEquals(PrivilegeSweepSource.MAIN, controller.launched.single().source)
+        assertTrue(system.calls.isEmpty())
     }
 
     // --- Bulk export -------------------------------------------------------------------------
@@ -961,12 +953,13 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `fix store reinstalls only what is still ticked`() = runTest {
+    fun `fix store sweeps only what is still ticked`() = runTest {
         appRepository.apps.value = listOf(
             userApp("com.keep", installerPackageName = null),
             userApp("com.fix", installerPackageName = null)
         )
-        val vm = viewModel()
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
 
         vm.onAppAction(AppClickAction.ReinstallAll)
         advanceUntilIdle()
@@ -974,7 +967,9 @@ class MainViewModelTest {
         vm.confirmFixStore()
         advanceUntilIdle()
 
-        assertEquals(listOf("reinstallAppWithGoogle:com.fix"), system.calls)
+        assertEquals(PrivilegeSweepOperation.REINSTALL, controller.launched.single().operation)
+        assertEquals(listOf("com.fix"), controller.launched.single().packageNames)
+        assertTrue(system.calls.isEmpty())
         assertNull(vm.uiState.value.fixStoreSelection)
     }
 

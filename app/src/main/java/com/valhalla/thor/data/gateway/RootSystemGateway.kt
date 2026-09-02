@@ -106,7 +106,9 @@ class RootSystemGateway internal constructor(
     private val context: Context,
     private val rootCommands: RootCommandExecutor,
     private val preferenceRepository: PreferenceRepository,
-    @Named("io") private val ioDispatcher: CoroutineDispatcher
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    private val reinstallPostconditionVerifier: ReinstallPostconditionVerifier =
+        ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
 ) : SystemGateway {
 
     private var rootService: IThorRootService? = null
@@ -1389,7 +1391,12 @@ class RootSystemGateway internal constructor(
                 // 3. Execute the reinstallation command
                 val command =
                     "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
-                runCommand(command, execution, REINSTALL)
+                val commandResult = runCommand(command, execution, REINSTALL)
+                if (commandResult.isFailure) {
+                    commandResult
+                } else {
+                    reinstallPostconditionVerifier.verify(packageName, currentUser)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {

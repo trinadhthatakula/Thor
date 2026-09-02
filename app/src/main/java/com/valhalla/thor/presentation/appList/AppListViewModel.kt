@@ -941,6 +941,16 @@ class AppListViewModel(
                     apps = action.appList,
                 )
 
+                is MultiAppAction.ClearCache -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.CLEAR_CACHE,
+                    apps = action.appList,
+                )
+
+                is MultiAppAction.ReInstall -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.REINSTALL,
+                    apps = action.appList,
+                )
+
                 else -> {
                     // Fallback or forward? If we forward, we need a callback. 
                     // For now let's just stay consistent with single app actions.

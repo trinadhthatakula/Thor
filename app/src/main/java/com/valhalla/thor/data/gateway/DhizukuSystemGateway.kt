@@ -36,14 +36,16 @@ import java.io.File
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 
 @Single
-class DhizukuSystemGateway(
+class DhizukuSystemGateway internal constructor(
     // Two uses: the system-app freeze's refusal message is read by the user, so it has to come out
     // of resources (ShizukuSystemGateway and RootSystemGateway take theirs the same way), and the
     // availability probe binds the Dhizuku client through it — see DhizukuHelper.isDhizukuAvailable.
     private val context: Context,
     private val reflector: DhizukuReflector,
     private val preferenceRepository: PreferenceRepository,
-    @Named("io") private val ioDispatcher: CoroutineDispatcher
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    private val reinstallPostconditionVerifier: ReinstallPostconditionVerifier =
+        ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
 ) : SystemGateway {
 
     override suspend fun isRootAvailable(
@@ -528,8 +530,13 @@ class DhizukuSystemGateway(
             val command =
                 "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
             val result = DhizukuHelper.execute(command)
-            if (result.first == 0) Result.success(Unit)
-            else Result.failure(Exception("Dhizuku: Reinstall failed: ${result.second}"))
+            if (result.first == 0) {
+                reinstallPostconditionVerifier.verify(packageName, currentUser)
+            } else {
+                Result.failure(Exception("Dhizuku: Reinstall failed: ${result.second}"))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Logger.e("DhizukuSystemGateway", "Reinstall with Google failed for $packageName", e)
             Result.failure(e)

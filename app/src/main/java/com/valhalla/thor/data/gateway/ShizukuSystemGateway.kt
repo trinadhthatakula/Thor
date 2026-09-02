@@ -48,13 +48,15 @@ import java.io.File
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 
 @Single
-class ShizukuSystemGateway(
+class ShizukuSystemGateway internal constructor(
     // Present for one reason: the system-app freeze's refusal message is read by the user, so it
     // has to come out of resources. RootSystemGateway takes its Context the same way.
     private val context: Context,
     private val reflector: ShizukuReflector,
     private val preferenceRepository: PreferenceRepository,
-    @Named("io") private val ioDispatcher: CoroutineDispatcher
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    private val reinstallPostconditionVerifier: ReinstallPostconditionVerifier =
+        ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
 ) : SystemGateway {
 
     override suspend fun isRootAvailable(
@@ -608,8 +610,13 @@ class ShizukuSystemGateway(
             val command =
                 "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
             val result = ShizukuHelper.execute(command)
-            if (result.first == 0) Result.success(Unit)
-            else Result.failure(Exception("Shizuku reinstall failed: ${result.second}"))
+            if (result.first == 0) {
+                reinstallPostconditionVerifier.verify(packageName, currentUser)
+            } else {
+                Result.failure(Exception("Shizuku reinstall failed: ${result.second}"))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Logger.e("ShizukuSystemGateway", "Reinstall with Google failed for $packageName", e)
             Result.failure(e)

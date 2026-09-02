@@ -911,23 +911,10 @@ class MainViewModel(
     fun onMultiAppAction(action: MultiAppAction) {
         viewModelScope.launch {
             when (action) {
-                is MultiAppAction.ReInstall -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_reinstalling_batch),
-                    action.appList
-                ) { appInfo ->
-                    val result = manageAppUseCase.reinstallAppWithGoogle(appInfo.packageName)
-                    if (result.isSuccess) {
-                        result
-                    } else {
-                        // appInfo.isDebuggable is already resolved on the domain model (from the
-                        // installed-app scan), so no PackageManager lookup is needed here.
-                        if (appInfo.isDebuggable) {
-                            Result.failure(UiTextException(UiText.StringResource(R.string.error_debuggable_app)))
-                        } else {
-                            result
-                        }
-                    }
-                }
+                is MultiAppAction.ReInstall -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.REINSTALL,
+                    apps = action.appList,
+                )
 
                 is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true, useSuspend = action.useSuspend)
 
@@ -952,17 +939,10 @@ class MainViewModel(
                     }
                 }
 
-                // Root-only, like every per-package clear. The freed byte counts are discarded here
-                // on purpose: this path reports through the batch logger, which speaks in
-                // per-app success/failure lines, and a running total interleaved with them would be
-                // the one number on screen that nothing else agrees with. The whole-device clear is
-                // where a total belongs.
-                is MultiAppAction.ClearCache -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_clearing_cache_batch),
-                    action.appList
-                ) {
-                    manageAppUseCase.clearCache(it.packageName).map { }
-                }
+                is MultiAppAction.ClearCache -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.CLEAR_CACHE,
+                    apps = action.appList,
+                )
 
                 is MultiAppAction.Uninstall -> {
                     // The uninstalls this batch could not write down. Collected and reported once at
@@ -1127,20 +1107,31 @@ class MainViewModel(
         } else {
             apps
         }
-        val operation = if (isFreeze) {
-            PrivilegeSweepOperation.FREEZE
-        } else {
-            PrivilegeSweepOperation.UNFREEZE
-        }
-        val spec = sweepResolver.resolveSelection(
-            operation = operation,
-            packageNames = targets.map(AppInfo::packageName),
-            source = PrivilegeSweepSource.MAIN,
+        launchSelectionSweep(
+            operation = if (isFreeze) {
+                PrivilegeSweepOperation.FREEZE
+            } else {
+                PrivilegeSweepOperation.UNFREEZE
+            },
+            apps = targets,
             freezerMode = if (isFreeze) {
                 if (useSuspend) FreezerMode.SUSPEND else FreezerMode.FREEZE
             } else {
                 null
             },
+        )
+    }
+
+    private suspend fun launchSelectionSweep(
+        operation: PrivilegeSweepOperation,
+        apps: List<AppInfo>,
+        freezerMode: FreezerMode? = null,
+    ) {
+        val spec = sweepResolver.resolveSelection(
+            operation = operation,
+            packageNames = apps.map(AppInfo::packageName),
+            source = PrivilegeSweepSource.MAIN,
+            freezerMode = freezerMode,
         )
         acknowledgedSweepRequestId = null
         _uiState.update { state ->
