@@ -216,19 +216,8 @@
     <string name="tile_grant_privilege_toast">امنح صلاحية Root / Shizuku / Dhizuku أولاً</string>
     <string name="tile_no_apps_toast">لا توجد تطبيقات في المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
-    <plurals name="tile_freeze_success">
-        <item quantity="zero">لم يتم تجميد أي تطبيق</item>
-        <item quantity="one">تم تجميد تطبيق واحد</item>
-        <item quantity="two">تم تجميد تطبيقين</item>
-        <item quantity="few">تم تجميد %1$d تطبيقات</item>
-        <item quantity="many">تم تجميد %1$d تطبيقًا</item>
-        <item quantity="other">تم تجميد %1$d تطبيق</item>
-    </plurals>
-    <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
-    <string name="tile_freeze_incomplete">تم تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
     <string name="tile_checking">جارٍ التحقق…</string>
     <string name="tile_freezing">جارٍ التجميد…</string>
-    <string name="channel_bulk_result_name">نتائج الإجراءات المجمّعة</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>
@@ -284,16 +273,6 @@
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
-    <plurals name="unfrozen_count_success">
-        <item quantity="zero">لم يتم إلغاء تجميد أي تطبيق</item>
-        <item quantity="one">تم إلغاء تجميد تطبيق واحد</item>
-        <item quantity="two">تم إلغاء تجميد تطبيقين</item>
-        <item quantity="few">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="many">تم إلغاء تجميد %1$d تطبيقًا</item>
-        <item quantity="other">تم إلغاء تجميد %1$d تطبيق</item>
-    </plurals>
-    <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
-    <string name="tile_unfreeze_incomplete">تم إلغاء تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
     <string name="error_format">خطأ: %1$s</string>
     <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
@@ -428,11 +407,9 @@
     <string name="log_scanning_apps">جارٍ فحص التطبيقات…</string>
     <string name="log_no_apps_to_fix">لم يتم العثور على تطبيقات تحتاج إلى إصلاح.</string>
     <string name="log_found_apps_to_fix">تم العثور على %1$d تطبيقات للإصلاح.</string>
-    <string name="log_reinstalling_batch">جارٍ إعادة تثبيت التطبيقات</string>
     <string name="log_freezing_batch">جارٍ تجميد التطبيقات</string>
     <string name="log_unfreezing_batch">جارٍ إلغاء تجميد التطبيقات</string>
     <string name="log_killing_batch">جارٍ إنهاء التطبيقات</string>
-    <string name="log_clearing_cache_batch">جارٍ مسح الذاكرة المؤقتة</string>
     <string name="log_uninstalling_batch">جارٍ إلغاء تثبيت التطبيقات</string>
     <string name="log_suspending_batch">جارٍ تعليق التطبيقات</string>
     <string name="log_unsuspending_batch">جارٍ إلغاء تعليق التطبيقات</string>
@@ -454,7 +431,6 @@
     <string name="no_matching_apps_freezer">لا توجد تطبيقات مطابقة</string>
     <string name="add_to_freezer_hint">اضغط + لإضافة تطبيقات</string>
     <string name="filter_all">الكل</string>
-    <string name="error_debuggable_app">التطبيق قابل للتصحيح (من المحتمل عدم تطابق التوقيع)</string>
     <string name="error_unsafe_skipped">تم التخطي: تطبيق النظام غير آمن / فشل فحص الأمان</string>
     <string name="error_self_skipped">تم التخطي: لا يمكن لـ Thor تنفيذ ذلك على نفسه</string>
     <string name="error_parse_package">فشل في تحليل الحزمة.</string>
@@ -590,8 +566,8 @@
     <string name="usage_access_needed_title">الوصول إلى بيانات الاستخدام مطلوب</string>
     <string name="usage_access_prompt_body">يحتاج Thor إلى إذن الوصول إلى بيانات الاستخدام لقراءة أحجام التطبيقات. يرجى تفعيله لـ Thor، ثم اختر \"الحجم\" مجددًا. يمكنك أيضًا إدارة هذا تحت الإعدادات ← الأذونات.</string>
     <string name="notification_access">الإشعارات</string>
-    <string name="notification_access_granted_subtitle">تظهر نتائج التجميد الجماعي كإشعارات</string>
-    <string name="notification_access_needed_subtitle">اسمح بالإشعارات لرؤية نتائج التجميد الجماعي</string>
+    <string name="notification_access_granted_subtitle">تُظهر إجراءات التطبيقات في الخلفية تقدّمها في الإشعارات</string>
+    <string name="notification_access_needed_subtitle">اسمح بالإشعارات في إعدادات النظام لتشغيل إجراءات التطبيقات في الخلفية ومتابعة تقدّمها</string>
     <string name="open_settings">فتح الإعدادات</string>
     <string name="installed_apps_permission_title">قد تكون قائمة التطبيقات غير مكتملة</string>
     <string name="installed_apps_permission_desc">يقيّد جهازك التطبيقات التي يمكن لـ Thor رؤيتها أثناء عمله في الخلفية. امنح وصولاً كاملاً إلى قائمة التطبيقات المثبّتة للحفاظ على اكتمالها.</string>
@@ -819,5 +795,18 @@
     <string name="component_disclaimer_dont_ask_session">لا تسأل مرة أخرى في هذه الجلسة</string>
     <string name="component_disabled_unrecorded">تم تعطيل %1$s، لكن Thor لم يتمكن من تسجيل هذا التعطيل، لذا لن تشمله ميزة استعادة الكل</string>
     <string name="cancel_sweep_queue">إلغاء قائمة انتظار الإجراءات</string>
+    <string name="sweep_notification_title">جارٍ تنفيذ إجراءات التطبيقات</string>
+    <string name="sweep_queued">إجراءات التطبيقات في قائمة الانتظار</string>
+    <string name="sweep_running">جارٍ تنفيذ %1$d من %2$d</string>
+    <string name="sweep_succeeded">اكتمل %1$d من %2$d</string>
+    <string name="sweep_partial">انتهت إجراءات التطبيقات مع وجود مشكلات</string>
+    <string name="sweep_cancelled">أُلغيت قائمة انتظار الإجراءات</string>
+    <string name="sweep_failed">فشلت إجراءات التطبيقات</string>
+    <string name="sweep_launch_failed_title">تعذّر بدء إجراءات التطبيقات</string>
+    <string name="sweep_observer_failure">التقدّم غير متاح</string>
+    <string name="sweep_observer_failure_desc">تعذّر على Thor إعادة الاتصال بإجراءات التطبيقات هذه. تحقّق من التطبيقات قبل الاعتماد على النتيجة.</string>
+    <string name="sweep_root_lane_degraded">مسار Root للأرشفة/المعالجة يعمل في وضع احتياطي</string>
+    <string name="sweep_progress_summary">نجحت: %1$d · فشلت: %2$d · مشغولة: %3$d · غير محسومة: %4$d</string>
+    <string name="sweep_result_summary">إجراءات التطبيقات — نجحت: %1$d · فشلت: %2$d · مشغولة: %3$d · غير محسومة: %4$d</string>
 
 </resources>

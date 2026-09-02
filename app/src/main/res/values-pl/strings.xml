@@ -327,8 +327,8 @@
     <string name="usage_access_needed_title">Wymagany dostęp do danych o użyciu</string>
     <string name="usage_access_prompt_body">Thor potrzebuje dostępu do danych o użyciu, aby odczytać rozmiary aplikacji. Włącz go dla aplikacji Thor, a potem wybierz „Rozmiar” ponownie. Możesz też zarządzać tym w Ustawieniach → Uprawnienia.</string>
     <string name="notification_access">Powiadomienia</string>
-    <string name="notification_access_granted_subtitle">Wyniki zbiorczego zamrażania są pokazywane jako powiadomienia</string>
-    <string name="notification_access_needed_subtitle">Zezwól na powiadomienia, aby widzieć wyniki zbiorczego zamrażania</string>
+    <string name="notification_access_granted_subtitle">Postęp działań na aplikacjach w tle jest pokazywany w powiadomieniach</string>
+    <string name="notification_access_needed_subtitle">Zezwól na powiadomienia w ustawieniach systemu, aby uruchamiać działania na aplikacjach w tle i śledzić ich postęp</string>
     <string name="open_settings">Otwórz ustawienia</string>
     <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
          ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
@@ -349,20 +349,11 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Najpierw przyznaj Root / Shizuku / Dhizuku</string>
     <string name="tile_no_apps_toast">Brak aplikacji w Zamrażarce</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">Zamrożono %1$d aplikację</item>
-        <item quantity="few">Zamrożono %1$d aplikacje</item>
-        <item quantity="many">Zamrożono %1$d aplikacji</item>
-        <item quantity="other">Zamrożono %1$d aplikacji</item>
-    </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_freeze_partial_failure">Zamrożono %1$d/%2$d aplikacji (nieudane: %3$d)</string>
     <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
          fired before these packages resolved. -->
-    <string name="tile_freeze_incomplete">Zamrożono %1$d/%2$d aplikacji (nieukończone: %3$d)</string>
     <string name="tile_checking">Sprawdzanie…</string>
     <string name="tile_freezing">Zamrażanie…</string>
-    <string name="channel_bulk_result_name">Wyniki działań zbiorczych</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ustawienia Zamrażarki</string>
@@ -462,17 +453,6 @@
     <!-- UiText Messages -->    <string name="frozen_success">Zamrożono aplikację %1$s</string>
     <string name="unfrozen_success">Odmrożono aplikację %1$s</string>
     <string name="added_to_freezer_success">Dodano do Zamrażarki</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">Odmrożono %1$d aplikację</item>
-        <item quantity="few">Odmrożono %1$d aplikacje</item>
-        <item quantity="many">Odmrożono %1$d aplikacji</item>
-        <item quantity="other">Odmrożono %1$d aplikacji</item>
-    </plurals>
-    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_unfreeze_partial_failure">Odmrożono %1$d/%2$d aplikacji (nieudane: %3$d)</string>
-    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
-         packages resolved, so they are neither confirmed done nor confirmed failed. -->
-    <string name="tile_unfreeze_incomplete">Odmrożono %1$d/%2$d aplikacji (nieukończone: %3$d)</string>
     <string name="error_format">Błąd: %1$s</string>
     <string name="failed_to_load_apps">Nie udało się wczytać aplikacji</string>
     <plurals name="removed_from_freezer_success">
@@ -638,11 +618,9 @@
     <string name="log_no_apps_to_fix">Nie znaleziono aplikacji wymagających naprawy.</string>
     <!-- Developer log line, not grammar-sensitive UI — plural form intentionally not used. -->
     <string name="log_found_apps_to_fix">Znaleziono %1$d aplikacji do naprawy.</string>
-    <string name="log_reinstalling_batch">Ponowna instalacja aplikacji</string>
     <string name="log_freezing_batch">Zamrażanie aplikacji</string>
     <string name="log_unfreezing_batch">Odmrażanie aplikacji</string>
     <string name="log_killing_batch">Zatrzymywanie aplikacji</string>
-    <string name="log_clearing_cache_batch">Czyszczenie pamięci podręcznej</string>
     <string name="log_uninstalling_batch">Odinstalowywanie aplikacji</string>
     <string name="log_suspending_batch">Zawieszanie aplikacji</string>
     <string name="log_unsuspending_batch">Wznawianie aplikacji</string>
@@ -664,7 +642,6 @@
     <string name="no_matching_apps_freezer">Brak pasujących aplikacji</string>
     <string name="add_to_freezer_hint">Dotknij +, aby dodać aplikacje</string>
     <string name="filter_all">Wszystkie</string>
-    <string name="error_debuggable_app">Aplikacja jest debugowalna (prawdopodobna niezgodność podpisu)</string>
     <string name="error_unsafe_skipped">Pominięto: aplikacja systemowa jest NIEBEZPIECZNA (UNSAFE) / kontrola bezpieczeństwa nie powiodła się</string>
     <string name="error_self_skipped">Pominięto: Thor nie może zrobić tego sam sobie</string>
     <string name="error_parse_package">Nie udało się przeanalizować pakietu.</string>
@@ -848,5 +825,18 @@
     <string name="component_disclaimer_dont_ask_session">Nie pytaj ponownie w tej sesji</string>
     <string name="component_disabled_unrecorded">Wyłączono %1$s, ale Thor nie zdołał tego zapisać — Przywróć wszystkie tego nie obejmie</string>
     <string name="cancel_sweep_queue">Anuluj kolejkę działań</string>
+    <string name="sweep_notification_title">Wykonywanie działań na aplikacjach</string>
+    <string name="sweep_queued">Umieszczono działania w kolejce</string>
+    <string name="sweep_running">Przetwarzanie: %1$d z %2$d</string>
+    <string name="sweep_succeeded">Ukończono: %1$d z %2$d</string>
+    <string name="sweep_partial">Działania zakończyły się z problemami</string>
+    <string name="sweep_cancelled">Anulowano kolejkę działań</string>
+    <string name="sweep_failed">Nie udało się wykonać działań</string>
+    <string name="sweep_launch_failed_title">Nie udało się rozpocząć działań</string>
+    <string name="sweep_observer_failure">Postęp niedostępny</string>
+    <string name="sweep_observer_failure_desc">Thor nie mógł ponownie połączyć się z tymi działaniami na aplikacjach. Sprawdź aplikacje, zanim zaufasz wynikowi.</string>
+    <string name="sweep_root_lane_degraded">Tor root archiwizacji/operacji działa w trybie awaryjnym</string>
+    <string name="sweep_progress_summary">Powodzenie: %1$d · błędy: %2$d · zajęte: %3$d · nierozstrzygnięte: %4$d</string>
+    <string name="sweep_result_summary">Działania na aplikacjach — powodzenie: %1$d · błędy: %2$d · zajęte: %3$d · nierozstrzygnięte: %4$d</string>
 
 </resources>

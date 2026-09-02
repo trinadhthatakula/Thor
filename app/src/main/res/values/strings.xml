@@ -324,8 +324,8 @@
     <string name="usage_access_needed_title">Usage Access needed</string>
     <string name="usage_access_prompt_body">Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.</string>
     <string name="notification_access">Notifications</string>
-    <string name="notification_access_granted_subtitle">Bulk freeze results are shown as notifications</string>
-    <string name="notification_access_needed_subtitle">Allow notifications to see bulk freeze results</string>
+    <string name="notification_access_granted_subtitle">Background app actions report their progress in notifications</string>
+    <string name="notification_access_needed_subtitle">Allow notifications in system settings to run background app actions and see their progress</string>
     <string name="open_settings">Open settings</string>
     <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
          ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
@@ -344,18 +344,8 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Grant Root / Shizuku / Dhizuku first</string>
     <string name="tile_no_apps_toast">No apps in Freezer</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">Froze %1$d app</item>
-        <item quantity="other">Froze %1$d apps</item>
-    </plurals>
-    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_freeze_partial_failure" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d failed)</string>
-    <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
-         fired before these packages resolved. -->
-    <string name="tile_freeze_incomplete" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d unfinished)</string>
     <string name="tile_checking">Checking…</string>
     <string name="tile_freezing">Freezing…</string>
-    <string name="channel_bulk_result_name">Bulk action results</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>
@@ -449,15 +439,6 @@
     <!-- UiText Messages -->    <string name="frozen_success">Frozen %1$s</string>
     <string name="unfrozen_success">Unfrozen %1$s</string>
     <string name="added_to_freezer_success">Added to Freezer</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">Unfrozen %1$d app</item>
-        <item quantity="other">Unfrozen %1$d apps</item>
-    </plurals>
-    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_unfreeze_partial_failure" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d failed)</string>
-    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
-         packages resolved, so they are neither confirmed done nor confirmed failed. -->
-    <string name="tile_unfreeze_incomplete" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d unfinished)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Failed to load apps</string>
     <plurals name="removed_from_freezer_success">
@@ -681,11 +662,9 @@
     <string name="log_no_apps_to_fix">No apps found that require fixing.</string>
     <!-- Developer log line, not grammar-sensitive UI — plural form intentionally not used. -->
     <string name="log_found_apps_to_fix" tools:ignore="PluralsCandidate">Found %1$d apps to fix.</string>
-    <string name="log_reinstalling_batch">Reinstalling Apps</string>
     <string name="log_freezing_batch">Freezing Apps</string>
     <string name="log_unfreezing_batch">Unfreezing Apps</string>
     <string name="log_killing_batch">Killing Apps</string>
-    <string name="log_clearing_cache_batch">Clearing Caches</string>
     <string name="log_uninstalling_batch">Uninstalling Apps</string>
     <string name="log_suspending_batch">Suspending Apps</string>
     <string name="log_unsuspending_batch">Unsuspending Apps</string>
@@ -707,7 +686,6 @@
     <string name="no_matching_apps_freezer">No matching apps</string>
     <string name="add_to_freezer_hint">Tap + to add apps</string>
     <string name="filter_all">All</string>
-    <string name="error_debuggable_app">App is Debuggable (Signature mismatch likely)</string>
     <string name="error_unsafe_skipped">Skipped: System app is UNSAFE / safety check failed</string>
     <string name="error_self_skipped">Skipped: Thor cannot do this to itself</string>
     <string name="error_parse_package">Failed to parse package.</string>
@@ -831,17 +809,17 @@
     <string name="clear_all_caches_unsupported_dhizuku">Dhizuku can\'t clear caches. It has no shell to run Android\'s cache trim in, and the Device Owner API has no equivalent. Switch to Root or Shizuku.</string>
     <string name="cancel_sweep_queue">Cancel sweep queue</string>
     <string name="sweep_notification_title">Applying app actions</string>
-    <string name="sweep_queued">Sweep queued</string>
+    <string name="sweep_queued">App actions queued</string>
     <string name="sweep_running">Running %1$d of %2$d</string>
     <string name="sweep_succeeded">Completed %1$d of %2$d</string>
-    <string name="sweep_partial">Sweep finished with issues</string>
-    <string name="sweep_cancelled">Sweep cancelled</string>
-    <string name="sweep_failed">Sweep failed</string>
-    <string name="sweep_launch_failed_title">Sweep could not start</string>
+    <string name="sweep_partial">App actions finished with issues</string>
+    <string name="sweep_cancelled">Action queue cancelled</string>
+    <string name="sweep_failed">App actions failed</string>
+    <string name="sweep_launch_failed_title">App actions could not start</string>
     <string name="sweep_observer_failure">Progress unavailable</string>
-    <string name="sweep_observer_failure_desc">Thor could not reconnect to this sweep. Check the apps before relying on it.</string>
+    <string name="sweep_observer_failure_desc">Thor could not reconnect to these app actions. Check the apps before relying on the result.</string>
     <string name="sweep_root_lane_degraded">Root archive/sweep lane degraded</string>
-    <string name="sweep_progress_summary" tools:ignore="PluralsCandidate">%1$d succeeded, %2$d failed, %3$d busy, %4$d unresolved</string>
-    <string name="sweep_result_summary">App actions: %1$d succeeded, %2$d failed, %3$d busy, %4$d unresolved</string>
+    <string name="sweep_progress_summary">Succeeded: %1$d · failed: %2$d · busy: %3$d · unresolved: %4$d</string>
+    <string name="sweep_result_summary">App actions — succeeded: %1$d · failed: %2$d · busy: %3$d · unresolved: %4$d</string>
 
 </resources>

@@ -210,15 +210,8 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Accordez Root / Shizuku / Dhizuku d\'abord</string>
     <string name="tile_no_apps_toast">Aucune application dans le Congélateur</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">%1$d application gelée</item>
-        <item quantity="other">%1$d applications gelées</item>
-    </plurals>
-    <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
-    <string name="tile_freeze_incomplete">%1$d/%2$d applications gelées (%3$d inachevées)</string>
     <string name="tile_checking">Vérification…</string>
     <string name="tile_freezing">Gel en cours…</string>
-    <string name="channel_bulk_result_name">Résultats des actions groupées</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Paramètres du congélateur</string>
@@ -263,12 +256,6 @@
     <!-- UiText Messages -->    <string name="frozen_success">%1$s gelé</string>
     <string name="unfrozen_success">%1$s dégelé</string>
     <string name="added_to_freezer_success">Ajouté au congélateur</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">%1$d application dégelée</item>
-        <item quantity="other">%1$d applications dégelées</item>
-    </plurals>
-    <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
-    <string name="tile_unfreeze_incomplete">%1$d/%2$d applications dégelées (%3$d inachevées)</string>
     <string name="error_format">Erreur : %1$s</string>
     <string name="failed_to_load_apps">Échec du chargement des applications</string>
     <plurals name="removed_from_freezer_success">
@@ -394,11 +381,9 @@
     <string name="log_scanning_apps">Analyse des applications…</string>
     <string name="log_no_apps_to_fix">Aucune application à réparer trouvée.</string>
     <string name="log_found_apps_to_fix">%1$d applications à réparer trouvées.</string>
-    <string name="log_reinstalling_batch">Réinstallation des applications</string>
     <string name="log_freezing_batch">Gel des applications</string>
     <string name="log_unfreezing_batch">Dégel des applications</string>
     <string name="log_killing_batch">Arrêt des applications</string>
-    <string name="log_clearing_cache_batch">Nettoyage des caches</string>
     <string name="log_uninstalling_batch">Désinstallation des applications</string>
     <string name="log_suspending_batch">Suspension des applications</string>
     <string name="log_unsuspending_batch">Rétablissement des applications</string>
@@ -420,7 +405,6 @@
     <string name="no_matching_apps_freezer">Aucune application correspondante</string>
     <string name="add_to_freezer_hint">Appuyez sur + pour ajouter des applications</string>
     <string name="filter_all">Tout</string>
-    <string name="error_debuggable_app">L\'application est débogable (probablement une incompatibilité de signature)</string>
     <string name="error_unsafe_skipped">Ignoré : L\'application système est DANGEREUSE / échec de la vérification de sécurité</string>
     <string name="error_self_skipped">Ignoré : Thor ne peut pas se l\'appliquer à lui-même</string>
     <string name="error_parse_package">Échec de l\'analyse du paquet.</string>
@@ -552,8 +536,8 @@
     <string name="usage_access_needed_title">Accès aux données d\'utilisation requis</string>
     <string name="usage_access_prompt_body">Thor a besoin de l\'accès aux données d\'utilisation pour lire la taille des applications. Activez-le pour Thor, puis choisissez de nouveau \"Taille\". Vous pouvez également gérer cela dans Paramètres → Autorisations.</string>
     <string name="notification_access">Notifications</string>
-    <string name="notification_access_granted_subtitle">Les résultats du gel groupé sont affichés en notifications</string>
-    <string name="notification_access_needed_subtitle">Autorisez les notifications pour voir les résultats du gel groupé</string>
+    <string name="notification_access_granted_subtitle">Les actions d\'applications en arrière-plan affichent leur progression dans les notifications</string>
+    <string name="notification_access_needed_subtitle">Autorisez les notifications dans les paramètres système pour exécuter les actions d\'applications en arrière-plan et suivre leur progression</string>
     <string name="open_settings">Ouvrir les paramètres</string>
     <string name="installed_apps_permission_title">La liste des applications peut être incomplète</string>
     <string name="installed_apps_permission_desc">Votre appareil limite les applications que Thor peut voir lorsqu\'il est en arrière-plan. Accordez l\'accès complet à la liste des applications installées pour qu\'elle reste complète.</string>
@@ -759,5 +743,18 @@
     <string name="component_disclaimer_dont_ask_session">Ne plus demander pendant cette session</string>
     <string name="component_disabled_unrecorded">Thor n\'a pas pu enregistrer la désactivation de %1$s : Tout rétablir ne la proposera pas</string>
     <string name="cancel_sweep_queue">Annuler la file d’actions</string>
+    <string name="sweep_notification_title">Exécution des actions sur les applications</string>
+    <string name="sweep_queued">Actions mises en file d’attente</string>
+    <string name="sweep_running">Traitement de %1$d sur %2$d</string>
+    <string name="sweep_succeeded">Terminé : %1$d sur %2$d</string>
+    <string name="sweep_partial">Les actions se sont terminées avec des problèmes</string>
+    <string name="sweep_cancelled">La file d’actions a été annulée</string>
+    <string name="sweep_failed">Échec des actions</string>
+    <string name="sweep_launch_failed_title">Impossible de lancer les actions</string>
+    <string name="sweep_observer_failure">Progression indisponible</string>
+    <string name="sweep_observer_failure_desc">Thor n’a pas pu se reconnecter à ces actions sur les applications. Vérifiez les applications avant de vous fier au résultat.</string>
+    <string name="sweep_root_lane_degraded">Le canal root d’archivage/balayage fonctionne en mode dégradé</string>
+    <string name="sweep_progress_summary">Réussites : %1$d · échecs : %2$d · occupées : %3$d · non résolues : %4$d</string>
+    <string name="sweep_result_summary">Actions sur les applications — réussites : %1$d · échecs : %2$d · occupées : %3$d · non résolues : %4$d</string>
 
 </resources>
