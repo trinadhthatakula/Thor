@@ -193,12 +193,6 @@
         <item quantity="other">%1$d aplicativos · tocar para congelar</item>
     </plurals>
     <string name="tile_no_apps_toast">Não há aplicativos no Congelador</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">%1$d aplicativo congelado</item>
-        <item quantity="other">%1$d aplicativos congelados</item>
-    </plurals>
-    <string name="tile_freeze_partial_failure">%1$d/%2$d aplicativos congelados (%3$d falharam)</string>
-    <string name="tile_freeze_incomplete">%1$d/%2$d aplicativos congelados (%3$d por terminar)</string>
     <string name="tile_checking">Verificando…</string>
     <string name="tile_freezing">Congelando…</string>
 
@@ -255,12 +249,6 @@
     <string name="frozen_success">%1$s congelado</string>
     <string name="unfrozen_success">%1$s descongelado</string>
     <string name="added_to_freezer_success">Adicionado ao Congelador</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">%1$d aplicativo descongelado</item>
-        <item quantity="other">%1$d aplicativos descongelados</item>
-    </plurals>
-    <string name="tile_unfreeze_partial_failure">%1$d/%2$d aplicativos descongelados (%3$d falharam)</string>
-    <string name="tile_unfreeze_incomplete">%1$d/%2$d aplicativos descongelados (%3$d por terminar)</string>
     <string name="failed_to_load_apps">Não foi possível carregar os aplicativos</string>
     <plurals name="removed_from_freezer_success">
         <item quantity="one">%1$d aplicativo removido do Congelador</item>
@@ -318,11 +306,9 @@
     <string name="log_scanning_apps">Analisando os aplicativos…</string>
     <string name="log_no_apps_to_fix">Não foram encontrados aplicativos para reparar.</string>
     <string name="log_found_apps_to_fix">Encontrados %1$d aplicativos para reparar.</string>
-    <string name="log_reinstalling_batch">Reinstalando aplicativos</string>
     <string name="log_freezing_batch">Congelando aplicativos</string>
     <string name="log_unfreezing_batch">Descongelando aplicativos</string>
     <string name="log_killing_batch">Encerrando aplicativos</string>
-    <string name="log_clearing_cache_batch">Limpando os caches</string>
     <string name="log_uninstalling_batch">Desinstalando aplicativos</string>
     <string name="log_suspending_batch">Suspendendo aplicativos</string>
     <string name="log_unsuspending_batch">Removendo a suspensão dos aplicativos</string>
@@ -336,7 +322,6 @@
     <string name="no_matching_apps_freezer">Não há aplicativos correspondentes</string>
     <string name="add_to_freezer_hint">Toque em + para adicionar aplicativos</string>
     <string name="filter_all">Todos</string>
-    <string name="error_debuggable_app">O aplicativo é depurável (provável incompatibilidade de assinatura)</string>
     <string name="error_unsafe_skipped">Ignorado: o aplicativo do sistema é UNSAFE / a verificação de segurança falhou</string>
     <string name="error_self_skipped">Ignorado: o Thor não pode fazer isso consigo mesmo</string>
 
@@ -517,6 +502,7 @@
     <string name="restore_error_not_an_archive">Esse arquivo não é um backup do Thor. Escolha um arquivo .thorbak.</string>
     <string name="restore_error_wrong_passphrase">Essa senha não abre este backup.</string>
     <string name="restore_error_unlock_check_failed">O Thor não conseguiu verificar essa senha. Tente novamente.</string>
+    <string name="restore_error_authentication_failed">Não foi possível autenticar este backup, por isso ele não foi restaurado.</string>
     <string name="restore_failed_passphrase_lost">o Thor não tem mais a senha deste backup — desbloqueie novamente</string>
     <string name="restore_failed_partial">Isso parou no meio, então os dados do aplicativo podem estar incompletos — e, se o Thor tiver instalado o aplicativo a partir deste backup, ele continua instalado. Restaurar novamente é a solução.</string>
     <string name="restore_failed_not_started">Nada foi iniciado, então nada neste dispositivo foi alterado.</string>
@@ -613,5 +599,21 @@
     <string name="component_disclaimer_message">%1$s continua fazendo parte do aplicativo; apenas deixa de ser executado. Os aplicativos raramente contam com isso, então um recurso pode parar de funcionar sem nenhum erro, ou o aplicativo pode travar. O Thor registra o que desativa para que você possa desfazer depois.</string>
     <string name="component_disclaimer_confirm">Desativar mesmo assim</string>
     <string name="component_disabled_unrecorded">O Thor não conseguiu registrar a desativação de %1$s — Restaurar tudo não vai incluí-la</string>
+    <string name="notification_access_granted_subtitle">As ações em aplicativos em segundo plano mostram o progresso nas notificações</string>
+    <string name="notification_access_needed_subtitle">Permita as notificações nas configurações do sistema para executar ações em aplicativos em segundo plano e acompanhar o progresso</string>
+    <string name="cancel_sweep_queue">Cancelar fila de ações</string>
+    <string name="sweep_notification_title">Aplicando ações aos aplicativos</string>
+    <string name="sweep_queued">Ações de aplicativos na fila</string>
+    <string name="sweep_running">Executando %1$d de %2$d</string>
+    <string name="sweep_succeeded">Concluídas %1$d de %2$d</string>
+    <string name="sweep_partial">As ações terminaram com problemas</string>
+    <string name="sweep_cancelled">A fila de ações foi cancelada</string>
+    <string name="sweep_failed">As ações falharam</string>
+    <string name="sweep_launch_failed_title">Não foi possível iniciar as ações</string>
+    <string name="sweep_observer_failure">Progresso indisponível</string>
+    <string name="sweep_observer_failure_desc">O Thor não conseguiu se reconectar a estas ações em aplicativos. Verifique os aplicativos antes de confiar no resultado.</string>
+    <string name="sweep_root_lane_degraded">Canal root de arquivo/ações em modo degradado</string>
+    <string name="sweep_progress_summary">Concluídas: %1$d · falhas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
+    <string name="sweep_result_summary">Ações de aplicativos — concluídas: %1$d · falhas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
 
 </resources>

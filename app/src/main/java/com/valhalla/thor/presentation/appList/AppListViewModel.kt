@@ -3,21 +3,28 @@
 
 package com.valhalla.thor.presentation.appList
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.domain.model.APP_LIST_MIME
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
-import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.filterApps
@@ -31,6 +38,7 @@ import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.domain.usecase.ExportAppListUseCase
@@ -40,11 +48,15 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.presentation.launchGuarded
+import com.valhalla.thor.presentation.widgets.SweepProgressUiState
+import com.valhalla.thor.presentation.widgets.asObserverFailure
+import com.valhalla.thor.presentation.widgets.failedSweepProgress
+import com.valhalla.thor.presentation.widgets.queuedSweepProgress
+import com.valhalla.thor.presentation.widgets.toSweepProgressUiState
 import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.asUiText
-import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -67,6 +79,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import java.util.UUID
+
+private const val APP_LIST_SWEEP_REQUEST_ID = "app_list_sweep_request_id"
+
+private fun PrivilegeSweepLaunchRejection.asAppListMessage(): UiText.StringResource =
+    UiText.StringResource(
+        when (this) {
+            PrivilegeSweepLaunchRejection.NotificationsRequired ->
+                R.string.notification_access_needed_subtitle
+            PrivilegeSweepLaunchRejection.NoPrivilege -> R.string.tile_grant_privilege_toast
+            PrivilegeSweepLaunchRejection.NoTargets -> R.string.tile_no_apps_toast
+            is PrivilegeSweepLaunchRejection.EnqueueFailed -> R.string.bulk_run_failed
+        }
+    )
 
 // ... AppListUiState remains same ...
 data class AppListUiState(
@@ -119,7 +145,9 @@ data class AppListUiState(
     // also the permanent answer on every AOSP build, which is the point — a Pixel does not define
     // this permission, so "not granted" there must never be mistaken for "denied" and turned into a
     // banner nobody can ever dismiss. See installedAppsPermissionState().
-    val installedAppsPermission: InstalledAppsPermission = InstalledAppsPermission.Unsupported
+    val installedAppsPermission: InstalledAppsPermission = InstalledAppsPermission.Unsupported,
+    val sweepStatus: PrivilegeSweepStatus? = null,
+    val sweepProgress: SweepProgressUiState? = null,
 )
 
 /**
@@ -151,6 +179,9 @@ class AppListViewModel(
     private val installedAppsPermission: InstalledAppsPermissionGate,
     private val installerLabelResolver: InstallerLabelResolver,
     private val exportAppListUseCase: ExportAppListUseCase,
+    private val sweepResolver: PrivilegeSweepTargetResolver,
+    private val sweepController: PrivilegeSweepController,
+    private val savedStateHandle: SavedStateHandle,
     // Injected rather than hardcoded so a test can put every stage of this view model on one
     // scheduler: the sort/filter pipeline below runs off-main, and a `Dispatchers.Default` baked
     // in here would keep it on a real thread pool while the rest ran on virtual time.
@@ -163,6 +194,8 @@ class AppListViewModel(
     private var refreshIndicatorJob: Job? = null
     private var permissionIndexJob: Job? = null
     private var permissionRefreshJob: Job? = null
+    private var sweepObservation: Job? = null
+    private var acknowledgedSweepRequestId: UUID? = null
 
     /**
      * The one list export in flight, save or share.
@@ -215,6 +248,10 @@ class AppListViewModel(
         observeFreezerMembership()
         observePermissionFilter()
         refreshInstalledAppsPermission()
+        observeSweep(
+            savedStateHandle.get<String>(APP_LIST_SWEEP_REQUEST_ID)
+                ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        )
     }
 
     /**
@@ -788,120 +825,131 @@ class AppListViewModel(
         }
     }
 
+    private fun observeSweep(requestId: UUID?) {
+        sweepObservation?.cancel()
+        sweepObservation = viewModelScope.launch {
+            var lastStatus: PrivilegeSweepStatus? = null
+            val statuses = requestId?.let(sweepController::observe)
+                ?: sweepController.observeLatest(PrivilegeSweepSource.APP_LIST)
+            statuses
+                .catch { error ->
+                    Logger.e("AppListViewModel", "observe sweep failed", error)
+                    _rawState.update { state ->
+                        state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
+                    }
+                }
+                .collect { status ->
+                    if (status == null) {
+                        val lastPhase = lastStatus?.phase
+                        if (
+                            requestId != null &&
+                            (lastPhase == null ||
+                                lastPhase == PrivilegeSweepPhase.QUEUED ||
+                                lastPhase == PrivilegeSweepPhase.RUNNING)
+                        ) {
+                            _rawState.update { state ->
+                                state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
+                            }
+                        }
+                        return@collect
+                    }
+                    lastStatus = status
+                    savedStateHandle[APP_LIST_SWEEP_REQUEST_ID] = status.requestId.toString()
+                    if (status.requestId == acknowledgedSweepRequestId &&
+                        status.phase != PrivilegeSweepPhase.QUEUED &&
+                        status.phase != PrivilegeSweepPhase.RUNNING
+                    ) {
+                        return@collect
+                    }
+                    _rawState.update {
+                        it.copy(
+                            sweepStatus = status,
+                            sweepProgress = status.toSweepProgressUiState(),
+                        )
+                    }
+                    if (status.phase != PrivilegeSweepPhase.QUEUED) {
+                        loadApps(deferForTransition = false)
+                    }
+                }
+        }
+    }
+
+    private suspend fun launchSelectionSweep(
+        operation: PrivilegeSweepOperation,
+        apps: List<AppInfo>,
+        freezerMode: FreezerMode? = null,
+    ) {
+        val spec = sweepResolver.resolveSelection(
+            operation = operation,
+            packageNames = apps.map(AppInfo::packageName),
+            source = PrivilegeSweepSource.APP_LIST,
+            freezerMode = freezerMode,
+        )
+        acknowledgedSweepRequestId = null
+        _rawState.update {
+            it.copy(
+                sweepStatus = null,
+                sweepProgress = queuedSweepProgress(spec.packageNames.size),
+            )
+        }
+        when (val launch = sweepController.launch(spec)) {
+            is PrivilegeSweepLaunchResult.Accepted -> {
+                savedStateHandle[APP_LIST_SWEEP_REQUEST_ID] = launch.requestId.toString()
+                observeSweep(launch.requestId)
+            }
+
+            is PrivilegeSweepLaunchResult.Rejected -> {
+                savedStateHandle.remove<String>(APP_LIST_SWEEP_REQUEST_ID)
+                _rawState.update {
+                    it.copy(
+                        sweepStatus = null,
+                        sweepProgress = failedSweepProgress(
+                            total = spec.packageNames.size,
+                            message = launch.reason.asAppListMessage(),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissSweepProgress() {
+        _rawState.value.sweepStatus
+            ?.takeUnless {
+                it.phase == PrivilegeSweepPhase.QUEUED ||
+                    it.phase == PrivilegeSweepPhase.RUNNING
+            }
+            ?.let { acknowledgedSweepRequestId = it.requestId }
+        _rawState.update { it.copy(sweepProgress = null) }
+    }
+
+    fun cancelSweepQueue() {
+        viewModelScope.launch { sweepController.cancelQueue() }
+    }
+
     fun performMultiAction(action: MultiAppAction) {
         viewModelScope.launch(ioDispatcher) {
             when (action) {
-                is MultiAppAction.Freeze -> {
-                    // EXPERT apps go through unwarned here by design — a batch is not the place to
-                    // interrogate the user app by app. BLOCKED is filtered here rather than left
-                    // to FreezeAppUseCase (which is what `freezeApp` uses) so the skipped apps
-                    // are counted once, in `failures`, instead of each costing a redundant
-                    // getAppDetails on the way to a second report of the same refusal.
-                    val eligibleApps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED }
-                    val skippedCount = action.appList.size - eligibleApps.size
-                    val succeededPackages = mutableSetOf<String>()
-                    var failures = skippedCount
+                is MultiAppAction.Freeze -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.FREEZE,
+                    apps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED },
+                    freezerMode = if (action.useSuspend) FreezerMode.SUSPEND else FreezerMode.FREEZE,
+                )
 
-                    eligibleApps.forEach { app ->
-                        val res = manageAppUseCase.setAppDisabled(app.packageName, true)
-                        if (res.isSuccess) {
-                            succeededPackages.add(app.packageName)
-                        } else {
-                            failures++
-                        }
-                    }
+                is MultiAppAction.UnFreeze -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.UNFREEZE,
+                    apps = action.appList,
+                )
 
-                    _rawState.update { state ->
-                        state.copy(
-                            allUserApps = state.allUserApps.map {
-                                if (it.packageName in succeededPackages) it.copy(enabled = false) else it
-                            },
-                            allSystemApps = state.allSystemApps.map {
-                                if (it.packageName in succeededPackages) it.copy(enabled = false) else it
-                            }
-                        )
-                    }
-                    _events.send(
-                        AppListEvent.ShowMessage(
-                            bulkResultMessage(
-                                BulkResult(
-                                    op = BulkOp.FREEZE,
-                                    total = action.appList.size,
-                                    succeeded = succeededPackages.size,
-                                    failed = failures,
-                                )
-                            )
-                        )
-                    )
-                }
+                is MultiAppAction.ClearCache -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.CLEAR_CACHE,
+                    apps = action.appList,
+                )
 
-                is MultiAppAction.UnFreeze -> {
-                    // Only the packages that actually came back successful, for both halves of the
-                    // report. This used to discard every result, mark the whole selection
-                    // `enabled = true` and then send an unconditional success plural for
-                    // `appList.size` — so a batch where nothing was unfrozen said "Unfroze 12 apps"
-                    // and drew twelve thawed rows to match. The freeze branch above always counted
-                    // properly; only this direction did not.
-                    //
-                    // `forceUnfreeze`, not `setAppDisabled(_, false)` and not
-                    // `restoreApp(_, app.enabled, app.isSuspended)`:
-                    //
-                    //  - `setAppDisabled` clears one of the two dimensions a frozen app can be
-                    //    frozen in. An app suspended from any other surface — the Freezer's suspend
-                    //    mode, `MainViewModel.performCountedFreeze(useSuspend = true)`, the QS tile,
-                    //    an extension — comes back still suspended, and the report above now says so
-                    //    *precisely*: it counts the enable that succeeded while the user still can't
-                    //    open the app.
-                    //  - `restoreApp` reads the flags, and the flags here are stale by construction.
-                    //    `isSuspended` is patched in exactly one place in this ViewModel
-                    //    ([toggleFreezerMembership]) and never on a bulk path, so it only moves on a
-                    //    full rescan. A snapshot that still calls a just-suspended app active makes
-                    //    `restorePlanFor` plan nothing, and `restoreApp` then returns success having
-                    //    made zero privileged calls — the same lie this branch was just fixed to stop
-                    //    telling, re-entering through the choice of API. FreezerViewModel documents
-                    //    this trap twice for the same reason.
-                    //
-                    // `forceUnfreeze` asks unconditionally, which is what its KDoc is for ("bulk
-                    // 'unfreeze all' when per-app state isn't known"). The cost is one redundant
-                    // unsuspend per already-active app; root and Shizuku answer that from the flag
-                    // alone and Dhizuku pays one `pm unsuspend`. A redundant call is the cheaper of
-                    // the two mistakes.
-                    val succeededPackages = mutableSetOf<String>()
-                    action.appList.forEach { app ->
-                        if (manageAppUseCase.forceUnfreeze(app.packageName).isSuccess) {
-                            succeededPackages.add(app.packageName)
-                        }
-                    }
-                    _rawState.update { state ->
-                        // Both dimensions, because forceUnfreeze cleared both. Patching only
-                        // `enabled` would leave a thawed app drawn as suspended until the next
-                        // rescan, and would leave the next unfreeze reading that stale flag.
-                        state.copy(
-                            allUserApps = state.allUserApps.map {
-                                if (it.packageName in succeededPackages) {
-                                    it.copy(enabled = true, isSuspended = false)
-                                } else it
-                            },
-                            allSystemApps = state.allSystemApps.map {
-                                if (it.packageName in succeededPackages) {
-                                    it.copy(enabled = true, isSuspended = false)
-                                } else it
-                            }
-                        )
-                    }
-                    _events.send(
-                        AppListEvent.ShowMessage(
-                            bulkResultMessage(
-                                BulkResult(
-                                    op = BulkOp.UNFREEZE,
-                                    total = action.appList.size,
-                                    succeeded = succeededPackages.size,
-                                    failed = action.appList.size - succeededPackages.size,
-                                )
-                            )
-                        )
-                    )
-                }
+                is MultiAppAction.ReInstall -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.REINSTALL,
+                    apps = action.appList,
+                )
 
                 else -> {
                     // Fallback or forward? If we forward, we need a callback. 

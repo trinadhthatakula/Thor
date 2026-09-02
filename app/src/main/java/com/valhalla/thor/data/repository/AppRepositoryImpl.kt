@@ -757,13 +757,10 @@ class AppRepositoryImpl(
     }
 
     override suspend fun getApkDetails(apkPath: String): AppInfo? = withContext(ioDispatcher) {
-        val flags = PackageManager.GET_PERMISSIONS
-        val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageArchiveInfo(apkPath, PackageManager.PackageInfoFlags.of(flags.toLong()))
-        } else {
-            @Suppress("DEPRECATION")
-            pm.getPackageArchiveInfo(apkPath, flags)
-        } ?: return@withContext null
+        val packInfo = pm.readArchivePackageInfo(
+            File(apkPath),
+            PackageManager.GET_PERMISSIONS,
+        ) ?: return@withContext null
 
         val appInfo = packInfo.applicationInfo?.apply {
             sourceDir = apkPath

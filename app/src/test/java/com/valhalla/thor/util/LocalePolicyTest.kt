@@ -9,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.time.format.DateTimeFormatter
 import java.time.format.DecimalStyle
 import java.util.Locale
@@ -31,6 +32,36 @@ import java.util.Locale
  * behaviour and need an instrumented test or a device.
  */
 class LocalePolicyTest {
+
+    private val sweepLifecycleKeys = setOf(
+        "notification_access_granted_subtitle",
+        "notification_access_needed_subtitle",
+        "cancel_sweep_queue",
+        "sweep_notification_title",
+        "sweep_queued",
+        "sweep_running",
+        "sweep_succeeded",
+        "sweep_partial",
+        "sweep_cancelled",
+        "sweep_failed",
+        "sweep_launch_failed_title",
+        "sweep_observer_failure",
+        "sweep_observer_failure_desc",
+        "sweep_root_lane_degraded",
+        "sweep_progress_summary",
+        "sweep_result_summary",
+    )
+
+    private val shippedResourceDirectories = listOf(
+        "values",
+        "values-ar",
+        "values-es",
+        "values-fr",
+        "values-pl",
+        "values-pt",
+        "values-pt-rBR",
+        "values-zh-rCN",
+    )
 
     /**
      * The finding, as an assertion.
@@ -610,5 +641,72 @@ class LocalePolicyTest {
         } finally {
             Locale.setDefault(previous)
         }
+    }
+
+    @Test
+    fun everyShippedLocaleDefinesTheSweepLifecycleCopy() {
+        val missing = buildList {
+            for (directory in shippedResourceDirectories) {
+                val resources = stringResources(directory)
+                for (key in sweepLifecycleKeys) {
+                    if (key !in resources) add("$directory/$key")
+                }
+            }
+        }
+
+        assertTrue(
+            "Missing sweep lifecycle resources: ${missing.joinToString()}",
+            missing.isEmpty()
+        )
+    }
+
+    @Test
+    fun sweepLifecyclePlaceholdersMatchEnglishInEveryLocale() {
+        val english = stringResources("values")
+        val mismatches = buildList {
+            for (directory in shippedResourceDirectories.drop(1)) {
+                val localized = stringResources(directory)
+                for (key in sweepLifecycleKeys) {
+                    val expected = english[key]?.let(::placeholderSignature) ?: continue
+                    val actual = localized[key]?.let(::placeholderSignature)
+                    if (actual != expected) add("$directory/$key: expected $expected, found $actual")
+                }
+            }
+        }
+
+        assertTrue(
+            "Sweep lifecycle placeholder mismatches: ${mismatches.joinToString()}",
+            mismatches.isEmpty()
+        )
+    }
+
+    private fun stringResources(directory: String): Map<String, String> {
+        val file = File(resourceRoot(), "$directory/strings.xml")
+        check(file.isFile) { "Missing resource file: $file" }
+        return RESOURCE_PATTERN.findAll(file.readText()).associate { match ->
+            match.groupValues[1] to match.groupValues[2]
+        }
+    }
+
+    private fun resourceRoot(): File = generateSequence(
+        File(checkNotNull(System.getProperty("user.dir")))
+    ) {
+        it.parentFile
+    }.map { File(it, "app/src/main/res") }
+        .firstOrNull { File(it, "values/strings.xml").isFile }
+        ?: error("Could not locate app/src/main/res from ${System.getProperty("user.dir")}")
+
+    private fun placeholderSignature(value: String): List<String> = POSITIONAL_PLACEHOLDER
+        .findAll(value)
+        .map { "%${it.groupValues[1]}\$${it.groupValues[2]}" }
+        .sorted()
+        .toList()
+
+    private companion object {
+        val RESOURCE_PATTERN = Regex(
+            """<string\s+[^>]*\bname="([^"]+)"[^>]*>(.*?)</string>""",
+            setOf(RegexOption.DOT_MATCHES_ALL),
+        )
+        val POSITIONAL_PLACEHOLDER = Regex("%(\\d+)\\$([a-zA-Z])")
     }
 }

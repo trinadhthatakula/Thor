@@ -3,14 +3,20 @@
 
 package com.valhalla.thor.presentation.appList
 
+import androidx.lifecycle.SavedStateHandle
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AnimationIntensity
-import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.UserPreferences
@@ -30,14 +36,15 @@ import com.valhalla.thor.presentation.FakeInstallerLabelResolver
 import com.valhalla.thor.presentation.FakePermissionRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
+import com.valhalla.thor.presentation.FakePrivilegeSweepController
 import com.valhalla.thor.presentation.FakeStorageStatsProvider
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.presentation.privilegeSweepResolver
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
-import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -53,6 +60,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.util.UUID
 
 /**
  * Behaviour tests for [AppListViewModel]'s **temporal** contract — the three rules from PR #278 that
@@ -139,12 +147,14 @@ class AppListViewModelTest {
         installedApps: FakeInstalledAppsPermissionGate = FakeInstalledAppsPermissionGate(),
         // Overridable so one test can inject a dispatcher that is *not* the main one and check that
         // a Room write reached it. Defaults to the main one, as every other test wants.
-        ioDispatcher: CoroutineDispatcher = mainDispatcherRule.dispatcher
+        ioDispatcher: CoroutineDispatcher = mainDispatcherRule.dispatcher,
+        sweepController: FakePrivilegeSweepController = FakePrivilegeSweepController(),
+        savedStateHandle: SavedStateHandle = SavedStateHandle(),
     ): AppListViewModel {
         val prefs = FakePreferenceRepository(
             UserPreferences(animationIntensity = intensity, appFilterType = filterType)
         )
-        val manageAppUseCase = ManageAppUseCase(system)
+        val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         val exportAppUseCase = ExportAppUseCase(
             FakeAppBundleBuilder(),
             prefs,
@@ -171,6 +181,12 @@ class AppListViewModelTest {
                 fileStore,
                 mainDispatcherRule.dispatcher
             ),
+            sweepResolver = privilegeSweepResolver(
+                freezerRepository = freezer,
+                preferenceRepository = prefs,
+            ),
+            sweepController = sweepController,
+            savedStateHandle = savedStateHandle,
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = ioDispatcher
         )
@@ -487,100 +503,156 @@ class AppListViewModelTest {
         )
     }
 
-    // --- Bulk unfreeze ----------------------------------------------------------------------
+    // --- Durable selection sweeps -------------------------------------------------------------
 
-    /**
-     * The bulk direction had two independent ways to report a thaw that never happened, and fixing
-     * one of them made the other one worse.
-     *
-     * It used to discard every result, mark the whole selection enabled and send an unconditional
-     * success plural. Counting properly fixed the arithmetic and left the deeper problem: with
-     * `setAppDisabled` it counted an enable that succeeded on an app that was *suspended*, so the
-     * report became precisely accurate about a call that did not unfreeze anything. Both halves have
-     * to hold at once — the right call, and only the apps it worked for.
-     */
     @Test
-    fun `a bulk unfreeze clears both freeze dimensions for every app`() = runTest {
-        val vm = viewModel(AnimationIntensity.LOW)
+    fun `selected names are resolved before enqueue`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
         runCurrent()
-        appRepository.apps.value = listOf(
-            userApp("a", enabled = false),
-            userApp("b", enabled = true, isSuspended = true),
-        )
-        runCurrent()
-        system.calls.clear()
 
         vm.performMultiAction(
-            MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false), userApp("b", isSuspended = true)))
+            MultiAppAction.Freeze(
+                listOf(userApp("z"), userApp("a"), userApp("z"))
+            )
         )
         runCurrent()
 
-        // Asked for unconditionally rather than planned from the flags: `isSuspended` is patched on
-        // exactly one path in this view model and never on a bulk one, so a snapshot is the wrong
-        // thing to plan from. `b` needs the unsuspend and `a` does not; both are asked anyway.
+        assertEquals(listOf("a", "z"), controller.launched.single().packageNames)
+        assertEquals(PrivilegeSweepOperation.FREEZE, controller.launched.single().operation)
+        assertEquals(PrivilegeSweepSource.APP_LIST, controller.launched.single().source)
+        assertTrue(system.calls.none { it.startsWith("setAppDisabled") })
+    }
+
+    @Test
+    fun `cache clear and reinstall selections launch durable sweeps`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.ClearCache(listOf(userApp("cache"))))
+        runCurrent()
+        vm.performMultiAction(MultiAppAction.ReInstall(listOf(userApp("reinstall"))))
+        runCurrent()
+
         assertEquals(
-            listOf(
-                "setAppSuspended:a:false", "setAppDisabled:a:false",
-                "setAppSuspended:b:false", "setAppDisabled:b:false",
-            ),
-            system.calls
+            listOf(PrivilegeSweepOperation.CLEAR_CACHE, PrivilegeSweepOperation.REINSTALL),
+            controller.launched.map { it.operation },
         )
+        assertEquals(listOf("cache"), controller.launched[0].packageNames)
+        assertEquals(listOf("reinstall"), controller.launched[1].packageNames)
+        assertTrue(system.calls.isEmpty())
     }
 
     @Test
-    fun `a bulk unfreeze stops the rows reading as suspended, not just as disabled`() = runTest {
-        val vm = viewModel(AnimationIntensity.LOW)
-        runCurrent()
-        appRepository.apps.value = listOf(userApp("a", enabled = false, isSuspended = true))
-        runCurrent()
-
-        vm.performMultiAction(MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false, isSuspended = true))))
-        runCurrent()
-
-        // Patching only `enabled` would leave a thawed app drawn as suspended until the next rescan —
-        // and would leave the *next* unfreeze reading that stale flag, which is the trap this whole
-        // section exists for.
-        val app = vm.uiState.value.allUserApps.first { it.packageName == "a" }
-        assertTrue("enabled again", app.enabled)
-        assertFalse("and not suspended", app.isSuspended)
-    }
-
-    @Test
-    fun `a bulk unfreeze counts only the apps that came back and leaves the rest frozen`() = runTest {
-        val vm = viewModel(AnimationIntensity.LOW)
+    fun `launch rejection remains as explicit terminal progress instead of a transient toast`() = runTest {
+        val controller = FakePrivilegeSweepController().apply {
+            nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(
+                PrivilegeSweepLaunchRejection.NotificationsRequired
+            )
+        }
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
         val events = mutableListOf<AppListEvent>()
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
         runCurrent()
-        appRepository.apps.value = listOf(
-            userApp("a", enabled = false),
-            userApp("b", enabled = false),
-        )
-        runCurrent()
-        events.clear()
-        // The enable is the second half of forceUnfreeze, so failing it fails the whole restore for
-        // that app while the other one succeeds — the mixed outcome the report has to survive.
-        system.failWith("setAppDisabled:b:false", IllegalStateException("no privilege"))
 
-        vm.performMultiAction(
-            MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false), userApp("b", enabled = false)))
-        )
+        vm.performMultiAction(MultiAppAction.Freeze(listOf(userApp("a"))))
         runCurrent()
 
+        assertEquals(PrivilegeSweepPhase.FAILED, vm.uiState.value.sweepProgress?.phase)
         assertEquals(
-            listOf(
-                AppListEvent.ShowMessage(
-                    bulkResultMessage(
-                        BulkResult(op = BulkOp.UNFREEZE, total = 2, succeeded = 1, failed = 1)
-                    )
-                )
-            ),
-            events
+            UiText.StringResource(R.string.notification_access_needed_subtitle),
+            vm.uiState.value.sweepProgress?.message,
         )
-        // And the row for the app that stayed frozen must still say so, or the only affordance for
-        // retrying it is gone.
-        assertFalse(vm.uiState.value.allUserApps.first { it.packageName == "b" }.enabled)
-        assertTrue(vm.uiState.value.allUserApps.first { it.packageName == "a" }.enabled)
+        assertTrue("the durable dialog owns this failure", events.isEmpty())
     }
+
+    @Test
+    fun `durable status is exposed as explicit progress without optimistic row patching`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val requestId = UUID(0L, 73L)
+        controller.nextLaunchResult = PrivilegeSweepLaunchResult.Accepted(
+            requestId,
+            UUID(1L, 73L),
+            coalesced = false,
+        )
+        appRepository.apps.value = listOf(userApp("a", enabled = false, isSuspended = true))
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false))))
+        runCurrent()
+        controller.emit(appListStatus(requestId, PrivilegeSweepPhase.PARTIAL))
+        runCurrent()
+
+        assertEquals(PrivilegeSweepPhase.PARTIAL, vm.uiState.value.sweepStatus?.phase)
+        assertEquals(PrivilegeSweepPhase.PARTIAL, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(1, vm.uiState.value.sweepProgress?.failed)
+        val row = vm.uiState.value.allUserApps.single { it.packageName == "a" }
+        assertFalse(row.enabled)
+        assertTrue(row.isSuspended)
+    }
+
+    @Test
+    fun `app list reconnects to retained request without duplicate launch`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val requestId = UUID(0L, 74L)
+        controller.emit(appListStatus(requestId, PrivilegeSweepPhase.RUNNING))
+        val savedState = SavedStateHandle(mapOf("app_list_sweep_request_id" to requestId.toString()))
+
+        val vm = viewModel(
+            AnimationIntensity.LOW,
+            sweepController = controller,
+            savedStateHandle = savedState,
+        )
+        runCurrent()
+
+        assertTrue(controller.launched.isEmpty())
+        assertEquals(requestId, vm.uiState.value.sweepStatus?.requestId)
+        assertEquals(PrivilegeSweepPhase.RUNNING, vm.uiState.value.sweepProgress?.phase)
+    }
+
+    @Test
+    fun `missing retained app-list request is visible as observer failure`() = runTest {
+        val requestId = UUID(0L, 75L)
+        val vm = viewModel(
+            AnimationIntensity.LOW,
+            savedStateHandle = SavedStateHandle(mapOf("app_list_sweep_request_id" to requestId.toString())),
+        )
+        runCurrent()
+
+        assertEquals(PrivilegeSweepPhase.OBSERVER_FAILURE, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(
+            UiText.StringResource(R.string.sweep_observer_failure_desc),
+            vm.uiState.value.sweepProgress?.message,
+        )
+    }
+
+    @Test
+    fun `app-list cancel action reaches the durable queue`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        runCurrent()
+
+        vm.cancelSweepQueue()
+        runCurrent()
+
+        assertEquals(1, controller.cancelCalls)
+    }
+
+    private fun appListStatus(requestId: UUID, phase: PrivilegeSweepPhase) = PrivilegeSweepStatus(
+        requestId = requestId,
+        workId = UUID(1L, requestId.leastSignificantBits),
+        operation = PrivilegeSweepOperation.UNFREEZE,
+        source = PrivilegeSweepSource.APP_LIST,
+        phase = phase,
+        total = 1,
+        succeeded = 0,
+        failed = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
+        busy = 0,
+        unresolved = 0,
+        rootLaneDegraded = false,
+    )
 
     // --- GET_INSTALLED_APPS banner ---------------------------------------------------------
 

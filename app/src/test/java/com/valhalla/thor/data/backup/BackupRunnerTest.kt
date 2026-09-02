@@ -5,6 +5,7 @@ package com.valhalla.thor.data.backup
 
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
@@ -247,6 +248,7 @@ private class FakeBuilder(
         cacheSubDir: String,
         format: BundleFormat,
         fileName: String?,
+        execution: PrivilegeExecutionContext,
     ): Result<File> = respond(appInfo, format)
 }
 

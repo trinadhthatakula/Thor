@@ -16,6 +16,7 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.job.LaunchSweepBarrier
+import com.valhalla.thor.data.freezer.PrivilegeSweepReconciler
 import com.valhalla.thor.data.permission.SelfPermissionGranter
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
@@ -51,7 +52,7 @@ import org.koin.core.qualifier.named
 import org.koin.plugin.module.dsl.startKoin
 
 @KoinApplication
-class ThorApplication : Application(), SingletonImageLoader.Factory {
+open class ThorApplication : Application(), SingletonImageLoader.Factory {
 
     /**
      * The application context's locale, at process start **and afterwards**.
@@ -196,6 +197,7 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val autoFreezeManager: AutoFreezeManager by inject()
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager by inject()
     private val archiveOrphanSweeper: ArchiveOrphanSweeper by inject()
+    private val privilegeSweepReconciler: PrivilegeSweepReconciler by inject()
 
     /**
      * Released once the sweep below is over, and the only thing standing between a re-run export and
@@ -231,14 +233,27 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     // onTerminate so launched work doesn't outlive the process.
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /** Launches process-lifetime work without giving short-lived Android components their own scope. */
+    internal fun launchInApplicationScope(
+        dispatcher: CoroutineDispatcher,
+        block: suspend CoroutineScope.() -> Unit,
+    ) {
+        appScope.launch(dispatcher, block = block)
+    }
+
     // Keep the Lazy handle so we can tear the billing client down only if it was actually
     // created this run — resolving the delegate would otherwise spin up a billing connection at
     // shutdown, the opposite of what we want.
     private val billingProcessorLazy = inject<BillingProcessor>()
     private val billingProcessor by billingProcessorLazy
 
+    /** Test applications may suppress process startup before Koin, WorkManager, or Room is touched. */
+    protected open fun shouldStartApplicationRuntime(): Boolean = true
+
     override fun onCreate() {
         super.onCreate()
+        if (!shouldStartApplicationRuntime()) return
+
         // Logger gates every level on this flag, `e` included, so a build with it false emits no
         // Thor logcat at all. PRIVILEGE_TRACE is OR-ed in because the benchmark build type is
         // release-shaped (DEBUG == false) and would otherwise take its startup timings and print
@@ -253,6 +268,19 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
             // so it has to follow androidContext(). Also performs WorkManager.initialize(), which
             // is why the manifest removes the androidx.startup initializer.
             workManagerFactory()
+        }
+
+        // WorkManager is initialized by workManagerFactory() above. Reconcile only afterwards, in
+        // the retained application scope, so process death cannot leave a Room snapshot spinning
+        // forever after WorkManager has already pruned or terminalized its row.
+        appScope.launch {
+            try {
+                privilegeSweepReconciler.reconcile()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e("ThorApp", "privilege sweep reconciliation failed", e)
+            }
         }
 
         Bypass.setLogger { message, throwable ->

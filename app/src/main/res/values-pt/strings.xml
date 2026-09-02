@@ -328,8 +328,8 @@
     <string name="usage_access_needed_title">É necessário acesso à utilização</string>
     <string name="usage_access_prompt_body">O Thor precisa de acesso à utilização para ler o tamanho das aplicações. Ative-o para o Thor e escolha «Tamanho» novamente. Também pode gerir isto em Definições → Permissões.</string>
     <string name="notification_access">Notificações</string>
-    <string name="notification_access_granted_subtitle">Os resultados do congelamento em massa são mostrados como notificações</string>
-    <string name="notification_access_needed_subtitle">Permita as notificações para ver os resultados do congelamento em massa</string>
+    <string name="notification_access_granted_subtitle">As ações em aplicações em segundo plano mostram o progresso nas notificações</string>
+    <string name="notification_access_needed_subtitle">Permita as notificações nas definições do sistema para executar ações em aplicações em segundo plano e acompanhar o progresso</string>
     <string name="open_settings">Abrir as definições</string>
     <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
          ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
@@ -348,18 +348,11 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Conceda primeiro Root / Shizuku / Dhizuku</string>
     <string name="tile_no_apps_toast">Não há aplicações no Congelador</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">%1$d aplicação congelada</item>
-        <item quantity="other">%1$d aplicações congeladas</item>
-    </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_freeze_partial_failure">%1$d/%2$d aplicações congeladas (%3$d falharam)</string>
     <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
          fired before these packages resolved. -->
-    <string name="tile_freeze_incomplete">%1$d/%2$d aplicações congeladas (%3$d por terminar)</string>
     <string name="tile_checking">A verificar…</string>
     <string name="tile_freezing">A congelar…</string>
-    <string name="channel_bulk_result_name">Resultados das ações em massa</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Definições do Congelador</string>
@@ -453,15 +446,6 @@
     <!-- UiText Messages -->    <string name="frozen_success">%1$s congelada</string>
     <string name="unfrozen_success">%1$s descongelada</string>
     <string name="added_to_freezer_success">Adicionada ao Congelador</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">%1$d aplicação descongelada</item>
-        <item quantity="other">%1$d aplicações descongeladas</item>
-    </plurals>
-    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_unfreeze_partial_failure">%1$d/%2$d aplicações descongeladas (%3$d falharam)</string>
-    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
-         packages resolved, so they are neither confirmed done nor confirmed failed. -->
-    <string name="tile_unfreeze_incomplete">%1$d/%2$d aplicações descongeladas (%3$d por terminar)</string>
     <string name="error_format">Erro: %1$s</string>
     <string name="failed_to_load_apps">Não foi possível carregar as aplicações</string>
     <plurals name="removed_from_freezer_success">
@@ -623,11 +607,9 @@
     <string name="log_no_apps_to_fix">Não foram encontradas aplicações a reparar.</string>
     <!-- Developer log line, not grammar-sensitive UI — plural form intentionally not used. -->
     <string name="log_found_apps_to_fix">Encontradas %1$d aplicações a reparar.</string>
-    <string name="log_reinstalling_batch">A reinstalar aplicações</string>
     <string name="log_freezing_batch">A congelar aplicações</string>
     <string name="log_unfreezing_batch">A descongelar aplicações</string>
     <string name="log_killing_batch">A terminar aplicações</string>
-    <string name="log_clearing_cache_batch">A limpar as caches</string>
     <string name="log_uninstalling_batch">A desinstalar aplicações</string>
     <string name="log_suspending_batch">A suspender aplicações</string>
     <string name="log_unsuspending_batch">A anular a suspensão das aplicações</string>
@@ -649,7 +631,6 @@
     <string name="no_matching_apps_freezer">Não há aplicações correspondentes</string>
     <string name="add_to_freezer_hint">Toque em + para adicionar aplicações</string>
     <string name="filter_all">Todas</string>
-    <string name="error_debuggable_app">A aplicação é depurável (provável incompatibilidade de assinatura)</string>
     <string name="error_unsafe_skipped">Ignorada: a aplicação de sistema é UNSAFE / a verificação de segurança falhou</string>
     <string name="error_self_skipped">Ignorada: o Thor não pode fazer isto a si próprio</string>
     <string name="error_parse_package">Não foi possível analisar o pacote.</string>
@@ -824,5 +805,19 @@
     <string name="component_disclaimer_confirm">Desativá-lo</string>
     <string name="component_disclaimer_dont_ask_session">Não perguntar novamente nesta sessão</string>
     <string name="component_disabled_unrecorded">O Thor não conseguiu registar a desativação de %1$s — Repor tudo não a incluirá</string>
+    <string name="cancel_sweep_queue">Cancelar fila de ações</string>
+    <string name="sweep_notification_title">A aplicar ações às aplicações</string>
+    <string name="sweep_queued">Ações em fila</string>
+    <string name="sweep_running">A executar %1$d de %2$d</string>
+    <string name="sweep_succeeded">Concluídas %1$d de %2$d</string>
+    <string name="sweep_partial">As ações terminaram com problemas</string>
+    <string name="sweep_cancelled">A fila de ações foi cancelada</string>
+    <string name="sweep_failed">As ações falharam</string>
+    <string name="sweep_launch_failed_title">Não foi possível iniciar as ações</string>
+    <string name="sweep_observer_failure">Progresso indisponível</string>
+    <string name="sweep_observer_failure_desc">O Thor não conseguiu voltar a ligar-se a estas ações nas aplicações. Verifique as aplicações antes de confiar no resultado.</string>
+    <string name="sweep_root_lane_degraded">Via Root de arquivo/ações em modo degradado</string>
+    <string name="sweep_progress_summary">Com êxito: %1$d · falhadas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
+    <string name="sweep_result_summary">Ações em aplicações — com êxito: %1$d · falhadas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
 
 </resources>

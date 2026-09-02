@@ -39,7 +39,7 @@ import java.io.IOException
  * The point of the @Single is the scope: exporting 200 apps outlives the sheet that started it,
  * the ViewModel behind that sheet and often the Activity behind *that*. A process-lifetime
  * [SupervisorJob] scope survives all three **without a foreground service**, which is the same shape
- * `BulkFreezeRunner` already uses for exactly this problem.
+ * `the legacy bulk executor` already uses for exactly this problem.
  *
  * The reason given here used to be that Thor declares no `FOREGROUND_SERVICE` permission. **That is
  * false, and was false when it was written.** The merged manifest carries the base permission from
@@ -71,7 +71,7 @@ class BackupRunner(
     // Two, not five: each permit is a full staged copy of an app, and every worker is streaming
     // to the same volume the staging lives on. More permits multiply the cache peak for very
     // little overlap.
-    private val gate = StagingGate(MAX_CONCURRENT)
+    private val gate = StagingGate(MAX_STAGED_APPS)
 
     private val _progress = MutableStateFlow<BackupProgress?>(null)
 
@@ -119,7 +119,7 @@ class BackupRunner(
     /**
      * Start a run, cancelling and replacing any run already in flight.
      *
-     * Cancel-and-replace rather than the same-op coalescing `BulkFreezeRunner` does: two backup
+     * Cancel-and-replace rather than the same-op coalescing `the legacy bulk executor` does: two backup
      * requests are not interchangeable — the second carries a different selection — so returning
      * the first would export the wrong apps.
      *
@@ -268,6 +268,6 @@ class BackupRunner(
 
     private companion object {
         const val TAG = "BackupRunner"
-        const val MAX_CONCURRENT = 2
+        const val MAX_STAGED_APPS = 2
     }
 }

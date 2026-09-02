@@ -6,17 +6,19 @@ package com.valhalla.thor.di
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.room.Room
-import com.valhalla.superuser.ktx.RealShellRepository
-import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
 import com.valhalla.thor.data.backup.PartialArchiveLedger
+import com.valhalla.thor.data.gateway.root.OdinRootShellSessionFactory
+import com.valhalla.thor.data.gateway.root.OwnedRootShellExecutor
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.ComponentOverrideDao
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
+import com.valhalla.thor.data.source.local.room.PrivilegeSweepDao
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import kotlinx.coroutines.CoroutineDispatcher
@@ -87,10 +89,35 @@ class AppModule {
     fun componentOverrideDao(appDatabase: AppDatabase): ComponentOverrideDao =
         appDatabase.componentOverrideDao()
 
-    // RealShellRepository comes from the Odin library (com.valhalla.superuser.ktx), outside the
-    // scan scope — the component scan only sees com.valhalla.thor.
     @Single
-    fun shellRepository(): ShellRepository = RealShellRepository()
+    fun privilegeSweepDao(appDatabase: AppDatabase): PrivilegeSweepDao =
+        appDatabase.privilegeSweepDao()
+
+    @Single
+    @Named("archive")
+    internal fun archiveRootShellExecutor(
+        @Named("io") ioDispatcher: CoroutineDispatcher,
+    ): OwnedRootShellExecutor = OwnedRootShellExecutor(
+        lane = PrivilegeExecutionLane.ARCHIVE,
+        sessionFactory = OdinRootShellSessionFactory(
+            ioDispatcher = ioDispatcher,
+            lane = PrivilegeExecutionLane.ARCHIVE,
+        ),
+        ioDispatcher = ioDispatcher,
+    )
+
+    @Single
+    @Named("sweep")
+    internal fun sweepRootShellExecutor(
+        @Named("io") ioDispatcher: CoroutineDispatcher,
+    ): OwnedRootShellExecutor = OwnedRootShellExecutor(
+        lane = PrivilegeExecutionLane.SWEEP,
+        sessionFactory = OdinRootShellSessionFactory(
+            ioDispatcher = ioDispatcher,
+            lane = PrivilegeExecutionLane.SWEEP,
+        ),
+        ioDispatcher = ioDispatcher,
+    )
 
     // Bound here rather than annotated on the class: FileArchiveBreadcrumbStore takes a File so it
     // stays JVM-testable, and there is no File in the graph for the scan to inject. With

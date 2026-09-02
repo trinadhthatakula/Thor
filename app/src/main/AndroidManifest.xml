@@ -306,6 +306,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".data.freezer.SweepQueueCancelReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".data.receivers.InstallReceiver"
             android:exported="false">
             <intent-filter>
@@ -328,6 +332,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.PACKAGE_ADDED" />
                 <action android:name="android.intent.action.PACKAGE_REPLACED" />
+
                 <data android:scheme="package" />
             </intent-filter>
         </receiver>

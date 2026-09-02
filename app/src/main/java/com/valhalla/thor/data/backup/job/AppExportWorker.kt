@@ -8,6 +8,7 @@ import androidx.annotation.StringRes
 import androidx.work.WorkerParameters
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppExportRequest
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.EXPORT_LABEL_KEY
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
@@ -83,6 +84,9 @@ internal class AppExportWorker(
     override suspend fun runJob(): Result {
         val request = AppExportRequest.fromMap(inputData.keyValueMap)
             ?: return failNoted(getString(R.string.export_job_unreadable))
+        val execution = archiveExecutionContext(
+            PrivilegeCommandClass("archive.export"), request.packageName, id,
+        )
 
         publish(ThorJobProgress(ThorJobStage.PREPARING, getString(R.string.export_job_preparing, request.label)))
 
@@ -121,7 +125,9 @@ internal class AppExportWorker(
         // one-app export — a batch takes a scope of its own so the two cannot wipe each other's
         // half-written copy, and there is no batch on this seam yet.
         val session = ExportSession(request.target, ExportAppUseCase.SINGLE_STAGING_DIR)
-        val destination = exportApp.exportInto(appInfo, request.format, session)
+        val destination = exportApp.exportInto(
+            appInfo, request.format, session, execution = execution,
+        )
             .getOrElse { cause ->
                 Logger.e(TAG, "export of ${request.packageName} failed", cause)
                 // The cause's own words, not a generic sentence. The builder computes and phrases the

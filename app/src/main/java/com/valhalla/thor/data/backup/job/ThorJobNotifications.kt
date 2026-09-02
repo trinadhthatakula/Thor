@@ -3,18 +3,22 @@
 
 package com.valhalla.thor.data.backup.job
 
+import android.Manifest
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.work.ForegroundInfo
 import androidx.work.WorkManager
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.SweepQueueCancelReceiver
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.presentation.launcher.JobSheetLaunchActivity
@@ -24,8 +28,22 @@ import org.koin.core.annotation.Single
 
 private const val TAG = "ThorJobNotifications"
 
-@Single
-class ThorJobNotifications(private val context: Context) {
+internal fun interface ThorJobNotificationCapability {
+    fun canPostJobs(): Boolean
+}
+
+/** Pure half of [ThorJobNotifications.canPostJobs], kept visible to JVM policy tests. */
+internal fun jobNotificationsAvailable(
+    appNotificationsEnabled: Boolean,
+    postNotificationsGranted: Boolean,
+    channelImportance: Int?,
+): Boolean = appNotificationsEnabled &&
+        postNotificationsGranted &&
+        channelImportance != null &&
+        channelImportance != NotificationManager.IMPORTANCE_NONE
+
+@Single(binds = [ThorJobNotificationCapability::class])
+class ThorJobNotifications(private val context: Context) : ThorJobNotificationCapability {
 
     // Hoisted out of the per-tick path — each from() call is a system service lookup.
     private val notificationManager = NotificationManagerCompat.from(context)
@@ -50,7 +68,7 @@ class ThorJobNotifications(private val context: Context) {
         ThorJobKind.entries.associateWith { kind ->
             PendingIntent.getActivity(
                 context,
-                // The notification id doubles as the request code, so the two kinds get distinct
+                // The notification id doubles as the request code, so every kind gets a distinct
                 // PendingIntents instead of one overwriting the other's extras. Request code 0 is
                 // BulkResultNotifier's; these start at BASE_NOTIFICATION_ID.
                 notificationId(kind),
@@ -67,6 +85,30 @@ class ThorJobNotifications(private val context: Context) {
         // Channel creation is idempotent; calling it once here avoids an IPC on every notification
         // post rather than relying on the caller to guard it.
         ensureChannel()
+    }
+
+    /**
+     * Whether a background job can keep its required user-visible surface for its whole lifetime.
+     *
+     * Channel creation comes first deliberately. On API 26+ a missing channel is not evidence that
+     * the user disabled it, and querying before Thor has registered the channel would conflate those
+     * two states. An existing user-disabled channel keeps its importance when re-created, so the
+     * subsequent lookup still observes that decision.
+     */
+    override fun canPostJobs(): Boolean {
+        ensureChannel()
+        val postNotificationsGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+        val channelImportance =
+            notificationManager.getNotificationChannelCompat(CHANNEL_ID)?.importance
+        return jobNotificationsAvailable(
+            appNotificationsEnabled = notificationManager.areNotificationsEnabled(),
+            postNotificationsGranted = postNotificationsGranted,
+            channelImportance = channelImportance,
+        )
     }
 
     fun foregroundInfo(
@@ -103,7 +145,7 @@ class ThorJobNotifications(private val context: Context) {
      * clear, no key drop, no notification cancel. §8.5's breadcrumb is what covers that for a
      * restore; a backup relies on the launch sweep.
      *
-     * `POST_NOTIFICATIONS` can be revoked while the job runs. If a revocation races a [notify] call,
+     * `POST_NOTIFICATIONS` can be revoked while the job runs. If a revocation races a notification,
      * the resulting [SecurityException] is caught so that a revoked permission does not fail the backup.
      */
     fun update(kind: ThorJobKind, progress: ThorJobProgress, jobId: UUID) {
@@ -189,21 +231,39 @@ class ThorJobNotifications(private val context: Context) {
             // An unknown total is an indeterminate bar, never a bar sitting at 0%.
             val percent = progress.percent
             if (percent == null) setProgress(0, 0, true) else setProgress(100, percent, false)
-            // createCancelPendingIntent needs no receiver of Thor's own, and it cancels the work
-            // rather than just dismissing the notification. It is a live cancel of a running job:
-            // ThorJobLauncher.cancel is not the only route to a CANCELLED WorkInfo, and both
-            // watchers' `workerRan` arms exist for the state this action can leave behind.
             addAction(
                 0,
-                context.getString(android.R.string.cancel),
-                WorkManager.getInstance(context).createCancelPendingIntent(jobId),
+                context.getString(
+                    if (kind == ThorJobKind.PRIVILEGE_SWEEP) {
+                        R.string.cancel_sweep_queue
+                    } else {
+                        android.R.string.cancel
+                    }
+                ),
+                cancellationIntent(kind, jobId),
             )
         }.build()
+
+    private fun cancellationIntent(kind: ThorJobKind, jobId: UUID): PendingIntent =
+        if (kind == ThorJobKind.PRIVILEGE_SWEEP) {
+            PendingIntent.getBroadcast(
+                context,
+                notificationId(kind),
+                Intent(context, SweepQueueCancelReceiver::class.java)
+                    .setAction(SweepQueueCancelReceiver.ACTION_CANCEL_SWEEP_QUEUE),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        } else {
+            // Archive and export jobs retain per-work cancellation. Only sweep cancellation is
+            // queue-wide because every queued sweep snapshot is terminalized in one transaction.
+            WorkManager.getInstance(context).createCancelPendingIntent(jobId)
+        }
 
     private fun titleFor(kind: ThorJobKind) = when (kind) {
         ThorJobKind.ARCHIVE_BACKUP -> R.string.job_backing_up
         ThorJobKind.ARCHIVE_RESTORE -> R.string.job_restoring
         ThorJobKind.APP_EXPORT -> R.string.job_exporting
+        ThorJobKind.PRIVILEGE_SWEEP -> R.string.sweep_notification_title
     }
 
     /**
@@ -226,6 +286,7 @@ class ThorJobNotifications(private val context: Context) {
     private fun iconFor(kind: ThorJobKind) = when (kind) {
         ThorJobKind.ARCHIVE_BACKUP, ThorJobKind.ARCHIVE_RESTORE -> R.drawable.settings_backup_restore
         ThorJobKind.APP_EXPORT -> R.drawable.arrow_downward
+        ThorJobKind.PRIVILEGE_SWEEP -> R.drawable.frozen
     }
 
     /**

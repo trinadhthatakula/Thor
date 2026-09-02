@@ -211,7 +211,9 @@ class AppInfoDetailsViewModel(
 
             // Deliberately after the details land: the probe shells out, and the rest of the
             // screen should not wait on it.
-            val probe = systemRepository.probeObb(packageName)
+            val probe = probeObbForPresentation {
+                systemRepository.probeObb(packageName)
+            }
             _uiState.update { it.copy(obbProbe = probe) }
         }
     }

@@ -5,7 +5,10 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.backup.MANIFEST_AUTH_ALGORITHM
+import com.valhalla.thor.data.backup.MANIFEST_MAC_BYTES
 import com.valhalla.thor.domain.model.ARCHIVE_SPACE_MARGIN_BYTES
+import com.valhalla.thor.domain.model.ArchiveAuthentication
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleInfo
@@ -17,6 +20,11 @@ import com.valhalla.thor.domain.model.ArchiveSkip
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
+import com.valhalla.thor.domain.model.PackageLeaseResult
+import com.valhalla.thor.domain.model.PackageOperationBusy
+import com.valhalla.thor.domain.model.PackageOperationOwner
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
@@ -26,9 +34,11 @@ import com.valhalla.thor.domain.model.thorbakFileName
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppDataProbe
+import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.zip.CRC32
 import java.util.zip.Deflater
@@ -41,6 +51,8 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Factory
 
 private const val TAG = "BackupAppArchive"
+
+private data class CopiedBundle(val bytes: Long, val sha256: String)
 
 /**
  * §7.2, as one function.
@@ -64,6 +76,7 @@ internal class BackupAppArchiveUseCase(
     private val cipher: AppArchiveCipher,
     /** §7.4 only: the pre-flight space check needs a size before it stages a class. */
     private val probe: AppDataProbe,
+    private val packageOperationCoordinator: PackageOperationCoordinator,
 ) {
 
     /**
@@ -99,6 +112,43 @@ internal class BackupAppArchiveUseCase(
         usableStagingBytes: Long = 0L,
         appLabel: String = request.packageName,
         onProgress: (ThorJobProgress) -> Unit = {},
+    ): ArchiveBackupOutcome = when (
+        val lease = packageOperationCoordinator.withPackageLease(
+            packageName = request.packageName,
+            owner = PackageOperationOwner.ARCHIVE_BACKUP,
+            admissionTimeout = PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+        ) {
+            runBackup(
+                request = request,
+                key = key,
+                bundle = bundle,
+                bundleObbCapture = bundleObbCapture,
+                bundleObbCount = bundleObbCount,
+                versionCode = versionCode,
+                versionName = versionName,
+                usableStagingBytes = usableStagingBytes,
+                appLabel = appLabel,
+                onProgress = onProgress,
+            )
+        }
+    ) {
+        is PackageLeaseResult.Acquired -> lease.value
+        is PackageLeaseResult.Busy -> ArchiveBackupOutcome.Failed(
+            PackageOperationBusy(lease.owner).message ?: "Package operation busy: ${lease.owner}",
+        )
+    }
+
+    private suspend fun runBackup(
+        request: ArchiveBackupRequest,
+        key: SecretKey,
+        bundle: File?,
+        bundleObbCapture: String,
+        bundleObbCount: Int,
+        versionCode: Long,
+        versionName: String?,
+        usableStagingBytes: Long,
+        appLabel: String,
+        onProgress: (ThorJobProgress) -> Unit,
     ): ArchiveBackupOutcome {
         val fileName = thorbakFileName(request.packageName, versionCode)
         val destination = archiveStore.openArchive(fileName) ?: return ArchiveBackupOutcome.NoDestination
@@ -106,7 +156,7 @@ internal class BackupAppArchiveUseCase(
         // Read before anything is written. Without a signer the archive cannot carry the check that
         // stops a restore into a same-named, differently-signed package, and an archive missing that
         // field is one a later Thor would have to either refuse or trust.
-        val signer = gateway.signerSha256(request.packageName)
+        val signer = gateway.signerSha256(request.packageName)?.lowercase()
         if (signer == null) {
             withContext(NonCancellable) { destination.discard() }
             return ArchiveBackupOutcome.Failed("the app's signing certificate could not be read")
@@ -115,6 +165,7 @@ internal class BackupAppArchiveUseCase(
         val members = mutableListOf<ArchiveMember>()
         val skipped = mutableListOf<ArchiveSkip>()
         val warnings = mutableListOf<String>()
+        var copiedBundle: CopiedBundle? = null
         var published = false
 
         // Level 0 for the streamed entries: the members are ciphertext and the bundle is already
@@ -140,8 +191,23 @@ internal class BackupAppArchiveUseCase(
                 // and a user watching their game back up should not read a generated `.xapk` file name.
                 onProgress(ThorJobProgress(ThorJobStage.CAPTURING, appLabel))
                 zip.putNextEntry(ZipEntry(THORBAK_BUNDLE_ENTRY))
-                bundle.inputStream().use { it.copyTo(zip) }
+                val digest = MessageDigest.getInstance("SHA-256")
+                var copied = 0L
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                bundle.inputStream().use { input ->
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        zip.write(buffer, 0, read)
+                        digest.update(buffer, 0, read)
+                        copied += read
+                    }
+                }
                 zip.closeEntry()
+                copiedBundle = CopiedBundle(
+                    bytes = copied,
+                    sha256 = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xFF) },
+                )
             }
 
             // Iterated in DataClass order, not the request's set order, so two runs over the same
@@ -208,7 +274,7 @@ internal class BackupAppArchiveUseCase(
             }
 
             onProgress(ThorJobProgress(ThorJobStage.FINISHING, appLabel))
-            val header = ArchiveHeader(
+            val unsignedHeader = ArchiveHeader(
                 createdAt = System.currentTimeMillis(),
                 thorVersionCode = BuildConfig.VERSION_CODE,
                 packageName = request.packageName,
@@ -216,9 +282,10 @@ internal class BackupAppArchiveUseCase(
                 versionName = versionName,
                 userId = gateway.thorUserId(),
                 signerSha256 = signer,
-                appBundle = bundle?.let {
+                appBundle = copiedBundle?.let {
                     ArchiveBundleInfo(
-                        bytes = it.length(),
+                        bytes = it.bytes,
+                        sha256 = it.sha256,
                         obbCapture = bundleObbCapture,
                         obbCount = bundleObbCount,
                     )
@@ -228,9 +295,18 @@ internal class BackupAppArchiveUseCase(
                     salt = Base64.getEncoder().encodeToString(request.salt),
                 ),
                 verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
+                authentication = ArchiveAuthentication(
+                    algorithm = MANIFEST_AUTH_ALGORITHM,
+                    mac = Base64.getEncoder().encodeToString(ByteArray(MANIFEST_MAC_BYTES)),
+                ),
                 members = members,
                 skippedEntries = skipped,
                 warnings = warnings,
+            )
+            val header = unsignedHeader.copy(
+                authentication = unsignedHeader.authentication!!.copy(
+                    mac = Base64.getEncoder().encodeToString(cipher.manifestMac(key, unsignedHeader))
+                )
             )
 
             // The header is the **last** entry, because it names every member's nonce and chunk count
@@ -269,9 +345,13 @@ internal class BackupAppArchiveUseCase(
             // Rethrow so the coroutine machinery sees the cancellation. The finally below discards
             // the partial destination before the coroutine unwinds further.
             throw e
-        } catch (e: Exception) {
-            Logger.e(TAG, "backup of ${request.packageName} failed", e)
-            return ArchiveBackupOutcome.Failed(e.message ?: "the backup failed")
+        } catch (e: PrivilegeExecutionException) {
+            // Root-lane failures are typed at the execution boundary. Preserve the exact instance so
+            // the worker can map it without losing the lane or command classification.
+            throw e
+        } catch (_: Exception) {
+            Logger.e(TAG, "archive backup failed package=${request.packageName}")
+            return ArchiveBackupOutcome.Failed("the backup failed")
         } finally {
             // Ends the `Deflater`'s native buffers on every path, including the cancelled and the
             // already-finished one (`ZipOutputStream.finish` is idempotent, and `close()` reaches
@@ -326,7 +406,7 @@ internal class BackupAppArchiveUseCase(
             val nonce = cipher.newNonce()
             zip.putNextEntry(ZipEntry(memberName))
             val stats = staged.inputStream().use { input ->
-                cipher.encryptMember(memberName, input, zip, key, nonce)
+                cipher.encryptMember(dataClass.id, memberName, input, zip, key, nonce)
             }
             zip.closeEntry()
 
@@ -335,6 +415,7 @@ internal class BackupAppArchiveUseCase(
                 fileName = memberName,
                 nonce = Base64.getEncoder().encodeToString(nonce),
                 plainBytes = stats.plainBytes,
+                cipherBytes = stats.cipherBytes,
                 chunkCount = stats.chunkCount,
                 compression = if (compressed) ArchiveCompression.GZIP.id else ArchiveCompression.NONE.id,
             )

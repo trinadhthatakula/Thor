@@ -5,13 +5,12 @@ package com.valhalla.thor.presentation.widgets
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,135 +24,266 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
+
+/** Everything the UI needs to render one retained durable sweep request. */
+data class SweepProgressUiState(
+    val phase: PrivilegeSweepPhase,
+    val total: Int,
+    val succeeded: Int,
+    val failed: Int,
+    val busy: Int,
+    val unresolved: Int,
+    val rootLaneDegraded: Boolean,
+    val message: UiText? = null,
+) {
+    val isActive: Boolean
+        get() = phase == PrivilegeSweepPhase.QUEUED || phase == PrivilegeSweepPhase.RUNNING
+}
+
+fun PrivilegeSweepStatus.toSweepProgressUiState(): SweepProgressUiState =
+    SweepProgressUiState(
+        phase = phase,
+        total = total,
+        succeeded = succeeded,
+        failed = failed,
+        busy = busy,
+        unresolved = unresolved,
+        rootLaneDegraded = rootLaneDegraded,
+        message = if (phase == PrivilegeSweepPhase.OBSERVER_FAILURE) {
+            UiText.StringResource(R.string.sweep_observer_failure_desc)
+        } else {
+            null
+        },
+    )
+
+fun queuedSweepProgress(total: Int): SweepProgressUiState = SweepProgressUiState(
+    phase = PrivilegeSweepPhase.QUEUED,
+    total = total,
+    succeeded = 0,
+    failed = 0,
+    busy = 0,
+    unresolved = total,
+    rootLaneDegraded = false,
+)
+
+fun failedSweepProgress(total: Int, message: UiText): SweepProgressUiState = SweepProgressUiState(
+    phase = PrivilegeSweepPhase.FAILED,
+    total = total,
+    succeeded = 0,
+    failed = 0,
+    busy = 0,
+    unresolved = total,
+    rootLaneDegraded = false,
+    message = message,
+)
+
+fun SweepProgressUiState?.asObserverFailure(): SweepProgressUiState = SweepProgressUiState(
+    phase = PrivilegeSweepPhase.OBSERVER_FAILURE,
+    total = this?.total ?: 0,
+    succeeded = this?.succeeded ?: 0,
+    failed = this?.failed ?: 0,
+    busy = this?.busy ?: 0,
+    unresolved = this?.unresolved ?: 0,
+    rootLaneDegraded = this?.rootLaneDegraded ?: false,
+    message = UiText.StringResource(R.string.sweep_observer_failure_desc),
+)
 
 /**
- * Compact, count-only progress for bulk freeze / unfreeze. Shows a live
- * `processed / total` count while running and a one-line summary when done — it
- * never lists app names. On a fully-successful run it auto-dismisses after a short
- * delay; if any app failed it stays open with a Close button so the result is read.
+ * Count-only presentation of a durable privilege sweep.
+ *
+ * Active work blocks accidental Back/outside dismissal and offers cancellation of the whole queue.
+ * Every non-success terminal outcome remains visible until acknowledged; a full success may dismiss
+ * itself after [autoDismissMillis].
  */
 @Composable
 fun FreezeLoggerDialog(
-    isFreeze: Boolean,
-    total: Int,
-    processed: Int,
-    failed: Int,
-    isComplete: Boolean,
+    state: SweepProgressUiState,
     onDismiss: () -> Unit,
+    onCancelQueue: () -> Unit,
     modifier: Modifier = Modifier,
-    autoDismissMillis: Long = 2000L
+    autoDismissMillis: Long = 2000L,
 ) {
-    val succeeded = processed - failed
-    val hasFailures = failed > 0
-
-    // Keyed on completion state (NOT onDismiss, which would reset the delay each
-    // recomposition); rememberUpdatedState keeps the latest onDismiss without restarting.
     val currentOnDismiss by rememberUpdatedState(onDismiss)
 
-    // Auto-dismiss shortly after a fully-successful run.
-    LaunchedEffect(isComplete, hasFailures) {
-        if (isComplete && !hasFailures) {
-            delay(autoDismissMillis)
+    LaunchedEffect(state.phase) {
+        if (state.phase == PrivilegeSweepPhase.SUCCEEDED) {
+            delay(autoDismissMillis.milliseconds)
             currentOnDismiss()
         }
     }
 
     Dialog(
-        onDismissRequest = { if (isComplete) onDismiss() },
+        onDismissRequest = { if (!state.isActive) onDismiss() },
         properties = DialogProperties(
-            dismissOnBackPress = isComplete,
-            dismissOnClickOutside = false
-        )
+            dismissOnBackPress = !state.isActive,
+            dismissOnClickOutside = !state.isActive,
+        ),
     ) {
         Surface(
             modifier = modifier,
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            tonalElevation = 6.dp,
         ) {
             Column(
                 modifier = Modifier
-                    .widthIn(min = 220.dp)
+                    .widthIn(min = 260.dp)
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                when {
-                    !isComplete -> AnimateLottieRaw(
-                        resId = R.raw.rearrange,
-                        shouldLoop = true,
-                        modifier = Modifier.size(56.dp),
-                        contentScale = ContentScale.Crop
-                    )
+                SweepStateIcon(state.phase)
 
-                    hasFailures -> Icon(
-                        imageVector = Icons.Rounded.Warning,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
+                Text(
+                    text = sweepTitle(state),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
 
-                    else -> Icon(
-                        painter = painterResource(R.drawable.check_circle),
-                        contentDescription = stringResource(R.string.cd_selected),
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                sweepBody(state)?.let { body ->
+                    Text(
+                        text = body,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
                     )
                 }
 
-                if (!isComplete) {
-                    Text(
-                        text = stringResource(
-                            if (isFreeze) R.string.log_freezing_batch else R.string.log_unfreezing_batch
-                        ),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "$processed / $total",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    Text(
-                        text = if (hasFailures) {
-                            stringResource(
-                                if (isFreeze) R.string.tile_freeze_partial_failure
-                                else R.string.tile_unfreeze_partial_failure,
-                                succeeded, total, failed
-                            )
-                        } else {
-                            pluralStringResource(
-                                if (isFreeze) R.plurals.tile_freeze_success
-                                else R.plurals.unfrozen_count_success,
-                                succeeded,
-                                succeeded
-                            )
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                if (state.rootLaneDegraded) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.warning),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                        Text(
+                            text = stringResource(R.string.sweep_root_lane_degraded),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
 
-                    if (hasFailures) {
-                        Button(
-                            onClick = onDismiss,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.close))
-                        }
+                when {
+                    state.isActive -> Button(
+                        onClick = onCancelQueue,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.cancel_sweep_queue))
+                    }
+
+                    state.phase != PrivilegeSweepPhase.SUCCEEDED -> Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.close))
                     }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun SweepStateIcon(phase: PrivilegeSweepPhase) {
+    when (phase) {
+        PrivilegeSweepPhase.QUEUED,
+        PrivilegeSweepPhase.RUNNING -> AnimateLottieRaw(
+            resId = R.raw.rearrange,
+            shouldLoop = true,
+            modifier = Modifier.size(56.dp),
+            contentScale = ContentScale.Crop,
+        )
+
+        PrivilegeSweepPhase.SUCCEEDED -> Icon(
+            painter = painterResource(R.drawable.check_circle),
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+
+        PrivilegeSweepPhase.PARTIAL -> Icon(
+            painter = painterResource(R.drawable.warning),
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.error,
+        )
+
+        PrivilegeSweepPhase.CANCELLED -> Icon(
+            painter = painterResource(R.drawable.round_close),
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        PrivilegeSweepPhase.FAILED,
+        PrivilegeSweepPhase.OBSERVER_FAILURE -> Icon(
+            painter = painterResource(R.drawable.danger),
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+@Composable
+private fun sweepTitle(state: SweepProgressUiState): String = when (state.phase) {
+    PrivilegeSweepPhase.QUEUED -> stringResource(R.string.sweep_queued)
+    PrivilegeSweepPhase.RUNNING -> stringResource(
+        R.string.sweep_running,
+        state.succeeded + state.failed + state.busy,
+        state.total,
+    )
+
+    PrivilegeSweepPhase.SUCCEEDED -> stringResource(
+        R.string.sweep_succeeded,
+        state.succeeded,
+        state.total,
+    )
+
+    PrivilegeSweepPhase.PARTIAL -> stringResource(R.string.sweep_partial)
+    PrivilegeSweepPhase.CANCELLED -> stringResource(R.string.sweep_cancelled)
+    PrivilegeSweepPhase.FAILED -> stringResource(
+        if (state.message == null) R.string.sweep_failed else R.string.sweep_launch_failed_title
+    )
+
+    PrivilegeSweepPhase.OBSERVER_FAILURE -> stringResource(R.string.sweep_observer_failure)
+}
+
+@Composable
+private fun sweepBody(state: SweepProgressUiState): String? = state.message?.asString()
+    ?: when (state.phase) {
+        PrivilegeSweepPhase.PARTIAL,
+        PrivilegeSweepPhase.CANCELLED,
+        PrivilegeSweepPhase.FAILED -> stringResource(
+            R.string.sweep_progress_summary,
+            state.succeeded,
+            state.failed,
+            state.busy,
+            state.unresolved,
+        )
+
+        PrivilegeSweepPhase.OBSERVER_FAILURE ->
+            stringResource(R.string.sweep_observer_failure_desc)
+
+        PrivilegeSweepPhase.QUEUED,
+        PrivilegeSweepPhase.RUNNING,
+        PrivilegeSweepPhase.SUCCEEDED -> null
+    }

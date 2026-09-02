@@ -85,6 +85,7 @@ import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.presentation.widgets.FreezeLoggerDialog
 import com.valhalla.thor.presentation.widgets.ScrollToTopOnChange
 import org.koin.androidx.compose.koinViewModel
 
@@ -721,6 +722,14 @@ fun FreezerScreen(
                 }
             },
             onListTypeChanged = viewModel::updateListType
+        )
+    }
+
+    state.sweepProgress?.let { progress ->
+        FreezeLoggerDialog(
+            state = progress,
+            onDismiss = viewModel::dismissSweepProgress,
+            onCancelQueue = viewModel::cancelSweepQueue,
         )
     }
 

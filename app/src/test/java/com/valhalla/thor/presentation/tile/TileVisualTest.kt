@@ -6,6 +6,11 @@ package com.valhalla.thor.presentation.tile
 import android.service.quicksettings.Tile
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -126,4 +131,26 @@ class TileVisualTest {
     fun `READY is active`() {
         assertEquals(Tile.STATE_ACTIVE, tileStateFor(TileVisual.READY))
     }
+
+    @Test
+    fun `tile visual reflects queued running and latest retained terminal count`() {
+        assertEquals(TileVisual.WORKING, tileVisualFor(rooted, 3, status(PrivilegeSweepPhase.QUEUED)))
+        assertEquals(TileVisual.WORKING, tileVisualFor(rooted, 3, status(PrivilegeSweepPhase.RUNNING)))
+        assertEquals(TileVisual.READY, tileVisualFor(rooted, 3, status(PrivilegeSweepPhase.PARTIAL)))
+        assertEquals(2, retainedProcessedCount(status(PrivilegeSweepPhase.PARTIAL)))
+    }
+
+    private fun status(phase: PrivilegeSweepPhase) = PrivilegeSweepStatus(
+        requestId = UUID(0L, 1L),
+        workId = UUID(1L, 1L),
+        operation = PrivilegeSweepOperation.FREEZE,
+        source = PrivilegeSweepSource.QS_TILE,
+        phase = phase,
+        total = 3,
+        succeeded = 1,
+        failed = 1,
+        busy = 0,
+        unresolved = 1,
+        rootLaneDegraded = false,
+    )
 }

@@ -5,6 +5,7 @@ package com.valhalla.thor.data.repository
 
 import com.valhalla.thor.domain.repository.ArchiveSource
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.ZipFile
@@ -29,8 +30,17 @@ class ZipArchiveSource(
     // by which point the UI has already told the user the archive is being opened.
     private val zip = ZipFile(file)
     private val closed = AtomicBoolean(false)
+    private val names = zip.entries().toList().map { it.name }
 
-    override fun entryNames(): List<String> = zip.entries().toList().map { it.name }
+    init {
+        if (names.size != names.toSet().size) {
+            runCatching { zip.close() }
+            runCatching(onClose)
+            throw IOException("archive contains duplicate entries")
+        }
+    }
+
+    override fun entryNames(): List<String> = names
 
     override fun openEntry(name: String): InputStream? =
         zip.getEntry(name)?.let(zip::getInputStream)

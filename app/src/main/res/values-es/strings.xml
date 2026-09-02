@@ -210,15 +210,8 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Concede Root / Shizuku / Dhizuku primero</string>
     <string name="tile_no_apps_toast">No hay aplicaciones en el Congelador</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">Se congeló %1$d aplicación</item>
-        <item quantity="other">Se congelaron %1$d aplicaciones</item>
-    </plurals>
-    <string name="tile_freeze_partial_failure">Se congelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
-    <string name="tile_freeze_incomplete">Se congelaron %1$d/%2$d aplicaciones (%3$d sin terminar)</string>
     <string name="tile_checking">Comprobando…</string>
     <string name="tile_freezing">Congelando…</string>
-    <string name="channel_bulk_result_name">Resultados de acciones masivas</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ajustes del congelador</string>
@@ -263,12 +256,6 @@
     <!-- UiText Messages -->    <string name="frozen_success">Se congeló %1$s</string>
     <string name="unfrozen_success">Se descongeló %1$s</string>
     <string name="added_to_freezer_success">Añadido al congelador</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">Se descongeló %1$d aplicación</item>
-        <item quantity="other">Se descongelaron %1$d aplicaciones</item>
-    </plurals>
-    <string name="tile_unfreeze_partial_failure">Se descongelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
-    <string name="tile_unfreeze_incomplete">Se descongelaron %1$d/%2$d aplicaciones (%3$d sin terminar)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Error al cargar las aplicaciones</string>
     <plurals name="removed_from_freezer_success">
@@ -394,11 +381,9 @@
     <string name="log_scanning_apps">Escaneando aplicaciones…</string>
     <string name="log_no_apps_to_fix">No se encontraron aplicaciones que requieran reparación.</string>
     <string name="log_found_apps_to_fix">Se encontraron %1$d aplicaciones para reparar.</string>
-    <string name="log_reinstalling_batch">Reinstalando aplicaciones</string>
     <string name="log_freezing_batch">Congelando aplicaciones</string>
     <string name="log_unfreezing_batch">Descongelando aplicaciones</string>
     <string name="log_killing_batch">Deteniendo aplicaciones</string>
-    <string name="log_clearing_cache_batch">Limpiando cachés</string>
     <string name="log_uninstalling_batch">Desinstalando aplicaciones</string>
     <string name="log_suspending_batch">Suspendiendo aplicaciones</string>
     <string name="log_unsuspending_batch">Reanudando aplicaciones</string>
@@ -420,7 +405,6 @@
     <string name="no_matching_apps_freezer">No hay aplicaciones coincidentes</string>
     <string name="add_to_freezer_hint">Toca + para añadir aplicaciones</string>
     <string name="filter_all">Todas</string>
-    <string name="error_debuggable_app">La aplicación es depurable (probablemente discrepancia de firma)</string>
     <string name="error_unsafe_skipped">Omitido: La aplicación del sistema es INSEGURA / falló la verificación de seguridad</string>
     <string name="error_self_skipped">Omitido: Thor no puede hacerse esto a sí mismo</string>
     <string name="error_parse_package">Error al analizar el paquete.</string>
@@ -552,8 +536,8 @@
     <string name="usage_access_needed_title">Acceso de uso necesario</string>
     <string name="usage_access_prompt_body">Thor necesita Acceso de uso para leer el tamaño de las aplicaciones. Actívalo para Thor y luego vuelve a seleccionar \"Tamaño\". También puedes gestionarlo en Ajustes → Permisos.</string>
     <string name="notification_access">Notificaciones</string>
-    <string name="notification_access_granted_subtitle">Los resultados del congelado masivo se muestran como notificaciones</string>
-    <string name="notification_access_needed_subtitle">Permite las notificaciones para ver los resultados del congelado masivo</string>
+    <string name="notification_access_granted_subtitle">Las acciones de aplicaciones en segundo plano muestran su progreso en las notificaciones</string>
+    <string name="notification_access_needed_subtitle">Permite las notificaciones en los ajustes del sistema para ejecutar acciones de aplicaciones en segundo plano y ver su progreso</string>
     <string name="open_settings">Abrir ajustes</string>
     <string name="installed_apps_permission_title">La lista de aplicaciones puede estar incompleta</string>
     <string name="installed_apps_permission_desc">Tu dispositivo limita qué aplicaciones puede ver Thor mientras está en segundo plano. Concede acceso completo a la lista de aplicaciones instaladas para mantenerla completa.</string>
@@ -758,5 +742,19 @@
     <string name="component_disclaimer_confirm">Desactivarlo</string>
     <string name="component_disclaimer_dont_ask_session">No volver a preguntar en esta sesión</string>
     <string name="component_disabled_unrecorded">Se desactivó %1$s, pero Thor no pudo registrar el cambio: Restaurar todo no lo incluirá</string>
+    <string name="cancel_sweep_queue">Cancelar cola de acciones</string>
+    <string name="sweep_notification_title">Ejecutando acciones en las aplicaciones</string>
+    <string name="sweep_queued">Acciones de aplicaciones en cola</string>
+    <string name="sweep_running">Procesando %1$d de %2$d</string>
+    <string name="sweep_succeeded">Completadas %1$d de %2$d</string>
+    <string name="sweep_partial">Las acciones terminaron con problemas</string>
+    <string name="sweep_cancelled">Se canceló la cola de acciones</string>
+    <string name="sweep_failed">Las acciones fallaron</string>
+    <string name="sweep_launch_failed_title">No se pudieron iniciar las acciones</string>
+    <string name="sweep_observer_failure">Progreso no disponible</string>
+    <string name="sweep_observer_failure_desc">Thor no pudo volver a conectarse con estas acciones en las aplicaciones. Comprueba las aplicaciones antes de confiar en el resultado.</string>
+    <string name="sweep_root_lane_degraded">El canal root de archivo/acciones funciona en modo degradado</string>
+    <string name="sweep_progress_summary">Completadas: %1$d · fallidas: %2$d · ocupadas: %3$d · sin resolver: %4$d</string>
+    <string name="sweep_result_summary">Acciones de aplicaciones — completadas: %1$d · fallidas: %2$d · ocupadas: %3$d · sin resolver: %4$d</string>
 
 </resources>

@@ -5,11 +5,15 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.backup.KDF_ALGORITHM
+import com.valhalla.thor.data.backup.MANIFEST_AUTH_ALGORITHM
+import com.valhalla.thor.data.backup.MANIFEST_MAC_BYTES
 import com.valhalla.thor.data.backup.VERIFIER_BYTES
 import com.valhalla.thor.domain.model.ARCHIVE_SCHEMA_VERSION
+import com.valhalla.thor.domain.model.ArchiveAuthentication
 import com.valhalla.thor.domain.model.ArchiveBundleInfo
 import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveKdf
+import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
 import com.valhalla.thor.domain.repository.ArchiveSource
 import kotlinx.coroutines.CoroutineDispatcher
@@ -22,8 +26,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.zip.ZipException
+import javax.crypto.SecretKey
 import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -65,7 +71,7 @@ class OpenArchiveUseCaseTest {
             packageName = "com.example.app",
             versionCode = 100L,
             userId = 0,
-            signerSha256 = "AB".repeat(32),
+            signerSha256 = "ab".repeat(32),
             appBundle = ArchiveBundleInfo(bytes = 4L, obbCapture = "none", obbCount = 0),
             kdf = ArchiveKdf(iterations = iterations, salt = Base64.getEncoder().encodeToString(salt)),
             verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
@@ -75,6 +81,38 @@ class OpenArchiveUseCaseTest {
 
     private fun sourceFor(header: ArchiveHeader) =
         FakeSource(mapOf(THORBAK_HEADER_ENTRY to header.encode().toByteArray()))
+
+    private fun authenticatedHeader(
+        bundle: ByteArray = byteArrayOf(1, 2, 3, 4),
+        passphrase: String = "correct horse",
+    ): Pair<ArchiveHeader, SecretKey> {
+        val key = cipher.deriveKey(passphrase.toCharArray(), salt, 4)
+        val unsigned = header(passphrase = passphrase).copy(
+            appBundle = ArchiveBundleInfo(
+                bytes = bundle.size.toLong(),
+                sha256 = MessageDigest.getInstance("SHA-256").digest(bundle)
+                    .joinToString("") { "%02x".format(it.toInt() and 0xFF) },
+                obbCapture = "none",
+                obbCount = 0,
+            ),
+            authentication = ArchiveAuthentication(
+                algorithm = MANIFEST_AUTH_ALGORITHM,
+                mac = Base64.getEncoder().encodeToString(ByteArray(MANIFEST_MAC_BYTES)),
+            ),
+        )
+        return unsigned.copy(
+            authentication = unsigned.authentication!!.copy(
+                mac = Base64.getEncoder().encodeToString(cipher.manifestMac(key, unsigned)),
+            )
+        ) to key
+    }
+
+    private fun authenticatedSource(header: ArchiveHeader, bundle: ByteArray) = FakeSource(
+        mapOf(
+            THORBAK_HEADER_ENTRY to header.encode().toByteArray(),
+            THORBAK_BUNDLE_ENTRY to bundle,
+        )
+    )
 
     @Test
     fun `a well-formed container yields its header`() = runTest {
@@ -101,12 +139,26 @@ class OpenArchiveUseCaseTest {
 
         val reason = (outcome as ArchiveHeaderOutcome.NotAnArchive).reason
         // `reason` is shown to the user verbatim. kotlinx.serialization's message is a byte offset,
-        // a token name and a dump of the JSON it was reading — it belongs in the log, and it used to
-        // be pasted straight onto the screen.
+        // a token name and a dump of the JSON it was reading — attacker-controlled detail that must
+        // not be pasted onto the screen or into an authentication log.
         assertTrue(reason, reason.contains(THORBAK_HEADER_ENTRY))
         assertFalse(reason, reason.contains("JSON"))
         assertFalse(reason, reason.contains("offset"))
         assertFalse(reason, reason.contains("nope"))
+    }
+
+    @Test
+    fun `header read diagnostics do not log untrusted exception detail`() {
+        val source = openArchiveSource()
+        val readHeader = source.substring(
+            source.indexOf("suspend fun readHeader"),
+            source.indexOf("suspend fun authenticate"),
+        )
+
+        assertFalse(
+            "header diagnostics pass exception details to Logger",
+            Regex("""Logger\.e\([\s\S]*?,\s*(?:e|it)\)""").containsMatchIn(readHeader),
+        )
     }
 
     @Test
@@ -319,6 +371,107 @@ class OpenArchiveUseCaseTest {
     }
 
     @Test
+    fun `authenticated v2 archive returns its header and key`() = runTest {
+        val bundle = byteArrayOf(1, 2, 3, 4)
+        val (header, _) = authenticatedHeader(bundle)
+
+        val outcome = useCase.authenticate(
+            authenticatedSource(header, bundle),
+            "correct horse".toCharArray(),
+        )
+
+        assertEquals(header, (outcome as ArchiveAuthenticationOutcome.Authenticated).header)
+    }
+
+    @Test
+    fun `worker key path repeats manifest and bundle authentication`() = runTest {
+        val bundle = byteArrayOf(1, 2, 3, 4)
+        val (header, key) = authenticatedHeader(bundle)
+
+        val outcome = useCase.authenticate(authenticatedSource(header, bundle), key)
+
+        assertTrue(outcome.toString(), outcome is ArchiveAuthenticationOutcome.Authenticated)
+    }
+
+    @Test
+    fun `legacy and unauthenticated headers are refused generically`() = runTest {
+        val bundle = byteArrayOf(1, 2, 3, 4)
+        val (valid, _) = authenticatedHeader(bundle)
+        val refused = listOf(
+            valid.copy(schemaVersion = 1),
+            valid.copy(authentication = null),
+        ).map { candidate ->
+            useCase.authenticate(authenticatedSource(candidate, bundle), "correct horse".toCharArray())
+        }
+
+        assertTrue(refused.all { it == ArchiveAuthenticationOutcome.AuthenticationFailed })
+    }
+
+    @Test
+    fun `manifest mutation and bundle byte mutation are refused before member extraction`() = runTest {
+        val bundle = byteArrayOf(1, 2, 3, 4)
+        val (valid, key) = authenticatedHeader(bundle)
+        var memberOpened = false
+        fun source(header: ArchiveHeader, bundleBytes: ByteArray) = object : ArchiveSource {
+            override val displayName = "attacker-controlled-name.thorbak"
+            override fun entryNames() = listOf(
+                THORBAK_HEADER_ENTRY,
+                THORBAK_BUNDLE_ENTRY,
+                "ce.tar.gz.enc",
+            )
+
+            override fun openEntry(name: String): InputStream? = when (name) {
+                THORBAK_HEADER_ENTRY -> ByteArrayInputStream(header.encode().toByteArray())
+                THORBAK_BUNDLE_ENTRY -> ByteArrayInputStream(bundleBytes)
+                else -> {
+                    memberOpened = true
+                    error("member must not be opened during authentication")
+                }
+            }
+
+            override fun close() = Unit
+        }
+
+        val changedHeader = useCase.authenticate(
+            source(valid.copy(signerSha256 = "cd".repeat(32)), bundle),
+            key,
+        )
+        val changedBundle = useCase.authenticate(
+            source(valid, byteArrayOf(1, 2, 3, 5)),
+            key,
+        )
+
+        assertEquals(ArchiveAuthenticationOutcome.AuthenticationFailed, changedHeader)
+        assertEquals(ArchiveAuthenticationOutcome.AuthenticationFailed, changedBundle)
+        assertFalse(memberOpened)
+    }
+
+    @Test
+    fun `duplicate outer header or bundle names are refused generically`() = runTest {
+        val bundle = byteArrayOf(1, 2, 3, 4)
+        val (header, key) = authenticatedHeader(bundle)
+        fun duplicateSource(duplicate: String) = object : ArchiveSource {
+            override val displayName = "fake.thorbak"
+            override fun entryNames() = listOf(THORBAK_HEADER_ENTRY, THORBAK_BUNDLE_ENTRY, duplicate)
+            override fun openEntry(name: String): InputStream? = when (name) {
+                THORBAK_HEADER_ENTRY -> ByteArrayInputStream(header.encode().toByteArray())
+                THORBAK_BUNDLE_ENTRY -> ByteArrayInputStream(bundle)
+                else -> null
+            }
+            override fun close() = Unit
+        }
+
+        assertEquals(
+            ArchiveAuthenticationOutcome.AuthenticationFailed,
+            useCase.authenticate(duplicateSource(THORBAK_HEADER_ENTRY), key),
+        )
+        assertEquals(
+            ArchiveAuthenticationOutcome.AuthenticationFailed,
+            useCase.authenticate(duplicateSource(THORBAK_BUNDLE_ENTRY), key),
+        )
+    }
+
+    @Test
     fun `readHeader and unlock hand their work to the injected io dispatcher`() = runTest {
         // Every other test in this file uses `UnconfinedTestDispatcher`, which runs the
         // `withContext` body inline on the calling thread — so all of them stay green if
@@ -344,6 +497,19 @@ class OpenArchiveUseCaseTest {
      * Runs the block inline — the work still happens on the test thread — but records that it was
      * asked to. The recording, not the threading, is what pins `withContext(ioDispatcher)`.
      */
+    private fun openArchiveSource(): String {
+        var directory: java.io.File? = java.io.File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (directory != null) {
+            val source = java.io.File(
+                directory,
+                "app/src/main/java/com/valhalla/thor/domain/usecase/OpenArchiveUseCase.kt",
+            )
+            if (source.isFile) return source.readText()
+            directory = directory.parentFile
+        }
+        error("could not locate OpenArchiveUseCase.kt")
+    }
+
     private class CountingDispatcher : CoroutineDispatcher() {
         var dispatches = 0
             private set

@@ -5,9 +5,11 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.backup.CHUNK_PLAINTEXT_BYTES
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.data.repository.ZipArchiveSource
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
+import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveRestoreDecision
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ClassEntries
@@ -15,6 +17,7 @@ import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.InstalledAppFacts
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
 import com.valhalla.thor.domain.model.evaluateArchiveRestoreGate
@@ -24,8 +27,13 @@ import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
+import com.valhalla.thor.domain.repository.ArchiveBundleVerification
+import com.valhalla.thor.domain.repository.ArchiveBundleVerifier
 import com.valhalla.thor.domain.repository.ArchiveDestination
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
+import com.valhalla.thor.domain.repository.ArchiveInstallResult
+import com.valhalla.thor.domain.repository.ArchiveRollbackOutcome
+import com.valhalla.thor.domain.repository.ArchiveRollbackReceipt
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -143,6 +151,7 @@ class ArchiveRoundTripTest {
         override suspend fun thorUserId(): Int = 0
         override suspend fun externalStorageDir(): String = "/storage/emulated/0"
         override suspend fun stagingFile(name: String): File = temp.newFile("staging-${stage++}-$name")
+        override suspend fun privateStagingFile(name: String): File = temp.newFile("private-${stage++}-$name")
         override suspend fun forceStop(packageName: String) = Unit
 
         override suspend fun listClass(packageName: String, dataClass: DataClass): ClassEntries = when {
@@ -190,17 +199,38 @@ class ArchiveRoundTripTest {
 
     private class CapturingInstaller : AppArchiveInstaller {
         var installedBytes: ByteArray? = null
+        var installedSet: List<String>? = null
 
-        override suspend fun installBundle(bundle: File, packageName: String): ArchiveInstallOutcome {
+        override suspend fun installBundle(
+            bundle: File,
+            packageName: String,
+            installSet: List<String>,
+            execution: PrivilegeExecutionContext,
+        ): ArchiveInstallResult {
             installedBytes = bundle.readBytes()
-            return ArchiveInstallOutcome.Installed
+            installedSet = installSet
+            return ArchiveInstallResult(ArchiveInstallOutcome.Installed)
         }
+
+        override suspend fun rollbackNewInstall(
+            receipt: ArchiveRollbackReceipt,
+            execution: PrivilegeExecutionContext,
+        ): ArchiveRollbackOutcome = ArchiveRollbackOutcome.CLEAN
 
         override suspend fun placeBundleObb(
             bundle: File,
             packageName: String,
             onFile: (String, Int, Int) -> Unit,
         ): ObbPlacement = ObbPlacement.NotNeeded
+    }
+
+    private class FixedBundleVerifier(
+        private val installSet: List<String> = listOf("base.apk"),
+    ) : ArchiveBundleVerifier {
+        override suspend fun verify(
+            bundle: File,
+            header: ArchiveHeader,
+        ): ArchiveBundleVerification = ArchiveBundleVerification.Verified(installSet)
     }
 
     private class NoopBreadcrumbs : ArchiveBreadcrumbStore {
@@ -244,7 +274,13 @@ class ArchiveRoundTripTest {
             salt = cipher.newSalt(),
         )
         val key = cipher.deriveKey(passphrase, request.salt)
-        val outcome = BackupAppArchiveUseCase(gateway, store, cipher, NoProbe())(
+        val outcome = BackupAppArchiveUseCase(
+            gateway,
+            store,
+            cipher,
+            NoProbe(),
+            DefaultPackageOperationCoordinator(),
+        )(
             request = request,
             key = key,
             bundle = bundle,
@@ -285,7 +321,14 @@ class ArchiveRoundTripTest {
                     decision,
                 )
 
-                RestoreAppArchiveUseCase(reader, CapturingInstaller(), NoopBreadcrumbs(), cipher)(
+                RestoreAppArchiveUseCase(
+                    reader,
+                    CapturingInstaller(),
+                    FixedBundleVerifier(),
+                    NoopBreadcrumbs(),
+                    cipher,
+                    DefaultPackageOperationCoordinator(),
+                )(
                     source = source,
                     header = header,
                     key = (unlocked as ArchiveUnlockOutcome.Unlocked).key,
@@ -373,7 +416,14 @@ class ArchiveRoundTripTest {
             )
 
             val unlocked = openArchive.unlock(header, passphrase) as ArchiveUnlockOutcome.Unlocked
-            RestoreAppArchiveUseCase(reader, installer, NoopBreadcrumbs(), cipher)(
+            RestoreAppArchiveUseCase(
+                reader,
+                installer,
+                FixedBundleVerifier(),
+                NoopBreadcrumbs(),
+                cipher,
+                DefaultPackageOperationCoordinator(),
+            )(
                 source = source,
                 header = header,
                 key = unlocked.key,
@@ -385,6 +435,7 @@ class ArchiveRoundTripTest {
 
         assertTrue(restored.toString(), restored is ArchiveRestoreOutcome.Completed)
         assertArrayEquals(bundleBytes, installer.installedBytes)
+        assertEquals(listOf("base.apk"), installer.installedSet)
     }
 
     /**
@@ -406,7 +457,14 @@ class ArchiveRoundTripTest {
         val restored = ZipArchiveSource(tampered, tampered.name).use { source ->
             val header = (openArchive.readHeader(source) as ArchiveHeaderOutcome.Read).header
             val unlocked = openArchive.unlock(header, passphrase) as ArchiveUnlockOutcome.Unlocked
-            RestoreAppArchiveUseCase(reader, CapturingInstaller(), NoopBreadcrumbs(), cipher)(
+            RestoreAppArchiveUseCase(
+                reader,
+                CapturingInstaller(),
+                FixedBundleVerifier(),
+                NoopBreadcrumbs(),
+                cipher,
+                DefaultPackageOperationCoordinator(),
+            )(
                 source = source,
                 header = header,
                 key = unlocked.key,
@@ -460,7 +518,7 @@ class ArchiveRoundTripTest {
     private companion object {
         const val PACKAGE = "com.example.app"
         const val VERSION_CODE = 100L
-        const val SIGNER = "AB"
+        val SIGNER = "AB".repeat(32)
         var counter = 0
     }
 }

@@ -208,14 +208,8 @@
     </plurals>
     <string name="tile_grant_privilege_toast">请先授予 Root / Shizuku / Dhizuku 权限</string>
     <string name="tile_no_apps_toast">应用冻结中无应用</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="other">已冻结 %1$d 个应用</item>
-    </plurals>
-    <string name="tile_freeze_partial_failure">已冻结 %1$d/%2$d 个应用（%3$d 个失败）</string>
-    <string name="tile_freeze_incomplete">已冻结 %1$d/%2$d 个应用（%3$d 个未完成）</string>
     <string name="tile_checking">正在检查…</string>
     <string name="tile_freezing">正在冻结…</string>
-    <string name="channel_bulk_result_name">批量操作结果</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">冻结设置</string>
@@ -258,11 +252,6 @@
     <string name="add_to_freezer">添加至冻结室</string>
     <string name="freezer_add_warning_title">添加后会立即冻结</string>
     <string name="freezer_add_warning_body">应用一加入冻结列表就已处于冻结状态——这是冻结室的设计，并非故障。其中尚未保存的内容会丢失，并且会一直保持冻结，直到你解冻它。</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="other">已解冻 %1$d 个应用</item>
-    </plurals>
-    <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
-    <string name="tile_unfreeze_incomplete">已解冻 %1$d/%2$d 个应用（%3$d 个未完成）</string>
     <string name="error_format">错误：%1$s</string>
     <string name="failed_to_load_apps">加载应用失败</string>
     <plurals name="removed_from_freezer_success">
@@ -386,11 +375,9 @@
     <string name="log_scanning_apps">正在扫描应用…</string>
     <string name="log_no_apps_to_fix">未发现需要修复的应用。</string>
     <string name="log_found_apps_to_fix">发现 %1$d 个需要修复的应用。</string>
-    <string name="log_reinstalling_batch">正在批量重新安装应用</string>
     <string name="log_freezing_batch">正在批量冻结应用</string>
     <string name="log_unfreezing_batch">正在批量解冻应用</string>
     <string name="log_killing_batch">正在批量结束应用</string>
-    <string name="log_clearing_cache_batch">正在批量清除缓存</string>
     <string name="log_uninstalling_batch">正在批量卸载应用</string>
     <string name="log_suspending_batch">正在批量暂停应用</string>
     <string name="log_unsuspending_batch">正在批量取消暂停应用</string>
@@ -412,7 +399,6 @@
     <string name="no_matching_apps_freezer">无匹配应用</string>
     <string name="add_to_freezer_hint">点击 + 添加应用</string>
     <string name="filter_all">全部</string>
-    <string name="error_debuggable_app">应用可调试（签名可能不匹配）</string>
     <string name="error_unsafe_skipped">已跳过：系统应用不安全 / 安全检查失败</string>
     <string name="error_self_skipped">已跳过：Thor 无法对自身执行此操作</string>
     <string name="error_parse_package">解析包失败。</string>
@@ -543,8 +529,8 @@
     <string name="usage_access_needed_title">需要使用情况访问权限</string>
     <string name="usage_access_prompt_body">Thor 需要使用情况访问权限才能读取应用大小。请为 Thor 启用该权限，然后再次选择“大小”。您也可以在“设置 → 权限”中进行管理。</string>
     <string name="notification_access">通知</string>
-    <string name="notification_access_granted_subtitle">批量冻结结果将以通知形式显示</string>
-    <string name="notification_access_needed_subtitle">允许通知以查看批量冻结结果</string>
+    <string name="notification_access_granted_subtitle">后台应用操作会在通知中显示进度</string>
+    <string name="notification_access_needed_subtitle">请在系统设置中允许通知，以便运行后台应用操作并查看进度</string>
     <string name="open_settings">打开设置</string>
     <string name="installed_apps_permission_title">应用列表可能不完整</string>
     <string name="installed_apps_permission_desc">您的设备限制了 Thor 在后台运行时可以看到的应用。请授予读取已安装应用列表的完全访问权限，以保持列表完整。</string>
@@ -744,5 +730,19 @@
     <string name="component_disclaimer_confirm">确认禁用</string>
     <string name="component_disclaimer_dont_ask_session">本次会话不再询问</string>
     <string name="component_disabled_unrecorded">已禁用 %1$s，但 Thor 未能记录此次更改——“全部恢复”不会包含它</string>
+    <string name="cancel_sweep_queue">取消操作队列</string>
+    <string name="sweep_notification_title">正在执行应用操作</string>
+    <string name="sweep_queued">应用操作已加入队列</string>
+    <string name="sweep_running">正在执行第 %1$d 项，共 %2$d 项</string>
+    <string name="sweep_succeeded">已完成 %1$d 项，共 %2$d 项</string>
+    <string name="sweep_partial">应用操作完成，但存在问题</string>
+    <string name="sweep_cancelled">操作队列已取消</string>
+    <string name="sweep_failed">应用操作失败</string>
+    <string name="sweep_launch_failed_title">无法启动应用操作</string>
+    <string name="sweep_observer_failure">无法获取进度</string>
+    <string name="sweep_observer_failure_desc">Thor 无法重新连接到这些应用操作。请先检查应用状态，再决定是否采用该结果。</string>
+    <string name="sweep_root_lane_degraded">Root 归档/批处理通道已降级</string>
+    <string name="sweep_progress_summary">成功：%1$d · 失败：%2$d · 忙碌：%3$d · 未确定：%4$d</string>
+    <string name="sweep_result_summary">应用操作 — 成功：%1$d · 失败：%2$d · 忙碌：%3$d · 未确定：%4$d</string>
 
 </resources>

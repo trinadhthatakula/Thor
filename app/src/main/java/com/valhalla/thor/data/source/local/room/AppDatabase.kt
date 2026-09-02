@@ -18,8 +18,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         FreezeProfileEntity::class,
         FreezeProfileAppEntity::class,
         ComponentOverrideEntity::class,
+        SweepRequestEntity::class,
+        SweepTargetEntity::class,
+        SweepRequestSourceEntity::class,
     ],
-    version = 7,
+    version = 8,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
@@ -31,6 +34,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // existing column. No `spec =` because there is nothing for a spec to describe — a
         // pure table-add needs no @DeleteColumn/@RenameTable hint.
         AutoMigration(from = 6, to = 7),
+        // 7 → 8 adds only the durable sweep request, target, and source-association tables.
+        AutoMigration(from = 7, to = 8),
     ],
     exportSchema = true
 )
@@ -41,6 +46,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun extensionDataDao(): ExtensionDataDao
     abstract fun freezeProfileDao(): FreezeProfileDao
     abstract fun componentOverrideDao(): ComponentOverrideDao
+    abstract fun privilegeSweepDao(): PrivilegeSweepDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {

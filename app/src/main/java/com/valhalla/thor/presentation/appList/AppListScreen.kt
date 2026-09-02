@@ -71,6 +71,7 @@ import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.presentation.widgets.FreezeLoggerDialog
 import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import org.koin.androidx.compose.koinViewModel
@@ -400,6 +401,14 @@ fun AppListScreen(
                 dismissButton = {
                     TextButton(onClick = { viewModel.dismissUsageAccessPrompt() }) { Text(stringResource(R.string.cancel)) }
                 }
+            )
+        }
+
+        state.sweepProgress?.let { progress ->
+            FreezeLoggerDialog(
+                state = progress,
+                onDismiss = viewModel::dismissSweepProgress,
+                onCancelQueue = viewModel::cancelSweepQueue,
             )
         }
     }

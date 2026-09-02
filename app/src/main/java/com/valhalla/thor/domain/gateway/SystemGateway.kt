@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.domain.gateway
 
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+
 /**
  * The Contract: This defines every privileged action Thor can perform.
  * No Android dependencies (Context, Toast, Intent) allowed here.
@@ -10,20 +12,53 @@ package com.valhalla.thor.domain.gateway
 interface SystemGateway {
 
     // Status Checks
-    suspend fun isRootAvailable(): Boolean
+    suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Boolean
+
     suspend fun isShizukuAvailable(): Boolean
     suspend fun isDhizukuAvailable(): Boolean
 
     // Core Actions
-    suspend fun forceStopApp(packageName: String): Result<Unit>
-    suspend fun clearAppData(packageName: String): Result<Unit>
-    suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit>
-    suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit>
-    suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit>
-    suspend fun rebootDevice(reason: String): Result<Unit>
+    suspend fun forceStopApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun clearAppData(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun setAppRestricted(
+        packageName: String,
+        isRestricted: Boolean,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
 
     // Advanced
-    suspend fun uninstallApp(packageName: String): Result<Unit>
+    suspend fun uninstallApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
     /**
      * @param grantAllPermissions the answer for THIS install to "grant every runtime permission
      *   the package declares, without asking" (`pm install-create -g`, GH#445). `null` — the
@@ -35,10 +70,25 @@ interface SystemGateway {
         apkPath: String,
         canDowngrade: Boolean = false,
         grantAllPermissions: Boolean? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
-    suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit>
-    suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit>
-    suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit>
+
+    suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun grantPermission(
+        packageName: String,
+        permissionName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
+
+    suspend fun revokePermission(
+        packageName: String,
+        permissionName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
 
     /**
      * Clears **every** app's cache on the primary volume — system and user apps alike — until the
@@ -65,7 +115,10 @@ interface SystemGateway {
      * on to prune static shared libraries and uninstall instant apps. `null` means a mode that can
      * only express this as a trim must fail; Root has a direct sweep it can fall back on.
      */
-    suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit>
+    suspend fun clearAllCaches(
+        targetFreeBytes: Long?,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit>
 
     // Per-component control
     //
@@ -100,6 +153,7 @@ interface SystemGateway {
         className: String,
         state: ComponentEnabledState,
         userId: Int,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
     /**
@@ -113,6 +167,7 @@ interface SystemGateway {
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
     /**
@@ -125,6 +180,7 @@ interface SystemGateway {
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
     /**
@@ -133,7 +189,10 @@ interface SystemGateway {
      * execute with the same Root/Shizuku/Dhizuku privilege as in-app actions.
      * Returns failure only when the command could not be executed at all.
      */
-    suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>>
+    suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Pair<Int, String?>>
 }
 
 /**

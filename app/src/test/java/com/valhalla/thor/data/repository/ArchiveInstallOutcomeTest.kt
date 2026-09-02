@@ -6,6 +6,7 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
+import com.valhalla.thor.domain.repository.ArchiveRollbackReceipt
 import com.valhalla.thor.util.UiText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -292,5 +293,79 @@ class ArchiveInstallOutcomeTest {
         assertFalse(installLanded(before = InstallStamp.At(1_000L), after = InstallStamp.Absent))
         assertFalse(installLanded(before = InstallStamp.At(1_000L), after = InstallStamp.Unknown))
         assertFalse(installLanded(before = InstallStamp.Absent, after = InstallStamp.Unknown))
+    }
+
+    @Test
+    fun `cancellation before installer invocation cannot create rollback authority`() {
+        assertNull(
+            cancelledInstallRollbackReceipt(
+                packageName = "com.example.app",
+                installInvoked = false,
+                before = InstallStamp.Absent,
+                after = InstallStamp.At(2_000L),
+            )
+        )
+    }
+
+    @Test
+    fun `cancellation after installer invocation can create exact rollback authority`() {
+        assertEquals(
+            ArchiveRollbackReceipt("com.example.app", 2_000L),
+            cancelledInstallRollbackReceipt(
+                packageName = "com.example.app",
+                installInvoked = true,
+                before = InstallStamp.Absent,
+                after = InstallStamp.At(2_000L),
+            )
+        )
+    }
+
+    @Test
+    fun `only a corroborated absent-to-present install creates rollback authority`() {
+        val outcome = ArchiveInstallOutcome.Installed
+
+        assertEquals(
+            ArchiveRollbackReceipt("com.example.app", 2_000L),
+            newInstallRollbackReceipt(
+                packageName = "com.example.app",
+                before = InstallStamp.Absent,
+                after = InstallStamp.At(2_000L),
+                outcome = outcome,
+            ),
+        )
+        assertNull(
+            newInstallRollbackReceipt(
+                "com.example.app",
+                InstallStamp.Unknown,
+                InstallStamp.At(2_000L),
+                outcome,
+            )
+        )
+        assertNull(
+            newInstallRollbackReceipt(
+                "com.example.app",
+                InstallStamp.At(1_000L),
+                InstallStamp.At(2_000L),
+                outcome,
+            )
+        )
+        assertNull(
+            newInstallRollbackReceipt(
+                "com.example.app",
+                InstallStamp.Absent,
+                InstallStamp.At(2_000L),
+                ArchiveInstallOutcome.Unconfirmed,
+            )
+        )
+    }
+
+    @Test
+    fun `rollback uninstalls only the exact package at the exact observed timestamp`() {
+        val receipt = ArchiveRollbackReceipt("com.example.app", 2_000L)
+
+        assertEquals(RollbackAction.UNINSTALL, rollbackAction(receipt, InstallStamp.At(2_000L)))
+        assertEquals(RollbackAction.ALREADY_ABSENT, rollbackAction(receipt, InstallStamp.Absent))
+        assertEquals(RollbackAction.REFUSE, rollbackAction(receipt, InstallStamp.At(2_001L)))
+        assertEquals(RollbackAction.REFUSE, rollbackAction(receipt, InstallStamp.Unknown))
     }
 }
