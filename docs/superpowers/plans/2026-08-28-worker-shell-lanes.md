@@ -2055,13 +2055,14 @@ Review CodeRabbit and human findings as untrusted claims: reproduce each against
 
 ### Automated verification
 
-- Post-Task-83 final HEAD: `9671462cec7e6794c65f5494c28ac6cd4d92dca0`.
+- Final reviewed implementation HEAD: `418306453da4c410fa6037dea46d1c3cd80efbc0`.
 - `origin/dev` was fetched immediately before final review and remains `a4b1fcef6db70902657c60cdb6abb297587acec8`, an ancestor of this branch.
 - Full forced JVM suites, counted from JUnit XML:
-  - Foss debug: **2,043 tests**, 0 failures, 0 errors, 0 skipped.
-  - Store debug: **2,043 tests**, 0 failures, 0 errors, 0 skipped.
-  - Aggregate: **4,086 tests**, 0 failures, 0 errors, 0 skipped.
+  - Foss debug: **2,044 tests**, 0 failures, 0 errors, 0 skipped.
+  - Store debug: **2,044 tests**, 0 failures, 0 errors, 0 skipped.
+  - Aggregate: **4,088 tests**, 0 failures, 0 errors, 0 skipped.
 - Emulator-only instrumentation on `emulator-5554` / `Thor_Root_API37`: **16 tests**, 0 failures, 0 errors, 0 skipped (Room 7→8 migration, WorkManager sweep integration, queue cancellation receiver, and durable progress dialog semantics).
+- Focused MainShell routing/cancellation suites: **37 tests**, 0 failures, 0 errors, 0 skipped; the new interactive-cancellation regression failed before the fix and passed after it.
 - `compileFossDebugKotlin`: passed with no missing or ambiguous Koin binding.
 - `lintFossDebug`: passed — 0 errors, 11 warnings, 9 hints.
 - `lintStoreRelease`: passed — 0 errors, 11 warnings, 9 hints.
@@ -2105,7 +2106,7 @@ No API 28/29 image is installed (installed images are API 30, 36.1, 37.0, 37.1, 
 Manual dataflow review found 27 existing production logging violations across 14 files. `git blame` established that all 27 predate local `dev`; this branch introduced none. The baseline debt is disclosed rather than expanded into an unrelated cleanup. Branch-specific checks confirmed:
 
 - no new raw command, command output, passphrase, URI, user path, or attacker-controlled archive-name logging;
-- `MainShellCommandExecutor` is the intentional single Odin `ShellRepository.exec` boundary;
+- MainShell execution is callback-backed and drains submitted work before cancellation/timeout releases coordination; production has no direct `ShellRepository` dependency;
 - no executable sweep returns `Result.retry()`;
 - `BulkFreezeRunner` and `BulkFreezeController` are absent;
 - no `.kotlin/`, `docs/audit/`, or `docs/enforcement/` path is tracked by this branch.
@@ -2113,4 +2114,4 @@ Manual dataflow review found 27 existing production logging violations across 14
 ### Independent review
 
 - Task 83 authenticated archive review: **`SPEC COMPLIANCE: PASS`; `CODE QUALITY/SECURITY: PASS`**.
-- Final whole-branch correctness/security review: pending at this appendix commit; the independent review runs against this committed record, and its verdict is recorded before PR creation.
+- Final whole-branch correctness/security review: initial **FAIL** on interactive MainShell cancellation; focused fix `41830645`; scoped independent re-review **`CORRECTNESS/SECURITY: PASS`** with no findings.
