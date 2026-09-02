@@ -230,7 +230,9 @@ class InstallerViewModelTest {
             canDowngrade: Boolean,
             grantAllPermissions: Boolean?,
             execution: PrivilegeExecutionContext,
+            onInvocationStarted: () -> Unit,
         ) {
+            onInvocationStarted()
             calls += InstallCall(staged, uri, mode, canDowngrade, grantAllPermissions)
             throw failure
         }

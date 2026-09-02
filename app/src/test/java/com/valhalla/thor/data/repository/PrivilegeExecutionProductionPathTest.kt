@@ -5,6 +5,8 @@ package com.valhalla.thor.data.repository
 
 import android.app.Application
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -45,18 +47,28 @@ import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.File
+import kotlin.coroutines.CoroutineContext
 
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36], application = Application::class)
@@ -235,6 +247,103 @@ class PrivilegeExecutionProductionPathTest {
     }
 
     @Test
+    fun `cancellation at installer dispatcher entry cannot roll back an unrelated install`() = runTest {
+        val packageName = "com.example.concurrent"
+        val entryDispatcher = QueuedDispatcher()
+        val repository = EntryGatedInstallerRepository(entryDispatcher)
+        val system = FakeSystemRepository()
+        val shadowPackageManager = shadowOf(context.packageManager)
+        shadowPackageManager.removePackage(packageName)
+        val installer = AppArchiveInstallerImpl(
+            context = context,
+            installerRepository = repository,
+            systemRepository = system,
+            eventBus = InstallerEventBus(),
+            obbInstaller = ObbInstaller(context, system, Dispatchers.Unconfined),
+            privilegeState = FakePrivilegeStateProvider(
+                PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true)
+            ),
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+        val bundle = temporaryFolder.newFile("cancel-gap.apk").apply { writeText("apk") }
+
+        val restore = launch(start = CoroutineStart.UNDISPATCHED) {
+            installer.installBundle(
+                bundle = bundle,
+                packageName = packageName,
+                installSet = listOf("base.apk"),
+                execution = com.valhalla.thor.domain.model.PrivilegeExecutionContext(),
+            )
+        }
+        assertEquals(1, repository.calls)
+        assertFalse(repository.invocationEntered)
+        shadowPackageManager.installPackage(
+            installedPackage(packageName, lastUpdateTime = 2_000L)
+        )
+        try {
+            restore.cancel()
+            entryDispatcher.runPending()
+            restore.join()
+
+            assertTrue("archive install cancellation must remain structured", restore.isCancelled)
+            assertFalse("cancelled dispatcher entry must not invoke the installer", repository.invocationEntered)
+            assertEquals(
+                2_000L,
+                context.packageManager.getPackageInfo(packageName, 0).lastUpdateTime,
+            )
+            assertFalse(
+                "cancellation before installer entry must not roll back an unrelated install",
+                system.calls.contains("uninstallApp:$packageName"),
+            )
+        } finally {
+            shadowPackageManager.removePackage(packageName)
+        }
+    }
+
+    @Test
+    fun `cancellation after installer entry rolls back the exact new install`() = runTest {
+        val packageName = "com.example.cancelled.install"
+        val system = FakeSystemRepository()
+        val shadowPackageManager = shadowOf(context.packageManager)
+        shadowPackageManager.removePackage(packageName)
+        val repository = CancellingAfterEntryInstallerRepository {
+            shadowPackageManager.installPackage(
+                installedPackage(packageName, lastUpdateTime = 3_000L)
+            )
+        }
+        val installer = AppArchiveInstallerImpl(
+            context = context,
+            installerRepository = repository,
+            systemRepository = system,
+            eventBus = InstallerEventBus(),
+            obbInstaller = ObbInstaller(context, system, Dispatchers.Unconfined),
+            privilegeState = FakePrivilegeStateProvider(
+                PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true)
+            ),
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+        val bundle = temporaryFolder.newFile("cancel-after-entry.apk").apply { writeText("apk") }
+
+        val restore = launch(start = CoroutineStart.UNDISPATCHED) {
+            installer.installBundle(
+                bundle = bundle,
+                packageName = packageName,
+                installSet = listOf("base.apk"),
+                execution = com.valhalla.thor.domain.model.PrivilegeExecutionContext(),
+            )
+        }
+        try {
+            restore.join()
+
+            assertTrue(restore.isCancelled)
+            assertTrue(repository.invocationEntered)
+            assertEquals(listOf("uninstallApp:$packageName"), system.calls)
+        } finally {
+            shadowPackageManager.removePackage(packageName)
+        }
+    }
+
+    @Test
     fun `AppArchiveInstallerImpl diagnostics omit throwable and outcome details`() {
         val source = archiveInstallerSource()
 
@@ -358,6 +467,15 @@ class PrivilegeExecutionProductionPathTest {
         return ArchiveFixture(installer, repository, bundle)
     }
 
+    private fun installedPackage(packageName: String, lastUpdateTime: Long) = PackageInfo().apply {
+        this.packageName = packageName
+        this.lastUpdateTime = lastUpdateTime
+        applicationInfo = ApplicationInfo().apply {
+            this.packageName = packageName
+            flags = ApplicationInfo.FLAG_INSTALLED
+        }
+    }
+
     private class ProbeThenFailExecutor(private val failure: Throwable) : RootCommandExecutor {
         private var calls = 0
 
@@ -390,6 +508,63 @@ class PrivilegeExecutionProductionPathTest {
         }
     }
 
+    private class QueuedDispatcher : CoroutineDispatcher() {
+        private val pending = ArrayDeque<Runnable>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            pending += block
+        }
+
+        fun runPending() {
+            while (pending.isNotEmpty()) pending.removeFirst().run()
+        }
+    }
+
+    private class EntryGatedInstallerRepository(
+        private val entryDispatcher: CoroutineDispatcher,
+    ) : InstallerRepository {
+        var calls = 0
+        var invocationEntered = false
+
+        override suspend fun installPackage(
+            staged: StagedPackage,
+            uri: Uri,
+            mode: InstallMode,
+            canDowngrade: Boolean,
+            grantAllPermissions: Boolean?,
+            execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
+            onInvocationStarted: () -> Unit,
+        ) {
+            calls++
+            withContext(entryDispatcher) {
+                onInvocationStarted()
+                invocationEntered = true
+            }
+        }
+    }
+
+    private class CancellingAfterEntryInstallerRepository(
+        private val afterEntry: () -> Unit,
+    ) : InstallerRepository {
+        var invocationEntered = false
+
+        override suspend fun installPackage(
+            staged: StagedPackage,
+            uri: Uri,
+            mode: InstallMode,
+            canDowngrade: Boolean,
+            grantAllPermissions: Boolean?,
+            execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
+            onInvocationStarted: () -> Unit,
+        ) {
+            onInvocationStarted()
+            invocationEntered = true
+            afterEntry()
+            currentCoroutineContext().cancel(CancellationException("cancel after installer entry"))
+            currentCoroutineContext().ensureActive()
+        }
+    }
+
     private class ThrowingInstallerRepository(
         private val failure: Throwable,
     ) : InstallerRepository {
@@ -402,7 +577,9 @@ class PrivilegeExecutionProductionPathTest {
             canDowngrade: Boolean,
             grantAllPermissions: Boolean?,
             execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
+            onInvocationStarted: () -> Unit,
         ) {
+            onInvocationStarted()
             calls++
             throw failure
         }

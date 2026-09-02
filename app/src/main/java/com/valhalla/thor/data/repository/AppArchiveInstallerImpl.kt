@@ -176,7 +176,6 @@ class AppArchiveInstallerImpl(
                     // is what makes this await a real happens-before; awaiting the `launch` itself
                     // would only prove the coroutine was scheduled.
                     subscribed.await()
-                    installInvoked = true
                     installerRepository.installPackage(
                         staged = StagedPackage(
                             file = bundle,
@@ -189,6 +188,9 @@ class AppArchiveInstallerImpl(
                         mode = mode,
                         canDowngrade = true,
                         execution = execution,
+                        // The repository invokes this only after its dispatcher-entry cancellation
+                        // check, with no suspension between the callback and its install body.
+                        onInvocationStarted = { installInvoked = true },
                     )
                     // `latest` is the last word the bus was given; `terminal.value` is only the
                     // last word this watcher has caught up with. They differ on exactly the path

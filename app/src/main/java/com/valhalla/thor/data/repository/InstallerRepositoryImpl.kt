@@ -137,8 +137,10 @@ class InstallerRepositoryImpl(
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
         execution: PrivilegeExecutionContext,
+        onInvocationStarted: () -> Unit,
     ) =
         withContext(ioDispatcher) {
+            onInvocationStarted()
             try {
                 // Refuse before installing, not after. An archive whose game data cannot be placed
                 // would otherwise leave an installed game that starts and immediately fails — the
