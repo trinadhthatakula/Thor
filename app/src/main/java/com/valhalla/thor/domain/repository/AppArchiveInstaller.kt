@@ -7,6 +7,22 @@ import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import java.io.File
 
+data class ArchiveRollbackReceipt(
+    val packageName: String,
+    val installedAt: Long,
+)
+
+data class ArchiveInstallResult(
+    val outcome: ArchiveInstallOutcome,
+    val rollbackReceipt: ArchiveRollbackReceipt? = null,
+)
+
+enum class ArchiveRollbackOutcome {
+    CLEAN,
+    REFUSED,
+    FAILED,
+}
+
 /** How an install-from-archive ended. */
 sealed interface ArchiveInstallOutcome {
 
@@ -71,8 +87,18 @@ interface AppArchiveInstaller {
     suspend fun installBundle(
         bundle: File,
         packageName: String,
+        installSet: List<String>,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
-    ): ArchiveInstallOutcome
+    ): ArchiveInstallResult
+
+    /**
+     * Remove only the package proven by [receipt] to have been absent before this restore installed it.
+     * The caller already holds the package-operation lease; implementations must not acquire another.
+     */
+    suspend fun rollbackNewInstall(
+        receipt: ArchiveRollbackReceipt,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): ArchiveRollbackOutcome
 
     /**
      * Place [bundle]'s expansions into `Android/obb/<pkg>/` for an app that is **already installed**

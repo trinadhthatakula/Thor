@@ -22,17 +22,24 @@ import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.repository.AppArchiveInstaller
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
+import com.valhalla.thor.domain.repository.ArchiveBundleVerification
+import com.valhalla.thor.domain.repository.ArchiveBundleVerifier
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
+import com.valhalla.thor.domain.repository.ArchiveRollbackOutcome
+import com.valhalla.thor.domain.repository.ArchiveRollbackReceipt
 import com.valhalla.thor.domain.repository.ArchiveSource
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Factory
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.Base64
 import javax.crypto.SecretKey
 
@@ -99,6 +106,7 @@ sealed interface ArchiveRestoreOutcome {
 internal class RestoreAppArchiveUseCase(
     private val gateway: AppDataArchiveGateway,
     private val installer: AppArchiveInstaller,
+    private val bundleVerifier: ArchiveBundleVerifier,
     private val breadcrumbs: ArchiveBreadcrumbStore,
     private val cipher: AppArchiveCipher,
     private val packageOperationCoordinator: PackageOperationCoordinator,
@@ -190,6 +198,7 @@ internal class RestoreAppArchiveUseCase(
         val pkg = header.packageName
         val restored = mutableListOf<DataClass>()
         val warnings = mutableListOf<String>()
+        var rollbackReceipt: ArchiveRollbackReceipt? = null
 
         // The bundle is needed for an install and for OBB, and only then. Extracting it otherwise
         // would cost the app's whole download for nothing.
@@ -218,10 +227,31 @@ internal class RestoreAppArchiveUseCase(
             }
         }
 
-        suspend fun failBeforeAnyDataWasWritten(reason: String): ArchiveRestoreOutcome.Failed {
-            Logger.e(TAG, "Restore failed before data was written: $reason")
-            if (breadcrumbWritten) breadcrumbs.clear()
-            return ArchiveRestoreOutcome.Failed(reason, restored)
+        suspend fun rollbackIfNeeded(): Boolean {
+            val receipt = rollbackReceipt ?: return true
+            rollbackReceipt = null
+            return withContext(NonCancellable) {
+                try {
+                    installer.rollbackNewInstall(receipt, execution) == ArchiveRollbackOutcome.CLEAN
+                } catch (_: Throwable) {
+                    false
+                }
+            }
+        }
+
+        suspend fun failRestore(
+            reason: String,
+            keepBreadcrumb: Boolean = false,
+            classPossiblyCleared: DataClass? = null,
+        ): ArchiveRestoreOutcome.Failed {
+            val rollbackClean = rollbackIfNeeded()
+            if (!keepBreadcrumb && breadcrumbWritten) breadcrumbs.clear()
+            val reportedReason = if (rollbackClean) reason else "$reason. $ROLLBACK_FAILURE_WARNING"
+            return ArchiveRestoreOutcome.Failed(
+                reportedReason,
+                restored.toList(),
+                classPossiblyCleared,
+            )
         }
 
         try {
@@ -239,6 +269,17 @@ internal class RestoreAppArchiveUseCase(
                 warnings += "this archive holds no game data, so none was placed"
             }
 
+            val verifiedInstallSet = if (installFirst) {
+                when (val verification = bundleVerifier.verify(bundle!!, header)) {
+                    is ArchiveBundleVerification.Verified -> verification.installSet
+                    ArchiveBundleVerification.Refused -> return failRestore(
+                        AUTHENTICATION_FAILURE_REASON
+                    )
+                }
+            } else {
+                null
+            }
+
             if (installFirst) {
                 if (!restoreObb && (header.appBundle?.obbCount ?: 0) > 0) {
                     warnings += "this app was installed from the archive, and that install places " +
@@ -247,7 +288,14 @@ internal class RestoreAppArchiveUseCase(
                 onProgress(ThorJobProgress(ThorJobStage.INSTALLING, appLabel))
                 markRestoreStarted()
                 Logger.i(TAG, "Installing archive bundle package=$pkg")
-                when (val outcome = installer.installBundle(bundle!!, pkg, execution)) {
+                val installResult = installer.installBundle(
+                    bundle!!,
+                    pkg,
+                    verifiedInstallSet!!,
+                    execution,
+                )
+                rollbackReceipt = installResult.rollbackReceipt
+                when (val outcome = installResult.outcome) {
                     ArchiveInstallOutcome.Installed -> {
                         Logger.i(TAG, "Bundle installed successfully")
                     }
@@ -259,12 +307,12 @@ internal class RestoreAppArchiveUseCase(
 
                     is ArchiveInstallOutcome.Failed -> {
                         Logger.e(TAG, "Bundle install failed: ${outcome.reason}")
-                        return failBeforeAnyDataWasWritten(outcome.reason)
+                        return failRestore(outcome.reason)
                     }
 
                     ArchiveInstallOutcome.Unconfirmed -> {
                         Logger.e(TAG, "Bundle install was unconfirmed")
-                        return failBeforeAnyDataWasWritten(
+                        return failRestore(
                             "Thor could not confirm $appLabel finished installing, so it wrote no data"
                         )
                     }
@@ -272,7 +320,7 @@ internal class RestoreAppArchiveUseCase(
                 val signer = gateway.signerSha256(pkg)
                 Logger.i(TAG, "Installed app signer checked package=$pkg")
                 if (signer == null || !signer.equals(header.signerSha256, ignoreCase = true)) {
-                    return failBeforeAnyDataWasWritten(
+                    return failRestore(
                         "the app that installed is not signed by the key this archive was made from"
                     )
                 }
@@ -281,7 +329,7 @@ internal class RestoreAppArchiveUseCase(
             val uid = gateway.appUid(pkg)
             Logger.i(TAG, "App UID for $pkg: $uid")
             if (uid == null) {
-                return failBeforeAnyDataWasWritten(
+                return failRestore(
                     "Thor could not read $appLabel's user id, so it wrote no data"
                 )
             }
@@ -297,8 +345,9 @@ internal class RestoreAppArchiveUseCase(
                 val member = header.member(dataClass)
                     ?: run {
                         Logger.e(TAG, "Missing member for dataClass ${dataClass.id}")
-                        return failWithBreadcrumbKept(
-                            "this archive has no ${dataClass.id} data", restored
+                        return failRestore(
+                            "this archive has no ${dataClass.id} data",
+                            keepBreadcrumb = true,
                         )
                     }
                 onProgress(restoring(appLabel, doneBytes, totalBytes))
@@ -312,18 +361,20 @@ internal class RestoreAppArchiveUseCase(
                     is ClassOutcome.ReplacedUnusable -> {
                         Logger.e(TAG, "dataClass ${dataClass.id} ReplacedUnusable: ${outcome.reason}")
                         restored += dataClass
-                        return failWithBreadcrumbKept(outcome.reason, restored)
+                        return failRestore(outcome.reason, keepBreadcrumb = true)
                     }
 
                     is ClassOutcome.NotReplaced -> {
                         Logger.e(TAG, "dataClass ${dataClass.id} NotReplaced: ${outcome.reason}")
-                        return failWithBreadcrumbKept(outcome.reason, restored)
+                        return failRestore(outcome.reason, keepBreadcrumb = true)
                     }
 
                     is ClassOutcome.SwapFailed -> {
                         Logger.e(TAG, "dataClass ${dataClass.id} SwapFailed: ${outcome.reason}")
-                        return failWithBreadcrumbKept(
-                            outcome.reason, restored, classPossiblyCleared = dataClass
+                        return failRestore(
+                            outcome.reason,
+                            keepBreadcrumb = true,
+                            classPossiblyCleared = dataClass,
                         )
                     }
                 }
@@ -342,14 +393,25 @@ internal class RestoreAppArchiveUseCase(
                 }
                 gateway.forceStop(pkg)
                 breadcrumbs.clear()
+                rollbackReceipt = null
                 return ArchiveRestoreOutcome.Completed(restored, warnings, placement)
             }
 
             onProgress(ThorJobProgress(ThorJobStage.FINISHING, appLabel, totalBytes, totalBytes))
             gateway.forceStop(pkg)
             breadcrumbs.clear()
+            rollbackReceipt = null
             Logger.i(TAG, "Restore completed successfully: classesRestored=$restored, warnings=$warnings")
             return ArchiveRestoreOutcome.Completed(restored, warnings, obb = null)
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                rollbackIfNeeded()
+                bundle?.delete()
+            }
+            throw e
+        } catch (failure: Throwable) {
+            rollbackIfNeeded()
+            throw failure
         } finally {
             bundle?.delete()
         }
@@ -399,7 +461,7 @@ internal class RestoreAppArchiveUseCase(
                         )
                     }
                 }
-                Logger.d(TAG, "Decrypted ${member.fileName} (${staged.length()} bytes)")
+                Logger.d(TAG, "Decrypted one authenticated archive member")
             } catch (_: ArchiveIntegrityException) {
                 Logger.e(TAG, "archive member integrity failed dataClass=${dataClass.id}")
                 return ClassOutcome.NotReplaced(
@@ -468,21 +530,6 @@ internal class RestoreAppArchiveUseCase(
     )
 
     /**
-     * The only exit taken after the breadcrumb is written, and so the only one that can be reached
-     * with data already replaced. Every `Failed` built outside this function is on a path that runs
-     * before the first swap, which is why they all leave `classPossiblyCleared` at its null default.
-     */
-    private fun failWithBreadcrumbKept(
-        reason: String,
-        restored: List<DataClass>,
-        classPossiblyCleared: DataClass? = null,
-    ): ArchiveRestoreOutcome.Failed {
-        // Deliberately no `breadcrumbs.clear()`. §8.5: a surviving breadcrumb is how the next launch
-        // tells the user their data may be incomplete.
-        return ArchiveRestoreOutcome.Failed(reason, restored.toList(), classPossiblyCleared)
-    }
-
-    /**
      * What staging the container's `.xapk` produced.
      *
      * Three outcomes rather than a nullable [File] because they mean three different things to the
@@ -525,16 +572,13 @@ internal class RestoreAppArchiveUseCase(
             // installer an empty file. This is the one non-throwing way to fail, so it returns
             // non-locally with its own message instead of falling through to the generic one below.
             val entry = source.openEntry(declared.fileName)
-                ?: return BundleStaging.Unreadable(
-                    "this archive says it holds ${declared.fileName}, but that file is not in it"
-                )
+                ?: return BundleStaging.Unreadable(AUTHENTICATION_FAILURE_REASON)
             val out = gateway.stagingFile(THORBAK_BUNDLE_ENTRY)
             // Bounded because this is a deflated entry out of a container the user did not author, so
-            // its expanded size is the container's to choose — and it is the one member written before
-            // any verifier or passphrase check (`invoke` stages the bundle first, and an install-first
-            // restore never asks for a credential), so it is the only restore path where a caller who
-            // proved nothing decides how many bytes Thor writes. The header's `declared.bytes` is not
-            // the bound: it comes out of the same container.
+            // its expanded size is the container's to choose. Authentication has already completed,
+            // but the worker intentionally repeats this digest while copying because a URI provider can
+            // change the bytes between preflight and staging. The header's `declared.bytes` is not the
+            // bound: it comes out of the same container.
             //
             // `MAX_STAGED_BUNDLE_BYTES` and not `MAX_EXTRACTED_TOTAL_BYTES`, which this first used on
             // the reasoning that `extractEntries` bounds the same content downstream. It does not
@@ -544,10 +588,11 @@ internal class RestoreAppArchiveUseCase(
             // Thor-written XAPK backup of a large game, and refused it here — before the signer check,
             // before any class is restored, and on the install-first path there is no toggle to
             // decline the game data and get the rest.
+            val digest = MessageDigest.getInstance("SHA-256")
             val copied = try {
                 entry.use { input ->
                     out.outputStream().use { output ->
-                        input.copyAtMostTo(output, MAX_STAGED_BUNDLE_BYTES)
+                        input.copyAtMostTo(output, MAX_STAGED_BUNDLE_BYTES, digest)
                     }
                 }
             } catch (e: Throwable) {
@@ -565,6 +610,16 @@ internal class RestoreAppArchiveUseCase(
                         "${MAX_STAGED_BUNDLE_BYTES / (1024 * 1024 * 1024)} GB"
                 )
             }
+            val copiedDigest = digest.digest()
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xFF) }
+            if (copied != declared.bytes ||
+                !copiedDigest.equals(declared.sha256, ignoreCase = true)
+            ) {
+                discardPartial(out)
+                return BundleStaging.Unreadable(
+                    AUTHENTICATION_FAILURE_REASON
+                )
+            }
             BundleStaging.Staged(out)
         }.getOrElse {
             // `runCatching` catches `Throwable`, so a cancellation would otherwise come back as a
@@ -572,7 +627,7 @@ internal class RestoreAppArchiveUseCase(
             // the rethrow is here so that stays true the moment it is chunked or made suspending.
             if (it is CancellationException) throw it
             Logger.e(TAG, "archive bundle staging failed package=${header.packageName}")
-            BundleStaging.Unreadable("this archive's app bundle could not be unpacked: ${it.message}")
+            BundleStaging.Unreadable(AUTHENTICATION_FAILURE_REASON)
         }
     }
 
@@ -596,5 +651,9 @@ internal class RestoreAppArchiveUseCase(
 
     private companion object {
         const val TAG = "RestoreAppArchive"
+        const val ROLLBACK_FAILURE_WARNING =
+            "Thor could not safely remove the app installed for this restore"
+        const val AUTHENTICATION_FAILURE_REASON =
+            "this backup could not be authenticated and was not restored"
     }
 }

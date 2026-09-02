@@ -25,9 +25,14 @@ import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.repository.AppArchiveInstaller
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
+import com.valhalla.thor.domain.repository.ArchiveBundleVerification
+import com.valhalla.thor.domain.repository.ArchiveBundleVerifier
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
+import com.valhalla.thor.domain.repository.ArchiveInstallResult
+import com.valhalla.thor.domain.repository.ArchiveRollbackOutcome
+import com.valhalla.thor.domain.repository.ArchiveRollbackReceipt
 import com.valhalla.thor.domain.repository.ArchiveSource
 import com.valhalla.thor.presentation.FakeSystemRepository
 import kotlinx.coroutines.CancellationException
@@ -53,6 +58,7 @@ import java.io.File
 import java.util.UUID
 import java.io.IOException
 import java.io.InputStream
+import java.security.MessageDigest
 import java.util.Base64
 import javax.crypto.SecretKey
 
@@ -129,7 +135,8 @@ class RestoreAppArchiveUseCaseTest {
             )
         }
         val entries = built.associate { (m, bytes) -> m.fileName to bytes }.toMutableMap()
-        if (withBundle) entries[THORBAK_BUNDLE_ENTRY] = "xapk bytes".toByteArray()
+        val bundleBytes = "xapk bytes".toByteArray()
+        if (withBundle) entries[THORBAK_BUNDLE_ENTRY] = bundleBytes
         val header = ArchiveHeader(
             createdAt = 1_000L,
             thorVersionCode = 1950,
@@ -137,7 +144,17 @@ class RestoreAppArchiveUseCaseTest {
             versionCode = 100L,
             userId = 0,
             signerSha256 = SIGNER,
-            appBundle = if (withBundle) ArchiveBundleInfo(bytes = 10L, obbCapture = "present", obbCount = 2) else null,
+            appBundle = if (withBundle) {
+                ArchiveBundleInfo(
+                    bytes = bundleBytes.size.toLong(),
+                    sha256 = MessageDigest.getInstance("SHA-256").digest(bundleBytes)
+                        .joinToString("") { "%02x".format(it.toInt() and 0xFF) },
+                    obbCapture = "present",
+                    obbCount = 2,
+                )
+            } else {
+                null
+            },
             kdf = ArchiveKdf(iterations = 4, salt = Base64.getEncoder().encodeToString(salt)),
             verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
             members = built.map { it.first },
@@ -225,21 +242,52 @@ class RestoreAppArchiveUseCaseTest {
         }
     }
 
+    private class FakeVerifier(
+        private val outcome: ArchiveBundleVerification =
+            ArchiveBundleVerification.Verified(listOf("base.apk", "split.apk")),
+        private val calls: MutableList<String>? = null,
+    ) : ArchiveBundleVerifier {
+        override suspend fun verify(
+            bundle: File,
+            header: ArchiveHeader,
+        ): ArchiveBundleVerification {
+            calls?.plusAssign("verify")
+            return outcome
+        }
+    }
+
     private class FakeInstaller(
         private val outcome: ArchiveInstallOutcome = ArchiveInstallOutcome.Installed,
         private val placement: ObbPlacement = ObbPlacement.Placed(2),
         private val calls: MutableList<String>,
+        private val rollbackReceipt: ArchiveRollbackReceipt? = null,
+        private val rollbackOutcome: ArchiveRollbackOutcome = ArchiveRollbackOutcome.CLEAN,
+        private val beforeRollback: suspend () -> Unit = {},
     ) : AppArchiveInstaller {
         var installExecution: PrivilegeExecutionContext? = null
+        var installSet: List<String>? = null
+        val rollbackReceipts = mutableListOf<ArchiveRollbackReceipt>()
 
         override suspend fun installBundle(
             bundle: File,
             packageName: String,
+            installSet: List<String>,
             execution: PrivilegeExecutionContext,
-        ): ArchiveInstallOutcome {
+        ): ArchiveInstallResult {
             calls += "install"
             installExecution = execution
-            return outcome
+            this.installSet = installSet
+            return ArchiveInstallResult(outcome, rollbackReceipt)
+        }
+
+        override suspend fun rollbackNewInstall(
+            receipt: ArchiveRollbackReceipt,
+            execution: PrivilegeExecutionContext,
+        ): ArchiveRollbackOutcome {
+            calls += "rollback"
+            rollbackReceipts += receipt
+            beforeRollback()
+            return rollbackOutcome
         }
 
         override suspend fun placeBundleObb(
@@ -290,7 +338,8 @@ class RestoreAppArchiveUseCaseTest {
         installer: AppArchiveInstaller,
         breadcrumbs: ArchiveBreadcrumbStore,
         coordinator: DefaultPackageOperationCoordinator = DefaultPackageOperationCoordinator(),
-    ) = RestoreAppArchiveUseCase(gateway, installer, breadcrumbs, cipher, coordinator)
+        verifier: ArchiveBundleVerifier = FakeVerifier(),
+    ) = RestoreAppArchiveUseCase(gateway, installer, verifier, breadcrumbs, cipher, coordinator)
 
     @Test
     fun `each internal class is extracted, swapped, chowned and relabelled in that order`() = runTest {
@@ -450,6 +499,43 @@ class RestoreAppArchiveUseCaseTest {
 
         val reason = (outcome as ArchiveRestoreOutcome.Failed).reason
         assertTrue(reason, reason.contains(DataClass.CE.memberName(compressed = true)))
+    }
+
+    @Test
+    fun `install-first verifies the complete plan before breadcrumb and install`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(calls = calls)
+        val crumbs = RecordingBreadcrumbs(calls = calls)
+        val verifier = FakeVerifier(calls = calls)
+
+        val outcome = useCase(
+            FakeGateway(),
+            installer,
+            crumbs,
+            verifier = verifier,
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+        assertEquals(listOf("base.apk", "split.apk"), installer.installSet)
+        assertTrue(calls.indexOf("verify") < calls.indexOf("breadcrumb"))
+        assertTrue(calls.indexOf("verify") < calls.indexOf("install"))
+    }
+
+    @Test
+    fun `bundle identity refusal happens before breadcrumb install or data writes`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs(calls = calls)
+
+        val outcome = useCase(
+            FakeGateway(),
+            FakeInstaller(calls = calls),
+            crumbs,
+            verifier = FakeVerifier(ArchiveBundleVerification.Refused, calls),
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertEquals(listOf("verify"), calls)
+        assertNull(crumbs.current)
     }
 
     @Test
@@ -785,7 +871,9 @@ class RestoreAppArchiveUseCaseTest {
             noBundle, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
         )
 
-        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        val failed = outcome as ArchiveRestoreOutcome.Failed
+        assertEquals("this backup could not be authenticated and was not restored", failed.reason)
+        assertFalse(failed.reason.contains(THORBAK_BUNDLE_ENTRY))
         assertEquals(emptyList<String>(), calls)
     }
 
@@ -806,7 +894,9 @@ class RestoreAppArchiveUseCaseTest {
                 truncated, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
             )
 
-            assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+            val failed = outcome as ArchiveRestoreOutcome.Failed
+            assertEquals("this backup could not be authenticated and was not restored", failed.reason)
+            assertFalse(failed.reason.contains("unexpected end of stream"))
             assertEquals(emptyList<String>(), calls)
         }
 
@@ -1129,6 +1219,178 @@ class RestoreAppArchiveUseCaseTest {
             val completed = outcome as ArchiveRestoreOutcome.Completed
             assertEquals(emptyList<String>(), completed.warnings)
         }
+
+    @Test
+    fun `new install rolls back exactly once on signer mismatch before any data swap`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val receipt = ArchiveRollbackReceipt(header.packageName, 2_000L)
+        val installer = FakeInstaller(calls = calls, rollbackReceipt = receipt)
+
+        val outcome = useCase(
+            FakeGateway(signer = "CD".repeat(32)),
+            installer,
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertEquals(listOf(receipt), installer.rollbackReceipts)
+        assertEquals(1, calls.count { it == "rollback" })
+        assertFalse(calls.toString(), calls.any { it.startsWith("swap") })
+    }
+
+    @Test
+    fun `new install rolls back after each later restore failure`() = runTest {
+        data class FailureCase(val name: String, val gateway: FakeGateway)
+        val cases = listOf(
+            FailureCase("uid", FakeGateway(uid = null)),
+            FailureCase("extract", FakeGateway(failOn = "extract:ce")),
+            FailureCase("swap", FakeGateway(failOn = "swap:ce")),
+            FailureCase("ownership", FakeGateway(failOn = "chown:ce")),
+            FailureCase("restorecon", FakeGateway(failOn = "relabel:ce")),
+        )
+
+        cases.forEachIndexed { index, case ->
+            calls.clear()
+            val (header, source) = archive(listOf(DataClass.CE))
+            val receipt = ArchiveRollbackReceipt(header.packageName, 2_000L + index)
+            val installer = FakeInstaller(calls = calls, rollbackReceipt = receipt)
+
+            val outcome = useCase(case.gateway, installer, RecordingBreadcrumbs())(
+                source,
+                header,
+                key,
+                listOf(DataClass.CE),
+                installFirst = true,
+                restoreObb = false,
+            )
+
+            assertTrue("${case.name}: $outcome", outcome is ArchiveRestoreOutcome.Failed)
+            assertEquals(case.name, listOf(receipt), installer.rollbackReceipts)
+            assertEquals(case.name, 1, calls.count { it == "rollback" })
+        }
+    }
+
+    @Test
+    fun `rollback failure keeps the primary reason and adds only a generic warning`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val primary = "the app that installed is not signed by the key this archive was made from"
+        val installer = FakeInstaller(
+            calls = calls,
+            rollbackReceipt = ArchiveRollbackReceipt(header.packageName, 2_000L),
+            rollbackOutcome = ArchiveRollbackOutcome.FAILED,
+        )
+
+        val outcome = useCase(
+            FakeGateway(signer = "CD".repeat(32)),
+            installer,
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        val reason = (outcome as ArchiveRestoreOutcome.Failed).reason
+        assertTrue(reason, reason.startsWith(primary))
+        assertTrue(reason, reason.contains("could not safely remove"))
+        assertTrue(reason.length <= primary.length + 80)
+        assertFalse(reason, reason.contains(header.packageName))
+        assertFalse(reason, reason.contains("2000"))
+    }
+
+    @Test
+    fun `cancellation after a new install rolls back and rethrows the original cancellation`() = runTest {
+        val job = Job()
+        val (header, source) = archive(listOf(DataClass.CE))
+        val receipt = ArchiveRollbackReceipt(header.packageName, 2_000L)
+        val installer = FakeInstaller(calls = calls, rollbackReceipt = receipt)
+        val crumbs = RecordingBreadcrumbs()
+
+        val thrown = runCatching {
+            withContext(job) {
+                useCase(
+                    FakeGateway(onStagingFile = { job.cancel() }),
+                    installer,
+                    crumbs,
+                )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+            }
+        }.exceptionOrNull()
+
+        assertTrue(thrown.toString(), thrown is CancellationException)
+        assertEquals(listOf(receipt), installer.rollbackReceipts)
+        assertNotNull(crumbs.current)
+    }
+
+    @Test
+    fun `unexpected failure after a new install rolls back and preserves the original throwable`() = runTest {
+        val failure = ShellLaneUnavailable(PrivilegeExecutionLane.ARCHIVE)
+        val (header, source) = archive(listOf(DataClass.CE))
+        val receipt = ArchiveRollbackReceipt(header.packageName, 2_000L)
+        val installer = FakeInstaller(calls = calls, rollbackReceipt = receipt)
+
+        val thrown = runCatching {
+            useCase(
+                FakeGateway(beforeExtract = { throw failure }),
+                installer,
+                RecordingBreadcrumbs(),
+            )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+        }.exceptionOrNull()
+
+        assertSame(failure, thrown)
+        assertEquals(listOf(receipt), installer.rollbackReceipts)
+        assertEquals(1, calls.count { it == "rollback" })
+    }
+
+    @Test
+    fun `rollback completes inside the outer lease and the lease releases afterwards`() = runTest {
+        val coordinator = DefaultPackageOperationCoordinator()
+        val enteredRollback = CompletableDeferred<Unit>()
+        val releaseRollback = CompletableDeferred<Unit>()
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(
+            calls = calls,
+            rollbackReceipt = ArchiveRollbackReceipt(header.packageName, 2_000L),
+            beforeRollback = {
+                enteredRollback.complete(Unit)
+                releaseRollback.await()
+            },
+        )
+        val restore = async {
+            useCase(
+                FakeGateway(signer = "CD".repeat(32)),
+                installer,
+                RecordingBreadcrumbs(),
+                coordinator,
+            )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+        }
+        enteredRollback.await()
+
+        val mutations = ManageAppUseCase(FakeSystemRepository(), coordinator)
+        val duringRollback = mutations.forceStop(header.packageName)
+        releaseRollback.complete(Unit)
+        val outcome = restore.await()
+        val afterRollback = mutations.forceStop(header.packageName)
+
+        val busy = duringRollback.exceptionOrNull()
+        assertTrue(busy.toString(), busy is PackageOperationBusy)
+        assertEquals(PackageOperationOwner.ARCHIVE_RESTORE, (busy as PackageOperationBusy).owner)
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertTrue(afterRollback.toString(), afterRollback.isSuccess)
+        assertEquals(1, calls.count { it == "rollback" })
+    }
+
+    @Test
+    fun `successful restore discards rollback authority without uninstalling`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(
+            calls = calls,
+            rollbackReceipt = ArchiveRollbackReceipt(header.packageName, 2_000L),
+        )
+
+        val outcome = useCase(FakeGateway(), installer, RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+        assertTrue(installer.rollbackReceipts.isEmpty())
+        assertFalse(calls.toString(), calls.contains("rollback"))
+    }
 
     @Test
     fun `restore owns one package lease while an archive phase is blocked`() = runTest {

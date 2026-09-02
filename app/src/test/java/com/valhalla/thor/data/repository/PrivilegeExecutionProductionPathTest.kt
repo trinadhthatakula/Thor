@@ -224,6 +224,7 @@ class PrivilegeExecutionProductionPathTest {
                 fixture.installer.installBundle(
                     fixture.bundle,
                     "com.example.game",
+                    listOf("base.apk"),
                     com.valhalla.thor.domain.model.PrivilegeExecutionContext(),
                 )
             }
@@ -234,6 +235,20 @@ class PrivilegeExecutionProductionPathTest {
     }
 
     @Test
+    fun `AppArchiveInstallerImpl diagnostics omit throwable and outcome details`() {
+        val source = archiveInstallerSource()
+
+        assertFalse(
+            "archive installer diagnostics pass throwable details to Logger",
+            Regex("""Logger\.e\(TAG,\s*"[^"]*",\s*e\)""").containsMatchIn(source),
+        )
+        assertFalse(
+            "archive installer logs a failure reason through the full outcome",
+            source.contains("outcome=\$outcome"),
+        )
+    }
+
+    @Test
     fun `AppArchiveInstallerImpl keeps ordinary failed outcome`() = runTest {
         val ordinary = IllegalStateException("ordinary archive install failure")
         val fixture = archiveInstaller(ordinary)
@@ -241,10 +256,11 @@ class PrivilegeExecutionProductionPathTest {
         val outcome = fixture.installer.installBundle(
             fixture.bundle,
             "com.example.game",
+            listOf("base.apk"),
             com.valhalla.thor.domain.model.PrivilegeExecutionContext(),
         )
 
-        assertEquals(ArchiveInstallOutcome.Failed("ordinary archive install failure"), outcome)
+        assertEquals(ArchiveInstallOutcome.Failed("ordinary archive install failure"), outcome.outcome)
         assertEquals(1, fixture.repository.calls)
     }
 
@@ -328,6 +344,7 @@ class PrivilegeExecutionProductionPathTest {
         val installer = AppArchiveInstallerImpl(
             context = context,
             installerRepository = repository,
+            systemRepository = system,
             eventBus = InstallerEventBus(),
             obbInstaller = ObbInstaller(context, system, Dispatchers.Unconfined),
             privilegeState = FakePrivilegeStateProvider(
@@ -403,6 +420,19 @@ class PrivilegeExecutionProductionPathTest {
         val repository: ThrowingInstallerRepository,
         val bundle: File,
     )
+
+    private fun archiveInstallerSource(): String {
+        var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (directory != null) {
+            val source = File(
+                directory,
+                "app/src/main/java/com/valhalla/thor/data/repository/AppArchiveInstallerImpl.kt",
+            )
+            if (source.isFile) return source.readText()
+            directory = directory.parentFile
+        }
+        error("could not locate AppArchiveInstallerImpl.kt")
+    }
 
     private suspend fun caught(block: suspend () -> Unit): Throwable =
         runCatching { block() }.exceptionOrNull() ?: error("expected an exception")

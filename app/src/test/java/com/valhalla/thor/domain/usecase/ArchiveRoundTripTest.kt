@@ -9,6 +9,7 @@ import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.data.repository.ZipArchiveSource
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
+import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveRestoreDecision
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ClassEntries
@@ -26,8 +27,13 @@ import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
+import com.valhalla.thor.domain.repository.ArchiveBundleVerification
+import com.valhalla.thor.domain.repository.ArchiveBundleVerifier
 import com.valhalla.thor.domain.repository.ArchiveDestination
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
+import com.valhalla.thor.domain.repository.ArchiveInstallResult
+import com.valhalla.thor.domain.repository.ArchiveRollbackOutcome
+import com.valhalla.thor.domain.repository.ArchiveRollbackReceipt
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -192,21 +198,38 @@ class ArchiveRoundTripTest {
 
     private class CapturingInstaller : AppArchiveInstaller {
         var installedBytes: ByteArray? = null
+        var installedSet: List<String>? = null
 
         override suspend fun installBundle(
             bundle: File,
             packageName: String,
+            installSet: List<String>,
             execution: PrivilegeExecutionContext,
-        ): ArchiveInstallOutcome {
+        ): ArchiveInstallResult {
             installedBytes = bundle.readBytes()
-            return ArchiveInstallOutcome.Installed
+            installedSet = installSet
+            return ArchiveInstallResult(ArchiveInstallOutcome.Installed)
         }
+
+        override suspend fun rollbackNewInstall(
+            receipt: ArchiveRollbackReceipt,
+            execution: PrivilegeExecutionContext,
+        ): ArchiveRollbackOutcome = ArchiveRollbackOutcome.CLEAN
 
         override suspend fun placeBundleObb(
             bundle: File,
             packageName: String,
             onFile: (String, Int, Int) -> Unit,
         ): ObbPlacement = ObbPlacement.NotNeeded
+    }
+
+    private class FixedBundleVerifier(
+        private val installSet: List<String> = listOf("base.apk"),
+    ) : ArchiveBundleVerifier {
+        override suspend fun verify(
+            bundle: File,
+            header: ArchiveHeader,
+        ): ArchiveBundleVerification = ArchiveBundleVerification.Verified(installSet)
     }
 
     private class NoopBreadcrumbs : ArchiveBreadcrumbStore {
@@ -300,6 +323,7 @@ class ArchiveRoundTripTest {
                 RestoreAppArchiveUseCase(
                     reader,
                     CapturingInstaller(),
+                    FixedBundleVerifier(),
                     NoopBreadcrumbs(),
                     cipher,
                     DefaultPackageOperationCoordinator(),
@@ -394,6 +418,7 @@ class ArchiveRoundTripTest {
             RestoreAppArchiveUseCase(
                 reader,
                 installer,
+                FixedBundleVerifier(),
                 NoopBreadcrumbs(),
                 cipher,
                 DefaultPackageOperationCoordinator(),
@@ -409,6 +434,7 @@ class ArchiveRoundTripTest {
 
         assertTrue(restored.toString(), restored is ArchiveRestoreOutcome.Completed)
         assertArrayEquals(bundleBytes, installer.installedBytes)
+        assertEquals(listOf("base.apk"), installer.installedSet)
     }
 
     /**
@@ -433,6 +459,7 @@ class ArchiveRoundTripTest {
             RestoreAppArchiveUseCase(
                 reader,
                 CapturingInstaller(),
+                FixedBundleVerifier(),
                 NoopBreadcrumbs(),
                 cipher,
                 DefaultPackageOperationCoordinator(),
@@ -490,7 +517,7 @@ class ArchiveRoundTripTest {
     private companion object {
         const val PACKAGE = "com.example.app"
         const val VERSION_CODE = 100L
-        const val SIGNER = "AB"
+        val SIGNER = "AB".repeat(32)
         var counter = 0
     }
 }

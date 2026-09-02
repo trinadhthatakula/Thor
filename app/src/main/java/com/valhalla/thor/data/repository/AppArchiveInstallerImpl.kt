@@ -14,13 +14,18 @@ import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.repository.AppArchiveInstaller
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
+import com.valhalla.thor.domain.repository.ArchiveInstallResult
+import com.valhalla.thor.domain.repository.ArchiveRollbackOutcome
+import com.valhalla.thor.domain.repository.ArchiveRollbackReceipt
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -40,6 +45,7 @@ class AppArchiveInstallerImpl(
     // the user picked rather than the one the process started in.
     private val context: Context,
     private val installerRepository: InstallerRepository,
+    private val systemRepository: SystemRepository,
     private val eventBus: InstallerEventBus,
     private val obbInstaller: ObbInstaller,
     private val privilegeState: PrivilegeStateProvider,
@@ -49,15 +55,20 @@ class AppArchiveInstallerImpl(
     override suspend fun installBundle(
         bundle: File,
         packageName: String,
+        installSet: List<String>,
         execution: PrivilegeExecutionContext,
-    ): ArchiveInstallOutcome = withContext(ioDispatcher) {
+    ): ArchiveInstallResult = withContext(ioDispatcher) {
         if (!bundle.isFile || bundle.length() == 0L) {
-            return@withContext ArchiveInstallOutcome.Failed("the archive's app bundle is missing")
+            return@withContext ArchiveInstallResult(
+                ArchiveInstallOutcome.Failed("the archive's app bundle is missing")
+            )
         }
 
         val mode = installMode()
-            ?: return@withContext ArchiveInstallOutcome.Failed(
-                "Thor has no privileged access, so it cannot install this app"
+            ?: return@withContext ArchiveInstallResult(
+                ArchiveInstallOutcome.Failed(
+                    "Thor has no privileged access, so it cannot install this app"
+                )
             )
 
         // The bus is a replaying SharedFlow shared with PortableInstallerActivity, and it replays its
@@ -66,7 +77,7 @@ class AppArchiveInstallerImpl(
         // one's. `Idle` is what it sees instead, and the predicate skips it.
         eventBus.reset()
 
-        installAndAwait(bundle, packageName, mode, execution)
+        installAndAwait(bundle, packageName, installSet, mode, execution)
     }
 
     /**
@@ -139,9 +150,10 @@ class AppArchiveInstallerImpl(
     private suspend fun installAndAwait(
         bundle: File,
         packageName: String,
+        installSet: List<String>,
         mode: InstallMode,
         execution: PrivilegeExecutionContext,
-    ): ArchiveInstallOutcome {
+    ): ArchiveInstallResult {
         // Read before the install, because for an update the answer changes and nothing afterwards
         // can reconstruct it. `InstallerRepositoryImpl.awaitInstalled` reads the same stamp for the
         // same reason: presence cannot say whether *this* install landed, since restoring over an
@@ -164,7 +176,11 @@ class AppArchiveInstallerImpl(
                     // would only prove the coroutine was scheduled.
                     subscribed.await()
                     installerRepository.installPackage(
-                        staged = StagedPackage(file = bundle, displayName = bundle.name),
+                        staged = StagedPackage(
+                            file = bundle,
+                            displayName = bundle.name,
+                            installSet = installSet,
+                        ),
                         // Only InstallMode.EXTERNAL reads this, and EXTERNAL is not reachable here —
                         // restore never hands the job to another installer app.
                         uri = bundle.toUri(),
@@ -186,17 +202,25 @@ class AppArchiveInstallerImpl(
                 }
             }
         } catch (e: CancellationException) {
-            // Physically before the `Throwable` catch or it is dead code. A cancelled restore must
-            // not be reported as a failed install, and this coroutine must not look as though it
-            // completed normally after its job was cancelled. `installPackage` rethrows cancellation
-            // from every one of its own catch sites, so this is a live path.
+            // The install call may have landed immediately before cancellation. The caller cannot
+            // receive a receipt from a cancelled function, so corroborate and clean it here while its
+            // outer package lease is still held, then preserve the original cancellation.
+            withContext(NonCancellable) {
+                val stampAfter = installStamp(packageName)
+                newInstallRollbackReceipt(
+                    packageName,
+                    stampBefore,
+                    stampAfter,
+                    ArchiveInstallOutcome.Installed,
+                )?.let { rollbackNewInstall(it, execution) }
+            }
             throw e
         } catch (e: Throwable) {
             val outcome = archiveInstallFailure(e)
             // Throwable rather than Exception, matching `installPackage`'s own outer catch: an
             // `Error` escaping here would kill the restore worker instead of failing one install.
-            Logger.e(TAG, "install of $packageName threw", e)
-            return outcome
+            Logger.e(TAG, "archive install failed unexpectedly")
+            return ArchiveInstallResult(outcome)
         }
 
         val stampAfter = installStamp(packageName)
@@ -205,8 +229,9 @@ class AppArchiveInstallerImpl(
             landed = installLanded(before = stampBefore, after = stampAfter),
             reason = (settled as? InstallState.Error)?.message?.asString(context),
         )
-        Logger.i(TAG, "installAndAwait finished for $packageName: mode=$mode, settled=$settled, stampBefore=$stampBefore, stampAfter=$stampAfter, outcome=$outcome")
-        return outcome
+        val receipt = newInstallRollbackReceipt(packageName, stampBefore, stampAfter, outcome)
+        Logger.i(TAG, "archive install settled: mode=$mode")
+        return ArchiveInstallResult(outcome, receipt)
     }
 
     /**
@@ -235,7 +260,7 @@ class AppArchiveInstallerImpl(
         InstallStamp.At(context.packageManager.getPackageInfo(packageName, 0).lastUpdateTime)
     } catch (_: PackageManager.NameNotFoundException) {
         InstallStamp.Absent
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         // A binder failure, or a ROM refusing the call outright. **Not** package-visibility
         // filtering: the platform's contract there is to behave as though the package does not
         // exist, so a filtered package throws `NameNotFoundException` and lands in `Absent` above —
@@ -243,8 +268,32 @@ class AppArchiveInstallerImpl(
         // filtered package reads `Absent` on *both* sides and [installLanded] scores that false.
         // Logged because it silently costs the caller the difference between `Failed` and a data
         // restore.
-        Logger.e(TAG, "could not read the install stamp for $packageName", e)
+        Logger.e(TAG, "could not read archive install state")
         InstallStamp.Unknown
+    }
+
+    override suspend fun rollbackNewInstall(
+        receipt: ArchiveRollbackReceipt,
+        execution: PrivilegeExecutionContext,
+    ): ArchiveRollbackOutcome = withContext(ioDispatcher) {
+        when (rollbackAction(receipt, installStamp(receipt.packageName))) {
+            RollbackAction.ALREADY_ABSENT -> ArchiveRollbackOutcome.CLEAN
+            RollbackAction.REFUSE -> ArchiveRollbackOutcome.REFUSED
+            RollbackAction.UNINSTALL -> try {
+                systemRepository.uninstallApp(receipt.packageName, execution).fold(
+                    onSuccess = { ArchiveRollbackOutcome.CLEAN },
+                    onFailure = {
+                        Logger.e(TAG, "archive rollback uninstall failed")
+                        ArchiveRollbackOutcome.FAILED
+                    },
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                Logger.e(TAG, "archive rollback uninstall threw")
+                ArchiveRollbackOutcome.FAILED
+            }
+        }
     }
 
     override suspend fun placeBundleObb(
@@ -343,6 +392,40 @@ internal sealed interface InstallStamp {
 
     /** The platform could not be asked — a binder failure, or a ROM refusing the call. */
     data object Unknown : InstallStamp
+}
+
+internal fun newInstallRollbackReceipt(
+    packageName: String,
+    before: InstallStamp,
+    after: InstallStamp,
+    outcome: ArchiveInstallOutcome,
+): ArchiveRollbackReceipt? {
+    if (before != InstallStamp.Absent || after !is InstallStamp.At) return null
+    if (outcome !is ArchiveInstallOutcome.Installed &&
+        outcome !is ArchiveInstallOutcome.InstalledWithoutGameData
+    ) {
+        return null
+    }
+    return ArchiveRollbackReceipt(packageName, after.millis)
+}
+
+internal enum class RollbackAction {
+    ALREADY_ABSENT,
+    UNINSTALL,
+    REFUSE,
+}
+
+internal fun rollbackAction(
+    receipt: ArchiveRollbackReceipt,
+    current: InstallStamp,
+): RollbackAction = when (current) {
+    InstallStamp.Absent -> RollbackAction.ALREADY_ABSENT
+    InstallStamp.Unknown -> RollbackAction.REFUSE
+    is InstallStamp.At -> if (current.millis == receipt.installedAt) {
+        RollbackAction.UNINSTALL
+    } else {
+        RollbackAction.REFUSE
+    }
 }
 
 /**
