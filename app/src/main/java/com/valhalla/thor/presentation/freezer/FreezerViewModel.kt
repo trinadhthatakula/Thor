@@ -8,25 +8,28 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.repository.AppShortcutController
-import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -34,7 +37,6 @@ import com.valhalla.thor.presentation.launchGuarded
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.asUiText
-import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -83,6 +85,17 @@ sealed interface FreezerEvent {
     data class ProfileSaveSucceeded(val editorSession: Int) : FreezerEvent
 }
 
+private fun PrivilegeSweepLaunchRejection.asSweepMessage(): UiText.StringResource =
+    UiText.StringResource(
+        when (this) {
+            PrivilegeSweepLaunchRejection.NotificationsRequired ->
+                R.string.notification_access_needed_subtitle
+            PrivilegeSweepLaunchRejection.NoPrivilege -> R.string.tile_grant_privilege_toast
+            PrivilegeSweepLaunchRejection.NoTargets -> R.string.profile_nothing_to_do
+            is PrivilegeSweepLaunchRejection.EnqueueFailed -> R.string.bulk_run_failed
+        }
+    )
+
 data class FreezerUiState(
     val isLoading: Boolean = true,
     val isRoot: Boolean = false,
@@ -119,17 +132,15 @@ data class FreezerUiState(
      * rather than one slot because runs of the same op serialize, so a profile queued behind a
      * watchlist freeze must not erase the freeze that is actually running.
      */
-    val runningRequests: List<BulkRequest> = emptyList()
+    val runningRequests: List<PrivilegeSweepStatus> = emptyList()
 )
 
 @KoinViewModel
 class FreezerViewModel(
     private val freezerRepository: FreezerRepository,
     private val freezeProfileRepository: FreezeProfileRepository,
-    // The two-member port, not the concrete BulkFreezeRunner: the runner takes four collaborators
-    // that need a Context, a PackageManager or Shizuku's listeners, and naming the class kept this
-    // whole view model — watchlist removal included — out of reach of a JVM test.
-    private val bulkFreeze: BulkFreezeController,
+    private val sweepResolver: PrivilegeSweepTargetResolver,
+    private val sweepController: PrivilegeSweepController,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
@@ -437,7 +448,7 @@ class FreezerViewModel(
 
     private fun observeRunningRequest() {
         viewModelScope.launch {
-            bulkFreeze.runningRequests.collect { requests ->
+            sweepController.activeRequests.collect { requests ->
                 _uiState.update { it.copy(runningRequests = requests) }
             }
         }
@@ -447,49 +458,22 @@ class FreezerViewModel(
         _uiState.update { it.copy(profileEditorSearchQuery = query) }
     }
 
-    /**
-     * Run a profile through [BulkFreezeController] rather than freezing here.
-     *
-     * That routing is the whole point of the runner's `targetsFor`: it is where the
-     * [FreezeTier] block is applied to a *list*, so a profile cannot freeze what the in-app
-     * dialog refuses to offer a confirm button for. It also gets same-request coalescing and
-     * the serialize-don't-cancel rule for free — tapping two profiles runs both, in order.
-     *
-     * The awaited result is reported as a toast. A profile run deliberately does not park its
-     * result in the tile subtitle (see the runner), so this is the only surface that reports it
-     * besides the notification, which the user may not have permitted.
-     *
-     * [mode] is null for the row's Freeze button, which means the user's standing choice, and
-     * [FreezerMode.SUSPEND] for the menu's explicit Suspend. It is part of the request rather than
-     * something resolved here because it is part of the run's *identity*: the runner coalesces on
-     * request equality, and a suspend of a profile is not a repeat of a disable of the same one.
-     */
+    /** Resolves a profile snapshot before handing it to the durable sweep queue. */
     fun runProfile(profileId: Long, op: BulkOp, mode: FreezerMode? = null) {
         viewModelScope.launch {
-            val outcome = bulkFreeze
-                .launch(BulkRequest(op, BulkScope.Profile(profileId), mode))
-                .await()
-            emitToast(
-                when (outcome) {
-                    is BulkOutcome.Completed -> bulkResultMessage(outcome.result)
-                    // A no-op. Saying "Froze 0 apps" would read as a failure of the freeze rather
-                    // than of the precondition, so name the precondition — and name the *right*
-                    // one. "Nothing to do for this profile" is false when the profile is full and
-                    // Thor simply has no privilege, and it sends the user looking at the profile
-                    // instead of at the thing they can fix.
-                    is BulkOutcome.NothingToDo -> UiText.StringResource(
-                        when (outcome.reason) {
-                            NoOpReason.NO_PRIVILEGE -> R.string.tile_grant_privilege_toast
-                            NoOpReason.NO_TARGETS -> R.string.profile_nothing_to_do
-                        }
-                    )
-                    // And this is not that. The run raised — Room, a dead binder — possibly after
-                    // freezing part of the profile, so the one thing that must not be said is
-                    // that there was nothing to do.
-                    is BulkOutcome.Failed -> UiText.StringResource(R.string.bulk_run_failed)
-                }
+            val spec = sweepResolver.resolve(
+                BulkRequest(op, BulkScope.Profile(profileId), mode),
+                PrivilegeSweepSource.PROFILE,
             )
+            when (val launch = sweepController.launch(spec)) {
+                is PrivilegeSweepLaunchResult.Accepted -> Unit
+                is PrivilegeSweepLaunchResult.Rejected -> emitToast(launch.reason.asSweepMessage())
+            }
         }
+    }
+
+    fun cancelSweepQueue() {
+        viewModelScope.launch { sweepController.cancelQueue() }
     }
 
     fun createProfile(editorSession: Int, name: String, packageNames: List<String>) {

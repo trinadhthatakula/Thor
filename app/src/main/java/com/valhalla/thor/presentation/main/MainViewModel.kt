@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.main
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.BuildConfig
@@ -10,13 +11,20 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.data.backup.job.JobSheetTarget
 import com.valhalla.thor.data.backup.job.JobSheetTargets
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.FreezeTier
-import com.valhalla.thor.domain.model.Installers
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.isActive
@@ -29,6 +37,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.util.AppLocale
@@ -38,8 +47,8 @@ import com.valhalla.thor.util.UiTextException
 import com.valhalla.thor.util.asUiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -50,6 +59,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import java.util.UUID
 
 /**
  * Side Effects: One-time events that the UI must handle (Navigation, Intents).
@@ -206,10 +216,32 @@ data class RestoreSheetState(val uriString: String? = null)
  */
 data class BackupSheetState(val packageName: String, val appLabel: String)
 
+private const val MAIN_SWEEP_REQUEST_ID = "main_sweep_request_id"
+
+private val TERMINAL_SWEEP_PHASES = setOf(
+    PrivilegeSweepPhase.SUCCEEDED,
+    PrivilegeSweepPhase.PARTIAL,
+    PrivilegeSweepPhase.CANCELLED,
+    PrivilegeSweepPhase.FAILED,
+    PrivilegeSweepPhase.OBSERVER_FAILURE,
+)
+
+private fun PrivilegeSweepLaunchRejection.asSweepRejectionMessage(): UiText.StringResource =
+    UiText.StringResource(
+        when (this) {
+            PrivilegeSweepLaunchRejection.NotificationsRequired ->
+                R.string.notification_access_needed_subtitle
+            PrivilegeSweepLaunchRejection.NoPrivilege -> R.string.tile_grant_privilege_toast
+            PrivilegeSweepLaunchRejection.NoTargets -> R.string.tile_no_apps_toast
+            is PrivilegeSweepLaunchRejection.EnqueueFailed -> R.string.bulk_run_failed
+        }
+    )
+
 data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val fixStoreSelection: FixStoreSelection? = null, // Fix Store picker, null when closed
     val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
+    val sweepStatus: PrivilegeSweepStatus? = null,
     val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
     val cacheClear: CacheClearState? = null, // Whole-device cache clear, null when idle
     val restoreSheet: RestoreSheetState? = null, // Archive restore sheet, null when closed
@@ -236,6 +268,9 @@ class MainViewModel(
     // Where a tap on a running job's notification arrives. A plain in-memory holder, so it costs
     // nothing to observe and stays on the JVM test classpath.
     private val jobSheetTargets: JobSheetTargets,
+    private val sweepResolver: PrivilegeSweepTargetResolver,
+    private val sweepController: PrivilegeSweepController,
+    private val savedStateHandle: SavedStateHandle,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -250,6 +285,7 @@ class MainViewModel(
 
     /** Whether [openRestoreSheetForLaunchUri] has already fired for this ViewModel. See it for why here. */
     private var launchRestoreUriConsumed = false
+    private var sweepObservation: Job? = null
 
     // Declared *above* `init`, and it has to stay there.
     //
@@ -267,6 +303,10 @@ class MainViewModel(
         observePreferences()
         observeBackupRun()
         observeJobSheetRequests()
+        observeSweep(
+            savedStateHandle.get<String>(MAIN_SWEEP_REQUEST_ID)
+                ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        )
     }
 
     private fun observePreferences() {
@@ -835,6 +875,31 @@ class MainViewModel(
         }
     }
 
+    private fun observeSweep(requestId: UUID?) {
+        sweepObservation?.cancel()
+        sweepObservation = viewModelScope.launch {
+            val statuses = requestId?.let(sweepController::observe)
+                ?: sweepController.observeLatest(PrivilegeSweepSource.MAIN)
+            statuses.collect { status ->
+                if (status == null) return@collect
+                savedStateHandle[MAIN_SWEEP_REQUEST_ID] = status.requestId.toString()
+                _uiState.update { state ->
+                    state.copy(
+                        sweepStatus = status,
+                        freezeLoggerState = FreezeLoggerState(
+                            isVisible = true,
+                            isFreeze = status.operation == PrivilegeSweepOperation.FREEZE,
+                            total = status.total,
+                            processed = status.succeeded + status.failed + status.busy,
+                            failed = status.failed + status.busy,
+                            isComplete = status.phase in TERMINAL_SWEEP_PHASES,
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     // --- Multi App Action Handler ---
 
     fun onMultiAppAction(action: MultiAppAction) {
@@ -1045,82 +1110,55 @@ class MainViewModel(
         }
     }
 
-    /**
-     * Bulk freeze / unfreeze with compact count-only progress ([FreezeLoggerState]).
-     * Unsafe / UAD-failed system apps are excluded from the freeze set up-front (so the
-     * total reflects only what we actually attempt), then each app is toggled
-     * sequentially with a live `processed / total` count.
-     */
-    private suspend fun performCountedFreeze(apps: List<AppInfo>, isFreeze: Boolean, useSuspend: Boolean = false) {
+    /** Snapshots a selection, enqueues it durably, and observes its persisted aggregate state. */
+    private suspend fun performCountedFreeze(
+        apps: List<AppInfo>,
+        isFreeze: Boolean,
+        useSuspend: Boolean = false,
+    ) {
         val targets = if (isFreeze) {
-            // Only freeze ACTIVE apps: skip unsafe/UAD system apps AND anything already frozen
-            // (disabled or suspended) so we never stack disable+suspend into a mixed state.
             apps.filter { it.isActive && it.freezeTier != FreezeTier.BLOCKED }
         } else {
             apps
         }
-
-        _uiState.update {
-            it.copy(
+        val operation = if (isFreeze) {
+            PrivilegeSweepOperation.FREEZE
+        } else {
+            PrivilegeSweepOperation.UNFREEZE
+        }
+        val spec = sweepResolver.resolveSelection(
+            operation = operation,
+            packageNames = targets.map(AppInfo::packageName),
+            source = PrivilegeSweepSource.MAIN,
+            freezerMode = if (isFreeze) {
+                if (useSuspend) FreezerMode.SUSPEND else FreezerMode.FREEZE
+            } else {
+                null
+            },
+        )
+        _uiState.update { state ->
+            state.copy(
+                sweepStatus = null,
                 freezeLoggerState = FreezeLoggerState(
                     isVisible = true,
                     isFreeze = isFreeze,
-                    total = targets.size
-                )
+                    total = spec.packageNames.size,
+                ),
             )
         }
+        when (val launch = sweepController.launch(spec)) {
+            is PrivilegeSweepLaunchResult.Accepted -> {
+                savedStateHandle[MAIN_SWEEP_REQUEST_ID] = launch.requestId.toString()
+                observeSweep(launch.requestId)
+            }
 
-        var processed = 0
-        var failed = 0
-        try {
-            withContext(ioDispatcher) {
-                targets.forEach { app ->
-                    coroutineContext.ensureActive()
-                    val result = if (isFreeze) {
-                        if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
-                        else manageAppUseCase.setAppDisabled(app.packageName, true)
-                    } else {
-                        // `forceUnfreeze`, not the state-aware `restoreApp(_, app.enabled,
-                        // app.isSuspended)` this used to call. Both clear suspend AND disable; the
-                        // difference is that `restoreApp` decides which halves to attempt from the flags,
-                        // and on this path the flags are stale by construction.
-                        //
-                        // Nothing patches `isSuspended` on an app list after a bulk freeze — not this
-                        // function (it updates only the logger counters and never refreshes the lists on
-                        // completion), not `AppListViewModel`'s bulk branch, not the QS tile. So the
-                        // freeze-then-unfreeze round trip that is the *primary* way suspend mode gets
-                        // used — `useSuspend = true` above, then Unfreeze over the same selection —
-                        // hands `restorePlanFor` a snapshot that still calls every app active. It plans
-                        // nothing, returns `Result.success`, and this loop counts a success for each app
-                        // while all of them are still suspended: "Unfroze 12" over 12 paused apps.
-                        //
-                        // FreezerViewModel already documents this trap twice and answers it the same way.
-                        // The cost is one redundant unsuspend per already-active app, which root and
-                        // Shizuku answer from the flag alone.
-                        manageAppUseCase.forceUnfreeze(app.packageName)
-                    }
-                    processed++
-                    if (result.isFailure) failed++
-                    val p = processed
-                    val f = failed
-                    _uiState.update {
-                        it.copy(freezeLoggerState = it.freezeLoggerState.copy(processed = p, failed = f))
-                    }
+            is PrivilegeSweepLaunchResult.Rejected -> {
+                savedStateHandle.remove<String>(MAIN_SWEEP_REQUEST_ID)
+                _uiState.update {
+                    it.copy(sweepStatus = null, freezeLoggerState = FreezeLoggerState())
                 }
+                _effect.send(MainSideEffect.Message(launch.reason.asSweepRejectionMessage()))
             }
-        } finally {
-            _uiState.update {
-                it.copy(
-                    freezeLoggerState = it.freezeLoggerState.copy(
-                        processed = processed,
-                        failed = failed,
-                        isComplete = true,
-                    )
-                )
-            }
-        }
-        if (processed - failed > 0) {
-            triggerSupportPromptIfNeeded()
         }
     }
 

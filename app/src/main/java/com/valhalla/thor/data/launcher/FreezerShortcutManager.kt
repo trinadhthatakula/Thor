@@ -22,29 +22,46 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.valhalla.thor.R
 import com.valhalla.thor.data.freezer.AppFreezeStateReader
-import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
-import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezeState
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+
+internal fun terminalSweepRequestIds(statuses: List<PrivilegeSweepStatus>): Set<java.util.UUID> =
+    statuses.asSequence()
+        .filter {
+            it.operation == PrivilegeSweepOperation.FREEZE ||
+                it.operation == PrivilegeSweepOperation.UNFREEZE
+        }
+        .filter {
+            it.phase == PrivilegeSweepPhase.SUCCEEDED ||
+                it.phase == PrivilegeSweepPhase.PARTIAL ||
+                it.phase == PrivilegeSweepPhase.CANCELLED ||
+                it.phase == PrivilegeSweepPhase.FAILED ||
+                it.phase == PrivilegeSweepPhase.OBSERVER_FAILURE
+        }
+        .mapTo(linkedSetOf()) { it.requestId }
 
 /** Owns all launcher-shortcut plumbing for the Freezer feature. */
 @Single(binds = [AppShortcutController::class])
 class FreezerShortcutManager(
     private val context: Context,
     private val freezerRepository: FreezerRepository,
-    private val bulkFreezeRunner: BulkFreezeRunner,
+    private val sweepController: PrivilegeSweepController,
     private val stateReader: AppFreezeStateReader,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : AppShortcutController {
@@ -60,25 +77,15 @@ class FreezerShortcutManager(
     }
 
     init {
-        // Rebuild pinned icons off the runner's completions rather than off a call site.
-        //
-        // The QS tile calls BulkFreezeRunner.launch directly — correctly: a tile has no reason
-        // to know shortcuts exist — so a rebuild hung off runBulk was reachable from the
-        // launcher Freeze-all shortcut and from nowhere else. Apps froze from the tile and
-        // their pinned icons stayed full colour.
-        //
-        // The dependency direction is forced: this class already holds the runner, so it
-        // subscribes. The runner must not hold this class back (Koin cycle), which also keeps
-        // it free of any launcher concern.
-        //
-        // Startup ordering gets this close: Koin builds this @Single as a constructor argument
-        // of AutoFreezeManager, ThorApplication.onCreate calls autoFreezeManager.startObserving()
-        // synchronously, and Application.onCreate always completes before the framework binds
-        // FreezerTileService. But `scope.launch` only *schedules* the collector, so subscription
-        // itself is not ordered against the first run — which is why `completions` carries
-        // replay = 1. A replayed completion just costs one extra rebuild from live state.
+        // Room-retained terminal request ids survive every surface and process recreation. Distinct
+        // sets ensure phase/count updates rebuild icons exactly once when a freeze/unfreeze settles.
         scope.launch {
-            bulkFreezeRunner.completions.collect { rebuildPinnedIcons() }
+            sweepController.activeRequests
+                .map(::terminalSweepRequestIds)
+                .distinctUntilChanged()
+                .collect { terminalIds ->
+                    if (terminalIds.isNotEmpty()) rebuildPinnedIcons()
+                }
         }
     }
 
@@ -153,7 +160,7 @@ class FreezerShortcutManager(
     }
 
     /** Publish (or remove) the Freeze-all + Unfreeze-all long-press dynamic shortcuts. */
-    fun syncDynamicShortcuts(enabled: Boolean) {
+    override fun syncDynamicShortcuts(enabled: Boolean) {
         // Binder IPC — called from Main (cold-start + Settings); keep it off the caller's thread.
         //
         // Guarded for the same reason as the two above, and this one is the worst of the three to
@@ -184,29 +191,9 @@ class FreezerShortcutManager(
     }
 
     /**
-     * Bulk freeze/unfreeze every package in the freezer, off the finishing activity.
-     *
-     * Returns the run so the caller can await its [BulkOutcome] and report it. The icon rebuild
-     * is deliberately *not* part of that Deferred: it hangs off the runner's completions (see
-     * the `init` block), so a caller that finishes early never truncates it, and a caller that
-     * awaits does not wait on shortcut bookkeeping it does not care about.
-     */
-    fun runBulk(disable: Boolean): Deferred<BulkOutcome> =
-        // Delegate so this shares the tile's candidate filter, Semaphore(5), deadline and
-        // result reporting. It previously ran sequentially and discarded every Result.
-        bulkFreezeRunner.launch(if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE)
-
-    // The public `refreshPinnedShortcutIcons()` that used to sit here is gone with its only
-    // caller. It existed "for a caller that runs its own batch instead of going through
-    // BulkFreezeRunner", which described Settings' Unfreeze-all until that was rerouted through
-    // the runner — and leaving it would have advertised the bypass as a supported way to write a
-    // new bulk surface. There is no such way: every bulk run goes through the runner, and the
-    // rebuild hangs off its completions in `init`, which is the whole point of that subscription.
-
-    /**
      * Repaint every pinned per-app shortcut from live freeze state.
      *
-     * No dedupe needed: `BulkFreezeRunner.launch` coalesces same-op taps onto one run, one run
+     * No dedupe needed: `the durable sweep queue.launch` coalesces same-op taps onto one run, one run
      * emits one completion, and the completions buffer collapses a burst into a single trailing
      * rebuild. So impatient re-taps — the expected case, since the bulk shortcut shows nothing
      * for up to two seconds — cost one rebuild, not N concurrent icon decodes over every pinned

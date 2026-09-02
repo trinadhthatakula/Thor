@@ -51,17 +51,18 @@ import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkRequest
-import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.killableMembers
 
 /**
  * The freeze-profiles list: named sets of apps the user can freeze or unfreeze in one tap.
  *
  * Profiles are deliberately *not* a view onto the freezer watchlist — see [FreezeProfile] — so
- * this sheet never edits watchlist membership. Running one goes through `BulkFreezeRunner`,
+ * this sheet never edits watchlist membership. Running one goes through `the durable sweep queue`,
  * which is where the tier gate is applied to a list; nothing here freezes anything itself.
  *
  * Four verbs, chosen per tap and never stored on the profile: freeze and unfreeze on the row, and
@@ -75,7 +76,7 @@ import com.valhalla.thor.domain.model.killableMembers
 fun FreezeProfilesSheet(
     profiles: List<FreezeProfile>,
     allApps: List<AppInfo>,
-    runningRequests: List<BulkRequest>,
+    runningRequests: List<PrivilegeSweepStatus>,
     hasPrivilege: Boolean,
     onRun: (profileId: Long, op: BulkOp, mode: FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
@@ -154,11 +155,16 @@ fun FreezeProfilesSheet(
                     FreezeProfileRow(
                         profile = profile,
                         allApps = allApps,
-                        // Row-specific, not a global "something is running": two profiles are
-                        // serialized rather than coalesced, so tapping the second must not paint
-                        // the first one's spinner onto it. Both rows do spin while both are in
-                        // flight, which is the truth — the second is queued, not ignored.
-                        isRunning = runningRequests.any { it.scope == BulkScope.Profile(profile.id) },
+                        // Durable status records retain their source rather than the deleted
+                        // process-local BulkScope. A profile queue therefore remains visibly busy
+                        // across recreation without keeping a Deferred in this screen.
+                        isRunning = runningRequests.any {
+                            it.source == PrivilegeSweepSource.PROFILE &&
+                                it.phase in setOf(
+                                    PrivilegeSweepPhase.QUEUED,
+                                    PrivilegeSweepPhase.RUNNING,
+                                )
+                        },
                         hasPrivilege = hasPrivilege,
                         onRun = { op, mode -> onRun(profile.id, op, mode) },
                         onKill = onKill,

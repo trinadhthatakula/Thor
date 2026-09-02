@@ -4,16 +4,18 @@
 package com.valhalla.thor.presentation
 
 import android.content.ContextWrapper
+import com.valhalla.thor.data.freezer.PrivilegeSweepResolutionRuntime
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppPermission
-import com.valhalla.thor.domain.model.BulkOutcome
-import com.valhalla.thor.domain.model.BulkRequest
-import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.FreezeCandidate
+import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.DetailedAppInfo
@@ -26,6 +28,10 @@ import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepSpec
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
@@ -35,7 +41,6 @@ import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
-import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
@@ -43,11 +48,10 @@ import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.UsageAccessGate
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -58,6 +62,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.io.File
+import java.util.UUID
 import java.nio.file.Files
 import kotlin.coroutines.ContinuationInterceptor
 
@@ -493,32 +498,65 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     }
 }
 
-/**
- * A bulk runner that runs nothing.
- *
- * `BulkFreezeRunner` itself cannot be built on a JVM — see [BulkFreezeController], which exists for
- * that reason — and a view model only ever observes what is in flight and awaits what it launched.
- * Recording the request and answering with an already-completed [outcome] covers both members.
- */
-class FakeBulkFreezeController(
-    var outcome: BulkOutcome = BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
-) : BulkFreezeController {
+/** In-memory durable sweep port with controllable retained Room/Work-style status flows. */
+class FakePrivilegeSweepController : PrivilegeSweepController {
+    val launched = mutableListOf<PrivilegeSweepSpec>()
+    var nextLaunchResult: PrivilegeSweepLaunchResult? = null
+    var cancelCalls: Int = 0
 
-    val launched = mutableListOf<BulkRequest>()
+    private var nextId = 1L
+    private val retained = MutableStateFlow<List<PrivilegeSweepStatus>>(emptyList())
+    private val requestFlows = mutableMapOf<UUID, MutableStateFlow<PrivilegeSweepStatus?>>()
 
-    private val _runningRequests = MutableStateFlow<List<BulkRequest>>(emptyList())
-    override val runningRequests: StateFlow<List<BulkRequest>> = _runningRequests
+    override val activeRequests: Flow<List<PrivilegeSweepStatus>> = retained
 
-    /** Publish an in-flight chain, as the runner does while a batch is going. */
-    fun setRunning(requests: List<BulkRequest>) {
-        _runningRequests.value = requests
+    override suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult {
+        launched += spec
+        return nextLaunchResult ?: PrivilegeSweepLaunchResult.Accepted(
+            requestId = UUID(0L, nextId++),
+            workId = UUID(1L, nextId),
+            coalesced = false,
+        )
     }
 
-    override fun launch(request: BulkRequest): Deferred<BulkOutcome> {
-        launched += request
-        return CompletableDeferred(outcome)
+    override fun observe(requestId: UUID): Flow<PrivilegeSweepStatus?> =
+        requestFlows.getOrPut(requestId) { MutableStateFlow(null) }
+
+    override fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?> =
+        retained.map { statuses -> statuses.lastOrNull { it.source == source } }
+
+    override suspend fun cancelQueue() {
+        cancelCalls++
+    }
+
+    fun emit(status: PrivilegeSweepStatus) {
+        requestFlows.getOrPut(status.requestId) { MutableStateFlow(null) }.value = status
+        retained.update { statuses -> statuses.filterNot { it.requestId == status.requestId } + status }
+    }
+
+    fun forget(requestId: UUID) {
+        requestFlows.getOrPut(requestId) { MutableStateFlow(null) }.value = null
+        retained.update { statuses -> statuses.filterNot { it.requestId == requestId } }
     }
 }
+
+fun privilegeSweepResolver(
+    freezerRepository: FreezerRepository = FakeFreezerRepository(),
+    freezeProfileRepository: FreezeProfileRepository = FakeFreezeProfileRepository(),
+    preferenceRepository: PreferenceRepository = FakePreferenceRepository(),
+    candidates: Map<String, FreezeCandidate> = emptyMap(),
+    userId: Int = 0,
+): PrivilegeSweepTargetResolver = PrivilegeSweepTargetResolver(
+    freezerRepository = freezerRepository,
+    freezeProfileRepository = freezeProfileRepository,
+    preferenceRepository = preferenceRepository,
+    runtime = object : PrivilegeSweepResolutionRuntime {
+        override val userId: Int = userId
+        override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate = { packageName ->
+            candidates[packageName] ?: FreezeCandidate(FreezeState.ACTIVE)
+        }
+    },
+)
 
 /**
  * A real (in-memory) preference store rather than a stub: every setter writes the field it names,
@@ -969,6 +1007,7 @@ class FakeAppShortcutController(
     val refreshed = mutableListOf<String>()
     val pinned = mutableListOf<String>()
     val pinnedBulkActions = mutableListOf<String>()
+    val dynamicSyncs = mutableListOf<Boolean>()
 
     /**
      * Failures the *port* absorbed instead of handing to its caller — see [pinAppShortcut].
@@ -1067,6 +1106,10 @@ class FakeAppShortcutController(
     override fun pinBulkShortcut(action: String) {
         bulkPinFailure?.let { throw it }
         pinnedBulkActions += action
+    }
+
+    override fun syncDynamicShortcuts(enabled: Boolean) {
+        dynamicSyncs += enabled
     }
 }
 

@@ -6,21 +6,24 @@ package com.valhalla.thor.presentation.freezer
 import com.valhalla.thor.R
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
-import com.valhalla.thor.presentation.FakeBulkFreezeController
 import com.valhalla.thor.presentation.FakeFreezeProfileRepository
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
+import com.valhalla.thor.presentation.FakePrivilegeSweepController
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.presentation.privilegeSweepResolver
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CancellationException
@@ -37,6 +40,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.util.UUID
 
 /**
  * The Freezer screen's half of the watchlist-removal contract: **removing always restores, and a
@@ -74,13 +78,14 @@ class FreezerViewModelTest {
     private lateinit var shortcuts: FakeAppShortcutController
     private lateinit var privilege: FakePrivilegeStateProvider
     private lateinit var profiles: FakeFreezeProfileRepository
+    private lateinit var prefs: FakePreferenceRepository
 
     /**
      * Held as a field, not built inline, so a test can set the outcome a run answers with before
      * the view model asks. The runner is the one collaborator here whose *result* the view model
      * has to interpret rather than merely record.
      */
-    private lateinit var bulkFreeze: FakeBulkFreezeController
+    private lateinit var sweepController: FakePrivilegeSweepController
 
     /**
      * The three fakes' calls in one list.
@@ -101,7 +106,8 @@ class FreezerViewModelTest {
         shortcuts = FakeAppShortcutController(trace = trace)
         privilege = FakePrivilegeStateProvider()
         profiles = FakeFreezeProfileRepository()
-        bulkFreeze = FakeBulkFreezeController()
+        prefs = FakePreferenceRepository()
+        sweepController = FakePrivilegeSweepController()
     }
 
     private fun viewModel(): FreezerViewModel {
@@ -109,12 +115,17 @@ class FreezerViewModelTest {
         return FreezerViewModel(
             freezerRepository = freezer,
             freezeProfileRepository = profiles,
-            bulkFreeze = bulkFreeze,
+            sweepResolver = privilegeSweepResolver(
+                freezerRepository = freezer,
+                freezeProfileRepository = profiles,
+                preferenceRepository = prefs,
+            ),
+            sweepController = sweepController,
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             manageAppUseCase = manageAppUseCase,
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
             privilege = privilege,
-            preferenceRepository = FakePreferenceRepository(),
+            preferenceRepository = prefs,
             appShortcuts = shortcuts,
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = mainDispatcherRule.dispatcher
@@ -695,49 +706,46 @@ class FreezerViewModelTest {
             )
         }
 
-    /**
-     * A profile run that could not start for want of privilege must not report the profile.
-     *
-     * `NothingToDo` used to be a bare object, so this surface picked "Nothing to do for this
-     * profile" — a sentence about the profile's contents — for a run that never looked at them.
-     * With a full profile and a dead Shizuku binder that is both false and misdirecting: it sends
-     * the user to edit a profile that is fine, and says nothing about the one thing they can fix.
-     */
     @Test
-    fun `a profile run blocked by privilege names the privilege, not the profile`() = runTest {
+    fun `profile resolves current members and configured freezer mode before enqueue`() = runTest {
+        profiles.create("Morning", listOf("z", "a"))
+        prefs.setFreezerMode(FreezerMode.SUSPEND)
         val vm = viewModel()
-        val seen = events(vm)
 
-        bulkFreeze.outcome = BulkOutcome.NothingToDo(NoOpReason.NO_PRIVILEGE)
         vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
         runCurrent()
 
-        assertEquals(
-            listOf(
-                FreezerEvent.ShowToast(
-                    UiText.StringResource(R.string.tile_grant_privilege_toast)
-                )
-            ),
-            seen
-        )
+        assertEquals(1, sweepController.launched.size)
+        assertEquals(listOf("a", "z"), sweepController.launched.single().packageNames)
+        assertEquals(FreezerMode.SUSPEND, sweepController.launched.single().freezerMode)
+        assertEquals(PrivilegeSweepSource.PROFILE, sweepController.launched.single().source)
     }
 
-    /** And the other half: an empty target list is still a statement about the profile. */
     @Test
-    fun `a profile run with nothing left to act on still names the profile`() = runTest {
+    fun `durable requests expose retained status and queue cancellation`() = runTest {
         val vm = viewModel()
-        val seen = events(vm)
+        val requestId = UUID(0L, 81L)
+        val status = PrivilegeSweepStatus(
+            requestId = requestId,
+            workId = UUID(1L, 81L),
+            operation = PrivilegeSweepOperation.FREEZE,
+            source = PrivilegeSweepSource.PROFILE,
+            phase = PrivilegeSweepPhase.PARTIAL,
+            total = 3,
+            succeeded = 1,
+            failed = 1,
+            busy = 1,
+            unresolved = 0,
+            rootLaneDegraded = false,
+        )
 
-        bulkFreeze.outcome = BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
-        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        sweepController.emit(status)
+        runCurrent()
+        vm.cancelSweepQueue()
         runCurrent()
 
-        assertEquals(
-            listOf(
-                FreezerEvent.ShowToast(UiText.StringResource(R.string.profile_nothing_to_do))
-            ),
-            seen
-        )
+        assertEquals(listOf(status), vm.uiState.value.runningRequests)
+        assertEquals(1, sweepController.cancelCalls)
     }
 
     // --- The watchlist writes that were still unguarded (fix/freezer-bookkeeping-crashes) ---

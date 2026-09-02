@@ -446,7 +446,7 @@ class FreezeAppUseCaseTest {
     fun `the freeze primitive stays ungated so a batch skip is reported once`() = runTest {
         // It freezes whatever it is handed and never resolves a tier (`lookups` stays empty).
         // Deliberate, and the reason the gate is a separate use case rather than a check inside
-        // ManageAppUseCase. BulkFreezeRunner, MainViewModel.performCountedFreeze and
+        // ManageAppUseCase. the privilege sweep worker, MainViewModel.performCountedFreeze and
         // AppListViewModel.performMultiAction classify their whole target list against one
         // shared snapshot (freezableCandidates / freezeTier), count the blocked ones as skipped,
         // and then call this primitive per survivor. If it refused as well, a blocked app would

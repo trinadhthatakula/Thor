@@ -56,7 +56,7 @@ class ManageAppUseCase(
      * The raw primitive, with **no [com.valhalla.thor.domain.model.FreezeTier] check**. To freeze
      * a single app use [FreezeAppUseCase]; it resolves the tier and refuses a blocked one.
      *
-     * Left ungated so the batch paths — `BulkFreezeRunner`, `MainViewModel.performCountedFreeze`,
+     * Left ungated so the batch paths — `the privilege sweep worker`, `MainViewModel.performCountedFreeze`,
      * `AppListViewModel.performMultiAction` — keep freezing from a target list they already
      * filtered against one shared snapshot, instead of paying a per-package re-read and telling
      * the user twice about apps they were already told were skipped. `disabled = false` is never
