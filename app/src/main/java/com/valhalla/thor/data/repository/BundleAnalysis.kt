@@ -332,6 +332,7 @@ fun resolveBundleInstallSet(
     manifestSplitFiles: List<String>?,
     packageName: String?
 ): List<String> {
+    validateBundleEntryNames(entryNames)
     // The one filter of the untrusted name list. Entry names come out of an archive a stranger's
     // app handed us; `java.io.File` does not normalise `.`/`..`, and a backslash is a separator
     // on the JVM's other host platform.
@@ -339,23 +340,25 @@ fun resolveBundleInstallSet(
     val ordered = selectBaseApkCandidates(entries, packageName)
     if (manifestSplitFiles.isNullOrEmpty()) return ordered
 
-    val available = entries.mapTo(HashSet()) { it.substringAfterLast('/') }
-    // A manifest that references files not present is stale/partial: ignore it and
-    // fall back to the entry scan rather than extracting nothing. This is also what carries the
-    // leaf-name postcondition onto the manifest's own strings, which are untrusted too and are
-    // returned verbatim below: `available` holds only leaves that passed the filter, so a split
-    // list naming `evil\payload.apk` reads as stale and is discarded whole — never shortened,
-    // because half a bundle is not a smaller install, it is a different one.
-    if (!manifestSplitFiles.all { it.substringAfterLast('/') in available }) return ordered
-
-    val listed = manifestSplitFiles.mapTo(HashSet()) { it.substringAfterLast('/') }
+    val selectedLeaves = manifestSplitFiles.map { it.substringAfterLast('/').lowercase() }
+    if (selectedLeaves.size != selectedLeaves.toSet().size) {
+        throw InstallRefusedException("the bundle manifest selects the same APK more than once.")
+    }
+    val available = entries.associateBy { it.substringAfterLast('/').lowercase() }
+    if (selectedLeaves.any { it !in available }) {
+        throw InstallRefusedException("the bundle manifest selects an APK that is missing.")
+    }
+    // Resolve sidecar spelling back to the exact, unique central-directory entry. Verification and
+    // installation therefore consume one immutable plan rather than independently selecting bytes.
+    val selected = selectedLeaves.map { available.getValue(it) }
+    val listed = selectedLeaves.toHashSet()
     // Only append entries that are genuinely config/splits the manifest omitted —
     // never a standalone/foreign top-level APK (e.g. a `universal.apk`), which would
     // add a second base and break install-multiple.
     val extras = ordered.filter {
-        it.substringAfterLast('/') !in listed && isSplitApkName(it, packageName)
+        it.substringAfterLast('/').lowercase() !in listed && isSplitApkName(it, packageName)
     }
-    return manifestSplitFiles + extras
+    return selected + extras
 }
 
 /**

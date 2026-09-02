@@ -5,7 +5,10 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.backup.MANIFEST_AUTH_ALGORITHM
+import com.valhalla.thor.data.backup.MANIFEST_MAC_BYTES
 import com.valhalla.thor.domain.model.ARCHIVE_SPACE_MARGIN_BYTES
+import com.valhalla.thor.domain.model.ArchiveAuthentication
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleInfo
@@ -35,6 +38,7 @@ import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.zip.CRC32
 import java.util.zip.Deflater
@@ -47,6 +51,8 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Factory
 
 private const val TAG = "BackupAppArchive"
+
+private data class CopiedBundle(val bytes: Long, val sha256: String)
 
 /**
  * §7.2, as one function.
@@ -159,6 +165,7 @@ internal class BackupAppArchiveUseCase(
         val members = mutableListOf<ArchiveMember>()
         val skipped = mutableListOf<ArchiveSkip>()
         val warnings = mutableListOf<String>()
+        var copiedBundle: CopiedBundle? = null
         var published = false
 
         // Level 0 for the streamed entries: the members are ciphertext and the bundle is already
@@ -184,8 +191,23 @@ internal class BackupAppArchiveUseCase(
                 // and a user watching their game back up should not read a generated `.xapk` file name.
                 onProgress(ThorJobProgress(ThorJobStage.CAPTURING, appLabel))
                 zip.putNextEntry(ZipEntry(THORBAK_BUNDLE_ENTRY))
-                bundle.inputStream().use { it.copyTo(zip) }
+                val digest = MessageDigest.getInstance("SHA-256")
+                var copied = 0L
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                bundle.inputStream().use { input ->
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        zip.write(buffer, 0, read)
+                        digest.update(buffer, 0, read)
+                        copied += read
+                    }
+                }
                 zip.closeEntry()
+                copiedBundle = CopiedBundle(
+                    bytes = copied,
+                    sha256 = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xFF) },
+                )
             }
 
             // Iterated in DataClass order, not the request's set order, so two runs over the same
@@ -252,7 +274,7 @@ internal class BackupAppArchiveUseCase(
             }
 
             onProgress(ThorJobProgress(ThorJobStage.FINISHING, appLabel))
-            val header = ArchiveHeader(
+            val unsignedHeader = ArchiveHeader(
                 createdAt = System.currentTimeMillis(),
                 thorVersionCode = BuildConfig.VERSION_CODE,
                 packageName = request.packageName,
@@ -260,9 +282,10 @@ internal class BackupAppArchiveUseCase(
                 versionName = versionName,
                 userId = gateway.thorUserId(),
                 signerSha256 = signer,
-                appBundle = bundle?.let {
+                appBundle = copiedBundle?.let {
                     ArchiveBundleInfo(
-                        bytes = it.length(),
+                        bytes = it.bytes,
+                        sha256 = it.sha256,
                         obbCapture = bundleObbCapture,
                         obbCount = bundleObbCount,
                     )
@@ -272,9 +295,18 @@ internal class BackupAppArchiveUseCase(
                     salt = Base64.getEncoder().encodeToString(request.salt),
                 ),
                 verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
+                authentication = ArchiveAuthentication(
+                    algorithm = MANIFEST_AUTH_ALGORITHM,
+                    mac = Base64.getEncoder().encodeToString(ByteArray(MANIFEST_MAC_BYTES)),
+                ),
                 members = members,
                 skippedEntries = skipped,
                 warnings = warnings,
+            )
+            val header = unsignedHeader.copy(
+                authentication = unsignedHeader.authentication!!.copy(
+                    mac = Base64.getEncoder().encodeToString(cipher.manifestMac(key, unsignedHeader))
+                )
             )
 
             // The header is the **last** entry, because it names every member's nonce and chunk count

@@ -30,11 +30,13 @@ import com.valhalla.thor.presentation.FakeSystemRepository
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -234,6 +236,17 @@ class BackupAppArchiveUseCaseTest {
             }
         }
         error("no $THORBAK_HEADER_ENTRY in the container")
+    }
+
+    private fun entryBytes(bytes: ByteArray, name: String): ByteArray {
+        ZipInputStream(bytes.inputStream()).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (entry.name == name) return zip.readBytes()
+                entry = zip.nextEntry
+            }
+        }
+        error("no $name in the container")
     }
 
     @Test
@@ -512,25 +525,37 @@ class BackupAppArchiveUseCaseTest {
     }
 
     @Test
-    fun `a bundle is written as the first container entry`() = runTest {
-        // The bundle precedes encrypted data members so a restore can install the APK before it needs
-        // a privileged unpacker — the install step is always possible, the data step may not be.
+    fun `a bundle is written first and its exact bytes and manifest are authenticated`() = runTest {
         val destination = RecordingDestination()
         val gateway = FakeGateway(entries = mapOf(DataClass.CE to listOf("files")))
-        val bundleFile = temp.newFile("app.xapk").also { it.writeBytes(ByteArray(1024) { 3 }) }
+        val bundleBytes = ByteArray(1024) { 3 }
+        val bundleFile = temp.newFile("app.xapk").also { it.writeBytes(bundleBytes) }
+        val archiveKey = key()
 
         useCase(gateway, FakeStore(destination))(
             request = request(DataClass.CE),
-            key = key(),
+            key = archiveKey,
             bundle = bundleFile,
-            bundleObbCapture = "captured",
+            bundleObbCapture = "present",
             bundleObbCount = 2,
         ) {}
 
-        assertEquals(THORBAK_BUNDLE_ENTRY, entryNames(destination.bytes.toByteArray()).first())
-        val appBundle = header(destination.bytes.toByteArray()).appBundle!!
-        assertEquals("captured", appBundle.obbCapture)
+        val container = destination.bytes.toByteArray()
+        assertEquals(THORBAK_BUNDLE_ENTRY, entryNames(container).first())
+        assertArrayEquals(bundleBytes, entryBytes(container, THORBAK_BUNDLE_ENTRY))
+        val archiveHeader = header(container)
+        val appBundle = archiveHeader.appBundle!!
+        assertEquals(bundleBytes.size.toLong(), appBundle.bytes)
+        assertEquals(
+            MessageDigest.getInstance("SHA-256").digest(bundleBytes)
+                .joinToString("") { "%02x".format(it.toInt() and 0xFF) },
+            appBundle.sha256,
+        )
+        assertEquals("present", appBundle.obbCapture)
         assertEquals(2, appBundle.obbCount)
+        assertTrue(cipher.verifyManifest(archiveKey, archiveHeader))
+        val encryptedMember = entryBytes(container, archiveHeader.members.single().fileName)
+        assertEquals(encryptedMember.size.toLong(), archiveHeader.members.single().cipherBytes)
     }
 
     @Test

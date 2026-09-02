@@ -556,7 +556,7 @@ class InstallerRepositoryImpl(
                 // "partially fine", it is unreachable. Reading emptiness as a staging failure was
                 // what turned a truncated set into the caller's generic error and, on the
                 // privileged ladders, into the next rung.
-                val wanted = installSet.mapTo(HashSet()) { it.substringAfterLast('/') }
+                val wanted = installSet.map { it.substringAfterLast('/') }
                 BundleZip.extractEntries(bundleFile, wanted, tempDir)
             }
         } catch (e: InstallRefusedException) {

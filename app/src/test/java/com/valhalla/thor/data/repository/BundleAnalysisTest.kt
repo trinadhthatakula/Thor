@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -362,17 +363,26 @@ class BundleAnalysisTest {
     }
 
     @Test
-    fun resolveBundleInstallSet_ignoresManifestReferencingMissingFiles() {
+    fun resolveBundleInstallSet_refusesManifestReferencingMissingFiles() {
         val entries = listOf("base.apk", "split_config.arm64_v8a.apk")
-        // Manifest references a file that isn't in the archive → fall back to scan.
         val manifestSplits = listOf("base.apk", "config.does_not_exist.apk")
-        val set = resolveBundleInstallSet(entries, manifestSplits, packageName = null)
-        assertEquals("base.apk", set.first())
-        assertFalse(set.any { it.contains("does_not_exist") })
-        assertEquals(
-            setOf("base.apk", "split_config.arm64_v8a.apk"),
-            set.map { it.substringAfterLast('/') }.toSet()
-        )
+
+        assertThrows(InstallRefusedException::class.java) {
+            resolveBundleInstallSet(entries, manifestSplits, packageName = null)
+        }
+    }
+
+    @Test
+    fun resolveBundleInstallSet_refusesDuplicateSelectedMembers() {
+        val entries = listOf("base.apk", "split_config.arm64_v8a.apk")
+
+        assertThrows(InstallRefusedException::class.java) {
+            resolveBundleInstallSet(
+                entries,
+                listOf("base.apk", "BASE.APK", "split_config.arm64_v8a.apk"),
+                packageName = null,
+            )
+        }
     }
 
     @Test

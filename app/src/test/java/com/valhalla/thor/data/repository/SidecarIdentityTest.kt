@@ -7,6 +7,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -299,20 +300,18 @@ class SidecarIdentityTest {
     }
 
     @Test
-    fun `a manifest split list naming an unusable entry is discarded, never shortened`() {
-        // The manifest's own strings are untrusted too, and resolveBundleInstallSet returns them
-        // verbatim. They inherit the leaf guarantee from the `available` check — a name that was
-        // filtered out of the entries is not available, so the split list reads as stale and is
-        // dropped whole. Silently shortening it would be the truncation the budget case refuses.
-        val plan = resolveBundlePlan(
-            entryNames = listOf("manifest.json", "base.apk", "evil\\payload.apk"),
-            manifestSplitFiles = listOf("base.apk", "evil\\payload.apk"),
-            manifestBaseFile = "base.apk",
-            packageName = "com.example.app"
-        )
-
-        assertEquals(listOf("base.apk"), plan.installSet)
-        assertEquals(listOf("base.apk"), plan.identityCandidates)
+    fun `a manifest split list naming an unusable entry is refused, never shortened`() {
+        // The manifest's own strings are untrusted too. A name filtered out of the available
+        // entries makes the authenticated install plan stale; falling back to a shorter inferred
+        // plan would let verification and installation select different bytes.
+        assertThrows(InstallRefusedException::class.java) {
+            resolveBundlePlan(
+                entryNames = listOf("manifest.json", "base.apk", "evil\\payload.apk"),
+                manifestSplitFiles = listOf("base.apk", "evil\\payload.apk"),
+                manifestBaseFile = "base.apk",
+                packageName = "com.example.app"
+            )
+        }
     }
 
     @Test
@@ -332,18 +331,16 @@ class SidecarIdentityTest {
     }
 
     @Test
-    fun `a sidecar naming splits the archive does not contain cannot invent an install set`() {
-        // Same archive, but the manifest now declares splits to look more like a bundle. They do
-        // not exist, so the split list is discarded as stale and the entry scan finds no `.apk`
-        // either — the plan stays empty rather than resolving to names nothing can extract.
-        val plan = resolveBundlePlan(
-            entryNames = listOf("AndroidManifest.xml", "classes.dex", "manifest.json"),
-            manifestSplitFiles = listOf("base.apk", "split_config.arm64_v8a.apk"),
-            manifestBaseFile = "base.apk",
-            packageName = "com.attacker.claim"
-        )
-
-        assertTrue(plan.installSet.isEmpty())
-        assertTrue(plan.identityCandidates.isEmpty())
+    fun `a sidecar naming splits the archive does not contain is refused`() {
+        // The sidecar declares a bundle plan that the archive cannot supply. Treating it as a
+        // monolithic APK would discard authenticated intent and parse different bytes instead.
+        assertThrows(InstallRefusedException::class.java) {
+            resolveBundlePlan(
+                entryNames = listOf("AndroidManifest.xml", "classes.dex", "manifest.json"),
+                manifestSplitFiles = listOf("base.apk", "split_config.arm64_v8a.apk"),
+                manifestBaseFile = "base.apk",
+                packageName = "com.attacker.claim"
+            )
+        }
     }
 }
