@@ -7,6 +7,8 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
@@ -722,7 +724,40 @@ class FreezerViewModelTest {
     }
 
     @Test
-    fun `durable requests expose retained status and queue cancellation`() = runTest {
+    fun `profile launch is presented as queued before the observer reconnects`() = runTest {
+        profiles.create("Morning", listOf("a", "b"))
+        val vm = viewModel()
+
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        assertEquals(PrivilegeSweepPhase.QUEUED, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(2, vm.uiState.value.sweepProgress?.total)
+        assertEquals(2, vm.uiState.value.sweepProgress?.unresolved)
+    }
+
+    @Test
+    fun `profile launch rejection is retained as explicit failure instead of a toast`() = runTest {
+        profiles.create("Morning", listOf("a"))
+        sweepController.nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(
+            PrivilegeSweepLaunchRejection.NoPrivilege
+        )
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        assertEquals(PrivilegeSweepPhase.FAILED, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(
+            UiText.StringResource(R.string.tile_grant_privilege_toast),
+            vm.uiState.value.sweepProgress?.message,
+        )
+        assertTrue("the durable presentation owns the launch failure", seen.isEmpty())
+    }
+
+    @Test
+    fun `durable requests expose retained presentation and queue cancellation`() = runTest {
         val vm = viewModel()
         val requestId = UUID(0L, 81L)
         val status = PrivilegeSweepStatus(
@@ -746,7 +781,34 @@ class FreezerViewModelTest {
         runCurrent()
 
         assertEquals(listOf(status), vm.uiState.value.runningRequests)
+        assertEquals(PrivilegeSweepPhase.PARTIAL, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(1, vm.uiState.value.sweepProgress?.succeeded)
+        assertEquals(1, vm.uiState.value.sweepProgress?.failed)
+        assertEquals(1, vm.uiState.value.sweepProgress?.busy)
         assertEquals(1, sweepController.cancelCalls)
+    }
+
+    @Test
+    fun `unrelated retained request does not replace profile progress`() = runTest {
+        val vm = viewModel()
+        sweepController.emit(
+            PrivilegeSweepStatus(
+                requestId = UUID(0L, 82L),
+                workId = UUID(1L, 82L),
+                operation = PrivilegeSweepOperation.FREEZE,
+                source = PrivilegeSweepSource.MAIN,
+                phase = PrivilegeSweepPhase.RUNNING,
+                total = 1,
+                succeeded = 0,
+                failed = 0,
+                busy = 0,
+                unresolved = 1,
+                rootLaneDegraded = false,
+            )
+        )
+        runCurrent()
+
+        assertEquals(null, vm.uiState.value.sweepProgress)
     }
 
     // --- The watchlist writes that were still unguarded (fix/freezer-bookkeeping-crashes) ---

@@ -832,6 +832,16 @@
     <string name="cancel_sweep_queue">Cancel sweep queue</string>
     <string name="sweep_notification_title">Applying app actions</string>
     <string name="sweep_queued">Sweep queued</string>
+    <string name="sweep_running">Running %1$d of %2$d</string>
+    <string name="sweep_succeeded">Completed %1$d of %2$d</string>
+    <string name="sweep_partial">Sweep finished with issues</string>
+    <string name="sweep_cancelled">Sweep cancelled</string>
+    <string name="sweep_failed">Sweep failed</string>
+    <string name="sweep_launch_failed_title">Sweep could not start</string>
+    <string name="sweep_observer_failure">Progress unavailable</string>
+    <string name="sweep_observer_failure_desc">Thor could not reconnect to this sweep. Check the apps before relying on it.</string>
+    <string name="sweep_root_lane_degraded">Root archive/sweep lane degraded</string>
+    <string name="sweep_progress_summary" tools:ignore="PluralsCandidate">%1$d succeeded, %2$d failed, %3$d busy, %4$d unresolved</string>
     <string name="sweep_result_summary">App actions: %1$d succeeded, %2$d failed, %3$d busy, %4$d unresolved</string>
 
 </resources>

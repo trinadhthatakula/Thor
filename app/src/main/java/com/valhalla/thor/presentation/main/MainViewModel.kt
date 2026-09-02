@@ -40,6 +40,11 @@ import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.presentation.home.AppDestinations
+import com.valhalla.thor.presentation.widgets.SweepProgressUiState
+import com.valhalla.thor.presentation.widgets.asObserverFailure
+import com.valhalla.thor.presentation.widgets.failedSweepProgress
+import com.valhalla.thor.presentation.widgets.queuedSweepProgress
+import com.valhalla.thor.presentation.widgets.toSweepProgressUiState
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
@@ -51,6 +56,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -99,24 +105,10 @@ data class LoggerState(
 )
 
 /**
- * Compact count-only progress for bulk freeze / unfreeze. Unlike [LoggerState] it
- * never lists app names — just a live `processed / total` count — and auto-dismisses
- * shortly after a fully-successful run.
- */
-data class FreezeLoggerState(
-    val isVisible: Boolean = false,
-    val isFreeze: Boolean = true,
-    val total: Int = 0,
-    val processed: Int = 0,
-    val failed: Int = 0,
-    val isComplete: Boolean = false
-)
-
-/**
  * Live view of the multi-app export owned by [BackupRunner]; null when nothing is exporting.
  *
- * It looks like [FreezeLoggerState] but is not its sibling: that one describes work this ViewModel
- * is doing, so it has an `isComplete` flag and a dismiss call. This one only *watches* a run that
+ * It looks like [SweepProgressUiState] but is not its sibling: that one describes a durable sweep
+ * and its terminal phase. This one only *watches* a run that
  * outlives the ViewModel — the run ending is the dismissal, and the outcome arrives separately as
  * a [MainSideEffect.Message], so there is nothing here to complete or dismiss.
  */
@@ -218,14 +210,6 @@ data class BackupSheetState(val packageName: String, val appLabel: String)
 
 private const val MAIN_SWEEP_REQUEST_ID = "main_sweep_request_id"
 
-private val TERMINAL_SWEEP_PHASES = setOf(
-    PrivilegeSweepPhase.SUCCEEDED,
-    PrivilegeSweepPhase.PARTIAL,
-    PrivilegeSweepPhase.CANCELLED,
-    PrivilegeSweepPhase.FAILED,
-    PrivilegeSweepPhase.OBSERVER_FAILURE,
-)
-
 private fun PrivilegeSweepLaunchRejection.asSweepRejectionMessage(): UiText.StringResource =
     UiText.StringResource(
         when (this) {
@@ -240,7 +224,7 @@ private fun PrivilegeSweepLaunchRejection.asSweepRejectionMessage(): UiText.Stri
 data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val fixStoreSelection: FixStoreSelection? = null, // Fix Store picker, null when closed
-    val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
+    val sweepProgress: SweepProgressUiState? = null, // Compact durable sweep progress; null when acknowledged
     val sweepStatus: PrivilegeSweepStatus? = null,
     val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
     val cacheClear: CacheClearState? = null, // Whole-device cache clear, null when idle
@@ -286,6 +270,7 @@ class MainViewModel(
     /** Whether [openRestoreSheetForLaunchUri] has already fired for this ViewModel. See it for why here. */
     private var launchRestoreUriConsumed = false
     private var sweepObservation: Job? = null
+    private var acknowledgedSweepRequestId: UUID? = null
 
     // Declared *above* `init`, and it has to stay there.
     //
@@ -878,25 +863,46 @@ class MainViewModel(
     private fun observeSweep(requestId: UUID?) {
         sweepObservation?.cancel()
         sweepObservation = viewModelScope.launch {
+            var lastStatus: PrivilegeSweepStatus? = null
             val statuses = requestId?.let(sweepController::observe)
                 ?: sweepController.observeLatest(PrivilegeSweepSource.MAIN)
-            statuses.collect { status ->
-                if (status == null) return@collect
-                savedStateHandle[MAIN_SWEEP_REQUEST_ID] = status.requestId.toString()
-                _uiState.update { state ->
-                    state.copy(
-                        sweepStatus = status,
-                        freezeLoggerState = FreezeLoggerState(
-                            isVisible = true,
-                            isFreeze = status.operation == PrivilegeSweepOperation.FREEZE,
-                            total = status.total,
-                            processed = status.succeeded + status.failed + status.busy,
-                            failed = status.failed + status.busy,
-                            isComplete = status.phase in TERMINAL_SWEEP_PHASES,
-                        )
-                    )
+            statuses
+                .catch { error ->
+                    Logger.e("MainViewModel", "observe sweep failed", error)
+                    _uiState.update { state ->
+                        state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
+                    }
                 }
-            }
+                .collect { status ->
+                    if (status == null) {
+                        val lastPhase = lastStatus?.phase
+                        if (
+                            requestId != null &&
+                            (lastPhase == null ||
+                                lastPhase == PrivilegeSweepPhase.QUEUED ||
+                                lastPhase == PrivilegeSweepPhase.RUNNING)
+                        ) {
+                            _uiState.update { state ->
+                                state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
+                            }
+                        }
+                        return@collect
+                    }
+                    lastStatus = status
+                    savedStateHandle[MAIN_SWEEP_REQUEST_ID] = status.requestId.toString()
+                    if (status.requestId == acknowledgedSweepRequestId &&
+                        status.phase != PrivilegeSweepPhase.QUEUED &&
+                        status.phase != PrivilegeSweepPhase.RUNNING
+                    ) {
+                        return@collect
+                    }
+                    _uiState.update { state ->
+                        state.copy(
+                            sweepStatus = status,
+                            sweepProgress = status.toSweepProgressUiState(),
+                        )
+                    }
+                }
         }
     }
 
@@ -1136,14 +1142,11 @@ class MainViewModel(
                 null
             },
         )
+        acknowledgedSweepRequestId = null
         _uiState.update { state ->
             state.copy(
                 sweepStatus = null,
-                freezeLoggerState = FreezeLoggerState(
-                    isVisible = true,
-                    isFreeze = isFreeze,
-                    total = spec.packageNames.size,
-                ),
+                sweepProgress = queuedSweepProgress(spec.packageNames.size),
             )
         }
         when (val launch = sweepController.launch(spec)) {
@@ -1155,15 +1158,30 @@ class MainViewModel(
             is PrivilegeSweepLaunchResult.Rejected -> {
                 savedStateHandle.remove<String>(MAIN_SWEEP_REQUEST_ID)
                 _uiState.update {
-                    it.copy(sweepStatus = null, freezeLoggerState = FreezeLoggerState())
+                    it.copy(
+                        sweepStatus = null,
+                        sweepProgress = failedSweepProgress(
+                            total = spec.packageNames.size,
+                            message = launch.reason.asSweepRejectionMessage(),
+                        ),
+                    )
                 }
-                _effect.send(MainSideEffect.Message(launch.reason.asSweepRejectionMessage()))
             }
         }
     }
 
     fun dismissFreezeLogger() {
-        _uiState.update { it.copy(freezeLoggerState = FreezeLoggerState()) }
+        _uiState.value.sweepStatus
+            ?.takeUnless {
+                it.phase == PrivilegeSweepPhase.QUEUED ||
+                    it.phase == PrivilegeSweepPhase.RUNNING
+            }
+            ?.let { acknowledgedSweepRequestId = it.requestId }
+        _uiState.update { it.copy(sweepProgress = null) }
+    }
+
+    fun cancelSweepQueue() {
+        viewModelScope.launch { sweepController.cancelQueue() }
     }
 
     /** Stop the export in flight. Whatever it already wrote stays written. */

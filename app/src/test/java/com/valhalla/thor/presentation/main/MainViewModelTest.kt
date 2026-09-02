@@ -263,11 +263,12 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         assertEquals(null, savedState.get<String>("main_sweep_request_id"))
-        assertFalse(vm.uiState.value.freezeLoggerState.isVisible)
+        assertEquals(PrivilegeSweepPhase.FAILED, vm.uiState.value.sweepProgress?.phase)
         assertEquals(
-            listOf(MainSideEffect.Message(UiText.StringResource(R.string.notification_access_needed_subtitle))),
-            effects,
+            UiText.StringResource(R.string.notification_access_needed_subtitle),
+            vm.uiState.value.sweepProgress?.message,
         )
+        assertTrue("launch failure is durable screen state, not a transient toast", effects.isEmpty())
     }
 
     @Test
@@ -294,6 +295,7 @@ class MainViewModelTest {
             controller.emit(status(requestId, phase))
             advanceUntilIdle()
             assertEquals(phase, vm.uiState.value.sweepStatus?.phase)
+            assertEquals(phase, vm.uiState.value.sweepProgress?.phase)
         }
     }
 
@@ -301,14 +303,47 @@ class MainViewModelTest {
     fun `active retained request reconnects without launching duplicate work`() = runTest {
         val controller = FakePrivilegeSweepController()
         val requestId = UUID(0L, 52L)
-        controller.emit(status(requestId, PrivilegeSweepPhase.RUNNING))
         val savedState = SavedStateHandle(mapOf("main_sweep_request_id" to requestId.toString()))
-
         val vm = viewModel(sweepController = controller, savedStateHandle = savedState)
+        advanceUntilIdle()
+        assertEquals(PrivilegeSweepPhase.OBSERVER_FAILURE, vm.uiState.value.sweepProgress?.phase)
+
+        controller.emit(status(requestId, PrivilegeSweepPhase.RUNNING))
         advanceUntilIdle()
 
         assertTrue(controller.launched.isEmpty())
         assertEquals(requestId, vm.uiState.value.sweepStatus?.requestId)
+        assertEquals(PrivilegeSweepPhase.RUNNING, vm.uiState.value.sweepProgress?.phase)
+    }
+
+    @Test
+    fun `missing retained request becomes terminal observer failure instead of endless progress`() = runTest {
+        val requestId = UUID(0L, 53L)
+        val savedState = SavedStateHandle(mapOf("main_sweep_request_id" to requestId.toString()))
+
+        val vm = viewModel(savedStateHandle = savedState)
+        advanceUntilIdle()
+
+        assertEquals(PrivilegeSweepPhase.OBSERVER_FAILURE, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(UiText.StringResource(R.string.sweep_observer_failure_desc), vm.uiState.value.sweepProgress?.message)
+    }
+
+    @Test
+    fun `cancel action terminates the durable queue without hiding active progress`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val requestId = UUID(0L, 54L)
+        controller.emit(status(requestId, PrivilegeSweepPhase.RUNNING))
+        val vm = viewModel(
+            sweepController = controller,
+            savedStateHandle = SavedStateHandle(mapOf("main_sweep_request_id" to requestId.toString())),
+        )
+        advanceUntilIdle()
+
+        vm.cancelSweepQueue()
+        advanceUntilIdle()
+
+        assertEquals(1, controller.cancelCalls)
+        assertEquals(PrivilegeSweepPhase.RUNNING, vm.uiState.value.sweepProgress?.phase)
     }
 
     @Test
@@ -508,7 +543,7 @@ class MainViewModelTest {
         // run completes, so reusing it here would pin the user to a screen for the length of a run
         // that is explicitly designed to outlive that screen.
         assertFalse(vm.uiState.value.loggerState.isVisible)
-        assertFalse(vm.uiState.value.freezeLoggerState.isVisible)
+        assertNull(vm.uiState.value.sweepProgress)
         // Exactly one, whatever the outcome was: the completions collector is the only reporter.
         // Awaiting the Deferred `start` returns as well — the obvious way to "make sure" the result
         // is seen — toasts the same run twice.

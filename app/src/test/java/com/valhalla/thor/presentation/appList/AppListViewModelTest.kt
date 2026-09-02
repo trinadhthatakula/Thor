@@ -11,6 +11,7 @@ import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
@@ -524,7 +525,30 @@ class AppListViewModelTest {
     }
 
     @Test
-    fun `durable status is exposed without optimistic row patching`() = runTest {
+    fun `launch rejection remains as explicit terminal progress instead of a transient toast`() = runTest {
+        val controller = FakePrivilegeSweepController().apply {
+            nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(
+                PrivilegeSweepLaunchRejection.NotificationsRequired
+            )
+        }
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.Freeze(listOf(userApp("a"))))
+        runCurrent()
+
+        assertEquals(PrivilegeSweepPhase.FAILED, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(
+            UiText.StringResource(R.string.notification_access_needed_subtitle),
+            vm.uiState.value.sweepProgress?.message,
+        )
+        assertTrue("the durable dialog owns this failure", events.isEmpty())
+    }
+
+    @Test
+    fun `durable status is exposed as explicit progress without optimistic row patching`() = runTest {
         val controller = FakePrivilegeSweepController()
         val requestId = UUID(0L, 73L)
         controller.nextLaunchResult = PrivilegeSweepLaunchResult.Accepted(
@@ -542,6 +566,8 @@ class AppListViewModelTest {
         runCurrent()
 
         assertEquals(PrivilegeSweepPhase.PARTIAL, vm.uiState.value.sweepStatus?.phase)
+        assertEquals(PrivilegeSweepPhase.PARTIAL, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(1, vm.uiState.value.sweepProgress?.failed)
         val row = vm.uiState.value.allUserApps.single { it.packageName == "a" }
         assertFalse(row.enabled)
         assertTrue(row.isSuspended)
@@ -563,6 +589,35 @@ class AppListViewModelTest {
 
         assertTrue(controller.launched.isEmpty())
         assertEquals(requestId, vm.uiState.value.sweepStatus?.requestId)
+        assertEquals(PrivilegeSweepPhase.RUNNING, vm.uiState.value.sweepProgress?.phase)
+    }
+
+    @Test
+    fun `missing retained app-list request is visible as observer failure`() = runTest {
+        val requestId = UUID(0L, 75L)
+        val vm = viewModel(
+            AnimationIntensity.LOW,
+            savedStateHandle = SavedStateHandle(mapOf("app_list_sweep_request_id" to requestId.toString())),
+        )
+        runCurrent()
+
+        assertEquals(PrivilegeSweepPhase.OBSERVER_FAILURE, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(
+            UiText.StringResource(R.string.sweep_observer_failure_desc),
+            vm.uiState.value.sweepProgress?.message,
+        )
+    }
+
+    @Test
+    fun `app-list cancel action reaches the durable queue`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        runCurrent()
+
+        vm.cancelSweepQueue()
+        runCurrent()
+
+        assertEquals(1, controller.cancelCalls)
     }
 
     private fun appListStatus(requestId: UUID, phase: PrivilegeSweepPhase) = PrivilegeSweepStatus(

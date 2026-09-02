@@ -947,14 +947,11 @@ fun MainScreen(
                     )
                 }
 
-                if (state.freezeLoggerState.isVisible) {
+                state.sweepProgress?.let { progress ->
                     FreezeLoggerDialog(
-                        isFreeze = state.freezeLoggerState.isFreeze,
-                        total = state.freezeLoggerState.total,
-                        processed = state.freezeLoggerState.processed,
-                        failed = state.freezeLoggerState.failed,
-                        isComplete = state.freezeLoggerState.isComplete,
-                        onDismiss = { mainViewModel.dismissFreezeLogger() }
+                        state = progress,
+                        onDismiss = { mainViewModel.dismissFreezeLogger() },
+                        onCancelQueue = { mainViewModel.cancelSweepQueue() },
                     )
                 }
 

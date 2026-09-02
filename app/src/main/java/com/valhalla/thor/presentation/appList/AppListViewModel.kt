@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.SortBy
@@ -47,6 +48,11 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.presentation.launchGuarded
+import com.valhalla.thor.presentation.widgets.SweepProgressUiState
+import com.valhalla.thor.presentation.widgets.asObserverFailure
+import com.valhalla.thor.presentation.widgets.failedSweepProgress
+import com.valhalla.thor.presentation.widgets.queuedSweepProgress
+import com.valhalla.thor.presentation.widgets.toSweepProgressUiState
 import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
@@ -141,6 +147,7 @@ data class AppListUiState(
     // banner nobody can ever dismiss. See installedAppsPermissionState().
     val installedAppsPermission: InstalledAppsPermission = InstalledAppsPermission.Unsupported,
     val sweepStatus: PrivilegeSweepStatus? = null,
+    val sweepProgress: SweepProgressUiState? = null,
 )
 
 /**
@@ -188,6 +195,7 @@ class AppListViewModel(
     private var permissionIndexJob: Job? = null
     private var permissionRefreshJob: Job? = null
     private var sweepObservation: Job? = null
+    private var acknowledgedSweepRequestId: UUID? = null
 
     /**
      * The one list export in flight, save or share.
@@ -820,16 +828,49 @@ class AppListViewModel(
     private fun observeSweep(requestId: UUID?) {
         sweepObservation?.cancel()
         sweepObservation = viewModelScope.launch {
+            var lastStatus: PrivilegeSweepStatus? = null
             val statuses = requestId?.let(sweepController::observe)
                 ?: sweepController.observeLatest(PrivilegeSweepSource.APP_LIST)
-            statuses.collect { status ->
-                if (status == null) return@collect
-                savedStateHandle[APP_LIST_SWEEP_REQUEST_ID] = status.requestId.toString()
-                _rawState.update { it.copy(sweepStatus = status) }
-                if (status.phase != com.valhalla.thor.domain.model.PrivilegeSweepPhase.QUEUED) {
-                    loadApps(deferForTransition = false)
+            statuses
+                .catch { error ->
+                    Logger.e("AppListViewModel", "observe sweep failed", error)
+                    _rawState.update { state ->
+                        state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
+                    }
                 }
-            }
+                .collect { status ->
+                    if (status == null) {
+                        val lastPhase = lastStatus?.phase
+                        if (
+                            requestId != null &&
+                            (lastPhase == null ||
+                                lastPhase == PrivilegeSweepPhase.QUEUED ||
+                                lastPhase == PrivilegeSweepPhase.RUNNING)
+                        ) {
+                            _rawState.update { state ->
+                                state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
+                            }
+                        }
+                        return@collect
+                    }
+                    lastStatus = status
+                    savedStateHandle[APP_LIST_SWEEP_REQUEST_ID] = status.requestId.toString()
+                    if (status.requestId == acknowledgedSweepRequestId &&
+                        status.phase != PrivilegeSweepPhase.QUEUED &&
+                        status.phase != PrivilegeSweepPhase.RUNNING
+                    ) {
+                        return@collect
+                    }
+                    _rawState.update {
+                        it.copy(
+                            sweepStatus = status,
+                            sweepProgress = status.toSweepProgressUiState(),
+                        )
+                    }
+                    if (status.phase != PrivilegeSweepPhase.QUEUED) {
+                        loadApps(deferForTransition = false)
+                    }
+                }
         }
     }
 
@@ -844,6 +885,13 @@ class AppListViewModel(
             source = PrivilegeSweepSource.APP_LIST,
             freezerMode = freezerMode,
         )
+        acknowledgedSweepRequestId = null
+        _rawState.update {
+            it.copy(
+                sweepStatus = null,
+                sweepProgress = queuedSweepProgress(spec.packageNames.size),
+            )
+        }
         when (val launch = sweepController.launch(spec)) {
             is PrivilegeSweepLaunchResult.Accepted -> {
                 savedStateHandle[APP_LIST_SWEEP_REQUEST_ID] = launch.requestId.toString()
@@ -852,10 +900,31 @@ class AppListViewModel(
 
             is PrivilegeSweepLaunchResult.Rejected -> {
                 savedStateHandle.remove<String>(APP_LIST_SWEEP_REQUEST_ID)
-                _rawState.update { it.copy(sweepStatus = null) }
-                _events.send(AppListEvent.ShowMessage(launch.reason.asAppListMessage()))
+                _rawState.update {
+                    it.copy(
+                        sweepStatus = null,
+                        sweepProgress = failedSweepProgress(
+                            total = spec.packageNames.size,
+                            message = launch.reason.asAppListMessage(),
+                        ),
+                    )
+                }
             }
         }
+    }
+
+    fun dismissSweepProgress() {
+        _rawState.value.sweepStatus
+            ?.takeUnless {
+                it.phase == PrivilegeSweepPhase.QUEUED ||
+                    it.phase == PrivilegeSweepPhase.RUNNING
+            }
+            ?.let { acknowledgedSweepRequestId = it.requestId }
+        _rawState.update { it.copy(sweepProgress = null) }
+    }
+
+    fun cancelSweepQueue() {
+        viewModelScope.launch { sweepController.cancelQueue() }
     }
 
     fun performMultiAction(action: MultiAppAction) {

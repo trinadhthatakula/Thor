@@ -34,6 +34,11 @@ import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.launchGuarded
+import com.valhalla.thor.presentation.widgets.SweepProgressUiState
+import com.valhalla.thor.presentation.widgets.asObserverFailure
+import com.valhalla.thor.presentation.widgets.failedSweepProgress
+import com.valhalla.thor.presentation.widgets.queuedSweepProgress
+import com.valhalla.thor.presentation.widgets.toSweepProgressUiState
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.asUiText
@@ -54,6 +59,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import java.util.UUID
 
 // packageName + appName of an app frozen outside the freezer list — drives the "Add to Freezer" snackbar
 data class FreezerPrompt(val packageName: String, val appName: String?)
@@ -132,7 +138,8 @@ data class FreezerUiState(
      * rather than one slot because runs of the same op serialize, so a profile queued behind a
      * watchlist freeze must not erase the freeze that is actually running.
      */
-    val runningRequests: List<PrivilegeSweepStatus> = emptyList()
+    val runningRequests: List<PrivilegeSweepStatus> = emptyList(),
+    val sweepProgress: SweepProgressUiState? = null,
 )
 
 @KoinViewModel
@@ -169,6 +176,8 @@ class FreezerViewModel(
     // and delivered when the screen subscribes rather than silently dropped. Matches MainViewModel.
     private val _events = Channel<FreezerEvent>(Channel.BUFFERED)
     val events: Flow<FreezerEvent> = _events.receiveAsFlow()
+    private val acknowledgedSweepRequestIds = mutableSetOf<UUID>()
+    private var visibleSweepRequestId: UUID? = null
 
     init {
         observeApps()
@@ -448,9 +457,28 @@ class FreezerViewModel(
 
     private fun observeRunningRequest() {
         viewModelScope.launch {
-            sweepController.activeRequests.collect { requests ->
-                _uiState.update { it.copy(runningRequests = requests) }
-            }
+            sweepController.activeRequests
+                .catch { error ->
+                    Logger.e("FreezeViewModel", "observe profile sweep failed", error)
+                    _uiState.update { state ->
+                        state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
+                    }
+                }
+                .collect { requests ->
+                    val latestProfile = requests.lastOrNull {
+                        it.source == PrivilegeSweepSource.PROFILE &&
+                            it.profileIds.isNotEmpty() &&
+                            it.requestId !in acknowledgedSweepRequestIds
+                    }
+                    visibleSweepRequestId = latestProfile?.requestId
+                    _uiState.update { state ->
+                        state.copy(
+                            runningRequests = requests,
+                            sweepProgress = latestProfile?.toSweepProgressUiState()
+                                ?: state.sweepProgress,
+                        )
+                    }
+                }
         }
     }
 
@@ -465,15 +493,36 @@ class FreezerViewModel(
                 BulkRequest(op, BulkScope.Profile(profileId), mode),
                 PrivilegeSweepSource.PROFILE,
             )
+            visibleSweepRequestId = null
+            _uiState.update { it.copy(sweepProgress = queuedSweepProgress(spec.packageNames.size)) }
             when (val launch = sweepController.launch(spec)) {
-                is PrivilegeSweepLaunchResult.Accepted -> Unit
-                is PrivilegeSweepLaunchResult.Rejected -> emitToast(launch.reason.asSweepMessage())
+                is PrivilegeSweepLaunchResult.Accepted -> {
+                    acknowledgedSweepRequestIds.remove(launch.requestId)
+                    visibleSweepRequestId = launch.requestId
+                }
+
+                is PrivilegeSweepLaunchResult.Rejected -> {
+                    _uiState.update {
+                        it.copy(
+                            sweepProgress = failedSweepProgress(
+                                total = spec.packageNames.size,
+                                message = launch.reason.asSweepMessage(),
+                            )
+                        )
+                    }
+                }
             }
         }
     }
 
     fun cancelSweepQueue() {
         viewModelScope.launch { sweepController.cancelQueue() }
+    }
+
+    fun dismissSweepProgress() {
+        visibleSweepRequestId?.let(acknowledgedSweepRequestIds::add)
+        visibleSweepRequestId = null
+        _uiState.update { it.copy(sweepProgress = null) }
     }
 
     fun createProfile(editorSession: Int, name: String, packageNames: List<String>) {
