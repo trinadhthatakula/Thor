@@ -40,6 +40,7 @@ class ArchiveBundleVerifierImpl(
                 manifest?.splitApkFiles(),
                 manifest?.baseApkFile(),
                 packageHint,
+                requireCompleteManifest = manifest != null,
             )
             if (plan.installSet.isEmpty()) return@withContext ArchiveBundleVerification.Refused
 

@@ -151,6 +151,7 @@ class ArchiveRoundTripTest {
         override suspend fun thorUserId(): Int = 0
         override suspend fun externalStorageDir(): String = "/storage/emulated/0"
         override suspend fun stagingFile(name: String): File = temp.newFile("staging-${stage++}-$name")
+        override suspend fun privateStagingFile(name: String): File = temp.newFile("private-${stage++}-$name")
         override suspend fun forceStop(packageName: String) = Unit
 
         override suspend fun listClass(packageName: String, dataClass: DataClass): ClassEntries = when {

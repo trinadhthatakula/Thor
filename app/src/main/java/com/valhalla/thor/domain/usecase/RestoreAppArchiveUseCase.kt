@@ -115,17 +115,13 @@ internal class RestoreAppArchiveUseCase(
     /**
      * **Precondition: the caller has already run `evaluateArchiveRestoreGate`** (§8.1, in
      * `domain/model/ArchiveRestoreGate.kt`) against this [header] and the live app, and got back an
-     * `ArchiveRestoreDecision.Allowed`. This use case does **not** re-run that gate, and must never be
-     * called on a `Refused` decision.
+     * `ArchiveRestoreDecision.Allowed`. This use case does **not** re-run the complete gate and must
+     * never be called on a `Refused` decision.
      *
-     * That matters most for the signer. When [installFirst] is false there is **no signer comparison
-     * anywhere in this class** — the gate already made it against the installed app, and repeating it
-     * here would compare the same two values twice. A path that enqueues a restore without the gate —
-     * a deep link, a retry button, a "restore again" affordance — therefore restores an archive over a
-     * same-named, differently-signed package, which is the attack `ArchiveHeader.signerSha256`'s own
-     * KDoc exists to name and the one refusal §8.1 allows no override for. It would also skip
-     * `SCHEMA_TOO_NEW`, `INVALID_PACKAGE_NAME` and `INVALID_USER_ID`, all of which feed untrusted
-     * header fields into the paths this use case writes to.
+     * The installed package's signer and presence are deliberately re-read after this use case has
+     * acquired its package lease. The Worker's earlier gate can race a package replacement before the
+     * lease is acquired; the in-lease check is the last identity boundary before any app-data mutation.
+     * The caller remains responsible for schema, package-name, user-id, class, and downgrade policy.
      *
      * @param installFirst take it from `ArchiveRestoreDecision.Allowed.installFirst`, never from a
      *   fresh "is it installed?" check: the two can disagree, and this one is the one the user was
@@ -317,13 +313,17 @@ internal class RestoreAppArchiveUseCase(
                         )
                     }
                 }
-                val signer = gateway.signerSha256(pkg)
-                Logger.i(TAG, "Installed app signer checked package=$pkg")
-                if (signer == null || !signer.equals(header.signerSha256, ignoreCase = true)) {
-                    return failRestore(
-                        "the app that installed is not signed by the key this archive was made from"
-                    )
-                }
+            }
+
+            // The Worker's gate runs before this use case acquires the package lease. Re-read the
+            // signer under that lease on both install-first and data-only paths so a package replaced
+            // in the gap cannot receive the authenticated archive's data.
+            val signer = gateway.signerSha256(pkg)
+            Logger.i(TAG, "Installed app signer checked package=$pkg")
+            if (signer == null || !signer.equals(header.signerSha256, ignoreCase = true)) {
+                return failRestore(
+                    "the installed app is not signed by the key this archive was made from"
+                )
             }
 
             val uid = gateway.appUid(pkg)
@@ -573,7 +573,7 @@ internal class RestoreAppArchiveUseCase(
             // non-locally with its own message instead of falling through to the generic one below.
             val entry = source.openEntry(declared.fileName)
                 ?: return BundleStaging.Unreadable(AUTHENTICATION_FAILURE_REASON)
-            val out = gateway.stagingFile(THORBAK_BUNDLE_ENTRY)
+            val out = gateway.privateStagingFile(THORBAK_BUNDLE_ENTRY)
             // Bounded because this is a deflated entry out of a container the user did not author, so
             // its expanded size is the container's to choose. Authentication has already completed,
             // but the worker intentionally repeats this digest while copying because a URI provider can

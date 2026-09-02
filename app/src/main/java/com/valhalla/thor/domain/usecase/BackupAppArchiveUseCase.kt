@@ -156,7 +156,7 @@ internal class BackupAppArchiveUseCase(
         // Read before anything is written. Without a signer the archive cannot carry the check that
         // stops a restore into a same-named, differently-signed package, and an archive missing that
         // field is one a later Thor would have to either refuse or trust.
-        val signer = gateway.signerSha256(request.packageName)
+        val signer = gateway.signerSha256(request.packageName)?.lowercase()
         if (signer == null) {
             withContext(NonCancellable) { destination.discard() }
             return ArchiveBackupOutcome.Failed("the app's signing certificate could not be read")

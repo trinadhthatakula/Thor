@@ -159,6 +159,7 @@ class AppArchiveInstallerImpl(
         // same reason: presence cannot say whether *this* install landed, since restoring over an
         // existing copy is the normal case and a failed update leaves the old one there.
         val stampBefore = installStamp(packageName)
+        var installInvoked = false
 
         val settled = try {
             withTimeoutOrNull(INSTALL_WAIT_MS) {
@@ -175,6 +176,7 @@ class AppArchiveInstallerImpl(
                     // is what makes this await a real happens-before; awaiting the `launch` itself
                     // would only prove the coroutine was scheduled.
                     subscribed.await()
+                    installInvoked = true
                     installerRepository.installPackage(
                         staged = StagedPackage(
                             file = bundle,
@@ -207,11 +209,11 @@ class AppArchiveInstallerImpl(
             // outer package lease is still held, then preserve the original cancellation.
             withContext(NonCancellable) {
                 val stampAfter = installStamp(packageName)
-                newInstallRollbackReceipt(
-                    packageName,
-                    stampBefore,
-                    stampAfter,
-                    ArchiveInstallOutcome.Installed,
+                cancelledInstallRollbackReceipt(
+                    packageName = packageName,
+                    installInvoked = installInvoked,
+                    before = stampBefore,
+                    after = stampAfter,
                 )?.let { rollbackNewInstall(it, execution) }
             }
             throw e
@@ -392,6 +394,21 @@ internal sealed interface InstallStamp {
 
     /** The platform could not be asked — a binder failure, or a ROM refusing the call. */
     data object Unknown : InstallStamp
+}
+
+internal fun cancelledInstallRollbackReceipt(
+    packageName: String,
+    installInvoked: Boolean,
+    before: InstallStamp,
+    after: InstallStamp,
+): ArchiveRollbackReceipt? {
+    if (!installInvoked) return null
+    return newInstallRollbackReceipt(
+        packageName = packageName,
+        before = before,
+        after = after,
+        outcome = ArchiveInstallOutcome.Installed,
+    )
 }
 
 internal fun newInstallRollbackReceipt(

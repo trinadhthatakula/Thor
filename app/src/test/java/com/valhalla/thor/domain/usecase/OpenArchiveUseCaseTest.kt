@@ -71,7 +71,7 @@ class OpenArchiveUseCaseTest {
             packageName = "com.example.app",
             versionCode = 100L,
             userId = 0,
-            signerSha256 = "AB".repeat(32),
+            signerSha256 = "ab".repeat(32),
             appBundle = ArchiveBundleInfo(bytes = 4L, obbCapture = "none", obbCount = 0),
             kdf = ArchiveKdf(iterations = iterations, salt = Base64.getEncoder().encodeToString(salt)),
             verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
@@ -433,7 +433,7 @@ class OpenArchiveUseCaseTest {
         }
 
         val changedHeader = useCase.authenticate(
-            source(valid.copy(signerSha256 = "CD".repeat(32)), bundle),
+            source(valid.copy(signerSha256 = "cd".repeat(32)), bundle),
             key,
         )
         val changedBundle = useCase.authenticate(

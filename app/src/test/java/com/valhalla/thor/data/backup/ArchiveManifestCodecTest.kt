@@ -33,10 +33,10 @@ class ArchiveManifestCodecTest {
         versionCode = 42,
         versionName = "4.2",
         userId = 10,
-        signerSha256 = "AB".repeat(32),
+        signerSha256 = "ab".repeat(32),
         appBundle = ArchiveBundleInfo(
             bytes = 4_096,
-            sha256 = "CD".repeat(32),
+            sha256 = "cd".repeat(32),
             obbCapture = "present",
             obbCount = 2,
         ),
@@ -166,6 +166,26 @@ class ArchiveManifestCodecTest {
                 signed.copy(authentication = signed.authentication!!.copy(algorithm = "HmacSHA1")),
             )
         )
+    }
+
+    @Test
+    fun `uppercase SHA-256 fields are refused as noncanonical`() {
+        val original = header()
+
+        assertThrows(ArchiveIntegrityException::class.java) {
+            ArchiveManifestCodec.canonicalBytes(
+                original.copy(signerSha256 = original.signerSha256.uppercase())
+            )
+        }
+        assertThrows(ArchiveIntegrityException::class.java) {
+            ArchiveManifestCodec.canonicalBytes(
+                original.copy(
+                    appBundle = original.appBundle!!.copy(
+                        sha256 = original.appBundle!!.sha256!!.uppercase()
+                    )
+                )
+            )
+        }
     }
 
     @Test

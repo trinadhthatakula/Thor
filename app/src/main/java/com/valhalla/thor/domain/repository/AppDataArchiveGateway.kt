@@ -50,6 +50,15 @@ internal interface AppDataArchiveGateway {
     suspend fun stagingFile(name: String): File
 
     /**
+     * A path in Thor's private cache that is never exposed to a shell-facing staging volume.
+     *
+     * Authenticated installer bundles live here from verification through install. Unlike plaintext
+     * tar staging, no privileged shell needs to reopen these bytes, so falling back to external cache
+     * would create an avoidable replacement window on API levels with broad external-storage access.
+     */
+    suspend fun privateStagingFile(name: String): File
+
+    /**
      * `am force-stop`, once per job (§7.2 step 4).
      *
      * Not per class: stopping the app four times gives it three chances to be restarted by a
@@ -93,7 +102,7 @@ internal interface AppDataArchiveGateway {
     suspend fun appUid(packageName: String): Int?
 
     /**
-     * SHA-256 of the app's first signing certificate, uppercase hex, or null if it cannot be read.
+     * SHA-256 of the app's first signing certificate, lowercase hex, or null if it cannot be read.
      *
      * Load-bearing on the restore side: without it, restoring into a same-named but differently
      * signed package is a data-exfiltration primitive.

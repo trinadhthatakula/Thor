@@ -163,7 +163,7 @@ object ArchiveManifestCodec {
     }
 
     private fun requireSha256(value: String?, label: String) {
-        if (value == null || value.length != 64 || value.any { it.digitToIntOrNull(16) == null }) {
+        if (value == null || value.length != 64 || value.any { it !in '0'..'9' && it !in 'a'..'f' }) {
             invalid("$label is invalid")
         }
     }

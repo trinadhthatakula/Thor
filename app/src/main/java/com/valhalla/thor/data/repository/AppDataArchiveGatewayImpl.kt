@@ -195,6 +195,14 @@ internal class AppDataArchiveGatewayImpl(
         File(stagingRoot(), name)
     }
 
+    override suspend fun privateStagingFile(name: String): File = withContext(ioDispatcher) {
+        require(isSafeStagingName(name)) {
+            "privateStagingFile requires a plain filename with no path components, got: $name"
+        }
+        val root = File(context.cacheDir, AppDataArchiveStagingDir.NAME).also { it.mkdirs() }
+        File(root, name)
+    }
+
     override suspend fun forceStop(packageName: String) {
         // Delegated to `forceStopApp` rather than hand-rolled. Hand-rolling has three defects:
         //   1. No package-name validation — the raw string reaches a root shell directly.
@@ -384,7 +392,7 @@ internal class AppDataArchiveGatewayImpl(
                 ?: return@runCatching null
             MessageDigest.getInstance("SHA-256")
                 .digest(first.toByteArray())
-                .joinToString(separator = "") { byte -> "%02X".format(byte) }
+                .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xFF) }
         }.getOrElse {
             Logger.e(TAG, "reading the signer of $packageName failed", it)
             null

@@ -134,6 +134,8 @@ class BackupAppArchiveUseCaseTest {
 
         override suspend fun stagingFile(name: String): File = temp.newFile(name)
 
+        override suspend fun privateStagingFile(name: String): File = temp.newFile("private-$name")
+
         override suspend fun forceStop(packageName: String) {
             forceStops++
         }

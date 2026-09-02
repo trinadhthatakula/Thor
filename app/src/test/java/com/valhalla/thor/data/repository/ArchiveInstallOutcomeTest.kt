@@ -296,6 +296,31 @@ class ArchiveInstallOutcomeTest {
     }
 
     @Test
+    fun `cancellation before installer invocation cannot create rollback authority`() {
+        assertNull(
+            cancelledInstallRollbackReceipt(
+                packageName = "com.example.app",
+                installInvoked = false,
+                before = InstallStamp.Absent,
+                after = InstallStamp.At(2_000L),
+            )
+        )
+    }
+
+    @Test
+    fun `cancellation after installer invocation can create exact rollback authority`() {
+        assertEquals(
+            ArchiveRollbackReceipt("com.example.app", 2_000L),
+            cancelledInstallRollbackReceipt(
+                packageName = "com.example.app",
+                installInvoked = true,
+                before = InstallStamp.Absent,
+                after = InstallStamp.At(2_000L),
+            )
+        )
+    }
+
+    @Test
     fun `only a corroborated absent-to-present install creates rollback authority`() {
         val outcome = ArchiveInstallOutcome.Installed
 

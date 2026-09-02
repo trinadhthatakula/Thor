@@ -10,11 +10,14 @@ import com.valhalla.thor.data.repository.archiveStagingVolume
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleCacheDir
+import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveRestoreDecision
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BACKUP_PACKAGE_KEY
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.DataClass
+import com.valhalla.thor.domain.model.InstalledAppFacts
 import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
 import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.ObbProbe
@@ -52,6 +55,58 @@ internal const val ARCHIVE_AUTH_FAILURE_REASON =
     "this backup could not be authenticated and was not restored"
 private val ARCHIVE_BACKUP = PrivilegeCommandClass("archive.backup")
 private val ARCHIVE_RESTORE = PrivilegeCommandClass("archive.restore")
+
+internal data class ArchiveRestorePackageFacts(
+    val installed: InstalledAppFacts?,
+    val appLabel: String?,
+)
+
+internal sealed interface ArchiveRestorePreflight {
+    data class Ready(
+        val header: ArchiveHeader,
+        val packageFacts: ArchiveRestorePackageFacts,
+        val decision: ArchiveRestoreDecision.Allowed,
+    ) : ArchiveRestorePreflight
+
+    data object AuthenticationRefused : ArchiveRestorePreflight
+    data object PackageMismatch : ArchiveRestorePreflight
+    data class GateRefused(val reason: ArchiveRestoreRefusal) : ArchiveRestorePreflight
+}
+
+/**
+ * Executes the Worker's security-sensitive preflight in one testable order.
+ *
+ * No package fact or gate callback is reachable until complete archive authentication succeeds and
+ * its package matches the persisted request. Keeping those effects behind lambdas lets JVM tests
+ * prove the short circuit directly instead of inspecting source positions.
+ */
+internal suspend fun runArchiveRestorePreflight(
+    expectedPackageName: String,
+    selectedClasses: Set<DataClass>,
+    authenticate: suspend () -> ArchiveAuthenticationOutcome,
+    readPackageFacts: suspend (String) -> ArchiveRestorePackageFacts,
+    evaluateGate: (ArchiveHeader, InstalledAppFacts?, Set<DataClass>) ->
+        ArchiveRestoreDecision,
+): ArchiveRestorePreflight {
+    val authenticated = when (val outcome = authenticate()) {
+        is ArchiveAuthenticationOutcome.Authenticated -> outcome
+        ArchiveAuthenticationOutcome.WrongPassphrase,
+        ArchiveAuthenticationOutcome.AuthenticationFailed,
+        -> return ArchiveRestorePreflight.AuthenticationRefused
+    }
+    val header = authenticated.header
+    if (header.packageName != expectedPackageName) return ArchiveRestorePreflight.PackageMismatch
+
+    val packageFacts = readPackageFacts(expectedPackageName)
+    return when (val decision = evaluateGate(header, packageFacts.installed, selectedClasses)) {
+        is ArchiveRestoreDecision.Allowed -> ArchiveRestorePreflight.Ready(
+            header = header,
+            packageFacts = packageFacts,
+            decision = decision,
+        )
+        is ArchiveRestoreDecision.Refused -> ArchiveRestorePreflight.GateRefused(decision.reason)
+    }
+}
 
 internal fun archiveExecutionContext(
     commandClass: PrivilegeCommandClass,
@@ -338,44 +393,57 @@ internal class ArchiveRestoreWorker(
         }
 
         return source.use {
-            val authenticated = when (val outcome = openArchive.authenticate(source, key)) {
-                is ArchiveAuthenticationOutcome.Authenticated -> outcome
-                ArchiveAuthenticationOutcome.WrongPassphrase,
-                ArchiveAuthenticationOutcome.AuthenticationFailed,
-                -> {
+            val preflight = runArchiveRestorePreflight(
+                expectedPackageName = request.packageName,
+                selectedClasses = request.classes,
+                authenticate = { openArchive.authenticate(source, key) },
+                readPackageFacts = { packageName ->
+                    val app = appRepository.getAppDetails(packageName)
+                    ArchiveRestorePackageFacts(
+                        installed = app?.let { installedFacts(it) },
+                        appLabel = app?.appName,
+                    )
+                },
+                evaluateGate = ::evaluateArchiveRestoreGate,
+            )
+            val ready = when (preflight) {
+                ArchiveRestorePreflight.AuthenticationRefused -> {
                     Logger.e(TAG, "Archive authentication failed")
                     return@use fail(ARCHIVE_AUTH_FAILURE_REASON)
                 }
-            }
-            val header = authenticated.header
-            if (header.packageName != request.packageName) {
-                Logger.e(TAG, "Authenticated archive package does not match restore request")
-                return@use fail(ARCHIVE_AUTH_FAILURE_REASON)
-            }
 
-            val app = appRepository.getAppDetails(request.packageName)
-            val installed = app?.let { installedFacts(it) }
-            val decision = evaluateArchiveRestoreGate(header, installed, request.classes)
-            Logger.i(TAG, "Gate decision: $decision (installed=$installed)")
-            val allowed = decision as? ArchiveRestoreDecision.Allowed
-                ?: run {
-                    val reason = refusalReason((decision as ArchiveRestoreDecision.Refused).reason)
+                ArchiveRestorePreflight.PackageMismatch -> {
+                    Logger.e(TAG, "Authenticated archive package does not match restore request")
+                    return@use fail(ARCHIVE_AUTH_FAILURE_REASON)
+                }
+
+                is ArchiveRestorePreflight.GateRefused -> {
+                    val reason = refusalReason(preflight.reason)
                     Logger.e(TAG, "Gate refused restore: $reason")
                     return@use fail("this backup can no longer be restored: $reason")
                 }
-            allowed.warnings.forEach { warning -> Logger.w(TAG, "gate warning: ${warning.name}") }
+
+                is ArchiveRestorePreflight.Ready -> preflight
+            }
+            Logger.i(
+                TAG,
+                "Gate decision: ${ready.decision} (installed=${ready.packageFacts.installed})",
+            )
+            ready.decision.warnings.forEach { warning ->
+                Logger.w(TAG, "gate warning: ${warning.name}")
+            }
 
             when (
                 val outcome = withContext(ioDispatcher) {
                     restore(
                         source = source,
-                        header = header,
+                        header = ready.header,
                         key = key,
                         classes = request.orderedClasses(),
-                        installFirst = allowed.installFirst,
+                        installFirst = ready.decision.installFirst,
                         restoreObb = request.restoreObb,
                         execution = execution,
-                        appLabel = app?.appName ?: request.packageName,
+                        appLabel = ready.packageFacts.appLabel ?: request.packageName,
                         onProgress = ::publish,
                     )
                 }

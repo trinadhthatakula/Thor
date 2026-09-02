@@ -308,12 +308,12 @@ fun selectBaseApkCandidates(entryNames: List<String>, packageName: String?): Lis
  * Resolve the complete, base-first set of APK entry names to hand to
  * `install-multiple` for a genuine bundle.
  *
- * When a `manifest.json` split list is present AND every declared split
- * physically exists, that list is authoritative for base ordering — but we then
- * *union* it with any additional top-level `.apk` entries the manifest omitted,
- * so a stale/subset manifest can never silently drop a physically-present split
- * (which would yield a base-only/partial install). Otherwise we fall back to
- * [selectBaseApkCandidates], which orders every `.apk` base-first.
+ * When a `manifest.json` split list is present AND every declared split physically exists, that
+ * list is authoritative for base ordering. Ordinary third-party installs retain the compatibility
+ * behavior of appending omitted config/split APKs. Authenticated archive verification passes
+ * [requireCompleteManifest] and instead refuses any manifest that does not select every physical
+ * APK, because installing bytes outside the authenticated selection must fail closed. Without a
+ * manifest, [selectBaseApkCandidates] orders every `.apk` base-first.
  *
  * Every name in the result has a leaf that satisfies [isSafeEntryFileName]. That is a
  * *postcondition*, and it is the reason the filter lives here rather than at the writers: this
@@ -330,7 +330,8 @@ fun selectBaseApkCandidates(entryNames: List<String>, packageName: String?): Lis
 fun resolveBundleInstallSet(
     entryNames: List<String>,
     manifestSplitFiles: List<String>?,
-    packageName: String?
+    packageName: String?,
+    requireCompleteManifest: Boolean = false,
 ): List<String> {
     validateBundleEntryNames(entryNames)
     // The one filter of the untrusted name list. Entry names come out of an archive a stranger's
@@ -338,7 +339,7 @@ fun resolveBundleInstallSet(
     // on the JVM's other host platform.
     val entries = entryNames.filter { isSafeEntryFileName(it.substringAfterLast('/')) }
     val ordered = selectBaseApkCandidates(entries, packageName)
-    if (manifestSplitFiles.isNullOrEmpty()) return ordered
+    if (manifestSplitFiles == null) return ordered
 
     val selectedLeaves = manifestSplitFiles.map { it.substringAfterLast('/').lowercase() }
     if (selectedLeaves.size != selectedLeaves.toSet().size) {
@@ -348,6 +349,13 @@ fun resolveBundleInstallSet(
     if (selectedLeaves.any { it !in available }) {
         throw InstallRefusedException("the bundle manifest selects an APK that is missing.")
     }
+    if (requireCompleteManifest) {
+        val complete = ordered.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }
+        if (selectedLeaves.toSet() != complete) {
+            throw InstallRefusedException("the bundle manifest does not select every APK.")
+        }
+    }
+    if (manifestSplitFiles.isEmpty()) return ordered
     // Resolve sidecar spelling back to the exact, unique central-directory entry. Verification and
     // installation therefore consume one immutable plan rather than independently selecting bytes.
     val selected = selectedLeaves.map { available.getValue(it) }
@@ -403,9 +411,15 @@ fun resolveBundlePlan(
     entryNames: List<String>,
     manifestSplitFiles: List<String>?,
     manifestBaseFile: String?,
-    packageName: String?
+    packageName: String?,
+    requireCompleteManifest: Boolean = false,
 ): BundleInstallPlan {
-    val installSet = resolveBundleInstallSet(entryNames, manifestSplitFiles, packageName)
+    val installSet = resolveBundleInstallSet(
+        entryNames,
+        manifestSplitFiles,
+        packageName,
+        requireCompleteManifest,
+    )
     val installable = installSet.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }
     val identity = buildList {
         // The manifest's own `id == "base"` entry first — but only when it survived install-set

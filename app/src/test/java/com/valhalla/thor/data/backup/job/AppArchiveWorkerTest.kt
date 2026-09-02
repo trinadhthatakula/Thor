@@ -3,14 +3,19 @@
 
 package com.valhalla.thor.data.backup.job
 
+import com.valhalla.thor.domain.model.ArchiveHeader
+import com.valhalla.thor.domain.model.ArchiveKdf
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.usecase.ArchiveAuthenticationOutcome
 import com.valhalla.thor.domain.usecase.ArchiveRestoreOutcome
 import java.io.File
 import java.util.UUID
+import javax.crypto.spec.SecretKeySpec
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -66,21 +71,61 @@ class AppArchiveWorkerTest {
     // region authenticated preflight ordering
 
     @Test
-    fun `worker authenticates the complete archive before package facts or gate evaluation`() {
-        val source = workerSource()
-        val runJob = source.substring(
-            source.indexOf("override suspend fun runJob(): Result", source.indexOf("class ArchiveRestoreWorker")),
-            source.indexOf("\n    }\n}", source.indexOf("class ArchiveRestoreWorker")),
+    fun `every authentication failure returns before package facts and gate evaluation`() = runTest {
+        val refusals = listOf(
+            ArchiveAuthenticationOutcome.WrongPassphrase,
+            ArchiveAuthenticationOutcome.AuthenticationFailed,
         )
-        val authentication = runJob.indexOf("openArchive.authenticate(source, key)")
-        val packageComparison = runJob.indexOf("header.packageName != request.packageName")
-        val installedFacts = runJob.indexOf("installedFacts(it)")
-        val gate = runJob.indexOf("evaluateArchiveRestoreGate")
 
-        assertTrue("worker does not authenticate the reopened source", authentication >= 0)
-        assertTrue("package comparison runs before authentication", packageComparison > authentication)
-        assertTrue("installed facts run before authentication", installedFacts > authentication)
-        assertTrue("restore gate runs before authentication", gate > authentication)
+        refusals.forEach { refusal ->
+            val calls = mutableListOf<String>()
+            val result = runArchiveRestorePreflight(
+                expectedPackageName = "com.example.app",
+                selectedClasses = setOf(DataClass.CE),
+                authenticate = {
+                    calls += "authenticate"
+                    refusal
+                },
+                readPackageFacts = {
+                    calls += "package-facts"
+                    error("package facts must not be read")
+                },
+                evaluateGate = { _, _, _ ->
+                    calls += "gate"
+                    error("gate must not run")
+                },
+            )
+
+            assertSame(ArchiveRestorePreflight.AuthenticationRefused, result)
+            assertEquals(listOf("authenticate"), calls)
+        }
+    }
+
+    @Test
+    fun `authenticated package mismatch returns before package facts and gate evaluation`() = runTest {
+        val calls = mutableListOf<String>()
+        val result = runArchiveRestorePreflight(
+            expectedPackageName = "com.example.app",
+            selectedClasses = setOf(DataClass.CE),
+            authenticate = {
+                calls += "authenticate"
+                ArchiveAuthenticationOutcome.Authenticated(
+                    header = archiveHeader(packageName = "com.other.app"),
+                    key = SecretKeySpec(ByteArray(32), "AES"),
+                )
+            },
+            readPackageFacts = {
+                calls += "package-facts"
+                error("package facts must not be read")
+            },
+            evaluateGate = { _, _, _ ->
+                calls += "gate"
+                error("gate must not run")
+            },
+        )
+
+        assertSame(ArchiveRestorePreflight.PackageMismatch, result)
+        assertEquals(listOf("authenticate"), calls)
     }
 
     @Test
@@ -344,6 +389,17 @@ class AppArchiveWorkerTest {
     }
 
     // endregion
+
+    private fun archiveHeader(packageName: String) = ArchiveHeader(
+        createdAt = 1L,
+        thorVersionCode = 1952,
+        packageName = packageName,
+        versionCode = 1L,
+        userId = 0,
+        signerSha256 = "ab".repeat(32),
+        kdf = ArchiveKdf(iterations = 4, salt = "AA=="),
+        verifier = "AA==",
+    )
 
     private fun workerSource(): String {
         var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile

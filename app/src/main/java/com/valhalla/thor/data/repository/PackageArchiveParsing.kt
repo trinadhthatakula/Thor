@@ -124,6 +124,6 @@ internal fun PackageInfo.currentSignerSha256(): Set<String> =
         ?.mapTo(linkedSetOf()) { signature ->
             MessageDigest.getInstance("SHA-256")
                 .digest(signature.toByteArray())
-                .joinToString("") { byte -> "%02X".format(byte) }
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xFF) }
         }
         .orEmpty()

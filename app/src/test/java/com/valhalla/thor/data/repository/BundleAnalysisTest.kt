@@ -363,6 +363,26 @@ class BundleAnalysisTest {
     }
 
     @Test
+    fun resolveBundlePlan_strictManifestRefusesPhysicallyPresentOmittedSplit() {
+        val entries = listOf(
+            "base.apk",
+            "config.arm64_v8a.apk",
+            "config.xxhdpi.apk",
+            "manifest.json",
+        )
+
+        assertThrows(InstallRefusedException::class.java) {
+            resolveBundlePlan(
+                entryNames = entries,
+                manifestSplitFiles = listOf("base.apk", "config.arm64_v8a.apk"),
+                manifestBaseFile = "base.apk",
+                packageName = "com.example.app",
+                requireCompleteManifest = true,
+            )
+        }
+    }
+
+    @Test
     fun resolveBundleInstallSet_refusesManifestReferencingMissingFiles() {
         val entries = listOf("base.apk", "split_config.arm64_v8a.apk")
         val manifestSplits = listOf("base.apk", "config.does_not_exist.apk")

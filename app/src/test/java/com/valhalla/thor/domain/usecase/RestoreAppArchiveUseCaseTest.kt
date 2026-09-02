@@ -178,6 +178,9 @@ class RestoreAppArchiveUseCaseTest {
         private val unwritableStaging: String? = null,
     ) : AppDataArchiveGateway {
         val stagedFiles = mutableListOf<File>()
+        val privateStagedFiles = mutableListOf<File>()
+        var signerReads = 0
+            private set
 
         /**
          * Every previously handed-out staging file that still had bytes in it when the *next* one was
@@ -210,6 +213,9 @@ class RestoreAppArchiveUseCaseTest {
             return file.also(stagedFiles::add)
         }
 
+        override suspend fun privateStagingFile(name: String): File =
+            temp.newFile("private-${privateStagedFiles.size}-$name").also(privateStagedFiles::add)
+
         override suspend fun forceStop(packageName: String) { calls += "force-stop" }
         override suspend fun listClass(packageName: String, dataClass: DataClass) =
             ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
@@ -223,7 +229,10 @@ class RestoreAppArchiveUseCaseTest {
         ) = TarOutcome.Succeeded
 
         override suspend fun appUid(packageName: String) = uid
-        override suspend fun signerSha256(packageName: String) = signer
+        override suspend fun signerSha256(packageName: String): String? {
+            signerReads++
+            return signer
+        }
 
         override suspend fun extractInto(packageName: String, dataClass: DataClass, tar: File, compressed: Boolean): Boolean {
             beforeExtract()
@@ -265,6 +274,7 @@ class RestoreAppArchiveUseCaseTest {
         private val beforeRollback: suspend () -> Unit = {},
     ) : AppArchiveInstaller {
         var installExecution: PrivilegeExecutionContext? = null
+        var installedBundle: File? = null
         var installSet: List<String>? = null
         val rollbackReceipts = mutableListOf<ArchiveRollbackReceipt>()
 
@@ -276,6 +286,7 @@ class RestoreAppArchiveUseCaseTest {
         ): ArchiveInstallResult {
             calls += "install"
             installExecution = execution
+            installedBundle = bundle
             this.installSet = installSet
             return ArchiveInstallResult(outcome, rollbackReceipt)
         }
@@ -755,6 +766,29 @@ class RestoreAppArchiveUseCaseTest {
     }
 
     @Test
+    fun `authenticated bundle is staged privately while data tar uses shell staging`() = runTest {
+        val gateway = FakeGateway()
+        val installer = FakeInstaller(calls = calls)
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(gateway, installer, RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+        assertEquals(listOf("private-0-$THORBAK_BUNDLE_ENTRY"), gateway.privateStagedFiles.map(File::getName))
+        assertEquals(installer.installedBundle, gateway.privateStagedFiles.single())
+        assertTrue(
+            gateway.stagedFiles.map(File::getName).toString(),
+            gateway.stagedFiles.none { it.name.endsWith(THORBAK_BUNDLE_ENTRY) },
+        )
+        assertTrue(
+            gateway.stagedFiles.map(File::getName).toString(),
+            gateway.stagedFiles.any { it.name.endsWith("restore-ce.tar") },
+        )
+    }
+
+    @Test
     fun `a signer mismatch after the install stops the restore`() = runTest {
         // The gate (Task 11) cannot check an absent app's signer, so this is the only place that check
         // can happen for an install-first restore. Without it, "app not installed" is a hole straight
@@ -788,19 +822,21 @@ class RestoreAppArchiveUseCaseTest {
     }
 
     @Test
-    fun `the signer is not checked when the app was already installed`() = runTest {
-        // Task 11's gate already ran that comparison against the live app. Repeating it here would be
-        // harmless; *only* doing it here would not be, which is why the install-first case has its own
-        // test above.
-        val (header, source) = archive(listOf(DataClass.CE))
+    fun `data-only restore revalidates a replaced package signer inside the lease before mutation`() = runTest {
+        // The worker's gate saw the expected signer before this use case acquired its package lease.
+        // A replacement in that gap must be caught here, before force-stop, extraction, or swap.
+        val (header, source) = archive(listOf(DataClass.CE), withBundle = false)
+        val gateway = FakeGateway(signer = "cd".repeat(32))
 
         val outcome = useCase(
-            FakeGateway(signer = "CD".repeat(32)),
+            gateway,
             FakeInstaller(calls = calls),
             RecordingBreadcrumbs(),
         )(source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false)
 
-        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertEquals(1, gateway.signerReads)
+        assertEquals(emptyList<String>(), calls)
     }
 
     @Test
@@ -1273,7 +1309,7 @@ class RestoreAppArchiveUseCaseTest {
     @Test
     fun `rollback failure keeps the primary reason and adds only a generic warning`() = runTest {
         val (header, source) = archive(listOf(DataClass.CE))
-        val primary = "the app that installed is not signed by the key this archive was made from"
+        val primary = "the installed app is not signed by the key this archive was made from"
         val installer = FakeInstaller(
             calls = calls,
             rollbackReceipt = ArchiveRollbackReceipt(header.packageName, 2_000L),

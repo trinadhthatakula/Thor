@@ -156,8 +156,8 @@ class ArchiveRestoreViewModelTest {
         val BUNDLE_BYTES = byteArrayOf(1, 2, 3, 4)
         val BUNDLE_SHA256: String = MessageDigest.getInstance("SHA-256").digest(BUNDLE_BYTES)
             .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
-        const val SIGNER = "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"
-        const val OTHER_SIGNER = "CDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCD"
+        const val SIGNER = "abababababababababababababababababababababababababababababababab"
+        const val OTHER_SIGNER = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
         const val URI = "content://com.example.docs/document/1"
     }
 
@@ -343,6 +343,7 @@ class ArchiveRestoreViewModelTest {
         override suspend fun thorUserId(): Int = 0
         override suspend fun externalStorageDir(): String = "/storage/emulated/0"
         override suspend fun stagingFile(name: String): File = File("/tmp/$name")
+        override suspend fun privateStagingFile(name: String): File = File("/tmp/private-$name")
         override suspend fun forceStop(packageName: String) = Unit
         override suspend fun listClass(packageName: String, dataClass: DataClass) =
             ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
