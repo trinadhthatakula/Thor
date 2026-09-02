@@ -5,8 +5,9 @@
 # one, and falls back to the `*` group only when *no* named group matches it (RFC 9309, §2.2.1).
 # So a named group containing only `Allow: /` does not inherit the wildcard group's rules — the
 # wildcard group is never selected for it — and grants the access the wildcard withholds. That is
-# how /styleguide and the follow-up pages were open to every crawler named here except Googlebot,
-# Bingbot and four of the AI agents: their groups simply left the Disallow lines out. Each token
+# how /styleguide, the follow-up pages, and the implementation architecture page were open to every
+# crawler named here except Googlebot, Bingbot, and four of the AI agents: their groups simply left
+# the Disallow lines out. Each token
 # below appears in exactly one group, so nothing here relies on the combining rule.
 #
 # Consecutive `User-agent:` lines share one rule block, so each class of crawler states the rules
@@ -17,6 +18,7 @@ Allow: /
 Disallow: /styleguide
 Disallow: /follow-ups
 Disallow: /follow-ups-report
+Disallow: /thor-worker-shell-lanes
 
 # Primary Search Engine Crawlers
 User-agent: Googlebot
@@ -31,6 +33,7 @@ Allow: /
 Disallow: /styleguide
 Disallow: /follow-ups
 Disallow: /follow-ups-report
+Disallow: /thor-worker-shell-lanes
 
 # AI Search & Retrieval Crawlers (GEO / Real-Time LLM Search)
 User-agent: OAI-SearchBot
@@ -58,6 +61,7 @@ Allow: /
 Disallow: /styleguide
 Disallow: /follow-ups
 Disallow: /follow-ups-report
+Disallow: /thor-worker-shell-lanes
 
 # Social & Messaging Link Preview Crawlers
 #
