@@ -465,7 +465,7 @@ class FreezerViewModel(
                     }
                 }
                 .collect { requests ->
-                    val latestProfile = requests.lastOrNull {
+                    val latestProfile = requests.firstOrNull {
                         it.source == PrivilegeSweepSource.PROFILE &&
                             it.profileIds.isNotEmpty() &&
                             it.requestId !in acknowledgedSweepRequestIds

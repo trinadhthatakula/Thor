@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import java.util.UUID
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -30,12 +31,34 @@ class FreezeProfilesSheetTest {
         assertFalse(profileRequestIsRunning(profileId = 9L, statuses = listOf(coalesced)))
     }
 
-    private fun status(profileIds: Set<Long>) = PrivilegeSweepStatus(
-        requestId = UUID(0L, 1L),
-        workId = UUID(1L, 1L),
+    @Test
+    fun `newest retained request controls the row when an older terminal result follows it`() {
+        val newerQueued = status(
+            profileIds = setOf(7L),
+            requestId = UUID(0L, 2L),
+            phase = PrivilegeSweepPhase.QUEUED,
+        )
+        val olderPartial = status(
+            profileIds = setOf(7L),
+            requestId = UUID(0L, 1L),
+            phase = PrivilegeSweepPhase.PARTIAL,
+        )
+        val newestFirst = listOf(newerQueued, olderPartial)
+
+        assertEquals(newerQueued, profileRequestStatus(profileId = 7L, statuses = newestFirst))
+        assertTrue(profileRequestIsRunning(profileId = 7L, statuses = newestFirst))
+    }
+
+    private fun status(
+        profileIds: Set<Long>,
+        requestId: UUID = UUID(0L, 1L),
+        phase: PrivilegeSweepPhase = PrivilegeSweepPhase.RUNNING,
+    ) = PrivilegeSweepStatus(
+        requestId = requestId,
+        workId = UUID(1L, requestId.leastSignificantBits),
         operation = PrivilegeSweepOperation.FREEZE,
         source = PrivilegeSweepSource.PROFILE,
-        phase = PrivilegeSweepPhase.RUNNING,
+        phase = phase,
         total = 2,
         succeeded = 0,
         failed = 0,

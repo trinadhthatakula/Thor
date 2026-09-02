@@ -73,7 +73,7 @@ import com.valhalla.thor.domain.model.killableMembers
 internal fun profileRequestStatus(
     profileId: Long,
     statuses: List<PrivilegeSweepStatus>,
-): PrivilegeSweepStatus? = statuses.lastOrNull { profileId in it.profileIds }
+): PrivilegeSweepStatus? = statuses.firstOrNull { profileId in it.profileIds }
 
 internal fun profileRequestIsRunning(
     profileId: Long,

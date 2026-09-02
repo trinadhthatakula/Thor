@@ -789,6 +789,35 @@ class FreezerViewModelTest {
     }
 
     @Test
+    fun `newest retained profile request controls progress ahead of an older terminal result`() = runTest {
+        fun retained(requestNumber: Long, phase: PrivilegeSweepPhase) = PrivilegeSweepStatus(
+            requestId = UUID(0L, requestNumber),
+            workId = UUID(1L, requestNumber),
+            operation = PrivilegeSweepOperation.FREEZE,
+            source = PrivilegeSweepSource.PROFILE,
+            phase = phase,
+            total = 3,
+            succeeded = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
+            failed = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
+            busy = 0,
+            unresolved = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 3,
+            rootLaneDegraded = false,
+            profileIds = setOf(1L),
+        )
+        val newerQueued = retained(92L, PrivilegeSweepPhase.QUEUED)
+        val olderPartial = retained(91L, PrivilegeSweepPhase.PARTIAL)
+        val vm = viewModel()
+
+        // PrivilegeSweepDao returns retained rows newest-first.
+        sweepController.emit(newerQueued)
+        sweepController.emit(olderPartial)
+        runCurrent()
+
+        assertEquals(listOf(newerQueued, olderPartial), vm.uiState.value.runningRequests)
+        assertEquals(PrivilegeSweepPhase.QUEUED, vm.uiState.value.sweepProgress?.phase)
+    }
+
+    @Test
     fun `unrelated retained request does not replace profile progress`() = runTest {
         val vm = viewModel()
         sweepController.emit(
