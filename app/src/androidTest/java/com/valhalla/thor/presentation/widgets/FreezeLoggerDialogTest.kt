@@ -96,7 +96,7 @@ class FreezeLoggerDialogTest {
             )
         )
 
-        rule.onNodeWithText("Sweep could not start").assertExists()
+        rule.onNodeWithText("App actions could not start").assertExists()
         rule.onNodeWithText("Notifications are required").assertExists()
         rule.onNodeWithText("Cancel sweep queue").assertDoesNotExist()
         rule.onNodeWithText("Close").assertExists()
@@ -106,7 +106,7 @@ class FreezeLoggerDialogTest {
     fun queued_showsQueueStateAndCancellation() {
         setDialog(progress(PrivilegeSweepPhase.QUEUED))
 
-        rule.onNodeWithText("Sweep queued").assertExists()
+        rule.onNodeWithText("App actions queued").assertExists()
         rule.onNodeWithText("Cancel sweep queue").performClick()
 
         rule.runOnIdle { assertEquals(1, cancellations) }
@@ -153,8 +153,8 @@ class FreezeLoggerDialogTest {
             autoDismissMillis = 1L,
         )
 
-        rule.onNodeWithText("Sweep finished with issues").assertExists()
-        rule.onNodeWithText("6 succeeded, 2 failed, 1 busy, 1 unresolved").assertExists()
+        rule.onNodeWithText("App actions finished with issues").assertExists()
+        rule.onNodeWithText("Succeeded: 6 · failed: 2 · busy: 1 · unresolved: 1").assertExists()
         rule.mainClock.advanceTimeBy(10_000L)
         rule.waitForIdle()
         rule.runOnIdle { assertEquals(0, dismissals) }
@@ -173,8 +173,8 @@ class FreezeLoggerDialogTest {
             )
         )
 
-        rule.onNodeWithText("Sweep cancelled").assertExists()
-        rule.onNodeWithText("4 succeeded, 1 failed, 0 busy, 5 unresolved").assertExists()
+        rule.onNodeWithText("Action queue cancelled").assertExists()
+        rule.onNodeWithText("Succeeded: 4 · failed: 1 · busy: 0 · unresolved: 5").assertExists()
         rule.onNodeWithText("Close").performClick()
         rule.runOnIdle { assertEquals(1, dismissals) }
     }
@@ -184,8 +184,9 @@ class FreezeLoggerDialogTest {
         setDialog(progress(PrivilegeSweepPhase.OBSERVER_FAILURE))
 
         rule.onNodeWithText("Progress unavailable").assertExists()
-        rule.onNodeWithText("Thor could not reconnect to this sweep. Check the apps before relying on it.")
-            .assertExists()
+        rule.onNodeWithText(
+            "Thor could not reconnect to these app actions. Check the apps before relying on the result."
+        ).assertExists()
         rule.onNodeWithText("Cancel sweep queue").assertDoesNotExist()
         rule.onNodeWithText("Close").assertExists()
     }
