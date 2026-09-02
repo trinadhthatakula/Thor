@@ -59,6 +59,11 @@ class ShizukuSystemGateway internal constructor(
         ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
 ) : SystemGateway {
 
+    internal var reinstallUserIdProvider: () -> Int = { thorUserId }
+    internal var reinstallCommandExecutor: (String) -> Pair<Int, String?> = { command ->
+        ShizukuHelper.execute(command)
+    }
+
     override suspend fun isRootAvailable(
         execution: PrivilegeExecutionContext,
     ) = false
@@ -592,10 +597,20 @@ class ShizukuSystemGateway internal constructor(
             // name. What differed was visibility — a work-profile-only app answered nothing and
             // stopped here with "Could not find APK path", and an app installed for user 0 but not
             // for Thor's user was reinstalled off a record this user does not hold.
-            val currentUser = thorUserId
+            val currentUser = reinstallUserIdProvider()
 
             // 2. Get the APK path(s) as that user sees them
-            val pathResult = ShizukuHelper.execute(pmPathCommand(escapedPackageName, currentUser))
+            val pathResult = reinstallCommandExecutor(
+                pmPathCommand(escapedPackageName, currentUser)
+            )
+            if (pathResult.first != 0) {
+                return Result.failure(
+                    Exception(
+                        "Shizuku package path lookup failed with exit code ${pathResult.first}: " +
+                            (pathResult.second ?: "no output")
+                    )
+                )
+            }
             val paths = pathResult.second?.lines()
                 ?.filter { it.isNotBlank() }
                 ?.map { it.removePrefix("package:").trim() } ?: emptyList()
@@ -609,7 +624,7 @@ class ShizukuSystemGateway internal constructor(
             // 3. Execute the reinstallation command
             val command =
                 "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
-            val result = ShizukuHelper.execute(command)
+            val result = reinstallCommandExecutor(command)
             if (result.first == 0) {
                 reinstallPostconditionVerifier.verify(packageName, currentUser)
             } else {

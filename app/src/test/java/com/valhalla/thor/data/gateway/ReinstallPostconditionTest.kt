@@ -7,7 +7,10 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.gateway.root.RootCommand
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
+import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
+import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.ReinstallPostconditionFailed as DomainReinstallPostconditionFailed
 import com.valhalla.thor.presentation.FakeContext
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import java.io.File
@@ -31,7 +34,7 @@ class ReinstallPostconditionTest {
 
         val result = verifier.verify(PACKAGE, USER_ID)
 
-        assertTrue(result.exceptionOrNull() is ReinstallPostconditionFailed)
+        assertTrue(result.exceptionOrNull() is DomainReinstallPostconditionFailed)
         assertEquals(listOf(PACKAGE to USER_ID), reader.reads)
     }
 
@@ -48,7 +51,7 @@ class ReinstallPostconditionTest {
 
         val result = verifier.verify(PACKAGE, USER_ID)
 
-        assertTrue(result.exceptionOrNull() is ReinstallPostconditionFailed)
+        assertTrue(result.exceptionOrNull() is DomainReinstallPostconditionFailed)
     }
 
     @Test
@@ -68,7 +71,7 @@ class ReinstallPostconditionTest {
             PrivilegeExecutionContext(),
         )
 
-        assertTrue(result.exceptionOrNull() is ReinstallPostconditionFailed)
+        assertTrue(result.exceptionOrNull() is DomainReinstallPostconditionFailed)
         assertEquals(2, commands.commands.size)
     }
 
@@ -107,6 +110,68 @@ class ReinstallPostconditionTest {
 
         assertTrue(result.isFailure)
         assertTrue(commands.commands.isEmpty())
+        assertTrue(reader.reads.isEmpty())
+    }
+
+    @Test
+    fun `Shizuku path lookup failure does not attempt reinstall`() = runTest {
+        val commands = mutableListOf<String>()
+        val reader = RecordingReinstallStateReader(VERIFIED_STATE)
+        val context = FakeContext(File("."))
+        val gateway = ShizukuSystemGateway(
+            context = context,
+            reflector = ShizukuReflector(context),
+            preferenceRepository = FakePreferenceRepository(),
+            ioDispatcher = Dispatchers.Unconfined,
+            reinstallPostconditionVerifier = ReinstallPostconditionVerifier(reader),
+        ).also { gateway ->
+            gateway.reinstallUserIdProvider = { USER_ID }
+            gateway.reinstallCommandExecutor = { command ->
+                commands += command
+                -1 to TRANSPORT_FAILURE
+            }
+        }
+
+        val result = gateway.reinstallAppWithGoogle(PACKAGE, PrivilegeExecutionContext())
+
+        assertEquals(1, commands.size)
+        assertTrue(commands.single().startsWith("pm path --user"))
+        assertTrue(commands.none { it.startsWith("pm install") })
+        assertEquals(
+            "Shizuku package path lookup failed with exit code -1: $TRANSPORT_FAILURE",
+            result.exceptionOrNull()?.message,
+        )
+        assertTrue(reader.reads.isEmpty())
+    }
+
+    @Test
+    fun `Dhizuku path lookup failure does not attempt reinstall`() = runTest {
+        val commands = mutableListOf<String>()
+        val reader = RecordingReinstallStateReader(VERIFIED_STATE)
+        val context = FakeContext(File("."))
+        val gateway = DhizukuSystemGateway(
+            context = context,
+            reflector = DhizukuReflector(context),
+            preferenceRepository = FakePreferenceRepository(),
+            ioDispatcher = Dispatchers.Unconfined,
+            reinstallPostconditionVerifier = ReinstallPostconditionVerifier(reader),
+        ).also { gateway ->
+            gateway.reinstallUserIdProvider = { USER_ID }
+            gateway.reinstallCommandExecutor = { command ->
+                commands += command
+                -1 to TRANSPORT_FAILURE
+            }
+        }
+
+        val result = gateway.reinstallAppWithGoogle(PACKAGE, PrivilegeExecutionContext())
+
+        assertEquals(1, commands.size)
+        assertTrue(commands.single().startsWith("pm path --user"))
+        assertTrue(commands.none { it.startsWith("pm install") })
+        assertEquals(
+            "Dhizuku package path lookup failed with exit code -1: $TRANSPORT_FAILURE",
+            result.exceptionOrNull()?.message,
+        )
         assertTrue(reader.reads.isEmpty())
     }
 
@@ -155,5 +220,10 @@ class ReinstallPostconditionTest {
         const val PACKAGE = "com.example.app"
         const val GOOGLE_PLAY = "com.android.vending"
         const val USER_ID = 10
+        const val TRANSPORT_FAILURE = "transport unavailable"
+        val VERIFIED_STATE = ReinstallFinalState(
+            installedForThorUser = true,
+            installerPackageName = GOOGLE_PLAY,
+        )
     }
 }

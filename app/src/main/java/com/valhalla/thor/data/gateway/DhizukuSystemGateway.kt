@@ -48,6 +48,11 @@ class DhizukuSystemGateway internal constructor(
         ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
 ) : SystemGateway {
 
+    internal var reinstallUserIdProvider: () -> Int = { thorUserId }
+    internal var reinstallCommandExecutor: (String) -> Pair<Int, String?> = { command ->
+        DhizukuHelper.execute(command)
+    }
+
     override suspend fun isRootAvailable(
         execution: PrivilegeExecutionContext,
     ) = false
@@ -512,10 +517,20 @@ class DhizukuSystemGateway internal constructor(
             // APK bytes are device-wide, so both commands exit 0 either way and the mismatch is
             // invisible: what a user id selects here is whether the package is *visible*, which is
             // how a work-profile-only app came back with no paths at all.
-            val currentUser = thorUserId
+            val currentUser = reinstallUserIdProvider()
 
             // 2. Get the APK path(s) as that user sees them
-            val pathResult = DhizukuHelper.execute(pmPathCommand(escapedPackageName, currentUser))
+            val pathResult = reinstallCommandExecutor(
+                pmPathCommand(escapedPackageName, currentUser)
+            )
+            if (pathResult.first != 0) {
+                return Result.failure(
+                    Exception(
+                        "Dhizuku package path lookup failed with exit code ${pathResult.first}: " +
+                            (pathResult.second ?: "no output")
+                    )
+                )
+            }
             val paths = pathResult.second?.lines()
                 ?.filter { it.isNotBlank() }
                 ?.map { it.removePrefix("package:").trim() } ?: emptyList()
@@ -529,7 +544,7 @@ class DhizukuSystemGateway internal constructor(
             // 3. Execute the reinstallation command
             val command =
                 "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
-            val result = DhizukuHelper.execute(command)
+            val result = reinstallCommandExecutor(command)
             if (result.first == 0) {
                 reinstallPostconditionVerifier.verify(packageName, currentUser)
             } else {

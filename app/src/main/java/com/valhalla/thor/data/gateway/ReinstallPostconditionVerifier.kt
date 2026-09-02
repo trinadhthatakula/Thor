@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import com.valhalla.thor.data.repository.installerPackageNameOf
 import com.valhalla.thor.data.source.local.thorUserId
+import com.valhalla.thor.domain.model.ReinstallPostconditionFailed
 import java.util.concurrent.CancellationException
 import org.koin.core.annotation.Single
 
@@ -20,9 +21,6 @@ internal data class ReinstallFinalState(
 internal fun interface ReinstallStateReader {
     suspend fun read(packageName: String, userId: Int): ReinstallFinalState
 }
-
-internal class ReinstallPostconditionFailed(packageName: String) :
-    IllegalStateException("Could not verify reinstall postcondition for $packageName")
 
 @Single(binds = [ReinstallStateReader::class])
 internal class AndroidReinstallStateReader(
