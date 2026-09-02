@@ -2050,3 +2050,67 @@ Privacy/logging validation
 ```
 
 Review CodeRabbit and human findings as untrusted claims: reproduce each against the current source before changing code or replying. Use first-person maintainer voice in any GitHub comment. Merge only after the user explicitly requests it and all required checks are green.
+
+## Execution results — 2026-09-03
+
+### Automated verification
+
+- Post-Task-83 final HEAD: `9671462cec7e6794c65f5494c28ac6cd4d92dca0`.
+- `origin/dev` was fetched immediately before final review and remains `a4b1fcef6db70902657c60cdb6abb297587acec8`, an ancestor of this branch.
+- Full forced JVM suites, counted from JUnit XML:
+  - Foss debug: **2,043 tests**, 0 failures, 0 errors, 0 skipped.
+  - Store debug: **2,043 tests**, 0 failures, 0 errors, 0 skipped.
+  - Aggregate: **4,086 tests**, 0 failures, 0 errors, 0 skipped.
+- Emulator-only instrumentation on `emulator-5554` / `Thor_Root_API37`: **16 tests**, 0 failures, 0 errors, 0 skipped (Room 7→8 migration, WorkManager sweep integration, queue cancellation receiver, and durable progress dialog semantics).
+- `compileFossDebugKotlin`: passed with no missing or ambiguous Koin binding.
+- `lintFossDebug`: passed — 0 errors, 11 warnings, 9 hints.
+- `lintStoreRelease`: passed — 0 errors, 11 warnings, 9 hints.
+- `assembleFossDebug`: passed.
+- `assembleStoreRelease`: passed using the repository's local signing configuration.
+- `git diff --check`: clean.
+- `versionCode=1952` remains unchanged.
+- Validation used Corretto/OpenJDK 21.0.12.1 because Zulu 21 is not installed.
+
+### Emulator behavior verified
+
+On the API 37 / Android 17 ARM64 emulator with 16 KiB pages, the actual app passed the non-Root acceptance surface:
+
+- leaving immediately after accepting backup still enqueued exactly one WorkSpec per action;
+- three controlled WorkSpecs reached `SUCCEEDED` with `run_attempt_count = 1`;
+- a live backup notification reopened the correct running backup sheet;
+- one `HomeActivity` existed before and after the notification tap.
+
+### Root-only acceptance blocked
+
+The emulator has the Magisk Alpha manager package `io.github.vvb2060.magisk` installed and running, but it has no `magisk` binary or `magiskd` daemon. Its only `su` is `/system/xbin/su`, the AOSP userdebug UID-switching utility; it rejects `-c`, `-v`, and `-V`. Thor/Odin therefore cannot create app-level Root shells.
+
+A fresh official upstream check on 2026-09-03 found no Magisk v31 tag, release, or APK; the newest official published release remains v30.7. No unofficial artifact, unpublished source build, shared SDK image modification, or broad process termination was used.
+
+The following are explicitly **blocked, not passed**:
+
+- ARCHIVE plus different-package INTERACTIVE overlap;
+- SWEEP plus different-package INTERACTIVE overlap;
+- same-package runtime busy behavior;
+- exact child PID capture and `/proc/<pid>` disappearance;
+- `Shell.close()` child behavior and any conditional PID-scoped fallback;
+- partial Root staging cleanup and fresh shell generation;
+- degraded Root fallback runtime;
+- private CE/DE archive round trip;
+- Root Fix Store replay.
+
+No API 28/29 image is installed (installed images are API 30, 36.1, 37.0, 37.1, and CinnamonBun), so the legacy hidden `PackageParser` branch remains runtime-unverified on Android 9/10.
+
+### Privacy and architecture inspection
+
+Manual dataflow review found 27 existing production logging violations across 14 files. `git blame` established that all 27 predate local `dev`; this branch introduced none. The baseline debt is disclosed rather than expanded into an unrelated cleanup. Branch-specific checks confirmed:
+
+- no new raw command, command output, passphrase, URI, user path, or attacker-controlled archive-name logging;
+- `MainShellCommandExecutor` is the intentional single Odin `ShellRepository.exec` boundary;
+- no executable sweep returns `Result.retry()`;
+- `BulkFreezeRunner` and `BulkFreezeController` are absent;
+- no `.kotlin/`, `docs/audit/`, or `docs/enforcement/` path is tracked by this branch.
+
+### Independent review
+
+- Task 83 authenticated archive review: **`SPEC COMPLIANCE: PASS`; `CODE QUALITY/SECURITY: PASS`**.
+- Final whole-branch correctness/security review: pending at this appendix commit; the independent review runs against this committed record, and its verdict is recorded before PR creation.
