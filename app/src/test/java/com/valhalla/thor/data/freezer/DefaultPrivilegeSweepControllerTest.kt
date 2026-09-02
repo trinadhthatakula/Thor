@@ -4,12 +4,7 @@
 package com.valhalla.thor.data.freezer
 
 import android.app.NotificationManager
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.work.OneTimeWorkRequest
-import androidx.work.Operation
-import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.SettableFuture
 import com.valhalla.thor.data.backup.job.ThorJobNotificationCapability
 import com.valhalla.thor.data.backup.job.jobNotificationsAvailable
 import com.valhalla.thor.domain.model.FreezerMode
@@ -35,7 +30,6 @@ import com.valhalla.thor.domain.repository.StoredSweepTerminal
 import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import com.valhalla.thor.domain.repository.SweepCreateResult
 import java.util.UUID
-import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
@@ -984,18 +978,14 @@ class DefaultPrivilegeSweepControllerTest {
             operations += operation
         }
 
-        override fun enqueue(work: OneTimeWorkRequest): Operation {
+        override suspend fun enqueue(work: OneTimeWorkRequest): Boolean {
             enqueued += work
             onEnqueue?.invoke(work)
             enqueueStarted.complete(Unit)
             val operation = operations.removeFirstOrNull() ?: TestOperation.succeeded()
-            operation.result.addListener(
-                {
-                    onEnqueueSettled?.invoke(work, runCatching { operation.result.get() }.isSuccess)
-                },
-                Executor { it.run() },
-            )
-            return operation
+            val succeeded = runCatching { operation.awaitSettlement() }.isSuccess
+            onEnqueueSettled?.invoke(work, succeeded)
+            return succeeded
         }
 
         override fun observeState(workId: UUID): Flow<SweepWorkState?> = flow {
@@ -1015,19 +1005,19 @@ class DefaultPrivilegeSweepControllerTest {
         }
     }
 
-    private class TestOperation private constructor() : Operation {
-        private val mutableState = MutableLiveData<Operation.State>(Operation.IN_PROGRESS)
-        private val future = SettableFuture.create<Operation.State.SUCCESS>()
+    private class TestOperation private constructor() {
+        private val settlement = CompletableDeferred<Unit>()
 
-        override fun getState(): LiveData<Operation.State> = mutableState
-        override fun getResult(): ListenableFuture<Operation.State.SUCCESS> = future
+        suspend fun awaitSettlement() {
+            settlement.await()
+        }
 
         fun succeed() {
-            future.set(Operation.SUCCESS)
+            settlement.complete(Unit)
         }
 
         fun fail(throwable: Throwable) {
-            future.setException(throwable)
+            settlement.completeExceptionally(throwable)
         }
 
         companion object {

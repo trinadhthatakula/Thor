@@ -7,7 +7,6 @@ import android.content.Context
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -122,10 +121,7 @@ class DefaultPrivilegeSweepController internal constructor(
                     )
 
                     is SweepCreateResult.Created -> {
-                        val enqueued = enqueueUniqueJob(THOR_SWEEP_CHAIN, work) {
-                            workManager.enqueue(work)
-                        }
-                        if (enqueued == null) {
+                        if (!workManager.enqueue(work)) {
                             store.delete(created.snapshot.requestId)
                             PrivilegeSweepLaunchResult.Rejected(
                                 PrivilegeSweepLaunchRejection.EnqueueFailed(
@@ -240,7 +236,7 @@ class DefaultPrivilegeSweepController internal constructor(
     }
 }
 
-/** The real WorkManager adapter. Tests substitute a deterministic operation and state source. */
+/** The real WorkManager adapter. Tests substitute deterministic enqueue settlement and state. */
 @Single(binds = [PrivilegeSweepWorkManager::class])
 internal class WorkManagerPrivilegeSweepWorkManager(
     private val context: Context,
@@ -248,12 +244,14 @@ internal class WorkManagerPrivilegeSweepWorkManager(
     private val workManager: WorkManager
         get() = WorkManager.getInstance(context)
 
-    override fun enqueue(work: OneTimeWorkRequest): Operation =
-        workManager.beginUniqueWork(
-            THOR_SWEEP_CHAIN,
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
-            work,
-        ).enqueue()
+    override suspend fun enqueue(work: OneTimeWorkRequest): Boolean =
+        enqueueUniqueJob(THOR_SWEEP_CHAIN, work) {
+            workManager.beginUniqueWork(
+                THOR_SWEEP_CHAIN,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                work,
+            ).enqueue()
+        } != null
 
     override fun observeState(workId: UUID): Flow<SweepWorkState?> =
         workManager.getWorkInfoByIdFlow(workId).map { it?.state?.toSweepState() }

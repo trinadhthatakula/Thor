@@ -23,7 +23,7 @@ internal enum class SweepWorkState {
 
 /** The narrow WorkManager surface needed by launch, observation, and reconciliation. */
 internal interface PrivilegeSweepWorkManager {
-    fun enqueue(work: androidx.work.OneTimeWorkRequest): androidx.work.Operation
+    suspend fun enqueue(work: androidx.work.OneTimeWorkRequest): Boolean
     fun observeState(workId: UUID): Flow<SweepWorkState?>
     suspend fun currentState(workId: UUID): SweepWorkState?
 }
