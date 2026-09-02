@@ -78,10 +78,20 @@ class SystemRepositoryImpl(
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemRepository, AppDataProbe {
 
+    private val activeGatewayResolver = ActiveGatewayResolver(
+        preferredMode = {
+            preferenceRepository.userPreferences.first().preferredPrivilegeMode
+        },
+        rootAvailable = { execution -> rootGateway.isRootAvailable(execution) },
+        shizukuAvailable = shizukuGateway::isShizukuAvailable,
+        dhizukuAvailable = dhizukuGateway::isDhizukuAvailable,
+        elapsedRealtimeMs = SystemClock::elapsedRealtime,
+    )
+
     override suspend fun isRootAvailable(
         execution: PrivilegeExecutionContext,
     ): Boolean = withContext(ioDispatcher) {
-        rootGateway.isRootAvailable(execution)
+        activeGatewayResolver.isRootAvailable(execution)
     }
 
     // The gateway probes confine their blocking binder IPC to IO themselves, so no extra
@@ -90,75 +100,14 @@ class SystemRepositoryImpl(
 
     override suspend fun isDhizukuAvailable(): Boolean = dhizukuGateway.isDhizukuAvailable()
 
-    // Short-lived cache of the resolved gateway. Batch operations (bulk freeze/unfreeze) call
-    // getActiveGateway() once per app, and every resolution does a DataStore read plus one or
-    // more availability binder-IPC probes. Caching the resolved gateway for a few seconds lets a
-    // whole batch reuse a single resolution instead of re-probing for each app. The short TTL
-    // keeps staleness bounded: a privilege-mode change is picked up within the TTL, and a gateway
-    // that dies mid-batch still fails its individual action gracefully.
-    @Volatile
-    private var cachedGateway: SystemGateway? = null
-
-    @Volatile
-    private var cachedGatewayExpiryMs: Long = 0L
-
-    // Cached entry point. Returns the cached gateway while fresh, otherwise resolves and (on
-    // success) refreshes the cache. Resolution semantics live in resolveActiveGateway().
     private suspend fun getActiveGateway(
         execution: PrivilegeExecutionContext,
-    ): Result<SystemGateway> {
-        val now = SystemClock.elapsedRealtime()
-        cachedGateway?.let { cached ->
-            if (now < cachedGatewayExpiryMs) return Result.success(cached)
-        }
-
-        val result = resolveActiveGateway(execution)
-        result.fold(
-            onSuccess = {
-                cachedGateway = it
-                cachedGatewayExpiryMs = now + GATEWAY_CACHE_TTL_MS
-            },
-            onFailure = { cachedGateway = null }
-        )
-        return result
-    }
-
-    // Dynamic Resolution Strategy: Respect user preference if available, else auto-detect.
-    // Must be suspend because checking root and reading preferences are suspend operations.
-    //
-    // Probes are evaluated lazily and short-circuit in Root -> Shizuku -> Dhizuku order so a
-    // privileged action only pays for the probes it actually needs (a root user hits one probe,
-    // not three). The root probe in particular can spawn a shell, so avoiding the eager
-    // "probe all three every call" pattern removes redundant IPC on every batched app action.
-    // Selection semantics are identical to probing all three up front.
-    private suspend fun resolveActiveGateway(
-        execution: PrivilegeExecutionContext,
-    ): Result<SystemGateway> {
-        val prefs = preferenceRepository.userPreferences.first()
-
-        // 1. Try User Preference — probe only the preferred source.
-        when (prefs.preferredPrivilegeMode) {
-            PrivilegeMode.ROOT -> if (rootGateway.isRootAvailable(execution)) return Result.success(
-                rootGateway
-            )
-
-            PrivilegeMode.SHIZUKU -> if (shizukuGateway.isShizukuAvailable()) return Result.success(
-                shizukuGateway
-            )
-
-            PrivilegeMode.DHIZUKU -> if (dhizukuGateway.isDhizukuAvailable()) return Result.success(
-                dhizukuGateway
-            )
-            // NONE is never persisted as a preference; null means "auto". Both fall through.
-            PrivilegeMode.NONE, null -> Unit
-        }
-
-        // 2. Fallback to Auto-Detection — stop at the first available source.
-        return when {
-            rootGateway.isRootAvailable(execution) -> Result.success(rootGateway)
-            shizukuGateway.isShizukuAvailable() -> Result.success(shizukuGateway)
-            dhizukuGateway.isDhizukuAvailable() -> Result.success(dhizukuGateway)
-            else -> Result.failure(IllegalStateException("No privileged gateway available (Root, Shizuku or Dhizuku required)"))
+    ): Result<SystemGateway> = activeGatewayResolver.resolve(execution).map { mode ->
+        when (mode) {
+            PrivilegeMode.ROOT -> rootGateway
+            PrivilegeMode.SHIZUKU -> shizukuGateway
+            PrivilegeMode.DHIZUKU -> dhizukuGateway
+            PrivilegeMode.NONE -> error("NONE is not an active gateway")
         }
     }
 
@@ -191,7 +140,7 @@ class SystemRepositoryImpl(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Long?> = withContext(ioDispatcher) {
-        if (!rootGateway.isRootAvailable(execution)) {
+        if (!activeGatewayResolver.isRootAvailable(execution)) {
             return@withContext Result.failure(
                 Exception("Clearing one app's cache requires Root. Shizuku and Dhizuku can only clear every app's cache at once.")
             )
@@ -294,7 +243,7 @@ class SystemRepositoryImpl(
         reason: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        if (rootGateway.isRootAvailable(execution)) {
+        if (activeGatewayResolver.isRootAvailable(execution)) {
             rootGateway.rebootDevice(reason, execution)
         } else {
             Result.failure(Exception("Reboot requires Root access"))
@@ -322,7 +271,7 @@ class SystemRepositoryImpl(
         destinationPath: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        if (rootGateway.isRootAvailable(execution)) {
+        if (activeGatewayResolver.isRootAvailable(execution)) {
             try {
                 rootGateway.copyFile(sourcePath, destinationPath, execution)
                 Result.success(Unit)
@@ -341,7 +290,7 @@ class SystemRepositoryImpl(
         execution: PrivilegeExecutionContext,
     ): Result<List<String>> = withContext(ioDispatcher) {
         try {
-            if (rootGateway.isRootAvailable(execution)) {
+            if (activeGatewayResolver.isRootAvailable(execution)) {
                 val paths = rootGateway.getAppPaths(packageName, execution)
                 if (paths.isNotEmpty()) Result.success(paths)
                 else Result.failure(Exception("No paths found"))
@@ -530,9 +479,6 @@ class SystemRepositoryImpl(
     }
 
     private companion object {
-        // TTL for the resolved-gateway cache; ~3s comfortably covers a single batch operation
-        // while keeping privilege/availability staleness bounded.
-        private const val GATEWAY_CACHE_TTL_MS = 3_000L
         val OBB_PROBE = PrivilegeCommandClass("obb.probe")
         private val ARCHIVE_MEASURE = PrivilegeCommandClass("archive.measure")
     }
