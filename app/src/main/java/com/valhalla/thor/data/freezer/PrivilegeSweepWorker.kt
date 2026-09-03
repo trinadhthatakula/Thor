@@ -18,6 +18,9 @@ import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.repository.PrivilegeSweepStore
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.StoredSweepTerminal
+import com.valhalla.thor.util.ServiceQueueEvent
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -64,6 +67,10 @@ internal class PrivilegeSweepRunner(
                 }
                 if (!admitted) return settledOutcome(requestId, noteResult)
 
+                ServiceQueueLatencyProbe.mark(
+                    ServiceQueueOperation.PRIVILEGE_SWEEP,
+                    ServiceQueueEvent.FIRST_OPERATION,
+                )
                 val outcome = executor.execute(snapshot, packageName)
                 val recorded = withContext(NonCancellable + ioDispatcher) {
                     store.recordAttempt(requestId, outcome)

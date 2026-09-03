@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -32,6 +33,9 @@ import androidx.compose.ui.window.DialogProperties
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import com.valhalla.thor.util.ServiceQueueEvent
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
@@ -131,7 +135,15 @@ fun FreezeLoggerDialog(
         ),
     ) {
         Surface(
-            modifier = modifier,
+            modifier = modifier.drawWithContent {
+                drawContent()
+                if (state.isActive) {
+                    ServiceQueueLatencyProbe.mark(
+                        ServiceQueueOperation.PRIVILEGE_SWEEP,
+                        ServiceQueueEvent.LOGGER_VISIBLE,
+                    )
+                }
+            },
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp,

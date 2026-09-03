@@ -24,6 +24,9 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.bundleFileNameFor
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.util.ServiceQueueEvent
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
@@ -458,6 +461,10 @@ class AppBundleBuilderImpl(
                     currentCoroutineContext().ensureActive()
                     val read = input.read(buffer)
                     if (read == -1) break
+                    ServiceQueueLatencyProbe.mark(
+                        ServiceQueueOperation.EXPORT,
+                        ServiceQueueEvent.FIRST_OPERATION,
+                    )
                     output.write(buffer, 0, read)
                 }
             }

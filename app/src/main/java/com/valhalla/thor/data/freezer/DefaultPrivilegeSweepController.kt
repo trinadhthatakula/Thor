@@ -32,6 +32,9 @@ import com.valhalla.thor.domain.repository.PrivilegeSweepStore
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.StoredSweepTerminal
 import com.valhalla.thor.domain.repository.SweepCreateResult
+import com.valhalla.thor.util.ServiceQueueEvent
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -101,7 +104,7 @@ class DefaultPrivilegeSweepController internal constructor(
                 // explicitly because this block itself is NonCancellable.
                 callerJob?.ensureActive()
 
-                when (val created = store.createOrFindEquivalent(
+                val created = store.createOrFindEquivalent(
                     NewPrivilegeSweepSnapshot(
                         requestId = requestId,
                         workId = work.id,
@@ -113,7 +116,12 @@ class DefaultPrivilegeSweepController internal constructor(
                         targets = targets,
                         sourceAssociations = spec.sourceAssociations,
                     )
-                )) {
+                )
+                ServiceQueueLatencyProbe.mark(
+                    ServiceQueueOperation.PRIVILEGE_SWEEP,
+                    ServiceQueueEvent.DURABLE_ACCEPTED,
+                )
+                when (created) {
                     is SweepCreateResult.Equivalent -> PrivilegeSweepLaunchResult.Accepted(
                         requestId = created.snapshot.requestId,
                         workId = created.snapshot.workId,

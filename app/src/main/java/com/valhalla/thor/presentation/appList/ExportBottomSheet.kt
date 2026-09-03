@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -70,6 +71,9 @@ import com.valhalla.thor.presentation.common.JobRunningFrame
 import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.ServiceQueueEvent
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -302,6 +306,13 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                     backgroundLabel = stringResource(R.string.export_job_background),
                     backgroundDescription = stringResource(R.string.export_job_background_desc),
                     onBackground = onDismiss,
+                    modifier = Modifier.drawWithContent {
+                        drawContent()
+                        ServiceQueueLatencyProbe.mark(
+                            ServiceQueueOperation.EXPORT,
+                            ServiceQueueEvent.LOGGER_VISIBLE,
+                        )
+                    },
                 )
 
                 finished is JobFinish.Succeeded -> {
@@ -462,6 +473,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                         }
                         Button(
                             onClick = {
+                                ServiceQueueLatencyProbe.begin(ServiceQueueOperation.EXPORT)
                                 // A custom SAF folder writes via DocumentFile and needs no
                                 // WRITE_EXTERNAL_STORAGE — only the legacy Downloads path (API <= 28)
                                 // does.

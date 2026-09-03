@@ -12,6 +12,9 @@ import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.jobTag
 import com.valhalla.thor.domain.repository.ExportJobLauncher
 import com.valhalla.thor.domain.repository.ThorJobWatcher
+import com.valhalla.thor.util.ServiceQueueEvent
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import org.koin.core.annotation.Single
 
@@ -58,6 +61,11 @@ class ExportJobLauncherImpl(
             .addTag(jobTag(ThorJobKind.APP_EXPORT, request.packageName))
             .build()
 
-        return enqueueUniqueJob(context, THOR_JOB_CHAIN, work)
+        return enqueueUniqueJob(context, THOR_JOB_CHAIN, work)?.also {
+            ServiceQueueLatencyProbe.mark(
+                ServiceQueueOperation.EXPORT,
+                ServiceQueueEvent.DURABLE_ACCEPTED,
+            )
+        }
     }
 }
