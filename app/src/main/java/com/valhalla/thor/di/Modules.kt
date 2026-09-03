@@ -15,6 +15,7 @@ import com.valhalla.thor.data.gateway.root.OwnedRootShellExecutor
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.ComponentOverrideDao
+import com.valhalla.thor.data.source.local.room.DataTaskDao
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
 import com.valhalla.thor.data.source.local.room.PrivilegeSweepDao
@@ -64,7 +65,7 @@ class AppModule {
     @Single
     fun appDatabase(context: Context): AppDatabase {
         val builder = Room.databaseBuilder(context, AppDatabase::class.java, "thor_database")
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_8_9)
 
         if (BuildConfig.DEBUG) {
             builder.fallbackToDestructiveMigration(dropAllTables = true)
@@ -92,6 +93,9 @@ class AppModule {
     @Single
     fun privilegeSweepDao(appDatabase: AppDatabase): PrivilegeSweepDao =
         appDatabase.privilegeSweepDao()
+
+    @Single
+    fun dataTaskDao(appDatabase: AppDatabase): DataTaskDao = appDatabase.dataTaskDao()
 
     @Single
     @Named("archive")
@@ -145,5 +149,11 @@ class AppModule {
         breadcrumbs: ArchiveBreadcrumbStore,
         context: Context,
     ): ArchiveOrphanSweeper =
-        ArchiveOrphanSweeper(ledger, archiveStore, breadcrumbs, context.cacheDir, context.externalCacheDir)
+        ArchiveOrphanSweeper(
+            ledger,
+            archiveStore,
+            breadcrumbs,
+            context.cacheDir,
+            context.externalCacheDir
+        )
 }

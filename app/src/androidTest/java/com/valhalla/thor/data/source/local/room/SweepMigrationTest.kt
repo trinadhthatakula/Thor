@@ -8,6 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -85,6 +86,185 @@ class SweepMigrationTest {
         migrated.close()
     }
 
+    @Test
+    fun migrate8To9_createsDataTablesAndPreservesSweepRows() {
+        helper.createDatabase(TEST_DATABASE, 8).apply {
+            seedVersion8Sweep(
+                requestId = "request-preserved",
+                workId = "work-preserved",
+                terminalState = null,
+                succeeded = null,
+                failed = null,
+                busy = null,
+                unresolved = null,
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            9,
+            true,
+            AppDatabase.MIGRATION_8_9,
+        )
+
+        DATA_TABLES.forEach { table -> assertEquals(0, migrated.rowCount(table)) }
+        assertEquals(1, migrated.rowCount("sweep_requests"))
+        assertEquals(2, migrated.rowCount("sweep_targets"))
+        assertEquals(2, migrated.rowCount("sweep_request_sources"))
+        assertEquals("work-preserved", migrated.stringValue("sweep_requests", "work_id"))
+        assertEquals("CLEAR_CACHE", migrated.stringValue("sweep_requests", "operation"))
+        assertEquals("request-preserved", migrated.stringValue("sweep_requests", "execution_id"))
+        assertEquals(1, migrated.intValue("sweep_requests", "payload_schema_version"))
+        assertTrue(migrated.longValue("sweep_requests", "queue_sequence") > 0L)
+        migrated.close()
+    }
+
+    @Test
+    fun migrate8To9_nonterminalSweepPreservesOrdinalAndSourcesAndMapsEveryTargetLegacyUnknown() {
+        helper.createDatabase(TEST_DATABASE, 8).apply {
+            seedVersion8Sweep(
+                requestId = "request-active",
+                workId = "work-active",
+                terminalState = null,
+                succeeded = 1,
+                failed = 0,
+                busy = 0,
+                unresolved = 1,
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            9,
+            true,
+            AppDatabase.MIGRATION_8_9,
+        )
+
+        assertEquals("BLOCKED", migrated.stringValue("sweep_requests", "state"))
+        assertEquals(0, migrated.intValue("sweep_requests", "succeeded"))
+        assertEquals(0, migrated.intValue("sweep_requests", "failed"))
+        assertEquals(0, migrated.intValue("sweep_requests", "busy"))
+        assertEquals(2, migrated.intValue("sweep_requests", "unresolved"))
+        assertEquals(
+            listOf(0 to "a.pkg", 1 to "z.pkg"),
+            migrated.targetOrdinalsAndPackages("request-active"),
+        )
+        assertEquals(
+            listOf("LEGACY_UNKNOWN", "LEGACY_UNKNOWN"),
+            migrated.targetStates("request-active"),
+        )
+        assertEquals(
+            listOf("FREEZER", "QS_TILE"),
+            migrated.sourceSurfaces("request-active"),
+        )
+        migrated.close()
+    }
+
+    @Test
+    fun migrate8To9_terminalSweepPreservesHistoryWithoutInventingPerTargetSuccess() {
+        helper.createDatabase(TEST_DATABASE, 8).apply {
+            seedVersion8Sweep(
+                requestId = "request-terminal",
+                workId = "work-terminal",
+                terminalState = "PARTIAL",
+                succeeded = 1,
+                failed = 1,
+                busy = 0,
+                unresolved = 0,
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            9,
+            true,
+            AppDatabase.MIGRATION_8_9,
+        )
+
+        assertEquals("PARTIAL", migrated.stringValue("sweep_requests", "state"))
+        assertEquals("PARTIAL", migrated.stringValue("sweep_requests", "terminal_state"))
+        assertEquals(1, migrated.intValue("sweep_requests", "succeeded"))
+        assertEquals(1, migrated.intValue("sweep_requests", "failed"))
+        assertEquals(0, migrated.intValue("sweep_requests", "busy"))
+        assertEquals(0, migrated.intValue("sweep_requests", "unresolved"))
+        assertEquals(
+            listOf("LEGACY_UNKNOWN", "LEGACY_UNKNOWN"),
+            migrated.targetStates("request-terminal"),
+        )
+        migrated.close()
+    }
+
+    @Test
+    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema9() {
+        (1..8).forEach { startVersion ->
+            val databaseName = "$TEST_DATABASE-chain-$startVersion"
+            helper.createDatabase(databaseName, startVersion).close()
+
+            helper.runMigrationsAndValidate(
+                databaseName,
+                9,
+                true,
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_8_9,
+            ).close()
+        }
+    }
+
+    private fun SupportSQLiteDatabase.seedVersion8Sweep(
+        requestId: String,
+        workId: String,
+        terminalState: String?,
+        succeeded: Int?,
+        failed: Int?,
+        busy: Int?,
+        unresolved: Int?,
+    ) {
+        execSQL(
+            """
+            INSERT INTO sweep_requests (
+                request_id, work_id, operation, freezer_mode, user_id, source_surface,
+                created_at_epoch_ms, terminal_state, succeeded, failed, busy, unresolved,
+                terminal_at_epoch_ms, retain_until_epoch_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf<Any?>(
+                requestId,
+                workId,
+                "CLEAR_CACHE",
+                null,
+                10,
+                "FREEZER",
+                1_234L,
+                terminalState,
+                succeeded,
+                failed,
+                busy,
+                unresolved,
+                terminalState?.let { 2_000L },
+                terminalState?.let { 3_000L },
+            ),
+        )
+        listOf(0 to "a.pkg", 1 to "z.pkg").forEach { (ordinal, packageName) ->
+            execSQL(
+                "INSERT INTO sweep_targets (request_id, ordinal, package_name) VALUES (?, ?, ?)",
+                arrayOf<Any?>(requestId, ordinal, packageName),
+            )
+        }
+        listOf("FREEZER" to 1_234L, "QS_TILE" to 1_500L).forEach { (source, time) ->
+            execSQL(
+                """
+                INSERT INTO sweep_request_sources (
+                    request_id, source_surface, associated_at_epoch_ms
+                ) VALUES (?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(requestId, source, time),
+            )
+        }
+    }
+
     private fun SupportSQLiteDatabase.seedEveryVersion7Table() {
         execSQL(
             """
@@ -125,6 +305,57 @@ class SweepMigrationTest {
             cursor.getInt(0)
         }
 
+    private fun SupportSQLiteDatabase.stringValue(table: String, column: String): String =
+        query("SELECT `$column` FROM `$table` LIMIT 1").use { cursor ->
+            check(cursor.moveToFirst()) { "No row in $table" }
+            cursor.getString(0)
+        }
+
+    private fun SupportSQLiteDatabase.intValue(table: String, column: String): Int =
+        query("SELECT `$column` FROM `$table` LIMIT 1").use { cursor ->
+            check(cursor.moveToFirst()) { "No row in $table" }
+            cursor.getInt(0)
+        }
+
+    private fun SupportSQLiteDatabase.longValue(table: String, column: String): Long =
+        query("SELECT `$column` FROM `$table` LIMIT 1").use { cursor ->
+            check(cursor.moveToFirst()) { "No row in $table" }
+            cursor.getLong(0)
+        }
+
+    private fun SupportSQLiteDatabase.targetOrdinalsAndPackages(requestId: String): List<Pair<Int, String>> =
+        query(
+            "SELECT ordinal, package_name FROM sweep_targets WHERE request_id = ? ORDER BY ordinal",
+            arrayOf(requestId),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getInt(0) to cursor.getString(1))
+            }
+        }
+
+    private fun SupportSQLiteDatabase.targetStates(requestId: String): List<String> =
+        query(
+            "SELECT state FROM sweep_targets WHERE request_id = ? ORDER BY ordinal",
+            arrayOf(requestId),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
+
+    private fun SupportSQLiteDatabase.sourceSurfaces(requestId: String): List<String> =
+        query(
+            """
+            SELECT source_surface FROM sweep_request_sources
+            WHERE request_id = ? ORDER BY associated_at_epoch_ms, source_surface
+            """.trimIndent(),
+            arrayOf(requestId),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
+
     private companion object {
         const val TEST_DATABASE = "sweep-migration-test"
         val VERSION_7_TABLES = listOf(
@@ -134,6 +365,13 @@ class SweepMigrationTest {
             "freeze_profiles",
             "freeze_profile_apps",
             "component_overrides",
+        )
+        val DATA_TABLES = listOf(
+            "data_tasks",
+            "archive_task_details",
+            "export_task_details",
+            "data_task_items",
+            "data_task_outputs",
         )
     }
 }

@@ -1,0 +1,1239 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 9,
+    "identityHash": "9bb85145ecf79f76a3e783b3c0894619",
+    "entities": [
+      {
+        "tableName": "apps",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`packageName` TEXT NOT NULL, `appName` TEXT, `versionName` TEXT, `versionCode` INTEGER NOT NULL, `minSdk` INTEGER NOT NULL, `targetSdk` INTEGER NOT NULL, `isSystem` INTEGER NOT NULL, `installerPackageName` TEXT, `publicSourceDir` TEXT, `splitPublicSourceDirs` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `dataDir` TEXT, `nativeLibraryDir` TEXT, `deviceProtectedDataDir` TEXT, `sharedLibraryFiles` TEXT, `obbFilePath` TEXT, `sourceDir` TEXT, `sharedDataDir` TEXT NOT NULL, `lastUpdateTime` INTEGER NOT NULL, `firstInstallTime` INTEGER NOT NULL, `isDebuggable` INTEGER NOT NULL, `isSuspended` INTEGER NOT NULL, `installSize` INTEGER, PRIMARY KEY(`packageName`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appName",
+            "columnName": "appName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "versionName",
+            "columnName": "versionName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "versionCode",
+            "columnName": "versionCode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minSdk",
+            "columnName": "minSdk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetSdk",
+            "columnName": "targetSdk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSystem",
+            "columnName": "isSystem",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installerPackageName",
+            "columnName": "installerPackageName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "publicSourceDir",
+            "columnName": "publicSourceDir",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "splitPublicSourceDirs",
+            "columnName": "splitPublicSourceDirs",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataDir",
+            "columnName": "dataDir",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nativeLibraryDir",
+            "columnName": "nativeLibraryDir",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deviceProtectedDataDir",
+            "columnName": "deviceProtectedDataDir",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sharedLibraryFiles",
+            "columnName": "sharedLibraryFiles",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "obbFilePath",
+            "columnName": "obbFilePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceDir",
+            "columnName": "sourceDir",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sharedDataDir",
+            "columnName": "sharedDataDir",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUpdateTime",
+            "columnName": "lastUpdateTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstInstallTime",
+            "columnName": "firstInstallTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDebuggable",
+            "columnName": "isDebuggable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSuspended",
+            "columnName": "isSuspended",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installSize",
+            "columnName": "installSize",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "packageName"
+          ]
+        }
+      },
+      {
+        "tableName": "freezer_apps",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`packageName` TEXT NOT NULL, PRIMARY KEY(`packageName`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "packageName"
+          ]
+        }
+      },
+      {
+        "tableName": "extension_data",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`extensionPackageName` TEXT NOT NULL, `key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`extensionPackageName`, `key`))",
+        "fields": [
+          {
+            "fieldPath": "extensionPackageName",
+            "columnName": "extensionPackageName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "extensionPackageName",
+            "key"
+          ]
+        }
+      },
+      {
+        "tableName": "freeze_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL COLLATE NOCASE, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_freeze_profiles_name",
+            "unique": true,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_freeze_profiles_name` ON `${TABLE_NAME}` (`name`)"
+          }
+        ]
+      },
+      {
+        "tableName": "freeze_profile_apps",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profileId` INTEGER NOT NULL, `packageName` TEXT NOT NULL, PRIMARY KEY(`profileId`, `packageName`), FOREIGN KEY(`profileId`) REFERENCES `freeze_profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profileId",
+            "packageName"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_freeze_profile_apps_packageName",
+            "unique": false,
+            "columnNames": [
+              "packageName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_freeze_profile_apps_packageName` ON `${TABLE_NAME}` (`packageName`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "freeze_profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "component_overrides",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`packageName` TEXT NOT NULL, `className` TEXT NOT NULL, `userId` INTEGER NOT NULL, `componentType` TEXT NOT NULL, `restoreToEnabled` INTEGER NOT NULL, `disabledAt` INTEGER NOT NULL, PRIMARY KEY(`packageName`, `className`, `userId`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "className",
+            "columnName": "className",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "componentType",
+            "columnName": "componentType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "restoreToEnabled",
+            "columnName": "restoreToEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "disabledAt",
+            "columnName": "disabledAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "packageName",
+            "className",
+            "userId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_component_overrides_packageName",
+            "unique": false,
+            "columnNames": [
+              "packageName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_component_overrides_packageName` ON `${TABLE_NAME}` (`packageName`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sweep_requests",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`request_id` TEXT NOT NULL, `work_id` TEXT NOT NULL, `operation` TEXT NOT NULL, `freezer_mode` TEXT, `user_id` INTEGER NOT NULL, `source_surface` TEXT NOT NULL, `created_at_epoch_ms` INTEGER NOT NULL, `terminal_state` TEXT, `succeeded` INTEGER NOT NULL, `failed` INTEGER NOT NULL, `busy` INTEGER NOT NULL, `unresolved` INTEGER NOT NULL, `terminal_at_epoch_ms` INTEGER, `retain_until_epoch_ms` INTEGER, `payload_schema_version` INTEGER NOT NULL, `queue_sequence` INTEGER NOT NULL, `state` TEXT NOT NULL, `execution_id` TEXT NOT NULL, `service_session_token` TEXT, `claim_token` TEXT, `claim_lease_expires_at_epoch_ms` INTEGER, `claimed_at_epoch_ms` INTEGER, `started_at_epoch_ms` INTEGER, `updated_at_epoch_ms` INTEGER NOT NULL, `attempt_count` INTEGER NOT NULL, `cancel_requested_at_epoch_ms` INTEGER, `block_reason` TEXT, `acknowledged_at_epoch_ms` INTEGER, PRIMARY KEY(`request_id`))",
+        "fields": [
+          {
+            "fieldPath": "requestId",
+            "columnName": "request_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workId",
+            "columnName": "work_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operation",
+            "columnName": "operation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "freezerMode",
+            "columnName": "freezer_mode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "user_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSurface",
+            "columnName": "source_surface",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "created_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "terminalState",
+            "columnName": "terminal_state",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "succeeded",
+            "columnName": "succeeded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failed",
+            "columnName": "failed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "busy",
+            "columnName": "busy",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unresolved",
+            "columnName": "unresolved",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "terminalAtEpochMs",
+            "columnName": "terminal_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "retainUntilEpochMs",
+            "columnName": "retain_until_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "payloadSchemaVersion",
+            "columnName": "payload_schema_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "queueSequence",
+            "columnName": "queue_sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "executionId",
+            "columnName": "execution_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serviceSessionToken",
+            "columnName": "service_session_token",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "claimToken",
+            "columnName": "claim_token",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "claimLeaseExpiresAtEpochMs",
+            "columnName": "claim_lease_expires_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "claimedAtEpochMs",
+            "columnName": "claimed_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "startedAtEpochMs",
+            "columnName": "started_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "updatedAtEpochMs",
+            "columnName": "updated_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptCount",
+            "columnName": "attempt_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cancelRequestedAtEpochMs",
+            "columnName": "cancel_requested_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "blockReason",
+            "columnName": "block_reason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "acknowledgedAtEpochMs",
+            "columnName": "acknowledged_at_epoch_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "request_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sweep_requests_work_id",
+            "unique": true,
+            "columnNames": [
+              "work_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_sweep_requests_work_id` ON `${TABLE_NAME}` (`work_id`)"
+          },
+          {
+            "name": "index_sweep_requests_queue_sequence",
+            "unique": false,
+            "columnNames": [
+              "queue_sequence"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sweep_requests_queue_sequence` ON `${TABLE_NAME}` (`queue_sequence`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sweep_targets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`request_id` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `package_name` TEXT NOT NULL, `state` TEXT NOT NULL, `claim_token` TEXT, `claim_lease_expires_at_epoch_ms` INTEGER, `attempt_count` INTEGER NOT NULL, `started_at_epoch_ms` INTEGER, `finished_at_epoch_ms` INTEGER, `result_code` TEXT, `root_lane_degraded` INTEGER NOT NULL, PRIMARY KEY(`request_id`, `ordinal`), FOREIGN KEY(`request_id`) REFERENCES `sweep_requests`(`request_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "requestId",
+            "columnName": "request_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "claimToken",
+            "columnName": "claim_token",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "claimLeaseExpiresAtEpochMs",
+            "columnName": "claim_lease_expires_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "attemptCount",
+            "columnName": "attempt_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtEpochMs",
+            "columnName": "started_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "finishedAtEpochMs",
+            "columnName": "finished_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "resultCode",
+            "columnName": "result_code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rootLaneDegraded",
+            "columnName": "root_lane_degraded",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "request_id",
+            "ordinal"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sweep_targets_request_id",
+            "unique": false,
+            "columnNames": [
+              "request_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sweep_targets_request_id` ON `${TABLE_NAME}` (`request_id`)"
+          },
+          {
+            "name": "index_sweep_targets_state",
+            "unique": false,
+            "columnNames": [
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sweep_targets_state` ON `${TABLE_NAME}` (`state`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "sweep_requests",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "request_id"
+            ],
+            "referencedColumns": [
+              "request_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "sweep_request_sources",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`request_id` TEXT NOT NULL, `source_surface` TEXT NOT NULL, `associated_at_epoch_ms` INTEGER NOT NULL, PRIMARY KEY(`request_id`, `source_surface`), FOREIGN KEY(`request_id`) REFERENCES `sweep_requests`(`request_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "requestId",
+            "columnName": "request_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSurface",
+            "columnName": "source_surface",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "associatedAtEpochMs",
+            "columnName": "associated_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "request_id",
+            "source_surface"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sweep_request_sources_request_id",
+            "unique": false,
+            "columnNames": [
+              "request_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sweep_request_sources_request_id` ON `${TABLE_NAME}` (`request_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "sweep_requests",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "request_id"
+            ],
+            "referencedColumns": [
+              "request_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "data_tasks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`task_id` TEXT NOT NULL, `queue_sequence` INTEGER NOT NULL, `payload_schema_version` INTEGER NOT NULL, `kind` TEXT NOT NULL, `state` TEXT NOT NULL, `target_key` TEXT NOT NULL, `service_session_token` TEXT, `claim_token` TEXT, `claim_lease_expires_at_epoch_ms` INTEGER, `attempt_count` INTEGER NOT NULL, `cancel_requested_at_epoch_ms` INTEGER, `stage` TEXT, `interruption` TEXT, `completed` INTEGER NOT NULL, `total` INTEGER NOT NULL, `result_code` TEXT, `created_at_epoch_ms` INTEGER NOT NULL, `claimed_at_epoch_ms` INTEGER, `started_at_epoch_ms` INTEGER, `updated_at_epoch_ms` INTEGER NOT NULL, `terminal_at_epoch_ms` INTEGER, `retain_until_epoch_ms` INTEGER, `acknowledged_at_epoch_ms` INTEGER, PRIMARY KEY(`task_id`))",
+        "fields": [
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "queueSequence",
+            "columnName": "queue_sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadSchemaVersion",
+            "columnName": "payload_schema_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetKey",
+            "columnName": "target_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serviceSessionToken",
+            "columnName": "service_session_token",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "claimToken",
+            "columnName": "claim_token",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "claimLeaseExpiresAtEpochMs",
+            "columnName": "claim_lease_expires_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "attemptCount",
+            "columnName": "attempt_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cancelRequestedAtEpochMs",
+            "columnName": "cancel_requested_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "stage",
+            "columnName": "stage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "interruption",
+            "columnName": "interruption",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completed",
+            "columnName": "completed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "total",
+            "columnName": "total",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resultCode",
+            "columnName": "result_code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "created_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "claimedAtEpochMs",
+            "columnName": "claimed_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "startedAtEpochMs",
+            "columnName": "started_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "updatedAtEpochMs",
+            "columnName": "updated_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "terminalAtEpochMs",
+            "columnName": "terminal_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "retainUntilEpochMs",
+            "columnName": "retain_until_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "acknowledgedAtEpochMs",
+            "columnName": "acknowledged_at_epoch_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "task_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_data_tasks_queue_sequence",
+            "unique": true,
+            "columnNames": [
+              "queue_sequence"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_data_tasks_queue_sequence` ON `${TABLE_NAME}` (`queue_sequence`)"
+          }
+        ]
+      },
+      {
+        "tableName": "archive_task_details",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`task_id` TEXT NOT NULL, `package_name` TEXT NOT NULL, `data_class_ids_json` TEXT NOT NULL, `include_bundle` INTEGER, `kdf_salt_base64` TEXT, `destination_kind` TEXT, `destination_grant_identity` TEXT, `restore_obb` INTEGER, `restore_source_kind` TEXT, `restore_source_grant_identity` TEXT, `restore_source_private_relative_path` TEXT, `deterministic_staging_identity` TEXT NOT NULL, `destructive_started` INTEGER NOT NULL, `mutation_package_name` TEXT, `mutation_app_label` TEXT, `mutation_started_at_epoch_ms` INTEGER, PRIMARY KEY(`task_id`), FOREIGN KEY(`task_id`) REFERENCES `data_tasks`(`task_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataClassIdsJson",
+            "columnName": "data_class_ids_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "includeBundle",
+            "columnName": "include_bundle",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "kdfSaltBase64",
+            "columnName": "kdf_salt_base64",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "destinationKind",
+            "columnName": "destination_kind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "destinationGrantIdentity",
+            "columnName": "destination_grant_identity",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "restoreObb",
+            "columnName": "restore_obb",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "restoreSourceKind",
+            "columnName": "restore_source_kind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "restoreSourceGrantIdentity",
+            "columnName": "restore_source_grant_identity",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "restoreSourcePrivateRelativePath",
+            "columnName": "restore_source_private_relative_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deterministicStagingIdentity",
+            "columnName": "deterministic_staging_identity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "destructiveStarted",
+            "columnName": "destructive_started",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mutationPackageName",
+            "columnName": "mutation_package_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mutationAppLabel",
+            "columnName": "mutation_app_label",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mutationStartedAtEpochMs",
+            "columnName": "mutation_started_at_epoch_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "task_id"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "data_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id"
+            ],
+            "referencedColumns": [
+              "task_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "export_task_details",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`task_id` TEXT NOT NULL, `requested_format` TEXT NOT NULL, `destination_kind` TEXT, `destination_grant_identity` TEXT, `naming_label` TEXT, `publication_policy` TEXT NOT NULL, `deterministic_staging_identity` TEXT NOT NULL, PRIMARY KEY(`task_id`), FOREIGN KEY(`task_id`) REFERENCES `data_tasks`(`task_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestedFormat",
+            "columnName": "requested_format",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "destinationKind",
+            "columnName": "destination_kind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "destinationGrantIdentity",
+            "columnName": "destination_grant_identity",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "namingLabel",
+            "columnName": "naming_label",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "publicationPolicy",
+            "columnName": "publication_policy",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deterministicStagingIdentity",
+            "columnName": "deterministic_staging_identity",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "task_id"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "data_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id"
+            ],
+            "referencedColumns": [
+              "task_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "data_task_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`task_id` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `package_name` TEXT NOT NULL, `display_label` TEXT, `state` TEXT NOT NULL, `claim_token` TEXT, `claim_lease_expires_at_epoch_ms` INTEGER, `attempt_count` INTEGER NOT NULL, `result_code` TEXT, `deterministic_staging_identity` TEXT NOT NULL, `started_at_epoch_ms` INTEGER, `finished_at_epoch_ms` INTEGER, PRIMARY KEY(`task_id`, `ordinal`), FOREIGN KEY(`task_id`) REFERENCES `data_tasks`(`task_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayLabel",
+            "columnName": "display_label",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "claimToken",
+            "columnName": "claim_token",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "claimLeaseExpiresAtEpochMs",
+            "columnName": "claim_lease_expires_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "attemptCount",
+            "columnName": "attempt_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resultCode",
+            "columnName": "result_code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deterministicStagingIdentity",
+            "columnName": "deterministic_staging_identity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtEpochMs",
+            "columnName": "started_at_epoch_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "finishedAtEpochMs",
+            "columnName": "finished_at_epoch_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "task_id",
+            "ordinal"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_data_task_items_task_id",
+            "unique": false,
+            "columnNames": [
+              "task_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_data_task_items_task_id` ON `${TABLE_NAME}` (`task_id`)"
+          },
+          {
+            "name": "index_data_task_items_state",
+            "unique": false,
+            "columnNames": [
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_data_task_items_state` ON `${TABLE_NAME}` (`state`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "data_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id"
+            ],
+            "referencedColumns": [
+              "task_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "data_task_outputs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`output_id` TEXT NOT NULL, `task_id` TEXT NOT NULL, `item_ordinal` INTEGER NOT NULL, `private_relative_path` TEXT, `display_name` TEXT NOT NULL, `mime_type` TEXT NOT NULL, `byte_size` INTEGER NOT NULL, `state` TEXT NOT NULL, `expires_at_epoch_ms` INTEGER, PRIMARY KEY(`output_id`), FOREIGN KEY(`task_id`) REFERENCES `data_tasks`(`task_id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`task_id`, `item_ordinal`) REFERENCES `data_task_items`(`task_id`, `ordinal`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "outputId",
+            "columnName": "output_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemOrdinal",
+            "columnName": "item_ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "privateRelativePath",
+            "columnName": "private_relative_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mime_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "byteSize",
+            "columnName": "byte_size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAtEpochMs",
+            "columnName": "expires_at_epoch_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "output_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_data_task_outputs_task_id_item_ordinal",
+            "unique": false,
+            "columnNames": [
+              "task_id",
+              "item_ordinal"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_data_task_outputs_task_id_item_ordinal` ON `${TABLE_NAME}` (`task_id`, `item_ordinal`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "data_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id"
+            ],
+            "referencedColumns": [
+              "task_id"
+            ]
+          },
+          {
+            "table": "data_task_items",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id",
+              "item_ordinal"
+            ],
+            "referencedColumns": [
+              "task_id",
+              "ordinal"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '9bb85145ecf79f76a3e783b3c0894619')"
+    ]
+  }
+}

@@ -19,7 +19,10 @@ import androidx.room.Index
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index(value = ["request_id"])],
+    indices = [
+        Index(value = ["request_id"]),
+        Index(value = ["state"]),
+    ],
 )
 data class SweepTargetEntity(
     @ColumnInfo(name = "request_id")
@@ -28,4 +31,20 @@ data class SweepTargetEntity(
     val ordinal: Int,
     @ColumnInfo(name = "package_name")
     val packageName: String,
+    @ColumnInfo(name = "state")
+    val state: String = "PENDING",
+    @ColumnInfo(name = "claim_token")
+    val claimToken: String? = null,
+    @ColumnInfo(name = "claim_lease_expires_at_epoch_ms")
+    val claimLeaseExpiresAtEpochMs: Long? = null,
+    @ColumnInfo(name = "attempt_count")
+    val attemptCount: Int = 0,
+    @ColumnInfo(name = "started_at_epoch_ms")
+    val startedAtEpochMs: Long? = null,
+    @ColumnInfo(name = "finished_at_epoch_ms")
+    val finishedAtEpochMs: Long? = null,
+    @ColumnInfo(name = "result_code")
+    val resultCode: String? = null,
+    @ColumnInfo(name = "root_lane_degraded")
+    val rootLaneDegraded: Boolean = false,
 )
