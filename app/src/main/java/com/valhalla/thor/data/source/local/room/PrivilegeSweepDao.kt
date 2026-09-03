@@ -2215,7 +2215,9 @@ abstract class PrivilegeSweepDao {
             SELECT 1 FROM sweep_requests
             WHERE state = 'QUEUED'
               AND terminal_state IS NULL
+              AND service_session_token IS NULL
               AND claim_token IS NULL
+              AND claim_lease_expires_at_epoch_ms IS NULL
               AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id

@@ -193,6 +193,43 @@ class PrivilegeSweepDaoTest {
     }
 
     @Test
+    fun partiallyOwnedQueuedRequestsAreNotRunnableOrClaimableAndRemainUnchanged() = runBlocking {
+        val partialOwnershipCases: List<Pair<String, Triple<String?, String?, Long?>>> = listOf(
+            "service session only" to Triple("orphan-session", null, null),
+            "request claim only" to Triple(null, "orphan-claim", null),
+            "request lease only" to Triple(null, null, 9_000L),
+        )
+
+        partialOwnershipCases.forEach { (label, ownership) ->
+            insertSweep(requestId = REQUEST_1)
+            seedQueuedRequestOwnership(
+                sessionToken = ownership.first,
+                claimToken = ownership.second,
+                leaseUntilMs = ownership.third,
+            )
+            val before = requireNotNull(dao.load(REQUEST_1))
+
+            assertFalse(label, dao.hasRunnableRequests())
+            assertNull(
+                label,
+                dao.claimOldestRunnableRequest("valid-session", "valid-claim", 2_000L, 3_000L),
+            )
+
+            assertEquals(label, before, requireNotNull(dao.load(REQUEST_1)))
+            deleteSweep()
+        }
+
+        insertSweep(requestId = REQUEST_1)
+        assertTrue(dao.hasRunnableRequests())
+        assertEquals(
+            REQUEST_1,
+            requireNotNull(
+                dao.claimOldestRunnableRequest("valid-session", "valid-claim", 2_000L, 3_000L),
+            ).requestId,
+        )
+    }
+
+    @Test
     fun pendingTargetClaimRejectsIncompleteOwnership() = runBlocking {
         insertSweep(
             requestId = REQUEST_1,
@@ -1516,6 +1553,23 @@ class PrivilegeSweepDaoTest {
             WHERE request_id = ? AND ordinal = ?
             """.trimIndent(),
             arrayOf<Any?>(claimToken, leaseUntilMs, requestId, ordinal),
+        )
+    }
+
+    private fun seedQueuedRequestOwnership(
+        sessionToken: String?,
+        claimToken: String?,
+        leaseUntilMs: Long?,
+    ) {
+        database.openHelper.writableDatabase.execSQL(
+            """
+            UPDATE sweep_requests
+            SET service_session_token = ?,
+                claim_token = ?,
+                claim_lease_expires_at_epoch_ms = ?
+            WHERE request_id = ?
+            """.trimIndent(),
+            arrayOf<Any?>(sessionToken, claimToken, leaseUntilMs, REQUEST_1),
         )
     }
 
