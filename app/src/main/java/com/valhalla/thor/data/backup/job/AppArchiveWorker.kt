@@ -5,11 +5,9 @@ package com.valhalla.thor.data.backup.job
 
 import android.content.Context
 import androidx.work.WorkerParameters
-import androidx.work.workDataOf
 import com.valhalla.thor.data.repository.archiveStagingVolume
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
-import com.valhalla.thor.domain.model.ArchiveBundleCacheDir
 import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveRestoreDecision
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
@@ -18,7 +16,6 @@ import com.valhalla.thor.domain.model.BACKUP_PACKAGE_KEY
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.InstalledAppFacts
-import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
 import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
@@ -27,7 +24,6 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.RESTORE_PACKAGE_KEY
 import com.valhalla.thor.domain.model.RESTORE_URI_KEY
 import com.valhalla.thor.domain.model.ThorJobKind
-import com.valhalla.thor.domain.model.captureName
 import com.valhalla.thor.domain.model.evaluateArchiveRestoreGate
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppDataProbe
@@ -46,7 +42,6 @@ import com.valhalla.thor.util.Logger
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.withContext
 import org.koin.android.annotation.KoinWorker
 import org.koin.core.annotation.Named
 
@@ -86,13 +81,13 @@ internal suspend fun runArchiveRestorePreflight(
     authenticate: suspend () -> ArchiveAuthenticationOutcome,
     readPackageFacts: suspend (String) -> ArchiveRestorePackageFacts,
     evaluateGate: (ArchiveHeader, InstalledAppFacts?, Set<DataClass>) ->
-        ArchiveRestoreDecision,
+    ArchiveRestoreDecision,
 ): ArchiveRestorePreflight {
     val authenticated = when (val outcome = authenticate()) {
         is ArchiveAuthenticationOutcome.Authenticated -> outcome
         ArchiveAuthenticationOutcome.WrongPassphrase,
         ArchiveAuthenticationOutcome.AuthenticationFailed,
-        -> return ArchiveRestorePreflight.AuthenticationRefused
+            -> return ArchiveRestorePreflight.AuthenticationRefused
     }
     val header = authenticated.header
     if (header.packageName != expectedPackageName) return ArchiveRestorePreflight.PackageMismatch
@@ -104,6 +99,7 @@ internal suspend fun runArchiveRestorePreflight(
             packageFacts = packageFacts,
             decision = decision,
         )
+
         is ArchiveRestoreDecision.Refused -> ArchiveRestorePreflight.GateRefused(decision.reason)
     }
 }
@@ -197,81 +193,97 @@ internal class ArchiveBackupWorker(
             ?.let { JobSheetTarget.Backup(packageName = it, appLabel = it) }
 
     override suspend fun runJob(): Result {
-        val request = ArchiveBackupRequest.fromMap(inputData.keyValueMap)
+        val archiveRequest = decodeLegacyArchiveBackupRequest(inputData.keyValueMap)
             ?: return fail("this backup's request could not be read")
-        val execution = archiveExecutionContext(ARCHIVE_BACKUP, request.packageName, id)
-        // Single-use, and gone if the process died: see ArchiveKeyHolder. No retry, ever.
-        val key = keys.take(id.toString())
-            ?: return fail("this backup's key is no longer in memory — start it again")
-        val appInfo = appRepository.getAppDetails(request.packageName)
-            ?: return fail("${request.packageName} is not installed")
+        val runner = ArchiveBackupTaskRunner(
+            operations = object : ArchiveBackupTaskOperations {
+                override suspend fun loadApp(packageName: String) =
+                    appRepository.getAppDetails(packageName)
 
-        // The label is now known, so the sheet a notification tap opens can be headed with it instead
-        // of `com.supercell.clashofclans`. `AppBackupViewModel.start` writes what it is handed straight
-        // into state and never looks the name up itself, so this is the only place that can fix it.
-        retargetSheet(
-            JobSheetTarget.Backup(
-                packageName = request.packageName,
-                appLabel = appInfo.appName ?: request.packageName,
-            )
-        )
-
-        var bundle: File? = null
-        return try {
-            val probe = if (request.includeBundle) {
-                systemRepository.probeObb(request.packageName, execution)
-            } else {
-                ObbProbe.None
-            }
-            if (request.includeBundle) {
-                bundle = bundleBuilder.build(
-                    appInfo = appInfo,
-                    // The shared name, not a literal: ArchiveOrphanSweeper deletes this whole subtree
-                    // at launch, and a second spelling of it would make the sweep miss.
-                    cacheSubDir = ArchiveBundleCacheDir.NAME,
-                    format = BundleFormat.XAPK,
-                    execution = execution,
-                ).getOrElse {
-                    return fail("the app's installer bundle could not be built: ${it.message}")
-                }
-            }
-
-            when (
-                // `withContext(ioDispatcher)`, symmetric with ArchiveRestoreWorker and for the same
-                // reason: `doWork()` runs on Dispatchers.Default, the use case takes no dispatcher of
-                // its own, and it blocks the caller's thread for the whole `.xapk` copy and every
-                // `encryptMember`. Left on Default, a 4 GB game pins one of that pool's few threads —
-                // 4 on a quad-core device — for minutes, against everything else in the app.
-                val outcome = withContext(ioDispatcher) {
-                    backup(
-                        request = request,
-                        key = key,
-                        bundle = bundle,
-                        bundleObbCapture = probe.captureName(),
-                        bundleObbCount = (probe as? ObbProbe.Present)?.files?.size ?: 0,
-                        versionCode = appInfo.versionCode,
-                        versionName = appInfo.versionName,
-                        // Never left to default. The parameter defaults to 0L, which the use case reads
-                        // as "unmeasurable" and fails §7.4's free-space check open — silently turning
-                        // the one check that stops a backup from filling the device into a no-op.
-                        usableStagingBytes = usableStagingBytes(),
-                        // The label the shade shows for the whole job. Without it the use case falls
-                        // back to the package name and then publishes the bundle file name and each
-                        // DataClass id, so a user watching a backup reads `internal_data`.
-                        appLabel = appInfo.appName ?: request.packageName,
-                        onProgress = ::publish,
+                override fun onAppResolved(appInfo: com.valhalla.thor.domain.model.AppInfo) {
+                    retargetSheet(
+                        JobSheetTarget.Backup(
+                            packageName = appInfo.packageName,
+                            appLabel = appInfo.appName ?: appInfo.packageName,
+                        )
                     )
                 }
-            ) {
-                is ArchiveBackupOutcome.Completed -> Result.success()
-                is ArchiveBackupOutcome.Failed -> fail(outcome.reason)
-                ArchiveBackupOutcome.NoDestination -> fail("choose a folder for Thor's backups first")
-            }
-        } finally {
-            // The bundle can be gigabytes and it is already inside the container. Deleted here rather
-            // than in the use case, because this is what created it.
-            bundle?.delete()
-        }
+
+                override suspend fun probeObb(
+                    packageName: String,
+                    execution: PrivilegeExecutionContext,
+                ): ObbProbe = systemRepository.probeObb(packageName, execution)
+
+                override suspend fun buildBundle(
+                    appInfo: com.valhalla.thor.domain.model.AppInfo,
+                    cacheSubDir: String,
+                    format: BundleFormat,
+                    execution: PrivilegeExecutionContext,
+                ): kotlin.Result<File> = bundleBuilder.build(
+                    appInfo = appInfo,
+                    cacheSubDir = cacheSubDir,
+                    format = format,
+                    execution = execution,
+                )
+
+                override suspend fun usableStagingBytes(): Long = this@ArchiveBackupWorker
+                    .usableStagingBytes()
+
+                override suspend fun backup(
+                    request: ArchiveBackupRequest,
+                    key: javax.crypto.SecretKey,
+                    bundle: File?,
+                    bundleObbCapture: String,
+                    bundleObbCount: Int,
+                    versionCode: Long,
+                    versionName: String?,
+                    usableStagingBytes: Long,
+                    appLabel: String,
+                    onProgress: (com.valhalla.thor.domain.model.ThorJobProgress) -> Unit,
+                ): ArchiveBackupOutcome = this@ArchiveBackupWorker.backup(
+                    request = request,
+                    key = key,
+                    bundle = bundle,
+                    bundleObbCapture = bundleObbCapture,
+                    bundleObbCount = bundleObbCount,
+                    versionCode = versionCode,
+                    versionName = versionName,
+                    usableStagingBytes = usableStagingBytes,
+                    appLabel = appLabel,
+                    onProgress = onProgress,
+                )
+            },
+            ioDispatcher = ioDispatcher,
+        )
+        return runLegacyArchiveTask(
+            taskId = id,
+            requestFactory = { taskId, key ->
+                DataTaskExecutionRequest(
+                    taskId = taskId,
+                    payload = DataTaskExecutionPayload.ArchiveBackup(
+                        request = archiveRequest,
+                        key = key,
+                        destination = com.valhalla.thor.domain.model.StoredDataDestination.ArchiveStore,
+                    ),
+                    item = DataTaskExecutionItem(
+                        ordinal = 0,
+                        packageName = archiveRequest.packageName,
+                        displayLabel = initialLabel,
+                        deterministicStagingIdentity = taskId.toString(),
+                        attemptCount = runAttemptCount,
+                    ),
+                    taskAttemptCount = runAttemptCount,
+                    resumedFrom = null,
+                )
+            },
+            takeKey = keys::take,
+            runner = runner,
+            checkpoints = LegacyWorkerCheckpointSink(::publish),
+            results = LegacyWorkerResultSink(
+                com.valhalla.thor.domain.model.DataTaskKind.ARCHIVE_BACKUP
+            ),
+            missingKeyReason = "this backup's key is no longer in memory — start it again",
+        )
     }
 
     /**
@@ -361,121 +373,93 @@ internal class ArchiveRestoreWorker(
             ?.let(JobSheetTarget::Restore)
 
     override suspend fun runJob(): Result {
-        val request = ArchiveRestoreRequest.fromMap(inputData.keyValueMap)
+        val archiveRequest = decodeLegacyArchiveRestoreRequest(inputData.keyValueMap)
             ?: run {
                 Logger.e(TAG, "ArchiveRestoreRequest could not be read from input data")
                 return fail("this restore's request could not be read")
             }
-        val execution = archiveExecutionContext(ARCHIVE_RESTORE, request.packageName, id)
-        val key = keys.take(id.toString())
-            ?: run {
-                Logger.e(TAG, "ArchiveRestoreKey is missing from memory for id $id")
-                return fail("this restore's key is no longer in memory — start it again")
-            }
+        val runner = ArchiveRestoreTaskRunner(
+            operations = object : ArchiveRestoreTaskOperations {
+                override suspend fun open(uriString: String): ArchiveOpenOutcome =
+                    sources.open(uriString)
 
-        Logger.i(
-            TAG,
-            "Running restore job package=${request.packageName}, classes=${request.classes}, " +
-                "restoreObb=${request.restoreObb}",
-        )
+                override suspend fun authenticate(
+                    source: com.valhalla.thor.domain.repository.ArchiveSource,
+                    key: javax.crypto.SecretKey,
+                ): ArchiveAuthenticationOutcome = openArchive.authenticate(source, key)
 
-        val source = when (val opened = sources.open(request.uriString)) {
-            is ArchiveOpenOutcome.Opened -> opened.source
-            ArchiveOpenOutcome.NotAnArchive -> {
-                Logger.e(TAG, "Archive source open failed: NotAnArchive")
-                return fail("that file is not a Thor backup")
-            }
-
-            ArchiveOpenOutcome.Unreadable -> {
-                Logger.e(TAG, "Archive source open failed: Unreadable")
-                return fail("Thor could not read that backup file")
-            }
-        }
-
-        return source.use {
-            val preflight = runArchiveRestorePreflight(
-                expectedPackageName = request.packageName,
-                selectedClasses = request.classes,
-                authenticate = { openArchive.authenticate(source, key) },
-                readPackageFacts = { packageName ->
+                override suspend fun readPackageFacts(
+                    packageName: String,
+                ): ArchiveRestorePackageFacts {
                     val app = appRepository.getAppDetails(packageName)
-                    ArchiveRestorePackageFacts(
+                    return ArchiveRestorePackageFacts(
                         installed = app?.let { installedFacts(it) },
                         appLabel = app?.appName,
                     )
-                },
-                evaluateGate = ::evaluateArchiveRestoreGate,
-            )
-            val ready = when (preflight) {
-                ArchiveRestorePreflight.AuthenticationRefused -> {
-                    Logger.e(TAG, "Archive authentication failed")
-                    return@use fail(ARCHIVE_AUTH_FAILURE_REASON)
                 }
 
-                ArchiveRestorePreflight.PackageMismatch -> {
-                    Logger.e(TAG, "Authenticated archive package does not match restore request")
-                    return@use fail(ARCHIVE_AUTH_FAILURE_REASON)
-                }
+                override fun evaluateGate(
+                    header: ArchiveHeader,
+                    installed: InstalledAppFacts?,
+                    classes: Set<DataClass>,
+                ): ArchiveRestoreDecision = evaluateArchiveRestoreGate(
+                    header,
+                    installed,
+                    classes,
+                )
 
-                is ArchiveRestorePreflight.GateRefused -> {
-                    val reason = refusalReason(preflight.reason)
-                    Logger.e(TAG, "Gate refused restore: $reason")
-                    return@use fail("this backup can no longer be restored: $reason")
-                }
-
-                is ArchiveRestorePreflight.Ready -> preflight
-            }
-            Logger.i(
-                TAG,
-                "Gate decision: ${ready.decision} (installed=${ready.packageFacts.installed})",
-            )
-            ready.decision.warnings.forEach { warning ->
-                Logger.w(TAG, "gate warning: ${warning.name}")
-            }
-
-            when (
-                val outcome = withContext(ioDispatcher) {
-                    restore(
-                        source = source,
-                        header = ready.header,
+                override suspend fun restore(
+                    source: com.valhalla.thor.domain.repository.ArchiveSource,
+                    header: ArchiveHeader,
+                    key: javax.crypto.SecretKey,
+                    classes: List<DataClass>,
+                    installFirst: Boolean,
+                    restoreObb: Boolean,
+                    execution: PrivilegeExecutionContext,
+                    appLabel: String,
+                    onProgress: (com.valhalla.thor.domain.model.ThorJobProgress) -> Unit,
+                ): ArchiveRestoreOutcome = this@ArchiveRestoreWorker.restore(
+                    source = source,
+                    header = header,
+                    key = key,
+                    classes = classes,
+                    installFirst = installFirst,
+                    restoreObb = restoreObb,
+                    execution = execution,
+                    appLabel = appLabel,
+                    onProgress = onProgress,
+                )
+            },
+            ioDispatcher = ioDispatcher,
+        )
+        return runLegacyArchiveTask(
+            taskId = id,
+            requestFactory = { taskId, key ->
+                DataTaskExecutionRequest(
+                    taskId = taskId,
+                    payload = DataTaskExecutionPayload.ArchiveRestore(
+                        request = archiveRequest,
                         key = key,
-                        classes = request.orderedClasses(),
-                        installFirst = ready.decision.installFirst,
-                        restoreObb = request.restoreObb,
-                        execution = execution,
-                        appLabel = ready.packageFacts.appLabel ?: request.packageName,
-                        onProgress = ::publish,
-                    )
-                }
-            ) {
-                is ArchiveRestoreOutcome.Completed -> {
-                    Logger.i(TAG, "ArchiveRestoreOutcome.Completed: restored=${outcome.classesRestored}, warnings=${outcome.warnings}")
-                    outcome.obb?.let { Logger.i(TAG, "game data placement: $it") }
-                    val warnings = outcome.warnings + listOfNotNull(obbNotice(outcome.obb))
-                    warnings.forEach { Logger.w(TAG, it) }
-                    // Carried out on the *success* result, not only logged. These are the sentences a
-                    // restore finished in spite of — game data that could not be placed, a breadcrumb
-                    // that could not be written — and a user whose game now starts and crashes has no
-                    // other way to learn why.
-                    //
-                    // Bounded on the way out, and this is the one `Data` write where that matters.
-                    // The count is structurally capped at four, but "short" was an assumption about
-                    // the *contents*, and two of the four quote an OBB leaf name that came out of an
-                    // archive the user merely picked. Above 10 KB `workDataOf` throws, the throw
-                    // leaves `runJob`, and a restore that had already succeeded would be reported as
-                    // failed — over data that is already correct.
-                    Result.success(
-                        workDataOf(
-                            JOB_WARNINGS_KEY to warnings
-                                .map { it.boundedForJobData() }
-                                .toTypedArray()
-                        )
-                    )
-                }
-
-                is ArchiveRestoreOutcome.Failed -> fail(restoreFailureReason(outcome))
-            }
-        }
+                    ),
+                    item = DataTaskExecutionItem(
+                        ordinal = 0,
+                        packageName = archiveRequest.packageName,
+                        displayLabel = initialLabel,
+                        deterministicStagingIdentity = taskId.toString(),
+                        attemptCount = runAttemptCount,
+                    ),
+                    taskAttemptCount = runAttemptCount,
+                    resumedFrom = null,
+                )
+            },
+            takeKey = keys::take,
+            runner = runner,
+            checkpoints = LegacyWorkerCheckpointSink(::publish),
+            results = LegacyWorkerResultSink(
+                com.valhalla.thor.domain.model.DataTaskKind.ARCHIVE_RESTORE
+            ),
+            missingKeyReason = "this restore's key is no longer in memory — start it again",
+        )
     }
 }
 
@@ -497,7 +481,7 @@ internal class ArchiveRestoreWorker(
  * Deliberately hedged rather than asserted. Thor does not know which of the two states it is in, and
  * a sentence that claimed the data *was* cleared would be wrong roughly as often as it was right.
  *
- * Top-level for the same reason as [wrongKeyReason]: this is the only way it can be tested.
+ * Top-level so this reporting decision remains covered by a plain JVM test.
  */
 internal fun restoreFailureReason(outcome: ArchiveRestoreOutcome.Failed): String = buildString {
     append(outcome.reason)
@@ -555,7 +539,7 @@ internal fun obbNotice(placement: ObbPlacement?): String? = when (placement) {
  * **The sentences are English literals, and that is the design here, not an oversight.** The screen
  * already translates all nine through `ArchiveRestoreScreen.refusalLabel`, and this is deliberately
  * not that mapping reused. The worker's channel is `JOB_ERROR_KEY` in a `Data`, which the screen
- * renders as it arrives; every other failure sentence this file produces — [wrongKeyReason],
+ * renders as it arrives; every other failure sentence this file produces —
  * [restoreFailureReason], [obbNotice], the `fail(...)` literals in both workers — is an untranslated
  * literal for the same reason. Reaching `refusalLabel` would mean a `Context` and `getString`, which
  * takes this function off the JVM test classpath, and that is the thing the top-level shape exists to
@@ -582,7 +566,7 @@ internal fun refusalReason(refusal: ArchiveRestoreRefusal): String = when (refus
 
     ArchiveRestoreRefusal.SIGNER_UNVERIFIABLE ->
         "the installed app's signature could not be read, so Thor could not check that this backup " +
-            "belongs to it"
+                "belongs to it"
 
     ArchiveRestoreRefusal.DATA_ONLY_AND_APP_ABSENT ->
         "the app is no longer installed and this backup holds no installer to add it back from"
@@ -601,9 +585,9 @@ internal fun refusalReason(refusal: ArchiveRestoreRefusal): String = when (refus
 
     ArchiveRestoreRefusal.INVALID_PACKAGE_NAME ->
         "it names an app in a way Thor will not accept, so the file is damaged or was not written by " +
-            "Thor"
+                "Thor"
 
     ArchiveRestoreRefusal.INVALID_USER_ID ->
         "it names a user profile Thor will not accept, so the file is damaged or was not written by " +
-            "Thor"
+                "Thor"
 }
