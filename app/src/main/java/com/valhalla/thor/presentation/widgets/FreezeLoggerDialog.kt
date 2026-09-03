@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
@@ -135,14 +136,18 @@ fun FreezeLoggerDialog(
         ),
     ) {
         Surface(
-            modifier = modifier.drawWithContent {
-                drawContent()
-                if (state.isActive) {
-                    ServiceQueueLatencyProbe.mark(
-                        ServiceQueueOperation.PRIVILEGE_SWEEP,
-                        ServiceQueueEvent.LOGGER_VISIBLE,
-                    )
+            modifier = if (BuildConfig.DEBUG) {
+                modifier.drawWithContent {
+                    drawContent()
+                    if (state.isActive) {
+                        ServiceQueueLatencyProbe.mark(
+                            ServiceQueueOperation.PRIVILEGE_SWEEP,
+                            ServiceQueueEvent.LOGGER_VISIBLE,
+                        )
+                    }
                 }
+            } else {
+                modifier
             },
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,

@@ -58,6 +58,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
 import coil3.compose.AsyncImage
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
@@ -306,12 +307,16 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                     backgroundLabel = stringResource(R.string.export_job_background),
                     backgroundDescription = stringResource(R.string.export_job_background_desc),
                     onBackground = onDismiss,
-                    modifier = Modifier.drawWithContent {
-                        drawContent()
-                        ServiceQueueLatencyProbe.mark(
-                            ServiceQueueOperation.EXPORT,
-                            ServiceQueueEvent.LOGGER_VISIBLE,
-                        )
+                    modifier = if (BuildConfig.DEBUG) {
+                        Modifier.drawWithContent {
+                            drawContent()
+                            ServiceQueueLatencyProbe.mark(
+                                ServiceQueueOperation.EXPORT,
+                                ServiceQueueEvent.LOGGER_VISIBLE,
+                            )
+                        }
+                    } else {
+                        Modifier
                     },
                 )
 
