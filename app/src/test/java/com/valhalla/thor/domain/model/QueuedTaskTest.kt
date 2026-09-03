@@ -239,6 +239,47 @@ class QueuedTaskTest {
     }
 
     @Test
+    fun presentationArgumentsRejectEmbeddedUnixAbsolutePaths() {
+        assertEveryArgumentContractRejects("output at /data/local/tmp/file")
+    }
+
+    @Test
+    fun presentationArgumentsRejectEmbeddedWindowsAbsolutePaths() {
+        listOf(
+            "output at C:\\Users\\archive\\file",
+            "output at \\\\server\\share\\file",
+        ).forEach(::assertEveryArgumentContractRejects)
+    }
+
+    @Test
+    fun presentationArgumentsRejectCommandPrefixedShellDiagnostics() {
+        listOf(
+            "pm: package not found",
+            "am force-stop com.example.app",
+            "cmd package list packages",
+        ).forEach(::assertEveryArgumentContractRejects)
+    }
+
+    @Test
+    fun presentationArgumentsAcceptUserVisibleLabelsAndNonLatinText() {
+        val arguments = listOf(
+            "Backup complete",
+            "PM: Afternoon reminder",
+            "My App (Work Profile)",
+            "Sauvegarde terminée",
+            "تم النسخ الاحتياطي",
+            "备份已完成",
+            "Cópia concluída",
+            "Kopia ukończona",
+        )
+
+        DataTaskMessage(RESULT_CODE, arguments)
+        DataTaskRunOutcome.TaskFailed(RESULT_CODE, arguments)
+        TaskLogLine(order = 0, messageCode = "TASK_LOG", arguments = arguments)
+        summary(titleArguments = arguments)
+    }
+
+    @Test
     fun warningCollectionsAcceptTheirBoundaryAndRejectOverflow() {
         val warnings = List(4) { DataTaskMessage(DataTaskResultCode("WARNING_$it")) }
         itemResult(warnings)

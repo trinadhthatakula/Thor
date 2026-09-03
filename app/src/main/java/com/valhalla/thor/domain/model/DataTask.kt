@@ -18,7 +18,18 @@ private val TASK_RAW_DIAGNOSTIC = Regex(
     "(?i)(?:^|\\s)(?:caused by:|suppressed:|at\\s+\\S+\\([^)]*(?::\\d+)?\\)|" +
             "[\\w.$]+(?:exception|error)(?::|\\s|$))",
 )
-private val WINDOWS_ABSOLUTE_PATH = Regex("^[A-Za-z]:[/\\\\]")
+private val TASK_ABSOLUTE_PATH = Regex(
+    "(?i)(?:(?<![\\p{L}\\p{N}_])/(?=\\S|$)|" +
+            "(?<![\\p{L}\\p{N}_])[a-z]:[/\\\\]|" +
+            "(?<![\\p{L}\\p{N}_])\\\\(?=\\S|$))",
+)
+private val TASK_SHELL_TEXT = Regex(
+    "^\\s*(?:(?:pm|am|appops|dpm|cmd(?:\\s+package)?|sh|su)\\s*:|" +
+            "pm\\s+(?:install(?:-[a-z-]+)?|uninstall|clear|enable|disable(?:-user)?|" +
+            "suspend|unsuspend|hide|unhide|grant|revoke|list|path|dump)\\b|" +
+            "am\\s+(?:force-stop|kill|start|broadcast)\\b|" +
+            "appops\\s+(?:set|get|reset)\\b|cmd\\s+package\\s+\\S+|dpm\\s+\\S+)",
+)
 
 internal fun requireTaskPresentationArguments(arguments: List<String>, fieldName: String) {
     require(arguments.size <= MAX_TASK_PRESENTATION_ARGUMENTS) {
@@ -36,6 +47,9 @@ internal fun requireTaskPresentationArguments(arguments: List<String>, fieldName
         }
         require(!looksLikeAbsoluteOrTraversingPath(argument)) {
             "$fieldName contains path text"
+        }
+        require(!TASK_SHELL_TEXT.containsMatchIn(argument)) {
+            "$fieldName contains raw shell text"
         }
         require(!TASK_RAW_DIAGNOSTIC.containsMatchIn(argument)) {
             "$fieldName contains raw diagnostic text"
@@ -80,13 +94,9 @@ private fun requireTaskRelativePath(value: String) {
     }
 }
 
-private fun looksLikeAbsoluteOrTraversingPath(value: String): Boolean {
-    val trimmed = value.trimStart()
-    return trimmed.startsWith('/') ||
-            trimmed.startsWith('\\') ||
-            WINDOWS_ABSOLUTE_PATH.containsMatchIn(trimmed) ||
+private fun looksLikeAbsoluteOrTraversingPath(value: String): Boolean =
+    TASK_ABSOLUTE_PATH.containsMatchIn(value) ||
             value.split('/', '\\').any { it == "." || it == ".." }
-}
 
 enum class DataTaskKind { ARCHIVE_BACKUP, ARCHIVE_RESTORE, APP_EXPORT, SHARE_PREPARE }
 
