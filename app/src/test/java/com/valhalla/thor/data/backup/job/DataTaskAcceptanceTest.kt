@@ -15,7 +15,12 @@ import java.util.UUID
 import java.util.concurrent.CancellationException
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -101,6 +106,51 @@ class DataTaskAcceptanceTest {
         assertEquals(listOf("derive", "put-key", "insert", "drop-key"), events)
         assertFalse(keyVault.contains(TASK_ID))
         assertTrue(store.states.isEmpty())
+    }
+
+    @Test
+    fun insertFailureRemainsPrimaryWhenKeyCleanupAlsoFails() = runTest {
+        val events = mutableListOf<String>()
+        val insertFailure = IllegalStateException("insert failed")
+        val cleanupFailure = IllegalArgumentException("cleanup failed")
+        val keyVault = RecordingKeyVault(events).apply {
+            dropFailure = cleanupFailure
+        }
+        val store = RecordingAcceptanceStore(events).apply {
+            this.insertFailure = insertFailure
+        }
+        val acceptance = acceptance(store, keyVault, events)
+
+        val failure = expectFailure<IllegalStateException> {
+            acceptance.acceptBackup(backupRequest(), PASSPHRASE)
+        }
+
+        assertSame(insertFailure, failure.cause ?: failure)
+        assertEquals(listOf(cleanupFailure), insertFailure.suppressed.toList())
+        assertEquals(listOf("derive", "put-key", "insert", "drop-key"), events)
+    }
+
+    @Test
+    fun backupCancellationAtCommittedInsertBoundaryKeepsAcceptedTaskAndKey() = runTest {
+        assertCancellationAtCommittedInsertBoundary(
+            expectedState = DataTaskState.QUEUED,
+            accept = { it.acceptBackup(backupRequest(), PASSPHRASE) },
+        )
+    }
+
+    @Test
+    fun restoreCancellationAtCommittedInsertBoundaryKeepsAcceptedTaskAndKey() = runTest {
+        assertCancellationAtCommittedInsertBoundary(
+            expectedState = DataTaskState.STAGING_SOURCE,
+            accept = {
+                it.acceptRestore(
+                    request = restoreRequest(),
+                    passphrase = PASSPHRASE,
+                    salt = ByteArray(16) { 7 },
+                    iterations = 123_456,
+                )
+            },
+        )
     }
 
     @Test
@@ -206,6 +256,36 @@ class DataTaskAcceptanceTest {
         assertEquals(listOf("insert", "wake"), events)
     }
 
+    private suspend fun TestScope.assertCancellationAtCommittedInsertBoundary(
+        expectedState: DataTaskState,
+        accept: suspend (DataTaskAcceptance) -> UUID,
+    ) {
+        val events = mutableListOf<String>()
+        val keyVault = RecordingKeyVault(events)
+        lateinit var caller: Deferred<UUID>
+        val store = RecordingAcceptanceStore(events).apply {
+            afterInsertCommit = {
+                assertEquals(expectedState, states.getValue(TASK_ID))
+                caller.cancel(CancellationException("caller cancelled after commit"))
+                yield()
+            }
+        }
+        val acceptance = acceptance(store, keyVault, events)
+        caller = async(start = CoroutineStart.LAZY) {
+            accept(acceptance)
+        }
+
+        caller.start()
+        val failure = expectFailure<CancellationException> {
+            caller.await()
+        }
+
+        assertEquals("caller cancelled after commit", failure.message)
+        assertEquals(expectedState, store.states.getValue(TASK_ID))
+        assertTrue(keyVault.contains(TASK_ID))
+        assertEquals(listOf("derive", "put-key", "insert", "wake"), events)
+    }
+
     private suspend inline fun <reified T : Throwable> expectFailure(
         crossinline block: suspend () -> Unit,
     ): T {
@@ -271,6 +351,7 @@ class DataTaskAcceptanceTest {
         val states = mutableMapOf<UUID, DataTaskState>()
         var insertFailure: Throwable? = null
         var beforeInsert: (() -> Unit)? = null
+        var afterInsertCommit: (suspend () -> Unit)? = null
 
         override suspend fun insertBackup(
             taskId: UUID,
@@ -302,11 +383,12 @@ class DataTaskAcceptanceTest {
             return true
         }
 
-        private fun insert(taskId: UUID, state: DataTaskState): DataTaskState {
+        private suspend fun insert(taskId: UUID, state: DataTaskState): DataTaskState {
             events += "insert"
             beforeInsert?.invoke()
             insertFailure?.let { throw it }
             states[taskId] = state
+            afterInsertCommit?.invoke()
             return state
         }
     }
@@ -315,6 +397,7 @@ class DataTaskAcceptanceTest {
         private val events: MutableList<String>,
     ) : DataTaskKeyVault {
         private val keys = mutableMapOf<UUID, SecretKey>()
+        var dropFailure: Throwable? = null
 
         override fun put(taskId: UUID, key: SecretKey) {
             events += "put-key"
@@ -323,6 +406,7 @@ class DataTaskAcceptanceTest {
 
         override fun drop(taskId: UUID) {
             events += "drop-key"
+            dropFailure?.let { throw it }
             keys.remove(taskId)
         }
 

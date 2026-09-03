@@ -12,7 +12,13 @@ import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import javax.crypto.SecretKey
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 fun interface DataQueueWakeSignal {
     fun wake(taskId: UUID): ServiceStartResult
@@ -84,14 +90,12 @@ internal class DataTaskAcceptance internal constructor(
         val taskId = taskIdFactory()
         val key = deriveKey(passphrase, request.salt, KDF_ITERATIONS)
         keyVault.put(taskId, key)
-        val initialState = try {
+        return acceptPersistedTask(
+            taskId = taskId,
+            onDefiniteInsertFailure = { keyVault.drop(taskId) },
+        ) {
             store.insertBackup(taskId, request, clock())
-        } catch (failure: Throwable) {
-            keyVault.drop(taskId)
-            throw failure
         }
-        settleRejectedWake(taskId, initialState)
-        return taskId
     }
 
     suspend fun acceptRestore(
@@ -103,20 +107,45 @@ internal class DataTaskAcceptance internal constructor(
         val taskId = taskIdFactory()
         val key = deriveKey(passphrase, salt, iterations)
         keyVault.put(taskId, key)
-        val initialState = try {
+        return acceptPersistedTask(
+            taskId = taskId,
+            onDefiniteInsertFailure = { keyVault.drop(taskId) },
+        ) {
             store.insertRestore(taskId, request, clock())
-        } catch (failure: Throwable) {
-            keyVault.drop(taskId)
-            throw failure
         }
-        settleRejectedWake(taskId, initialState)
-        return taskId
     }
 
     suspend fun acceptExport(request: AppExportRequest): UUID {
         val taskId = taskIdFactory()
-        val initialState = store.insertExport(taskId, request, clock())
-        settleRejectedWake(taskId, initialState)
+        return acceptPersistedTask(taskId) {
+            store.insertExport(taskId, request, clock())
+        }
+    }
+
+    private suspend fun acceptPersistedTask(
+        taskId: UUID,
+        onDefiniteInsertFailure: () -> Unit = {},
+        insert: suspend () -> DataTaskState,
+    ): UUID {
+        val callerJob = currentCoroutineContext()[Job]
+        withContext(NonCancellable) {
+            val initialState = try {
+                insert()
+            } catch (failure: Throwable) {
+                if (failure !is CancellationException) {
+                    try {
+                        onDefiniteInsertFailure()
+                    } catch (cleanupFailure: Throwable) {
+                        if (cleanupFailure !== failure) {
+                            failure.addSuppressed(cleanupFailure)
+                        }
+                    }
+                }
+                throw failure
+            }
+            settleRejectedWake(taskId, initialState)
+        }
+        callerJob?.ensureActive()
         return taskId
     }
 
