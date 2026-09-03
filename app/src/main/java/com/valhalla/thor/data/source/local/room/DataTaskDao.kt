@@ -26,6 +26,8 @@ import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
 import java.util.UUID
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
 @Dao
@@ -79,6 +81,53 @@ abstract class DataTaskDao {
             )
         })
         return requireNotNull(loadSnapshot(request.taskId))
+    }
+
+    @Transaction
+    open suspend fun loadTask(taskId: String): DataTaskSnapshot? {
+        requireCanonicalUuid(taskId, "taskId")
+        return loadSnapshot(taskId)
+    }
+
+    open fun observeTask(taskId: String): Flow<DataTaskSnapshot?> {
+        requireCanonicalUuid(taskId, "taskId")
+        return observeTaskAggregate(taskId).map { loadTask(taskId) }
+    }
+
+    suspend fun compareAndSetStartBlocked(
+        taskId: String,
+        expectedState: DataTaskState,
+        blockedState: DataTaskState,
+        nowMs: Long,
+    ): Boolean {
+        requireCanonicalUuid(taskId, "taskId")
+        require(expectedState == DataTaskState.QUEUED || expectedState == DataTaskState.STAGING_SOURCE) {
+            "expectedState must be QUEUED or STAGING_SOURCE"
+        }
+        require(
+            blockedState == DataTaskState.START_BLOCKED ||
+                    blockedState == DataTaskState.START_BLOCKED_NOTIFICATION
+        ) {
+            "blockedState must be START_BLOCKED or START_BLOCKED_NOTIFICATION"
+        }
+        return compareAndSetStartBlockedRow(
+            taskId = taskId,
+            expectedState = expectedState.name,
+            blockedState = blockedState.name,
+            nowMs = nowMs,
+        ) == 1
+    }
+
+    @Transaction
+    open suspend fun acknowledgeTerminalTask(
+        taskId: String,
+        nowMs: Long,
+    ): DataTaskSnapshot? {
+        requireCanonicalUuid(taskId, "taskId")
+        val task = loadTaskEntity(taskId) ?: return null
+        if (DataTaskState.valueOf(task.state) !in ACKNOWLEDGEABLE_STATES) return null
+        if (acknowledgeTerminalTaskRow(taskId, nowMs) != 1) return null
+        return loadSnapshot(taskId)
     }
 
     @Transaction
@@ -637,6 +686,56 @@ abstract class DataTaskDao {
 
     @Query(
         """
+        SELECT COUNT(*) FROM (
+            SELECT task_id FROM data_tasks WHERE task_id = :taskId
+            UNION ALL
+            SELECT task_id FROM archive_task_details WHERE task_id = :taskId
+            UNION ALL
+            SELECT task_id FROM export_task_details WHERE task_id = :taskId
+            UNION ALL
+            SELECT task_id FROM data_task_items WHERE task_id = :taskId
+            UNION ALL
+            SELECT task_id FROM data_task_outputs WHERE task_id = :taskId
+        )
+        """
+    )
+    protected abstract fun observeTaskAggregate(taskId: String): Flow<Int>
+
+    @Query(
+        """
+        UPDATE data_tasks
+        SET state = :blockedState,
+            updated_at_epoch_ms = :nowMs
+        WHERE task_id = :taskId
+          AND state = :expectedState
+          AND state IN ('QUEUED', 'STAGING_SOURCE')
+          AND :blockedState IN ('START_BLOCKED', 'START_BLOCKED_NOTIFICATION')
+          AND terminal_at_epoch_ms IS NULL
+          AND cancel_requested_at_epoch_ms IS NULL
+          AND service_session_token IS NULL
+          AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+        """
+    )
+    protected abstract suspend fun compareAndSetStartBlockedRow(
+        taskId: String,
+        expectedState: String,
+        blockedState: String,
+        nowMs: Long,
+    ): Int
+
+    @Query(
+        """
+        UPDATE data_tasks
+        SET acknowledged_at_epoch_ms = COALESCE(acknowledged_at_epoch_ms, :nowMs)
+        WHERE task_id = :taskId
+          AND state IN ('SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED', 'EXPIRED')
+        """
+    )
+    protected abstract suspend fun acknowledgeTerminalTaskRow(taskId: String, nowMs: Long): Int
+
+    @Query(
+        """
         SELECT * FROM data_tasks
         WHERE state IN ('QUEUED', 'STAGING_SOURCE')
           AND claim_token IS NULL
@@ -945,7 +1044,8 @@ abstract class DataTaskDao {
             claim_token = NULL,
             claim_lease_expires_at_epoch_ms = NULL,
             updated_at_epoch_ms = :nowMs,
-            terminal_at_epoch_ms = :nowMs
+            terminal_at_epoch_ms = :nowMs,
+            retain_until_epoch_ms = :nowMs + 86400000
         WHERE task_id = :taskId AND claim_token = :taskClaimToken
         """
     )
@@ -983,7 +1083,8 @@ abstract class DataTaskDao {
             claim_token = NULL,
             claim_lease_expires_at_epoch_ms = NULL,
             updated_at_epoch_ms = :nowMs,
-            terminal_at_epoch_ms = :nowMs
+            terminal_at_epoch_ms = :nowMs,
+            retain_until_epoch_ms = :nowMs + 86400000
         WHERE task_id = :taskId AND state = :expectedState AND claim_token IS NULL
         """
     )
@@ -1004,7 +1105,8 @@ abstract class DataTaskDao {
             claim_token = NULL,
             claim_lease_expires_at_epoch_ms = NULL,
             updated_at_epoch_ms = :nowMs,
-            terminal_at_epoch_ms = :nowMs
+            terminal_at_epoch_ms = :nowMs,
+            retain_until_epoch_ms = :nowMs + 86400000
         WHERE task_id = :taskId
           AND state = 'CANCEL_REQUESTED'
           AND claim_token = :oldClaimToken
@@ -1113,7 +1215,8 @@ abstract class DataTaskDao {
             claim_token = NULL,
             claim_lease_expires_at_epoch_ms = NULL,
             updated_at_epoch_ms = :nowMs,
-            terminal_at_epoch_ms = :nowMs
+            terminal_at_epoch_ms = :nowMs,
+            retain_until_epoch_ms = :nowMs + 86400000
         WHERE task_id = :taskId AND claim_token = :oldClaimToken
         """
     )
@@ -1146,7 +1249,15 @@ abstract class DataTaskDao {
             claim_token = NULL,
             claim_lease_expires_at_epoch_ms = NULL,
             updated_at_epoch_ms = :nowMs,
-            terminal_at_epoch_ms = :nowMs
+            terminal_at_epoch_ms = CASE
+                WHEN :state IN ('SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED', 'EXPIRED') THEN :nowMs
+                ELSE NULL
+            END,
+            retain_until_epoch_ms = CASE
+                WHEN :state IN ('SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED', 'EXPIRED')
+                    THEN :nowMs + 86400000
+                ELSE NULL
+            END
         WHERE task_id = :taskId AND state = 'RUNNING' AND claim_token = :claimToken
         """
     )
@@ -1218,7 +1329,10 @@ abstract class DataTaskDao {
     @Query(
         """
         UPDATE data_tasks
-        SET state = 'EXPIRED', updated_at_epoch_ms = :nowMs
+        SET state = 'EXPIRED',
+            updated_at_epoch_ms = :nowMs,
+            terminal_at_epoch_ms = :nowMs,
+            retain_until_epoch_ms = :nowMs + 86400000
         WHERE task_id = :taskId AND state IN ('READY', 'READY_PARTIAL')
         """
     )
@@ -1683,6 +1797,13 @@ abstract class DataTaskDao {
         const val RESULT_RECOVERY_AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
         const val RESULT_RECOVERY_BREADCRUMB_MISSING = "RECOVERY_BREADCRUMB_MISSING"
         const val RESULT_RECOVERY_SOURCE_REQUIRED = "SOURCE_REQUIRED"
+        val ACKNOWLEDGEABLE_STATES = setOf(
+            DataTaskState.SUCCEEDED,
+            DataTaskState.PARTIAL,
+            DataTaskState.FAILED,
+            DataTaskState.CANCELLED,
+            DataTaskState.EXPIRED,
+        )
         val TERMINAL_OR_READY_STATES = setOf(
             DataTaskState.READY,
             DataTaskState.READY_PARTIAL,

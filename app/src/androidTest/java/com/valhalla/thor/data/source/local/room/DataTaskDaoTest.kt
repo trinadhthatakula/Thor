@@ -35,8 +35,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -454,6 +457,296 @@ class DataTaskDaoTest {
     }
 
     @Test
+    fun publicLoadReturnsItemsAndOutputsInStableOrder() = runBlocking {
+        dao.insertTask(newExportTask(TASK_1, itemCount = 2))
+        insertOutput(
+            taskId = TASK_1,
+            outputId = "00000000-0000-0000-0000-000000000012",
+            itemOrdinal = 1,
+            displayName = "second-item.apk",
+        )
+        insertOutput(
+            taskId = TASK_1,
+            outputId = "00000000-0000-0000-0000-000000000011",
+            itemOrdinal = 0,
+            displayName = "later-id.apk",
+        )
+        insertOutput(
+            taskId = TASK_1,
+            outputId = "00000000-0000-0000-0000-000000000010",
+            itemOrdinal = 0,
+            displayName = "earlier-id.apk",
+        )
+
+        val snapshot = requireNotNull(dao.loadTask(TASK_1))
+
+        assertEquals(listOf(0, 1), snapshot.items.map { it.ordinal })
+        assertEquals(
+            listOf(
+                UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                UUID.fromString("00000000-0000-0000-0000-000000000011"),
+                UUID.fromString("00000000-0000-0000-0000-000000000012"),
+            ),
+            snapshot.outputs.map { it.outputId },
+        )
+    }
+
+    @Test
+    fun observationReloadsAfterTaskDetailItemAndOutputChanges() = runBlocking {
+        dao.insertTask(newExportTask(TASK_1))
+        val observed = Channel<DataTaskSnapshot?>(Channel.UNLIMITED)
+        val observer = launch(Dispatchers.IO) {
+            dao.observeTask(TASK_1).collect(observed::send)
+        }
+
+        try {
+            assertEquals("package:com.example.app", nextObservation(observed)?.targetKey)
+
+            inDatabaseTransaction {
+                execSQL(
+                    "UPDATE data_tasks SET target_key = ? WHERE task_id = ?",
+                    arrayOf("package:changed", TASK_1),
+                )
+            }
+            assertEquals("package:changed", nextObservation(observed)?.targetKey)
+
+            inDatabaseTransaction {
+                execSQL(
+                    "UPDATE export_task_details SET naming_label = ? WHERE task_id = ?",
+                    arrayOf("Changed detail", TASK_1),
+                )
+            }
+            assertEquals(
+                "Changed detail",
+                (nextObservation(observed)?.detail as StoredDataTaskDetail.AppExport).namingLabel,
+            )
+
+            inDatabaseTransaction {
+                execSQL(
+                    "UPDATE data_task_items SET display_label = ? WHERE task_id = ? AND ordinal = 0",
+                    arrayOf("Changed item", TASK_1),
+                )
+            }
+            assertEquals("Changed item", nextObservation(observed)?.items?.single()?.displayLabel)
+
+            insertOutput(
+                taskId = TASK_1,
+                outputId = "00000000-0000-0000-0000-000000000013",
+                itemOrdinal = 0,
+                displayName = "observed.apk",
+            )
+            assertEquals("observed.apk", nextObservation(observed)?.outputs?.single()?.displayName)
+        } finally {
+            observer.cancel()
+            observed.cancel()
+        }
+    }
+
+    @Test
+    fun startBlockedCompareAndSetAcceptsOnlyExactUnownedRunnableRows() = runBlocking {
+        val acceptedCases = listOf(
+            DataTaskState.QUEUED to DataTaskState.START_BLOCKED,
+            DataTaskState.STAGING_SOURCE to DataTaskState.START_BLOCKED_NOTIFICATION,
+        )
+        acceptedCases.forEachIndexed { index, (expected, blocked) ->
+            val taskId = taskId(10 + index)
+            val before = dao.insertTask(newExportTask(taskId, initialState = expected))
+
+            assertTrue(dao.compareAndSetStartBlocked(taskId, expected, blocked, 2_000L + index))
+
+            val after = requireNotNull(dao.loadTask(taskId))
+            assertEquals(
+                before.copy(state = blocked, updatedAtEpochMs = 2_000L + index),
+                after,
+            )
+        }
+
+        val staleTask = taskId(20)
+        dao.insertTask(newExportTask(staleTask))
+        assertFalse(
+            dao.compareAndSetStartBlocked(
+                staleTask,
+                DataTaskState.STAGING_SOURCE,
+                DataTaskState.START_BLOCKED,
+                3_000L,
+            ),
+        )
+        assertEquals(DataTaskState.QUEUED, dao.loadTask(staleTask)?.state)
+
+        listOf(
+            Ownership(serviceSessionToken = "session"),
+            Ownership(claimToken = "claim"),
+            Ownership(claimLeaseExpiresAtEpochMs = 9_000L),
+            Ownership("session", "claim", 9_000L),
+        ).forEachIndexed { index, ownership ->
+            val taskId = taskId(30 + index)
+            dao.insertTask(newExportTask(taskId))
+            setOwnership(taskId, ownership)
+
+            assertFalse(
+                dao.compareAndSetStartBlocked(
+                    taskId,
+                    DataTaskState.QUEUED,
+                    DataTaskState.START_BLOCKED,
+                    4_000L,
+                ),
+            )
+            assertEquals(DataTaskState.QUEUED.name, loadPersistedTask(taskId).state)
+        }
+
+        val cancelledTask = taskId(40)
+        dao.insertTask(newExportTask(cancelledTask))
+        inDatabaseTransaction {
+            execSQL(
+                "UPDATE data_tasks SET cancel_requested_at_epoch_ms = 1 WHERE task_id = ?",
+                arrayOf(cancelledTask),
+            )
+        }
+        assertFalse(
+            dao.compareAndSetStartBlocked(
+                cancelledTask,
+                DataTaskState.QUEUED,
+                DataTaskState.START_BLOCKED,
+                4_100L,
+            ),
+        )
+
+        val terminalTask = taskId(41)
+        dao.insertTask(newExportTask(terminalTask))
+        setTerminalState(terminalTask, DataTaskState.SUCCEEDED, 4_200L)
+        assertFalse(
+            dao.compareAndSetStartBlocked(
+                terminalTask,
+                DataTaskState.QUEUED,
+                DataTaskState.START_BLOCKED,
+                4_300L,
+            ),
+        )
+        assertEquals(DataTaskState.SUCCEEDED, dao.loadTask(terminalTask)?.state)
+
+        val invalidExpected = runCatching {
+            dao.compareAndSetStartBlocked(
+                staleTask,
+                DataTaskState.RUNNING,
+                DataTaskState.START_BLOCKED,
+                4_400L,
+            )
+        }.exceptionOrNull()
+        assertTrue(invalidExpected is IllegalArgumentException)
+        val invalidTarget = runCatching {
+            dao.compareAndSetStartBlocked(
+                staleTask,
+                DataTaskState.QUEUED,
+                DataTaskState.FAILED,
+                4_500L,
+            )
+        }.exceptionOrNull()
+        assertTrue(invalidTarget is IllegalArgumentException)
+    }
+
+    @Test
+    fun acknowledgementAcceptsOnlyTerminalStatesAndIsIdempotentWithoutChangingOutputs() =
+        runBlocking {
+            val terminalStates = listOf(
+                DataTaskState.SUCCEEDED,
+                DataTaskState.PARTIAL,
+                DataTaskState.FAILED,
+                DataTaskState.CANCELLED,
+                DataTaskState.EXPIRED,
+            )
+            terminalStates.forEachIndexed { index, state ->
+                val taskId = taskId(50 + index)
+                dao.insertTask(newExportTask(taskId))
+                setTerminalState(taskId, state, 5_000L + index)
+                insertOutput(
+                    taskId = taskId,
+                    outputId = taskId(150 + index),
+                    itemOrdinal = 0,
+                    displayName = "kept-$index.apk",
+                )
+
+                val first = requireNotNull(dao.acknowledgeTerminalTask(taskId, 6_000L + index))
+                val second = requireNotNull(dao.acknowledgeTerminalTask(taskId, 7_000L + index))
+
+                assertEquals(6_000L + index, first.acknowledgedAtEpochMs)
+                assertEquals(first, second)
+                assertEquals("kept-$index.apk", second.outputs.single().displayName)
+            }
+
+            (DataTaskState.entries - terminalStates.toSet()).forEachIndexed { index, state ->
+                val taskId = taskId(70 + index)
+                dao.insertTask(newExportTask(taskId, initialState = state))
+
+                assertNull(dao.acknowledgeTerminalTask(taskId, 8_000L + index))
+                assertNull(dao.loadTask(taskId)?.acknowledgedAtEpochMs)
+            }
+            assertNull(dao.acknowledgeTerminalTask(taskId(999), 9_000L))
+        }
+
+    @Test
+    fun terminalSettlementsRecordTheTwentyFourHourRetentionDeadline() = runBlocking {
+        val unclaimedCancellation = taskId(90)
+        dao.insertTask(newExportTask(unclaimedCancellation))
+        dao.requestCancellation(unclaimedCancellation, 10_000L)
+        assertTerminalRetention(unclaimedCancellation, DataTaskState.CANCELLED, 10_000L)
+
+        val claimedFailure = taskId(91)
+        dao.insertTask(newExportTask(claimedFailure))
+        dao.claimOldestRunnableTask("session", "failure-task", 11_000L, 12_000L)
+        dao.claimNextPendingItem(claimedFailure, "failure-task", "failure-item", 11_100L, 12_100L)
+        assertTrue(
+            dao.settleClaimedTask(
+                claimedFailure,
+                "failure-task",
+                0,
+                "failure-item",
+                DataTaskRunOutcome.TaskFailed(DataTaskResultCode("FAILED")),
+                11_200L,
+            ),
+        )
+        assertTerminalRetention(claimedFailure, DataTaskState.FAILED, 11_200L)
+
+        val successful = taskId(92)
+        dao.insertTask(newExportTask(successful))
+        dao.claimOldestRunnableTask("session", "success-task", 12_000L, 13_000L)
+        dao.claimNextPendingItem(successful, "success-task", "success-item", 12_100L, 13_100L)
+        assertTrue(
+            dao.settleClaimedTask(
+                successful,
+                "success-task",
+                0,
+                "success-item",
+                DataTaskRunOutcome.ItemCompleted(
+                    successfulItemResult(12_200L).copy(outputs = emptyList()),
+                ),
+                12_200L,
+            ),
+        )
+        assertTerminalRetention(successful, DataTaskState.SUCCEEDED, 12_200L)
+
+        val expiring = taskId(93)
+        dao.insertTask(newExportTask(expiring))
+        dao.claimOldestRunnableTask("session", "ready-task", 13_000L, 14_000L)
+        dao.claimNextPendingItem(expiring, "ready-task", "ready-item", 13_100L, 14_100L)
+        assertTrue(
+            dao.settleClaimedTask(
+                expiring,
+                "ready-task",
+                0,
+                "ready-item",
+                DataTaskRunOutcome.ItemCompleted(successfulItemResult(13_200L)),
+                13_200L,
+            ),
+        )
+        assertNull(dao.loadTask(expiring)?.retainUntilEpochMs)
+        val outputIds = dao.expiredReadyOutputs(23_200L)
+            .filter { it.itemOrdinal == 0 }
+            .map { it.outputId.toString() }
+        assertTrue(dao.markReadyTaskExpiredAfterCleanup(expiring, outputIds, 23_200L))
+        assertTerminalRetention(expiring, DataTaskState.EXPIRED, 23_200L)
+    }
+
+    @Test
     fun finalEmptyCheckSerializesBeforeConcurrentInsert() = runBlocking {
         assertFalse(dao.hasRunnableTasks())
         val finalTransactionEntered = CompletableDeferred<Unit>()
@@ -512,6 +805,97 @@ class DataTaskDaoTest {
             inserterDatabase.close()
         }
     }
+
+    private suspend fun nextObservation(
+        observed: Channel<DataTaskSnapshot?>,
+    ): DataTaskSnapshot? = withTimeout(5_000L) { observed.receive() }
+
+    private fun inDatabaseTransaction(block: SupportSQLiteDatabase.() -> Unit) {
+        database.runInTransaction {
+            database.openHelper.writableDatabase.block()
+        }
+    }
+
+    private fun insertOutput(
+        taskId: String,
+        outputId: String,
+        itemOrdinal: Int,
+        displayName: String,
+    ) {
+        inDatabaseTransaction {
+            execSQL(
+                """
+                INSERT INTO data_task_outputs(
+                    output_id, task_id, item_ordinal, private_relative_path, display_name,
+                    mime_type, byte_size, state, expires_at_epoch_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    outputId,
+                    taskId,
+                    itemOrdinal,
+                    "outputs/$displayName",
+                    displayName,
+                    "application/vnd.android.package-archive",
+                    42L,
+                    DataTaskOutputState.READY.name,
+                    100_000L,
+                ),
+            )
+        }
+    }
+
+    private fun setOwnership(taskId: String, ownership: Ownership) {
+        inDatabaseTransaction {
+            execSQL(
+                """
+                UPDATE data_tasks
+                SET service_session_token = ?, claim_token = ?, claim_lease_expires_at_epoch_ms = ?
+                WHERE task_id = ?
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    ownership.serviceSessionToken,
+                    ownership.claimToken,
+                    ownership.claimLeaseExpiresAtEpochMs,
+                    taskId,
+                ),
+            )
+        }
+    }
+
+    private fun setTerminalState(taskId: String, state: DataTaskState, terminalAtEpochMs: Long) {
+        inDatabaseTransaction {
+            execSQL(
+                """
+                UPDATE data_tasks
+                SET state = ?, updated_at_epoch_ms = ?, terminal_at_epoch_ms = ?,
+                    retain_until_epoch_ms = ?
+                WHERE task_id = ?
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    state.name,
+                    terminalAtEpochMs,
+                    terminalAtEpochMs,
+                    terminalAtEpochMs + TERMINAL_RETENTION_MS,
+                    taskId,
+                ),
+            )
+        }
+    }
+
+    private suspend fun assertTerminalRetention(
+        taskId: String,
+        expectedState: DataTaskState,
+        terminalAtEpochMs: Long,
+    ) {
+        val snapshot = requireNotNull(dao.loadTask(taskId))
+        assertEquals(expectedState, snapshot.state)
+        assertEquals(terminalAtEpochMs, snapshot.terminalAtEpochMs)
+        assertEquals(terminalAtEpochMs + TERMINAL_RETENTION_MS, snapshot.retainUntilEpochMs)
+    }
+
+    private fun taskId(suffix: Int): String =
+        "00000000-0000-0000-0000-${suffix.toString().padStart(12, '0')}"
 
     private fun openDatabase() {
         database = buildDatabase()
@@ -752,9 +1136,16 @@ class DataTaskDaoTest {
         val claimLeaseExpiresAtEpochMs: Long?,
     )
 
+    private data class Ownership(
+        val serviceSessionToken: String? = null,
+        val claimToken: String? = null,
+        val claimLeaseExpiresAtEpochMs: Long? = null,
+    )
+
     private companion object {
         const val DATABASE_NAME = "data-task-dao-test"
         const val TASK_1 = "00000000-0000-0000-0000-000000000001"
         const val TASK_2 = "00000000-0000-0000-0000-000000000002"
+        const val TERMINAL_RETENTION_MS = 24L * 60L * 60L * 1000L
     }
 }

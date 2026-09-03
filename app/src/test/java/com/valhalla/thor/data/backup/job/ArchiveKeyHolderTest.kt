@@ -117,4 +117,14 @@ class ArchiveKeyHolderTest {
 
         assertArrayEquals(ByteArray(32) { 2 }, holder.take("job-1")?.encoded)
     }
+
+    @Test
+    fun `a durable task UUID is the key holder identity`() {
+        val taskId = "00000000-0000-0000-0000-000000000005"
+
+        holder.put(taskId, key(5))
+
+        assertArrayEquals(ByteArray(32) { 5 }, holder.take(taskId)?.encoded)
+        assertNull(holder.take(taskId))
+    }
 }
