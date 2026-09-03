@@ -6,6 +6,9 @@ package com.valhalla.thor.data.source.local.room
 import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.domain.model.BundleFormat
@@ -29,7 +32,6 @@ import com.valhalla.thor.domain.model.StoredRestoreSource
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -456,11 +458,12 @@ class DataTaskDaoTest {
         assertFalse(dao.hasRunnableTasks())
         val finalTransactionEntered = CompletableDeferred<Unit>()
         val releaseFinalTransaction = CompletableDeferred<Unit>()
-        val insertionStarted = CompletableDeferred<Unit>()
         val insertionCompleted = CompletableDeferred<Unit>()
         val stopDecisionMade = AtomicBoolean(false)
-        val inserterDatabase = buildDatabase()
+        val writerProbe = WriterTransactionProbe()
+        val inserterDatabase = buildDatabase(WriterTrackingOpenHelperFactory(writerProbe))
         val inserterDao = inserterDatabase.dataTaskDao()
+        inserterDatabase.openHelper.writableDatabase
 
         try {
             coroutineScope {
@@ -472,17 +475,15 @@ class DataTaskDaoTest {
                     }
                 }
                 finalTransactionEntered.await()
-                val insertion = async(
-                    context = Dispatchers.IO,
-                    start = CoroutineStart.UNDISPATCHED,
-                ) {
-                    insertionStarted.complete(Unit)
+                writerProbe.arm()
+                val insertion = async(Dispatchers.IO) {
                     inserterDao.insertTask(newExportTask(TASK_1))
                     insertionCompleted.complete(Unit)
                 }
-                insertionStarted.await()
+                writerProbe.transactionAttempted.await()
 
                 try {
+                    assertFalse(writerProbe.transactionAcquired.isCompleted)
                     assertFalse(insertionCompleted.isCompleted)
                     assertFalse(insertion.isCompleted)
                     assertFalse(finalDrain.isCompleted)
@@ -492,6 +493,7 @@ class DataTaskDaoTest {
                 }
                 assertTrue(finalDrain.await())
                 assertTrue(stopDecisionMade.get())
+                writerProbe.transactionAcquired.await()
                 insertion.await()
                 assertTrue(insertionCompleted.isCompleted)
                 assertTrue(dao.hasRunnableTasks())
@@ -516,12 +518,17 @@ class DataTaskDaoTest {
         dao = database.dataTaskDao()
     }
 
-    private fun buildDatabase(): AppDatabase = Room.databaseBuilder(
-        context,
-        AppDatabase::class.java,
-        DATABASE_NAME,
-    ).setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-        .build()
+    private fun buildDatabase(
+        openHelperFactory: SupportSQLiteOpenHelper.Factory? = null,
+    ): AppDatabase {
+        val builder = Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            DATABASE_NAME,
+        ).setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+        openHelperFactory?.let(builder::openHelperFactory)
+        return builder.build()
+    }
 
     private fun reopenDatabase() {
         database.close()
@@ -677,6 +684,58 @@ class DataTaskDaoTest {
         ),
         finishedAtEpochMs = finishedAtEpochMs,
     )
+
+    private class WriterTransactionProbe {
+        val transactionAttempted = CompletableDeferred<Unit>()
+        val transactionAcquired = CompletableDeferred<Unit>()
+        private val armed = AtomicBoolean(false)
+
+        fun arm() {
+            check(armed.compareAndSet(false, true)) { "Writer transaction probe already armed" }
+        }
+
+        fun onTransactionAttempted() {
+            if (armed.get()) transactionAttempted.complete(Unit)
+        }
+
+        fun onTransactionAcquired() {
+            if (armed.get()) transactionAcquired.complete(Unit)
+        }
+    }
+
+    private class WriterTrackingOpenHelperFactory(
+        private val probe: WriterTransactionProbe,
+        private val delegate: SupportSQLiteOpenHelper.Factory = FrameworkSQLiteOpenHelperFactory(),
+    ) : SupportSQLiteOpenHelper.Factory {
+        override fun create(
+            configuration: SupportSQLiteOpenHelper.Configuration,
+        ): SupportSQLiteOpenHelper = WriterTrackingOpenHelper(
+            delegate = delegate.create(configuration),
+            probe = probe,
+        )
+    }
+
+    private class WriterTrackingOpenHelper(
+        private val delegate: SupportSQLiteOpenHelper,
+        private val probe: WriterTransactionProbe,
+    ) : SupportSQLiteOpenHelper by delegate {
+        override val writableDatabase: SupportSQLiteDatabase
+            get() = WriterTrackingDatabase(delegate.writableDatabase, probe)
+
+        override val readableDatabase: SupportSQLiteDatabase
+            get() = WriterTrackingDatabase(delegate.readableDatabase, probe)
+    }
+
+    private class WriterTrackingDatabase(
+        private val delegate: SupportSQLiteDatabase,
+        private val probe: WriterTransactionProbe,
+    ) : SupportSQLiteDatabase by delegate {
+        override fun beginTransactionNonExclusive() {
+            probe.onTransactionAttempted()
+            delegate.beginTransactionNonExclusive()
+            probe.onTransactionAcquired()
+        }
+    }
 
     private data class PersistedTask(
         val state: String,
