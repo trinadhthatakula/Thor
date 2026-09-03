@@ -134,8 +134,12 @@ abstract class PrivilegeSweepDao {
         nowMs: Long,
         leaseUntilMs: Long,
     ): ClaimedSweepRequest? {
-        require(sessionToken.isNotBlank()) { "sessionToken must not be blank" }
-        require(claimToken.isNotBlank()) { "claimToken must not be blank" }
+        require(sessionToken.isStorageSafeOwnershipToken()) {
+            "sessionToken must be a non-empty storage-safe ownership token"
+        }
+        require(claimToken.isStorageSafeOwnershipToken()) {
+            "claimToken must be a non-empty storage-safe ownership token"
+        }
         require(nowMs >= 0L) { "nowMs must not be negative" }
         require(leaseUntilMs > nowMs) { "leaseUntilMs must be later than nowMs" }
         val requestId = findOldestRunnableRequestId() ?: return null
@@ -161,10 +165,22 @@ abstract class PrivilegeSweepDao {
         nowMs: Long,
         leaseUntilMs: Long,
     ): ClaimedSweepTarget? {
-        require(requestClaimToken.isNotBlank()) { "requestClaimToken must not be blank" }
-        require(targetClaimToken.isNotBlank()) { "targetClaimToken must not be blank" }
+        require(requestClaimToken.isStorageSafeOwnershipToken()) {
+            "requestClaimToken must be a non-empty storage-safe ownership token"
+        }
+        require(targetClaimToken.isStorageSafeOwnershipToken()) {
+            "targetClaimToken must be a non-empty storage-safe ownership token"
+        }
         require(nowMs >= 0L) { "nowMs must not be negative" }
         require(leaseUntilMs > nowMs) { "leaseUntilMs must be later than nowMs" }
+        val request = loadRequestEntity(requestId) ?: return null
+        if (
+            hasMalformedRequestOwnership(requestId) ||
+            !request.hasValidOwnedRequestOwnership() ||
+            request.claimToken != requestClaimToken
+        ) {
+            return null
+        }
         val ordinal = findNextPendingTargetOrdinal(requestId, requestClaimToken) ?: return null
         if (
             claimPendingTargetRow(
@@ -195,7 +211,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -213,14 +230,21 @@ abstract class PrivilegeSweepDao {
         leaseUntilMs: Long,
     ): Int
 
+    @Transaction
     open suspend fun renewRequestClaim(
         requestId: String,
         claimToken: String,
         leaseUntilMs: Long,
     ): Boolean {
-        require(claimToken.isNotBlank()) { "claimToken must not be blank" }
+        require(claimToken.isStorageSafeOwnershipToken()) {
+            "claimToken must be a non-empty storage-safe ownership token"
+        }
         require(leaseUntilMs >= 0L) { "leaseUntilMs must not be negative" }
-        return renewRequestClaimRow(requestId, claimToken, leaseUntilMs) == 1
+        val request = loadRequestEntity(requestId) ?: return false
+        return !hasMalformedRequestOwnership(requestId) &&
+                request.hasValidOwnedRequestOwnership() &&
+                request.claimToken == claimToken &&
+                renewRequestClaimRow(requestId, claimToken, leaseUntilMs) == 1
     }
 
     @Query(
@@ -237,7 +261,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -262,15 +287,28 @@ abstract class PrivilegeSweepDao {
         leaseUntilMs: Long,
     ): Int
 
+    @Transaction
     open suspend fun renewTargetClaim(
         requestId: String,
         ordinal: Int,
         claimToken: String,
         leaseUntilMs: Long,
     ): Boolean {
-        require(claimToken.isNotBlank()) { "claimToken must not be blank" }
+        require(claimToken.isStorageSafeOwnershipToken()) {
+            "claimToken must be a non-empty storage-safe ownership token"
+        }
         require(leaseUntilMs >= 0L) { "leaseUntilMs must not be negative" }
-        return renewTargetClaimRow(requestId, ordinal, claimToken, leaseUntilMs) == 1
+        val request = loadRequestEntity(requestId) ?: return false
+        if (
+            hasMalformedRequestOwnership(requestId) ||
+            !request.hasValidOwnedRequestOwnership()
+        ) {
+            return false
+        }
+        val target = loadTarget(requestId, ordinal) ?: return false
+        return target.hasValidTargetOwnership() &&
+                target.claimToken == claimToken &&
+                renewTargetClaimRow(requestId, ordinal, claimToken, leaseUntilMs) == 1
     }
 
     @Transaction
@@ -281,19 +319,34 @@ abstract class PrivilegeSweepDao {
         targetClaimToken: String,
         result: StoredSweepTargetResult,
     ): Boolean {
-        require(requestClaimToken.isNotBlank()) { "requestClaimToken must not be blank" }
-        require(targetClaimToken.isNotBlank()) { "targetClaimToken must not be blank" }
+        require(requestClaimToken.isStorageSafeOwnershipToken()) {
+            "requestClaimToken must be a non-empty storage-safe ownership token"
+        }
+        require(targetClaimToken.isStorageSafeOwnershipToken()) {
+            "targetClaimToken must be a non-empty storage-safe ownership token"
+        }
         require(result.finishedAtEpochMs >= 0L) { "finishedAtEpochMs must not be negative" }
-        return completeClaimedTargetRow(
-            requestId = requestId,
-            ordinal = ordinal,
-            requestClaimToken = requestClaimToken,
-            targetClaimToken = targetClaimToken,
-            terminalState = result.terminalState.name,
-            resultCode = result.resultCode.value,
-            rootLaneDegraded = result.rootLaneDegraded,
-            finishedAtEpochMs = result.finishedAtEpochMs,
-        ) == 1 && refreshClaimedRequestAggregates(
+        val request = loadRequestEntity(requestId) ?: return false
+        if (
+            hasMalformedRequestOwnership(requestId) ||
+            !request.hasValidOwnedRequestOwnership() ||
+            request.claimToken != requestClaimToken
+        ) {
+            return false
+        }
+        val target = loadTarget(requestId, ordinal) ?: return false
+        return target.hasValidTargetOwnership() &&
+                target.claimToken == targetClaimToken &&
+                completeClaimedTargetRow(
+                    requestId = requestId,
+                    ordinal = ordinal,
+                    requestClaimToken = requestClaimToken,
+                    targetClaimToken = targetClaimToken,
+                    terminalState = result.terminalState.name,
+                    resultCode = result.resultCode.value,
+                    rootLaneDegraded = result.rootLaneDegraded,
+                    finishedAtEpochMs = result.finishedAtEpochMs,
+                ) == 1 && refreshClaimedRequestAggregates(
             requestId,
             requestClaimToken,
             result.finishedAtEpochMs,
@@ -312,7 +365,20 @@ abstract class PrivilegeSweepDao {
         if (terminalState != null || state.isTerminal()) {
             return SweepCancellationDecision.AlreadyTerminal(requestId, terminalState ?: state)
         }
-        if (hasMalformedTargetOwnership(requestId)) return SweepCancellationDecision.NotFound
+        val requestOwnershipIsValid = when (state) {
+            StoredSweepRequestState.RUNNING,
+            StoredSweepRequestState.CANCEL_REQUESTED,
+                -> request.hasValidOwnedRequestOwnership()
+
+            else -> request.hasUnownedRequestOwnership()
+        }
+        if (
+            hasMalformedRequestOwnership(requestId) ||
+            !requestOwnershipIsValid ||
+            hasMalformedTargetOwnership(requestId)
+        ) {
+            return SweepCancellationDecision.NotFound
+        }
 
         if (requestCancellationRow(requestId, request.state, request.claimToken, nowMs) != 1) {
             return SweepCancellationDecision.NotFound
@@ -342,15 +408,20 @@ abstract class PrivilegeSweepDao {
         nowMs: Long,
         localOwnerIsLive: (requestId: String, requestClaimToken: String) -> Boolean,
     ): List<SweepRequestRecoveryCandidate> {
-        require(sessionToken.isNotBlank()) { "sessionToken must not be blank" }
+        require(sessionToken.isStorageSafeOwnershipToken()) {
+            "sessionToken must be a non-empty storage-safe ownership token"
+        }
         require(nowMs >= 0L) { "nowMs must not be negative" }
         return loadRecoverableRequests().mapNotNull { request ->
-            val previousSession = request.serviceSessionToken
-                ?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-            val previousClaim = request.claimToken
-                ?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-            val previousLease = request.claimLeaseExpiresAtEpochMs
-                ?.takeIf { it >= 0L } ?: return@mapNotNull null
+            if (
+                hasMalformedRequestOwnership(request.requestId) ||
+                !request.hasValidOwnedRequestOwnership()
+            ) {
+                return@mapNotNull null
+            }
+            val previousSession = requireNotNull(request.serviceSessionToken)
+            val previousClaim = requireNotNull(request.claimToken)
+            val previousLease = requireNotNull(request.claimLeaseExpiresAtEpochMs)
             if (localOwnerIsLive(request.requestId, previousClaim)) return@mapNotNull null
             if (previousSession == sessionToken && previousLease > nowMs) return@mapNotNull null
 
@@ -431,6 +502,12 @@ abstract class PrivilegeSweepDao {
         require(recovery.recoveredAtEpochMs >= 0L) { "recoveredAtEpochMs must not be negative" }
         val request = loadRequestEntity(requestId) ?: return false
         if (StoredSweepRequestState.valueOf(request.state).isTerminal()) return false
+        if (
+            hasMalformedRequestOwnership(requestId) ||
+            !request.hasUnownedRequestOwnership()
+        ) {
+            return false
+        }
         val target = loadTarget(requestId, ordinal) ?: return false
         val targetState = StoredSweepTargetState.valueOf(target.state)
         val mayReconcileUnownedTarget =
@@ -456,7 +533,22 @@ abstract class PrivilegeSweepDao {
         recovery: StoredSweepRecovery,
     ): Boolean {
         require(recovery.recoveredAtEpochMs >= 0L) { "recoveredAtEpochMs must not be negative" }
+        if (
+            !candidate.previousServiceSessionToken.isStorageSafeOwnershipToken() ||
+            !candidate.previousRequestClaimToken.isStorageSafeOwnershipToken() ||
+            candidate.previousRequestClaimLeaseExpiresAtEpochMs < 0L ||
+            !candidate.activeTargetClaimToken.isStorageSafeOwnershipToken() ||
+            candidate.activeTargetClaimLeaseExpiresAtEpochMs < 0L
+        ) {
+            return false
+        }
         val request = loadRequestEntity(candidate.requestId) ?: return false
+        if (
+            hasMalformedRequestOwnership(candidate.requestId) ||
+            !request.hasValidOwnedRequestOwnership()
+        ) {
+            return false
+        }
         val requestState = StoredSweepRequestState.valueOf(request.state)
         if (
             requestState != StoredSweepRequestState.RUNNING &&
@@ -476,6 +568,7 @@ abstract class PrivilegeSweepDao {
             return false
         }
         val target = loadTarget(candidate.requestId, candidate.activeTargetOrdinal) ?: return false
+        if (!target.hasValidTargetOwnership()) return false
         val candidateIsStale =
             target.state != StoredSweepTargetState.RUNNING.name ||
                     target.claimToken != candidate.activeTargetClaimToken ||
@@ -493,7 +586,19 @@ abstract class PrivilegeSweepDao {
     ): Boolean {
         val requestId = request.requestId
         val ordinal = target.ordinal
-        if (hasMalformedTargetOwnership(requestId)) return false
+        val requestOwnershipIsValid =
+            if (target.state == StoredSweepTargetState.RUNNING.name) {
+                request.hasValidOwnedRequestOwnership()
+            } else {
+                request.hasUnownedRequestOwnership()
+            }
+        if (
+            !requestOwnershipIsValid ||
+            !target.hasValidTargetOwnership() ||
+            hasMalformedTargetOwnership(requestId)
+        ) {
+            return false
+        }
         if (request.state == StoredSweepRequestState.CANCEL_REQUESTED.name) {
             if (target.state != StoredSweepTargetState.RUNNING.name) return false
             if (
@@ -608,6 +713,12 @@ abstract class PrivilegeSweepDao {
         val request = loadRequestEntity(requestId) ?: return false
         if (StoredSweepRequestState.valueOf(request.state).isTerminal()) return false
         if (
+            hasMalformedRequestOwnership(requestId) ||
+            !request.hasUnownedRequestOwnership()
+        ) {
+            return false
+        }
+        if (
             request.serviceSessionToken != null ||
             request.claimToken != null ||
             request.claimLeaseExpiresAtEpochMs != null ||
@@ -650,10 +761,14 @@ abstract class PrivilegeSweepDao {
         claimToken: String,
         nowMs: Long,
     ): Boolean {
-        require(claimToken.isNotBlank()) { "claimToken must not be blank" }
+        require(claimToken.isStorageSafeOwnershipToken()) {
+            "claimToken must be a non-empty storage-safe ownership token"
+        }
         require(nowMs >= 0L) { "nowMs must not be negative" }
         val request = loadRequestEntity(requestId) ?: return false
         if (
+            hasMalformedRequestOwnership(requestId) ||
+            !request.hasValidOwnedRequestOwnership() ||
             request.state != StoredSweepRequestState.RUNNING.name ||
             request.claimToken != claimToken
         ) {
@@ -702,14 +817,17 @@ abstract class PrivilegeSweepDao {
         SELECT request_id FROM sweep_requests
         WHERE state = 'QUEUED'
           AND terminal_state IS NULL
+          AND service_session_token IS NULL
           AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -754,7 +872,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -794,7 +913,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -842,7 +962,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -923,7 +1044,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -987,7 +1109,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1072,7 +1195,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1106,7 +1230,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1144,7 +1269,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1191,7 +1317,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1242,7 +1369,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1297,7 +1425,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1356,7 +1485,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1412,7 +1542,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1463,7 +1594,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1516,7 +1648,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1567,7 +1700,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1620,7 +1754,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1675,7 +1810,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1751,7 +1887,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1817,7 +1954,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -1898,12 +2036,36 @@ abstract class PrivilegeSweepDao {
     @Query(
         """
         SELECT EXISTS(
+            SELECT 1 FROM sweep_requests
+            WHERE request_id = :requestId
+              AND (
+                  ((service_session_token IS NULL OR
+                      claim_token IS NULL OR
+                      claim_lease_expires_at_epoch_ms IS NULL) AND
+                   (service_session_token IS NOT NULL OR
+                      claim_token IS NOT NULL OR
+                      claim_lease_expires_at_epoch_ms IS NOT NULL)) OR
+                  service_session_token = '' OR
+                  service_session_token GLOB '*[^A-Za-z0-9._:-]*' OR
+                  claim_token = '' OR
+                  claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
+                  claim_lease_expires_at_epoch_ms < 0
+              )
+        )
+        """
+    )
+    protected abstract suspend fun hasMalformedRequestOwnership(requestId: String): Boolean
+
+    @Query(
+        """
+        SELECT EXISTS(
             SELECT 1 FROM sweep_targets
             WHERE request_id = :requestId
               AND (
                   (state = 'RUNNING' AND (
                       claim_token IS NULL OR
-                      TRIM(claim_token) = '' OR
+                      claim_token = '' OR
+                      claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                       claim_lease_expires_at_epoch_ms IS NULL OR
                       claim_lease_expires_at_epoch_ms < 0
                   )) OR
@@ -1983,7 +2145,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -2025,7 +2188,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -2058,7 +2222,8 @@ abstract class PrivilegeSweepDao {
                 AND (
                     (malformed_targets.state = 'RUNNING' AND (
                         malformed_targets.claim_token IS NULL OR
-                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_token = '' OR
+                        malformed_targets.claim_token GLOB '*[^A-Za-z0-9._:-]*' OR
                         malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
                         malformed_targets.claim_lease_expires_at_epoch_ms < 0
                     )) OR
@@ -2209,6 +2374,9 @@ abstract class PrivilegeSweepDao {
 
     private fun SweepRequestWithTargets.toClaimedRequest(): ClaimedSweepRequest {
         val request = request
+        require(request.hasValidOwnedRequestOwnership()) {
+            "Claimed request has malformed ownership"
+        }
         val sessionToken = requireNotNull(request.serviceSessionToken)
         val claimToken = requireNotNull(request.claimToken)
         val leaseUntilMs = requireNotNull(request.claimLeaseExpiresAtEpochMs)
@@ -2242,28 +2410,34 @@ abstract class PrivilegeSweepDao {
         )
     }
 
-    private fun SweepTargetEntity.toClaimedTarget(): ClaimedSweepTarget = ClaimedSweepTarget(
-        requestId = requestId,
-        ordinal = ordinal,
-        packageName = packageName,
-        claimToken = requireNotNull(claimToken),
-        claimLeaseExpiresAtEpochMs = requireNotNull(claimLeaseExpiresAtEpochMs),
-        attemptCount = attemptCount,
-        startedAtEpochMs = requireNotNull(startedAtEpochMs),
-    )
+    private fun SweepTargetEntity.toClaimedTarget(): ClaimedSweepTarget {
+        require(hasValidTargetOwnership()) { "Claimed target has malformed ownership" }
+        return ClaimedSweepTarget(
+            requestId = requestId,
+            ordinal = ordinal,
+            packageName = packageName,
+            claimToken = requireNotNull(claimToken),
+            claimLeaseExpiresAtEpochMs = requireNotNull(claimLeaseExpiresAtEpochMs),
+            attemptCount = attemptCount,
+            startedAtEpochMs = requireNotNull(startedAtEpochMs),
+        )
+    }
 
     private fun SweepRequestEntity.toRecoveryCandidate(
         target: SweepTargetEntity,
         previousSessionToken: String,
     ): SweepRequestRecoveryCandidate? {
-        val previousRequestClaimToken = claimToken
-            ?.takeIf(String::isNotBlank) ?: return null
-        val previousRequestClaimLease = claimLeaseExpiresAtEpochMs
-            ?.takeIf { it >= 0L } ?: return null
-        val activeTargetClaimToken = target.claimToken
-            ?.takeIf(String::isNotBlank) ?: return null
-        val activeTargetClaimLease = target.claimLeaseExpiresAtEpochMs
-            ?.takeIf { it >= 0L } ?: return null
+        if (
+            !previousSessionToken.isStorageSafeOwnershipToken() ||
+            !hasValidOwnedRequestOwnership() ||
+            !target.hasValidTargetOwnership()
+        ) {
+            return null
+        }
+        val previousRequestClaimToken = requireNotNull(claimToken)
+        val previousRequestClaimLease = requireNotNull(claimLeaseExpiresAtEpochMs)
+        val activeTargetClaimToken = requireNotNull(target.claimToken)
+        val activeTargetClaimLease = requireNotNull(target.claimLeaseExpiresAtEpochMs)
         val storedOperation = PrivilegeSweepOperation.valueOf(operation)
         val storedFreezerMode = freezerMode?.let(FreezerMode::valueOf)
         require(
@@ -2285,6 +2459,35 @@ abstract class PrivilegeSweepDao {
             activeTargetClaimLeaseExpiresAtEpochMs = activeTargetClaimLease,
         )
     }
+
+    private fun String.isStorageSafeOwnershipToken(): Boolean =
+        isNotEmpty() && all { character ->
+            character in 'A'..'Z' ||
+                    character in 'a'..'z' ||
+                    character in '0'..'9' ||
+                    character == '.' ||
+                    character == '_' ||
+                    character == ':' ||
+                    character == '-'
+        }
+
+    private fun SweepRequestEntity.hasValidOwnedRequestOwnership(): Boolean =
+        serviceSessionToken?.isStorageSafeOwnershipToken() == true &&
+                claimToken?.isStorageSafeOwnershipToken() == true &&
+                claimLeaseExpiresAtEpochMs?.let { it >= 0L } == true
+
+    private fun SweepRequestEntity.hasUnownedRequestOwnership(): Boolean =
+        serviceSessionToken == null &&
+                claimToken == null &&
+                claimLeaseExpiresAtEpochMs == null
+
+    private fun SweepTargetEntity.hasValidTargetOwnership(): Boolean =
+        if (state == StoredSweepTargetState.RUNNING.name) {
+            claimToken?.isStorageSafeOwnershipToken() == true &&
+                    claimLeaseExpiresAtEpochMs?.let { it >= 0L } == true
+        } else {
+            claimToken == null && claimLeaseExpiresAtEpochMs == null
+        }
 
     private fun StoredSweepRequestState.isTerminal(): Boolean =
         this == StoredSweepRequestState.SUCCEEDED ||

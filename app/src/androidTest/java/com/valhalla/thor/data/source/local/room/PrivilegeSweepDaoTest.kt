@@ -318,6 +318,320 @@ class PrivilegeSweepDaoTest {
     }
 
     @Test
+    fun malformedRunningTargetTokenAlphabetFailsClosedAtRecoveryAndCancellation() = runBlocking {
+        MALFORMED_OWNERSHIP_TOKENS.forEachIndexed { index, (label, malformedToken) ->
+            insertSweep(requestId = REQUEST_1, queueSequence = index.toLong() + 1L)
+            dao.claimOldestRunnableRequest(
+                "previous-session",
+                "request-claim",
+                2_000L,
+                3_000L,
+            )
+            dao.claimNextPendingTarget(
+                REQUEST_1,
+                "request-claim",
+                "target-claim",
+                2_100L,
+                3_100L,
+            )
+            seedTargetOwnership(REQUEST_1, 0, malformedToken, 3_100L)
+            val before = requireNotNull(dao.load(REQUEST_1))
+            var ownerChecks = 0
+
+            val recovery = dao.recoverRequestClaims("current-session", 4_000L) { _, _ ->
+                ownerChecks += 1
+                false
+            }
+            val cancellation = dao.requestCancellation(REQUEST_1, 4_100L)
+
+            assertTrue("$label target token produced a recovery candidate", recovery.isEmpty())
+            assertEquals("$label target token reached the owner callback", 1, ownerChecks)
+            assertTrue(
+                "$label target token permitted cancellation",
+                cancellation is SweepCancellationDecision.NotFound,
+            )
+            assertEquals(
+                "$label target token changed persisted state",
+                before,
+                requireNotNull(dao.load(REQUEST_1)),
+            )
+            deleteSweep()
+        }
+    }
+
+    @Test
+    fun tabOwnedRunningTargetCancellationLeavesRequestAndTargetUnchanged() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("previous-session", "request-claim", 2_000L, 3_000L)
+        dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_100L,
+            3_100L,
+        )
+        seedTargetOwnership(REQUEST_1, 0, "\t", 3_100L)
+        val before = requireNotNull(dao.load(REQUEST_1))
+
+        val cancellation = dao.requestCancellation(REQUEST_1, 4_000L)
+
+        assertTrue(cancellation is SweepCancellationDecision.NotFound)
+        assertEquals(before.request, requireNotNull(dao.load(REQUEST_1)).request)
+        assertEquals(before.targets, requireNotNull(dao.load(REQUEST_1)).targets)
+    }
+
+    @Test
+    fun malformedPersistedRequestTokensFailClosedAtRecoveryAndCancellation() = runBlocking {
+        MALFORMED_OWNERSHIP_TOKENS.forEachIndexed { index, (label, malformedToken) ->
+            listOf("service session", "request claim").forEach { field ->
+                listOf("recovery", "cancellation").forEach { boundary ->
+                    insertSweep(requestId = REQUEST_1, queueSequence = index.toLong() + 1L)
+                    dao.claimOldestRunnableRequest(
+                        "previous-session",
+                        "request-claim",
+                        2_000L,
+                        3_000L,
+                    )
+                    seedRequestOwnership(
+                        sessionToken = if (field == "service session") {
+                            malformedToken
+                        } else {
+                            "previous-session"
+                        },
+                        claimToken = if (field == "request claim") {
+                            malformedToken
+                        } else {
+                            "request-claim"
+                        },
+                    )
+                    val before = requireNotNull(dao.load(REQUEST_1))
+                    var ownerChecks = 0
+
+                    val rejected = when (boundary) {
+                        "recovery" -> {
+                            val candidates = dao.recoverRequestClaims(
+                                "current-session",
+                                4_000L,
+                            ) { _, _ ->
+                                ownerChecks += 1
+                                false
+                            }
+                            candidates.isEmpty() && ownerChecks == 0
+                        }
+
+                        else -> dao.requestCancellation(REQUEST_1, 4_000L) is
+                                SweepCancellationDecision.NotFound
+                    }
+
+                    assertTrue("$label $field token passed $boundary", rejected)
+                    assertEquals(
+                        "$label $field token changed state during $boundary",
+                        before,
+                        requireNotNull(dao.load(REQUEST_1)),
+                    )
+                    deleteSweep()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun invalidSuppliedClaimTokensRejectBeforeMutation() = runBlocking {
+        MALFORMED_OWNERSHIP_TOKENS.forEachIndexed { index, (label, malformedToken) ->
+            listOf("service session", "request claim").forEach { field ->
+                insertSweep(requestId = REQUEST_1, queueSequence = index.toLong() + 1L)
+                val before = requireNotNull(dao.load(REQUEST_1))
+
+                val failure = runCatching {
+                    dao.claimOldestRunnableRequest(
+                        sessionToken = if (field == "service session") {
+                            malformedToken
+                        } else {
+                            "session"
+                        },
+                        claimToken = if (field == "request claim") {
+                            malformedToken
+                        } else {
+                            "request-claim"
+                        },
+                        nowMs = 2_000L,
+                        leaseUntilMs = 3_000L,
+                    )
+                }.exceptionOrNull()
+
+                assertTrue("$label $field token was accepted", failure is IllegalArgumentException)
+                assertEquals(before, requireNotNull(dao.load(REQUEST_1)))
+                deleteSweep()
+            }
+
+            listOf("request claim", "target claim").forEach { field ->
+                insertSweep(requestId = REQUEST_1, queueSequence = index.toLong() + 1L)
+                dao.claimOldestRunnableRequest("session", "request-claim", 2_000L, 3_000L)
+                val before = requireNotNull(dao.load(REQUEST_1))
+
+                val failure = runCatching {
+                    dao.claimNextPendingTarget(
+                        requestId = REQUEST_1,
+                        requestClaimToken = if (field == "request claim") {
+                            malformedToken
+                        } else {
+                            "request-claim"
+                        },
+                        targetClaimToken = if (field == "target claim") {
+                            malformedToken
+                        } else {
+                            "target-claim"
+                        },
+                        nowMs = 2_100L,
+                        leaseUntilMs = 3_100L,
+                    )
+                }.exceptionOrNull()
+
+                assertTrue("$label $field token was accepted", failure is IllegalArgumentException)
+                assertEquals(before, requireNotNull(dao.load(REQUEST_1)))
+                deleteSweep()
+            }
+        }
+    }
+
+    @Test
+    fun invalidSuppliedOwnershipAuthoritiesRejectAtEveryMutationBoundary() = runBlocking {
+        val malformedToken = "claim/token"
+
+        suspend fun assertRejected(
+            label: String,
+            prepare: suspend () -> Unit = {},
+            action: suspend () -> Unit,
+        ) {
+            insertSweep(requestId = REQUEST_1)
+            dao.claimOldestRunnableRequest("session", "request-claim", 2_000L, 3_000L)
+            dao.claimNextPendingTarget(
+                REQUEST_1,
+                "request-claim",
+                "target-claim",
+                2_100L,
+                3_100L,
+            )
+            prepare()
+            val before = requireNotNull(dao.load(REQUEST_1))
+
+            val failure = runCatching { action() }.exceptionOrNull()
+
+            assertTrue("$label accepted a malformed token", failure is IllegalArgumentException)
+            assertEquals(
+                "$label mutated persisted state",
+                before,
+                requireNotNull(dao.load(REQUEST_1))
+            )
+            deleteSweep()
+        }
+
+        assertRejected("request renewal") {
+            dao.renewRequestClaim(REQUEST_1, malformedToken, 4_000L)
+        }
+        assertRejected("target renewal") {
+            dao.renewTargetClaim(REQUEST_1, 0, malformedToken, 4_000L)
+        }
+        assertRejected("completion request ownership") {
+            dao.completeClaimedTarget(
+                REQUEST_1,
+                0,
+                malformedToken,
+                "target-claim",
+                successfulResult(2_200L),
+            )
+        }
+        assertRejected("completion target ownership") {
+            dao.completeClaimedTarget(
+                REQUEST_1,
+                0,
+                "request-claim",
+                malformedToken,
+                successfulResult(2_200L),
+            )
+        }
+        assertRejected("drain finalization") {
+            dao.finishClaimedRequestIfDrained(REQUEST_1, malformedToken, 2_300L)
+        }
+        assertRejected("request recovery session") {
+            dao.recoverRequestClaims(malformedToken, 4_000L) { _, _ -> false }
+        }
+    }
+
+    @Test
+    fun validOwnershipTokenAlphabetRemainsAccepted() = runBlocking {
+        VALID_OWNERSHIP_TOKENS.forEachIndexed { index, token ->
+            val requestId = "valid-request-$index"
+            insertSweep(requestId = requestId, queueSequence = index.toLong() + 1L)
+
+            assertNotNull(dao.claimOldestRunnableRequest(token, token, 2_000L, 3_000L))
+            assertNotNull(dao.claimNextPendingTarget(requestId, token, token, 2_100L, 3_100L))
+            assertTrue(dao.renewRequestClaim(requestId, token, 3_200L))
+            assertTrue(dao.renewTargetClaim(requestId, 0, token, 3_200L))
+            assertTrue(
+                dao.completeClaimedTarget(
+                    requestId,
+                    0,
+                    token,
+                    token,
+                    successfulResult(2_200L),
+                ),
+            )
+            assertTrue(dao.finishClaimedRequestIfDrained(requestId, token, 2_300L))
+        }
+    }
+
+    @Test
+    fun malformedStoredTokensCannotBeUsedByTypedRecoveryCandidate() = runBlocking {
+        listOf("service session", "request claim", "target claim").forEach { field ->
+            insertSweep(requestId = REQUEST_1)
+            dao.claimOldestRunnableRequest("previous-session", "request-claim", 2_000L, 3_000L)
+            dao.claimNextPendingTarget(
+                REQUEST_1,
+                "request-claim",
+                "target-claim",
+                2_100L,
+                3_100L,
+            )
+            val candidate = dao.recoverRequestClaims(
+                "current-session",
+                4_000L,
+            ) { _, _ -> false }.single()
+            val malformedToken = "claim/token"
+            val malformedCandidate = when (field) {
+                "service session" -> {
+                    seedRequestOwnership(malformedToken, "request-claim")
+                    candidate.copy(previousServiceSessionToken = malformedToken)
+                }
+
+                "request claim" -> {
+                    seedRequestOwnership("previous-session", malformedToken)
+                    candidate.copy(previousRequestClaimToken = malformedToken)
+                }
+
+                else -> {
+                    seedTargetOwnership(REQUEST_1, 0, malformedToken, 3_100L)
+                    candidate.copy(activeTargetClaimToken = malformedToken)
+                }
+            }
+            val before = requireNotNull(dao.load(REQUEST_1))
+
+            assertFalse(
+                "$field malformed candidate was accepted",
+                dao.recoverInterruptedTarget(
+                    malformedCandidate,
+                    StoredSweepRecovery.MarkUnknown(
+                        SweepTargetResultCode("OUTCOME_UNKNOWN"),
+                        recoveredAtEpochMs = 4_000L,
+                    ),
+                ),
+            )
+            assertEquals(before, requireNotNull(dao.load(REQUEST_1)))
+            deleteSweep()
+        }
+    }
+
+    @Test
     fun cancellationRejectsMalformedNonRunningTargets() = runBlocking {
         val cases = listOf(
             Triple(StoredSweepTargetState.PENDING, null, 9_000L),
@@ -1205,6 +1519,29 @@ class PrivilegeSweepDaoTest {
         )
     }
 
+    private fun seedRequestOwnership(
+        sessionToken: String,
+        claimToken: String,
+    ) {
+        database.openHelper.writableDatabase.execSQL(
+            """
+            UPDATE sweep_requests
+            SET service_session_token = ?,
+                claim_token = ?,
+                claim_lease_expires_at_epoch_ms = 3000
+            WHERE request_id = ?
+            """.trimIndent(),
+            arrayOf<Any?>(sessionToken, claimToken, REQUEST_1),
+        )
+    }
+
+    private fun deleteSweep() {
+        database.openHelper.writableDatabase.execSQL(
+            "DELETE FROM sweep_requests WHERE request_id = ?",
+            arrayOf(REQUEST_1),
+        )
+    }
+
     private suspend fun completeNextTarget(
         targetClaimToken: String,
         terminalState: StoredSweepTargetTerminalState,
@@ -1309,5 +1646,21 @@ class PrivilegeSweepDaoTest {
         const val REQUEST_1 = "00000000-0000-0000-0000-000000000101"
         const val REQUEST_2 = "00000000-0000-0000-0000-000000000102"
         const val REQUEST_3 = "00000000-0000-0000-0000-000000000103"
+
+        val MALFORMED_OWNERSHIP_TOKENS = listOf(
+            "spaces" to "   ",
+            "tab" to "\t",
+            "newline" to "\n",
+            "mixed ASCII whitespace" to " \t\n",
+            "Unicode whitespace" to " ",
+            "punctuation" to "claim/token",
+        )
+        val VALID_OWNERSHIP_TOKENS = listOf(
+            "00000000-0000-0000-0000-000000000201",
+            "request-claim",
+            "target_1",
+            "session:1",
+            "claim.1",
+        )
     }
 }
