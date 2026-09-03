@@ -168,6 +168,219 @@ class PrivilegeSweepDaoTest {
     }
 
     @Test
+    fun malformedPendingRequestsAreNotRunnableOrClaimable() = runBlocking {
+        insertSweep(requestId = REQUEST_1, queueSequence = 1L)
+        seedTargetOwnership(REQUEST_1, ordinal = 0, claimToken = "stray-token", leaseUntilMs = null)
+        insertSweep(requestId = REQUEST_2, queueSequence = 2L)
+        seedTargetOwnership(REQUEST_2, ordinal = 0, claimToken = null, leaseUntilMs = 9_000L)
+        val before = listOf(
+            requireNotNull(dao.load(REQUEST_1)),
+            requireNotNull(dao.load(REQUEST_2)),
+        )
+
+        val runnable = dao.hasRunnableRequests()
+        val claimed = dao.claimOldestRunnableRequest("session", "request-claim", 2_000L, 3_000L)
+
+        assertFalse(runnable)
+        assertNull(claimed)
+        assertEquals(
+            before,
+            listOf(
+                requireNotNull(dao.load(REQUEST_1)),
+                requireNotNull(dao.load(REQUEST_2)),
+            ),
+        )
+    }
+
+    @Test
+    fun pendingTargetClaimRejectsIncompleteOwnership() = runBlocking {
+        insertSweep(
+            requestId = REQUEST_1,
+            targetStates = listOf(
+                StoredSweepTargetState.PENDING,
+                StoredSweepTargetState.PENDING,
+            ),
+        )
+        dao.claimOldestRunnableRequest("session", "request-claim", 2_000L, 4_000L)
+        seedTargetOwnership(REQUEST_1, ordinal = 0, claimToken = "stray-token", leaseUntilMs = null)
+        seedTargetOwnership(REQUEST_1, ordinal = 1, claimToken = null, leaseUntilMs = 9_000L)
+        val before = requireNotNull(dao.load(REQUEST_1))
+
+        val claimed = dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_100L,
+            4_100L,
+        )
+
+        assertNull(claimed)
+        assertEquals(before, requireNotNull(dao.load(REQUEST_1)))
+    }
+
+    @Test
+    fun pendingTargetClaimRejectsMalformedSibling() = runBlocking {
+        insertSweep(
+            requestId = REQUEST_1,
+            targetStates = listOf(
+                StoredSweepTargetState.PENDING,
+                StoredSweepTargetState.SUCCEEDED,
+            ),
+        )
+        dao.claimOldestRunnableRequest("session", "request-claim", 2_000L, 4_000L)
+        seedTargetOwnership(REQUEST_1, ordinal = 1, claimToken = "stray-token", leaseUntilMs = null)
+        val before = requireNotNull(dao.load(REQUEST_1))
+
+        val claimed = dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_100L,
+            4_100L,
+        )
+
+        assertNull(claimed)
+        assertEquals(before, requireNotNull(dao.load(REQUEST_1)))
+    }
+
+    @Test
+    fun ordinaryClaimedMutationsRejectMalformedSibling() = runBlocking {
+        insertSweep(
+            requestId = REQUEST_1,
+            targetStates = listOf(
+                StoredSweepTargetState.PENDING,
+                StoredSweepTargetState.SUCCEEDED,
+            ),
+        )
+        dao.claimOldestRunnableRequest("session", "request-claim", 2_000L, 4_000L)
+        dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_100L,
+            4_100L,
+        )
+        seedTargetOwnership(REQUEST_1, ordinal = 1, claimToken = "stray-token", leaseUntilMs = null)
+        val before = requireNotNull(dao.load(REQUEST_1))
+
+        val requestRenewed = dao.renewRequestClaim(REQUEST_1, "request-claim", 5_000L)
+        val targetRenewed = dao.renewTargetClaim(REQUEST_1, 0, "target-claim", 5_100L)
+        val completed = dao.completeClaimedTarget(
+            REQUEST_1,
+            0,
+            "request-claim",
+            "target-claim",
+            successfulResult(2_200L),
+        )
+
+        assertFalse(requestRenewed)
+        assertFalse(targetRenewed)
+        assertFalse(completed)
+        assertEquals(before, requireNotNull(dao.load(REQUEST_1)))
+    }
+
+    @Test
+    fun malformedRunningTargetsCannotBeMutatedOrCancelled() = runBlocking {
+        insertSweep(requestId = REQUEST_1, queueSequence = 1L)
+        dao.claimOldestRunnableRequest("session-1", "request-1", 2_000L, 4_000L)
+        dao.claimNextPendingTarget(REQUEST_1, "request-1", "target-1", 2_100L, 4_100L)
+        seedTargetOwnership(REQUEST_1, ordinal = 0, claimToken = "target-1", leaseUntilMs = null)
+        val beforeRenew = requireNotNull(dao.load(REQUEST_1))
+
+        assertFalse(dao.renewTargetClaim(REQUEST_1, 0, "target-1", 5_000L))
+        assertEquals(beforeRenew, requireNotNull(dao.load(REQUEST_1)))
+
+        insertSweep(requestId = REQUEST_2, queueSequence = 2L)
+        dao.claimOldestRunnableRequest("session-2", "request-2", 2_000L, 4_000L)
+        dao.claimNextPendingTarget(REQUEST_2, "request-2", "target-2", 2_100L, 4_100L)
+        seedTargetOwnership(REQUEST_2, ordinal = 0, claimToken = "target-2", leaseUntilMs = -1L)
+        val beforeCompletion = requireNotNull(dao.load(REQUEST_2))
+
+        assertFalse(
+            dao.completeClaimedTarget(
+                REQUEST_2,
+                0,
+                "request-2",
+                "target-2",
+                successfulResult(2_200L),
+            ),
+        )
+        assertEquals(beforeCompletion, requireNotNull(dao.load(REQUEST_2)))
+
+        insertSweep(requestId = REQUEST_3, queueSequence = 3L)
+        dao.claimOldestRunnableRequest("session-3", "request-3", 2_000L, 4_000L)
+        dao.claimNextPendingTarget(REQUEST_3, "request-3", "target-3", 2_100L, 4_100L)
+        seedTargetOwnership(REQUEST_3, ordinal = 0, claimToken = "   ", leaseUntilMs = 4_100L)
+        val beforeCancellation = requireNotNull(dao.load(REQUEST_3))
+
+        assertTrue(dao.requestCancellation(REQUEST_3, 2_300L) is SweepCancellationDecision.NotFound)
+        assertEquals(beforeCancellation, requireNotNull(dao.load(REQUEST_3)))
+    }
+
+    @Test
+    fun cancellationRejectsMalformedNonRunningTargets() = runBlocking {
+        val cases = listOf(
+            Triple(StoredSweepTargetState.PENDING, null, 9_000L),
+            Triple(StoredSweepTargetState.UNKNOWN, "stray-token", null),
+            Triple(StoredSweepTargetState.SUCCEEDED, "stray-token", 9_000L),
+        )
+        val outcomes = cases.map { (targetState, claimToken, leaseUntilMs) ->
+            insertSweep(
+                requestId = REQUEST_1,
+                requestState = StoredSweepRequestState.QUEUED,
+                targetStates = listOf(targetState),
+            )
+            seedTargetOwnership(REQUEST_1, 0, claimToken, leaseUntilMs)
+            val before = requireNotNull(dao.load(REQUEST_1))
+
+            val decision = runCatching { dao.requestCancellation(REQUEST_1, 2_000L) }
+            val unchanged = before == requireNotNull(dao.load(REQUEST_1))
+            database.openHelper.writableDatabase.execSQL(
+                "DELETE FROM sweep_requests WHERE request_id = ?",
+                arrayOf(REQUEST_1),
+            )
+            (decision.getOrNull() is SweepCancellationDecision.NotFound) to unchanged
+        }
+
+        assertEquals(List(cases.size) { true to true }, outcomes)
+    }
+
+    @Test
+    fun drainFinalizationRejectsMalformedTerminalTargets() = runBlocking {
+        val cases = listOf(
+            REQUEST_1 to ("stray-token" to null),
+            REQUEST_2 to (null to 9_000L),
+        )
+        val outcomes = cases.mapIndexed { index, (requestId, ownership) ->
+            val requestClaim = "request-$index"
+            val targetClaim = "target-$index"
+            insertSweep(requestId = requestId, queueSequence = index.toLong() + 1L)
+            dao.claimOldestRunnableRequest("session-$index", requestClaim, 2_000L, 4_000L)
+            dao.claimNextPendingTarget(
+                requestId,
+                requestClaim,
+                targetClaim,
+                2_100L,
+                4_100L,
+            )
+            dao.completeClaimedTarget(
+                requestId,
+                0,
+                requestClaim,
+                targetClaim,
+                successfulResult(2_200L),
+            )
+            seedTargetOwnership(requestId, 0, ownership.first, ownership.second)
+            val before = requireNotNull(dao.load(requestId))
+
+            val finished = dao.finishClaimedRequestIfDrained(requestId, requestClaim, 2_300L)
+            finished to (before == requireNotNull(dao.load(requestId)))
+        }
+
+        assertEquals(List(cases.size) { false to true }, outcomes)
+    }
+
+    @Test
     fun staleRequestOrTargetTokenCannotWrite() = runBlocking {
         insertSweep(requestId = REQUEST_1)
         assertNotNull(
@@ -973,15 +1186,22 @@ class PrivilegeSweepDaoTest {
     private fun seedPartialTargetOwnership(
         requestId: String,
         ordinal: Int,
+    ) = seedTargetOwnership(requestId, ordinal, claimToken = null, leaseUntilMs = 9_000L)
+
+    private fun seedTargetOwnership(
+        requestId: String,
+        ordinal: Int,
+        claimToken: String?,
+        leaseUntilMs: Long?,
     ) {
         database.openHelper.writableDatabase.execSQL(
             """
             UPDATE sweep_targets
-            SET claim_token = NULL,
-                claim_lease_expires_at_epoch_ms = 9_000
+            SET claim_token = ?,
+                claim_lease_expires_at_epoch_ms = ?
             WHERE request_id = ? AND ordinal = ?
             """.trimIndent(),
-            arrayOf<Any>(requestId, ordinal),
+            arrayOf<Any?>(claimToken, leaseUntilMs, requestId, ordinal),
         )
     }
 

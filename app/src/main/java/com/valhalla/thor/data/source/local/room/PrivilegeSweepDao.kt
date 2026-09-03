@@ -189,6 +189,22 @@ abstract class PrivilegeSweepDao {
           AND state = 'RUNNING'
           AND terminal_state IS NULL
           AND claim_token = :claimToken
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
         """
     )
     protected abstract suspend fun renewRequestClaimRow(
@@ -215,6 +231,22 @@ abstract class PrivilegeSweepDao {
           AND ordinal = :ordinal
           AND state = 'RUNNING'
           AND claim_token = :claimToken
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_targets.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
               WHERE sweep_requests.request_id = sweep_targets.request_id
@@ -280,6 +312,7 @@ abstract class PrivilegeSweepDao {
         if (terminalState != null || state.isTerminal()) {
             return SweepCancellationDecision.AlreadyTerminal(requestId, terminalState ?: state)
         }
+        if (hasMalformedTargetOwnership(requestId)) return SweepCancellationDecision.NotFound
 
         if (requestCancellationRow(requestId, request.state, request.claimToken, nowMs) != 1) {
             return SweepCancellationDecision.NotFound
@@ -325,7 +358,7 @@ abstract class PrivilegeSweepDao {
             if (activeTarget != null) {
                 return@mapNotNull request.toRecoveryCandidate(activeTarget, previousSession)
             }
-            if (hasNonRunningTargetOwnership(request.requestId)) return@mapNotNull null
+            if (hasMalformedTargetOwnership(request.requestId)) return@mapNotNull null
 
             if (request.state == StoredSweepRequestState.CANCEL_REQUESTED.name) {
                 cancelInactiveTargets(request.requestId, previousClaim, nowMs)
@@ -407,7 +440,7 @@ abstract class PrivilegeSweepDao {
             ) &&
                     target.claimToken == null &&
                     target.claimLeaseExpiresAtEpochMs == null &&
-                    !hasNonRunningTargetOwnership(requestId) &&
+                    !hasMalformedTargetOwnership(requestId) &&
                     request.state != StoredSweepRequestState.CANCEL_REQUESTED.name &&
                     request.serviceSessionToken == null &&
                     request.claimToken == null &&
@@ -460,7 +493,7 @@ abstract class PrivilegeSweepDao {
     ): Boolean {
         val requestId = request.requestId
         val ordinal = target.ordinal
-        if (hasNonRunningTargetOwnership(requestId)) return false
+        if (hasMalformedTargetOwnership(requestId)) return false
         if (request.state == StoredSweepRequestState.CANCEL_REQUESTED.name) {
             if (target.state != StoredSweepTargetState.RUNNING.name) return false
             if (
@@ -593,7 +626,7 @@ abstract class PrivilegeSweepDao {
         if (
             target.claimToken != null ||
             target.claimLeaseExpiresAtEpochMs != null ||
-            hasNonRunningTargetOwnership(requestId)
+            hasMalformedTargetOwnership(requestId)
         ) {
             return false
         }
@@ -626,6 +659,7 @@ abstract class PrivilegeSweepDao {
         ) {
             return false
         }
+        if (hasMalformedTargetOwnership(requestId)) return false
         if (countUnfinishedTargets(requestId) != 0) return false
         if (refreshClaimedRequestAggregates(requestId, claimToken, nowMs) != 1) return false
 
@@ -669,11 +703,28 @@ abstract class PrivilegeSweepDao {
         WHERE state = 'QUEUED'
           AND terminal_state IS NULL
           AND claim_token IS NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
           AND EXISTS(
               SELECT 1 FROM sweep_targets
               WHERE sweep_targets.request_id = sweep_requests.request_id
                 AND sweep_targets.state = 'PENDING'
                 AND sweep_targets.claim_token IS NULL
+                AND sweep_targets.claim_lease_expires_at_epoch_ms IS NULL
           )
         ORDER BY queue_sequence ASC, request_id ASC
         LIMIT 1
@@ -697,11 +748,28 @@ abstract class PrivilegeSweepDao {
           AND state = 'QUEUED'
           AND terminal_state IS NULL
           AND claim_token IS NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
           AND EXISTS(
               SELECT 1 FROM sweep_targets
               WHERE sweep_targets.request_id = sweep_requests.request_id
                 AND sweep_targets.state = 'PENDING'
                 AND sweep_targets.claim_token IS NULL
+                AND sweep_targets.claim_lease_expires_at_epoch_ms IS NULL
           )
         """
     )
@@ -719,6 +787,23 @@ abstract class PrivilegeSweepDao {
         WHERE request_id = :requestId
           AND state = 'PENDING'
           AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_targets.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
               WHERE sweep_requests.request_id = sweep_targets.request_id
@@ -750,6 +835,23 @@ abstract class PrivilegeSweepDao {
           AND ordinal = :ordinal
           AND state = 'PENDING'
           AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_targets.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
               WHERE sweep_requests.request_id = sweep_targets.request_id
@@ -815,6 +917,22 @@ abstract class PrivilegeSweepDao {
           AND ordinal = :ordinal
           AND state = 'RUNNING'
           AND claim_token = :targetClaimToken
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_targets.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
               WHERE sweep_requests.request_id = sweep_targets.request_id
@@ -863,6 +981,22 @@ abstract class PrivilegeSweepDao {
           AND state = 'RUNNING'
           AND terminal_state IS NULL
           AND claim_token = :requestClaimToken
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
         """
     )
     protected abstract suspend fun refreshClaimedRequestAggregates(
@@ -932,6 +1066,22 @@ abstract class PrivilegeSweepDao {
           AND state = 'CANCEL_REQUESTED'
           AND terminal_state IS NULL
           AND ((claim_token IS NULL AND :requestClaimToken IS NULL) OR claim_token = :requestClaimToken)
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
         """
     )
     protected abstract suspend fun refreshCancellingRequestAggregates(
@@ -950,6 +1100,22 @@ abstract class PrivilegeSweepDao {
           AND state = :expectedState
           AND terminal_state IS NULL
           AND ((claim_token IS NULL AND :requestClaimToken IS NULL) OR claim_token = :requestClaimToken)
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
         """
     )
     protected abstract suspend fun requestCancellationRow(
@@ -971,6 +1137,23 @@ abstract class PrivilegeSweepDao {
         WHERE request_id = :requestId
           AND state IN ('PENDING', 'UNKNOWN', 'LEGACY_UNKNOWN')
           AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_targets.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
               WHERE sweep_requests.request_id = sweep_targets.request_id
@@ -1002,6 +1185,22 @@ abstract class PrivilegeSweepDao {
           AND state = 'CANCEL_REQUESTED'
           AND terminal_state IS NULL
           AND ((claim_token IS NULL AND :requestClaimToken IS NULL) OR claim_token = :requestClaimToken)
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets
               WHERE sweep_targets.request_id = sweep_requests.request_id
@@ -1040,9 +1239,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_targets.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
@@ -1086,9 +1294,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_targets.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
@@ -1136,9 +1353,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_targets.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
@@ -1183,9 +1409,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_targets.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
@@ -1225,9 +1460,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_targets.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND EXISTS(
               SELECT 1 FROM sweep_requests
@@ -1269,9 +1513,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets
@@ -1311,9 +1564,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets
@@ -1355,9 +1617,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets
@@ -1401,9 +1672,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets
@@ -1468,9 +1748,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets
@@ -1525,9 +1814,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets
@@ -1602,12 +1900,22 @@ abstract class PrivilegeSweepDao {
         SELECT EXISTS(
             SELECT 1 FROM sweep_targets
             WHERE request_id = :requestId
-              AND state != 'RUNNING'
-              AND (claim_token IS NOT NULL OR claim_lease_expires_at_epoch_ms IS NOT NULL)
+              AND (
+                  (state = 'RUNNING' AND (
+                      claim_token IS NULL OR
+                      TRIM(claim_token) = '' OR
+                      claim_lease_expires_at_epoch_ms IS NULL OR
+                      claim_lease_expires_at_epoch_ms < 0
+                  )) OR
+                  (state != 'RUNNING' AND (
+                      claim_token IS NOT NULL OR
+                      claim_lease_expires_at_epoch_ms IS NOT NULL
+                  ))
+              )
         )
         """
     )
-    protected abstract suspend fun hasNonRunningTargetOwnership(requestId: String): Boolean
+    protected abstract suspend fun hasMalformedTargetOwnership(requestId: String): Boolean
 
     @Query(
         """
@@ -1672,9 +1980,18 @@ abstract class PrivilegeSweepDao {
           AND NOT EXISTS(
               SELECT 1 FROM sweep_targets AS malformed_targets
               WHERE malformed_targets.request_id = sweep_requests.request_id
-                AND malformed_targets.state != 'RUNNING'
-                AND (malformed_targets.claim_token IS NOT NULL
-                    OR malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
           )
         """
     )
@@ -1702,6 +2019,22 @@ abstract class PrivilegeSweepDao {
           AND state = 'RUNNING'
           AND terminal_state IS NULL
           AND claim_token = :claimToken
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
         """
     )
     protected abstract suspend fun finishClaimedRequestRow(
@@ -1719,11 +2052,28 @@ abstract class PrivilegeSweepDao {
             WHERE state = 'QUEUED'
               AND terminal_state IS NULL
               AND claim_token IS NULL
+              AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets AS malformed_targets
+              WHERE malformed_targets.request_id = sweep_requests.request_id
+                AND (
+                    (malformed_targets.state = 'RUNNING' AND (
+                        malformed_targets.claim_token IS NULL OR
+                        TRIM(malformed_targets.claim_token) = '' OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms < 0
+                    )) OR
+                    (malformed_targets.state != 'RUNNING' AND (
+                        malformed_targets.claim_token IS NOT NULL OR
+                        malformed_targets.claim_lease_expires_at_epoch_ms IS NOT NULL
+                    ))
+                )
+          )
               AND EXISTS(
                   SELECT 1 FROM sweep_targets
                   WHERE sweep_targets.request_id = sweep_requests.request_id
                     AND sweep_targets.state = 'PENDING'
                     AND sweep_targets.claim_token IS NULL
+                    AND sweep_targets.claim_lease_expires_at_epoch_ms IS NULL
               )
         )
         """
