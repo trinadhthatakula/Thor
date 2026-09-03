@@ -92,7 +92,7 @@ abstract class DataTaskDao {
         require(claimToken.isNotBlank()) { "claimToken must not be blank" }
         require(leaseUntilMs > nowMs) { "leaseUntilMs must be after nowMs" }
         while (true) {
-            val candidate = findOldestRunnableTask(nowMs) ?: return null
+            val candidate = findOldestRunnableTask() ?: return null
             if (claimTaskRow(
                     candidate.taskId,
                     sessionToken,
@@ -390,7 +390,7 @@ abstract class DataTaskDao {
         nowMs: Long,
     ): List<DataTaskRecoveryCandidate> {
         require(sessionToken.isNotBlank()) { "sessionToken must not be blank" }
-        return loadRecoverableTasks(sessionToken, nowMs).mapNotNull { task ->
+        return loadRecoverableTasks(sessionToken).mapNotNull { task ->
             val previousSession = task.serviceSessionToken ?: return@mapNotNull null
             if (task.state == DataTaskState.CANCEL_REQUESTED.name) {
                 cancelUnfinishedItems(task.taskId, RESULT_CANCELLED, nowMs)
@@ -406,6 +406,7 @@ abstract class DataTaskDao {
             val archive = loadArchiveDetail(task.taskId)
             val breadcrumb = archive?.toBreadcrumb()
             val destructiveStarted = archive?.destructiveStarted == true
+            val kind = DataTaskKind.valueOf(task.kind)
             val recovery = when {
                 task.state == DataTaskState.WAITING_FOR_AUTH.name ->
                     DataTaskRecovery.WaitingForAuthentication
@@ -421,6 +422,13 @@ abstract class DataTaskDao {
                             )
                         )
 
+                kind == DataTaskKind.ARCHIVE_RESTORE &&
+                        archive?.restoreSourceKind == RESTORE_SOURCE_AWAITING_GRANT ->
+                    DataTaskRecovery.WaitingForSource
+
+                kind == DataTaskKind.ARCHIVE_BACKUP || kind == DataTaskKind.ARCHIVE_RESTORE ->
+                    DataTaskRecovery.WaitingForAuthentication
+
                 else -> DataTaskRecovery.Resume
             }
             when (recovery) {
@@ -434,11 +442,39 @@ abstract class DataTaskDao {
                     clearItemClaimsForRecovery(task.taskId, DataTaskItemState.PENDING.name)
                 }
 
-                DataTaskRecovery.WaitingForAuthentication,
-                DataTaskRecovery.WaitingForSource,
-                is DataTaskRecovery.InterruptedReview,
-                    -> {
-                    clearTaskClaimForRecovery(task.taskId, task.claimToken, task.state, nowMs)
+                DataTaskRecovery.WaitingForAuthentication -> {
+                    pauseTaskForRecovery(
+                        task.taskId,
+                        task.claimToken,
+                        DataTaskState.WAITING_FOR_AUTH.name,
+                        DataTaskInterruption.AUTHENTICATION_REQUIRED.name,
+                        RESULT_RECOVERY_AUTHENTICATION_REQUIRED,
+                        nowMs,
+                    )
+                    clearItemClaimsForRecovery(task.taskId, DataTaskItemState.PENDING.name)
+                }
+
+                DataTaskRecovery.WaitingForSource -> {
+                    pauseTaskForRecovery(
+                        task.taskId,
+                        task.claimToken,
+                        DataTaskState.WAITING_FOR_SOURCE.name,
+                        DataTaskInterruption.SOURCE_REQUIRED.name,
+                        RESULT_RECOVERY_SOURCE_REQUIRED,
+                        nowMs,
+                    )
+                    clearItemClaimsForRecovery(task.taskId, DataTaskItemState.PENDING.name)
+                }
+
+                is DataTaskRecovery.InterruptedReview -> {
+                    pauseTaskForRecovery(
+                        task.taskId,
+                        task.claimToken,
+                        DataTaskState.INTERRUPTED_REVIEW.name,
+                        DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW.name,
+                        RESULT_DESTRUCTIVE_RESTORE_REVIEW,
+                        nowMs,
+                    )
                     clearItemClaimTokens(task.taskId)
                 }
 
@@ -522,6 +558,25 @@ abstract class DataTaskDao {
         return expireReadyTask(taskId, nowMs) == 1
     }
 
+    @Transaction
+    open suspend fun hasRunnableTasks(): Boolean = hasRunnableTasksQuery()
+
+    /**
+     * Serializes the final empty check and its stop decision with task insertion transactions.
+     *
+     * A task admitted first is visible to this check. If the queue is empty, a concurrent insert
+     * cannot commit until [onQueueEmpty] has made the stop decision; that producer can then wake a
+     * fresh drain after its insert commits.
+     *
+     * @return `true` only when the queue was empty and [onQueueEmpty] was invoked.
+     */
+    @Transaction
+    open suspend fun finishDrainIfQueueEmpty(onQueueEmpty: () -> Unit): Boolean {
+        if (hasRunnableTasksQuery()) return false
+        onQueueEmpty()
+        return true
+    }
+
     @Query(
         """
         SELECT EXISTS(
@@ -530,7 +585,7 @@ abstract class DataTaskDao {
         )
         """
     )
-    abstract suspend fun hasRunnableTasks(): Boolean
+    protected abstract suspend fun hasRunnableTasksQuery(): Boolean
 
     @Insert
     protected abstract suspend fun insertTaskEntity(entity: DataTaskEntity)
@@ -574,13 +629,13 @@ abstract class DataTaskDao {
     @Query(
         """
         SELECT * FROM data_tasks
-        WHERE state IN ('QUEUED', 'STAGING_SOURCE', 'RUNNING', 'CANCEL_REQUESTED')
-          AND (claim_token IS NULL OR claim_lease_expires_at_epoch_ms <= :nowMs)
+        WHERE state IN ('QUEUED', 'STAGING_SOURCE')
+          AND claim_token IS NULL
         ORDER BY queue_sequence ASC, task_id ASC
         LIMIT 1
         """
     )
-    protected abstract suspend fun findOldestRunnableTask(nowMs: Long): DataTaskEntity?
+    protected abstract suspend fun findOldestRunnableTask(): DataTaskEntity?
 
     @Query(
         """
@@ -594,8 +649,8 @@ abstract class DataTaskDao {
             started_at_epoch_ms = COALESCE(started_at_epoch_ms, :nowMs),
             updated_at_epoch_ms = :nowMs
         WHERE task_id = :taskId
-          AND state IN ('QUEUED', 'STAGING_SOURCE', 'RUNNING', 'CANCEL_REQUESTED')
-          AND (claim_token IS NULL OR claim_lease_expires_at_epoch_ms <= :nowMs)
+          AND state IN ('QUEUED', 'STAGING_SOURCE')
+          AND claim_token IS NULL
         """
     )
     protected abstract suspend fun claimTaskRow(
@@ -957,13 +1012,12 @@ abstract class DataTaskDao {
         """
         SELECT * FROM data_tasks
         WHERE claim_token IS NOT NULL
-          AND (service_session_token != :sessionToken OR claim_lease_expires_at_epoch_ms <= :nowMs)
+          AND service_session_token != :sessionToken
         ORDER BY queue_sequence, task_id
         """
     )
     protected abstract suspend fun loadRecoverableTasks(
         sessionToken: String,
-        nowMs: Long,
     ): List<DataTaskEntity>
 
     @Query(
@@ -981,6 +1035,28 @@ abstract class DataTaskDao {
         taskId: String,
         oldClaimToken: String?,
         state: String,
+        nowMs: Long,
+    ): Int
+
+    @Query(
+        """
+        UPDATE data_tasks
+        SET state = :state,
+            interruption = :interruption,
+            result_code = :resultCode,
+            service_session_token = NULL,
+            claim_token = NULL,
+            claim_lease_expires_at_epoch_ms = NULL,
+            updated_at_epoch_ms = :nowMs
+        WHERE task_id = :taskId AND claim_token = :oldClaimToken
+        """
+    )
+    protected abstract suspend fun pauseTaskForRecovery(
+        taskId: String,
+        oldClaimToken: String?,
+        state: String,
+        interruption: String,
+        resultCode: String,
         nowMs: Long,
     ): Int
 
@@ -1597,7 +1673,10 @@ abstract class DataTaskDao {
         const val RESTORE_SOURCE_PERSISTED_GRANT = "PERSISTED_GRANT"
         const val RESTORE_SOURCE_PRIVATE_COPY = "PRIVATE_COPY"
         const val RESULT_CANCELLED = "CANCELLED"
+        const val RESULT_DESTRUCTIVE_RESTORE_REVIEW = "DESTRUCTIVE_RESTORE_REVIEW"
+        const val RESULT_RECOVERY_AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
         const val RESULT_RECOVERY_BREADCRUMB_MISSING = "RECOVERY_BREADCRUMB_MISSING"
+        const val RESULT_RECOVERY_SOURCE_REQUIRED = "SOURCE_REQUIRED"
         val TERMINAL_OR_READY_STATES = setOf(
             DataTaskState.READY,
             DataTaskState.READY_PARTIAL,
