@@ -5,6 +5,89 @@ package com.valhalla.thor.domain.model
 
 import java.util.UUID
 
+internal const val MAX_TASK_PRESENTATION_ARGUMENTS = 8
+internal const val MAX_TASK_PRESENTATION_ARGUMENT_CHARS = 512
+internal const val MAX_TASK_WARNING_COUNT = 4
+private const val MAX_TASK_GRANT_IDENTITY_CHARS = 128
+private val TASK_GRANT_IDENTITY = Regex("[A-Za-z0-9_-]{1,$MAX_TASK_GRANT_IDENTITY_CHARS}")
+private val TASK_STABLE_CODE = Regex("[A-Za-z0-9_]{1,64}")
+private val TASK_URI = Regex(
+    "(?i)(?:[a-z][a-z0-9+.-]{1,31}://|(?:content|file|android\\.resource):/)",
+)
+private val TASK_RAW_DIAGNOSTIC = Regex(
+    "(?i)(?:^|\\s)(?:caused by:|suppressed:|at\\s+\\S+\\([^)]*(?::\\d+)?\\)|" +
+            "[\\w.$]+(?:exception|error)(?::|\\s|$))",
+)
+private val WINDOWS_ABSOLUTE_PATH = Regex("^[A-Za-z]:[/\\\\]")
+
+internal fun requireTaskPresentationArguments(arguments: List<String>, fieldName: String) {
+    require(arguments.size <= MAX_TASK_PRESENTATION_ARGUMENTS) {
+        "$fieldName contains too many presentation arguments"
+    }
+    arguments.forEach { argument ->
+        require(argument.length <= MAX_TASK_PRESENTATION_ARGUMENT_CHARS) {
+            "$fieldName contains an oversized presentation argument"
+        }
+        require(argument.none(Char::isISOControl)) {
+            "$fieldName contains a control character"
+        }
+        require(!TASK_URI.containsMatchIn(argument)) {
+            "$fieldName contains URI text"
+        }
+        require(!looksLikeAbsoluteOrTraversingPath(argument)) {
+            "$fieldName contains path text"
+        }
+        require(!TASK_RAW_DIAGNOSTIC.containsMatchIn(argument)) {
+            "$fieldName contains raw diagnostic text"
+        }
+    }
+}
+
+internal fun requireTaskStableCode(value: String, fieldName: String) {
+    require(TASK_STABLE_CODE.matches(value)) { "$fieldName must be a stable code" }
+}
+
+internal fun requireTaskProgress(completed: Long, total: Long) {
+    require(completed >= 0) { "completed must be non-negative" }
+    require(total >= 0) { "total must be non-negative" }
+    require(total == 0L || completed <= total) {
+        "completed must not exceed a positive total"
+    }
+}
+
+private fun requireOpaqueGrantIdentity(value: String) {
+    require(TASK_GRANT_IDENTITY.matches(value)) {
+        "grantIdentity must be a bounded opaque identifier"
+    }
+}
+
+private fun requireTaskRelativePath(value: String) {
+    require(value.isNotEmpty()) { "privateRelativePath must not be empty" }
+    require(value.none(Char::isISOControl)) {
+        "privateRelativePath must not contain control characters"
+    }
+    require(!TASK_URI.containsMatchIn(value)) {
+        "privateRelativePath must not contain a URI"
+    }
+    require('\\' !in value) {
+        "privateRelativePath must use normalized separators"
+    }
+    require(!looksLikeAbsoluteOrTraversingPath(value)) {
+        "privateRelativePath must be normalized and relative"
+    }
+    require(value.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+        "privateRelativePath must be normalized and relative"
+    }
+}
+
+private fun looksLikeAbsoluteOrTraversingPath(value: String): Boolean {
+    val trimmed = value.trimStart()
+    return trimmed.startsWith('/') ||
+            trimmed.startsWith('\\') ||
+            WINDOWS_ABSOLUTE_PATH.containsMatchIn(trimmed) ||
+            value.split('/', '\\').any { it == "." || it == ".." }
+}
+
 enum class DataTaskKind { ARCHIVE_BACKUP, ARCHIVE_RESTORE, APP_EXPORT, SHARE_PREPARE }
 
 enum class DataTaskState {
@@ -61,7 +144,11 @@ value class DataTaskResultCode(val value: String) {
 data class DataTaskMessage(
     val code: DataTaskResultCode,
     val arguments: List<String> = emptyList(),
-)
+) {
+    init {
+        requireTaskPresentationArguments(arguments, "arguments")
+    }
+}
 
 data class RestoreMutationBreadcrumb(
     val packageName: String,
@@ -76,15 +163,27 @@ sealed interface StoredDataDestination {
 
     data object TaskPrivateStorage : StoredDataDestination
 
-    data class PersistedTreeGrant(val grantIdentity: String) : StoredDataDestination
+    data class PersistedTreeGrant(val grantIdentity: String) : StoredDataDestination {
+        init {
+            requireOpaqueGrantIdentity(grantIdentity)
+        }
+    }
 }
 
 sealed interface StoredRestoreSource {
     data object AwaitingTransientGrant : StoredRestoreSource
 
-    data class PersistedGrant(val grantIdentity: String) : StoredRestoreSource
+    data class PersistedGrant(val grantIdentity: String) : StoredRestoreSource {
+        init {
+            requireOpaqueGrantIdentity(grantIdentity)
+        }
+    }
 
-    data class PrivateCopy(val privateRelativePath: String) : StoredRestoreSource
+    data class PrivateCopy(val privateRelativePath: String) : StoredRestoreSource {
+        init {
+            requireTaskRelativePath(privateRelativePath)
+        }
+    }
 }
 
 enum class DataTaskPublicationPolicy { PUBLIC_DOCUMENT, PRIVATE_SHARE_WITH_24_HOUR_EXPIRY }
@@ -134,7 +233,14 @@ data class DataTaskCheckpoint(
     val destructiveStarted: Boolean,
     val restoreMutationBreadcrumb: RestoreMutationBreadcrumb?,
     val recordedAtEpochMs: Long,
-)
+) {
+    init {
+        requireTaskProgress(completed, total)
+        require(activeItemOrdinal == null || activeItemOrdinal >= 0) {
+            "activeItemOrdinal must be non-negative"
+        }
+    }
+}
 
 data class NewDataTaskOutput(
     val outputId: UUID,
@@ -144,7 +250,12 @@ data class NewDataTaskOutput(
     val byteSize: Long,
     val state: DataTaskOutputState,
     val expiresAtEpochMs: Long?,
-)
+) {
+    init {
+        privateRelativePath?.let(::requireTaskRelativePath)
+        require(byteSize >= 0) { "byteSize must be non-negative" }
+    }
+}
 
 data class DataTaskItemResult(
     val terminalState: DataTaskItemTerminalState,
@@ -152,7 +263,13 @@ data class DataTaskItemResult(
     val warnings: List<DataTaskMessage>,
     val outputs: List<NewDataTaskOutput>,
     val finishedAtEpochMs: Long,
-)
+) {
+    init {
+        require(warnings.size <= MAX_TASK_WARNING_COUNT) {
+            "warnings contains too many entries"
+        }
+    }
+}
 
 sealed interface DataTaskRunOutcome {
     data class ItemCompleted(val result: DataTaskItemResult) : DataTaskRunOutcome
@@ -169,7 +286,11 @@ sealed interface DataTaskRunOutcome {
     data class TaskFailed(
         val resultCode: DataTaskResultCode,
         val arguments: List<String> = emptyList(),
-    ) : DataTaskRunOutcome
+    ) : DataTaskRunOutcome {
+        init {
+            requireTaskPresentationArguments(arguments, "arguments")
+        }
+    }
 
     data object Cancelled : DataTaskRunOutcome
 

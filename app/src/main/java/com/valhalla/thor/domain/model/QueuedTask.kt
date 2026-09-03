@@ -63,7 +63,11 @@ sealed interface TaskActionRequirement {
         val targetOrdinal: Int,
         val packageName: String,
         val operation: PrivilegeSweepOperation,
-    ) : TaskActionRequirement
+    ) : TaskActionRequirement {
+        init {
+            require(targetOrdinal >= 0) { "targetOrdinal must be non-negative" }
+        }
+    }
 
     data class PreparedShare(val outputIds: List<UUID>) : TaskActionRequirement
 
@@ -141,7 +145,11 @@ data class TaskProgress(
     val completed: Long,
     val total: Long,
     val stageLabel: String?,
-)
+) {
+    init {
+        requireTaskProgress(completed, total)
+    }
+}
 
 data class QueuedTaskSummary(
     val taskId: UUID,
@@ -157,7 +165,13 @@ data class QueuedTaskSummary(
     val terminalAtEpochMs: Long?,
     val retainUntilEpochMs: Long?,
     val rootLaneDegraded: Boolean,
-)
+) {
+    init {
+        requireTaskStableCode(operationId, "operationId")
+        requireTaskPresentationArguments(titleArguments, "titleArguments")
+        require(sequence >= 0) { "sequence must be non-negative" }
+    }
+}
 
 enum class TaskLogLevel { INFO, SUCCESS, WARNING, ERROR }
 
@@ -166,11 +180,25 @@ data class TaskLogLine(
     val messageCode: String,
     val arguments: List<String> = emptyList(),
     val level: TaskLogLevel = TaskLogLevel.INFO,
-)
+) {
+    init {
+        require(order >= 0) { "order must be non-negative" }
+        requireTaskStableCode(messageCode, "messageCode")
+        requireTaskPresentationArguments(arguments, "arguments")
+    }
+}
 
 data class QueuedTaskDetail(
     val summary: QueuedTaskSummary,
     val lines: List<TaskLogLine>,
     val resultCode: String?,
     val warningCodes: List<String>,
-)
+) {
+    init {
+        resultCode?.let { requireTaskStableCode(it, "resultCode") }
+        require(warningCodes.size <= MAX_TASK_WARNING_COUNT) {
+            "warningCodes contains too many entries"
+        }
+        warningCodes.forEach { requireTaskStableCode(it, "warningCodes") }
+    }
+}
