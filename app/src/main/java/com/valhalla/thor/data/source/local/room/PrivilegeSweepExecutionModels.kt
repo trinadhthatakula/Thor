@@ -81,6 +81,20 @@ data class ClaimedSweepTarget(
     val startedAtEpochMs: Long,
 )
 
+data class SweepRequestRecoveryCandidate(
+    val requestId: String,
+    val operation: PrivilegeSweepOperation,
+    val freezerMode: FreezerMode?,
+    val userId: Int,
+    val activeTargetOrdinal: Int,
+    val packageName: String,
+    val previousServiceSessionToken: String,
+    val previousRequestClaimToken: String,
+    val previousRequestClaimLeaseExpiresAtEpochMs: Long,
+    val activeTargetClaimToken: String,
+    val activeTargetClaimLeaseExpiresAtEpochMs: Long,
+)
+
 data class StoredSweepTargetResult(
     val terminalState: StoredSweepTargetTerminalState,
     val resultCode: SweepTargetResultCode,

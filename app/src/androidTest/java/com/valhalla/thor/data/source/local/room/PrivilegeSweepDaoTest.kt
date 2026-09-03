@@ -217,6 +217,352 @@ class PrivilegeSweepDaoTest {
     }
 
     @Test
+    fun requestClaimWithoutTargetIsRecoveredForEarlierSession() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        assertNotNull(
+            dao.claimOldestRunnableRequest("previous-session", "previous-claim", 2_000L, 5_000L),
+        )
+
+        val recovery = dao.recoverRequestClaims("current-session", 2_500L) { _, _ -> false }
+
+        assertTrue(recovery.isEmpty())
+        val recovered = requireNotNull(dao.load(REQUEST_1)).request
+        assertEquals(StoredSweepRequestState.QUEUED.name, recovered.state)
+        assertNull(recovered.serviceSessionToken)
+        assertNull(recovered.claimToken)
+        assertNull(recovered.claimLeaseExpiresAtEpochMs)
+        assertEquals(
+            REQUEST_1,
+            dao.claimOldestRunnableRequest(
+                "current-session",
+                "current-claim",
+                2_600L,
+                5_600L,
+            )?.requestId,
+        )
+    }
+
+    @Test
+    fun sameSessionRequestBeforeLeaseExpiryIsNotRecovered() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("current-session", "request-claim", 2_000L, 3_000L)
+
+        val recovery = dao.recoverRequestClaims("current-session", 2_500L) { _, _ -> false }
+
+        assertTrue(recovery.isEmpty())
+        val request = requireNotNull(dao.load(REQUEST_1)).request
+        assertEquals(StoredSweepRequestState.RUNNING.name, request.state)
+        assertEquals("request-claim", request.claimToken)
+        assertNull(
+            dao.claimOldestRunnableRequest("other-session", "other-claim", 2_600L, 3_600L),
+        )
+    }
+
+    @Test
+    fun sameSessionRequestAfterLeaseExpiryIsRecoveredWithoutLocalOwner() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("current-session", "expired-claim", 2_000L, 3_000L)
+
+        val recovery = dao.recoverRequestClaims("current-session", 3_000L) { _, _ -> false }
+
+        assertTrue(recovery.isEmpty())
+        assertEquals(
+            StoredSweepRequestState.QUEUED.name,
+            requireNotNull(dao.load(REQUEST_1)).request.state
+        )
+        assertEquals(
+            REQUEST_1,
+            dao.claimOldestRunnableRequest(
+                "current-session",
+                "replacement-claim",
+                3_100L,
+                4_100L,
+            )?.requestId,
+        )
+    }
+
+    @Test
+    fun earlierSessionRequestWithLiveLocalOwnerIsNotRecovered() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("previous-session", "live-claim", 2_000L, 3_000L)
+
+        val recovery =
+            dao.recoverRequestClaims("current-session", 4_000L) { requestId, claimToken ->
+                requestId == REQUEST_1 && claimToken == "live-claim"
+            }
+
+        assertTrue(recovery.isEmpty())
+        val request = requireNotNull(dao.load(REQUEST_1)).request
+        assertEquals(StoredSweepRequestState.RUNNING.name, request.state)
+        assertEquals("previous-session", request.serviceSessionToken)
+        assertEquals("live-claim", request.claimToken)
+    }
+
+    @Test
+    fun completedTargetRequestRecoveryFinalizesCommittedState() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("previous-session", "request-claim", 2_000L, 5_000L)
+        dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_100L,
+            5_100L,
+        )
+        assertTrue(
+            dao.completeClaimedTarget(
+                REQUEST_1,
+                0,
+                "request-claim",
+                "target-claim",
+                successfulResult(2_200L),
+            ),
+        )
+
+        val recovery = dao.recoverRequestClaims("current-session", 2_300L) { _, _ -> false }
+
+        assertTrue(recovery.isEmpty())
+        val request = requireNotNull(dao.load(REQUEST_1)).request
+        assertEquals(StoredSweepRequestState.SUCCEEDED.name, request.state)
+        assertEquals(StoredSweepRequestState.SUCCEEDED.name, request.terminalState)
+        assertEquals(Aggregates(1, 0, 0, 0), aggregates())
+    }
+
+    @Test
+    fun unknownOnlyRequestRecoveryBlocksWithoutInventingSuccess() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("previous-session", "request-claim", 2_000L, 3_000L)
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE sweep_targets SET state = 'UNKNOWN' WHERE request_id = ?",
+            arrayOf(REQUEST_1),
+        )
+
+        val recovery = dao.recoverRequestClaims("current-session", 3_100L) { _, _ -> false }
+
+        assertTrue(recovery.isEmpty())
+        val request = requireNotNull(dao.load(REQUEST_1)).request
+        assertEquals(StoredSweepRequestState.BLOCKED.name, request.state)
+        assertNull(request.terminalState)
+        assertNull(request.serviceSessionToken)
+        assertNull(request.claimToken)
+        assertFalse(dao.hasRunnableRequests())
+    }
+
+    @Test
+    fun requestRecoveryPreservesRunningTargetOwnership() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("previous-session", "request-claim", 2_000L, 3_000L)
+        dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_100L,
+            3_100L,
+        )
+
+        val recovery = dao.recoverRequestClaims("current-session", 3_200L) { _, _ -> false }
+
+        val candidate = recovery.single()
+        assertEquals(REQUEST_1, candidate.requestId)
+        assertEquals(PrivilegeSweepOperation.UNFREEZE, candidate.operation)
+        assertEquals(0, candidate.activeTargetOrdinal)
+        assertEquals("app.$REQUEST_1.0", candidate.packageName)
+        assertEquals("previous-session", candidate.previousServiceSessionToken)
+        assertEquals("request-claim", candidate.previousRequestClaimToken)
+        assertEquals(3_000L, candidate.previousRequestClaimLeaseExpiresAtEpochMs)
+        assertEquals("target-claim", candidate.activeTargetClaimToken)
+        assertEquals(3_100L, candidate.activeTargetClaimLeaseExpiresAtEpochMs)
+        assertFalse(
+            dao.recoverInterruptedTarget(
+                candidate.copy(activeTargetClaimToken = "stale-target-claim"),
+                StoredSweepRecovery.MarkUnknown(
+                    SweepTargetResultCode("STALE_CANDIDATE"),
+                    recoveredAtEpochMs = 3_200L,
+                ),
+            ),
+        )
+        assertTrue(dao.renewRequestClaim(REQUEST_1, "request-claim", 4_000L))
+        assertFalse(
+            dao.recoverInterruptedTarget(
+                candidate,
+                StoredSweepRecovery.MarkUnknown(
+                    SweepTargetResultCode("STALE_CANDIDATE"),
+                    recoveredAtEpochMs = 3_200L,
+                ),
+            ),
+        )
+        assertFalse(
+            dao.recoverInterruptedTarget(
+                REQUEST_1,
+                0,
+                StoredSweepRecovery.MarkUnknown(
+                    SweepTargetResultCode("BYPASS_REJECTED"),
+                    recoveredAtEpochMs = 3_200L,
+                ),
+            ),
+        )
+        val snapshot = requireNotNull(dao.load(REQUEST_1))
+        assertEquals(StoredSweepRequestState.RUNNING.name, snapshot.request.state)
+        assertEquals("request-claim", snapshot.request.claimToken)
+        assertEquals(StoredSweepTargetState.RUNNING.name, snapshot.targets.single().state)
+        assertEquals("target-claim", snapshot.targets.single().claimToken)
+        assertNull(
+            dao.claimOldestRunnableRequest("current-session", "second-claim", 3_300L, 4_300L),
+        )
+    }
+
+    @Test
+    fun malformedClaimedRequestsFailClosed() = runBlocking {
+        insertSweep(requestId = REQUEST_1, queueSequence = 1L)
+        insertSweep(requestId = REQUEST_2, queueSequence = 2L)
+        insertSweep(requestId = REQUEST_3, queueSequence = 3L)
+        dao.claimOldestRunnableRequest("previous-session", "claim-1", 2_000L, 3_000L)
+        dao.claimOldestRunnableRequest("previous-session", "claim-2", 2_000L, 3_000L)
+        dao.claimOldestRunnableRequest("previous-session", "claim-3", 2_000L, 3_000L)
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE sweep_requests SET service_session_token = NULL WHERE request_id = ?",
+            arrayOf(REQUEST_1),
+        )
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE sweep_requests SET claim_token = NULL WHERE request_id = ?",
+            arrayOf(REQUEST_2),
+        )
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE sweep_requests SET claim_lease_expires_at_epoch_ms = NULL WHERE request_id = ?",
+            arrayOf(REQUEST_3),
+        )
+        var ownerChecks = 0
+
+        val recovery = dao.recoverRequestClaims("current-session", 4_000L) { _, _ ->
+            ownerChecks += 1
+            false
+        }
+
+        assertTrue(recovery.isEmpty())
+        assertEquals(0, ownerChecks)
+        assertEquals(
+            StoredSweepRequestState.RUNNING.name,
+            requireNotNull(dao.load(REQUEST_1)).request.state
+        )
+        assertEquals(
+            StoredSweepRequestState.RUNNING.name,
+            requireNotNull(dao.load(REQUEST_2)).request.state
+        )
+        assertEquals(
+            StoredSweepRequestState.RUNNING.name,
+            requireNotNull(dao.load(REQUEST_3)).request.state
+        )
+    }
+
+    @Test
+    fun unknownTargetRetryDoesNotClearActiveOwnership() = runBlocking {
+        insertSweep(
+            requestId = REQUEST_1,
+            requestState = StoredSweepRequestState.BLOCKED,
+            targetStates = listOf(
+                StoredSweepTargetState.LEGACY_UNKNOWN,
+                StoredSweepTargetState.LEGACY_UNKNOWN,
+            ),
+        )
+        assertTrue(
+            dao.recoverInterruptedTarget(
+                REQUEST_1,
+                0,
+                StoredSweepRecovery.Requeue(
+                    SweepTargetResultCode("RECONCILED_FOR_RETRY"),
+                    recoveredAtEpochMs = 2_000L,
+                ),
+            ),
+        )
+        dao.claimOldestRunnableRequest("current-session", "request-claim", 2_100L, 4_100L)
+        dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_200L,
+            4_200L,
+        )
+
+        assertFalse(dao.authorizeUnknownTargetRetry(REQUEST_1, 1, 2_300L))
+        val snapshot = requireNotNull(dao.load(REQUEST_1))
+        assertEquals(StoredSweepRequestState.RUNNING.name, snapshot.request.state)
+        assertEquals("request-claim", snapshot.request.claimToken)
+        assertEquals(StoredSweepTargetState.RUNNING.name, snapshot.targets[0].state)
+        assertEquals("target-claim", snapshot.targets[0].claimToken)
+        assertEquals(StoredSweepTargetState.LEGACY_UNKNOWN.name, snapshot.targets[1].state)
+        assertNull(
+            dao.claimOldestRunnableRequest("other-session", "other-claim", 2_400L, 4_400L),
+        )
+    }
+
+    @Test
+    fun completedSuccessWinsCancellationBeforeExplicitFinish() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("session", "request-claim", 2_000L, 4_000L)
+        dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_100L,
+            4_100L,
+        )
+        assertTrue(
+            dao.completeClaimedTarget(
+                REQUEST_1,
+                0,
+                "request-claim",
+                "target-claim",
+                successfulResult(2_200L),
+            ),
+        )
+
+        assertTrue(dao.requestCancellation(REQUEST_1, 2_300L) is SweepCancellationDecision.Settled)
+        val request = requireNotNull(dao.load(REQUEST_1)).request
+        assertEquals(StoredSweepRequestState.SUCCEEDED.name, request.state)
+        assertEquals(StoredSweepRequestState.SUCCEEDED.name, request.terminalState)
+        assertEquals(Aggregates(1, 0, 0, 0), aggregates())
+    }
+
+    @Test
+    fun completedSuccessPlusPendingCancellationBecomesPartial() = runBlocking {
+        insertSweep(
+            requestId = REQUEST_1,
+            targetStates = listOf(
+                StoredSweepTargetState.PENDING,
+                StoredSweepTargetState.PENDING,
+            ),
+        )
+        dao.claimOldestRunnableRequest("session", "request-claim", 2_000L, 4_000L)
+        dao.claimNextPendingTarget(
+            REQUEST_1,
+            "request-claim",
+            "target-claim",
+            2_100L,
+            4_100L,
+        )
+        assertTrue(
+            dao.completeClaimedTarget(
+                REQUEST_1,
+                0,
+                "request-claim",
+                "target-claim",
+                successfulResult(2_200L),
+            ),
+        )
+
+        assertTrue(dao.requestCancellation(REQUEST_1, 2_300L) is SweepCancellationDecision.Settled)
+        val snapshot = requireNotNull(dao.load(REQUEST_1))
+        assertEquals(StoredSweepRequestState.PARTIAL.name, snapshot.request.state)
+        assertEquals(StoredSweepRequestState.PARTIAL.name, snapshot.request.terminalState)
+        assertEquals(
+            listOf(StoredSweepTargetState.SUCCEEDED, StoredSweepTargetState.CANCELLED),
+            snapshot.targets.sortedBy(SweepTargetEntity::ordinal)
+                .map { StoredSweepTargetState.valueOf(it.state) },
+        )
+        assertEquals(Aggregates(1, 0, 0, 1), aggregates())
+    }
+
+    @Test
     fun completionAfterCancellationCannotResurrectTarget() = runBlocking {
         insertSweep(
             requestId = REQUEST_1,
@@ -254,10 +600,13 @@ class PrivilegeSweepDaoTest {
             ),
         )
 
+        val recoveryCandidate = dao.recoverRequestClaims(
+            sessionToken = "replacement-session",
+            nowMs = 4_200L,
+        ) { _, _ -> false }.single()
         assertTrue(
             dao.recoverInterruptedTarget(
-                REQUEST_1,
-                0,
+                recoveryCandidate,
                 StoredSweepRecovery.Requeue(
                     SweepTargetResultCode("INTERRUPTED"),
                     recoveredAtEpochMs = 4_200L,
@@ -321,10 +670,13 @@ class PrivilegeSweepDaoTest {
                 5_400L,
             )?.ordinal,
         )
+        val recoveryCandidate = dao.recoverRequestClaims(
+            sessionToken = "replacement-session",
+            nowMs = 5_500L,
+        ) { _, _ -> false }.single()
         assertTrue(
             dao.recoverInterruptedTarget(
-                REQUEST_1,
-                3,
+                recoveryCandidate,
                 StoredSweepRecovery.MarkUnknown(
                     SweepTargetResultCode("OUTCOME_UNKNOWN"),
                     recoveredAtEpochMs = 5_500L,
@@ -604,5 +956,6 @@ class PrivilegeSweepDaoTest {
         const val DATABASE_NAME = "privilege-sweep-dao-test.db"
         const val REQUEST_1 = "00000000-0000-0000-0000-000000000101"
         const val REQUEST_2 = "00000000-0000-0000-0000-000000000102"
+        const val REQUEST_3 = "00000000-0000-0000-0000-000000000103"
     }
 }
