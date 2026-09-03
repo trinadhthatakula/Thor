@@ -52,6 +52,140 @@ class LocalePolicyTest {
         "sweep_result_summary",
     )
 
+    private val taskQueueKeys = setOf(
+        "task_queue_title",
+        "task_queue_section_running",
+        "task_queue_section_queued",
+        "task_queue_section_recent",
+        "task_queue_empty",
+        "task_queue_empty_running",
+        "task_queue_empty_queued",
+        "task_queue_empty_recent",
+        "task_queue_kind_data",
+        "task_queue_kind_privilege",
+        "task_queue_background",
+        "task_queue_cancel",
+        "task_queue_close",
+        "task_queue_progress",
+        "task_queue_later_count",
+        "task_action_authenticate_archive",
+        "task_action_provide_source",
+        "task_action_review_restore",
+        "task_action_authorize_privilege",
+        "task_action_authorize_retry",
+        "task_action_retry",
+        "task_action_resume",
+        "task_action_share",
+        "task_action_open_notification_settings",
+        "task_operation_archive_backup",
+        "task_operation_archive_restore",
+        "task_operation_app_export",
+        "task_operation_share_prepare",
+        "task_operation_freeze",
+        "task_operation_unfreeze",
+        "task_operation_clear_cache",
+        "task_operation_reinstall",
+        "task_state_starting",
+        "task_state_queued",
+        "task_state_running",
+        "task_state_stopping",
+        "task_state_waiting_for_auth",
+        "task_state_waiting_for_source",
+        "task_state_waiting_for_privilege",
+        "task_state_interrupted_review",
+        "task_state_ready",
+        "task_state_ready_partial",
+        "task_state_start_blocked",
+        "task_state_start_blocked_notification",
+        "task_state_succeeded",
+        "task_state_partial",
+        "task_state_failed",
+        "task_state_cancelled",
+        "task_state_expired",
+        "task_state_observer_failure",
+        "task_reason_queued",
+        "task_reason_stopping",
+        "task_reason_waiting_for_auth",
+        "task_reason_waiting_for_source",
+        "task_reason_waiting_for_privilege",
+        "task_reason_interrupted_restore",
+        "task_reason_interrupted_sweep",
+        "task_reason_ready",
+        "task_reason_ready_partial",
+        "task_reason_start_blocked",
+        "task_reason_start_blocked_notification",
+        "task_reason_failed",
+        "task_reason_expired",
+        "task_reason_observer_failure",
+        "task_reason_root_lane_degraded",
+        "data_queue_notification_channel_name",
+        "data_queue_notification_channel_description",
+        "privilege_queue_notification_channel_name",
+        "privilege_queue_notification_channel_description",
+        "data_queue_notification_title",
+        "privilege_queue_notification_title",
+        "task_queue_notification_status",
+        "task_queue_notification_later_count",
+        "task_queue_notification_cancel",
+        "task_queue_notification_ready_title",
+        "task_queue_notification_ready_text",
+        "task_queue_notification_ready_partial_title",
+        "task_queue_notification_ready_partial_text",
+        "task_queue_notification_expired_title",
+        "task_queue_notification_expired_text",
+        "task_dialog_archive_auth_title",
+        "task_dialog_archive_auth_message",
+        "task_dialog_archive_passphrase_label",
+        "task_dialog_archive_auth_submit",
+        "task_dialog_restore_source_title",
+        "task_dialog_restore_source_message",
+        "task_dialog_restore_source_select",
+        "task_dialog_restore_review_title",
+        "task_dialog_restore_review_message",
+        "task_dialog_restore_review_resume",
+        "task_dialog_privilege_title",
+        "task_dialog_privilege_message",
+        "task_dialog_privilege_open",
+        "task_dialog_sweep_retry_title",
+        "task_dialog_sweep_retry_message",
+        "task_dialog_sweep_retry_confirm",
+        "task_dialog_share_ready_title",
+        "task_dialog_share_ready_message",
+        "task_dialog_share_partial_title",
+        "task_dialog_share_partial_message",
+        "task_dialog_share_expired_title",
+        "task_dialog_share_expired_message",
+        "task_log_queued",
+        "task_log_started",
+        "task_log_stopping",
+        "task_log_waiting_for_auth",
+        "task_log_waiting_for_source",
+        "task_log_waiting_for_privilege",
+        "task_log_interrupted_review",
+        "task_log_stage_preparing",
+        "task_log_stage_staging_source",
+        "task_log_stage_measuring",
+        "task_log_stage_capturing",
+        "task_log_stage_writing",
+        "task_log_stage_installing",
+        "task_log_stage_restoring",
+        "task_log_stage_publishing",
+        "task_log_stage_finishing",
+        "task_log_item_running",
+        "task_log_item_succeeded",
+        "task_log_item_failed",
+        "task_log_item_cancelled",
+        "task_log_item_busy",
+        "task_log_item_unknown",
+        "task_log_root_lane_degraded",
+        "task_log_output_ready",
+        "task_log_output_expired",
+        "task_log_result_succeeded",
+        "task_log_result_partial",
+        "task_log_result_failed",
+        "task_log_result_cancelled",
+    )
+
     private val shippedResourceDirectories = listOf(
         "values",
         "values-ar",
@@ -680,6 +814,43 @@ class LocalePolicyTest {
         )
     }
 
+    @Test
+    fun everyShippedLocaleDefinesTheTaskQueueCopy() {
+        val missing = buildList {
+            for (directory in shippedResourceDirectories) {
+                val resources = stringResources(directory)
+                for (key in taskQueueKeys) {
+                    if (key !in resources) add("$directory/$key")
+                }
+            }
+        }
+
+        assertTrue(
+            "Missing task queue resources: ${missing.joinToString()}",
+            missing.isEmpty()
+        )
+    }
+
+    @Test
+    fun taskQueuePlaceholdersMatchEnglishInEveryLocale() {
+        val english = stringResources("values")
+        val mismatches = buildList {
+            for (directory in shippedResourceDirectories.drop(1)) {
+                val localized = stringResources(directory)
+                for (key in taskQueueKeys) {
+                    val expected = english[key]?.let(::placeholderSignature) ?: continue
+                    val actual = localized[key]?.let(::placeholderSignature)
+                    if (actual != expected) add("$directory/$key: expected $expected, found $actual")
+                }
+            }
+        }
+
+        assertTrue(
+            "Task queue placeholder mismatches: ${mismatches.joinToString()}",
+            mismatches.isEmpty()
+        )
+    }
+
     private fun stringResources(directory: String): Map<String, String> {
         val file = File(resourceRoot(), "$directory/strings.xml")
         check(file.isFile) { "Missing resource file: $file" }
@@ -698,7 +869,7 @@ class LocalePolicyTest {
 
     private fun placeholderSignature(value: String): List<String> = POSITIONAL_PLACEHOLDER
         .findAll(value)
-        .map { "%${it.groupValues[1]}\$${it.groupValues[2]}" }
+        .map { it.value }
         .sorted()
         .toList()
 
