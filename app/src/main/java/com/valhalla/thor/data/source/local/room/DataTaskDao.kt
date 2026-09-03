@@ -388,15 +388,24 @@ abstract class DataTaskDao {
     open suspend fun recoverClaims(
         sessionToken: String,
         nowMs: Long,
+        localOwnerIsLive: (taskId: String, claimToken: String) -> Boolean,
     ): List<DataTaskRecoveryCandidate> {
         require(sessionToken.isNotBlank()) { "sessionToken must not be blank" }
-        return loadRecoverableTasks(sessionToken).mapNotNull { task ->
+        return loadRecoverableTasks().mapNotNull { task ->
             val previousSession = task.serviceSessionToken ?: return@mapNotNull null
+            val previousClaim = task.claimToken ?: return@mapNotNull null
+            if (localOwnerIsLive(task.taskId, previousClaim)) return@mapNotNull null
+            if (
+                previousSession == sessionToken &&
+                task.claimLeaseExpiresAtEpochMs?.let { it <= nowMs } != true
+            ) {
+                return@mapNotNull null
+            }
             if (task.state == DataTaskState.CANCEL_REQUESTED.name) {
                 cancelUnfinishedItems(task.taskId, RESULT_CANCELLED, nowMs)
                 settleRecoveredCancellationRow(
                     task.taskId,
-                    requireNotNull(task.claimToken),
+                    previousClaim,
                     nowMs,
                     RESULT_CANCELLED,
                 )
@@ -435,7 +444,7 @@ abstract class DataTaskDao {
                 DataTaskRecovery.Resume -> {
                     clearTaskClaimForRecovery(
                         task.taskId,
-                        task.claimToken,
+                        previousClaim,
                         DataTaskState.QUEUED.name,
                         nowMs
                     )
@@ -445,7 +454,7 @@ abstract class DataTaskDao {
                 DataTaskRecovery.WaitingForAuthentication -> {
                     pauseTaskForRecovery(
                         task.taskId,
-                        task.claimToken,
+                        previousClaim,
                         DataTaskState.WAITING_FOR_AUTH.name,
                         DataTaskInterruption.AUTHENTICATION_REQUIRED.name,
                         RESULT_RECOVERY_AUTHENTICATION_REQUIRED,
@@ -457,7 +466,7 @@ abstract class DataTaskDao {
                 DataTaskRecovery.WaitingForSource -> {
                     pauseTaskForRecovery(
                         task.taskId,
-                        task.claimToken,
+                        previousClaim,
                         DataTaskState.WAITING_FOR_SOURCE.name,
                         DataTaskInterruption.SOURCE_REQUIRED.name,
                         RESULT_RECOVERY_SOURCE_REQUIRED,
@@ -469,7 +478,7 @@ abstract class DataTaskDao {
                 is DataTaskRecovery.InterruptedReview -> {
                     pauseTaskForRecovery(
                         task.taskId,
-                        task.claimToken,
+                        previousClaim,
                         DataTaskState.INTERRUPTED_REVIEW.name,
                         DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW.name,
                         RESULT_DESTRUCTIVE_RESTORE_REVIEW,
@@ -487,7 +496,7 @@ abstract class DataTaskDao {
                     cancelPendingItems(task.taskId, RESULT_CANCELLED, nowMs)
                     failTaskForRecovery(
                         task.taskId,
-                        task.claimToken,
+                        previousClaim,
                         recovery.resultCode.value,
                         nowMs
                     )
@@ -1011,14 +1020,11 @@ abstract class DataTaskDao {
     @Query(
         """
         SELECT * FROM data_tasks
-        WHERE claim_token IS NOT NULL
-          AND service_session_token != :sessionToken
+        WHERE claim_token IS NOT NULL OR service_session_token IS NOT NULL
         ORDER BY queue_sequence, task_id
         """
     )
-    protected abstract suspend fun loadRecoverableTasks(
-        sessionToken: String,
-    ): List<DataTaskEntity>
+    protected abstract suspend fun loadRecoverableTasks(): List<DataTaskEntity>
 
     @Query(
         """

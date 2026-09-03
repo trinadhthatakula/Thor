@@ -6,7 +6,6 @@ package com.valhalla.thor.data.source.local.room
 import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.domain.model.BundleFormat
@@ -29,8 +28,8 @@ import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -229,7 +228,7 @@ class DataTaskDaoTest {
         dao.claimNextPendingItem(TASK_1, "task-claim", "item-claim", 2_100L, 3_100L)
         dao.requestCancellation(TASK_1, 2_200L)
 
-        assertTrue(dao.recoverClaims("new-session", 3_000L).isEmpty())
+        assertTrue(dao.recoverClaims("new-session", 3_000L) { _, _ -> false }.isEmpty())
         val decision = dao.requestCancellation(TASK_1, 3_100L)
         assertTrue(decision is DataTaskCancellationDecision.AlreadyTerminal)
         val snapshot = (decision as DataTaskCancellationDecision.AlreadyTerminal).snapshot
@@ -277,7 +276,7 @@ class DataTaskDaoTest {
             ),
         )
 
-        val recovered = dao.recoverClaims("new-session", 3_200L)
+        val recovered = dao.recoverClaims("new-session", 3_200L) { _, _ -> false }
 
         assertTrue(recovered.single().recovery is DataTaskRecovery.Failed)
         val decision = dao.requestCancellation(TASK_1, 3_300L)
@@ -313,7 +312,7 @@ class DataTaskDaoTest {
             ),
         )
 
-        val recovery = dao.recoverClaims("new-session", 3_200L).single()
+        val recovery = dao.recoverClaims("new-session", 3_200L) { _, _ -> false }.single()
         assertTrue(recovery.recovery is DataTaskRecovery.InterruptedReview)
         assertEquals(breadcrumb, recovery.restoreMutationBreadcrumb)
         reopenDatabase()
@@ -341,118 +340,174 @@ class DataTaskDaoTest {
     }
 
     @Test
-    fun currentSessionExpiredRunningLeaseRemainsOwned() = runBlocking {
+    fun priorSessionClaimWithLiveLocalOwnerIsNotRecovered() = runBlocking {
         dao.insertTask(newExportTask(TASK_1))
-        dao.claimOldestRunnableTask("live-session", "live-claim", 2_000L, 3_000L)
+        dao.claimOldestRunnableTask("prior-session", "prior-claim", 2_000L, 3_000L)
 
-        assertTrue(dao.recoverClaims("live-session", 4_000L).isEmpty())
-        assertNull(
-            dao.claimOldestRunnableTask(
-                "other-session",
-                "other-claim",
-                4_000L,
-                5_000L,
-            ),
-        )
+        val recovery = dao.recoverClaims("current-session", 4_000L) { taskId, claimToken ->
+            taskId == TASK_1 && claimToken == "prior-claim"
+        }
+
+        assertTrue(recovery.isEmpty())
         val task = loadPersistedTask()
         assertEquals(DataTaskState.RUNNING.name, task.state)
-        assertEquals("live-session", task.serviceSessionToken)
-        assertEquals("live-claim", task.claimToken)
+        assertEquals("prior-session", task.serviceSessionToken)
+        assertEquals("prior-claim", task.claimToken)
     }
 
     @Test
-    fun currentSessionExpiredCancellationLeaseRemainsOwned() = runBlocking {
+    fun priorSessionClaimWithoutLocalOwnerUsesOperationSpecificRecovery() = runBlocking {
         dao.insertTask(newExportTask(TASK_1))
-        dao.claimOldestRunnableTask("live-session", "live-claim", 2_000L, 3_000L)
-        dao.claimNextPendingItem(TASK_1, "live-claim", "item-claim", 2_100L, 3_100L)
-        dao.requestCancellation(TASK_1, 2_200L)
+        dao.claimOldestRunnableTask("prior-session", "prior-claim", 2_000L, 3_000L)
+        dao.claimNextPendingItem(TASK_1, "prior-claim", "prior-item-claim", 2_100L, 3_100L)
 
-        assertTrue(dao.recoverClaims("live-session", 4_000L).isEmpty())
-        assertNull(
-            dao.claimOldestRunnableTask(
-                "other-session",
-                "other-claim",
-                4_000L,
-                5_000L,
-            ),
-        )
-        val task = loadPersistedTask()
-        assertEquals(DataTaskState.CANCEL_REQUESTED.name, task.state)
-        assertEquals("live-session", task.serviceSessionToken)
-        assertEquals("live-claim", task.claimToken)
-    }
+        val recovery = dao.recoverClaims("current-session", 2_500L) { _, _ -> false }.single()
 
-    @Test
-    fun deadOwnerMustBeRecoveredBeforeExportCanBeClaimed() = runBlocking {
-        dao.insertTask(newExportTask(TASK_1))
-        dao.claimOldestRunnableTask("dead-session", "dead-claim", 2_000L, 3_000L)
-        dao.claimNextPendingItem(TASK_1, "dead-claim", "dead-item-claim", 2_100L, 3_100L)
-
-        assertNull(
-            dao.claimOldestRunnableTask(
-                "new-session",
-                "new-claim-before-recovery",
-                4_000L,
-                5_000L,
-            ),
-        )
-        val recovery = dao.recoverClaims("new-session", 4_000L).single()
         assertEquals(DataTaskRecovery.Resume, recovery.recovery)
-        assertEquals("dead-session", recovery.previousServiceSessionToken)
+        assertEquals("prior-session", recovery.previousServiceSessionToken)
         assertEquals(
             UUID.fromString(TASK_1),
             dao.claimOldestRunnableTask(
-                "new-session",
-                "new-claim-after-recovery",
-                4_100L,
-                5_100L,
+                "current-session",
+                "current-claim",
+                2_600L,
+                3_600L,
             )?.taskId,
         )
     }
 
     @Test
-    fun finalEmptyCheckSeesAConcurrentInsert() = runBlocking {
-        assertFalse(dao.hasRunnableTasks())
-        val rowInserted = CompletableDeferred<Unit>()
-        val allowInsertCommit = CompletableDeferred<Unit>()
-        val finalTransactionAttempted = CompletableDeferred<Unit>()
-        val finalTransactionSignal = AtomicReference<CompletableDeferred<Unit>?>(null)
-        val stopDecisionMade = AtomicBoolean(false)
-        val observerDatabase = buildDatabase { sql, _ ->
-            if (sql == "BEGIN IMMEDIATE TRANSACTION") {
-                finalTransactionSignal.get()?.complete(Unit)
-            }
+    fun currentSessionExpiredClaimWithoutLocalOwnerIsRecovered() = runBlocking {
+        dao.insertTask(newExportTask(TASK_1))
+        dao.claimOldestRunnableTask("current-session", "expired-claim", 2_000L, 3_000L)
+
+        val recovery = dao.recoverClaims("current-session", 4_000L) { _, _ -> false }.single()
+
+        assertEquals(DataTaskRecovery.Resume, recovery.recovery)
+        assertEquals("current-session", recovery.previousServiceSessionToken)
+        assertEquals(DataTaskState.QUEUED.name, loadPersistedTask().state)
+    }
+
+    @Test
+    fun currentSessionUnexpiredClaimWithoutLocalOwnerIsNotRecovered() = runBlocking {
+        dao.insertTask(newExportTask(TASK_1))
+        dao.claimOldestRunnableTask("current-session", "unexpired-claim", 2_000L, 3_000L)
+
+        val recovery = dao.recoverClaims("current-session", 2_500L) { _, _ -> false }
+
+        assertTrue(recovery.isEmpty())
+        val task = loadPersistedTask()
+        assertEquals(DataTaskState.RUNNING.name, task.state)
+        assertEquals("current-session", task.serviceSessionToken)
+        assertEquals("unexpired-claim", task.claimToken)
+    }
+
+    @Test
+    fun currentSessionExpiredClaimWithLiveLocalOwnerIsNotRecovered() = runBlocking {
+        dao.insertTask(newExportTask(TASK_1))
+        dao.claimOldestRunnableTask("current-session", "live-claim", 2_000L, 3_000L)
+
+        val recovery = dao.recoverClaims("current-session", 4_000L) { taskId, claimToken ->
+            taskId == TASK_1 && claimToken == "live-claim"
         }
-        observerDatabase.openHelper.writableDatabase
-        val observerDao = observerDatabase.dataTaskDao()
+
+        assertTrue(recovery.isEmpty())
+        val task = loadPersistedTask()
+        assertEquals(DataTaskState.RUNNING.name, task.state)
+        assertEquals("current-session", task.serviceSessionToken)
+        assertEquals("live-claim", task.claimToken)
+    }
+
+    @Test
+    fun recoveryFailsClosedWhenOwnershipIdentifiersAreMissing() = runBlocking {
+        dao.insertTask(newExportTask(TASK_1))
+        dao.insertTask(newExportTask(TASK_2))
+        dao.claimOldestRunnableTask("prior-session", "claim-without-token", 2_000L, 3_000L)
+        dao.claimOldestRunnableTask("prior-session", "claim-without-session", 2_000L, 3_000L)
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE data_tasks SET claim_token = NULL WHERE task_id = ?",
+            arrayOf(TASK_1),
+        )
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE data_tasks SET service_session_token = NULL WHERE task_id = ?",
+            arrayOf(TASK_2),
+        )
+        val callbackInvoked = AtomicBoolean(false)
+
+        val recovery = dao.recoverClaims("current-session", 4_000L) { _, _ ->
+            callbackInvoked.set(true)
+            false
+        }
+
+        assertTrue(recovery.isEmpty())
+        assertFalse(callbackInvoked.get())
+        val missingClaimToken = loadPersistedTask(TASK_1)
+        assertEquals(DataTaskState.RUNNING.name, missingClaimToken.state)
+        assertEquals("prior-session", missingClaimToken.serviceSessionToken)
+        assertNull(missingClaimToken.claimToken)
+        val missingSessionToken = loadPersistedTask(TASK_2)
+        assertEquals(DataTaskState.RUNNING.name, missingSessionToken.state)
+        assertNull(missingSessionToken.serviceSessionToken)
+        assertEquals("claim-without-session", missingSessionToken.claimToken)
+    }
+
+    @Test
+    fun finalEmptyCheckSerializesBeforeConcurrentInsert() = runBlocking {
+        assertFalse(dao.hasRunnableTasks())
+        val finalTransactionEntered = CompletableDeferred<Unit>()
+        val releaseFinalTransaction = CompletableDeferred<Unit>()
+        val insertionStarted = CompletableDeferred<Unit>()
+        val insertionCompleted = CompletableDeferred<Unit>()
+        val stopDecisionMade = AtomicBoolean(false)
+        val inserterDatabase = buildDatabase()
+        val inserterDao = inserterDatabase.dataTaskDao()
 
         try {
             coroutineScope {
-                val producer = async(Dispatchers.IO) {
-                    database.withTransaction {
-                        dao.insertTask(newExportTask(TASK_1))
-                        rowInserted.complete(Unit)
-                        allowInsertCommit.await()
+                val finalDrain = async(Dispatchers.IO) {
+                    dao.finishDrainIfQueueEmpty {
+                        finalTransactionEntered.complete(Unit)
+                        runBlocking { releaseFinalTransaction.await() }
+                        stopDecisionMade.set(true)
                     }
                 }
-                rowInserted.await()
-                finalTransactionSignal.set(finalTransactionAttempted)
-                val observer = async(Dispatchers.IO) {
-                    observerDao.finishDrainIfQueueEmpty { stopDecisionMade.set(true) }
+                finalTransactionEntered.await()
+                val insertion = async(
+                    context = Dispatchers.IO,
+                    start = CoroutineStart.UNDISPATCHED,
+                ) {
+                    insertionStarted.complete(Unit)
+                    inserterDao.insertTask(newExportTask(TASK_1))
+                    insertionCompleted.complete(Unit)
                 }
-                finalTransactionAttempted.await()
+                insertionStarted.await()
 
-                assertFalse(observer.isCompleted)
-                assertFalse(stopDecisionMade.get())
-
-                allowInsertCommit.complete(Unit)
-                producer.await()
-                assertFalse(observer.await())
-                assertFalse(stopDecisionMade.get())
+                try {
+                    assertFalse(insertionCompleted.isCompleted)
+                    assertFalse(insertion.isCompleted)
+                    assertFalse(finalDrain.isCompleted)
+                    assertFalse(stopDecisionMade.get())
+                } finally {
+                    releaseFinalTransaction.complete(Unit)
+                }
+                assertTrue(finalDrain.await())
+                assertTrue(stopDecisionMade.get())
+                insertion.await()
+                assertTrue(insertionCompleted.isCompleted)
+                assertTrue(dao.hasRunnableTasks())
+                assertEquals(
+                    UUID.fromString(TASK_1),
+                    dao.claimOldestRunnableTask(
+                        "current-session",
+                        "current-claim",
+                        2_000L,
+                        3_000L,
+                    )?.taskId,
+                )
             }
         } finally {
-            allowInsertCommit.complete(Unit)
-            observerDatabase.close()
+            releaseFinalTransaction.complete(Unit)
+            inserterDatabase.close()
         }
     }
 
@@ -461,26 +516,19 @@ class DataTaskDaoTest {
         dao = database.dataTaskDao()
     }
 
-    private fun buildDatabase(
-        queryCallback: RoomDatabase.QueryCallback? = null,
-    ): AppDatabase {
-        val builder = Room.databaseBuilder(
-            context,
-            AppDatabase::class.java,
-            DATABASE_NAME,
-        ).setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-        queryCallback?.let { callback ->
-            builder.setQueryCallback(callback) { command -> command.run() }
-        }
-        return builder.build()
-    }
+    private fun buildDatabase(): AppDatabase = Room.databaseBuilder(
+        context,
+        AppDatabase::class.java,
+        DATABASE_NAME,
+    ).setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+        .build()
 
     private fun reopenDatabase() {
         database.close()
         openDatabase()
     }
 
-    private fun loadPersistedTask(): PersistedTask =
+    private fun loadPersistedTask(taskId: String = TASK_1): PersistedTask =
         database.openHelper.readableDatabase.query(
             """
             SELECT state, interruption, result_code, service_session_token, claim_token,
@@ -488,9 +536,9 @@ class DataTaskDaoTest {
             FROM data_tasks
             WHERE task_id = ?
             """.trimIndent(),
-            arrayOf(TASK_1),
+            arrayOf(taskId),
         ).use { cursor ->
-            check(cursor.moveToFirst()) { "Missing task $TASK_1" }
+            check(cursor.moveToFirst()) { "Missing task $taskId" }
             PersistedTask(
                 state = cursor.getString(cursor.getColumnIndexOrThrow("state")),
                 interruption = cursor.getString(cursor.getColumnIndexOrThrow("interruption")),
