@@ -455,6 +455,123 @@ class PrivilegeSweepDaoTest {
     }
 
     @Test
+    fun compatibilityReconciliationRejectsPartialUnknownOwnership() = runBlocking {
+        val cases = listOf(
+            REQUEST_1 to StoredSweepTargetState.UNKNOWN,
+            REQUEST_2 to StoredSweepTargetState.LEGACY_UNKNOWN,
+        )
+        cases.forEachIndexed { index, (requestId, targetState) ->
+            insertSweep(
+                requestId = requestId,
+                queueSequence = index.toLong() + 1L,
+                requestState = StoredSweepRequestState.BLOCKED,
+                targetStates = listOf(targetState),
+            )
+            seedPartialTargetOwnership(requestId, ordinal = 0)
+            val before = requireNotNull(dao.load(requestId))
+
+            assertFalse(
+                dao.recoverInterruptedTarget(
+                    requestId,
+                    0,
+                    StoredSweepRecovery.Requeue(
+                        SweepTargetResultCode("RECONCILED_FOR_RETRY"),
+                        recoveredAtEpochMs = 2_000L,
+                    ),
+                ),
+            )
+            assertEquals(before, requireNotNull(dao.load(requestId)))
+        }
+    }
+
+    @Test
+    fun explicitRetryRejectsPartialUnknownOwnership() = runBlocking {
+        val cases = listOf(
+            REQUEST_1 to StoredSweepTargetState.UNKNOWN,
+            REQUEST_2 to StoredSweepTargetState.LEGACY_UNKNOWN,
+        )
+        cases.forEachIndexed { index, (requestId, targetState) ->
+            insertSweep(
+                requestId = requestId,
+                queueSequence = index.toLong() + 1L,
+                requestState = StoredSweepRequestState.BLOCKED,
+                targetStates = listOf(targetState),
+            )
+            seedPartialTargetOwnership(requestId, ordinal = 0)
+            val before = requireNotNull(dao.load(requestId))
+
+            assertFalse(dao.authorizeUnknownTargetRetry(requestId, 0, 2_000L))
+            assertEquals(before, requireNotNull(dao.load(requestId)))
+        }
+    }
+
+    @Test
+    fun requestRecoveryRejectsPartialPendingOwnership() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        dao.claimOldestRunnableRequest("previous-session", "request-claim", 2_000L, 3_000L)
+        seedPartialTargetOwnership(REQUEST_1, ordinal = 0)
+        val before = requireNotNull(dao.load(REQUEST_1))
+
+        val recovery = dao.recoverRequestClaims("current-session", 3_100L) { _, _ -> false }
+
+        assertTrue(recovery.isEmpty())
+        assertEquals(before, requireNotNull(dao.load(REQUEST_1)))
+    }
+
+    @Test
+    fun postTargetRecoverySettlementRejectsAnotherPartiallyOwnedTarget() = runBlocking {
+        val cases: List<Pair<String, StoredSweepRecovery>> = listOf(
+            REQUEST_1 to StoredSweepRecovery.Requeue(
+                SweepTargetResultCode("RETRY_AFTER_OWNER_LOSS"),
+                recoveredAtEpochMs = 3_200L,
+            ),
+            REQUEST_2 to StoredSweepRecovery.MarkUnknown(
+                SweepTargetResultCode("OUTCOME_UNKNOWN"),
+                recoveredAtEpochMs = 3_200L,
+            ),
+            REQUEST_3 to StoredSweepRecovery.Completed(successfulResult(3_200L), 3_200L),
+        )
+        val outcomes = cases.map { (requestId, recovery) ->
+            insertSweep(
+                requestId = requestId,
+                targetStates = listOf(
+                    StoredSweepTargetState.PENDING,
+                    StoredSweepTargetState.SUCCEEDED,
+                ),
+            )
+            dao.claimOldestRunnableRequest(
+                "previous-session",
+                "request-claim",
+                2_000L,
+                3_000L,
+            )
+            dao.claimNextPendingTarget(
+                requestId,
+                "request-claim",
+                "target-claim",
+                2_100L,
+                3_100L,
+            )
+            seedPartialTargetOwnership(requestId, ordinal = 1)
+            val candidate = dao.recoverRequestClaims(
+                "current-session",
+                3_200L,
+            ) { candidateRequestId, _ -> candidateRequestId != requestId }.single()
+            val before = requireNotNull(dao.load(requestId))
+
+            val recovered = dao.recoverInterruptedTarget(candidate, recovery)
+            val unchanged = before == requireNotNull(dao.load(requestId))
+            database.openHelper.writableDatabase.execSQL(
+                "DELETE FROM sweep_requests WHERE request_id = ?",
+                arrayOf(requestId),
+            )
+            recovered to unchanged
+        }
+
+        assertEquals(List(cases.size) { false to true }, outcomes)
+    }
+
+    @Test
     fun unknownTargetRetryDoesNotClearActiveOwnership() = runBlocking {
         insertSweep(
             requestId = REQUEST_1,
@@ -852,6 +969,21 @@ class PrivilegeSweepDaoTest {
             rootLaneDegraded = false,
             finishedAtEpochMs = nowMs,
         )
+
+    private fun seedPartialTargetOwnership(
+        requestId: String,
+        ordinal: Int,
+    ) {
+        database.openHelper.writableDatabase.execSQL(
+            """
+            UPDATE sweep_targets
+            SET claim_token = NULL,
+                claim_lease_expires_at_epoch_ms = 9_000
+            WHERE request_id = ? AND ordinal = ?
+            """.trimIndent(),
+            arrayOf<Any>(requestId, ordinal),
+        )
+    }
 
     private suspend fun completeNextTarget(
         targetClaimToken: String,
