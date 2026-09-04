@@ -27,6 +27,7 @@ import com.valhalla.thor.domain.repository.AppExportPublication
 import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
 import com.valhalla.thor.domain.repository.AppExportPublicationStatus
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.ExportSession
@@ -128,6 +129,7 @@ internal class AppExportWorker(
                     publicationIdentity: AppExportPublicationIdentity?,
                     execution: PrivilegeExecutionContext,
                     captureProgress: VerifiedProgress,
+                    captureBoundary: VerifiedOperationBoundary,
                     publicationProgress: VerifiedProgress,
                 ): KotlinResult<AppExportPublication> {
                     val result = if (publicationIdentity == null) {
@@ -152,6 +154,7 @@ internal class AppExportWorker(
                             publicationIdentity = publicationIdentity,
                             execution = execution,
                             captureProgress = captureProgress,
+                            captureBoundary = captureBoundary,
                             publicationProgress = publicationProgress,
                         )
                     }

@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.bundleFileNameFor
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.util.ServiceQueueEvent
 import com.valhalla.thor.util.ServiceQueueLatencyProbe
@@ -87,6 +88,7 @@ class AppBundleBuilderImpl(
         fileName: String?,
         execution: PrivilegeExecutionContext,
         progress: VerifiedProgress,
+        operationBoundary: VerifiedOperationBoundary,
     ): Result<File> = withContext(ioDispatcher) {
         // Per-package subdir. Bulk share builds each selected app sequentially into
         // the same cacheSubDir and hands all the resulting content:// URIs to
@@ -126,7 +128,14 @@ class AppBundleBuilderImpl(
                 // autoFor() never picks this format for one.
                 val sourcePath = appInfo.publicSourceDir ?: appInfo.sourceDir
                 ?: throw IllegalStateException("No source path found")
-                if (!copyFileSafely(sourcePath, finalFile, execution, progress)) {
+                if (!copyFileSafely(
+                        sourcePath,
+                        finalFile,
+                        execution,
+                        progress,
+                        operationBoundary
+                    )
+                ) {
                     throw IllegalStateException("Failed to copy base APK")
                 }
             } else {
@@ -154,7 +163,7 @@ class AppBundleBuilderImpl(
                 // which wipes the staging dir with it.
                 val apkFiles = plan.map { (path, name) ->
                     val destFile = File(tempSplitDir, name)
-                    if (!copyFileSafely(path, destFile, execution, progress)) {
+                    if (!copyFileSafely(path, destFile, execution, progress, operationBoundary)) {
                         throw IllegalStateException("Failed to copy APK: $name")
                     }
                     destFile
@@ -165,9 +174,14 @@ class AppBundleBuilderImpl(
 
                 // Only .xapk carries expansions, so only .xapk pays for the probe.
                 val probe = if (format == BundleFormat.XAPK) {
-                    systemRepository.probeObb(
-                        appInfo.packageName,
-                        execution.withExportRootDeadline(),
+                    probeObbWithVerifiedBoundary(
+                        operation = {
+                            systemRepository.probeObb(
+                                appInfo.packageName,
+                                execution.withExportRootDeadline(),
+                            )
+                        },
+                        boundary = operationBoundary,
                     )
                 } else {
                     ObbProbe.None
@@ -230,6 +244,7 @@ class AppBundleBuilderImpl(
                             obbStagingDir,
                             execution,
                             progress,
+                            operationBoundary,
                         )
                     )
                 }
@@ -426,6 +441,7 @@ class AppBundleBuilderImpl(
         stagingDir: File,
         execution: PrivilegeExecutionContext,
         progress: VerifiedProgress,
+        operationBoundary: VerifiedOperationBoundary,
     ): List<ZipSource>? {
         stagingDir.deleteRecursively()
         if (!stagingDir.mkdirs()) return null
@@ -440,10 +456,15 @@ class AppBundleBuilderImpl(
                 destPath = dest.absolutePath
             ) ?: return null
 
-            val result = systemRepository.executeShellCommand(
-                command,
-                execution.withExportRootDeadline().copy(commandClass = OBB_COPY),
-            ).getOrNullPreservingPrivilegeExecution()
+            val result = executeRootCommandWithVerifiedBoundary(
+                operation = {
+                    systemRepository.executeShellCommand(
+                        command,
+                        execution.withExportRootDeadline().copy(commandClass = OBB_COPY),
+                    )
+                },
+                boundary = operationBoundary,
+            )
             if (result == null || result.first != 0) return null
             // The shell reported success; verify the bytes actually arrived. A `cp` that hits a
             // full volume can still exit 0 on some toybox builds, and a size that no longer
@@ -461,6 +482,7 @@ class AppBundleBuilderImpl(
         destFile: File,
         execution: PrivilegeExecutionContext,
         progress: VerifiedProgress,
+        operationBoundary: VerifiedOperationBoundary,
     ): Boolean {
         val source = File(sourcePath)
         val expectedBytes = source.length()
@@ -473,11 +495,16 @@ class AppBundleBuilderImpl(
             // observes cancellation at all.
             throw e
         } catch (_: Exception) {
-            val copied = systemRepository.copyFileWithRoot(
-                sourcePath,
-                destFile.absolutePath,
-                execution.withExportRootDeadline(),
-            ).getOrNullPreservingPrivilegeExecution() != null
+            val copied = executeRootCopyWithVerifiedBoundary(
+                operation = {
+                    systemRepository.copyFileWithRoot(
+                        sourcePath,
+                        destFile.absolutePath,
+                        execution.withExportRootDeadline(),
+                    )
+                },
+                boundary = operationBoundary,
+            )
             if (copied) {
                 verifiedRootCopyByteCount(destFile, expectedBytes)?.let {
                     progress.onBytesWritten(it)
@@ -491,6 +518,36 @@ class AppBundleBuilderImpl(
         const val FALLBACK_ICON_PX = 192
         val OBB_COPY = PrivilegeCommandClass("obb.copy")
     }
+}
+
+/** A typed OBB probe verdict is a completed privileged operation; unknown is not success. */
+internal suspend fun probeObbWithVerifiedBoundary(
+    operation: suspend () -> ObbProbe,
+    boundary: VerifiedOperationBoundary,
+): ObbProbe {
+    val probe = operation()
+    if (probe !is ObbProbe.Undetermined) boundary.onOperationCompleted()
+    return probe
+}
+
+/** Report a successful shell command boundary before the caller performs another file operation. */
+internal suspend fun executeRootCommandWithVerifiedBoundary(
+    operation: suspend () -> Result<Pair<Int, String?>>,
+    boundary: VerifiedOperationBoundary,
+): Pair<Int, String?>? {
+    val result = operation().getOrNullPreservingPrivilegeExecution() ?: return null
+    if (result.first == 0) boundary.onOperationCompleted()
+    return result
+}
+
+/** Report a successful Root copy boundary before the caller inspects or uses its destination. */
+internal suspend fun executeRootCopyWithVerifiedBoundary(
+    operation: suspend () -> Result<Unit>,
+    boundary: VerifiedOperationBoundary,
+): Boolean {
+    operation().getOrNullPreservingPrivilegeExecution() ?: return false
+    boundary.onOperationCompleted()
+    return true
 }
 
 /**

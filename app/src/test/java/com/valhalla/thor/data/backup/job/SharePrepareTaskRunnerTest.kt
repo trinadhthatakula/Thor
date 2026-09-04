@@ -10,6 +10,7 @@ import com.valhalla.thor.domain.model.DataTaskOutputState
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import java.io.File
 import java.nio.file.Files
@@ -155,7 +156,7 @@ class SharePrepareTaskRunnerTest {
     fun `verified share bytes persist throttled capture checkpoints`() = runBlocking {
         val operations = RecordingShareOperations(
             bundle = bundle("Example_1.0_com.example.app_0.apk", "payload"),
-            progressScript = { progress ->
+            progressScript = { progress, _ ->
                 progress.onBytesWritten(0L)
                 progress.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES / 2)
                 progress.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES / 2)
@@ -183,11 +184,67 @@ class SharePrepareTaskRunnerTest {
     }
 
     @Test
+    fun `verified share operation boundary checkpoints immediately and resets byte throttle`() =
+        runBlocking {
+            val operations = RecordingShareOperations(
+                bundle = bundle("Example_1.0_com.example.app_0.apk", "payload"),
+                progressScript = { progress, boundary ->
+                    progress.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES - 1L)
+                    boundary.onOperationCompleted()
+                    progress.onBytesWritten(1L)
+                },
+            )
+            val stages = mutableListOf<com.valhalla.thor.domain.model.DataTaskStage>()
+
+            val outcome = SharePrepareTaskRunner(operations, Dispatchers.Unconfined).run(
+                shareRequest(),
+                DataTaskCheckpointSink {
+                    stages += it.stage
+                    DataTaskSinkWrite.APPLIED
+                },
+            )
+
+            assertTrue(outcome is DataTaskRunOutcome.ItemCompleted)
+            assertEquals(
+                listOf(
+                    com.valhalla.thor.domain.model.DataTaskStage.PREPARING,
+                    com.valhalla.thor.domain.model.DataTaskStage.CAPTURING,
+                    com.valhalla.thor.domain.model.DataTaskStage.CAPTURING,
+                ),
+                stages,
+            )
+        }
+
+    @Test
+    fun `ownership loss from share operation boundary aborts before later side effects`() =
+        runBlocking {
+            val operations = RecordingShareOperations(
+                bundle = bundle("Example_1.0_com.example.app_0.apk", "payload"),
+                progressScript = { _, boundary -> boundary.onOperationCompleted() },
+            )
+            var checkpointCount = 0
+
+            val outcome = SharePrepareTaskRunner(operations, Dispatchers.Unconfined).run(
+                shareRequest(),
+                DataTaskCheckpointSink {
+                    checkpointCount++
+                    if (checkpointCount < 3) DataTaskSinkWrite.APPLIED
+                    else DataTaskSinkWrite.OWNERSHIP_LOST
+                },
+            )
+
+            assertSame(DataTaskRunOutcome.OwnershipLost, outcome)
+            assertFalse(operations.sideEffectAfterProgress)
+        }
+
+    @Test
     fun `ownership loss from verified share progress aborts before later side effects`() =
         runBlocking {
             val operations = RecordingShareOperations(
                 bundle = bundle("Example_1.0_com.example.app_0.apk", "payload"),
-                progressScript = { it.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES) },
+                progressScript = { progress, _ ->
+                    progress.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES)
+                },
             )
             var checkpointCount = 0
 
@@ -284,7 +341,10 @@ class SharePrepareTaskRunnerTest {
         private val bundle: File? = null,
         private val bundleResult: Result<File>? = null,
         private val buildFailure: CancellationException? = null,
-        private val progressScript: suspend (VerifiedProgress) -> Unit = {},
+        private val progressScript: suspend (
+            VerifiedProgress,
+            VerifiedOperationBoundary,
+        ) -> Unit = { _, _ -> },
         var incompletePartPresent: Boolean = false,
     ) : SharePrepareTaskOperations {
         val discards = mutableListOf<Pair<String, String>>()
@@ -318,11 +378,12 @@ class SharePrepareTaskRunnerTest {
             fileName: String,
             execution: PrivilegeExecutionContext,
             progress: VerifiedProgress,
+            operationBoundary: VerifiedOperationBoundary,
         ): Result<File> {
             if (incompletePartPresent) builtOnlyAfterDiscard = false
             builds += BuildCall(cacheSubDir, fileName)
             buildFailure?.let { throw it }
-            progressScript(progress)
+            progressScript(progress, operationBoundary)
             sideEffectAfterProgress = true
             return bundleResult ?: Result.success(requireNotNull(bundle))
         }

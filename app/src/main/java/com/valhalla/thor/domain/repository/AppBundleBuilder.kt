@@ -14,6 +14,15 @@ import java.io.File
  * concrete impl lives in the data layer. Signatures use only [File]/String/domain [AppInfo],
  * no Android types.
  */
+fun interface VerifiedOperationBoundary {
+    /** A blocking privileged operation completed successfully. */
+    suspend fun onOperationCompleted()
+
+    companion object {
+        val NONE = VerifiedOperationBoundary {}
+    }
+}
+
 interface AppBundleBuilder {
     /**
      * @param cacheSubDir staging scope under the cache dir. Distinct scopes never touch each
@@ -45,5 +54,6 @@ interface AppBundleBuilder {
         fileName: String? = null,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
         progress: VerifiedProgress = VerifiedProgress.NONE,
+        operationBoundary: VerifiedOperationBoundary = VerifiedOperationBoundary.NONE,
     ): Result<File> = build(appInfo, cacheSubDir, format, fileName, execution)
 }

@@ -7,14 +7,18 @@ import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import kotlin.time.Duration.Companion.minutes
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -294,6 +298,108 @@ class AppBundleBuilderTest {
                 .withExportRootDeadline()
                 .commandTimeout,
         )
+    }
+
+    @Test
+    fun `successful OBB probe checkpoints before the first copy starts`() = runTest {
+        val events = mutableListOf<String>()
+        val probe = probeObbWithVerifiedBoundary(
+            operation = {
+                events += "probe"
+                ObbProbe.Present(listOf(ObbFile("main.obb", 4L)), otherEntryCount = 0)
+            },
+            boundary = VerifiedOperationBoundary { events += "checkpoint" },
+        )
+
+        events += "copy"
+
+        assertTrue(probe is ObbProbe.Present)
+        assertEquals(listOf("probe", "checkpoint", "copy"), events)
+    }
+
+    @Test
+    fun `each successful root copy checkpoints before the next file side effect`() = runTest {
+        val events = mutableListOf<String>()
+        val boundary = VerifiedOperationBoundary { events += "checkpoint" }
+
+        val first = executeRootCommandWithVerifiedBoundary(
+            operation = {
+                events += "obb-copy-1"
+                Result.success(0 to null)
+            },
+            boundary = boundary,
+        )
+        events += "verify-1"
+        val second = executeRootCommandWithVerifiedBoundary(
+            operation = {
+                events += "obb-copy-2"
+                Result.success(0 to null)
+            },
+            boundary = boundary,
+        )
+        events += "verify-2"
+        val fallback = executeRootCopyWithVerifiedBoundary(
+            operation = {
+                events += "apk-copy"
+                Result.success(Unit)
+            },
+            boundary = boundary,
+        )
+        events += "verify-apk"
+
+        assertEquals(0, first?.first)
+        assertEquals(0, second?.first)
+        assertTrue(fallback)
+        assertEquals(
+            listOf(
+                "obb-copy-1", "checkpoint", "verify-1",
+                "obb-copy-2", "checkpoint", "verify-2",
+                "apk-copy", "checkpoint", "verify-apk",
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun `failed root operations do not checkpoint successful boundaries`() = runTest {
+        var boundaries = 0
+        val boundary = VerifiedOperationBoundary { boundaries++ }
+
+        val failedCommand = executeRootCommandWithVerifiedBoundary(
+            operation = { Result.success(1 to "copy failed") },
+            boundary = boundary,
+        )
+        val failedCopy = executeRootCopyWithVerifiedBoundary(
+            operation = { Result.failure(IOException("no root")) },
+            boundary = boundary,
+        )
+        val undeterminedProbe = probeObbWithVerifiedBoundary(
+            operation = { ObbProbe.Undetermined("no root") },
+            boundary = boundary,
+        )
+
+        assertEquals(1, failedCommand?.first)
+        assertFalse(failedCopy)
+        assertTrue(undeterminedProbe is ObbProbe.Undetermined)
+        assertEquals(0, boundaries)
+    }
+
+    @Test
+    fun `root operation cancellation remains cancellation without a boundary`() {
+        val cancellation = CancellationException("stop root copy")
+        var boundaries = 0
+
+        val thrown = assertThrows(CancellationException::class.java) {
+            runTest {
+                executeRootCopyWithVerifiedBoundary(
+                    operation = { Result.failure(cancellation) },
+                    boundary = VerifiedOperationBoundary { boundaries++ },
+                )
+            }
+        }
+
+        assertSame(cancellation, thrown)
+        assertEquals(0, boundaries)
     }
 
     @Test

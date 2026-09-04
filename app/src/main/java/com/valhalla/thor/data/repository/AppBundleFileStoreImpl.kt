@@ -83,6 +83,42 @@ internal fun reconcileExactExportPublication(
     }?.id
 }
 
+/**
+ * Open a pending MediaStore row only when it still has the durable name replay can recognize.
+ *
+ * The name is checked once before an output stream is opened and again immediately before the row is
+ * made visible. Any rejection leaves the row pending and removes it through [removePending].
+ */
+internal fun <T : Any> openExactPendingMediaStoreDestination(
+    identity: AppExportPublicationIdentity,
+    insertPending: () -> T?,
+    assignedName: (T) -> String?,
+    openOutput: (T) -> OutputStream?,
+    makeVisible: (T) -> Boolean,
+    removePending: (T) -> Unit,
+): ArchiveDestination? {
+    val pending = insertPending() ?: return null
+    var destinationOpened = false
+    try {
+        if (assignedName(pending) != identity.fileName) return null
+        val stream = openOutput(pending) ?: return null
+        destinationOpened = true
+        return object : BaseDestination(stream, onSettled = {}) {
+            override fun onPublish(): ArchivePublication? {
+                if (assignedName(pending) != identity.fileName || !makeVisible(pending)) return null
+                return ArchivePublication(identity.fileName, writtenBytes)
+            }
+
+            override fun onDiscard() = removePending(pending)
+        }
+    } finally {
+        if (!destinationOpened) {
+            runCatching { removePending(pending) }
+                .onFailure { Logger.e(TAG, "could not discard an unrecognized pending export", it) }
+        }
+    }
+}
+
 internal suspend fun copyWithVerifiedProgress(
     input: InputStream,
     output: OutputStream,
@@ -145,8 +181,11 @@ class AppBundleFileStoreImpl(
         require(file.name == identity.fileName)
         val destination = when (target) {
             ExportTargetChoice.Downloads ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) openInDownloads(file, mime)
-                else openInLegacyDownloads(file)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    openExactInDownloads(identity, mime)
+                } else {
+                    openInLegacyDownloads(file)
+                }
 
             is ExportTargetChoice.Custom -> {
                 val treeUri = target.treeUri.toUri()
@@ -436,6 +475,47 @@ class AppBundleFileStoreImpl(
     } catch (e: Exception) {
         Logger.e(TAG, "could not read the document flags; assuming the provider can rename", e)
         false
+    }
+
+    /**
+     * Q+ durable Downloads: reject a collision-assigned row while it is still pending and empty.
+     *
+     * Reconciliation recognizes only [identity]'s exact name. MediaStore may assign a suffix between
+     * that check and this insert, so both name checks happen before visibility and a mismatch is
+     * deleted rather than becoming an orphan replay cannot identify.
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun openExactInDownloads(
+        identity: AppExportPublicationIdentity,
+        mime: String,
+    ): ArchiveDestination? {
+        val resolver = context.contentResolver
+        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$THOR_DOWNLOADS_SUBDIR/"
+        return openExactPendingMediaStoreDestination(
+            identity = identity,
+            insertPending = {
+                resolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    contentValuesOf(
+                        MediaStore.Downloads.DISPLAY_NAME to identity.fileName,
+                        MediaStore.Downloads.MIME_TYPE to mime,
+                        MediaStore.Downloads.RELATIVE_PATH to relativePath,
+                        MediaStore.Downloads.IS_PENDING to 1,
+                    ),
+                )
+            },
+            assignedName = { uri -> displayNameOf(resolver, uri) },
+            openOutput = resolver::openOutputStream,
+            makeVisible = { uri ->
+                resolver.update(
+                    uri,
+                    contentValuesOf(MediaStore.Downloads.IS_PENDING to 0),
+                    null,
+                    null,
+                ) == 1
+            },
+            removePending = { uri -> resolver.delete(uri, null, null) },
+        )
     }
 
     /**

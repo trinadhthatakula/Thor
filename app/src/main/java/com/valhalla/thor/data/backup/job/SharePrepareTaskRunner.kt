@@ -17,6 +17,7 @@ import com.valhalla.thor.domain.model.NewDataTaskOutput
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.bundleFileNameFor
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -54,6 +55,7 @@ internal interface SharePrepareTaskOperations {
         fileName: String,
         execution: PrivilegeExecutionContext,
         progress: VerifiedProgress,
+        operationBoundary: VerifiedOperationBoundary,
     ): Result<File>
 }
 
@@ -146,14 +148,16 @@ internal class SharePrepareTaskRunner(
                     request.item.packageName,
                     request.taskId,
                 )
-                val progress = DataTaskProgressCheckpointer(
+                val captureCheckpointer = DataTaskProgressCheckpointer(
                     request = request,
                     stage = DataTaskStage.CAPTURING,
                     label = { activeLabel },
                     checkpoints = checkpoints,
                     nowMs = nowMs,
                     monotonicNowMs = monotonicNowMs,
-                ).asProgress()
+                )
+                val progress = captureCheckpointer.asProgress()
+                val operationBoundary = captureCheckpointer.asOperationBoundary()
                 val file = try {
                     operations.buildBundle(
                         appInfo = appInfo,
@@ -162,6 +166,7 @@ internal class SharePrepareTaskRunner(
                         fileName = fileName,
                         execution = execution,
                         progress = progress,
+                        operationBoundary = operationBoundary,
                     ).getOrElse { cause ->
                         if (cause is CancellationException) throw cause
                         return@withContext failedShareItem(

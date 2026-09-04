@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.repository.AppExportPublication
 import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
 import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
 import com.valhalla.thor.domain.repository.AppExportPublicationStatus
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import java.io.File
 import java.nio.file.Files
@@ -34,6 +35,8 @@ class ExportAppUseCaseDurableTest {
                 val builder = RecordingBuilder(root)
                 val store = RecordingFileStore()
                 val session = ExportSession(ExportTargetChoice.Downloads, "item-1")
+                var operationBoundaries = 0
+                val captureBoundary = VerifiedOperationBoundary { operationBoundaries++ }
 
                 val first = exportDurableBundle(
                     bundleBuilder = builder,
@@ -44,6 +47,7 @@ class ExportAppUseCaseDurableTest {
                     publicationIdentity = identity,
                     execution = PrivilegeExecutionContext(),
                     captureProgress = VerifiedProgress.NONE,
+                    captureBoundary = captureBoundary,
                     publicationProgress = VerifiedProgress.NONE,
                 ).getOrThrow()
                 val replay = exportDurableBundle(
@@ -55,6 +59,7 @@ class ExportAppUseCaseDurableTest {
                     publicationIdentity = identity,
                     execution = PrivilegeExecutionContext(),
                     captureProgress = VerifiedProgress.NONE,
+                    captureBoundary = captureBoundary,
                     publicationProgress = VerifiedProgress.NONE,
                 ).getOrThrow()
 
@@ -62,6 +67,7 @@ class ExportAppUseCaseDurableTest {
                 assertEquals(AppExportPublicationStatus.RECONCILED, replay.status)
                 assertEquals(1, builder.buildCount)
                 assertEquals(1, store.publishCount)
+                assertEquals(1, operationBoundaries)
                 assertEquals(listOf(identity.fileName), builder.requestedNames)
                 assertEquals(listOf(identity, identity), store.reconciledIdentities)
             } finally {
@@ -96,9 +102,11 @@ class ExportAppUseCaseDurableTest {
             fileName: String?,
             execution: PrivilegeExecutionContext,
             progress: VerifiedProgress,
+            operationBoundary: VerifiedOperationBoundary,
         ): Result<File> {
             buildCount++
             requestedNames += requireNotNull(fileName)
+            operationBoundary.onOperationCompleted()
             return Result.success(File(root, fileName).apply { writeText("payload") })
         }
     }

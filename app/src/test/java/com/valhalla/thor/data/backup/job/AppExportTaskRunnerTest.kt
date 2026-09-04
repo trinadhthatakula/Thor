@@ -17,6 +17,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppExportPublication
 import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
 import com.valhalla.thor.domain.repository.AppExportPublicationStatus
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.domain.usecase.ExportSession
 import java.util.UUID
@@ -106,8 +107,9 @@ class AppExportTaskRunnerTest {
     fun `legacy execution forwards verified progress to its process local checkpoint sink`() =
         runBlocking {
             val operations = RecordingExportOperations(
-                progressScript = { capture, publication ->
+                progressScript = { capture, boundary, publication ->
                     capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES)
+                    boundary.onOperationCompleted()
                     publication.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES)
                 },
             )
@@ -180,7 +182,7 @@ class AppExportTaskRunnerTest {
     @Test
     fun `verified bytes persist throttled capture and publication checkpoints`() = runBlocking {
         val operations = RecordingExportOperations(
-            progressScript = { capture, publication ->
+            progressScript = { capture, _, publication ->
                 capture.onBytesWritten(0L)
                 capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES / 2)
                 capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES / 2)
@@ -213,7 +215,7 @@ class AppExportTaskRunnerTest {
     fun `continued small writes checkpoint after the monotonic interval`() = runBlocking {
         var monotonicMs = 0L
         val operations = RecordingExportOperations(
-            progressScript = { capture, _ ->
+            progressScript = { capture, _, _ ->
                 capture.onBytesWritten(1L)
                 monotonicMs = 60_000L
                 capture.onBytesWritten(1L)
@@ -241,10 +243,57 @@ class AppExportTaskRunnerTest {
     }
 
     @Test
+    fun `verified operation boundary checkpoints immediately and resets byte throttle`() =
+        runBlocking {
+            val operations = RecordingExportOperations(
+                progressScript = { capture, boundary, _ ->
+                    capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES - 1L)
+                    boundary.onOperationCompleted()
+                    capture.onBytesWritten(1L)
+                },
+            )
+            val stages = mutableListOf<DataTaskStage>()
+
+            val outcome = AppExportTaskRunner(operations, Dispatchers.Unconfined).run(
+                exportRequest(),
+                DataTaskCheckpointSink {
+                    stages += it.stage
+                    DataTaskSinkWrite.APPLIED
+                },
+            )
+
+            assertSucceeded(outcome)
+            assertEquals(
+                listOf(DataTaskStage.PREPARING, DataTaskStage.CAPTURING, DataTaskStage.CAPTURING),
+                stages,
+            )
+        }
+
+    @Test
+    fun `ownership loss at operation boundary aborts before later side effects`() = runBlocking {
+        val operations = RecordingExportOperations(
+            progressScript = { _, boundary, _ -> boundary.onOperationCompleted() },
+        )
+        var checkpointCount = 0
+
+        val outcome = AppExportTaskRunner(operations, Dispatchers.Unconfined).run(
+            exportRequest(),
+            DataTaskCheckpointSink {
+                checkpointCount++
+                if (checkpointCount < 3) DataTaskSinkWrite.APPLIED
+                else DataTaskSinkWrite.OWNERSHIP_LOST
+            },
+        )
+
+        assertSame(DataTaskRunOutcome.OwnershipLost, outcome)
+        assertFalse(operations.sideEffectAfterProgress)
+    }
+
+    @Test
     fun `ownership loss from verified progress aborts export before later side effects`() =
         runBlocking {
             val operations = RecordingExportOperations(
-                progressScript = { capture, _ ->
+                progressScript = { capture, _, _ ->
                     capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES)
                 },
             )
@@ -369,7 +418,11 @@ class AppExportTaskRunnerTest {
         private val treeWritable: Boolean = true,
         private val resolvedAppName: String = "Example",
         private val resolvedVersionName: String = "1.0",
-        private val progressScript: suspend (VerifiedProgress, VerifiedProgress) -> Unit = { _, _ -> },
+        private val progressScript: suspend (
+            VerifiedProgress,
+            VerifiedOperationBoundary,
+            VerifiedProgress,
+        ) -> Unit = { _, _, _ -> },
         private val exportResult: suspend () -> Result<AppExportPublication> = {
             Result.success(
                 AppExportPublication(
@@ -413,10 +466,11 @@ class AppExportTaskRunnerTest {
             publicationIdentity: AppExportPublicationIdentity?,
             execution: PrivilegeExecutionContext,
             captureProgress: VerifiedProgress,
+            captureBoundary: VerifiedOperationBoundary,
             publicationProgress: VerifiedProgress,
         ): Result<AppExportPublication> {
             exports += ExportCall(session, publicationIdentity, execution)
-            progressScript(captureProgress, publicationProgress)
+            progressScript(captureProgress, captureBoundary, publicationProgress)
             sideEffectAfterProgress = true
             return exportResult()
         }

@@ -254,6 +254,144 @@ class ArchiveDestinationTest {
     }
 
     @Test
+    fun `durable MediaStore collision is discarded before opening or publishing`() = runTest {
+        val identity =
+            AppExportPublicationIdentity("Thor-task-44444444-4444-4444-4444-444444444444-0.apk")
+        val events = mutableListOf<String>()
+        val output = ByteArrayOutputStream()
+
+        val destination = openExactPendingMediaStoreDestination(
+            identity = identity,
+            insertPending = {
+                events += "insert"
+                "pending-id"
+            },
+            assignedName = {
+                events += "inspect"
+                "Thor-task-44444444-4444-4444-4444-444444444444-0 (1).apk"
+            },
+            openOutput = {
+                events += "open"
+                output
+            },
+            makeVisible = {
+                events += "visible"
+                true
+            },
+            removePending = { events += "delete" },
+        )
+
+        assertNull(destination)
+        assertEquals(listOf("insert", "inspect", "delete"), events)
+        assertEquals(0, output.size())
+    }
+
+    @Test
+    fun `durable MediaStore unreadable assigned name fails closed`() = runTest {
+        val identity =
+            AppExportPublicationIdentity("Thor-task-55555555-5555-5555-5555-555555555555-0.apk")
+        val events = mutableListOf<String>()
+
+        val destination = openExactPendingMediaStoreDestination(
+            identity = identity,
+            insertPending = {
+                events += "insert"
+                "pending-id"
+            },
+            assignedName = {
+                events += "inspect"
+                null
+            },
+            openOutput = {
+                events += "open"
+                ByteArrayOutputStream()
+            },
+            makeVisible = {
+                events += "visible"
+                true
+            },
+            removePending = { events += "delete" },
+        )
+
+        assertNull(destination)
+        assertEquals(listOf("insert", "inspect", "delete"), events)
+    }
+
+    @Test
+    fun `durable MediaStore exact name copies completely before visibility`() = runTest {
+        val identity =
+            AppExportPublicationIdentity("Thor-task-66666666-6666-6666-6666-666666666666-0.apk")
+        val events = mutableListOf<String>()
+        val output = ByteArrayOutputStream()
+
+        val destination = requireNotNull(
+            openExactPendingMediaStoreDestination(
+                identity = identity,
+                insertPending = {
+                    events += "insert"
+                    "pending-id"
+                },
+                assignedName = {
+                    events += "inspect"
+                    identity.fileName
+                },
+                openOutput = {
+                    events += "open"
+                    output
+                },
+                makeVisible = {
+                    assertEquals(byteArrayOf(1, 2, 3, 4).toList(), output.toByteArray().toList())
+                    events += "visible"
+                    true
+                },
+                removePending = { events += "delete" },
+            )
+        )
+
+        destination.output.write(byteArrayOf(1, 2, 3, 4))
+        val publication = destination.publish()
+
+        assertEquals(ArchivePublication(identity.fileName, 4L), publication)
+        assertEquals(listOf("insert", "inspect", "open", "inspect", "visible"), events)
+    }
+
+    @Test
+    fun `durable MediaStore name lost after copy is discarded before visibility`() = runTest {
+        val identity =
+            AppExportPublicationIdentity("Thor-task-77777777-7777-7777-7777-777777777777-0.apk")
+        val events = mutableListOf<String>()
+        var inspection = 0
+
+        val destination = requireNotNull(
+            openExactPendingMediaStoreDestination(
+                identity = identity,
+                insertPending = {
+                    events += "insert"
+                    "pending-id"
+                },
+                assignedName = {
+                    events += "inspect"
+                    if (inspection++ == 0) identity.fileName else "${identity.fileName} (1)"
+                },
+                openOutput = {
+                    events += "open"
+                    ByteArrayOutputStream()
+                },
+                makeVisible = {
+                    events += "visible"
+                    true
+                },
+                removePending = { events += "delete" },
+            )
+        )
+
+        destination.output.write(byteArrayOf(1, 2, 3, 4))
+
+        assertNull(destination.publish())
+        assertEquals(listOf("insert", "inspect", "open", "inspect", "delete"), events)
+    }
+
+    @Test
     fun `public destination copy reports progress only after bytes are written`() = runTest {
         val payload = ByteArray(20_000) { (it % 251).toByte() }
         val output = ByteArrayOutputStream()

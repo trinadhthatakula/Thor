@@ -18,6 +18,7 @@ import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppExportPublication
 import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.ExportSession
@@ -59,6 +60,7 @@ internal interface AppExportTaskOperations {
         publicationIdentity: AppExportPublicationIdentity?,
         execution: PrivilegeExecutionContext,
         captureProgress: VerifiedProgress,
+        captureBoundary: VerifiedOperationBoundary,
         publicationProgress: VerifiedProgress,
     ): Result<AppExportPublication>
 
@@ -165,14 +167,20 @@ internal class AppExportTaskRunner(
                     payload.request.packageName,
                     request.taskId,
                 )
-                val captureProgress = DataTaskProgressCheckpointer(
+                val captureCheckpointer = DataTaskProgressCheckpointer(
                     request = request,
                     stage = DataTaskStage.CAPTURING,
                     label = { activeLabel },
                     checkpoints = checkpoints,
                     nowMs = nowMs,
                     monotonicNowMs = monotonicNowMs,
-                ).asProgress()
+                )
+                val captureProgress = captureCheckpointer.asProgress()
+                val captureBoundary = if (legacy) {
+                    VerifiedOperationBoundary.NONE
+                } else {
+                    captureCheckpointer.asOperationBoundary()
+                }
                 val publicationProgress = DataTaskProgressCheckpointer(
                     request = request,
                     stage = DataTaskStage.PUBLISHING,
@@ -188,6 +196,7 @@ internal class AppExportTaskRunner(
                     publicationIdentity = publicationIdentity,
                     execution = execution,
                     captureProgress = captureProgress,
+                    captureBoundary = captureBoundary,
                     publicationProgress = publicationProgress,
                 ).getOrElse { cause ->
                     if (cause is CancellationException) throw cause
@@ -238,6 +247,14 @@ internal class DataTaskProgressCheckpointer(
         ) {
             return@VerifiedProgress
         }
+        persistVerifiedCheckpoint(currentMonotonicMs)
+    }
+
+    fun asOperationBoundary(): VerifiedOperationBoundary = VerifiedOperationBoundary {
+        persistVerifiedCheckpoint(monotonicNowMs())
+    }
+
+    private suspend fun persistVerifiedCheckpoint(currentMonotonicMs: Long) {
         val write = checkpoints.persist(
             request.checkpoint(stage = stage, label = label(), nowMs = nowMs())
         )

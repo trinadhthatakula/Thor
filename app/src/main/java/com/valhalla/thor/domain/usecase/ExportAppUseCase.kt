@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.repository.AppExportPublication
 import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
 import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -136,6 +137,7 @@ class ExportAppUseCase(
         publicationIdentity: AppExportPublicationIdentity,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
         captureProgress: VerifiedProgress = VerifiedProgress.NONE,
+        captureBoundary: VerifiedOperationBoundary = VerifiedOperationBoundary.NONE,
         publicationProgress: VerifiedProgress = VerifiedProgress.NONE,
     ): Result<AppExportPublication> = withContext(ioDispatcher) {
         exportDurableBundle(
@@ -147,6 +149,7 @@ class ExportAppUseCase(
             publicationIdentity = publicationIdentity,
             execution = execution,
             captureProgress = captureProgress,
+            captureBoundary = captureBoundary,
             publicationProgress = publicationProgress,
         )
     }
@@ -198,6 +201,7 @@ internal suspend fun exportDurableBundle(
     publicationIdentity: AppExportPublicationIdentity,
     execution: PrivilegeExecutionContext,
     captureProgress: VerifiedProgress,
+    captureBoundary: VerifiedOperationBoundary,
     publicationProgress: VerifiedProgress,
 ): Result<AppExportPublication> {
     var staged: File? = null
@@ -215,6 +219,7 @@ internal suspend fun exportDurableBundle(
                     fileName = publicationIdentity.fileName,
                     execution = execution,
                     progress = captureProgress,
+                    operationBoundary = captureBoundary,
                 ).getOrElse { return Result.failure(it) }
                 staged = file
                 Result.success(
