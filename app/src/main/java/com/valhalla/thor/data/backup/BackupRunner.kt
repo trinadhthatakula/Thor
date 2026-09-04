@@ -5,6 +5,7 @@ package com.valhalla.thor.data.backup
 
 import android.content.Context
 import android.os.storage.StorageManager
+import com.valhalla.thor.data.backup.job.DataTaskSinkWrite
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
 import com.valhalla.thor.domain.usecase.BackupProgress
@@ -32,6 +33,28 @@ import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.IOException
+
+/**
+ * Drain only items the durable store still considers runnable.
+ *
+ * The next claim is not requested until [runAndPersist] has returned, so a completed item is durable
+ * before another item starts. Terminal items never enter this loop: the claim source filters them,
+ * which preserves already exported/prepared outputs across service or process restarts.
+ *
+ * [DataTaskSinkWrite.OWNERSHIP_LOST] stops the drain immediately. Continuing would let a stale service
+ * generation claim more work after it has already lost the task it was settling.
+ */
+internal suspend fun <T> drainPendingDataTaskItems(
+    claimNext: suspend () -> T?,
+    runAndPersist: suspend (T) -> DataTaskSinkWrite,
+): Int {
+    var completed = 0
+    while (true) {
+        val item = claimNext() ?: return completed
+        if (runAndPersist(item) == DataTaskSinkWrite.OWNERSHIP_LOST) return completed
+        completed++
+    }
+}
 
 /**
  * Owner of a multi-app export run.
@@ -143,7 +166,8 @@ class BackupRunner(
 
         // Published before the coroutine starts so a UI that opens immediately after the tap sees
         // "0 of N" rather than an idle null while the replaced run is still unwinding.
-        _progress.value = BackupProgress(completed = 0, saved = 0, total = apps.size, current = null)
+        _progress.value =
+            BackupProgress(completed = 0, saved = 0, total = apps.size, current = null)
 
         val run = Run()
         run.job = scope.async {

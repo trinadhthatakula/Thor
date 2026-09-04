@@ -5,6 +5,7 @@ package com.valhalla.thor.data.backup
 
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.data.backup.job.DataTaskSinkWrite
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
@@ -170,6 +171,49 @@ class BackupRunnerTest {
         // Null, not a stuck "2 of 2": the bar is bound to nullability, so a run that forgets to
         // clear leaves a full bar pinned to the bottom of the screen for the process lifetime.
         assertNull(runner.progress.value)
+    }
+
+    @Test
+    fun `bulk item drain claims again only after the prior item is persisted`() = runTest {
+        val pending = ArrayDeque(listOf(2, 3)) // Item 1 is already terminal and is not claimable.
+        val events = mutableListOf<String>()
+        var priorPersisted = true
+
+        val completed = drainPendingDataTaskItems(
+            claimNext = {
+                check(priorPersisted) { "claimed the next item before persisting the prior one" }
+                val item = pending.removeFirstOrNull()
+                events += "claim:${item ?: "none"}"
+                if (item != null) priorPersisted = false
+                item
+            },
+            runAndPersist = { item ->
+                events += "persist:$item"
+                priorPersisted = true
+                DataTaskSinkWrite.APPLIED
+            },
+        )
+
+        assertEquals(2, completed)
+        assertEquals(listOf("claim:2", "persist:2", "claim:3", "persist:3", "claim:none"), events)
+    }
+
+    @Test
+    fun `bulk item drain stops when claim ownership is lost`() = runTest {
+        val pending = ArrayDeque(listOf(2, 3))
+        val persisted = mutableListOf<Int>()
+
+        val completed = drainPendingDataTaskItems(
+            claimNext = { pending.removeFirstOrNull() },
+            runAndPersist = { item ->
+                persisted += item
+                DataTaskSinkWrite.OWNERSHIP_LOST
+            },
+        )
+
+        assertEquals(0, completed)
+        assertEquals(listOf(2), persisted)
+        assertEquals(listOf(3), pending)
     }
 
     @Test
