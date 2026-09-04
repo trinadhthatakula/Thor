@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.bundleFileNameFor
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.util.ServiceQueueEvent
 import com.valhalla.thor.util.ServiceQueueLatencyProbe
 import com.valhalla.thor.util.ServiceQueueOperation
@@ -43,6 +44,8 @@ import java.io.IOException
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 
 internal fun <T> Result<T>.getOrNullPreservingPrivilegeExecution(): T? {
     exceptionOrNull()?.rethrowIfPrivilegeExecutionFailure()
@@ -68,6 +71,22 @@ class AppBundleBuilderImpl(
         format: BundleFormat,
         fileName: String?,
         execution: PrivilegeExecutionContext,
+    ): Result<File> = buildWithProgress(
+        appInfo = appInfo,
+        cacheSubDir = cacheSubDir,
+        format = format,
+        fileName = fileName,
+        execution = execution,
+        progress = VerifiedProgress.NONE,
+    )
+
+    override suspend fun buildWithProgress(
+        appInfo: AppInfo,
+        cacheSubDir: String,
+        format: BundleFormat,
+        fileName: String?,
+        execution: PrivilegeExecutionContext,
+        progress: VerifiedProgress,
     ): Result<File> = withContext(ioDispatcher) {
         // Per-package subdir. Bulk share builds each selected app sequentially into
         // the same cacheSubDir and hands all the resulting content:// URIs to
@@ -106,8 +125,8 @@ class AppBundleBuilderImpl(
                 // Base only, even for a split app: that is what a monolithic .apk means, and
                 // autoFor() never picks this format for one.
                 val sourcePath = appInfo.publicSourceDir ?: appInfo.sourceDir
-                    ?: throw IllegalStateException("No source path found")
-                if (!copyFileSafely(sourcePath, finalFile, execution)) {
+                ?: throw IllegalStateException("No source path found")
+                if (!copyFileSafely(sourcePath, finalFile, execution, progress)) {
                     throw IllegalStateException("Failed to copy base APK")
                 }
             } else {
@@ -135,7 +154,7 @@ class AppBundleBuilderImpl(
                 // which wipes the staging dir with it.
                 val apkFiles = plan.map { (path, name) ->
                     val destFile = File(tempSplitDir, name)
-                    if (!copyFileSafely(path, destFile, execution)) {
+                    if (!copyFileSafely(path, destFile, execution, progress)) {
                         throw IllegalStateException("Failed to copy APK: $name")
                     }
                     destFile
@@ -146,7 +165,10 @@ class AppBundleBuilderImpl(
 
                 // Only .xapk carries expansions, so only .xapk pays for the probe.
                 val probe = if (format == BundleFormat.XAPK) {
-                    systemRepository.probeObb(appInfo.packageName, execution)
+                    systemRepository.probeObb(
+                        appInfo.packageName,
+                        execution.withExportRootDeadline(),
+                    )
                 } else {
                     ObbProbe.None
                 }
@@ -192,7 +214,12 @@ class AppBundleBuilderImpl(
                     if (shortfall > 0L) {
                         throw IOException(
                             "not enough free space to pack this app's game data — about " +
-                                "${Formatter.formatShortFileSize(context, shortfall)} more is needed"
+                                    "${
+                                        Formatter.formatShortFileSize(
+                                            context,
+                                            shortfall
+                                        )
+                                    } more is needed"
                         )
                     }
                     requireStagedExpansions(
@@ -201,7 +228,8 @@ class AppBundleBuilderImpl(
                             appInfo.packageName,
                             obbFiles,
                             obbStagingDir,
-                            execution
+                            execution,
+                            progress,
                         )
                     )
                 }
@@ -255,9 +283,10 @@ class AppBundleBuilderImpl(
                 // why a .xapk leads with its sidecars and why .apks drops expansions outright.
                 // expansionSources is empty for every format but .xapk, and for a .xapk whose app
                 // has no OBB, so this produces exactly the entry list it did before for those.
-                zipFiles(
-                    zipSourcesFor(format, apkFiles, sidecars, expansionSources),
-                    finalFile
+                zipFilesWithVerifiedProgress(
+                    sources = zipSourcesFor(format, apkFiles, sidecars, expansionSources),
+                    zipFile = finalFile,
+                    progress = progress,
                 )
                 tempSplitDir.deleteRecursively()
                 // The zip now holds its own copy of every expansion, so the staged ones are dead
@@ -396,6 +425,7 @@ class AppBundleBuilderImpl(
         files: List<ObbFile>,
         stagingDir: File,
         execution: PrivilegeExecutionContext,
+        progress: VerifiedProgress,
     ): List<ZipSource>? {
         stagingDir.deleteRecursively()
         if (!stagingDir.mkdirs()) return null
@@ -412,14 +442,15 @@ class AppBundleBuilderImpl(
 
             val result = systemRepository.executeShellCommand(
                 command,
-                execution.copy(commandClass = OBB_COPY),
+                execution.withExportRootDeadline().copy(commandClass = OBB_COPY),
             ).getOrNullPreservingPrivilegeExecution()
             if (result == null || result.first != 0) return null
             // The shell reported success; verify the bytes actually arrived. A `cp` that hits a
             // full volume can still exit 0 on some toybox builds, and a size that no longer
             // matches what the probe measured means the app rewrote the file underneath us —
             // either way the capture is not the one the manifest is about to describe.
-            if (!dest.isFile || dest.length() != obb.sizeBytes) return null
+            val verifiedBytes = verifiedRootCopyByteCount(dest, obb.sizeBytes) ?: return null
+            progress.onBytesWritten(verifiedBytes)
 
             ZipSource(dest, expansionEntryName(packageName, obb.name))
         }
@@ -429,9 +460,12 @@ class AppBundleBuilderImpl(
         sourcePath: String,
         destFile: File,
         execution: PrivilegeExecutionContext,
+        progress: VerifiedProgress,
     ): Boolean {
+        val source = File(sourcePath)
+        val expectedBytes = source.length()
         return try {
-            copyCancellable(File(sourcePath), destFile)
+            copyFileWithVerifiedProgress(source, destFile, progress)
             true
         } catch (e: CancellationException) {
             // Ahead of the broad catch, or a cancelled copy falls through to the root fallback and
@@ -439,74 +473,112 @@ class AppBundleBuilderImpl(
             // observes cancellation at all.
             throw e
         } catch (_: Exception) {
-            systemRepository.copyFileWithRoot(
-                sourcePath, destFile.absolutePath, execution,
+            val copied = systemRepository.copyFileWithRoot(
+                sourcePath,
+                destFile.absolutePath,
+                execution.withExportRootDeadline(),
             ).getOrNullPreservingPrivilegeExecution() != null
-        }
-    }
-
-    /**
-     * `File.copyTo` in chunks, so a cancel does not have to wait out a whole APK.
-     *
-     * A bulk export cancels by cancelling the coroutine, and the replacement run waits for this
-     * one to unwind before it starts staging. A single uninterruptible `copyTo` of a 2 GB app
-     * therefore becomes a 2 GB stall with the UI showing "0 of N" — the check per 8 KB chunk is a
-     * volatile read against an IO-bound loop, which is free by comparison.
-     */
-    private suspend fun copyCancellable(source: File, dest: File) {
-        FileInputStream(source).use { input ->
-            FileOutputStream(dest).use { output ->
-                val buffer = ByteArray(COPY_BUFFER_BYTES)
-                while (true) {
-                    currentCoroutineContext().ensureActive()
-                    val read = input.read(buffer)
-                    if (read == -1) break
-                    ServiceQueueLatencyProbe.mark(
-                        ServiceQueueOperation.EXPORT,
-                        ServiceQueueEvent.FIRST_OPERATION,
-                    )
-                    output.write(buffer, 0, read)
+            if (copied) {
+                verifiedRootCopyByteCount(destFile, expectedBytes)?.let {
+                    progress.onBytesWritten(it)
                 }
             }
-        }
-    }
-
-    private suspend fun zipFiles(sources: List<ZipSource>, zipFile: File) {
-        ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
-            // APK entries are already DEFLATEd, so re-compressing them is pure CPU for ~0%
-            // saving. Measurable when a bulk share zips dozens of apps in a row.
-            // This is level-0 DEFLATE, not ZipEntry.STORED as real .xapk files use: STORED
-            // needs a CRC32 and size per entry up front, i.e. a second full read of every APK
-            // — more IO than it saves. Every ZipFile-based reader (SAI, Thor's own BundleZip)
-            // is indifferent; only a reader that fast-paths STORED loses the shortcut.
-            out.setLevel(Deflater.NO_COMPRESSION)
-            // 8 KB buffer — 1 KB is needlessly slow when zipping multi-MB APK splits.
-            val data = ByteArray(COPY_BUFFER_BYTES)
-            sources.forEach { source ->
-                FileInputStream(source.file).use { fi ->
-                    BufferedInputStream(fi).use { origin ->
-                        val entry = ZipEntry(source.entryName)
-                        out.putNextEntry(entry)
-                        while (true) {
-                            // Same reason as copyCancellable: zipping a split app is the other
-                            // multi-gigabyte loop a cancel would otherwise have to sit through.
-                            currentCoroutineContext().ensureActive()
-                            val readBytes = origin.read(data)
-                            if (readBytes == -1) break
-                            out.write(data, 0, readBytes)
-                        }
-                    }
-                }
-            }
+            copied
         }
     }
 
     private companion object {
         const val FALLBACK_ICON_PX = 192
-        const val COPY_BUFFER_BYTES = 8192
         val OBB_COPY = PrivilegeCommandClass("obb.copy")
     }
 }
+
+/**
+ * `File.copyTo` in chunks, reporting each chunk only after its destination write succeeds.
+ * The latency marker remains on the first direct staged-byte write boundary.
+ */
+internal suspend fun copyFileWithVerifiedProgress(
+    source: File,
+    destination: File,
+    progress: VerifiedProgress,
+) {
+    FileInputStream(source).use { input ->
+        FileOutputStream(destination).use { output ->
+            val buffer = ByteArray(EXPORT_COPY_BUFFER_BYTES)
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val read = input.read(buffer)
+                if (read == -1) break
+                ServiceQueueLatencyProbe.mark(
+                    ServiceQueueOperation.EXPORT,
+                    ServiceQueueEvent.FIRST_OPERATION,
+                )
+                output.write(buffer, 0, read)
+                progress.onBytesWritten(read.toLong())
+            }
+        }
+    }
+}
+
+internal suspend fun zipFilesWithVerifiedProgress(
+    sources: List<ZipSource>,
+    zipFile: File,
+    progress: VerifiedProgress,
+) {
+    ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
+        // APK entries are already DEFLATEd, so re-compressing them is pure CPU for ~0%
+        // saving. Measurable when a bulk share zips dozens of apps in a row.
+        // This is level-0 DEFLATE, not ZipEntry.STORED as real .xapk files use: STORED
+        // needs a CRC32 and size per entry up front, i.e. a second full read of every APK
+        // — more IO than it saves. Every ZipFile-based reader (SAI, Thor's own BundleZip)
+        // is indifferent; only a reader that fast-paths STORED loses the shortcut.
+        out.setLevel(Deflater.NO_COMPRESSION)
+        // 8 KB buffer — 1 KB is needlessly slow when zipping multi-MB APK splits.
+        val data = ByteArray(EXPORT_COPY_BUFFER_BYTES)
+        sources.forEach { source ->
+            var unreportedBytes = 0L
+            FileInputStream(source.file).use { fi ->
+                BufferedInputStream(fi).use { origin ->
+                    val entry = ZipEntry(source.entryName)
+                    out.putNextEntry(entry)
+                    while (true) {
+                        // Same reason as copyCancellable: zipping a split app is the other
+                        // multi-gigabyte loop a cancel would otherwise have to sit through.
+                        currentCoroutineContext().ensureActive()
+                        val readBytes = origin.read(data)
+                        if (readBytes == -1) break
+                        out.write(data, 0, readBytes)
+                        unreportedBytes += readBytes
+                        if (unreportedBytes >= ZIP_PROGRESS_FLUSH_BYTES) {
+                            out.flush()
+                            progress.onBytesWritten(unreportedBytes)
+                            unreportedBytes = 0L
+                        }
+                    }
+                }
+            }
+            out.closeEntry()
+            if (unreportedBytes > 0L) {
+                out.flush()
+                progress.onBytesWritten(unreportedBytes)
+            }
+        }
+    }
+}
+
+internal val EXPORT_ROOT_COMMAND_TIMEOUT: Duration = 9.minutes
+private const val EXPORT_COPY_BUFFER_BYTES = 8192
+private const val ZIP_PROGRESS_FLUSH_BYTES = 1024L * 1024L
+
+internal fun PrivilegeExecutionContext.withExportRootDeadline(): PrivilegeExecutionContext =
+    if (commandTimeout == null || commandTimeout > EXPORT_ROOT_COMMAND_TIMEOUT) {
+        copy(commandTimeout = EXPORT_ROOT_COMMAND_TIMEOUT)
+    } else {
+        this
+    }
+
+internal fun verifiedRootCopyByteCount(destination: File, expectedBytes: Long): Long? =
+    expectedBytes.takeIf { it > 0L && destination.isFile && destination.length() == it }
 
 /**
  * Each source APK path paired with the leaf name it is staged — and zipped — under.
@@ -613,7 +685,7 @@ internal fun obbCopyCommand(
     // Both components, because `-L` only ever tests a path's final one: a link at `<pkg>` redirects
     // the read just as effectively as a link at the leaf, and passes a test aimed at the leaf.
     return "[ ! -L '$sourceDir' ] && [ ! -L '$source' ] && " +
-        "cp -f '$source' '$destPath' && chmod 644 '$destPath'"
+            "cp -f '$source' '$destPath' && chmod 644 '$destPath'"
 }
 
 /**
@@ -678,4 +750,5 @@ internal fun requireStagedExpansions(
  */
 internal fun expansionDescriptors(
     sources: List<ZipSource>
-): List<XapkExpansion> = sources.map { XapkExpansion(file = it.entryName, installPath = it.entryName) }
+): List<XapkExpansion> =
+    sources.map { XapkExpansion(file = it.entryName, installPath = it.entryName) }

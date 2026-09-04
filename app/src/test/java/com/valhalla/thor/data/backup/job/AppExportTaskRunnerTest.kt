@@ -14,6 +14,10 @@ import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.repository.AppExportPublication
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.AppExportPublicationStatus
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.domain.usecase.ExportSession
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -48,8 +52,14 @@ class AppExportTaskRunnerTest {
                 listOf("item-$TASK_ID-0", "item-$TASK_ID-0"),
                 operations.exports.map { it.session.stagingSubDir },
             )
-            assertEquals(operations.exports[0].fileName, operations.exports[1].fileName)
-            assertTrue(requireNotNull(operations.exports[0].fileName).contains(PACKAGE_NAME))
+            assertEquals(
+                operations.exports[0].publicationIdentity,
+                operations.exports[1].publicationIdentity,
+            )
+            assertTrue(
+                requireNotNull(operations.exports[0].publicationIdentity)
+                    .fileName.startsWith("Thor-task-")
+            )
             assertEquals(listOf(PACKAGE_NAME, PACKAGE_NAME), operations.loadedPackages)
             assertEquals(2, operations.sweepWaits)
         }
@@ -88,8 +98,40 @@ class AppExportTaskRunnerTest {
                 LEGACY_APP_EXPORT_STAGING_IDENTITY,
                 operations.exports.single().session.stagingSubDir
             )
-            assertEquals(null, operations.exports.single().fileName)
+            assertEquals(null, operations.exports.single().publicationIdentity)
             assertEquals(ExportTargetChoice.Downloads, operations.exports.single().session.target)
+        }
+
+    @Test
+    fun `legacy execution forwards verified progress to its process local checkpoint sink`() =
+        runBlocking {
+            val operations = RecordingExportOperations(
+                progressScript = { capture, publication ->
+                    capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES)
+                    publication.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES)
+                },
+            )
+            val stages = mutableListOf<DataTaskStage>()
+
+            val outcome = AppExportTaskRunner(operations, Dispatchers.Unconfined).run(
+                exportRequest(stagingIdentity = LEGACY_APP_EXPORT_STAGING_IDENTITY),
+                DataTaskCheckpointSink {
+                    stages += it.stage
+                    DataTaskSinkWrite.APPLIED
+                },
+            )
+
+            assertSucceeded(outcome)
+            assertEquals(null, operations.exports.single().publicationIdentity)
+            assertEquals(
+                listOf(
+                    DataTaskStage.PREPARING,
+                    DataTaskStage.CAPTURING,
+                    DataTaskStage.CAPTURING,
+                    DataTaskStage.PUBLISHING,
+                ),
+                stages,
+            )
         }
 
     @Test
@@ -106,6 +148,120 @@ class AppExportTaskRunnerTest {
         assertTrue(operations.loadedPackages.isEmpty())
         assertTrue(operations.exports.isEmpty())
     }
+
+    @Test
+    fun `durable publication identity ignores re-resolved app label and version`() = runBlocking {
+        val firstOperations = RecordingExportOperations(
+            resolvedAppName = "Old label",
+            resolvedVersionName = "1.0",
+        )
+        val secondOperations = RecordingExportOperations(
+            resolvedAppName = "New label",
+            resolvedVersionName = "9.9",
+        )
+        val request = exportRequest()
+
+        assertSucceeded(
+            AppExportTaskRunner(firstOperations, Dispatchers.Unconfined)
+                .run(request, acceptingCheckpoints())
+        )
+        assertSucceeded(
+            AppExportTaskRunner(secondOperations, Dispatchers.Unconfined)
+                .run(request, acceptingCheckpoints())
+        )
+
+        val firstIdentity = requireNotNull(firstOperations.exports.single().publicationIdentity)
+        assertEquals(firstIdentity, secondOperations.exports.single().publicationIdentity)
+        assertEquals("Thor-task-$TASK_ID-0.apk", firstIdentity.fileName)
+        assertFalse(firstIdentity.fileName.contains("Old"))
+        assertFalse(firstIdentity.fileName.contains("9.9"))
+    }
+
+    @Test
+    fun `verified bytes persist throttled capture and publication checkpoints`() = runBlocking {
+        val operations = RecordingExportOperations(
+            progressScript = { capture, publication ->
+                capture.onBytesWritten(0L)
+                capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES / 2)
+                capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES / 2)
+                publication.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES)
+            },
+        )
+        val stages = mutableListOf<DataTaskStage>()
+
+        val outcome = AppExportTaskRunner(operations, Dispatchers.Unconfined).run(
+            exportRequest(),
+            DataTaskCheckpointSink {
+                stages += it.stage
+                DataTaskSinkWrite.APPLIED
+            },
+        )
+
+        assertSucceeded(outcome)
+        assertEquals(
+            listOf(
+                DataTaskStage.PREPARING,
+                DataTaskStage.CAPTURING,
+                DataTaskStage.CAPTURING,
+                DataTaskStage.PUBLISHING,
+            ),
+            stages,
+        )
+    }
+
+    @Test
+    fun `continued small writes checkpoint after the monotonic interval`() = runBlocking {
+        var monotonicMs = 0L
+        val operations = RecordingExportOperations(
+            progressScript = { capture, _ ->
+                capture.onBytesWritten(1L)
+                monotonicMs = 60_000L
+                capture.onBytesWritten(1L)
+            },
+        )
+        val stages = mutableListOf<DataTaskStage>()
+
+        val outcome = AppExportTaskRunner(
+            operations = operations,
+            ioDispatcher = Dispatchers.Unconfined,
+            monotonicNowMs = { monotonicMs },
+        ).run(
+            exportRequest(),
+            DataTaskCheckpointSink {
+                stages += it.stage
+                DataTaskSinkWrite.APPLIED
+            },
+        )
+
+        assertSucceeded(outcome)
+        assertEquals(
+            listOf(DataTaskStage.PREPARING, DataTaskStage.CAPTURING, DataTaskStage.CAPTURING),
+            stages,
+        )
+    }
+
+    @Test
+    fun `ownership loss from verified progress aborts export before later side effects`() =
+        runBlocking {
+            val operations = RecordingExportOperations(
+                progressScript = { capture, _ ->
+                    capture.onBytesWritten(DATA_TASK_PROGRESS_MIN_BYTES)
+                },
+            )
+            var checkpointCount = 0
+
+            val outcome = AppExportTaskRunner(operations, Dispatchers.Unconfined).run(
+                exportRequest(),
+                DataTaskCheckpointSink {
+                    checkpointCount++
+                    if (checkpointCount < 3) DataTaskSinkWrite.APPLIED
+                    else DataTaskSinkWrite.OWNERSHIP_LOST
+                },
+            )
+
+            assertSame(DataTaskRunOutcome.OwnershipLost, outcome)
+            assertFalse(operations.sideEffectAfterProgress)
+        }
 
     @Test
     fun `ownership loss at preparing prevents sweep and package work`() = runBlocking {
@@ -211,9 +367,20 @@ class AppExportTaskRunnerTest {
 
     private class RecordingExportOperations(
         private val treeWritable: Boolean = true,
-        private val exportResult: suspend () -> Result<String> = { Result.success("Downloads/Thor") },
+        private val resolvedAppName: String = "Example",
+        private val resolvedVersionName: String = "1.0",
+        private val progressScript: suspend (VerifiedProgress, VerifiedProgress) -> Unit = { _, _ -> },
+        private val exportResult: suspend () -> Result<AppExportPublication> = {
+            Result.success(
+                AppExportPublication(
+                    destinationLabel = "Downloads/Thor",
+                    status = AppExportPublicationStatus.PUBLISHED,
+                )
+            )
+        },
     ) : AppExportTaskOperations {
         var sweepWaits = 0
+        var sideEffectAfterProgress = false
         val loadedPackages = mutableListOf<String>()
         val checkedTrees = mutableListOf<String>()
         val exports = mutableListOf<ExportCall>()
@@ -227,8 +394,8 @@ class AppExportTaskRunnerTest {
             loadedPackages += packageName
             return AppInfo(
                 packageName = packageName,
-                appName = "Example",
-                versionName = "1.0",
+                appName = resolvedAppName,
+                versionName = resolvedVersionName,
                 versionCode = 1L,
                 publicSourceDir = "/apps/$packageName/base.apk",
             )
@@ -243,17 +410,21 @@ class AppExportTaskRunnerTest {
             appInfo: AppInfo,
             format: BundleFormat,
             session: ExportSession,
-            fileName: String?,
+            publicationIdentity: AppExportPublicationIdentity?,
             execution: PrivilegeExecutionContext,
-        ): Result<String> {
-            exports += ExportCall(session, fileName, execution)
+            captureProgress: VerifiedProgress,
+            publicationProgress: VerifiedProgress,
+        ): Result<AppExportPublication> {
+            exports += ExportCall(session, publicationIdentity, execution)
+            progressScript(captureProgress, publicationProgress)
+            sideEffectAfterProgress = true
             return exportResult()
         }
     }
 
     private data class ExportCall(
         val session: ExportSession,
-        val fileName: String?,
+        val publicationIdentity: AppExportPublicationIdentity?,
         val execution: PrivilegeExecutionContext,
     )
 

@@ -23,7 +23,11 @@ import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.domain.repository.AppExportPublication
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.AppExportPublicationStatus
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.ExportSession
 import com.valhalla.thor.util.Logger
@@ -121,16 +125,39 @@ internal class AppExportWorker(
                     appInfo: AppInfo,
                     format: BundleFormat,
                     session: ExportSession,
-                    fileName: String?,
+                    publicationIdentity: AppExportPublicationIdentity?,
                     execution: PrivilegeExecutionContext,
-                ): KotlinResult<String> = exportApp.exportInto(
-                    appInfo = appInfo,
-                    format = format,
-                    session = session,
-                    fileName = fileName,
-                    execution = execution,
-                ).onFailure { cause ->
-                    Logger.e(TAG, "export of ${appInfo.packageName} failed", cause)
+                    captureProgress: VerifiedProgress,
+                    publicationProgress: VerifiedProgress,
+                ): KotlinResult<AppExportPublication> {
+                    val result = if (publicationIdentity == null) {
+                        exportApp.exportInto(
+                            appInfo = appInfo,
+                            format = format,
+                            session = session,
+                            execution = execution,
+                            captureProgress = captureProgress,
+                            publicationProgress = publicationProgress,
+                        ).map { destination ->
+                            AppExportPublication(
+                                destinationLabel = destination,
+                                status = AppExportPublicationStatus.PUBLISHED,
+                            )
+                        }
+                    } else {
+                        exportApp.exportDurableInto(
+                            appInfo = appInfo,
+                            format = format,
+                            session = session,
+                            publicationIdentity = publicationIdentity,
+                            execution = execution,
+                            captureProgress = captureProgress,
+                            publicationProgress = publicationProgress,
+                        )
+                    }
+                    return result.onFailure { cause ->
+                        Logger.e(TAG, "export of ${appInfo.packageName} failed", cause)
+                    }
                 }
 
                 override fun onPublished(destinationLabel: String) {

@@ -33,4 +33,17 @@ interface AppBundleBuilder {
         fileName: String? = null,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<File>
+
+    /**
+     * Progress-aware form used by durable data tasks. Implementations report only bytes successfully
+     * copied into staging or written into the finished container.
+     */
+    suspend fun buildWithProgress(
+        appInfo: AppInfo,
+        cacheSubDir: String = "share_temp",
+        format: BundleFormat = BundleFormat.autoFor(appInfo),
+        fileName: String? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+        progress: VerifiedProgress = VerifiedProgress.NONE,
+    ): Result<File> = build(appInfo, cacheSubDir, format, fileName, execution)
 }

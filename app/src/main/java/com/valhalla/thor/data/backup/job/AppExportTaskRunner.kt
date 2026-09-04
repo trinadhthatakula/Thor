@@ -16,7 +16,9 @@ import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.MAX_TASK_PRESENTATION_ARGUMENT_CHARS
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
-import com.valhalla.thor.domain.model.bundleFileNameFor
+import com.valhalla.thor.domain.repository.AppExportPublication
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.ExportSession
 import kotlinx.coroutines.CancellationException
@@ -24,6 +26,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 internal const val LEGACY_APP_EXPORT_STAGING_IDENTITY = ExportAppUseCase.SINGLE_STAGING_DIR
+internal const val DATA_TASK_PROGRESS_MIN_BYTES = 4L * 1024L * 1024L
+private const val DATA_TASK_PROGRESS_MAX_INTERVAL_MS = 60_000L
 
 internal val APP_EXPORT_COMPLETED = DataTaskResultCode("APP_EXPORT_COMPLETED")
 internal val APP_EXPORT_REQUEST_MISMATCH = DataTaskResultCode("APP_EXPORT_REQUEST_MISMATCH")
@@ -52,9 +56,11 @@ internal interface AppExportTaskOperations {
         appInfo: AppInfo,
         format: BundleFormat,
         session: ExportSession,
-        fileName: String?,
+        publicationIdentity: AppExportPublicationIdentity?,
         execution: PrivilegeExecutionContext,
-    ): Result<String>
+        captureProgress: VerifiedProgress,
+        publicationProgress: VerifiedProgress,
+    ): Result<AppExportPublication>
 
     /** Process-local compatibility reporting may retain the destination label; Room never does. */
     fun onPublished(destinationLabel: String) = Unit
@@ -63,6 +69,7 @@ internal interface AppExportTaskOperations {
 internal class AppExportTaskRunner(
     private val operations: AppExportTaskOperations,
     private val ioDispatcher: CoroutineDispatcher,
+    private val monotonicNowMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) : DataTaskRunner {
     override val kind = DataTaskKind.APP_EXPORT
@@ -100,89 +107,145 @@ internal class AppExportTaskRunner(
             return DataTaskRunOutcome.OwnershipLost
         }
 
-        return withContext(ioDispatcher) {
-            if (!operations.awaitLaunchSweep()) {
-                return@withContext exportTaskFailure(
-                    APP_EXPORT_CLEANUP_BUSY,
-                    "the launch cleanup did not finish",
-                )
-            }
+        return try {
+            withContext(ioDispatcher) {
+                if (!operations.awaitLaunchSweep()) {
+                    return@withContext exportTaskFailure(
+                        APP_EXPORT_CLEANUP_BUSY,
+                        "the launch cleanup did not finish",
+                    )
+                }
 
-            val appInfo = operations.loadApp(payload.request.packageName)
-                ?: return@withContext failedExportItem(
-                    code = APP_EXPORT_APP_NOT_INSTALLED,
-                    reason = "the app is not installed",
-                    nowMs = nowMs(),
-                )
-            activeLabel = appInfo.appName ?: activeLabel
+                val appInfo = operations.loadApp(payload.request.packageName)
+                    ?: return@withContext failedExportItem(
+                        code = APP_EXPORT_APP_NOT_INSTALLED,
+                        reason = "the app is not installed",
+                        nowMs = nowMs(),
+                    )
+                activeLabel = appInfo.appName ?: activeLabel
 
-            payload.request.treeUri?.let { treeUri ->
-                if (!operations.isTreeWritable(treeUri)) {
+                payload.request.treeUri?.let { treeUri ->
+                    if (!operations.isTreeWritable(treeUri)) {
+                        return@withContext failedExportItem(
+                            code = APP_EXPORT_DESTINATION_UNAVAILABLE,
+                            reason = "the selected export folder is no longer writable",
+                            nowMs = nowMs(),
+                        )
+                    }
+                }
+
+                if (
+                    checkpoints.persist(
+                        request.checkpoint(
+                            stage = DataTaskStage.CAPTURING,
+                            label = activeLabel,
+                            nowMs = nowMs(),
+                        )
+                    ) == DataTaskSinkWrite.OWNERSHIP_LOST
+                ) {
+                    return@withContext DataTaskRunOutcome.OwnershipLost
+                }
+
+                val legacy = request.item.deterministicStagingIdentity ==
+                        LEGACY_APP_EXPORT_STAGING_IDENTITY
+                val session = ExportSession(
+                    target = payload.request.target,
+                    stagingSubDir = request.item.deterministicStagingIdentity,
+                )
+                val publicationIdentity = if (legacy) {
+                    null
+                } else {
+                    AppExportPublicationIdentity(
+                        "Thor-task-${request.taskId}-${request.item.ordinal}." +
+                                payload.request.format.extension
+                    )
+                }
+                val execution = archiveExecutionContext(
+                    APP_EXPORT_COMMAND,
+                    payload.request.packageName,
+                    request.taskId,
+                )
+                val captureProgress = DataTaskProgressCheckpointer(
+                    request = request,
+                    stage = DataTaskStage.CAPTURING,
+                    label = { activeLabel },
+                    checkpoints = checkpoints,
+                    nowMs = nowMs,
+                    monotonicNowMs = monotonicNowMs,
+                ).asProgress()
+                val publicationProgress = DataTaskProgressCheckpointer(
+                    request = request,
+                    stage = DataTaskStage.PUBLISHING,
+                    label = { activeLabel },
+                    checkpoints = checkpoints,
+                    nowMs = nowMs,
+                    monotonicNowMs = monotonicNowMs,
+                ).asProgress()
+                val publication = operations.exportInto(
+                    appInfo = appInfo,
+                    format = payload.request.format,
+                    session = session,
+                    publicationIdentity = publicationIdentity,
+                    execution = execution,
+                    captureProgress = captureProgress,
+                    publicationProgress = publicationProgress,
+                ).getOrElse { cause ->
+                    if (cause is CancellationException) throw cause
                     return@withContext failedExportItem(
-                        code = APP_EXPORT_DESTINATION_UNAVAILABLE,
-                        reason = "the selected export folder is no longer writable",
+                        code = APP_EXPORT_FAILED,
+                        reason = exportFailureReason(cause) ?: "the export could not be completed",
                         nowMs = nowMs(),
                     )
                 }
-            }
-
-            if (
-                checkpoints.persist(
-                    request.checkpoint(
-                        stage = DataTaskStage.CAPTURING,
-                        label = activeLabel,
-                        nowMs = nowMs(),
+                operations.onPublished(publication.destinationLabel)
+                DataTaskRunOutcome.ItemCompleted(
+                    DataTaskItemResult(
+                        terminalState = DataTaskItemTerminalState.SUCCEEDED,
+                        resultCode = APP_EXPORT_COMPLETED,
+                        warnings = emptyList(),
+                        outputs = emptyList(),
+                        finishedAtEpochMs = nowMs(),
                     )
-                ) == DataTaskSinkWrite.OWNERSHIP_LOST
-            ) {
-                return@withContext DataTaskRunOutcome.OwnershipLost
-            }
-
-            val legacy = request.item.deterministicStagingIdentity ==
-                    LEGACY_APP_EXPORT_STAGING_IDENTITY
-            val session = ExportSession(
-                target = payload.request.target,
-                stagingSubDir = request.item.deterministicStagingIdentity,
-            )
-            val fileName = if (legacy) {
-                null
-            } else {
-                bundleFileNameFor(
-                    appInfo = appInfo,
-                    format = payload.request.format,
-                    discriminator = "${request.item.packageName}_${request.item.ordinal}",
                 )
             }
-            val execution = archiveExecutionContext(
-                APP_EXPORT_COMMAND,
-                payload.request.packageName,
-                request.taskId,
-            )
-            val destination = operations.exportInto(
-                appInfo = appInfo,
-                format = payload.request.format,
-                session = session,
-                fileName = fileName,
-                execution = execution,
-            ).getOrElse { cause ->
-                if (cause is CancellationException) throw cause
-                return@withContext failedExportItem(
-                    code = APP_EXPORT_FAILED,
-                    reason = exportFailureReason(cause) ?: "the export could not be completed",
-                    nowMs = nowMs(),
-                )
-            }
-            operations.onPublished(destination)
-            DataTaskRunOutcome.ItemCompleted(
-                DataTaskItemResult(
-                    terminalState = DataTaskItemTerminalState.SUCCEEDED,
-                    resultCode = APP_EXPORT_COMPLETED,
-                    warnings = emptyList(),
-                    outputs = emptyList(),
-                    finishedAtEpochMs = nowMs(),
-                )
-            )
+        } catch (_: ExportTaskOwnershipLostCancellation) {
+            DataTaskRunOutcome.OwnershipLost
         }
+    }
+}
+
+internal class ExportTaskOwnershipLostCancellation :
+    CancellationException("data task ownership lost")
+
+internal class DataTaskProgressCheckpointer(
+    private val request: DataTaskExecutionRequest,
+    private val stage: DataTaskStage,
+    private val label: () -> String,
+    private val checkpoints: DataTaskCheckpointSink,
+    private val nowMs: () -> Long,
+    private val monotonicNowMs: () -> Long,
+) {
+    private var uncheckpointedBytes = 0L
+    private var lastCheckpointMs = monotonicNowMs()
+
+    fun asProgress(): VerifiedProgress = VerifiedProgress { bytes ->
+        if (bytes <= 0L) return@VerifiedProgress
+        uncheckpointedBytes += bytes
+        val currentMonotonicMs = monotonicNowMs()
+        if (
+            uncheckpointedBytes < DATA_TASK_PROGRESS_MIN_BYTES &&
+            currentMonotonicMs - lastCheckpointMs < DATA_TASK_PROGRESS_MAX_INTERVAL_MS
+        ) {
+            return@VerifiedProgress
+        }
+        val write = checkpoints.persist(
+            request.checkpoint(stage = stage, label = label(), nowMs = nowMs())
+        )
+        if (write == DataTaskSinkWrite.OWNERSHIP_LOST) {
+            throw ExportTaskOwnershipLostCancellation()
+        }
+        uncheckpointedBytes = 0L
+        lastCheckpointMs = currentMonotonicMs
     }
 }
 

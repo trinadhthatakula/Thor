@@ -5,7 +5,10 @@ package com.valhalla.thor.data.repository
 
 import com.valhalla.thor.domain.model.THORBAK_EXTENSION
 import com.valhalla.thor.domain.model.thorbakFileName
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
 import com.valhalla.thor.domain.repository.ArchivePublication
+import com.valhalla.thor.domain.repository.VerifiedProgress
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlinx.coroutines.test.runTest
@@ -187,6 +190,86 @@ class ArchiveDestinationTest {
         val taken = setOf("notes")
 
         assertEquals("notes (1)", nonCollidingArchiveName("notes") { it in taken })
+    }
+
+    // ── Durable export publication recovery ─────────────────────────────────────────────────────
+
+    @Test
+    fun `completed MediaStore publication is reused and only exact pending state is removed`() {
+        val identity =
+            AppExportPublicationIdentity("Thor-task-11111111-1111-1111-1111-111111111111-0.apk")
+        val removed = mutableListOf<String>()
+        val entries = listOf(
+            ExportPublicationEntry("complete", identity.fileName, isComplete = true),
+            ExportPublicationEntry("pending", identity.fileName, isComplete = false),
+            ExportPublicationEntry("ordinary", "Foo.apk", isComplete = true),
+            ExportPublicationEntry("prefix", "${identity.fileName} (1)", isComplete = false),
+        )
+
+        val complete = reconcileExactExportPublication(identity, entries, removed::add)
+
+        assertEquals("complete", complete)
+        assertEquals(listOf("pending"), removed)
+    }
+
+    @Test
+    fun `pending MediaStore publication is removed before restart when no final exists`() {
+        val identity =
+            AppExportPublicationIdentity("Thor-task-22222222-2222-2222-2222-222222222222-0.apk")
+        val removed = mutableListOf<String>()
+
+        val complete = reconcileExactExportPublication(
+            identity = identity,
+            entries = listOf(
+                ExportPublicationEntry("pending", identity.fileName, isComplete = false),
+                ExportPublicationEntry("other", "${identity.fileName}.other", isComplete = false),
+            ),
+            removeIncomplete = removed::add,
+        )
+
+        assertNull(complete)
+        assertEquals(listOf("pending"), removed)
+    }
+
+    @Test
+    fun `completed SAF publication is reused and only its exact partial is removed`() {
+        val identity =
+            AppExportPublicationIdentity("Thor-task-33333333-3333-3333-3333-333333333333-0.apks")
+        val removed = mutableListOf<String>()
+        val exactPartial = partialName(identity.fileName)
+
+        val complete = reconcileExactExportPublication(
+            identity = identity,
+            entries = listOf(
+                ExportPublicationEntry("complete", identity.fileName, isComplete = true),
+                ExportPublicationEntry("partial", exactPartial, isComplete = false),
+                ExportPublicationEntry("similar", "$exactPartial (1)", isComplete = false),
+                ExportPublicationEntry("unrelated", "holiday.apks.part", isComplete = false),
+            ),
+            removeIncomplete = removed::add,
+        )
+
+        assertEquals("complete", complete)
+        assertEquals(listOf("partial"), removed)
+    }
+
+    @Test
+    fun `public destination copy reports progress only after bytes are written`() = runTest {
+        val payload = ByteArray(20_000) { (it % 251).toByte() }
+        val output = ByteArrayOutputStream()
+        var reported = 0L
+
+        copyWithVerifiedProgress(
+            input = ByteArrayInputStream(payload),
+            output = output,
+            progress = VerifiedProgress { bytes ->
+                reported += bytes
+                assertTrue(output.size().toLong() >= reported)
+            },
+        )
+
+        assertEquals(payload.size.toLong(), reported)
+        assertEquals(payload.toList(), output.toByteArray().toList())
     }
 
     // ── BaseDestination ──────────────────────────────────────────────────────────────────────────

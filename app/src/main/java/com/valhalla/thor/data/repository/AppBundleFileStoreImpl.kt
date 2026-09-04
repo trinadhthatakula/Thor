@@ -17,9 +17,15 @@ import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.domain.repository.AppExportPublication
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
+import com.valhalla.thor.domain.repository.AppExportPublicationStatus
 import com.valhalla.thor.domain.repository.ArchiveDestination
 import com.valhalla.thor.domain.repository.ArchivePublication
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -53,6 +59,48 @@ private const val TAG = "AppBundleFileStore"
  */
 internal const val THOR_DOWNLOADS_SUBDIR = "Thor"
 
+internal data class ExportPublicationEntry(
+    val id: String,
+    val displayName: String,
+    val isComplete: Boolean,
+)
+
+/** Return the exact completed task publication and remove only its exact incomplete state. */
+internal fun reconcileExactExportPublication(
+    identity: AppExportPublicationIdentity,
+    entries: List<ExportPublicationEntry>,
+    removeIncomplete: (String) -> Unit,
+): String? {
+    val partial = partialName(identity.fileName)
+    entries.asSequence()
+        .filter {
+            !it.isComplete &&
+                    (it.displayName == identity.fileName || it.displayName == partial)
+        }
+        .forEach { removeIncomplete(it.id) }
+    return entries.firstOrNull {
+        it.isComplete && it.displayName == identity.fileName
+    }?.id
+}
+
+internal suspend fun copyWithVerifiedProgress(
+    input: InputStream,
+    output: OutputStream,
+    progress: VerifiedProgress,
+) {
+    val buffer = ByteArray(EXPORT_PUBLICATION_COPY_BUFFER_BYTES)
+    while (true) {
+        currentCoroutineContext().ensureActive()
+        val read = input.read(buffer)
+        if (read == -1) break
+        output.write(buffer, 0, read)
+        progress.onBytesWritten(read.toLong())
+    }
+    output.flush()
+}
+
+private const val EXPORT_PUBLICATION_COPY_BUFFER_BYTES = 8192
+
 /**
  * Android-backed [AppBundleFileStore]: writes bundles to public Downloads
  * (MediaStore on Q+, legacy external storage otherwise) or a user-picked SAF
@@ -67,26 +115,85 @@ class AppBundleFileStoreImpl(
 
     // All suspend members are main-safe: the blocking MediaStore/SAF/disk I/O runs on the
     // injected IO dispatcher so callers can invoke them from any context without risking an ANR.
-    override suspend fun writeToDownloads(file: File, mime: String): String =
-        withContext(ioDispatcher) {
-            val destination = (
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) openInDownloads(file, mime)
-                    else openInLegacyDownloads(file)
-                    ) ?: throw IOException("Could not create file")
-            destination.write(file)
-            context.getString(R.string.export_dest_downloads)
+    override suspend fun reconcilePublicExport(
+        target: ExportTargetChoice,
+        identity: AppExportPublicationIdentity,
+    ): AppExportPublicationReconciliation = withContext(ioDispatcher) {
+        val complete = when (target) {
+            ExportTargetChoice.Downloads -> reconcileDownloads(identity)
+            is ExportTargetChoice.Custom -> reconcileTree(target.treeUri, identity)
         }
+        if (complete) {
+            AppExportPublicationReconciliation.Complete(
+                AppExportPublication(
+                    destinationLabel = publicationLabel(target),
+                    status = AppExportPublicationStatus.RECONCILED,
+                )
+            )
+        } else {
+            AppExportPublicationReconciliation.Absent
+        }
+    }
+
+    override suspend fun publishPublicExport(
+        file: File,
+        target: ExportTargetChoice,
+        mime: String,
+        identity: AppExportPublicationIdentity,
+        progress: VerifiedProgress,
+    ): AppExportPublication = withContext(ioDispatcher) {
+        require(file.name == identity.fileName)
+        val destination = when (target) {
+            ExportTargetChoice.Downloads ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) openInDownloads(file, mime)
+                else openInLegacyDownloads(file)
+
+            is ExportTargetChoice.Custom -> {
+                val treeUri = target.treeUri.toUri()
+                val tree = DocumentFile.fromTreeUri(context, treeUri)
+                    ?: throw IOException("Invalid folder")
+                openInTree(treeUri, tree, identity.fileName, mime)
+            }
+        } ?: throw IOException("Could not create file")
+        destination.write(file, progress)
+        AppExportPublication(
+            destinationLabel = publicationLabel(target),
+            status = AppExportPublicationStatus.PUBLISHED,
+        )
+    }
+
+    override suspend fun writeToDownloads(file: File, mime: String): String =
+        writeToDownloads(file, mime, VerifiedProgress.NONE)
+
+    override suspend fun writeToDownloads(
+        file: File,
+        mime: String,
+        progress: VerifiedProgress,
+    ): String = withContext(ioDispatcher) {
+        val destination = (
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) openInDownloads(file, mime)
+                else openInLegacyDownloads(file)
+                ) ?: throw IOException("Could not create file")
+        destination.write(file, progress)
+        context.getString(R.string.export_dest_downloads)
+    }
 
     override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String =
-        withContext(ioDispatcher) {
-            val treeUri = treeUriStr.toUri()
-            val tree =
-                DocumentFile.fromTreeUri(context, treeUri) ?: throw IOException("Invalid folder")
-            val destination = openInTree(treeUri, tree, file.name, mime)
-                ?: throw IOException("Could not create file")
-            destination.write(file)
-            tree.name ?: context.getString(R.string.export_dest_selected)
-        }
+        writeToTree(file, treeUriStr, mime, VerifiedProgress.NONE)
+
+    override suspend fun writeToTree(
+        file: File,
+        treeUriStr: String,
+        mime: String,
+        progress: VerifiedProgress,
+    ): String = withContext(ioDispatcher) {
+        val treeUri = treeUriStr.toUri()
+        val tree = DocumentFile.fromTreeUri(context, treeUri) ?: throw IOException("Invalid folder")
+        val destination = openInTree(treeUri, tree, file.name, mime)
+            ?: throw IOException("Could not create file")
+        destination.write(file, progress)
+        tree.name ?: context.getString(R.string.export_dest_selected)
+    }
 
     override suspend fun isTreeWritable(treeUriStr: String?): Boolean =
         withContext(ioDispatcher) {
@@ -122,6 +229,91 @@ class AppBundleFileStoreImpl(
             File(dir, fileName).apply { writeText(content) }
         }
 
+    private fun publicationLabel(target: ExportTargetChoice): String = when (target) {
+        ExportTargetChoice.Downloads -> context.getString(R.string.export_dest_downloads)
+        is ExportTargetChoice.Custom ->
+            DocumentFile.fromTreeUri(context, target.treeUri.toUri())?.name
+                ?: context.getString(R.string.export_dest_selected)
+    }
+
+    private fun reconcileDownloads(identity: AppExportPublicationIdentity): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
+            val dir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                THOR_DOWNLOADS_SUBDIR,
+            )
+            val partial = File(dir, partialName(identity.fileName))
+            if (partial.exists() && !partial.delete()) {
+                throw IOException("Could not remove incomplete ${identity.fileName}")
+            }
+            return File(dir, identity.fileName).isFile
+        }
+        return reconcileMediaStoreDownloads(identity)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun reconcileMediaStoreDownloads(identity: AppExportPublicationIdentity): Boolean {
+        val resolver = context.contentResolver
+        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$THOR_DOWNLOADS_SUBDIR/"
+        val entries = resolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            arrayOf(
+                MediaStore.Downloads._ID,
+                MediaStore.Downloads.DISPLAY_NAME,
+                MediaStore.Downloads.IS_PENDING,
+            ),
+            "(${MediaStore.Downloads.DISPLAY_NAME} = ? OR " +
+                    "${MediaStore.Downloads.DISPLAY_NAME} = ?) AND " +
+                    "${MediaStore.Downloads.RELATIVE_PATH} = ?",
+            arrayOf(identity.fileName, partialName(identity.fileName), relativePath),
+            null,
+        )?.use { cursor ->
+            buildList<ExportPublicationEntry> {
+                while (cursor.moveToNext()) {
+                    add(
+                        ExportPublicationEntry(
+                            id = cursor.getLong(0).toString(),
+                            displayName = cursor.getString(1),
+                            isComplete = cursor.getInt(2) == 0,
+                        )
+                    )
+                }
+            }
+        } ?: throw IOException("Could not inspect export destination")
+        return reconcileExactExportPublication(identity, entries) { id ->
+            val deleted = resolver.delete(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                "${MediaStore.Downloads._ID} = ?",
+                arrayOf(id),
+            )
+            if (deleted != 1) throw IOException("Could not remove incomplete ${identity.fileName}")
+        } != null
+    }
+
+    private fun reconcileTree(
+        treeUriString: String,
+        identity: AppExportPublicationIdentity,
+    ): Boolean {
+        val tree = DocumentFile.fromTreeUri(context, treeUriString.toUri())
+            ?: throw IOException("Invalid folder")
+        val documents = tree.listFiles()
+        val byUri = documents.associateBy { it.uri.toString() }
+        val entries = documents.mapNotNull { document ->
+            val name = document.name ?: return@mapNotNull null
+            ExportPublicationEntry(
+                id = document.uri.toString(),
+                displayName = name,
+                isComplete = document.isFile && name == identity.fileName,
+            )
+        }
+        return reconcileExactExportPublication(identity, entries) { id ->
+            if (byUri[id]?.delete() != true) {
+                throw IOException("Could not remove incomplete ${identity.fileName}")
+            }
+        } != null
+    }
+
     /**
      * Copy [source] into this destination and settle it exactly once.
      *
@@ -134,10 +326,13 @@ class AppBundleFileStoreImpl(
      * up the chain already handles: `writeStaged` maps a throw to a worded failure, and there is no
      * "wrote the bytes but could not name them" outcome for it to report.
      */
-    private suspend fun ArchiveDestination.write(source: File) {
+    private suspend fun ArchiveDestination.write(
+        source: File,
+        progress: VerifiedProgress = VerifiedProgress.NONE,
+    ) {
         var publication: ArchivePublication? = null
         try {
-            source.inputStream().use { it.copyCancellableTo(output) }
+            source.inputStream().use { copyWithVerifiedProgress(it, output, progress) }
             publication = publish()
         } finally {
             discard()
@@ -404,30 +599,7 @@ class AppBundleFileStoreImpl(
         }
     }
 
-    /**
-     * `InputStream.copyTo` in chunks, checking for cancellation between them.
-     *
-     * Exports are cancellable from the UI and a bundle is routinely hundreds of megabytes. The
-     * stock `copyTo` is one uninterruptible call, so cancelling mid-write did nothing until the
-     * whole file had been pushed through SAF or MediaStore — the progress UI would sit on a
-     * cancelled export for as long as the copy took. The check is a volatile read per 8 KB against
-     * an IO-bound loop, which costs nothing next to the write it guards. Mirrors
-     * `AppBundleBuilderImpl.copyCancellable`, which does the same for the staging copies.
-     */
-    private suspend fun InputStream.copyCancellableTo(out: OutputStream) {
-        val buffer = ByteArray(COPY_BUFFER_BYTES)
-        while (true) {
-            currentCoroutineContext().ensureActive()
-            val read = read(buffer)
-            if (read == -1) break
-            out.write(buffer, 0, read)
-        }
-        out.flush()
-    }
-
     private companion object {
-        const val COPY_BUFFER_BYTES = 8192
-
         /** Cache subdirectory for [stageText]; kept apart from the bundle builder's staging. */
         const val TEXT_STAGING_DIR = "list_export"
     }

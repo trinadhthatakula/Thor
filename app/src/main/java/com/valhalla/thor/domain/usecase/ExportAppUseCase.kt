@@ -11,7 +11,11 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.resolveExportTarget
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.domain.repository.AppExportPublication
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
@@ -87,19 +91,22 @@ class ExportAppUseCase(
         session: ExportSession,
         fileName: String? = null,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+        captureProgress: VerifiedProgress = VerifiedProgress.NONE,
+        publicationProgress: VerifiedProgress = VerifiedProgress.NONE,
     ): Result<String> = withContext(ioDispatcher) {
         var staged: File? = null
         try {
-            val file = bundleBuilder.build(
+            val file = bundleBuilder.buildWithProgress(
                 appInfo,
                 cacheSubDir = session.stagingSubDir,
                 format = format,
                 fileName = fileName,
                 execution = execution,
+                progress = captureProgress,
             ).getOrElse { return@withContext Result.failure(it) }
             staged = file
 
-            Result.success(writeStaged(file, session, format.mime))
+            Result.success(writeStaged(file, session, format.mime, publicationProgress))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -121,6 +128,29 @@ class ExportAppUseCase(
         }
     }
 
+    /** Durable task path: reconcile the operation-owned publication before staging any bytes. */
+    suspend fun exportDurableInto(
+        appInfo: AppInfo,
+        format: BundleFormat,
+        session: ExportSession,
+        publicationIdentity: AppExportPublicationIdentity,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+        captureProgress: VerifiedProgress = VerifiedProgress.NONE,
+        publicationProgress: VerifiedProgress = VerifiedProgress.NONE,
+    ): Result<AppExportPublication> = withContext(ioDispatcher) {
+        exportDurableBundle(
+            bundleBuilder = bundleBuilder,
+            fileStore = fileStore,
+            appInfo = appInfo,
+            format = format,
+            session = session,
+            publicationIdentity = publicationIdentity,
+            execution = execution,
+            captureProgress = captureProgress,
+            publicationProgress = publicationProgress,
+        )
+    }
+
     /**
      * Write an already-staged file to [session]'s destination, returning the location label.
      *
@@ -132,10 +162,13 @@ class ExportAppUseCase(
         file: File,
         session: ExportSession,
         mime: String,
+        progress: VerifiedProgress = VerifiedProgress.NONE,
     ): String = withContext(ioDispatcher) {
         when (val choice = session.target) {
-            is ExportTargetChoice.Custom -> fileStore.writeToTree(file, choice.treeUri, mime)
-            ExportTargetChoice.Downloads -> fileStore.writeToDownloads(file, mime)
+            is ExportTargetChoice.Custom ->
+                fileStore.writeToTree(file, choice.treeUri, mime, progress)
+
+            ExportTargetChoice.Downloads -> fileStore.writeToDownloads(file, mime, progress)
         }
     }
 
@@ -149,5 +182,58 @@ class ExportAppUseCase(
     companion object {
         /** Staging scope for one-app exports; a batch takes a scope of its own. */
         const val SINGLE_STAGING_DIR = "export_temp"
+    }
+}
+
+/**
+ * Worker-neutral durable export transaction. Reconciliation runs before packaging so a process
+ * death after public visibility but before Room settlement never builds or publishes a duplicate.
+ */
+internal suspend fun exportDurableBundle(
+    bundleBuilder: AppBundleBuilder,
+    fileStore: AppBundleFileStore,
+    appInfo: AppInfo,
+    format: BundleFormat,
+    session: ExportSession,
+    publicationIdentity: AppExportPublicationIdentity,
+    execution: PrivilegeExecutionContext,
+    captureProgress: VerifiedProgress,
+    publicationProgress: VerifiedProgress,
+): Result<AppExportPublication> {
+    var staged: File? = null
+    return try {
+        when (val reconciliation =
+            fileStore.reconcilePublicExport(session.target, publicationIdentity)) {
+            is AppExportPublicationReconciliation.Complete ->
+                Result.success(reconciliation.publication)
+
+            AppExportPublicationReconciliation.Absent -> {
+                val file = bundleBuilder.buildWithProgress(
+                    appInfo = appInfo,
+                    cacheSubDir = session.stagingSubDir,
+                    format = format,
+                    fileName = publicationIdentity.fileName,
+                    execution = execution,
+                    progress = captureProgress,
+                ).getOrElse { return Result.failure(it) }
+                staged = file
+                Result.success(
+                    fileStore.publishPublicExport(
+                        file = file,
+                        target = session.target,
+                        mime = format.mime,
+                        identity = publicationIdentity,
+                        progress = publicationProgress,
+                    )
+                )
+            }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        if (BuildConfig.DEBUG) e.printStackTrace()
+        Result.failure(e)
+    } finally {
+        staged?.delete()
     }
 }

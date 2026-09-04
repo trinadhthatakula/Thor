@@ -6,13 +6,18 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.repository.VerifiedProgress
+import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import kotlin.time.Duration.Companion.minutes
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
-import java.io.IOException
 
 /**
  * What goes into the zip, in what order, and under what name.
@@ -190,7 +195,8 @@ class AppBundleBuilderTest {
     @Test
     fun `staged expansions pass through, and nothing requested needs nothing staged`() {
         // The passing side of the guard above. Without it, `throw` unconditionally would be green.
-        val staged = listOf(ZipSource(File("/tmp/s/main.obb"), "Android/obb/com.example.game/main.obb"))
+        val staged =
+            listOf(ZipSource(File("/tmp/s/main.obb"), "Android/obb/com.example.game/main.obb"))
         assertEquals(
             staged,
             requireStagedExpansions(listOf(ObbFile("main.obb", 4L)), staged)
@@ -222,5 +228,85 @@ class AppBundleBuilderTest {
         )
         assertEquals(declared.map { it.file }, declared.map { it.installPath })
         assertTrue(declared.all { it.installLocation == "EXTERNAL_STORAGE" })
+    }
+
+    @Test
+    fun `direct copy reports verified bytes only after they are written`() = runTest {
+        val root = Files.createTempDirectory("bundle_copy_progress_").toFile()
+        try {
+            val source = File(root, "source.apk").apply {
+                writeBytes(ByteArray(20_000) { (it % 251).toByte() })
+            }
+            val destination = File(root, "destination.apk")
+            var reported = 0L
+
+            copyFileWithVerifiedProgress(
+                source,
+                destination,
+                VerifiedProgress { bytes ->
+                    reported += bytes
+                    assertTrue(destination.length() >= reported)
+                },
+            )
+
+            assertEquals(source.length(), reported)
+            assertEquals(source.readBytes().toList(), destination.readBytes().toList())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `zip reports every source byte after writing it`() = runTest {
+        val root = Files.createTempDirectory("bundle_zip_progress_").toFile()
+        try {
+            val first = File(root, "base.apk").apply { writeBytes(ByteArray(12_000) { 1 }) }
+            val second = File(root, "split.apk").apply { writeBytes(ByteArray(7_000) { 2 }) }
+            val output = File(root, "bundle.apks")
+            var reported = 0L
+
+            zipFilesWithVerifiedProgress(
+                sources = listOf(ZipSource(first, first.name), ZipSource(second, second.name)),
+                zipFile = output,
+                progress = VerifiedProgress { bytes ->
+                    assertTrue(output.length() > 0L)
+                    reported += bytes
+                },
+            )
+
+            assertEquals(first.length() + second.length(), reported)
+            assertTrue(output.isFile)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `root export work receives a deadline below the ten minute lease`() {
+        assertEquals(
+            EXPORT_ROOT_COMMAND_TIMEOUT,
+            PrivilegeExecutionContext().withExportRootDeadline().commandTimeout,
+        )
+        assertTrue(EXPORT_ROOT_COMMAND_TIMEOUT < 10.minutes)
+        assertEquals(
+            1.minutes,
+            PrivilegeExecutionContext(commandTimeout = 1.minutes)
+                .withExportRootDeadline()
+                .commandTimeout,
+        )
+    }
+
+    @Test
+    fun `root copy progress is reported only for the expected complete byte count`() {
+        val root = Files.createTempDirectory("bundle_root_progress_").toFile()
+        try {
+            val destination = File(root, "copied.obb").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+
+            assertEquals(4L, verifiedRootCopyByteCount(destination, expectedBytes = 4L))
+            assertNull(verifiedRootCopyByteCount(destination, expectedBytes = 5L))
+            assertNull(verifiedRootCopyByteCount(destination, expectedBytes = 0L))
+        } finally {
+            root.deleteRecursively()
+        }
     }
 }

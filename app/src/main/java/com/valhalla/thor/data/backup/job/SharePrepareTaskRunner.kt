@@ -17,6 +17,7 @@ import com.valhalla.thor.domain.model.NewDataTaskOutput
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.bundleFileNameFor
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.UUID
@@ -52,12 +53,14 @@ internal interface SharePrepareTaskOperations {
         format: BundleFormat,
         fileName: String,
         execution: PrivilegeExecutionContext,
+        progress: VerifiedProgress,
     ): Result<File>
 }
 
 internal class SharePrepareTaskRunner(
     private val operations: SharePrepareTaskOperations,
     private val ioDispatcher: CoroutineDispatcher,
+    private val monotonicNowMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) : DataTaskRunner {
     override val kind = DataTaskKind.SHARE_PREPARE
@@ -95,115 +98,128 @@ internal class SharePrepareTaskRunner(
             return DataTaskRunOutcome.OwnershipLost
         }
 
-        return withContext(ioDispatcher) {
-            if (!operations.awaitLaunchSweep()) {
-                return@withContext failedShareItem(
-                    code = SHARE_PREPARE_CLEANUP_BUSY,
-                    reason = "the launch cleanup did not finish",
-                    nowMs = nowMs(),
-                )
-            }
-            val appInfo = operations.loadApp(request.item.packageName)
-                ?: return@withContext failedShareItem(
-                    code = SHARE_PREPARE_APP_NOT_INSTALLED,
-                    reason = "the app is not installed",
-                    nowMs = nowMs(),
-                )
-            activeLabel = appInfo.appName ?: activeLabel
-
-            if (
-                checkpoints.persist(
-                    request.checkpoint(
-                        stage = DataTaskStage.CAPTURING,
-                        label = activeLabel,
+        return try {
+            withContext(ioDispatcher) {
+                if (!operations.awaitLaunchSweep()) {
+                    return@withContext failedShareItem(
+                        code = SHARE_PREPARE_CLEANUP_BUSY,
+                        reason = "the launch cleanup did not finish",
                         nowMs = nowMs(),
                     )
-                ) == DataTaskSinkWrite.OWNERSHIP_LOST
-            ) {
-                return@withContext DataTaskRunOutcome.OwnershipLost
-            }
+                }
+                val appInfo = operations.loadApp(request.item.packageName)
+                    ?: return@withContext failedShareItem(
+                        code = SHARE_PREPARE_APP_NOT_INSTALLED,
+                        reason = "the app is not installed",
+                        nowMs = nowMs(),
+                    )
+                activeLabel = appInfo.appName ?: activeLabel
 
-            val stagingSubDir = "$SHARE_READY_ROOT/${request.item.deterministicStagingIdentity}"
-            if (!operations.discardIncomplete(stagingSubDir, request.item.packageName)) {
-                return@withContext failedShareItem(
-                    code = SHARE_PREPARE_STAGING_FAILED,
-                    reason = "the interrupted share output could not be removed",
-                    nowMs = nowMs(),
-                )
-            }
+                if (
+                    checkpoints.persist(
+                        request.checkpoint(
+                            stage = DataTaskStage.CAPTURING,
+                            label = activeLabel,
+                            nowMs = nowMs(),
+                        )
+                    ) == DataTaskSinkWrite.OWNERSHIP_LOST
+                ) {
+                    return@withContext DataTaskRunOutcome.OwnershipLost
+                }
 
-            val fileName = bundleFileNameFor(
-                appInfo = appInfo,
-                format = payload.requestedFormat,
-                discriminator = "${request.item.packageName}_${request.item.ordinal}",
-            )
-            val execution = archiveExecutionContext(
-                SHARE_PREPARE_COMMAND,
-                request.item.packageName,
-                request.taskId,
-            )
-            val file = try {
-                operations.buildBundle(
+                val stagingSubDir = "$SHARE_READY_ROOT/${request.item.deterministicStagingIdentity}"
+                if (!operations.discardIncomplete(stagingSubDir, request.item.packageName)) {
+                    return@withContext failedShareItem(
+                        code = SHARE_PREPARE_STAGING_FAILED,
+                        reason = "the interrupted share output could not be removed",
+                        nowMs = nowMs(),
+                    )
+                }
+
+                val fileName = bundleFileNameFor(
                     appInfo = appInfo,
-                    cacheSubDir = stagingSubDir,
                     format = payload.requestedFormat,
-                    fileName = fileName,
-                    execution = execution,
-                ).getOrElse { cause ->
-                    if (cause is CancellationException) throw cause
+                    discriminator = "${request.item.packageName}_${request.item.ordinal}",
+                )
+                val execution = archiveExecutionContext(
+                    SHARE_PREPARE_COMMAND,
+                    request.item.packageName,
+                    request.taskId,
+                )
+                val progress = DataTaskProgressCheckpointer(
+                    request = request,
+                    stage = DataTaskStage.CAPTURING,
+                    label = { activeLabel },
+                    checkpoints = checkpoints,
+                    nowMs = nowMs,
+                    monotonicNowMs = monotonicNowMs,
+                ).asProgress()
+                val file = try {
+                    operations.buildBundle(
+                        appInfo = appInfo,
+                        cacheSubDir = stagingSubDir,
+                        format = payload.requestedFormat,
+                        fileName = fileName,
+                        execution = execution,
+                        progress = progress,
+                    ).getOrElse { cause ->
+                        if (cause is CancellationException) throw cause
+                        return@withContext failedShareItem(
+                            code = SHARE_PREPARE_FAILED,
+                            reason = exportFailureReason(cause)
+                                ?: "the share bundle could not be prepared",
+                            nowMs = nowMs(),
+                        )
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (failure: Exception) {
                     return@withContext failedShareItem(
                         code = SHARE_PREPARE_FAILED,
-                        reason = exportFailureReason(cause)
+                        reason = exportFailureReason(failure)
                             ?: "the share bundle could not be prepared",
                         nowMs = nowMs(),
                     )
                 }
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (failure: Exception) {
-                return@withContext failedShareItem(
-                    code = SHARE_PREPARE_FAILED,
-                    reason = exportFailureReason(failure)
-                        ?: "the share bundle could not be prepared",
-                    nowMs = nowMs(),
-                )
-            }
 
-            if (!file.isFile || file.name != fileName) {
-                return@withContext failedShareItem(
-                    code = SHARE_PREPARE_STAGING_FAILED,
-                    reason = "the prepared share output was not complete",
-                    nowMs = nowMs(),
-                )
-            }
+                if (!file.isFile || file.name != fileName) {
+                    return@withContext failedShareItem(
+                        code = SHARE_PREPARE_STAGING_FAILED,
+                        reason = "the prepared share output was not complete",
+                        nowMs = nowMs(),
+                    )
+                }
 
-            val finishedAt = nowMs()
-            val output = try {
-                NewDataTaskOutput(
-                    outputId = deterministicShareOutputId(request),
-                    privateRelativePath = "$stagingSubDir/${request.item.packageName}/$fileName",
-                    displayName = fileName,
-                    mimeType = payload.requestedFormat.mime,
-                    byteSize = file.length(),
-                    state = DataTaskOutputState.READY,
-                    expiresAtEpochMs = finishedAt + SHARE_READY_RETENTION_MS,
-                )
-            } catch (failure: IllegalArgumentException) {
-                return@withContext failedShareItem(
-                    code = SHARE_PREPARE_STAGING_FAILED,
-                    reason = "the prepared share output had an invalid private location",
-                    nowMs = finishedAt,
+                val finishedAt = nowMs()
+                val output = try {
+                    NewDataTaskOutput(
+                        outputId = deterministicShareOutputId(request),
+                        privateRelativePath = "$stagingSubDir/${request.item.packageName}/$fileName",
+                        displayName = fileName,
+                        mimeType = payload.requestedFormat.mime,
+                        byteSize = file.length(),
+                        state = DataTaskOutputState.READY,
+                        expiresAtEpochMs = finishedAt + SHARE_READY_RETENTION_MS,
+                    )
+                } catch (failure: IllegalArgumentException) {
+                    return@withContext failedShareItem(
+                        code = SHARE_PREPARE_STAGING_FAILED,
+                        reason = "the prepared share output had an invalid private location",
+                        nowMs = finishedAt,
+                    )
+                }
+                DataTaskRunOutcome.ItemCompleted(
+                    DataTaskItemResult(
+                        terminalState = DataTaskItemTerminalState.SUCCEEDED,
+                        resultCode = SHARE_PREPARE_COMPLETED,
+                        warnings = emptyList(),
+                        outputs = listOf(output),
+                        finishedAtEpochMs = finishedAt,
+                    )
                 )
             }
-            DataTaskRunOutcome.ItemCompleted(
-                DataTaskItemResult(
-                    terminalState = DataTaskItemTerminalState.SUCCEEDED,
-                    resultCode = SHARE_PREPARE_COMPLETED,
-                    warnings = emptyList(),
-                    outputs = listOf(output),
-                    finishedAtEpochMs = finishedAt,
-                )
-            )
+        } catch (_: ExportTaskOwnershipLostCancellation) {
+            DataTaskRunOutcome.OwnershipLost
         }
     }
 }
