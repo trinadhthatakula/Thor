@@ -3,9 +3,11 @@
 
 package com.valhalla.thor.data.backup.job
 
+import androidx.core.net.toUri
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.service.ServiceStartFailure
 import com.valhalla.thor.data.service.ServiceStartResult
+import com.valhalla.thor.data.source.local.room.DataTaskDao
 import com.valhalla.thor.domain.model.AppExportRequest
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
@@ -19,6 +21,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Single
 
 fun interface DataQueueWakeSignal {
     fun wake(taskId: UUID): ServiceStartResult
@@ -56,45 +59,118 @@ internal interface DataTaskKeyVault {
     fun drop(taskId: UUID)
 }
 
+internal interface DataTaskRestoreSourceVault {
+    fun put(taskId: UUID, uriString: String)
+
+    fun drop(taskId: UUID)
+}
+
+internal interface DataTaskAcceptanceDependencies {
+    val store: DataTaskAcceptanceStore
+    val keyVault: DataTaskKeyVault
+    val restoreSourceVault: DataTaskRestoreSourceVault
+    val wakeSignal: DataQueueWakeSignal
+
+    fun deriveKey(passphrase: CharArray, salt: ByteArray, iterations: Int): SecretKey
+    fun newTaskId(): UUID
+    fun nowMs(): Long
+}
+
+@Single
+internal class RoomDataTaskAcceptanceDependencies(
+    dao: DataTaskDao,
+    private val archiveCipher: AppArchiveCipher,
+    archiveKeyHolder: ArchiveKeyHolder,
+    private val restoreSources: RestoreSourceGrantHolder,
+    override val wakeSignal: DataQueueWakeSignal,
+) : DataTaskAcceptanceDependencies {
+    override val store: DataTaskAcceptanceStore = DataTaskStore(dao)
+    override val keyVault: DataTaskKeyVault = object : DataTaskKeyVault {
+        override fun put(taskId: UUID, key: SecretKey) {
+            archiveKeyHolder.put(taskId.toString(), key)
+        }
+
+        override fun drop(taskId: UUID) {
+            archiveKeyHolder.drop(taskId.toString())
+        }
+    }
+    override val restoreSourceVault = object : DataTaskRestoreSourceVault {
+        override fun put(taskId: UUID, uriString: String) {
+            restoreSources.register(taskId, uriString.toUri())
+        }
+
+        override fun drop(taskId: UUID) {
+            restoreSources.dropTask(taskId)
+        }
+    }
+
+    override fun deriveKey(
+        passphrase: CharArray,
+        salt: ByteArray,
+        iterations: Int,
+    ): SecretKey = archiveCipher.deriveKey(passphrase, salt, iterations)
+
+    override fun newTaskId(): UUID = UUID.randomUUID()
+
+    override fun nowMs(): Long = System.currentTimeMillis()
+}
+
 /**
  * Accepts data work by durably inserting it before asking Android to wake the executor.
  *
- * This class is deliberately unannotated. Task 9 binds it only when the service, manifest component,
- * and concrete wake signal are activated atomically.
+ * This binding becomes active together with the service, manifest component, and concrete wake signal.
  */
-internal class DataTaskAcceptance internal constructor(
-    private val store: DataTaskAcceptanceStore,
-    private val deriveKey: (passphrase: CharArray, salt: ByteArray, iterations: Int) -> SecretKey,
-    private val keyVault: DataTaskKeyVault,
-    private val wakeSignal: DataQueueWakeSignal,
-    private val taskIdFactory: () -> UUID = UUID::randomUUID,
-    private val clock: () -> Long = System::currentTimeMillis,
+@Single
+class DataTaskAcceptance internal constructor(
+    private val dependencies: DataTaskAcceptanceDependencies,
 ) {
+    private val store = dependencies.store
+    private val deriveKey = dependencies::deriveKey
+    private val keyVault = dependencies.keyVault
+    private val restoreSourceVault = dependencies.restoreSourceVault
+    private val wakeSignal = dependencies.wakeSignal
 
-    constructor(
-        store: DataTaskStore,
-        archiveCipher: AppArchiveCipher,
-        archiveKeyHolder: ArchiveKeyHolder,
+    internal constructor(
+        store: DataTaskAcceptanceStore,
+        deriveKey: (passphrase: CharArray, salt: ByteArray, iterations: Int) -> SecretKey,
+        keyVault: DataTaskKeyVault,
         wakeSignal: DataQueueWakeSignal,
+        restoreSourceVault: DataTaskRestoreSourceVault = object : DataTaskRestoreSourceVault {
+            override fun put(taskId: UUID, uriString: String) = Unit
+            override fun drop(taskId: UUID) = Unit
+        },
+        taskIdFactory: () -> UUID = UUID::randomUUID,
+        clock: () -> Long = System::currentTimeMillis,
     ) : this(
-        store = store,
-        deriveKey = archiveCipher::deriveKey,
-        keyVault = ArchiveKeyHolderVault(archiveKeyHolder),
-        wakeSignal = wakeSignal,
+        dependencies = object : DataTaskAcceptanceDependencies {
+            override val store = store
+            override val keyVault = keyVault
+            override val restoreSourceVault = restoreSourceVault
+            override val wakeSignal = wakeSignal
+            override fun deriveKey(
+                passphrase: CharArray,
+                salt: ByteArray,
+                iterations: Int,
+            ): SecretKey = deriveKey(passphrase, salt, iterations)
+
+            override fun newTaskId(): UUID = taskIdFactory()
+
+            override fun nowMs(): Long = clock()
+        },
     )
 
     suspend fun acceptBackup(
         request: ArchiveBackupRequest,
         passphrase: CharArray,
     ): UUID {
-        val taskId = taskIdFactory()
+        val taskId = dependencies.newTaskId()
         val key = deriveKey(passphrase, request.salt, KDF_ITERATIONS)
         keyVault.put(taskId, key)
         return acceptPersistedTask(
             taskId = taskId,
             onDefiniteInsertFailure = { keyVault.drop(taskId) },
         ) {
-            store.insertBackup(taskId, request, clock())
+            store.insertBackup(taskId, request, dependencies.nowMs())
         }
     }
 
@@ -104,27 +180,40 @@ internal class DataTaskAcceptance internal constructor(
         salt: ByteArray,
         iterations: Int,
     ): UUID {
-        val taskId = taskIdFactory()
+        val taskId = dependencies.newTaskId()
         val key = deriveKey(passphrase, salt, iterations)
         keyVault.put(taskId, key)
+        try {
+            restoreSourceVault.put(taskId, request.uriString)
+        } catch (failure: Exception) {
+            keyVault.drop(taskId)
+            throw failure
+        }
         return acceptPersistedTask(
             taskId = taskId,
-            onDefiniteInsertFailure = { keyVault.drop(taskId) },
+            onDefiniteInsertFailure = {
+                keyVault.drop(taskId)
+                restoreSourceVault.drop(taskId)
+            },
         ) {
-            store.insertRestore(taskId, request, clock())
+            store.insertRestore(taskId, request, dependencies.nowMs())
         }
     }
 
-    suspend fun acceptExport(request: AppExportRequest): UUID {
-        val taskId = taskIdFactory()
-        return acceptPersistedTask(taskId) {
-            store.insertExport(taskId, request, clock())
+    suspend fun acceptExport(
+        request: AppExportRequest,
+        onDurablyAccepted: () -> Unit = {},
+    ): UUID {
+        val taskId = dependencies.newTaskId()
+        return acceptPersistedTask(taskId, onDurablyAccepted = onDurablyAccepted) {
+            store.insertExport(taskId, request, dependencies.nowMs())
         }
     }
 
     private suspend fun acceptPersistedTask(
         taskId: UUID,
         onDefiniteInsertFailure: () -> Unit = {},
+        onDurablyAccepted: () -> Unit = {},
         insert: suspend () -> DataTaskState,
     ): UUID {
         val callerJob = currentCoroutineContext()[Job]
@@ -143,6 +232,7 @@ internal class DataTaskAcceptance internal constructor(
                 }
                 throw failure
             }
+            onDurablyAccepted()
             settleRejectedWake(taskId, initialState)
         }
         callerJob?.ensureActive()
@@ -162,19 +252,7 @@ internal class DataTaskAcceptance internal constructor(
             taskId = taskId,
             expectedState = initialState,
             blockedState = blockedState,
-            nowMs = clock(),
+            nowMs = dependencies.nowMs(),
         )
-    }
-
-    private class ArchiveKeyHolderVault(
-        private val holder: ArchiveKeyHolder,
-    ) : DataTaskKeyVault {
-        override fun put(taskId: UUID, key: SecretKey) {
-            holder.put(taskId.toString(), key)
-        }
-
-        override fun drop(taskId: UUID) {
-            holder.drop(taskId.toString())
-        }
     }
 }

@@ -17,9 +17,11 @@ import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataTaskCheckpoint
+import com.valhalla.thor.domain.model.DataTaskInterruption
 import com.valhalla.thor.domain.model.DataTaskItemResult
 import com.valhalla.thor.domain.model.DataTaskKind
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
+import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.domain.model.StoredDataDestination
@@ -118,6 +120,9 @@ internal class DataTaskStore(
 
     fun observeTask(taskId: UUID): Flow<DataTaskSnapshot?> = dao.observeTask(taskId.toString())
 
+    fun observeActiveTaskId(kind: DataTaskKind, target: String): Flow<UUID?> =
+        dao.observeActiveTaskId(kind, "package:$target")
+
     override suspend fun compareAndSetStartBlocked(
         taskId: UUID,
         expectedState: DataTaskState,
@@ -154,6 +159,36 @@ internal class DataTaskStore(
         itemClaimToken = itemClaimToken,
         nowMs = nowMs,
         leaseUntilMs = leaseUntilMs,
+    )
+
+    suspend fun commitPrivateRestoreSource(
+        taskId: UUID,
+        taskClaimToken: String,
+        itemOrdinal: Int,
+        itemClaimToken: String,
+        privateRelativePath: String,
+        nowMs: Long,
+    ): Boolean = dao.commitPrivateRestoreSource(
+        taskId = taskId.toString(),
+        taskClaimToken = taskClaimToken,
+        itemOrdinal = itemOrdinal,
+        itemClaimToken = itemClaimToken,
+        privateRelativePath = privateRelativePath,
+        nowMs = nowMs,
+    )
+
+    suspend fun markClaimInterrupted(
+        taskId: UUID,
+        taskClaimToken: String,
+        interruption: DataTaskInterruption,
+        resultCode: DataTaskResultCode,
+        nowMs: Long,
+    ): Boolean = dao.markClaimInterrupted(
+        taskId = taskId.toString(),
+        taskClaimToken = taskClaimToken,
+        interruption = interruption,
+        resultCode = resultCode,
+        nowMs = nowMs,
     )
 
     suspend fun checkpointClaimedTask(

@@ -57,6 +57,7 @@ class DataTaskAcceptanceTest {
     fun restoreUsesTheArchiveKdfInputsAndKeepsTheCallerPassphraseOwnedByCaller() = runTest {
         val events = mutableListOf<String>()
         val keyVault = RecordingKeyVault(events)
+        val sourceVault = RecordingRestoreSourceVault(events)
         val store = RecordingAcceptanceStore(events)
         var capturedPassphrase: CharArray? = null
         var capturedSalt: ByteArray? = null
@@ -71,6 +72,7 @@ class DataTaskAcceptanceTest {
                 KEY
             },
             keyVault = keyVault,
+            restoreSourceVault = sourceVault,
             wakeSignal = DataQueueWakeSignal {
                 events += "wake"
                 ServiceStartResult.Requested
@@ -85,8 +87,47 @@ class DataTaskAcceptanceTest {
         assertSame(PASSPHRASE, capturedPassphrase)
         assertArrayEquals(salt, capturedSalt)
         assertEquals(123_456, capturedIterations)
-        assertEquals(listOf("derive", "put-key", "insert", "wake"), events)
+        assertEquals(listOf("derive", "put-key", "put-source", "insert", "wake"), events)
+        assertTrue(sourceVault.contains(TASK_ID))
         assertEquals(DataTaskState.STAGING_SOURCE, store.states.getValue(TASK_ID))
+    }
+
+    @Test
+    fun restoreInsertFailureDropsTheTransientSourceAndKey() = runTest {
+        val events = mutableListOf<String>()
+        val keyVault = RecordingKeyVault(events)
+        val sourceVault = RecordingRestoreSourceVault(events)
+        val store = RecordingAcceptanceStore(events).apply {
+            insertFailure = IllegalStateException("insert failed")
+        }
+        val acceptance = DataTaskAcceptance(
+            store = store,
+            deriveKey = { _, _, _ ->
+                events += "derive"
+                KEY
+            },
+            keyVault = keyVault,
+            restoreSourceVault = sourceVault,
+            wakeSignal = DataQueueWakeSignal { error("must not wake") },
+            taskIdFactory = { TASK_ID },
+            clock = { NOW_MS },
+        )
+
+        expectFailure<IllegalStateException> {
+            acceptance.acceptRestore(
+                request = restoreRequest(),
+                passphrase = PASSPHRASE,
+                salt = ByteArray(16) { 7 },
+                iterations = 123_456,
+            )
+        }
+
+        assertEquals(
+            listOf("derive", "put-key", "put-source", "insert", "drop-key", "drop-source"),
+            events,
+        )
+        assertFalse(keyVault.contains(TASK_ID))
+        assertFalse(sourceVault.contains(TASK_ID))
     }
 
     @Test
@@ -256,6 +297,36 @@ class DataTaskAcceptanceTest {
         assertEquals(listOf("insert", "wake"), events)
     }
 
+    @Test
+    fun `public archive and single export launchers no longer construct WorkRequests`() {
+        listOf("ThorJobLauncher.kt", "ExportJobLauncherImpl.kt").forEach { fileName ->
+            val source = productionSource(fileName)
+            assertTrue(
+                "$fileName must use durable acceptance",
+                source.contains("DataTaskAcceptance")
+            )
+            assertFalse(
+                "$fileName must not create new data WorkRequests",
+                source.contains("OneTimeWorkRequestBuilder<ArchiveBackupWorker>") ||
+                        source.contains("OneTimeWorkRequestBuilder<ArchiveRestoreWorker>") ||
+                        source.contains("OneTimeWorkRequestBuilder<AppExportWorker>"),
+            )
+        }
+    }
+
+    private fun productionSource(fileName: String): String {
+        var directory = java.io.File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
+        repeat(8) {
+            val source = java.io.File(
+                directory,
+                "app/src/main/java/com/valhalla/thor/data/backup/job/$fileName",
+            )
+            if (source.isFile) return source.readText()
+            directory = directory.parentFile ?: error("Could not find project root")
+        }
+        error("Could not find production source $fileName")
+    }
+
     private suspend fun TestScope.assertCancellationAtCommittedInsertBoundary(
         expectedState: DataTaskState,
         accept: suspend (DataTaskAcceptance) -> UUID,
@@ -413,6 +484,24 @@ class DataTaskAcceptanceTest {
         fun contains(taskId: UUID): Boolean = taskId in keys
 
         fun ids(): Set<UUID> = keys.keys
+    }
+
+    private class RecordingRestoreSourceVault(
+        private val events: MutableList<String>,
+    ) : DataTaskRestoreSourceVault {
+        private val sources = mutableMapOf<UUID, String>()
+
+        override fun put(taskId: UUID, uriString: String) {
+            events += "put-source"
+            sources[taskId] = uriString
+        }
+
+        override fun drop(taskId: UUID) {
+            events += "drop-source"
+            sources.remove(taskId)
+        }
+
+        fun contains(taskId: UUID): Boolean = taskId in sources
     }
 
     private companion object {

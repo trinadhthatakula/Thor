@@ -24,7 +24,7 @@ class ForegroundServicePermissionsManifestTest {
             .map { match -> match.groupValues[1] }
             .filter { permission ->
                 permission.startsWith("android.permission.FOREGROUND_SERVICE") ||
-                    permission == "android.permission.WAKE_LOCK"
+                        permission == "android.permission.WAKE_LOCK"
             }
             .toSet()
 
@@ -32,17 +32,14 @@ class ForegroundServicePermissionsManifestTest {
     }
 
     @Test
-    fun `manifest has no framework-created queue component before its class exists`() {
+    fun `manifest activates only the data queue components available in task nine`() {
         val xml = manifestText
+        val receivers = receiverNames(xml)
 
-        assertFalse(xml.contains("DataSyncService"))
+        assertTrue(xml.contains("DataSyncService"))
+        assertTrue(receivers.any { it.contains("DataTaskCancelReceiver") })
         assertFalse(xml.contains("PrivilegeSweepService"))
-        assertFalse(
-            receiverNames(xml).any { receiver ->
-                receiver.contains("DataSync", ignoreCase = true) ||
-                    receiver.contains("PrivilegeSweep", ignoreCase = true)
-            }
-        )
+        assertFalse(receivers.any { it.contains("PrivilegeSweep", ignoreCase = true) })
     }
 
     @Test

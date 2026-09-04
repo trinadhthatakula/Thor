@@ -29,6 +29,12 @@ internal class RestoreSourceGrantHolder {
     /** Returns and removes exactly the grant registered for this task and token. */
     fun take(taskId: UUID, token: String): Uri? = grants.remove(GrantKey(taskId, token))
 
+    /** Consumes the sole transient source owned by a freshly accepted restore task. */
+    fun takeForTask(taskId: UUID): Uri? {
+        val key = grants.keys.firstOrNull { it.taskId == taskId } ?: return null
+        return grants.remove(key)
+    }
+
     /** Removes every unconsumed grant owned by a cancelled or terminal task. */
     fun dropTask(taskId: UUID) {
         grants.keys.removeIf { it.taskId == taskId }

@@ -414,6 +414,15 @@
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
 
+        <service
+            android:name=".data.backup.service.DataSyncService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name=".data.backup.service.DataTaskCancelReceiver"
+            android:exported="false" />
+
         <!-- Type overlay onto the service work-runtime declares. tools:node="merge" so this adds the
              attribute rather than replacing the library's declaration. -->
         <service

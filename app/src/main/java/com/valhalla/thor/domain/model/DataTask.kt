@@ -139,6 +139,7 @@ enum class DataTaskStage {
 
 enum class DataTaskInterruption {
     NONE,
+    SERVICE_TIMEOUT,
     AUTHENTICATION_REQUIRED,
     SOURCE_REQUIRED,
     DESTRUCTIVE_RESTORE_REVIEW,

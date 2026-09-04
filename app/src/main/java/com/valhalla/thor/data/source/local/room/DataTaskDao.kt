@@ -94,6 +94,11 @@ abstract class DataTaskDao {
         return observeTaskAggregate(taskId).map { loadTask(taskId) }
     }
 
+    fun observeActiveTaskId(kind: DataTaskKind, targetKey: String): Flow<UUID?> =
+        observeActiveTaskIdRow(kind.name, targetKey).map { taskId ->
+            taskId?.let(UUID::fromString)
+        }
+
     suspend fun compareAndSetStartBlocked(
         taskId: String,
         expectedState: DataTaskState,
@@ -182,6 +187,51 @@ abstract class DataTaskDao {
                 return requireNotNull(loadClaimedItem(taskId, candidate.ordinal))
             }
         }
+    }
+
+    @Transaction
+    open suspend fun commitPrivateRestoreSource(
+        taskId: String,
+        taskClaimToken: String,
+        itemOrdinal: Int,
+        itemClaimToken: String,
+        privateRelativePath: String,
+        nowMs: Long,
+    ): Boolean {
+        requireCanonicalUuid(taskId, "taskId")
+        StoredRestoreSource.PrivateCopy(privateRelativePath)
+        val task = loadTaskEntity(taskId) ?: return false
+        val item = loadItemEntity(taskId, itemOrdinal) ?: return false
+        if (
+            task.kind != DataTaskKind.ARCHIVE_RESTORE.name ||
+            !task.ownsClaim(taskClaimToken, nowMs) ||
+            !item.ownsClaim(itemClaimToken, nowMs)
+        ) {
+            return false
+        }
+        val detail = loadArchiveDetail(taskId) ?: return false
+        if (detail.restoreSourceKind != RESTORE_SOURCE_AWAITING_GRANT) return false
+        if (commitPrivateRestoreSourceRow(taskId, privateRelativePath) != 1) return false
+        check(touchClaimedTaskRow(taskId, taskClaimToken, nowMs) == 1)
+        return true
+    }
+
+    suspend fun markClaimInterrupted(
+        taskId: String,
+        taskClaimToken: String,
+        interruption: DataTaskInterruption,
+        resultCode: DataTaskResultCode,
+        nowMs: Long,
+    ): Boolean {
+        requireCanonicalUuid(taskId, "taskId")
+        require(interruption != DataTaskInterruption.NONE) { "interruption must be typed" }
+        return markClaimInterruptedRow(
+            taskId = taskId,
+            taskClaimToken = taskClaimToken,
+            interruption = interruption.name,
+            resultCode = resultCode.value,
+            nowMs = nowMs,
+        ) == 1
     }
 
     @Transaction
@@ -710,6 +760,18 @@ abstract class DataTaskDao {
 
     @Query(
         """
+        SELECT task_id FROM data_tasks
+        WHERE kind = :kind
+          AND target_key = :targetKey
+          AND state IN ('QUEUED', 'STAGING_SOURCE', 'RUNNING', 'CANCEL_REQUESTED')
+        ORDER BY queue_sequence ASC, task_id ASC
+        LIMIT 1
+        """
+    )
+    protected abstract fun observeActiveTaskIdRow(kind: String, targetKey: String): Flow<String?>
+
+    @Query(
+        """
         UPDATE data_tasks
         SET state = :blockedState,
             updated_at_epoch_ms = :nowMs
@@ -838,6 +900,57 @@ abstract class DataTaskDao {
         taskId: String,
         ordinal: Int,
     ): DataTaskItemEntity?
+
+    @Query(
+        """
+        UPDATE archive_task_details
+        SET restore_source_kind = 'PRIVATE_COPY',
+            restore_source_grant_identity = NULL,
+            restore_source_private_relative_path = :privateRelativePath
+        WHERE task_id = :taskId
+          AND restore_source_kind = 'AWAITING_TRANSIENT_GRANT'
+        """
+    )
+    protected abstract suspend fun commitPrivateRestoreSourceRow(
+        taskId: String,
+        privateRelativePath: String,
+    ): Int
+
+    @Query(
+        """
+        UPDATE data_tasks
+        SET updated_at_epoch_ms = :nowMs
+        WHERE task_id = :taskId
+          AND state = 'RUNNING'
+          AND claim_token = :taskClaimToken
+          AND claim_lease_expires_at_epoch_ms > :nowMs
+        """
+    )
+    protected abstract suspend fun touchClaimedTaskRow(
+        taskId: String,
+        taskClaimToken: String,
+        nowMs: Long,
+    ): Int
+
+    @Query(
+        """
+        UPDATE data_tasks
+        SET interruption = :interruption,
+            result_code = :resultCode,
+            updated_at_epoch_ms = :nowMs
+        WHERE task_id = :taskId
+          AND state = 'RUNNING'
+          AND claim_token = :taskClaimToken
+          AND claim_lease_expires_at_epoch_ms > :nowMs
+        """
+    )
+    protected abstract suspend fun markClaimInterruptedRow(
+        taskId: String,
+        taskClaimToken: String,
+        interruption: String,
+        resultCode: String,
+        nowMs: Long,
+    ): Int
 
     @Query(
         """
