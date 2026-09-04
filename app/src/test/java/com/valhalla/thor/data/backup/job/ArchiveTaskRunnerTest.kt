@@ -13,6 +13,8 @@ import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataTaskCheckpoint
+import com.valhalla.thor.domain.model.DataTaskOutputState
+import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.InstalledAppFacts
@@ -20,6 +22,8 @@ import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
 import com.valhalla.thor.domain.model.StoredDataDestination
+import com.valhalla.thor.domain.model.THORBAK_MIME
+import com.valhalla.thor.domain.model.recoverableThorbakFileName
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSource
 import com.valhalla.thor.domain.usecase.ArchiveAuthenticationOutcome
@@ -59,6 +63,95 @@ class ArchiveTaskRunnerTest {
         assertEquals(0, operations.bundleBuildCount)
         assertEquals(1, operations.backupCount)
     }
+
+    @Test
+    fun `resumed backup reconciles verified publication before package work`() = runTest {
+        val published = ArchiveBackupOutcome.Completed(
+            fileName = "provider-assigned.thorbak",
+            header = archiveHeaderStatic(PACKAGE_NAME),
+            destinationLabel = "Backups",
+            byteSize = 4_096L,
+        )
+        val operations = FakeBackupOperations(reconciliationResult = published)
+
+        val outcome = runArchiveBackupTask(
+            request = backupExecutionRequest(
+                includeBundle = false,
+                resumedFrom = backupCheckpoint(),
+            ),
+            operations = operations,
+            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            checkpoints = appliedCheckpoints(),
+            nowMs = { 10L },
+        ) as DataTaskRunOutcome.ItemCompleted
+
+        assertEquals(1, operations.reconciliationCount)
+        assertEquals(
+            recoverableThorbakFileName(PACKAGE_NAME, PUBLICATION_IDENTITY),
+            operations.reconciledFileName,
+        )
+        assertEquals(0, operations.appLookupCount)
+        assertEquals(0, operations.backupCount)
+        val output = outcome.result.outputs.single()
+        assertEquals(TASK_ID, output.outputId)
+        assertEquals("provider-assigned.thorbak", output.displayName)
+        assertEquals(THORBAK_MIME, output.mimeType)
+        assertEquals(4_096L, output.byteSize)
+        assertEquals(DataTaskOutputState.PUBLISHED, output.state)
+        assertEquals(null, output.privateRelativePath)
+        assertEquals(null, output.expiresAtEpochMs)
+    }
+
+    @Test
+    fun `resumed backup restarts when known publication is absent`() = runTest {
+        val operations = FakeBackupOperations(reconciliationResult = null)
+
+        val outcome = runArchiveBackupTask(
+            request = backupExecutionRequest(
+                includeBundle = false,
+                resumedFrom = backupCheckpoint(),
+            ),
+            operations = operations,
+            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            checkpoints = appliedCheckpoints(),
+            nowMs = { 10L },
+        )
+
+        assertTrue(outcome is DataTaskRunOutcome.ItemCompleted)
+        assertEquals(1, operations.reconciliationCount)
+        assertEquals(1, operations.appLookupCount)
+        assertEquals(1, operations.backupCount)
+        assertEquals(
+            recoverableThorbakFileName(PACKAGE_NAME, PUBLICATION_IDENTITY),
+            operations.backupFileName,
+        )
+    }
+
+    @Test
+    fun `resumed backup without a durable publication identity fails before package work`() =
+        runTest {
+            val operations = FakeBackupOperations()
+
+            val outcome = runArchiveBackupTask(
+                request = backupExecutionRequest(
+                    includeBundle = false,
+                    resumedFrom = backupCheckpoint(),
+                    reconciliationIdentity = null,
+                ),
+                operations = operations,
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+                checkpoints = appliedCheckpoints(),
+                nowMs = { 10L },
+            )
+
+            assertEquals(
+                DataTaskResultCode("ARCHIVE_BACKUP_REQUEST_MISMATCH"),
+                (outcome as DataTaskRunOutcome.TaskFailed).resultCode,
+            )
+            assertEquals(0, operations.reconciliationCount)
+            assertEquals(0, operations.appLookupCount)
+            assertEquals(0, operations.backupCount)
+        }
 
     @Test
     fun `backup always deletes the temporary bundle when cancellation escapes`() {
@@ -208,7 +301,11 @@ class ArchiveTaskRunnerTest {
         assertEquals(0, operations.backupCount)
     }
 
-    private fun backupExecutionRequest(includeBundle: Boolean) = DataTaskExecutionRequest(
+    private fun backupExecutionRequest(
+        includeBundle: Boolean,
+        resumedFrom: DataTaskCheckpoint? = null,
+        reconciliationIdentity: String? = PUBLICATION_IDENTITY,
+    ) = DataTaskExecutionRequest(
         taskId = TASK_ID,
         payload = DataTaskExecutionPayload.ArchiveBackup(
             request = ArchiveBackupRequest(
@@ -219,10 +316,22 @@ class ArchiveTaskRunnerTest {
             ),
             key = KEY,
             destination = StoredDataDestination.ArchiveStore,
+            reconciliationIdentity = reconciliationIdentity,
         ),
         item = item(),
         taskAttemptCount = 1,
-        resumedFrom = null,
+        resumedFrom = resumedFrom,
+    )
+
+    private fun backupCheckpoint() = DataTaskCheckpoint(
+        stage = DataTaskStage.PUBLISHING,
+        completed = 1L,
+        total = 1L,
+        activeItemOrdinal = 0,
+        activeItemLabel = "Example",
+        destructiveStarted = false,
+        restoreMutationBreadcrumb = null,
+        recordedAtEpochMs = 9L,
     )
 
     private fun restoreExecutionRequest(
@@ -266,18 +375,33 @@ class ArchiveTaskRunnerTest {
 
     private class FakeBackupOperations(
         private val bundle: File? = null,
+        private val reconciliationResult: ArchiveBackupOutcome.Completed? = null,
         private val backupResult: suspend () -> ArchiveBackupOutcome = {
             ArchiveBackupOutcome.Completed(
                 fileName = "Example-1.thorbak",
                 header = archiveHeaderStatic(PACKAGE_NAME),
                 destinationLabel = "Backups",
+                byteSize = 2_048L,
             )
         },
     ) : ArchiveBackupTaskOperations {
+        var reconciliationCount = 0
+        var reconciledFileName: String? = null
         var appLookupCount = 0
         var obbProbeCount = 0
         var bundleBuildCount = 0
         var backupCount = 0
+        var backupFileName: String? = null
+
+        override suspend fun reconcilePublished(
+            fileName: String,
+            expectedPackageName: String,
+            key: SecretKey,
+        ): ArchiveBackupOutcome.Completed? {
+            reconciliationCount++
+            reconciledFileName = fileName
+            return reconciliationResult
+        }
 
         override suspend fun loadApp(packageName: String): AppInfo {
             appLookupCount++
@@ -312,11 +436,13 @@ class ArchiveTaskRunnerTest {
             bundleObbCount: Int,
             versionCode: Long,
             versionName: String?,
+            publicationFileName: String?,
             usableStagingBytes: Long,
             appLabel: String,
             onProgress: (com.valhalla.thor.domain.model.ThorJobProgress) -> Unit,
         ): ArchiveBackupOutcome {
             backupCount++
+            backupFileName = publicationFileName
             return backupResult()
         }
     }
@@ -362,6 +488,7 @@ class ArchiveTaskRunnerTest {
 
     private companion object {
         const val PACKAGE_NAME = "com.example.app"
+        const val PUBLICATION_IDENTITY = "item-22222222-2222-2222-2222-222222222222-0"
         val TASK_ID: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
         val KEY: SecretKey = SecretKeySpec(ByteArray(32), "AES")
 

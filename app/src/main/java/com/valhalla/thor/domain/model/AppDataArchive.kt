@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.domain.model
 
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -21,6 +23,20 @@ const val THORBAK_BUNDLE_ENTRY = "app.xapk"
 /** `<pkg>-<versionCode>.thorbak`. */
 fun thorbakFileName(packageName: String, versionCode: Long): String =
     "$packageName-$versionCode.$THORBAK_EXTENSION"
+
+/**
+ * Stable final name for a durable backup whose publication may need to be reconciled after death.
+ *
+ * The stored item identity is hashed rather than copied into a public filename. The first 128 bits are
+ * enough to make two task-owned publications distinct while keeping provider filename limits practical.
+ */
+fun recoverableThorbakFileName(packageName: String, deterministicIdentity: String): String {
+    val token = MessageDigest.getInstance("SHA-256")
+        .digest(deterministicIdentity.toByteArray(StandardCharsets.UTF_8))
+        .take(16)
+        .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    return "$packageName-$token.$THORBAK_EXTENSION"
+}
 
 /**
  * The four storage classes an app owns.

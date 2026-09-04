@@ -314,7 +314,11 @@ abstract class DataTaskDao {
         val item = loadItemEntity(taskId, itemOrdinal) ?: return false
         if (task.claimToken != taskClaimToken || item.claimToken != itemClaimToken) return false
         if (task.state == DataTaskState.CANCEL_REQUESTED.name && outcome != DataTaskRunOutcome.Cancelled) {
-            return false
+            val acceptsDestructiveRestoreReview =
+                outcome is DataTaskRunOutcome.InterruptedReview &&
+                        DataTaskKind.valueOf(task.kind) == DataTaskKind.ARCHIVE_RESTORE &&
+                        loadArchiveDetail(taskId)?.destructiveStarted == true
+            if (!acceptsDestructiveRestoreReview) return false
         }
         if (task.state != DataTaskState.RUNNING.name &&
             task.state != DataTaskState.CANCEL_REQUESTED.name
@@ -450,7 +454,15 @@ abstract class DataTaskDao {
             ) {
                 return@mapNotNull null
             }
-            if (task.state == DataTaskState.CANCEL_REQUESTED.name) {
+            val activeItem = loadRunningItem(task.taskId)
+            val archive = loadArchiveDetail(task.taskId)
+            val breadcrumb = archive?.toBreadcrumb()
+            val destructiveStarted = archive?.destructiveStarted == true
+            val kind = DataTaskKind.valueOf(task.kind)
+            if (
+                task.state == DataTaskState.CANCEL_REQUESTED.name &&
+                !(kind == DataTaskKind.ARCHIVE_RESTORE && destructiveStarted)
+            ) {
                 cancelUnfinishedItems(task.taskId, RESULT_CANCELLED, nowMs)
                 settleRecoveredCancellationRow(
                     task.taskId,
@@ -460,11 +472,6 @@ abstract class DataTaskDao {
                 )
                 return@mapNotNull null
             }
-            val activeItem = loadRunningItem(task.taskId)
-            val archive = loadArchiveDetail(task.taskId)
-            val breadcrumb = archive?.toBreadcrumb()
-            val destructiveStarted = archive?.destructiveStarted == true
-            val kind = DataTaskKind.valueOf(task.kind)
             val recovery = when {
                 task.state == DataTaskState.WAITING_FOR_AUTH.name ->
                     DataTaskRecovery.WaitingForAuthentication

@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
+import com.valhalla.thor.data.repository.ZipArchiveSource
 import com.valhalla.thor.domain.model.ARCHIVE_SPACE_MARGIN_BYTES
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
@@ -26,6 +27,8 @@ import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.ArchiveDestination
+import com.valhalla.thor.domain.repository.ArchivePublication
+import com.valhalla.thor.domain.repository.PublishedArchive
 import com.valhalla.thor.presentation.FakeSystemRepository
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -34,6 +37,7 @@ import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
@@ -63,6 +67,7 @@ class BackupAppArchiveUseCaseTest {
     /** Collects the container in memory so a test can unzip it and see what was written. */
     private class RecordingDestination : ArchiveDestination {
         val bytes = ByteArrayOutputStream()
+        var publishedName: String? = null
         var published = false
         var discarded = false
 
@@ -82,9 +87,12 @@ class BackupAppArchiveUseCaseTest {
             }
         }
 
-        override suspend fun publish(): Boolean {
+        override suspend fun publish(): ArchivePublication? {
             published = true
-            return true
+            return ArchivePublication(
+                displayName = checkNotNull(publishedName),
+                byteSize = bytes.size().toLong(),
+            )
         }
 
         override suspend fun discard() {
@@ -92,12 +100,22 @@ class BackupAppArchiveUseCaseTest {
         }
     }
 
-    private class FakeStore(private val destination: ArchiveDestination?) : AppArchiveStore {
+    private class FakeStore(
+        private val destination: ArchiveDestination?,
+        private val publishedArchive: PublishedArchive? = null,
+    ) : AppArchiveStore {
         var openedName: String? = null
+        var reconciledName: String? = null
 
         override suspend fun openArchive(fileName: String): ArchiveDestination? {
             openedName = fileName
+            (destination as? RecordingDestination)?.publishedName = fileName
             return destination
+        }
+
+        override suspend fun openPublishedArchive(fileName: String): PublishedArchive? {
+            reconciledName = fileName
+            return publishedArchive
         }
 
         override suspend fun currentTargetLabel(): String = "Downloads/Thor"
@@ -141,7 +159,8 @@ class BackupAppArchiveUseCaseTest {
         }
 
         override suspend fun listClass(packageName: String, dataClass: DataClass): ClassEntries {
-            val kept = entries[dataClass] ?: return ClassEntries(emptyList(), skips, rootAbsent = true)
+            val kept =
+                entries[dataClass] ?: return ClassEntries(emptyList(), skips, rootAbsent = true)
             return ClassEntries(kept = kept, skipped = skips, rootAbsent = false)
         }
 
@@ -175,7 +194,11 @@ class BackupAppArchiveUseCaseTest {
         override suspend fun swapStaged(packageName: String, dataClass: DataClass): Boolean =
             error("backup must not swap")
 
-        override suspend fun chownClass(packageName: String, dataClass: DataClass, uid: Int): Boolean =
+        override suspend fun chownClass(
+            packageName: String,
+            dataClass: DataClass,
+            uid: Int
+        ): Boolean =
             error("backup must not chown")
 
         override suspend fun relabelClass(packageName: String, dataClass: DataClass): Boolean =
@@ -193,8 +216,12 @@ class BackupAppArchiveUseCaseTest {
     ) : AppDataProbe {
         override suspend fun probePrivateDataCapability(): Boolean = true
         override suspend fun probeDataArchiveCapability(): Boolean = true
+
         // Brief named this sizeOf; real interface is measureDataClass — substituted for compilation.
-        override suspend fun measureDataClass(packageName: String, dataClass: DataClass): DataClassSize =
+        override suspend fun measureDataClass(
+            packageName: String,
+            dataClass: DataClass
+        ): DataClassSize =
             sizes[dataClass] ?: DataClassSize.Undetermined
     }
 
@@ -203,7 +230,14 @@ class BackupAppArchiveUseCaseTest {
         store: AppArchiveStore,
         probe: AppDataProbe = FakeProbe(),
         coordinator: DefaultPackageOperationCoordinator = DefaultPackageOperationCoordinator(),
-    ) = BackupAppArchiveUseCase(gateway, store, cipher, probe, coordinator)
+    ) = BackupAppArchiveUseCase(
+        gateway,
+        store,
+        cipher,
+        probe,
+        coordinator,
+        OpenArchiveUseCase(cipher, Dispatchers.Unconfined),
+    )
 
     private fun request(vararg classes: DataClass) = ArchiveBackupRequest(
         packageName = "com.example.app",
@@ -308,19 +342,20 @@ class BackupAppArchiveUseCaseTest {
     }
 
     @Test
-    fun `the app is force-stopped exactly once no matter how many classes are selected`() = runTest {
-        // §7.2 step 4. Stopping it per class gives it three chances to be restarted in between.
-        val gateway = FakeGateway(
-            entries = DataClass.entries.associateWith { listOf("files") },
-        )
+    fun `the app is force-stopped exactly once no matter how many classes are selected`() =
+        runTest {
+            // §7.2 step 4. Stopping it per class gives it three chances to be restarted in between.
+            val gateway = FakeGateway(
+                entries = DataClass.entries.associateWith { listOf("files") },
+            )
 
-        useCase(gateway, FakeStore(RecordingDestination()))(
-            request(*DataClass.entries.toTypedArray()),
-            key(),
-        ) {}
+            useCase(gateway, FakeStore(RecordingDestination()))(
+                request(*DataClass.entries.toTypedArray()),
+                key(),
+            ) {}
 
-        assertEquals(1, gateway.forceStops)
-    }
+            assertEquals(1, gateway.forceStops)
+        }
 
     @Test
     fun `a class whose root is absent produces no member`() = runTest {
@@ -413,7 +448,8 @@ class BackupAppArchiveUseCaseTest {
     @Test
     fun `refused entry names reach the header instead of vanishing`() = runTest {
         val destination = RecordingDestination()
-        val skip = ArchiveSkip(DataClass.CE.id, "bad\nname", "name cannot be passed to the shell safely")
+        val skip =
+            ArchiveSkip(DataClass.CE.id, "bad\nname", "name cannot be passed to the shell safely")
         val gateway = FakeGateway(
             entries = mapOf(DataClass.CE to listOf("files")),
             skips = listOf(skip),
@@ -494,6 +530,92 @@ class BackupAppArchiveUseCaseTest {
     }
 
     // --- bundle and version parameters ----------------------------------------------------------
+
+    @Test
+    fun `published metadata uses the actual destination name and byte count`() = runTest {
+        val destination = RecordingDestination()
+        val store = FakeStore(destination)
+        val outcome = useCase(
+            FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))),
+            store,
+        )(
+            request = request(DataClass.CE),
+            key = key(),
+            publicationFileName = "known-final.thorbak",
+        ) as ArchiveBackupOutcome.Completed
+
+        assertEquals("known-final.thorbak", store.openedName)
+        assertEquals("known-final.thorbak", outcome.fileName)
+        assertEquals(destination.bytes.size().toLong(), outcome.byteSize)
+    }
+
+    @Test
+    fun `reconciliation authenticates the known final archive before accepting it`() = runTest {
+        val destination = RecordingDestination()
+        val archiveKey = key()
+        useCase(
+            FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))),
+            FakeStore(destination),
+        )(
+            request = request(DataClass.CE),
+            key = archiveKey,
+            publicationFileName = "known-final.thorbak",
+        )
+        val file = temp.newFile("known-final.thorbak").also {
+            it.writeBytes(destination.bytes.toByteArray())
+        }
+        val store = FakeStore(
+            destination = null,
+            publishedArchive = PublishedArchive(
+                source = ZipArchiveSource(file, "provider-final.thorbak"),
+                displayName = "provider-final.thorbak",
+                byteSize = file.length(),
+            ),
+        )
+
+        val reconciled = useCase(FakeGateway(), store).reconcilePublished(
+            fileName = "known-final.thorbak",
+            expectedPackageName = "com.example.app",
+            key = archiveKey,
+        )
+
+        assertEquals("known-final.thorbak", store.reconciledName)
+        assertEquals("provider-final.thorbak", reconciled?.fileName)
+        assertEquals(file.length(), reconciled?.byteSize)
+    }
+
+    @Test
+    fun `reconciliation rejects an authenticated archive for another package`() = runTest {
+        val destination = RecordingDestination()
+        val archiveKey = key()
+        useCase(
+            FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))),
+            FakeStore(destination),
+        )(
+            request = request(DataClass.CE),
+            key = archiveKey,
+            publicationFileName = "known-final.thorbak",
+        )
+        val file = temp.newFile("wrong-package.thorbak").also {
+            it.writeBytes(destination.bytes.toByteArray())
+        }
+        val store = FakeStore(
+            destination = null,
+            publishedArchive = PublishedArchive(
+                source = ZipArchiveSource(file, "known-final.thorbak"),
+                displayName = "known-final.thorbak",
+                byteSize = file.length(),
+            ),
+        )
+
+        val reconciled = useCase(FakeGateway(), store).reconcilePublished(
+            fileName = "known-final.thorbak",
+            expectedPackageName = "com.example.other",
+            key = archiveKey,
+        )
+
+        assertEquals(null, reconciled)
+    }
 
     @Test
     fun `the archive file name includes the version code`() = runTest {
@@ -634,7 +756,10 @@ class BackupAppArchiveUseCaseTest {
     fun `a caller that passes no label falls back to the package name`() = runTest {
         val labels = mutableListOf<String>()
 
-        useCase(FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))), FakeStore(RecordingDestination()))(
+        useCase(
+            FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))),
+            FakeStore(RecordingDestination())
+        )(
             request = request(DataClass.CE),
             key = key(),
         ) { labels += it.label }

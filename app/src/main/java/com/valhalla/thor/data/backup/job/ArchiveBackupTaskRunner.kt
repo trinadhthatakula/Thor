@@ -12,15 +12,19 @@ import com.valhalla.thor.domain.model.DataTaskCheckpoint
 import com.valhalla.thor.domain.model.DataTaskItemResult
 import com.valhalla.thor.domain.model.DataTaskItemTerminalState
 import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.domain.model.DataTaskOutputState
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
+import com.valhalla.thor.domain.model.NewDataTaskOutput
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.ThorJobProgress
+import com.valhalla.thor.domain.model.THORBAK_MIME
 import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.model.captureName
+import com.valhalla.thor.domain.model.recoverableThorbakFileName
 import java.io.File
 import javax.crypto.SecretKey
 import kotlinx.coroutines.CoroutineDispatcher
@@ -37,6 +41,12 @@ private val BACKUP_DESTINATION_REQUIRED =
 private val BACKUP_REQUEST_MISMATCH = DataTaskResultCode("ARCHIVE_BACKUP_REQUEST_MISMATCH")
 
 internal interface ArchiveBackupTaskOperations {
+    suspend fun reconcilePublished(
+        fileName: String,
+        expectedPackageName: String,
+        key: SecretKey,
+    ): ArchiveBackupOutcome.Completed?
+
     suspend fun loadApp(packageName: String): AppInfo?
 
     fun onAppResolved(appInfo: AppInfo) = Unit
@@ -63,6 +73,7 @@ internal interface ArchiveBackupTaskOperations {
         bundleObbCount: Int,
         versionCode: Long,
         versionName: String?,
+        publicationFileName: String?,
         usableStagingBytes: Long,
         appLabel: String,
         onProgress: (ThorJobProgress) -> Unit,
@@ -119,7 +130,29 @@ internal suspend fun runArchiveBackupTask(
         payload.request.packageName,
         request.taskId,
     )
+    val publicationFileName = payload.reconciliationIdentity?.let { identity ->
+        recoverableThorbakFileName(payload.request.packageName, identity)
+    }
+    val recoveryFileName = if (request.resumedFrom != null) {
+        publicationFileName ?: return archiveTaskFailure(
+            BACKUP_REQUEST_MISMATCH,
+            "this backup's recovery identity could not be read",
+        )
+    } else {
+        null
+    }
     return withContext(ioDispatcher) {
+        if (recoveryFileName != null) {
+            val reconciled = operations.reconcilePublished(
+                fileName = recoveryFileName,
+                expectedPackageName = payload.request.packageName,
+                key = payload.key,
+            )
+            if (reconciled != null) {
+                return@withContext archiveBackupCompleted(request, reconciled, nowMs())
+            }
+        }
+
         val appInfo = operations.loadApp(payload.request.packageName)
             ?: return@withContext archiveTaskFailure(
                 BACKUP_APP_NOT_INSTALLED,
@@ -174,6 +207,7 @@ internal suspend fun runArchiveBackupTask(
                     bundleObbCount = (probe as? ObbProbe.Present)?.files?.size ?: 0,
                     versionCode = appInfo.versionCode,
                     versionName = appInfo.versionName,
+                    publicationFileName = publicationFileName,
                     usableStagingBytes = operations.usableStagingBytes(),
                     appLabel = activeLabel,
                     onProgress = progress,
@@ -182,14 +216,10 @@ internal suspend fun runArchiveBackupTask(
                 return@withContext DataTaskRunOutcome.OwnershipLost
             }
             when (outcome) {
-                is ArchiveBackupOutcome.Completed -> DataTaskRunOutcome.ItemCompleted(
-                    DataTaskItemResult(
-                        terminalState = DataTaskItemTerminalState.SUCCEEDED,
-                        resultCode = BACKUP_COMPLETED,
-                        warnings = emptyList(),
-                        outputs = emptyList(),
-                        finishedAtEpochMs = nowMs(),
-                    )
+                is ArchiveBackupOutcome.Completed -> archiveBackupCompleted(
+                    request = request,
+                    completed = outcome,
+                    finishedAtEpochMs = nowMs(),
                 )
 
                 is ArchiveBackupOutcome.Failed -> archiveTaskFailure(
@@ -208,6 +238,30 @@ internal suspend fun runArchiveBackupTask(
         }
     }
 }
+
+private fun archiveBackupCompleted(
+    request: DataTaskExecutionRequest,
+    completed: ArchiveBackupOutcome.Completed,
+    finishedAtEpochMs: Long,
+): DataTaskRunOutcome.ItemCompleted = DataTaskRunOutcome.ItemCompleted(
+    DataTaskItemResult(
+        terminalState = DataTaskItemTerminalState.SUCCEEDED,
+        resultCode = BACKUP_COMPLETED,
+        warnings = emptyList(),
+        outputs = listOf(
+            NewDataTaskOutput(
+                outputId = request.taskId,
+                privateRelativePath = null,
+                displayName = completed.fileName,
+                mimeType = THORBAK_MIME,
+                byteSize = completed.byteSize,
+                state = DataTaskOutputState.PUBLISHED,
+                expiresAtEpochMs = null,
+            )
+        ),
+        finishedAtEpochMs = finishedAtEpochMs,
+    )
+)
 
 internal class DataTaskOwnershipLostException : RuntimeException()
 

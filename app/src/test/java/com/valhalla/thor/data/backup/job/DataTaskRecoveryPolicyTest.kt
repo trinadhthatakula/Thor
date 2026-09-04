@@ -17,6 +17,8 @@ import com.valhalla.thor.domain.model.StoredDataDestination
 import java.util.UUID
 import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -119,6 +121,60 @@ class DataTaskRecoveryPolicyTest {
 
         assertSame(cancellation, thrown)
         assertEquals(listOf("run", "settle", "cleanup"), events)
+    }
+
+    @Test
+    fun `cancellation during normal persistence settles exact outcome before cleanup and rethrow`() {
+        val events = mutableListOf<String>()
+        val sinkEntered = CompletableDeferred<Unit>()
+        val releaseSink = CompletableDeferred<Unit>()
+        val cancellation = CancellationException("cancel after runner return")
+        val outcome = DataTaskRunOutcome.WaitingForAuthentication(
+            DataTaskResultCode("EXACT_NORMAL_OUTCOME"),
+        )
+        val runner = object : DataTaskRunner {
+            override val kind = DataTaskKind.ARCHIVE_BACKUP
+
+            override suspend fun run(
+                request: DataTaskExecutionRequest,
+                checkpoints: DataTaskCheckpointSink,
+            ): DataTaskRunOutcome {
+                events += "run"
+                return outcome
+            }
+        }
+
+        val thrown = assertThrows(CancellationException::class.java) {
+            runBlocking {
+                val execution = async {
+                    runDataTaskAndPersist(
+                        runner = runner,
+                        request = backupRequest(),
+                        checkpoints = DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED },
+                        results = DataTaskResultSink { persisted ->
+                            events += "sink-entered"
+                            sinkEntered.complete(Unit)
+                            releaseSink.await()
+                            assertTrue(currentCoroutineContext().isActive)
+                            assertSame(outcome, persisted)
+                            events += "settle"
+                            DataTaskSinkWrite.APPLIED
+                        },
+                        cleanup = {
+                            assertTrue(currentCoroutineContext().isActive)
+                            events += "cleanup"
+                        },
+                    )
+                }
+                sinkEntered.await()
+                execution.cancel(cancellation)
+                releaseSink.complete(Unit)
+                execution.await()
+            }
+        }
+
+        assertEquals(cancellation.message, thrown.message)
+        assertEquals(listOf("run", "sink-entered", "settle", "cleanup"), events)
     }
 
     @Test

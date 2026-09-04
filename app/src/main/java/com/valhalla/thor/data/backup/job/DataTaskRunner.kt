@@ -16,7 +16,10 @@ import com.valhalla.thor.domain.model.StoredDataDestination
 import java.util.UUID
 import javax.crypto.SecretKey
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 internal val ARCHIVE_AUTHENTICATION_REQUIRED =
@@ -41,6 +44,8 @@ sealed interface DataTaskExecutionPayload {
         val request: ArchiveBackupRequest,
         val key: SecretKey,
         val destination: StoredDataDestination,
+        /** Null only for released WorkSpecs, which have no durable publication identity. */
+        val reconciliationIdentity: String? = null,
     ) : DataTaskExecutionPayload {
         override val kind = DataTaskKind.ARCHIVE_BACKUP
     }
@@ -136,8 +141,9 @@ internal suspend fun <R> runDataTaskAndPersist(
         if (write == DataTaskSinkWrite.APPLIED) latestCheckpoint = checkpoint
         write
     }
+    val callerJob = currentCoroutineContext()[Job]
 
-    return try {
+    val persisted = try {
         val outcome = try {
             runner.run(request, trackingCheckpoints)
         } catch (cancellation: CancellationException) {
@@ -146,10 +152,12 @@ internal suspend fun <R> runDataTaskAndPersist(
             }
             throw cancellation
         }
-        results.persist(outcome)
+        withContext(NonCancellable) { results.persist(outcome) }
     } finally {
         withContext(NonCancellable) { cleanup() }
     }
+    callerJob?.ensureActive()
+    return persisted
 }
 
 private fun interruptionOutcome(

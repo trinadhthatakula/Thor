@@ -5,6 +5,7 @@ package com.valhalla.thor.data.repository
 
 import com.valhalla.thor.domain.model.THORBAK_EXTENSION
 import com.valhalla.thor.domain.model.thorbakFileName
+import com.valhalla.thor.domain.repository.ArchivePublication
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlinx.coroutines.test.runTest
@@ -199,12 +200,13 @@ class ArchiveDestinationTest {
     @Test
     fun `publishing settles the ledger entry`() = runTest {
         var settled = 0
-        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
-            override fun onPublish(): Boolean = true
-            override fun onDiscard() = error("a published destination must never discard")
-        }
+        val destination =
+            object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
+                override fun onPublish(): ArchivePublication = publication()
+                override fun onDiscard() = error("a published destination must never discard")
+            }
 
-        assertTrue(destination.publish())
+        assertEquals(publication(), destination.publish())
 
         assertEquals(1, settled)
         // The calling shape is `try { … publish() } finally { discard() }`, so the trailing discard is
@@ -214,15 +216,30 @@ class ArchiveDestinationTest {
     }
 
     @Test
+    fun `publication reports bytes written through the destination`() = runTest {
+        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = {}) {
+            override fun onPublish() = ArchivePublication("archive.thorbak", writtenBytes)
+            override fun onDiscard() = error("a published destination must never discard")
+        }
+
+        destination.output.write(byteArrayOf(1, 2, 3, 4))
+
+        assertEquals(4L, destination.publish()?.byteSize)
+    }
+
+    @Test
     fun `discarding settles the ledger entry`() = runTest {
         var settled = 0
         var discarded = false
-        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
-            override fun onPublish(): Boolean = error("this destination was never published")
-            override fun onDiscard() {
-                discarded = true
+        val destination =
+            object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
+                override fun onPublish(): ArchivePublication? =
+                    error("this destination was never published")
+
+                override fun onDiscard() {
+                    discarded = true
+                }
             }
-        }
 
         destination.discard()
 
@@ -236,10 +253,13 @@ class ArchiveDestinationTest {
         // at that point the partial is settled either way: the failure is the caller's to report, not
         // a name the sweep chases forever.
         var settled = 0
-        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
-            override fun onPublish(): Boolean = throw IOException("the provider went away")
-            override fun onDiscard() = Unit
-        }
+        val destination =
+            object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
+                override fun onPublish(): ArchivePublication? =
+                    throw IOException("the provider went away")
+
+                override fun onDiscard() = Unit
+            }
 
         runCatching { destination.publish() }
 
@@ -259,14 +279,15 @@ class ArchiveDestinationTest {
     fun `a publish that fails deletes the partial before the ledger forgets it`() = runTest {
         var settled = 0
         var discarded = 0
-        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
-            override fun onPublish(): Boolean = false
-            override fun onDiscard() {
-                discarded++
+        val destination =
+            object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
+                override fun onPublish(): ArchivePublication? = null
+                override fun onDiscard() {
+                    discarded++
+                }
             }
-        }
 
-        assertFalse(destination.publish())
+        assertNull(destination.publish())
 
         assertEquals("the partial a failed publish left was not deleted", 1, discarded)
         assertEquals(1, settled)
@@ -279,10 +300,12 @@ class ArchiveDestinationTest {
 
     @Test
     fun `a publish that throws deletes the partial too`() = runTest {
-        // A throw published no less than a `false` did, and leaves the same file behind.
+        // A throw published no less than a `null` did, and leaves the same file behind.
         var discarded = 0
         val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = {}) {
-            override fun onPublish(): Boolean = throw IOException("the provider went away")
+            override fun onPublish(): ArchivePublication? =
+                throw IOException("the provider went away")
+
             override fun onDiscard() {
                 discarded++
             }
@@ -296,17 +319,23 @@ class ArchiveDestinationTest {
     @Test
     fun `a delete that fails on top of a failed publish does not replace the failure`() = runTest {
         // Cleanup runs where something has already gone wrong. A provider that refuses the delete as
-        // well must still let publish() return its own answer — `false` — rather than throwing an
+        // well must still let publish() return its own answer — `null` — rather than throwing an
         // IOException about the cleanup out of a function the caller reads as "did it save?".
         var settled = 0
-        val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
-            override fun onPublish(): Boolean = false
-            override fun onDiscard() = throw IOException("the provider refused the delete too")
-        }
+        val destination =
+            object : BaseDestination(ByteArrayOutputStream(), onSettled = { settled++ }) {
+                override fun onPublish(): ArchivePublication? = null
+                override fun onDiscard() = throw IOException("the provider refused the delete too")
+            }
 
-        assertFalse(destination.publish())
+        assertNull(destination.publish())
         assertEquals(1, settled)
     }
+
+    private fun publication() = ArchivePublication(
+        displayName = "archive.thorbak",
+        byteSize = 42L,
+    )
 
     @Test
     fun `a successful publish never discards`() = runTest {
@@ -314,10 +343,10 @@ class ArchiveDestinationTest {
         // entry`: the discard added for the failure path must not fire on the path that succeeded, or
         // every backup would delete the archive it had just written.
         val destination = object : BaseDestination(ByteArrayOutputStream(), onSettled = {}) {
-            override fun onPublish(): Boolean = true
+            override fun onPublish(): ArchivePublication = publication()
             override fun onDiscard() = error("a published destination must never discard")
         }
 
-        assertTrue(destination.publish())
+        assertEquals(publication(), destination.publish())
     }
 }

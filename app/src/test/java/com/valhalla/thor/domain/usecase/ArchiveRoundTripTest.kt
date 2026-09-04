@@ -32,6 +32,7 @@ import com.valhalla.thor.domain.repository.ArchiveBundleVerifier
 import com.valhalla.thor.domain.repository.ArchiveDestination
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
 import com.valhalla.thor.domain.repository.ArchiveInstallResult
+import com.valhalla.thor.domain.repository.ArchivePublication
 import com.valhalla.thor.domain.repository.ArchiveRollbackOutcome
 import com.valhalla.thor.domain.repository.ArchiveRollbackReceipt
 import java.io.BufferedOutputStream
@@ -111,10 +112,14 @@ class ArchiveRoundTripTest {
 
         override val output: OutputStream = stream
 
-        override suspend fun publish(): Boolean {
+        override suspend fun publish(): ArchivePublication? {
             stream.flush()
             stream.close()
-            return part.renameTo(target)
+            return if (part.renameTo(target)) {
+                ArchivePublication(target.name, target.length())
+            } else {
+                null
+            }
         }
 
         override suspend fun discard() {
@@ -150,15 +155,30 @@ class ArchiveRoundTripTest {
 
         override suspend fun thorUserId(): Int = 0
         override suspend fun externalStorageDir(): String = "/storage/emulated/0"
-        override suspend fun stagingFile(name: String): File = temp.newFile("staging-${stage++}-$name")
-        override suspend fun privateStagingFile(name: String): File = temp.newFile("private-${stage++}-$name")
+        override suspend fun stagingFile(name: String): File =
+            temp.newFile("staging-${stage++}-$name")
+
+        override suspend fun privateStagingFile(name: String): File =
+            temp.newFile("private-${stage++}-$name")
+
         override suspend fun forceStop(packageName: String) = Unit
 
-        override suspend fun listClass(packageName: String, dataClass: DataClass): ClassEntries = when {
-            dataClass in emptyRoots -> ClassEntries(emptyList(), emptyList(), rootAbsent = false)
-            dataClass in payloads -> ClassEntries(listOf("files", "databases"), emptyList(), false)
-            else -> ClassEntries(emptyList(), emptyList(), rootAbsent = true)
-        }
+        override suspend fun listClass(packageName: String, dataClass: DataClass): ClassEntries =
+            when {
+                dataClass in emptyRoots -> ClassEntries(
+                    emptyList(),
+                    emptyList(),
+                    rootAbsent = false
+                )
+
+                dataClass in payloads -> ClassEntries(
+                    listOf("files", "databases"),
+                    emptyList(),
+                    false
+                )
+
+                else -> ClassEntries(emptyList(), emptyList(), rootAbsent = true)
+            }
 
         override suspend fun tarClass(
             packageName: String,
@@ -280,6 +300,7 @@ class ArchiveRoundTripTest {
             cipher,
             NoProbe(),
             DefaultPackageOperationCoordinator(),
+            openArchive,
         )(
             request = request,
             key = key,

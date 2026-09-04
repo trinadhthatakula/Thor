@@ -65,9 +65,9 @@ data class ArchiveBackupRequest(
         if (this === other) return true
         if (other !is ArchiveBackupRequest) return false
         return packageName == other.packageName &&
-            classes == other.classes &&
-            includeBundle == other.includeBundle &&
-            salt.contentEquals(other.salt)
+                classes == other.classes &&
+                includeBundle == other.includeBundle &&
+                salt.contentEquals(other.salt)
     }
 
     override fun hashCode(): Int {
@@ -88,15 +88,18 @@ data class ArchiveBackupRequest(
         fun fromMap(map: Map<String, Any?>): ArchiveBackupRequest? {
             val packageName = (map[BACKUP_PACKAGE_KEY] as? String)?.takeIf { it.isNotBlank() }
                 ?: return null
-            val ids = (map[BACKUP_CLASSES_KEY] as? Array<*>)?.mapNotNull { it as? String } ?: return null
+            val ids =
+                (map[BACKUP_CLASSES_KEY] as? Array<*>)?.mapNotNull { it as? String } ?: return null
             // An id this Thor does not know is dropped, not fatal: a job enqueued by a newer build and
             // run after a downgrade should still back up the classes it *can*.
-            val classes = ids.mapNotNull { id -> DataClass.entries.firstOrNull { it.id == id } }.toSet()
+            val classes =
+                ids.mapNotNull { id -> DataClass.entries.firstOrNull { it.id == id } }.toSet()
             if (classes.isEmpty()) return null
-            val salt = runCatching { Base64.getDecoder().decode(map[BACKUP_SALT_KEY] as? String ?: "") }
-                .getOrNull()
-                ?.takeIf { it.size == KDF_SALT_BYTES }
-                ?: return null
+            val salt =
+                runCatching { Base64.getDecoder().decode(map[BACKUP_SALT_KEY] as? String ?: "") }
+                    .getOrNull()
+                    ?.takeIf { it.size == KDF_SALT_BYTES }
+                    ?: return null
             return ArchiveBackupRequest(
                 packageName = packageName,
                 classes = classes,
@@ -113,6 +116,7 @@ sealed interface ArchiveBackupOutcome {
         val fileName: String,
         val header: ArchiveHeader,
         val destinationLabel: String,
+        val byteSize: Long,
     ) : ArchiveBackupOutcome
 
     data class Failed(val reason: String) : ArchiveBackupOutcome

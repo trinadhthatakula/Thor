@@ -19,6 +19,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.ArchiveDestination
+import com.valhalla.thor.domain.repository.ArchivePublication
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -69,9 +70,9 @@ class AppBundleFileStoreImpl(
     override suspend fun writeToDownloads(file: File, mime: String): String =
         withContext(ioDispatcher) {
             val destination = (
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) openInDownloads(file, mime)
-                else openInLegacyDownloads(file)
-                ) ?: throw IOException("Could not create file")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) openInDownloads(file, mime)
+                    else openInLegacyDownloads(file)
+                    ) ?: throw IOException("Could not create file")
             destination.write(file)
             context.getString(R.string.export_dest_downloads)
         }
@@ -79,7 +80,8 @@ class AppBundleFileStoreImpl(
     override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String =
         withContext(ioDispatcher) {
             val treeUri = treeUriStr.toUri()
-            val tree = DocumentFile.fromTreeUri(context, treeUri) ?: throw IOException("Invalid folder")
+            val tree =
+                DocumentFile.fromTreeUri(context, treeUri) ?: throw IOException("Invalid folder")
             val destination = openInTree(treeUri, tree, file.name, mime)
                 ?: throw IOException("Could not create file")
             destination.write(file)
@@ -92,7 +94,9 @@ class AppBundleFileStoreImpl(
             try {
                 val doc = DocumentFile.fromTreeUri(context, treeUriStr.toUri())
                 doc != null && doc.exists() && doc.canWrite()
-            } catch (_: Exception) { false }
+            } catch (_: Exception) {
+                false
+            }
         }
 
     override suspend fun currentTargetLabel(savedTreeUriStr: String?): String =
@@ -105,7 +109,8 @@ class AppBundleFileStoreImpl(
         }
 
     override fun shareUri(file: File): String =
-        FileProvider.getUriForFile(context, "${BuildConfig.APPLICATION_ID}.provider", file).toString()
+        FileProvider.getUriForFile(context, "${BuildConfig.APPLICATION_ID}.provider", file)
+            .toString()
 
     override suspend fun stageText(fileName: String, content: String): File =
         withContext(ioDispatcher) {
@@ -125,19 +130,19 @@ class AppBundleFileStoreImpl(
      * `CancellationException` is an `Exception`, so a cancelled export lands in that `finally` too and
      * the partial goes with it; nothing is caught, so the cancellation stays a cancellation.
      *
-     * A false [ArchiveDestination.publish] becomes an [IOException] because that is what every caller
+     * A null [ArchiveDestination.publish] becomes an [IOException] because that is what every caller
      * up the chain already handles: `writeStaged` maps a throw to a worded failure, and there is no
      * "wrote the bytes but could not name them" outcome for it to report.
      */
     private suspend fun ArchiveDestination.write(source: File) {
-        var published = false
+        var publication: ArchivePublication? = null
         try {
             source.inputStream().use { it.copyCancellableTo(output) }
-            published = publish()
+            publication = publish()
         } finally {
             discard()
         }
-        if (!published) throw IOException("Could not publish ${source.name}")
+        if (publication == null) throw IOException("Could not publish ${source.name}")
     }
 
     /**
@@ -178,7 +183,10 @@ class AppBundleFileStoreImpl(
             partialName(fileName),
         ) ?: return null
         if (renameKnownUnsupported(resolver, partUri)) {
-            Logger.e(TAG, "the provider for $treeUri cannot rename, so it can never publish a partial")
+            Logger.e(
+                TAG,
+                "the provider for $treeUri cannot rename, so it can never publish a partial"
+            )
             DocumentsContract.deleteDocument(resolver, partUri)
             return null
         }
@@ -187,12 +195,17 @@ class AppBundleFileStoreImpl(
             return null
         }
         return object : BaseDestination(stream, onSettled = {}) {
-            override fun onPublish(): Boolean {
+            override fun onPublish(): ArchivePublication? {
                 // Now, with the bytes written: a rename onto a name the folder still holds would be
                 // de-duplicated or refused, so the file being replaced goes first — and it goes at the
                 // last possible moment rather than the first.
                 tree.findFile(fileName)?.delete()
-                return DocumentsContract.renameDocument(resolver, partUri, fileName) != null
+                val publishedUri = DocumentsContract.renameDocument(resolver, partUri, fileName)
+                    ?: return null
+                return ArchivePublication(
+                    displayName = displayNameOf(resolver, publishedUri) ?: fileName,
+                    byteSize = writtenBytes,
+                )
             }
 
             override fun onDiscard() {
@@ -221,7 +234,7 @@ class AppBundleFileStoreImpl(
             // `isNull` before `getInt`, because `getInt` on a null column answers 0 — indistinguishable
             // from "the provider supports nothing", which is exactly the wrong way to read silence.
             cursor.moveToFirst() && !cursor.isNull(0) &&
-                (cursor.getInt(0) and DocumentsContract.Document.FLAG_SUPPORTS_RENAME) == 0
+                    (cursor.getInt(0) and DocumentsContract.Document.FLAG_SUPPORTS_RENAME) == 0
         } == true
     } catch (e: CancellationException) {
         throw e
@@ -262,7 +275,7 @@ class AppBundleFileStoreImpl(
             return null
         }
         return object : BaseDestination(stream, onSettled = {}) {
-            override fun onPublish(): Boolean {
+            override fun onPublish(): ArchivePublication? {
                 // Clearing IS_PENDING first is what makes the bytes real, and it is the one step that
                 // must not be traded for a tidier name: a crash between here and the delete below
                 // leaves the user with two complete files, where the other order would leave them with
@@ -273,7 +286,7 @@ class AppBundleFileStoreImpl(
                     null,
                     null,
                 ) == 1
-                if (!cleared) return false
+                if (!cleared) return null
                 replacedIds.forEach { id ->
                     resolver.delete(
                         MediaStore.Downloads.EXTERNAL_CONTENT_URI,
@@ -298,7 +311,10 @@ class AppBundleFileStoreImpl(
                         Logger.w(TAG, "exported as $assigned, not ${source.name}: $it")
                     }
                 }
-                return true
+                return ArchivePublication(
+                    displayName = displayNameOf(resolver, uri) ?: assigned ?: source.name,
+                    byteSize = writtenBytes,
+                )
             }
 
             override fun onDiscard() {
@@ -375,7 +391,12 @@ class AppBundleFileStoreImpl(
         val published = File(dir, source.name)
         val stream = FileOutputStream(partial)
         return object : BaseDestination(stream, onSettled = {}) {
-            override fun onPublish(): Boolean = partial.renameTo(published)
+            override fun onPublish(): ArchivePublication? =
+                if (partial.renameTo(published)) {
+                    ArchivePublication(published.name, writtenBytes)
+                } else {
+                    null
+                }
 
             override fun onDiscard() {
                 partial.delete()

@@ -194,9 +194,18 @@ internal class ArchiveBackupWorker(
 
     override suspend fun runJob(): Result {
         val archiveRequest = decodeLegacyArchiveBackupRequest(inputData.keyValueMap)
-            ?: return fail("this backup's request could not be read")
         val runner = ArchiveBackupTaskRunner(
             operations = object : ArchiveBackupTaskOperations {
+                override suspend fun reconcilePublished(
+                    fileName: String,
+                    expectedPackageName: String,
+                    key: javax.crypto.SecretKey,
+                ): ArchiveBackupOutcome.Completed? = backup.reconcilePublished(
+                    fileName = fileName,
+                    expectedPackageName = expectedPackageName,
+                    key = key,
+                )
+
                 override suspend fun loadApp(packageName: String) =
                     appRepository.getAppDetails(packageName)
 
@@ -237,6 +246,7 @@ internal class ArchiveBackupWorker(
                     bundleObbCount: Int,
                     versionCode: Long,
                     versionName: String?,
+                    publicationFileName: String?,
                     usableStagingBytes: Long,
                     appLabel: String,
                     onProgress: (com.valhalla.thor.domain.model.ThorJobProgress) -> Unit,
@@ -248,6 +258,7 @@ internal class ArchiveBackupWorker(
                     bundleObbCount = bundleObbCount,
                     versionCode = versionCode,
                     versionName = versionName,
+                    publicationFileName = publicationFileName,
                     usableStagingBytes = usableStagingBytes,
                     appLabel = appLabel,
                     onProgress = onProgress,
@@ -257,17 +268,19 @@ internal class ArchiveBackupWorker(
         )
         return runLegacyArchiveTask(
             taskId = id,
-            requestFactory = { taskId, key ->
+            decodedRequest = archiveRequest,
+            invalidRequestReason = "this backup's request could not be read",
+            requestFactory = { taskId, key, decoded ->
                 DataTaskExecutionRequest(
                     taskId = taskId,
                     payload = DataTaskExecutionPayload.ArchiveBackup(
-                        request = archiveRequest,
+                        request = decoded,
                         key = key,
                         destination = com.valhalla.thor.domain.model.StoredDataDestination.ArchiveStore,
                     ),
                     item = DataTaskExecutionItem(
                         ordinal = 0,
-                        packageName = archiveRequest.packageName,
+                        packageName = decoded.packageName,
                         displayLabel = initialLabel,
                         deterministicStagingIdentity = taskId.toString(),
                         attemptCount = runAttemptCount,
@@ -374,10 +387,9 @@ internal class ArchiveRestoreWorker(
 
     override suspend fun runJob(): Result {
         val archiveRequest = decodeLegacyArchiveRestoreRequest(inputData.keyValueMap)
-            ?: run {
-                Logger.e(TAG, "ArchiveRestoreRequest could not be read from input data")
-                return fail("this restore's request could not be read")
-            }
+        if (archiveRequest == null) {
+            Logger.e(TAG, "ArchiveRestoreRequest could not be read from input data")
+        }
         val runner = ArchiveRestoreTaskRunner(
             operations = object : ArchiveRestoreTaskOperations {
                 override suspend fun open(uriString: String): ArchiveOpenOutcome =
@@ -434,16 +446,18 @@ internal class ArchiveRestoreWorker(
         )
         return runLegacyArchiveTask(
             taskId = id,
-            requestFactory = { taskId, key ->
+            decodedRequest = archiveRequest,
+            invalidRequestReason = "this restore's request could not be read",
+            requestFactory = { taskId, key, decoded ->
                 DataTaskExecutionRequest(
                     taskId = taskId,
                     payload = DataTaskExecutionPayload.ArchiveRestore(
-                        request = archiveRequest,
+                        request = decoded,
                         key = key,
                     ),
                     item = DataTaskExecutionItem(
                         ordinal = 0,
-                        packageName = archiveRequest.packageName,
+                        packageName = decoded.packageName,
                         displayLabel = initialLabel,
                         deterministicStagingIdentity = taskId.toString(),
                         attemptCount = runAttemptCount,

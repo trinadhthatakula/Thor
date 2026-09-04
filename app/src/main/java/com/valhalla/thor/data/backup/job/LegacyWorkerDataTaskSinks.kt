@@ -7,6 +7,8 @@ import androidx.work.ListenableWorker
 import androidx.work.workDataOf
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
+import com.valhalla.thor.domain.model.BACKUP_BUNDLE_KEY
+import com.valhalla.thor.domain.model.BACKUP_CLASSES_KEY
 import com.valhalla.thor.domain.model.DataTaskCheckpoint
 import com.valhalla.thor.domain.model.DataTaskItemTerminalState
 import com.valhalla.thor.domain.model.DataTaskKind
@@ -15,32 +17,56 @@ import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.JOB_ERROR_KEY
 import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
+import com.valhalla.thor.domain.model.RESTORE_CLASSES_KEY
+import com.valhalla.thor.domain.model.RESTORE_OBB_KEY
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
 import java.util.UUID
 import javax.crypto.SecretKey
 
-internal fun decodeLegacyArchiveBackupRequest(map: Map<String, Any?>): ArchiveBackupRequest? =
-    ArchiveBackupRequest.fromMap(map)
+internal fun decodeLegacyArchiveBackupRequest(map: Map<String, Any?>): ArchiveBackupRequest? {
+    if (!map.hasReleasedStringArray(BACKUP_CLASSES_KEY)) return null
+    if (map.containsKey(BACKUP_BUNDLE_KEY) && map[BACKUP_BUNDLE_KEY] !is Boolean) return null
+    return ArchiveBackupRequest.fromMap(map)
+}
 
-internal fun decodeLegacyArchiveRestoreRequest(map: Map<String, Any?>): ArchiveRestoreRequest? =
-    ArchiveRestoreRequest.fromMap(map)
+internal fun decodeLegacyArchiveRestoreRequest(map: Map<String, Any?>): ArchiveRestoreRequest? {
+    if (!map.hasReleasedStringArray(RESTORE_CLASSES_KEY)) return null
+    if (map.containsKey(RESTORE_OBB_KEY) && map[RESTORE_OBB_KEY] !is Boolean) return null
+    return ArchiveRestoreRequest.fromMap(map)
+}
+
+private fun Map<String, Any?>.hasReleasedStringArray(key: String): Boolean {
+    val values = this[key] as? Array<*> ?: return false
+    return values.javaClass.componentType == String::class.java &&
+            values.all { it is String }
+}
 
 /**
  * Strict compatibility drain for WorkSpecs persisted by released versions.
  *
- * Taking the key is deliberately the first effect. A missing process-local key produces one bounded
- * failure and cannot reach request construction, package lookup, source opening, Room, or retry.
+ * Decoding is validated before the key is taken. A malformed request or missing process-local key
+ * produces one bounded failure and cannot reach request construction, package lookup, source opening,
+ * Room, or retry.
  */
-internal suspend fun <R> runLegacyArchiveTask(
+internal suspend fun <T, R> runLegacyArchiveTask(
     taskId: UUID,
-    requestFactory: (UUID, SecretKey) -> DataTaskExecutionRequest,
+    decodedRequest: T?,
+    invalidRequestReason: String,
+    requestFactory: (UUID, SecretKey, T) -> DataTaskExecutionRequest,
     takeKey: (String) -> SecretKey?,
     runner: DataTaskRunner,
     checkpoints: DataTaskCheckpointSink,
     results: DataTaskResultSink<R>,
     missingKeyReason: String,
 ): R {
+    val legacyRequest = decodedRequest
+        ?: return results.persist(
+            DataTaskRunOutcome.TaskFailed(
+                resultCode = DataTaskResultCode("LEGACY_ARCHIVE_REQUEST_INVALID"),
+                arguments = listOf(invalidRequestReason.boundedForJobData()),
+            )
+        )
     val key = takeKey(taskId.toString())
         ?: return results.persist(
             DataTaskRunOutcome.TaskFailed(
@@ -48,7 +74,7 @@ internal suspend fun <R> runLegacyArchiveTask(
                 arguments = listOf(missingKeyReason.boundedForJobData()),
             )
         )
-    val request = requestFactory(taskId, key)
+    val request = requestFactory(taskId, key, legacyRequest)
     require(request.kind == runner.kind) {
         "runner kind ${runner.kind} does not match request kind ${request.kind}"
     }

@@ -77,6 +77,7 @@ internal class BackupAppArchiveUseCase(
     /** §7.4 only: the pre-flight space check needs a size before it stages a class. */
     private val probe: AppDataProbe,
     private val packageOperationCoordinator: PackageOperationCoordinator,
+    private val archiveReader: OpenArchiveUseCase,
 ) {
 
     /**
@@ -109,6 +110,7 @@ internal class BackupAppArchiveUseCase(
         bundleObbCount: Int = 0,
         versionCode: Long = 0L,
         versionName: String? = null,
+        publicationFileName: String? = null,
         usableStagingBytes: Long = 0L,
         appLabel: String = request.packageName,
         onProgress: (ThorJobProgress) -> Unit = {},
@@ -126,6 +128,7 @@ internal class BackupAppArchiveUseCase(
                 bundleObbCount = bundleObbCount,
                 versionCode = versionCode,
                 versionName = versionName,
+                publicationFileName = publicationFileName,
                 usableStagingBytes = usableStagingBytes,
                 appLabel = appLabel,
                 onProgress = onProgress,
@@ -138,6 +141,39 @@ internal class BackupAppArchiveUseCase(
         )
     }
 
+    /**
+     * Reconcile the exact final name owned by a durable task after an interrupted attempt.
+     *
+     * A matching name is not enough: only a container authenticated by the task's in-memory key and
+     * naming the expected package is accepted as the previous successful publication.
+     */
+    suspend fun reconcilePublished(
+        fileName: String,
+        expectedPackageName: String,
+        key: SecretKey,
+    ): ArchiveBackupOutcome.Completed? {
+        return try {
+            val published = archiveStore.openPublishedArchive(fileName) ?: return null
+            published.source.use { source ->
+                val authenticated = archiveReader.authenticate(source, key)
+                        as? ArchiveAuthenticationOutcome.Authenticated
+                    ?: return@use null
+                if (authenticated.header.packageName != expectedPackageName) return@use null
+                ArchiveBackupOutcome.Completed(
+                    fileName = published.displayName,
+                    header = authenticated.header,
+                    destinationLabel = archiveStore.currentTargetLabel(),
+                    byteSize = published.byteSize,
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, "published archive reconciliation failed", e)
+            null
+        }
+    }
+
     private suspend fun runBackup(
         request: ArchiveBackupRequest,
         key: SecretKey,
@@ -146,12 +182,14 @@ internal class BackupAppArchiveUseCase(
         bundleObbCount: Int,
         versionCode: Long,
         versionName: String?,
+        publicationFileName: String?,
         usableStagingBytes: Long,
         appLabel: String,
         onProgress: (ThorJobProgress) -> Unit,
     ): ArchiveBackupOutcome {
-        val fileName = thorbakFileName(request.packageName, versionCode)
-        val destination = archiveStore.openArchive(fileName) ?: return ArchiveBackupOutcome.NoDestination
+        val fileName = publicationFileName ?: thorbakFileName(request.packageName, versionCode)
+        val destination =
+            archiveStore.openArchive(fileName) ?: return ArchiveBackupOutcome.NoDestination
 
         // Read before anything is written. Without a signer the archive cannot carry the check that
         // stops a restore into a same-named, differently-signed package, and an archive missing that
@@ -166,7 +204,7 @@ internal class BackupAppArchiveUseCase(
         val skipped = mutableListOf<ArchiveSkip>()
         val warnings = mutableListOf<String>()
         var copiedBundle: CopiedBundle? = null
-        var published = false
+        var publication: com.valhalla.thor.domain.repository.ArchivePublication? = null
 
         // Level 0 for the streamed entries: the members are ciphertext and the bundle is already
         // compressed, so deflate would spend CPU to occasionally grow the file. STORED is not an
@@ -206,7 +244,8 @@ internal class BackupAppArchiveUseCase(
                 zip.closeEntry()
                 copiedBundle = CopiedBundle(
                     bytes = copied,
-                    sha256 = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xFF) },
+                    sha256 = digest.digest()
+                        .joinToString("") { "%02x".format(it.toInt() and 0xFF) },
                 )
             }
 
@@ -305,7 +344,8 @@ internal class BackupAppArchiveUseCase(
             )
             val header = unsignedHeader.copy(
                 authentication = unsignedHeader.authentication!!.copy(
-                    mac = Base64.getEncoder().encodeToString(cipher.manifestMac(key, unsignedHeader))
+                    mac = Base64.getEncoder()
+                        .encodeToString(cipher.manifestMac(key, unsignedHeader))
                 )
             )
 
@@ -331,12 +371,13 @@ internal class BackupAppArchiveUseCase(
             // `close()` in the `finally`, which also runs on the paths that discard.
             zip.finish()
 
-            published = destination.publish()
-            return if (published) {
+            publication = destination.publish()
+            return if (publication != null) {
                 ArchiveBackupOutcome.Completed(
-                    fileName = fileName,
+                    fileName = publication.displayName,
                     header = header,
                     destinationLabel = archiveStore.currentTargetLabel(),
+                    byteSize = publication.byteSize,
                 )
             } else {
                 ArchiveBackupOutcome.Failed("the archive could not be moved to its final name")
@@ -363,7 +404,7 @@ internal class BackupAppArchiveUseCase(
             // Precedent: the `finally` in `AppDataArchiveGatewayImpl.tarClass`. A partial `.thorbak`
             // that looks like a real archive is worse than no archive — this cleanup must complete
             // regardless.
-            if (!published) withContext(NonCancellable) { destination.discard() }
+            if (publication == null) withContext(NonCancellable) { destination.discard() }
         }
     }
 
@@ -385,12 +426,19 @@ internal class BackupAppArchiveUseCase(
         val staged = gateway.stagingFile("${request.packageName}-${dataClass.id}.tar")
         try {
             var compressed = true
-            var outcome = gateway.tarClass(request.packageName, dataClass, entries, staged, compress = true)
+            var outcome =
+                gateway.tarClass(request.packageName, dataClass, entries, staged, compress = true)
             if (outcome is TarOutcome.Failed) {
                 // §7.2 step 7c: some toybox builds have no gzip. Retry without it and record which one
                 // worked, so the reader does not try to gunzip a plain tar.
                 compressed = false
-                outcome = gateway.tarClass(request.packageName, dataClass, entries, staged, compress = false)
+                outcome = gateway.tarClass(
+                    request.packageName,
+                    dataClass,
+                    entries,
+                    staged,
+                    compress = false
+                )
             }
             when (outcome) {
                 is TarOutcome.Failed -> {
@@ -455,7 +503,7 @@ internal class BackupAppArchiveUseCase(
         val required = size.bytes + ARCHIVE_SPACE_MARGIN_BYTES
         return if (usableStagingBytes < required) {
             "needs about ${required / (1024 * 1024)} MB free to stage and only " +
-                "${usableStagingBytes / (1024 * 1024)} MB is available"
+                    "${usableStagingBytes / (1024 * 1024)} MB is available"
         } else {
             null
         }

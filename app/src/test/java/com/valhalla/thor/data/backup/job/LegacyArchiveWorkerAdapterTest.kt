@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.backup.job
 
 import androidx.work.ListenableWorker
+import androidx.work.workDataOf
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BACKUP_BUNDLE_KEY
@@ -77,6 +78,75 @@ class LegacyArchiveWorkerAdapterTest {
     }
 
     @Test
+    fun `persisted nullable class arrays are rejected by backup and restore decoders`() {
+        val nullableClasses = arrayOf<String?>(DataClass.CE.id, null)
+        val backupInput = workDataOf(
+            BACKUP_PACKAGE_KEY to PACKAGE_NAME,
+            BACKUP_CLASSES_KEY to nullableClasses,
+            BACKUP_SALT_KEY to Base64.getEncoder().encodeToString(ByteArray(16)),
+        ).keyValueMap
+        val restoreInput = workDataOf(
+            RESTORE_URI_KEY to "content://provider/archive",
+            RESTORE_PACKAGE_KEY to PACKAGE_NAME,
+            RESTORE_CLASSES_KEY to nullableClasses,
+        ).keyValueMap
+
+        assertEquals(null, decodeLegacyArchiveBackupRequest(backupInput))
+        assertEquals(null, decodeLegacyArchiveRestoreRequest(restoreInput))
+    }
+
+    @Test
+    fun `malformed backup fields fail before key take and package work`() = runBlocking {
+        val base = mapOf<String, Any?>(
+            BACKUP_PACKAGE_KEY to PACKAGE_NAME,
+            BACKUP_CLASSES_KEY to arrayOf(DataClass.CE.id),
+            BACKUP_SALT_KEY to Base64.getEncoder().encodeToString(ByteArray(16)),
+        )
+        val malformed = listOf(
+            base + (BACKUP_BUNDLE_KEY to "true"),
+            base + (BACKUP_CLASSES_KEY to arrayOf<Any>(DataClass.CE.id, 7)),
+            base + (BACKUP_CLASSES_KEY to arrayOf<Any>(DataClass.CE.id)),
+            base + (BACKUP_CLASSES_KEY to arrayOf<String?>(DataClass.CE.id, null)),
+        )
+
+        malformed.forEach { input ->
+            val effects = mutableListOf<String>()
+            val result = runLegacyArchiveTask(
+                taskId = TASK_ID,
+                decodedRequest = decodeLegacyArchiveBackupRequest(input),
+                invalidRequestReason = "this backup's request could not be read",
+                requestFactory = { _, _, _ ->
+                    effects += "package"
+                    error("package work must not run")
+                },
+                takeKey = {
+                    effects += "key"
+                    KEY
+                },
+                runner = object : DataTaskRunner {
+                    override val kind = DataTaskKind.ARCHIVE_BACKUP
+                    override suspend fun run(
+                        request: DataTaskExecutionRequest,
+                        checkpoints: DataTaskCheckpointSink,
+                    ): DataTaskRunOutcome {
+                        effects += "runner"
+                        return completed()
+                    }
+                },
+                checkpoints = DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED },
+                results = DataTaskResultSink { outcome ->
+                    effects += "result"
+                    outcome
+                },
+                missingKeyReason = "missing",
+            )
+
+            assertTrue(result is DataTaskRunOutcome.TaskFailed)
+            assertEquals(listOf("result"), effects)
+        }
+    }
+
+    @Test
     fun `restore decoder preserves the released raw URI map and ignores invented preflight inputs`() {
         val request = decodeLegacyArchiveRestoreRequest(
             mapOf(
@@ -118,6 +188,57 @@ class LegacyArchiveWorkerAdapterTest {
     }
 
     @Test
+    fun `malformed restore fields fail before key take and source work`() = runBlocking {
+        val base = mapOf<String, Any?>(
+            RESTORE_URI_KEY to "content://provider/archive",
+            RESTORE_PACKAGE_KEY to PACKAGE_NAME,
+            RESTORE_CLASSES_KEY to arrayOf(DataClass.CE.id),
+        )
+        val malformed = listOf(
+            base + (RESTORE_OBB_KEY to "true"),
+            base + (RESTORE_CLASSES_KEY to arrayOf<Any>(DataClass.CE.id, 7)),
+            base + (RESTORE_CLASSES_KEY to arrayOf<Any>(DataClass.CE.id)),
+            base + (RESTORE_CLASSES_KEY to arrayOf<String?>(DataClass.CE.id, null)),
+        )
+
+        malformed.forEach { input ->
+            val effects = mutableListOf<String>()
+            val result = runLegacyArchiveTask(
+                taskId = TASK_ID,
+                decodedRequest = decodeLegacyArchiveRestoreRequest(input),
+                invalidRequestReason = "this restore's request could not be read",
+                requestFactory = { _, _, _ ->
+                    effects += "source"
+                    error("source work must not run")
+                },
+                takeKey = {
+                    effects += "key"
+                    KEY
+                },
+                runner = object : DataTaskRunner {
+                    override val kind = DataTaskKind.ARCHIVE_RESTORE
+                    override suspend fun run(
+                        request: DataTaskExecutionRequest,
+                        checkpoints: DataTaskCheckpointSink,
+                    ): DataTaskRunOutcome {
+                        effects += "runner"
+                        return completed()
+                    }
+                },
+                checkpoints = DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED },
+                results = DataTaskResultSink { outcome ->
+                    effects += "result"
+                    outcome
+                },
+                missingKeyReason = "missing",
+            )
+
+            assertTrue(result is DataTaskRunOutcome.TaskFailed)
+            assertEquals(listOf("result"), effects)
+        }
+    }
+
+    @Test
     fun `legacy adapter takes the key before the runner can touch package or source data`() =
         runBlocking {
             val events = mutableListOf<String>()
@@ -135,7 +256,9 @@ class LegacyArchiveWorkerAdapterTest {
 
             runLegacyArchiveTask(
                 taskId = TASK_ID,
-                requestFactory = { taskId, key ->
+                decodedRequest = Unit,
+                invalidRequestReason = "invalid",
+                requestFactory = { taskId, key, _ ->
                     events += "request:$taskId"
                     backupExecutionRequest(taskId, key)
                 },
@@ -164,7 +287,9 @@ class LegacyArchiveWorkerAdapterTest {
         val hugeReason = "x".repeat(MAX_JOB_MESSAGE_CHARS + 100)
         val result = runLegacyArchiveTask(
             taskId = TASK_ID,
-            requestFactory = { taskId, key -> backupExecutionRequest(taskId, key) },
+            decodedRequest = Unit,
+            invalidRequestReason = "invalid",
+            requestFactory = { taskId, key, _ -> backupExecutionRequest(taskId, key) },
             takeKey = { null },
             runner = object : DataTaskRunner {
                 override val kind = DataTaskKind.ARCHIVE_BACKUP
@@ -196,7 +321,9 @@ class LegacyArchiveWorkerAdapterTest {
             runBlocking {
                 runLegacyArchiveTask(
                     taskId = TASK_ID,
-                    requestFactory = { taskId, key -> backupExecutionRequest(taskId, key) },
+                    decodedRequest = Unit,
+                    invalidRequestReason = "invalid",
+                    requestFactory = { taskId, key, _ -> backupExecutionRequest(taskId, key) },
                     takeKey = { KEY },
                     runner = object : DataTaskRunner {
                         override val kind = DataTaskKind.ARCHIVE_BACKUP
