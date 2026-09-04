@@ -45,12 +45,12 @@
          silently by SelfPermissionGranter, since privilege is the stronger form of the same answer.
          Inert below API 33, where an app-wide mute is the only state and no `pm` verb reaches it. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- WorkManager's own manifest declares the base FOREGROUND_SERVICE permission but leaves the
-         type to the app. Without the type permission AND the type attribute below, setForeground()
-         throws MissingForegroundServiceTypeException on targetSdk 34+. dataSync honestly describes
-         work that moves bytes; a bulk freeze sweep would need a different type and is not on this
-         seam — see the spec, section 9.4. -->
+    <!-- Declared explicitly for the two direct foreground-service lanes. Their components are added
+         only with their concrete framework classes in Tasks 9 and 11. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".ThorApplication"
