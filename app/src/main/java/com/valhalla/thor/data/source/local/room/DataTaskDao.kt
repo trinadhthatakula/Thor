@@ -123,6 +123,44 @@ abstract class DataTaskDao {
         ) == 1
     }
 
+    /** Blocks the explicit wake, or the oldest actionable row for a sticky null-intent restart. */
+    @Transaction
+    open suspend fun blockCurrentStart(
+        taskId: String?,
+        blockedState: DataTaskState,
+        nowMs: Long,
+    ): DataTaskSnapshot? {
+        require(
+            blockedState == DataTaskState.START_BLOCKED ||
+                    blockedState == DataTaskState.START_BLOCKED_NOTIFICATION
+        ) {
+            "blockedState must be START_BLOCKED or START_BLOCKED_NOTIFICATION"
+        }
+        taskId?.let { requireCanonicalUuid(it, "taskId") }
+        val task = if (taskId == null) {
+            findOldestStartableTask()
+        } else {
+            loadTaskEntity(taskId)
+        } ?: return null
+        if (
+            task.state != DataTaskState.QUEUED.name &&
+            task.state != DataTaskState.STAGING_SOURCE.name &&
+            task.state != DataTaskState.RUNNING.name
+        ) {
+            return null
+        }
+        clearItemClaimsForRecovery(task.taskId, DataTaskItemState.PENDING.name)
+        check(
+            blockCurrentStartRow(
+                taskId = task.taskId,
+                expectedState = task.state,
+                blockedState = blockedState.name,
+                nowMs = nowMs,
+            ) == 1
+        ) { "actionable data task changed during start blocking transaction" }
+        return loadSnapshot(task.taskId)
+    }
+
     @Transaction
     open suspend fun acknowledgeTerminalTask(
         taskId: String,
@@ -232,6 +270,118 @@ abstract class DataTaskDao {
             resultCode = resultCode.value,
             nowMs = nowMs,
         ) == 1
+    }
+
+    /**
+     * Atomically fences timeout against normal settlement and derives recovery from current rows.
+     */
+    @Transaction
+    open suspend fun settleClaimTimeout(
+        taskId: String,
+        taskClaimToken: String,
+        itemOrdinal: Int,
+        itemClaimToken: String,
+        nowMs: Long,
+    ): Boolean {
+        requireCanonicalUuid(taskId, "taskId")
+        val task = loadTaskEntity(taskId) ?: return false
+        val item = loadItemEntity(taskId, itemOrdinal) ?: return false
+        if (
+            task.state !in TIMEOUT_SETTLEABLE_STATES ||
+            task.claimToken != taskClaimToken ||
+            task.claimLeaseExpiresAtEpochMs?.let { it > nowMs } != true ||
+            !item.ownsClaim(itemClaimToken, nowMs)
+        ) {
+            return false
+        }
+
+        val kind = DataTaskKind.valueOf(task.kind)
+        val archive = if (kind == DataTaskKind.ARCHIVE_RESTORE) {
+            loadArchiveDetail(taskId) ?: return false
+        } else {
+            null
+        }
+        val destructiveRestore = kind == DataTaskKind.ARCHIVE_RESTORE &&
+                archive?.destructiveStarted == true
+        if (task.state == DataTaskState.CANCEL_REQUESTED.name && !destructiveRestore) {
+            return terminateClaimedTask(
+                taskId,
+                taskClaimToken,
+                itemOrdinal,
+                itemClaimToken,
+                DataTaskState.CANCELLED,
+                DataTaskItemState.CANCELLED,
+                DataTaskResultCode(RESULT_CANCELLED),
+                nowMs,
+            )
+        }
+
+        val timeoutCode = DataTaskResultCode(RESULT_SERVICE_TIMEOUT)
+        return when (kind) {
+            DataTaskKind.ARCHIVE_BACKUP -> pauseClaimedTask(
+                taskId,
+                taskClaimToken,
+                itemOrdinal,
+                itemClaimToken,
+                DataTaskState.WAITING_FOR_AUTH,
+                DataTaskInterruption.AUTHENTICATION_REQUIRED,
+                timeoutCode,
+                nowMs,
+                keepItemRunning = false,
+            )
+
+            DataTaskKind.ARCHIVE_RESTORE -> when {
+                destructiveRestore -> pauseClaimedTask(
+                    taskId,
+                    taskClaimToken,
+                    itemOrdinal,
+                    itemClaimToken,
+                    DataTaskState.INTERRUPTED_REVIEW,
+                    DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW,
+                    timeoutCode,
+                    nowMs,
+                    keepItemRunning = true,
+                )
+
+                archive?.restoreSourceKind == RESTORE_SOURCE_AWAITING_GRANT -> pauseClaimedTask(
+                    taskId,
+                    taskClaimToken,
+                    itemOrdinal,
+                    itemClaimToken,
+                    DataTaskState.WAITING_FOR_SOURCE,
+                    DataTaskInterruption.SOURCE_REQUIRED,
+                    timeoutCode,
+                    nowMs,
+                    keepItemRunning = false,
+                )
+
+                else -> pauseClaimedTask(
+                    taskId,
+                    taskClaimToken,
+                    itemOrdinal,
+                    itemClaimToken,
+                    DataTaskState.WAITING_FOR_AUTH,
+                    DataTaskInterruption.AUTHENTICATION_REQUIRED,
+                    timeoutCode,
+                    nowMs,
+                    keepItemRunning = false,
+                )
+            }
+
+            DataTaskKind.APP_EXPORT,
+            DataTaskKind.SHARE_PREPARE,
+                -> pauseClaimedTask(
+                taskId,
+                taskClaimToken,
+                itemOrdinal,
+                itemClaimToken,
+                DataTaskState.QUEUED,
+                DataTaskInterruption.SERVICE_TIMEOUT,
+                timeoutCode,
+                nowMs,
+                keepItemRunning = false,
+            )
+        }
     }
 
     @Transaction
@@ -363,12 +513,35 @@ abstract class DataTaskDao {
         val task = loadTaskEntity(taskId) ?: return false
         val item = loadItemEntity(taskId, itemOrdinal) ?: return false
         if (task.claimToken != taskClaimToken || item.claimToken != itemClaimToken) return false
-        if (task.state == DataTaskState.CANCEL_REQUESTED.name && outcome != DataTaskRunOutcome.Cancelled) {
-            val acceptsDestructiveRestoreReview =
-                outcome is DataTaskRunOutcome.InterruptedReview &&
-                        DataTaskKind.valueOf(task.kind) == DataTaskKind.ARCHIVE_RESTORE &&
+        if (task.state == DataTaskState.CANCEL_REQUESTED.name) {
+            val destructiveRestore =
+                DataTaskKind.valueOf(task.kind) == DataTaskKind.ARCHIVE_RESTORE &&
                         loadArchiveDetail(taskId)?.destructiveStarted == true
-            if (!acceptsDestructiveRestoreReview) return false
+            if (destructiveRestore && outcome !is DataTaskRunOutcome.InterruptedReview) {
+                return pauseClaimedTask(
+                    taskId,
+                    taskClaimToken,
+                    itemOrdinal,
+                    itemClaimToken,
+                    DataTaskState.INTERRUPTED_REVIEW,
+                    DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW,
+                    DataTaskResultCode(RESULT_DESTRUCTIVE_RESTORE_REVIEW),
+                    nowMs,
+                    keepItemRunning = true,
+                )
+            }
+            if (!destructiveRestore && outcome != DataTaskRunOutcome.Cancelled) {
+                return terminateClaimedTask(
+                    taskId,
+                    taskClaimToken,
+                    itemOrdinal,
+                    itemClaimToken,
+                    DataTaskState.CANCELLED,
+                    DataTaskItemState.CANCELLED,
+                    DataTaskResultCode(RESULT_CANCELLED),
+                    nowMs,
+                )
+            }
         }
         if (task.state != DataTaskState.RUNNING.name &&
             task.state != DataTaskState.CANCEL_REQUESTED.name
@@ -787,6 +960,41 @@ abstract class DataTaskDao {
         """
     )
     protected abstract suspend fun compareAndSetStartBlockedRow(
+        taskId: String,
+        expectedState: String,
+        blockedState: String,
+        nowMs: Long,
+    ): Int
+
+    @Query(
+        """
+        SELECT * FROM data_tasks
+        WHERE state IN ('QUEUED', 'STAGING_SOURCE', 'RUNNING')
+          AND terminal_at_epoch_ms IS NULL
+          AND cancel_requested_at_epoch_ms IS NULL
+        ORDER BY queue_sequence ASC, task_id ASC
+        LIMIT 1
+        """
+    )
+    protected abstract suspend fun findOldestStartableTask(): DataTaskEntity?
+
+    @Query(
+        """
+        UPDATE data_tasks
+        SET state = :blockedState,
+            service_session_token = NULL,
+            claim_token = NULL,
+            claim_lease_expires_at_epoch_ms = NULL,
+            updated_at_epoch_ms = :nowMs
+        WHERE task_id = :taskId
+          AND state = :expectedState
+          AND state IN ('QUEUED', 'STAGING_SOURCE', 'RUNNING')
+          AND terminal_at_epoch_ms IS NULL
+          AND cancel_requested_at_epoch_ms IS NULL
+          AND :blockedState IN ('START_BLOCKED', 'START_BLOCKED_NOTIFICATION')
+        """
+    )
+    protected abstract suspend fun blockCurrentStartRow(
         taskId: String,
         expectedState: String,
         blockedState: String,
@@ -1913,10 +2121,15 @@ abstract class DataTaskDao {
         const val RESTORE_SOURCE_PERSISTED_GRANT = "PERSISTED_GRANT"
         const val RESTORE_SOURCE_PRIVATE_COPY = "PRIVATE_COPY"
         const val RESULT_CANCELLED = "CANCELLED"
+        const val RESULT_SERVICE_TIMEOUT = "SERVICE_TIMEOUT"
         const val RESULT_DESTRUCTIVE_RESTORE_REVIEW = "DESTRUCTIVE_RESTORE_REVIEW"
         const val RESULT_RECOVERY_AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
         const val RESULT_RECOVERY_BREADCRUMB_MISSING = "RECOVERY_BREADCRUMB_MISSING"
         const val RESULT_RECOVERY_SOURCE_REQUIRED = "SOURCE_REQUIRED"
+        val TIMEOUT_SETTLEABLE_STATES = setOf(
+            DataTaskState.RUNNING.name,
+            DataTaskState.CANCEL_REQUESTED.name,
+        )
         val ACKNOWLEDGEABLE_STATES = setOf(
             DataTaskState.SUCCEEDED,
             DataTaskState.PARTIAL,

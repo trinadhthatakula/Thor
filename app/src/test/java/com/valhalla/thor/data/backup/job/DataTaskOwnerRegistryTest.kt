@@ -8,6 +8,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -109,6 +110,26 @@ class DataTaskOwnerRegistryTest {
         assertTrue(registry.isLive(TASK, CLAIM))
         registry.unregister(TASK, CLAIM)
         assertFalse(registry.isLive(TASK, CLAIM))
+    }
+
+    @Test
+    fun `replacement generation awaits prior owner completion without polling`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        registry.acquireLane("generation-1")
+        var replacementAcquired = false
+        val replacement = launch {
+            registry.acquireLane("generation-2")
+            replacementAcquired = true
+        }
+
+        runCurrent()
+        assertFalse(replacementAcquired)
+
+        registry.releaseLane("generation-1")
+        replacement.join()
+
+        assertTrue(replacementAcquired)
+        registry.releaseLane("generation-2")
     }
 
     private companion object {

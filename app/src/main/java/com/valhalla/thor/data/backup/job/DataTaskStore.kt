@@ -135,6 +135,16 @@ internal class DataTaskStore(
         nowMs = nowMs,
     )
 
+    suspend fun blockCurrentStart(
+        taskId: UUID?,
+        blockedState: DataTaskState,
+        nowMs: Long,
+    ): DataTaskSnapshot? = dao.blockCurrentStart(
+        taskId = taskId?.toString(),
+        blockedState = blockedState,
+        nowMs = nowMs,
+    )
+
     suspend fun claimOldestRunnableTask(
         sessionToken: String,
         claimToken: String,
@@ -188,6 +198,20 @@ internal class DataTaskStore(
         taskClaimToken = taskClaimToken,
         interruption = interruption,
         resultCode = resultCode,
+        nowMs = nowMs,
+    )
+
+    suspend fun settleClaimTimeout(
+        taskId: UUID,
+        taskClaimToken: String,
+        itemOrdinal: Int,
+        itemClaimToken: String,
+        nowMs: Long,
+    ): Boolean = dao.settleClaimTimeout(
+        taskId = taskId.toString(),
+        taskClaimToken = taskClaimToken,
+        itemOrdinal = itemOrdinal,
+        itemClaimToken = itemClaimToken,
         nowMs = nowMs,
     )
 

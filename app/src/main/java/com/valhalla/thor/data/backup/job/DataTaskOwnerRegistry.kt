@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.backup.job
 
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import org.koin.core.annotation.Single
 
@@ -19,6 +20,38 @@ class DataTaskOwnerRegistry {
     private val lock = Any()
     private val owners = mutableMapOf<String, Owner>()
     private val provisionalCancellations = mutableSetOf<UUID>()
+    private var laneOwnerToken: String? = null
+    private var laneCompletion: CompletableDeferred<Unit>? = null
+
+    /** Suspends without polling until this generation owns the process-wide serial data lane. */
+    suspend fun acquireLane(generationToken: String) {
+        require(generationToken.isNotBlank()) { "generationToken must not be blank" }
+        while (true) {
+            val waitForOwner = synchronized(lock) {
+                when (laneOwnerToken) {
+                    null -> {
+                        laneOwnerToken = generationToken
+                        laneCompletion = CompletableDeferred()
+                        null
+                    }
+
+                    generationToken -> null
+                    else -> requireNotNull(laneCompletion)
+                }
+            }
+            if (waitForOwner == null) return
+            waitForOwner.await()
+        }
+    }
+
+    fun releaseLane(generationToken: String) {
+        val completed = synchronized(lock) {
+            if (laneOwnerToken != generationToken) return
+            laneOwnerToken = null
+            laneCompletion.also { laneCompletion = null }
+        }
+        completed?.complete(Unit)
+    }
 
     fun registerProvisional(claimToken: String) {
         synchronized(lock) {

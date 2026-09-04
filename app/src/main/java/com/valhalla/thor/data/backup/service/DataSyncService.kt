@@ -23,19 +23,19 @@ import com.valhalla.thor.data.source.local.room.DataTaskDao
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.koin.core.qualifier.named
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Foreground shell for the serial Room-backed archive and single-app export lane. */
 class DataSyncService : Service(), KoinComponent {
     private val coordinator: DataSyncCoordinator by inject()
     private val dataTaskDao: DataTaskDao by inject()
     private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
-    private var latestStartId: Int = 0
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        latestStartId = startId
         val notification = DataSyncServiceNotification(this)
         val promotion = evaluateDataNotificationCapability(
             ensureChannel = notification::ensureChannel,
@@ -71,8 +71,11 @@ class DataSyncService : Service(), KoinComponent {
                 )
             },
             onDrained = {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelfResult(latestStartId)
+                finishDataSyncServiceGeneration(
+                    startId = startId,
+                    stopSelfResult = ::stopSelfResult,
+                    removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
+                )
             },
         )
         return START_STICKY
@@ -80,12 +83,21 @@ class DataSyncService : Service(), KoinComponent {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-    }
-
     override fun onTimeout(startId: Int, foregroundServiceType: Int) {
-        coordinator.stopClaimsAndInterrupt()
+        val application = applicationContext as ThorApplication
+        application.launchInApplicationScope(ioDispatcher) {
+            boundedDataSyncTimeoutUnwind(
+                timeoutMillis = TIMEOUT_UNWIND_MILLIS,
+                settle = coordinator::stopClaimsAndInterrupt,
+                finish = {
+                    finishDataSyncServiceGeneration(
+                        startId = startId,
+                        stopSelfResult = ::stopSelfResult,
+                        removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
+                    )
+                },
+            )
+        }
         super.onTimeout(startId, foregroundServiceType)
     }
 
@@ -101,28 +113,31 @@ class DataSyncService : Service(), KoinComponent {
     ) {
         val application = applicationContext as ThorApplication
         application.launchInApplicationScope(ioDispatcher) {
-            if (taskId != null) {
-                val store = DataTaskStore(dataTaskDao)
-                val current = store.loadTask(taskId)?.state
-                if (current == DataTaskState.QUEUED || current == DataTaskState.STAGING_SOURCE) {
-                    store.compareAndSetStartBlocked(
-                        taskId = taskId,
-                        expectedState = current,
-                        blockedState = if (state === ForegroundNotificationState.Blocked) {
-                            DataTaskState.START_BLOCKED_NOTIFICATION
-                        } else {
-                            DataTaskState.START_BLOCKED
-                        },
-                        nowMs = System.currentTimeMillis(),
-                    )
-                }
+            try {
+                DataTaskStore(dataTaskDao).blockCurrentStart(
+                    taskId = taskId,
+                    blockedState = if (state === ForegroundNotificationState.Blocked) {
+                        DataTaskState.START_BLOCKED_NOTIFICATION
+                    } else {
+                        DataTaskState.START_BLOCKED
+                    },
+                    nowMs = System.currentTimeMillis(),
+                )
+            } catch (_: Exception) {
+                // Promotion already failed; shutdown must not depend on Room availability.
+            } finally {
+                finishDataSyncServiceGeneration(
+                    startId = startId,
+                    stopSelfResult = ::stopSelfResult,
+                    removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
+                )
             }
-            stopSelfResult(startId)
         }
     }
 
     companion object {
         private const val EXTRA_TASK_ID = "task_id"
+        private const val TIMEOUT_UNWIND_MILLIS = 3_000L
         private val running = AtomicBoolean(false)
 
         val isRunning: Boolean
@@ -135,6 +150,34 @@ class DataSyncService : Service(), KoinComponent {
         private fun Intent?.taskIdOrNull(): UUID? = this?.getStringExtra(EXTRA_TASK_ID)
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
     }
+}
+
+internal suspend fun boundedDataSyncTimeoutUnwind(
+    timeoutMillis: Long,
+    settle: suspend () -> Unit,
+    finish: () -> Unit,
+) {
+    try {
+        withTimeoutOrNull(timeoutMillis.milliseconds) {
+            try {
+                settle()
+            } catch (_: Exception) {
+                // Shutdown must proceed when Room or cleanup infrastructure is unavailable.
+            }
+        }
+    } finally {
+        finish()
+    }
+}
+
+internal fun finishDataSyncServiceGeneration(
+    startId: Int,
+    stopSelfResult: (Int) -> Boolean,
+    removeForeground: () -> Unit,
+): Boolean {
+    val stopped = stopSelfResult(startId)
+    if (stopped) removeForeground()
+    return stopped
 }
 
 @SuppressLint("InlinedApi")

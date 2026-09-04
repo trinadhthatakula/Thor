@@ -8,11 +8,16 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.DataTaskCheckpoint
 import com.valhalla.thor.domain.model.DataTaskInterruption
+import com.valhalla.thor.domain.model.DataTaskItemState
 import com.valhalla.thor.domain.model.DataTaskKind
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskResultCode
+import com.valhalla.thor.domain.model.DataTaskRunOutcome
+import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.DataTaskState
+import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
 import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
@@ -103,41 +108,207 @@ class DataTaskIdentityDaoTest {
     }
 
     @Test
-    fun timeoutInterruptionRequiresCurrentUnexpiredTaskClaim() = runBlocking {
-        dao.insertTask(newExportTask())
-        dao.claimOldestRunnableTask("session", "task-claim", 2_000L, 3_000L)
-
-        assertFalse(
-            dao.markClaimInterrupted(
-                TASK_ID,
-                "stale-claim",
-                DataTaskInterruption.SERVICE_TIMEOUT,
-                DataTaskResultCode("SERVICE_TIMEOUT"),
-                2_100L,
-            )
-        )
-        assertFalse(
-            dao.markClaimInterrupted(
-                TASK_ID,
-                "task-claim",
-                DataTaskInterruption.SERVICE_TIMEOUT,
-                DataTaskResultCode("SERVICE_TIMEOUT"),
-                3_000L,
-            )
-        )
+    fun timeoutReloadsDestructiveRestoreCheckpointWrittenAfterClaimSnapshot() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+        val breadcrumb = RestoreMutationBreadcrumb("com.example.app", "Example", 2_150L)
         assertTrue(
-            dao.markClaimInterrupted(
+            dao.checkpointClaimedTask(
+                taskId = TASK_ID,
+                taskClaimToken = TASK_CLAIM,
+                itemOrdinal = 0,
+                itemClaimToken = ITEM_CLAIM,
+                checkpoint = DataTaskCheckpoint(
+                    stage = DataTaskStage.RESTORING,
+                    completed = 1,
+                    total = 2,
+                    activeItemOrdinal = 0,
+                    activeItemLabel = "Example",
+                    destructiveStarted = true,
+                    restoreMutationBreadcrumb = breadcrumb,
+                    recordedAtEpochMs = 2_200L,
+                ),
+                leaseUntilMs = 4_000L,
+            )
+        )
+
+        assertTrue(
+            dao.settleClaimTimeout(TASK_ID, TASK_CLAIM, 0, ITEM_CLAIM, 2_300L)
+        )
+
+        val task = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.INTERRUPTED_REVIEW, task.state)
+        assertEquals(DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW, task.interruption)
+        assertEquals(
+            breadcrumb,
+            (task.detail as StoredDataTaskDetail.ArchiveRestore).mutationBreadcrumb,
+        )
+    }
+
+    @Test
+    fun timeoutWinsBeforeNormalResultAndReleasesExportForRetry() = runBlocking {
+        dao.insertTask(newExportTask())
+        claimTaskAndItem(TASK_ID)
+
+        assertTrue(dao.settleClaimTimeout(TASK_ID, TASK_CLAIM, 0, ITEM_CLAIM, 2_200L))
+        assertFalse(
+            dao.settleClaimedTask(
                 TASK_ID,
-                "task-claim",
-                DataTaskInterruption.SERVICE_TIMEOUT,
-                DataTaskResultCode("SERVICE_TIMEOUT"),
-                2_200L,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.TaskFailed(DataTaskResultCode("LATE_RESULT")),
+                2_300L,
             )
         )
 
         val task = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.QUEUED, task.state)
         assertEquals(DataTaskInterruption.SERVICE_TIMEOUT, task.interruption)
-        assertEquals(DataTaskResultCode("SERVICE_TIMEOUT"), task.resultCode)
+        assertEquals(DataTaskItemState.PENDING, task.items.single().state)
+    }
+
+    @Test
+    fun normalResultWinsBeforeTimeoutAndRejectsLateTimeoutToken() = runBlocking {
+        dao.insertTask(newExportTask())
+        claimTaskAndItem(TASK_ID)
+
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.TaskFailed(DataTaskResultCode("FAILED_FIRST")),
+                2_200L,
+            )
+        )
+        assertFalse(dao.settleClaimTimeout(TASK_ID, TASK_CLAIM, 0, ITEM_CLAIM, 2_300L))
+
+        assertEquals(DataTaskState.FAILED, dao.loadTask(TASK_ID)?.state)
+    }
+
+    @Test
+    fun staleTimeoutClaimTokensMutateNothing() = runBlocking {
+        dao.insertTask(newExportTask())
+        claimTaskAndItem(TASK_ID)
+
+        assertFalse(
+            dao.settleClaimTimeout(TASK_ID, "stale-task", 0, ITEM_CLAIM, 2_200L)
+        )
+        assertFalse(
+            dao.settleClaimTimeout(TASK_ID, TASK_CLAIM, 0, "stale-item", 2_200L)
+        )
+
+        val task = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.RUNNING, task.state)
+        assertEquals(DataTaskInterruption.NONE, task.interruption)
+        assertEquals(DataTaskItemState.RUNNING, task.items.single().state)
+    }
+
+    @Test
+    fun cancellationAfterRunnerReturnAtomicallyWinsNormalSettlement() = runBlocking {
+        dao.insertTask(newExportTask())
+        claimTaskAndItem(TASK_ID)
+        dao.requestCancellation(TASK_ID, 2_200L)
+
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.TaskFailed(DataTaskResultCode("RUNNER_RETURNED")),
+                2_300L,
+            )
+        )
+
+        val task = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.CANCELLED, task.state)
+        assertEquals(DataTaskItemState.CANCELLED, task.items.single().state)
+    }
+
+    @Test
+    fun destructiveCancellationSettlementFailsClosedToInterruptedReview() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+        val breadcrumb = RestoreMutationBreadcrumb("com.example.app", "Example", 2_150L)
+        assertTrue(
+            dao.checkpointClaimedTask(
+                taskId = TASK_ID,
+                taskClaimToken = TASK_CLAIM,
+                itemOrdinal = 0,
+                itemClaimToken = ITEM_CLAIM,
+                checkpoint = DataTaskCheckpoint(
+                    stage = DataTaskStage.RESTORING,
+                    completed = 1,
+                    total = 2,
+                    activeItemOrdinal = 0,
+                    activeItemLabel = "Example",
+                    destructiveStarted = true,
+                    restoreMutationBreadcrumb = breadcrumb,
+                    recordedAtEpochMs = 2_200L,
+                ),
+                leaseUntilMs = 4_000L,
+            )
+        )
+        dao.requestCancellation(TASK_ID, 2_300L)
+
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.Cancelled,
+                2_400L,
+            )
+        )
+
+        val task = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.INTERRUPTED_REVIEW, task.state)
+        assertEquals(DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW, task.interruption)
+        assertEquals(DataTaskItemState.RUNNING, task.items.single().state)
+        assertEquals(
+            breadcrumb,
+            (task.detail as StoredDataTaskDetail.ArchiveRestore).mutationBreadcrumb
+        )
+    }
+
+    @Test
+    fun timeoutAtomicallySettlesCancelRequestedClaim() = runBlocking {
+        dao.insertTask(newExportTask())
+        claimTaskAndItem(TASK_ID)
+        dao.requestCancellation(TASK_ID, 2_200L)
+
+        assertTrue(dao.settleClaimTimeout(TASK_ID, TASK_CLAIM, 0, ITEM_CLAIM, 2_300L))
+
+        val task = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.CANCELLED, task.state)
+        assertEquals(DataTaskItemState.CANCELLED, task.items.single().state)
+    }
+
+    @Test
+    fun stickyNullIntentPromotionFailureBlocksOldestOwnedTask() = runBlocking {
+        dao.insertTask(newExportTask())
+        dao.insertTask(newExportTask(SECOND_TASK_ID))
+        claimTaskAndItem(TASK_ID)
+
+        val blocked = dao.blockCurrentStart(
+            taskId = null,
+            blockedState = DataTaskState.START_BLOCKED_NOTIFICATION,
+            nowMs = 2_200L,
+        )
+
+        assertEquals(UUID.fromString(TASK_ID), blocked?.taskId)
+        assertEquals(DataTaskState.START_BLOCKED_NOTIFICATION, blocked?.state)
+        assertEquals(DataTaskItemState.PENDING, blocked?.items?.single()?.state)
+        assertEquals(DataTaskState.QUEUED, dao.loadTask(SECOND_TASK_ID)?.state)
+    }
+
+    private suspend fun claimTaskAndItem(taskId: String) {
+        dao.claimOldestRunnableTask("session", TASK_CLAIM, 2_000L, 3_000L)
+        dao.claimNextPendingItem(taskId, TASK_CLAIM, ITEM_CLAIM, 2_100L, 3_100L)
     }
 
     private fun openDatabase() {
@@ -145,8 +316,8 @@ class DataTaskIdentityDaoTest {
         dao = database.dataTaskDao()
     }
 
-    private fun newExportTask() = NewDataTaskRow(
-        taskId = TASK_ID,
+    private fun newExportTask(taskId: String = TASK_ID) = NewDataTaskRow(
+        taskId = taskId,
         payloadSchemaVersion = 1,
         kind = DataTaskKind.APP_EXPORT,
         targetKey = "package:com.example.app",
@@ -156,14 +327,14 @@ class DataTaskIdentityDaoTest {
             destination = StoredDataDestination.Downloads,
             namingLabel = "Example",
             publicationPolicy = DataTaskPublicationPolicy.PUBLIC_DOCUMENT,
-            deterministicStagingIdentity = "stage-$TASK_ID",
+            deterministicStagingIdentity = "stage-$taskId",
         ),
         items = listOf(
             NewDataTaskItem(
                 ordinal = 0,
                 packageName = "com.example.app",
                 displayLabel = "Example",
-                deterministicStagingIdentity = "item-$TASK_ID-0",
+                deterministicStagingIdentity = "item-$taskId-0",
             )
         ),
         createdAtEpochMs = 1_000L,
@@ -197,6 +368,9 @@ class DataTaskIdentityDaoTest {
     private companion object {
         const val DATABASE_NAME = "data-task-identity-test"
         const val TASK_ID = "00000000-0000-0000-0000-000000000191"
+        const val SECOND_TASK_ID = "00000000-0000-0000-0000-000000000192"
+        const val TASK_CLAIM = "task-claim"
+        const val ITEM_CLAIM = "item-claim"
         const val PRIVATE_SOURCE = "data_tasks/$TASK_ID/restore-source.thor"
     }
 }

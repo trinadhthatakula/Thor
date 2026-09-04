@@ -21,7 +21,6 @@ import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataTaskCheckpoint
-import com.valhalla.thor.domain.model.DataTaskInterruption
 import com.valhalla.thor.domain.model.DataTaskKind
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
@@ -31,7 +30,6 @@ import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
-import com.valhalla.thor.domain.model.StoredRestoreSource
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.model.evaluateArchiveRestoreGate
@@ -65,8 +63,10 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.SecretKey
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -74,7 +74,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Factory
+import kotlin.time.Duration.Companion.seconds
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
@@ -84,47 +87,6 @@ internal data class DataSyncClaim(
     val task: ClaimedDataTask? = null,
     val item: ClaimedDataTaskItem? = null,
 )
-
-internal fun dataSyncTimeoutOutcome(
-    kind: DataTaskKind,
-    detail: StoredDataTaskDetail,
-    checkpoint: DataTaskCheckpoint?,
-): DataTaskRunOutcome = when (kind) {
-    DataTaskKind.ARCHIVE_BACKUP -> DataTaskRunOutcome.WaitingForAuthentication(
-        DataTaskResultCode("SERVICE_TIMEOUT")
-    )
-
-    DataTaskKind.ARCHIVE_RESTORE -> {
-        val restore = detail as? StoredDataTaskDetail.ArchiveRestore
-            ?: return DataTaskRunOutcome.TaskFailed(DataTaskResultCode("TASK_REQUEST_INVALID"))
-        when {
-            restore.source == StoredRestoreSource.AwaitingTransientGrant ->
-                DataTaskRunOutcome.WaitingForSource(DataTaskResultCode("SERVICE_TIMEOUT"))
-
-            checkpoint?.destructiveStarted == true || restore.mutationBreadcrumb != null -> {
-                val breadcrumb = restore.mutationBreadcrumb ?: checkpoint?.restoreMutationBreadcrumb
-                if (breadcrumb == null) {
-                    DataTaskRunOutcome.TaskFailed(
-                        DataTaskResultCode("RECOVERY_BREADCRUMB_MISSING")
-                    )
-                } else {
-                    DataTaskRunOutcome.InterruptedReview(
-                        resultCode = DataTaskResultCode("SERVICE_TIMEOUT"),
-                        breadcrumb = breadcrumb,
-                    )
-                }
-            }
-
-            else -> DataTaskRunOutcome.WaitingForAuthentication(
-                DataTaskResultCode("SERVICE_TIMEOUT")
-            )
-        }
-    }
-
-    DataTaskKind.APP_EXPORT,
-    DataTaskKind.SHARE_PREPARE,
-        -> DataTaskRunOutcome.OwnershipLost
-}
 
 internal interface DataSyncCoordinatorRuntime {
     suspend fun awaitLegacyDrain()
@@ -140,8 +102,7 @@ internal interface DataSyncCoordinatorRuntime {
         checkpoints: DataTaskCheckpointSink,
     ): DataTaskRunOutcome
 
-    suspend fun persistTimeoutInterruption(claim: DataSyncClaim): Boolean
-    suspend fun timeoutOutcome(claim: DataSyncClaim): DataTaskRunOutcome
+    suspend fun settleTimeout(claim: DataSyncClaim): Boolean
     suspend fun persistOutcome(claim: DataSyncClaim, outcome: DataTaskRunOutcome)
     suspend fun cleanupClaim(claim: DataSyncClaim)
     fun checkpointSink(claim: DataSyncClaim): DataTaskCheckpointSink
@@ -225,13 +186,13 @@ internal class RoomDataSyncCoordinatorRuntime(
     ): DataTaskRunOutcome {
         val wakeLock = ForegroundTaskWakeLock(powerManager, ForegroundTaskOwner.DATA_SYNC)
         return wakeLock.withClaimedExecution {
-            val prepared = prepare(claim)
-            if (prepared is PreparedTask.Refused) return@withClaimedExecution prepared.outcome
-            prepared as PreparedTask.Ready
             val renewingCheckpoints = renewingDataSyncCheckpointSink(
                 delegate = checkpoints,
                 renewLease = ::renewAfterPersistedCheckpoint,
             )
+            val prepared = prepare(claim, renewingCheckpoints)
+            if (prepared is PreparedTask.Refused) return@withClaimedExecution prepared.outcome
+            prepared as PreparedTask.Ready
             if (prepared.request.kind == DataTaskKind.APP_EXPORT) {
                 ServiceQueueLatencyProbe.mark(
                     ServiceQueueOperation.EXPORT,
@@ -242,18 +203,15 @@ internal class RoomDataSyncCoordinatorRuntime(
         }
     }
 
-    override suspend fun persistTimeoutInterruption(claim: DataSyncClaim): Boolean =
-        store.markClaimInterrupted(
+    override suspend fun settleTimeout(claim: DataSyncClaim): Boolean {
+        val item = requireNotNull(claim.item)
+        return store.settleClaimTimeout(
             taskId = claim.taskId,
             taskClaimToken = claim.claimToken,
-            interruption = DataTaskInterruption.SERVICE_TIMEOUT,
-            resultCode = DataTaskResultCode(RESULT_SERVICE_TIMEOUT),
+            itemOrdinal = item.ordinal,
+            itemClaimToken = item.claimToken,
             nowMs = nowMs(),
         )
-
-    override suspend fun timeoutOutcome(claim: DataSyncClaim): DataTaskRunOutcome {
-        val task = requireNotNull(claim.task)
-        return dataSyncTimeoutOutcome(task.kind, task.detail, task.lastCheckpoint)
     }
 
     override suspend fun persistOutcome(claim: DataSyncClaim, outcome: DataTaskRunOutcome) {
@@ -307,7 +265,10 @@ internal class RoomDataSyncCoordinatorRuntime(
 
     override fun nowMs(): Long = System.currentTimeMillis()
 
-    private suspend fun prepare(claim: DataSyncClaim): PreparedTask {
+    private suspend fun prepare(
+        claim: DataSyncClaim,
+        checkpoints: DataTaskCheckpointSink,
+    ): PreparedTask {
         val task = requireNotNull(claim.task)
         val item = requireNotNull(claim.item)
         val executionItem = DataTaskExecutionItem(
@@ -319,7 +280,10 @@ internal class RoomDataSyncCoordinatorRuntime(
         )
         val payload = when (val detail = task.detail) {
             is StoredDataTaskDetail.ArchiveBackup -> prepareBackup(task, detail)
-            is StoredDataTaskDetail.ArchiveRestore -> prepareRestore(claim, task, detail)
+            is StoredDataTaskDetail.ArchiveRestore -> {
+                prepareRestore(claim, task, detail, checkpoints)
+            }
+
             is StoredDataTaskDetail.AppExport -> prepareExport(item, detail)
             is StoredDataTaskDetail.SharePrepare -> return PreparedTask.Refused(
                 DataTaskRunOutcome.TaskFailed(DataTaskResultCode("TASK_KIND_NOT_ACTIVE"))
@@ -378,8 +342,11 @@ internal class RoomDataSyncCoordinatorRuntime(
         claim: DataSyncClaim,
         task: ClaimedDataTask,
         detail: StoredDataTaskDetail.ArchiveRestore,
+        checkpoints: DataTaskCheckpointSink,
     ): PreparedPayload {
-        val uri = when (val source = restoreSourceStager.resolve(claim, detail.source)) {
+        val uri = when (
+            val source = restoreSourceStager.resolve(claim, detail.source, checkpoints)
+        ) {
             is RestoreSourceResolution.Ready -> source.uriString
             RestoreSourceResolution.WaitingForSource -> return PreparedPayload.Refused(
                 DataTaskRunOutcome.WaitingForSource(
@@ -627,7 +594,6 @@ internal class RoomDataSyncCoordinatorRuntime(
 
     private companion object {
         const val CLAIM_LEASE_MILLIS = ForegroundTaskWakeLock.LEASE_MILLIS
-        const val RESULT_SERVICE_TIMEOUT = "SERVICE_TIMEOUT"
     }
 }
 
@@ -649,6 +615,7 @@ class DataSyncCoordinator internal constructor(
     private var drainedCallback: (() -> Unit)? = null
     private var activeClaim: DataSyncClaim? = null
     private val drainLaunches = AtomicInteger()
+    private val generationToken = UUID.randomUUID().toString()
 
     internal constructor(
         dispatcher: CoroutineDispatcher,
@@ -658,8 +625,7 @@ class DataSyncCoordinator internal constructor(
         recoverClaims: suspend (String, (UUID, String) -> Boolean) -> Unit,
         claimNext: suspend (String, String) -> DataSyncClaim?,
         executeClaim: suspend (DataSyncClaim, DataTaskCheckpointSink) -> DataTaskRunOutcome,
-        persistTimeoutInterruption: suspend (DataSyncClaim) -> Boolean,
-        timeoutOutcome: suspend (DataSyncClaim) -> DataTaskRunOutcome,
+        settleTimeout: suspend (DataSyncClaim) -> Boolean,
         persistOutcome: suspend (DataSyncClaim, DataTaskRunOutcome) -> Unit,
         cleanupClaim: suspend (DataSyncClaim) -> Unit,
         checkpointSink: (DataSyncClaim) -> DataTaskCheckpointSink,
@@ -686,11 +652,8 @@ class DataSyncCoordinator internal constructor(
                 checkpoints: DataTaskCheckpointSink,
             ) = executeClaim(claim, checkpoints)
 
-            override suspend fun persistTimeoutInterruption(claim: DataSyncClaim): Boolean =
-                persistTimeoutInterruption(claim)
-
-            override suspend fun timeoutOutcome(claim: DataSyncClaim): DataTaskRunOutcome =
-                timeoutOutcome(claim)
+            override suspend fun settleTimeout(claim: DataSyncClaim): Boolean =
+                settleTimeout(claim)
 
             override suspend fun persistOutcome(
                 claim: DataSyncClaim,
@@ -728,29 +691,37 @@ class DataSyncCoordinator internal constructor(
         }
     }
 
-    fun stopClaimsAndInterrupt() {
+    suspend fun stopClaimsAndInterrupt() {
         val (claim, drainJob) = synchronized(lock) {
             claimsEnabled = false
             activeClaim to drain
         }
         if (claim == null) {
             drainJob?.cancel()
-            return
+        } else {
+            ownerRegistry.cancelActiveOwnedBy(claim.claimToken)
         }
-        scope.launch {
-            try {
-                runtime.persistTimeoutInterruption(claim)
-            } catch (_: Exception) {
-                // The platform timeout still requires prompt interruption when Room is unavailable.
-            } finally {
-                ownerRegistry.cancelActiveOwnedBy(claim.claimToken)
-            }
-        }
+        drainJob?.join()
     }
 
     private suspend fun drainQueue() {
         var infrastructureFailed = false
+        var parkedBeforeClaim = false
+        var laneAcquired = false
         try {
+            // Consume the wake represented by this generation before any fallible operation. A later
+            // wake can then be distinguished and relaunched if infrastructure fails during unwind.
+            synchronized(lock) { wakePending = false }
+            ownerRegistry.acquireLane(generationToken)
+            laneAcquired = true
+            if (!claimsAreEnabled()) return
+            runtime.awaitLegacyDrain()
+            if (!claimsAreEnabled()) return
+            if (!runtime.awaitLaunchSweep()) {
+                parkedBeforeClaim = true
+                return
+            }
+            if (!claimsAreEnabled()) return
             runtime.recoverClaims(sessionToken, ownerRegistry::isLive)
             while (claimsAreEnabled()) {
                 synchronized(lock) { wakePending = false }
@@ -761,11 +732,12 @@ class DataSyncCoordinator internal constructor(
                 lastClaimTokenForTest = claimToken
                 ownerRegistry.registerProvisional(claimToken)
                 val claim = try {
-                    // A Room transaction may commit the claim before cancellation is delivered back
-                    // to this coroutine. Observe its result so timeout recovery can settle that exact
-                    // claim instead of leaving an ownerless lease behind.
+                    // Room may commit before cancellation returns. Observe the result, but bound the
+                    // non-cancellable window below the service timeout shutdown deadline.
                     withContext(NonCancellable) {
-                        runtime.claimNext(sessionToken, claimToken)
+                        withTimeout(CLAIM_TRANSITION_TIMEOUT) {
+                            runtime.claimNext(sessionToken, claimToken)
+                        }
                     }
                 } catch (failure: Throwable) {
                     ownerRegistry.unregisterProvisional(claimToken)
@@ -796,13 +768,15 @@ class DataSyncCoordinator internal constructor(
                     } else {
                         settleClaimTimedOutBeforeExecution(ownedClaim)
                     }
-                } catch (cancelled: CancellationException) {
-                    if (claimsAreEnabled()) throw cancelled
+                } catch (_: CancellationException) {
+                    // The claimed child owns its bounded settlement before propagating cancellation.
                 } finally {
                     synchronized(lock) {
                         if (activeClaim?.claimToken == claimToken) activeClaim = null
                     }
-                    ownerRegistry.unregister(claim.taskId, claimToken)
+                    withContext(NonCancellable) {
+                        ownerRegistry.unregister(claim.taskId, claimToken)
+                    }
                 }
             }
         } catch (cancelled: CancellationException) {
@@ -810,9 +784,13 @@ class DataSyncCoordinator internal constructor(
         } catch (_: Exception) {
             infrastructureFailed = true
         } finally {
+            if (laneAcquired) {
+                withContext(NonCancellable) {
+                    ownerRegistry.releaseLane(generationToken)
+                }
+            }
             val stopCallback = synchronized(lock) {
                 drain = null
-                if (infrastructureFailed) claimsEnabled = false
                 when {
                     !claimsEnabled -> drainedCallback
                     wakePending -> {
@@ -821,6 +799,7 @@ class DataSyncCoordinator internal constructor(
                         null
                     }
 
+                    infrastructureFailed || parkedBeforeClaim -> drainedCallback
                     else -> null
                 }
             }
@@ -829,64 +808,72 @@ class DataSyncCoordinator internal constructor(
     }
 
     private suspend fun settleClaimTimedOutBeforeExecution(claim: DataSyncClaim) {
-        withContext(NonCancellable) {
-            try {
-                runtime.persistTimeoutInterruption(claim)
-            } catch (_: Exception) {
-                // Continue the platform timeout unwind even when Room is temporarily unavailable.
-            }
+        runBoundedSettlement {
+            runtime.settleTimeout(claim)
             runtime.cleanupClaim(claim)
-            runtime.persistOutcome(claim, runtime.timeoutOutcome(claim))
         }
     }
 
     private suspend fun executeOwnedClaim(claim: DataSyncClaim) = coroutineScope {
-        val child = async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-            executeAndSettle(claim)
+        val enterExecution = CompletableDeferred<Unit>()
+        val child = async(start = CoroutineStart.UNDISPATCHED) {
+            executeAndSettle(claim, enterExecution)
         }
-        check(ownerRegistry.attachChild(claim.taskId, claim.claimToken, child)) {
-            "Data task claim lost its process-local owner before child attachment"
+        if (!ownerRegistry.attachChild(claim.taskId, claim.claimToken, child)) {
+            child.cancel()
+            enterExecution.complete(Unit)
+            error("Data task claim lost its process-local owner before child attachment")
         }
-        child.start()
+        enterExecution.complete(Unit)
         child.await()
     }
 
-    private suspend fun executeAndSettle(claim: DataSyncClaim) {
+    private suspend fun executeAndSettle(
+        claim: DataSyncClaim,
+        enterExecution: CompletableDeferred<Unit>,
+    ) {
         try {
             val outcome = try {
-                if (!runtime.awaitLaunchSweep()) {
-                    DataTaskRunOutcome.TaskFailed(
-                        DataTaskResultCode("LAUNCH_SWEEP_NOT_READY")
-                    )
-                } else {
-                    runtime.executeClaim(claim, runtime.checkpointSink(claim))
-                }
+                enterExecution.await()
+                runtime.executeClaim(claim, runtime.checkpointSink(claim))
             } catch (cancelled: CancellationException) {
-                withContext(NonCancellable) {
-                    runtime.cleanupClaim(claim)
-                    val outcome = if (claimsAreEnabled()) {
-                        DataTaskRunOutcome.Cancelled
+                runBoundedSettlement {
+                    if (claimsAreEnabled()) {
+                        runtime.cleanupClaim(claim)
+                        runtime.persistOutcome(claim, DataTaskRunOutcome.Cancelled)
                     } else {
-                        runtime.timeoutOutcome(claim)
+                        runtime.settleTimeout(claim)
+                        runtime.cleanupClaim(claim)
                     }
-                    runtime.persistOutcome(claim, outcome)
                 }
                 throw cancelled
             } catch (_: Exception) {
                 DataTaskRunOutcome.TaskFailed(DataTaskResultCode("TASK_EXECUTION_FAILED"))
             }
-            withContext(NonCancellable) {
+            runBoundedSettlement {
                 runtime.persistOutcome(claim, outcome)
                 runtime.cleanupClaim(claim)
             }
         } finally {
-            withContext(NonCancellable) {
-                ownerRegistry.unregister(claim.taskId, claim.claimToken)
-            }
+            // The enclosing drain unregisters this claim only after this wrapper exits.
         }
     }
 
+    private suspend fun runBoundedSettlement(block: suspend () -> Unit) {
+        val completed = withContext(NonCancellable) {
+            withTimeoutOrNull(CLAIM_TRANSITION_TIMEOUT) {
+                block()
+                true
+            } ?: false
+        }
+        check(completed) { "Data task settlement timed out" }
+    }
+
     private fun claimsAreEnabled(): Boolean = synchronized(lock) { claimsEnabled }
+
+    private companion object {
+        val CLAIM_TRANSITION_TIMEOUT = 2.seconds
+    }
 }
 
 private fun DataTaskState.noLongerNeedsRestoreSource(): Boolean = when (this) {

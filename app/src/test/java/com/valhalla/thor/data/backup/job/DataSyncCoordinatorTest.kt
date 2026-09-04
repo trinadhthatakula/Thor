@@ -3,33 +3,30 @@
 
 package com.valhalla.thor.data.backup.job
 
-import com.valhalla.thor.domain.model.DataTaskCheckpoint
 import com.valhalla.thor.domain.model.DataTaskItemResult
-import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DataTaskItemTerminalState
-import com.valhalla.thor.domain.model.DataTaskKind
-import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
-import com.valhalla.thor.domain.model.DataTaskStage
-import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
-import com.valhalla.thor.domain.model.StoredDataDestination
-import com.valhalla.thor.domain.model.StoredDataTaskDetail
-import com.valhalla.thor.domain.model.StoredRestoreSource
 import java.util.ArrayDeque
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DataSyncCoordinatorTest {
@@ -131,6 +128,81 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
+    fun `timed out normal settlement parks drain before another claim`() = runTest {
+        val settlementStarted = CompletableDeferred<Unit>()
+        var claimCalls = 0
+        var stops = 0
+        val coordinator = coordinator(
+            claimNext = { _, token ->
+                claimCalls += 1
+                when (claimCalls) {
+                    1 -> claim(1).copy(claimToken = token)
+                    2 -> claim(2).copy(claimToken = token)
+                    else -> null
+                }
+            },
+            executeClaim = { _, _ -> completed() },
+            persistOutcome = { claimed, _ ->
+                if (claimed.taskId == TASK_1) {
+                    settlementStarted.complete(Unit)
+                    awaitCancellation()
+                }
+            },
+        )
+
+        coordinator.wake { stops += 1 }
+        runCurrent()
+        settlementStarted.await()
+        advanceTimeBy(2.seconds + 1.milliseconds)
+        advanceUntilIdle()
+
+        assertEquals(1, claimCalls)
+        assertEquals(1, stops)
+    }
+
+    @Test
+    fun `timed out cancellation settlement parks drain before another claim`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        val runnerStarted = CompletableDeferred<Unit>()
+        val settlementStarted = CompletableDeferred<Unit>()
+        var claimCalls = 0
+        var stops = 0
+        val coordinator = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                claimCalls += 1
+                when (claimCalls) {
+                    1 -> claim(1).copy(claimToken = token)
+                    2 -> claim(2).copy(claimToken = token)
+                    else -> null
+                }
+            },
+            executeClaim = { _, _ ->
+                runnerStarted.complete(Unit)
+                awaitCancellation()
+            },
+            persistOutcome = { claimed, outcome ->
+                if (claimed.taskId == TASK_1 && outcome is DataTaskRunOutcome.Cancelled) {
+                    settlementStarted.complete(Unit)
+                    awaitCancellation()
+                }
+            },
+        )
+
+        coordinator.wake { stops += 1 }
+        runCurrent()
+        runnerStarted.await()
+        assertTrue(registry.cancelActive(TASK_1))
+        runCurrent()
+        settlementStarted.await()
+        advanceTimeBy(2.seconds + 1.milliseconds)
+        advanceUntilIdle()
+
+        assertEquals(1, claimCalls)
+        assertEquals(1, stops)
+    }
+
+    @Test
     fun `claim token is registered before claim and stays live through cleanup and settlement`() =
         runTest {
             val registry = DataTaskOwnerRegistry()
@@ -184,14 +256,9 @@ class DataSyncCoordinatorTest {
                         events += "child-cancelled"
                     }
                 },
-                persistTimeoutInterruption = {
-                    events += "interrupt"
+                settleTimeout = {
+                    events += "timeout-settle"
                     true
-                },
-                timeoutOutcome = {
-                    DataTaskRunOutcome.WaitingForAuthentication(
-                        DataTaskResultCode("SERVICE_TIMEOUT")
-                    )
                 },
                 cleanupClaim = { events += "cleanup" },
                 persistOutcome = { _, outcome -> events += "settle:${outcome::class.simpleName}" },
@@ -205,10 +272,9 @@ class DataSyncCoordinatorTest {
             assertEquals(1, claimCalls)
             assertEquals(
                 listOf(
-                    "interrupt",
                     "child-cancelled",
+                    "timeout-settle",
                     "cleanup",
-                    "settle:WaitingForAuthentication",
                     "stop",
                 ),
                 events,
@@ -235,14 +301,9 @@ class DataSyncCoordinatorTest {
                 executed = true
                 completed()
             },
-            persistTimeoutInterruption = {
-                events += "interrupt"
+            settleTimeout = {
+                events += "timeout-settle"
                 true
-            },
-            timeoutOutcome = {
-                DataTaskRunOutcome.WaitingForAuthentication(
-                    DataTaskResultCode("SERVICE_TIMEOUT")
-                )
             },
             cleanupClaim = { events += "cleanup" },
             persistOutcome = { _, outcome -> events += "settle:${outcome::class.simpleName}" },
@@ -251,73 +312,151 @@ class DataSyncCoordinatorTest {
         coordinator.wake { events += "stop" }
         testScheduler.runCurrent()
         claimEntered.await()
-        coordinator.stopClaimsAndInterrupt()
+        val stopping = launch { coordinator.stopClaimsAndInterrupt() }
+        runCurrent()
         releaseClaim.complete(Unit)
         advanceUntilIdle()
+        stopping.join()
 
         assertFalse(executed)
         assertEquals(
-            listOf("interrupt", "cleanup", "settle:WaitingForAuthentication", "stop"),
+            listOf("timeout-settle", "cleanup", "stop"),
             events,
         )
     }
 
     @Test
-    fun `timeout outcome follows operation-specific recovery policy`() {
-        val backup = StoredDataTaskDetail.ArchiveBackup(
-            packageName = "com.example.app",
-            dataClassIds = listOf("apk"),
-            includeBundle = false,
-            kdfSaltBase64 = "c2FsdA==",
-            destination = StoredDataDestination.ArchiveStore,
-            deterministicStagingIdentity = "backup-stage",
-        )
-        val awaitingRestore = restoreDetail(StoredRestoreSource.AwaitingTransientGrant)
-        val durableRestore =
-            restoreDetail(StoredRestoreSource.PrivateCopy("data_tasks/task/source.thor"))
-        val breadcrumb = RestoreMutationBreadcrumb("com.example.app", "Example", 900L)
-        val destructiveCheckpoint = DataTaskCheckpoint(
-            stage = DataTaskStage.RESTORING,
-            completed = 1,
-            total = 2,
-            activeItemOrdinal = 0,
-            activeItemLabel = "Example",
-            destructiveStarted = true,
-            restoreMutationBreadcrumb = breadcrumb,
-            recordedAtEpochMs = 1_000L,
-        )
-        val export = StoredDataTaskDetail.AppExport(
-            requestedFormat = BundleFormat.APK,
-            destination = StoredDataDestination.Downloads,
-            namingLabel = "Example",
-            publicationPolicy = DataTaskPublicationPolicy.PUBLIC_DOCUMENT,
-            deterministicStagingIdentity = "export-stage",
+    fun `launch sweep timeout parks generation before any Room claim`() = runTest {
+        var claimCalls = 0
+        var stops = 0
+        val coordinator = coordinator(
+            awaitLaunchSweep = { false },
+            claimNext = { _, _ ->
+                claimCalls += 1
+                claim(1)
+            },
         )
 
-        assertTrue(
-            dataSyncTimeoutOutcome(DataTaskKind.ARCHIVE_BACKUP, backup, null) is
-                    DataTaskRunOutcome.WaitingForAuthentication
+        coordinator.wake { stops += 1 }
+        advanceUntilIdle()
+
+        assertEquals(0, claimCalls)
+        assertEquals(1, stops)
+    }
+
+    @Test
+    fun `replacement coordinator waits for live generation before claiming later row`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        val firstRunning = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        var firstClaimed = false
+        var secondClaimed = false
+        val first = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                if (firstClaimed) null else claim(1).copy(claimToken = token).also {
+                    firstClaimed = true
+                }
+            },
+            executeClaim = { claimed, _ ->
+                events += "run:${claimed.taskId}"
+                firstRunning.complete(Unit)
+                releaseFirst.await()
+                completed()
+            },
         )
-        assertTrue(
-            dataSyncTimeoutOutcome(DataTaskKind.ARCHIVE_RESTORE, awaitingRestore, null) is
-                    DataTaskRunOutcome.WaitingForSource
+        val second = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                if (secondClaimed) null else claim(2).copy(claimToken = token).also {
+                    secondClaimed = true
+                }
+            },
+            executeClaim = { claimed, _ ->
+                events += "run:${claimed.taskId}"
+                completed()
+            },
         )
-        assertTrue(
-            dataSyncTimeoutOutcome(DataTaskKind.ARCHIVE_RESTORE, durableRestore, null) is
-                    DataTaskRunOutcome.WaitingForAuthentication
+
+        first.wake {}
+        runCurrent()
+        firstRunning.await()
+        second.wake {}
+        runCurrent()
+
+        assertEquals(listOf("run:$TASK_1"), events)
+        assertFalse(secondClaimed)
+
+        releaseFirst.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf("run:$TASK_1", "run:$TASK_2"), events)
+    }
+
+    @Test
+    fun `cancellation retained before child entry still settles exact claim`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        var executed = false
+        val settled = mutableListOf<DataTaskRunOutcome>()
+        var claimed = false
+        val coordinator = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                if (claimed) null else claim(1).copy(claimToken = token).also { claimed = true }
+            },
+            executeClaim = { _, _ ->
+                executed = true
+                completed()
+            },
+            persistOutcome = { _, outcome -> settled += outcome },
         )
-        assertEquals(
-            DataTaskRunOutcome.InterruptedReview(DataTaskResultCode("SERVICE_TIMEOUT"), breadcrumb),
-            dataSyncTimeoutOutcome(
-                DataTaskKind.ARCHIVE_RESTORE,
-                durableRestore.copy(mutationBreadcrumb = breadcrumb),
-                destructiveCheckpoint,
-            ),
+
+        coordinator.wake(
+            onClaimed = { taskId, _ -> assertTrue(registry.cancelActive(taskId)) },
+            onDrained = {},
         )
-        assertEquals(
-            DataTaskRunOutcome.OwnershipLost,
-            dataSyncTimeoutOutcome(DataTaskKind.APP_EXPORT, export, null),
+        advanceUntilIdle()
+
+        assertFalse(executed)
+        assertEquals(listOf(DataTaskRunOutcome.Cancelled), settled)
+    }
+
+    @Test
+    fun `wake concurrent with infrastructure failure launches a fresh drain`() = runTest {
+        val recoveryEntered = CompletableDeferred<Unit>()
+        val failFirstRecovery = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        var recoveryCalls = 0
+        var claimed = false
+        val coordinator = coordinator(
+            recoverClaims = { _, _ ->
+                recoveryCalls += 1
+                if (recoveryCalls == 1) {
+                    recoveryEntered.complete(Unit)
+                    failFirstRecovery.await()
+                    error("room unavailable")
+                }
+            },
+            claimNext = { _, token ->
+                if (claimed) null else claim(1).copy(claimToken = token).also { claimed = true }
+            },
+            executeClaim = { claim, _ ->
+                events += "run:${claim.taskId}"
+                completed()
+            },
         )
+
+        coordinator.wake { events += "stop:first" }
+        runCurrent()
+        recoveryEntered.await()
+        coordinator.wake { events += "stop:latest" }
+        failFirstRecovery.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(2, recoveryCalls)
+        assertTrue(events.contains("run:$TASK_1"))
+        assertEquals("stop:latest", events.last())
     }
 
     @Test
@@ -359,10 +498,7 @@ class DataSyncCoordinatorTest {
         executeClaim: suspend (DataSyncClaim, DataTaskCheckpointSink) -> DataTaskRunOutcome = { _, _ ->
             completed()
         },
-        persistTimeoutInterruption: suspend (DataSyncClaim) -> Boolean = { true },
-        timeoutOutcome: suspend (DataSyncClaim) -> DataTaskRunOutcome = {
-            DataTaskRunOutcome.Cancelled
-        },
+        settleTimeout: suspend (DataSyncClaim) -> Boolean = { true },
         persistOutcome: suspend (DataSyncClaim, DataTaskRunOutcome) -> Unit = { _, _ -> },
         cleanupClaim: suspend (DataSyncClaim) -> Unit = {},
     ) = DataSyncCoordinator(
@@ -373,26 +509,15 @@ class DataSyncCoordinatorTest {
         recoverClaims = recoverClaims,
         claimNext = claimNext,
         executeClaim = executeClaim,
-        persistTimeoutInterruption = persistTimeoutInterruption,
-        timeoutOutcome = timeoutOutcome,
+        settleTimeout = settleTimeout,
         persistOutcome = persistOutcome,
         cleanupClaim = cleanupClaim,
-        checkpointSink = { DataTaskCheckpointSink { com.valhalla.thor.data.backup.job.DataTaskSinkWrite.APPLIED } },
+        checkpointSink = { DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED } },
         finishDrainIfEmpty = { onEmpty -> onEmpty(); true },
         sessionToken = "session",
         claimTokenFactory = { "claim-${nextClaim++}" },
         nowMs = { 1_000L },
     )
-
-    private fun restoreDetail(source: StoredRestoreSource) =
-        StoredDataTaskDetail.ArchiveRestore(
-            expectedPackageName = "com.example.app",
-            dataClassIds = listOf("apk"),
-            restoreObb = false,
-            source = source,
-            mutationBreadcrumb = null,
-            deterministicStagingIdentity = "restore-stage",
-        )
 
     private fun claim(number: Int) = DataSyncClaim(
         taskId = if (number == 1) TASK_1 else TASK_2,
