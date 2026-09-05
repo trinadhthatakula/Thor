@@ -7,6 +7,9 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.source.local.room.AppDatabase
+import com.valhalla.thor.data.source.local.room.SweepRequestEntity
+import com.valhalla.thor.data.source.local.room.SweepRequestSourceEntity
+import com.valhalla.thor.data.source.local.room.SweepTargetEntity
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
@@ -76,6 +79,63 @@ class RoomPrivilegeSweepStoreTest {
             )
             assertEquals(2, loaded.unresolved)
         }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `stored legacy work identity stays distinct from claimed execution identity`() = runTest {
+        val requestId = UUID.fromString("10000000-0000-0000-0000-000000000001")
+        val workId = UUID.fromString("20000000-0000-0000-0000-000000000002")
+        val dao = database.privilegeSweepDao()
+        dao.insertRequest(
+            SweepRequestEntity(
+                requestId = requestId.toString(),
+                workId = workId.toString(),
+                operation = PrivilegeSweepOperation.CLEAR_CACHE.name,
+                freezerMode = null,
+                userId = 10,
+                sourceSurface = PrivilegeSweepSource.MAIN.name,
+                createdAtEpochMs = 1L,
+                terminalState = null,
+                unresolved = 1,
+                terminalAtEpochMs = null,
+                retainUntilEpochMs = null,
+                executionId = requestId.toString(),
+            )
+        )
+        dao.insertTargets(
+            listOf(
+                SweepTargetEntity(
+                    requestId = requestId.toString(),
+                    ordinal = 0,
+                    packageName = "com.example.identity",
+                )
+            )
+        )
+        dao.upsertSources(
+            listOf(
+                SweepRequestSourceEntity(
+                    requestId = requestId.toString(),
+                    sourceSurface = PrivilegeSweepSource.MAIN.name,
+                    associatedAtEpochMs = 1L,
+                )
+            )
+        )
+
+        val stored = checkNotNull(store.load(requestId))
+        val claimed = checkNotNull(
+            store.claimOldestRunnableRequest(
+                sessionToken = "session-identity",
+                claimToken = "request-identity",
+                nowMs = 2_000L,
+                leaseUntilMs = 3_000L,
+            )
+        )
+
+        assertEquals(requestId, stored.requestId)
+        assertEquals(workId, stored.workId)
+        assertEquals(workId, stored.executionId)
+        assertEquals(requestId, claimed.executionId)
+    }
 
     @Test
     fun `claim renew complete and finalize map every token and target result field`() = runTest {

@@ -250,7 +250,7 @@ class RoomPrivilegeSweepStore(
         }
         return StoredPrivilegeSweep(
             requestId = UUID.fromString(request.requestId),
-            workId = UUID.fromString(request.executionId),
+            workId = UUID.fromString(request.workId),
             operation = PrivilegeSweepOperation.valueOf(request.operation),
             freezerMode = request.freezerMode?.let(FreezerMode::valueOf),
             userId = request.userId,
