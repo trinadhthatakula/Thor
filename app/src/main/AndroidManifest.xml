@@ -423,6 +423,19 @@
             android:name=".data.backup.service.DataTaskCancelReceiver"
             android:exported="false" />
 
+        <service
+            android:name=".data.freezer.PrivilegeSweepService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Executes explicit user-requested queued app-management operations such as freeze, unfreeze, per-app cache clearing, and verified reinstall through a user-configured privileged gateway, with visible progress and cancellation." />
+        </service>
+
+        <receiver
+            android:name=".data.freezer.PrivilegeSweepCancelReceiver"
+            android:exported="false" />
+
         <!-- Type overlay onto the service work-runtime declares. tools:node="merge" so this adds the
              attribute rather than replacing the library's declaration. -->
         <service

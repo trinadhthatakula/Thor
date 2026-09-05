@@ -30,11 +30,16 @@ internal class DefaultPrivilegeSweepPackageStateReader(
     override fun stateOf(packageName: String): FreezeState = reader.stateOf(packageName)
 }
 
+internal data class PrivilegeSweepItemExecutionResult(
+    val outcome: SweepAttemptOutcome,
+    val rootLaneDegraded: Boolean,
+)
+
 internal fun interface PrivilegeSweepItemExecutor {
     suspend fun execute(
         snapshot: StoredPrivilegeSweep,
         packageName: String,
-    ): SweepAttemptOutcome
+    ): PrivilegeSweepItemExecutionResult
 }
 
 @Single(binds = [PrivilegeSweepItemExecutor::class])
@@ -46,7 +51,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
     override suspend fun execute(
         snapshot: StoredPrivilegeSweep,
         packageName: String,
-    ): SweepAttemptOutcome = try {
+    ): PrivilegeSweepItemExecutionResult {
         val execution = PrivilegeExecutionContext(
             lane = PrivilegeExecutionLane.SWEEP,
             commandClass = snapshot.operation.commandClass(),
@@ -55,60 +60,66 @@ internal class DefaultPrivilegeSweepItemExecutor(
             sweepRequestId = snapshot.requestId,
             commandTimeout = PrivilegeExecutionTimeouts.SWEEP_COMMAND,
         )
-        when (
-            val lease = manageApp.withPackageOperation(
-                packageName = packageName,
-                owner = snapshot.operation.owner(),
-                execution = execution,
-            ) {
-                val state = stateReader.stateOf(packageName)
-                when (snapshot.operation) {
-                    PrivilegeSweepOperation.FREEZE -> when (state) {
-                        FreezeState.FROZEN -> SweepAttemptOutcome.SUCCEEDED
-                        FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
-                        FreezeState.ACTIVE -> when (snapshot.freezerMode) {
-                            FreezerMode.FREEZE -> manageApp
-                                .setAppDisabledUncoordinated(packageName, true, execution)
-                                .toAttemptOutcome()
+        val outcome = try {
+            when (
+                val lease = manageApp.withPackageOperation(
+                    packageName = packageName,
+                    owner = snapshot.operation.owner(),
+                    execution = execution,
+                ) {
+                    val state = stateReader.stateOf(packageName)
+                    when (snapshot.operation) {
+                        PrivilegeSweepOperation.FREEZE -> when (state) {
+                            FreezeState.FROZEN -> SweepAttemptOutcome.SUCCEEDED
+                            FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
+                            FreezeState.ACTIVE -> when (snapshot.freezerMode) {
+                                FreezerMode.FREEZE -> manageApp
+                                    .setAppDisabledUncoordinated(packageName, true, execution)
+                                    .toAttemptOutcome()
 
-                            FreezerMode.SUSPEND -> manageApp
-                                .setAppSuspendedUncoordinated(packageName, true, execution)
-                                .toAttemptOutcome()
+                                FreezerMode.SUSPEND -> manageApp
+                                    .setAppSuspendedUncoordinated(packageName, true, execution)
+                                    .toAttemptOutcome()
 
-                            null -> SweepAttemptOutcome.FAILED
+                                null -> SweepAttemptOutcome.FAILED
+                            }
                         }
-                    }
 
-                    PrivilegeSweepOperation.UNFREEZE -> when (state) {
-                        FreezeState.ACTIVE -> SweepAttemptOutcome.SUCCEEDED
-                        FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
-                        FreezeState.FROZEN -> manageApp
-                            .forceUnfreezeUncoordinated(packageName, execution)
+                        PrivilegeSweepOperation.UNFREEZE -> when (state) {
+                            FreezeState.ACTIVE -> SweepAttemptOutcome.SUCCEEDED
+                            FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
+                            FreezeState.FROZEN -> manageApp
+                                .forceUnfreezeUncoordinated(packageName, execution)
+                                .toAttemptOutcome()
+                        }
+
+                        PrivilegeSweepOperation.CLEAR_CACHE -> when (state) {
+                            FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
+                            FreezeState.ACTIVE, FreezeState.FROZEN -> manageApp
+                                .clearCacheUncoordinated(packageName, execution)
+                                .toAttemptOutcome()
+                        }
+
+                        PrivilegeSweepOperation.REINSTALL -> manageApp
+                            .reinstallAppWithGoogleUncoordinated(packageName, execution)
                             .toAttemptOutcome()
                     }
-
-                    PrivilegeSweepOperation.CLEAR_CACHE -> when (state) {
-                        FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
-                        FreezeState.ACTIVE, FreezeState.FROZEN -> manageApp
-                            .clearCacheUncoordinated(packageName, execution)
-                            .toAttemptOutcome()
-                    }
-
-                    PrivilegeSweepOperation.REINSTALL -> manageApp
-                        .reinstallAppWithGoogleUncoordinated(packageName, execution)
-                        .toAttemptOutcome()
                 }
+            ) {
+                is PackageLeaseResult.Acquired -> lease.value
+                is PackageLeaseResult.Busy -> SweepAttemptOutcome.BUSY
             }
-        ) {
-            is PackageLeaseResult.Acquired -> lease.value
-            is PackageLeaseResult.Busy -> SweepAttemptOutcome.BUSY
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: PackageOperationBusy) {
+            SweepAttemptOutcome.BUSY
+        } catch (_: Exception) {
+            SweepAttemptOutcome.FAILED
         }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: PackageOperationBusy) {
-        SweepAttemptOutcome.BUSY
-    } catch (_: Exception) {
-        SweepAttemptOutcome.FAILED
+        return PrivilegeSweepItemExecutionResult(
+            outcome = outcome,
+            rootLaneDegraded = execution.provenance.usedDegradedRootFallback,
+        )
     }
 
     private fun Result<*>.toAttemptOutcome(): SweepAttemptOutcome {

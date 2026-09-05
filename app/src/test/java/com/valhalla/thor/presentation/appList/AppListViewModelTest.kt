@@ -629,15 +629,17 @@ class AppListViewModelTest {
     }
 
     @Test
-    fun `app-list cancel action reaches the durable queue`() = runTest {
+    fun `app-list cancel action targets only the displayed request`() = runTest {
         val controller = FakePrivilegeSweepController()
+        val requestId = UUID(0L, 76L)
         val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
         runCurrent()
 
         vm.cancelSweepQueue()
+        vm.cancelSweepQueue(requestId)
         runCurrent()
 
-        assertEquals(1, controller.cancelCalls)
+        assertEquals(listOf(requestId), controller.cancelledRequestIds)
     }
 
     private fun appListStatus(requestId: UUID, phase: PrivilegeSweepPhase) = PrivilegeSweepStatus(

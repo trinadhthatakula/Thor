@@ -117,6 +117,13 @@ data class StoredPrivilegeSweep(
     val retainUntilEpochMs: Long?,
     val sourceAssociations: Set<String> = setOf(source.name),
     val targetSnapshots: List<StoredPrivilegeSweepTarget> = emptyList(),
+    val requestState: PrivilegeSweepRequestState = terminalState?.let {
+        PrivilegeSweepRequestState.valueOf(it.name)
+    } ?: PrivilegeSweepRequestState.QUEUED,
+    val blockReason: PrivilegeSweepBlockReason? = null,
+    val serviceSessionToken: String? = null,
+    val claimToken: String? = null,
+    val claimLeaseExpiresAtEpochMs: Long? = null,
 ) {
     @Suppress("DEPRECATION")
     val executionId: UUID
@@ -302,6 +309,37 @@ interface PrivilegeSweepStore {
 
     suspend fun finishDrainIfQueueEmpty(onQueueEmpty: () -> Unit): Boolean =
         claimAwareStoreUnavailable()
+
+    /** Exact-owner exit settlement; never replays an ambiguously dispatched target. */
+    suspend fun settleClaimedRequestAfterExit(
+        requestId: UUID,
+        requestClaimToken: String,
+        nowMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun markUnclaimedStartBlocked(
+        requestId: UUID,
+        reason: PrivilegeSweepBlockReason,
+        nowMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun blockClaimedRequestForMissingPrivilege(
+        requestId: UUID,
+        requestClaimToken: String,
+        nowMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun resumeBlockedRequest(
+        requestId: UUID,
+        expectedReason: PrivilegeSweepBlockReason,
+        nowMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun markLegacyTargetsUnknown(
+        requestId: UUID,
+        ambiguousOrdinals: List<Int>,
+        nowMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
 
     @Deprecated("Compatibility for PrivilegeSweepWorker; remove in Task 12")
     suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep?

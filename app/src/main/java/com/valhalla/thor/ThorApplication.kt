@@ -271,11 +271,11 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
         }
 
         // WorkManager is initialized by workManagerFactory() above. Reconcile only afterwards, in
-        // the retained application scope, so process death cannot leave a Room snapshot spinning
-        // forever after WorkManager has already pruned or terminalized its row.
+        // the retained application scope. Nonterminal rows belong to service cutover/recovery;
+        // cancelled or pruned legacy WorkInfo is not evidence of their operation outcome.
         appScope.launch {
             try {
-                privilegeSweepReconciler.reconcile()
+                privilegeSweepReconciler.pruneRetained()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

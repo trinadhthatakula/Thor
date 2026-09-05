@@ -923,8 +923,9 @@ class AppListViewModel(
         _rawState.update { it.copy(sweepProgress = null) }
     }
 
-    fun cancelSweepQueue() {
-        viewModelScope.launch { sweepController.cancelQueue() }
+    fun cancelSweepQueue(requestId: UUID? = null) {
+        val displayedRequestId = requestId ?: return
+        viewModelScope.launch { sweepController.cancel(displayedRequestId) }
     }
 
     fun performMultiAction(action: MultiAppAction) {

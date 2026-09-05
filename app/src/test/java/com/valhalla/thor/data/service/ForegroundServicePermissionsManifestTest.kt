@@ -4,7 +4,6 @@
 package com.valhalla.thor.data.service
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -32,14 +31,14 @@ class ForegroundServicePermissionsManifestTest {
     }
 
     @Test
-    fun `manifest activates only the data queue components available in task nine`() {
+    fun `manifest activates both independent foreground queue component pairs`() {
         val xml = manifestText
         val receivers = receiverNames(xml)
 
         assertTrue(xml.contains("DataSyncService"))
         assertTrue(receivers.any { it.contains("DataTaskCancelReceiver") })
-        assertFalse(xml.contains("PrivilegeSweepService"))
-        assertFalse(receivers.any { it.contains("PrivilegeSweep", ignoreCase = true) })
+        assertTrue(xml.contains("PrivilegeSweepService"))
+        assertTrue(receivers.any { it.contains("PrivilegeSweepCancelReceiver") })
     }
 
     @Test

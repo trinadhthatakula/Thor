@@ -41,6 +41,9 @@ abstract class PrivilegeSweepDao {
     @Insert
     abstract suspend fun insertRequest(request: SweepRequestEntity)
 
+    @Query("SELECT COALESCE(MAX(queue_sequence), 0) + 1 FROM sweep_requests")
+    protected abstract suspend fun nextQueueSequence(): Long
+
     @Insert
     abstract suspend fun insertTargets(targets: List<SweepTargetEntity>)
 
@@ -94,11 +97,16 @@ abstract class PrivilegeSweepDao {
             )
         }
 
-        insertRequest(request)
+        val sequencedRequest = if (request.queueSequence == 0L) {
+            request.copy(queueSequence = nextQueueSequence())
+        } else {
+            request
+        }
+        insertRequest(sequencedRequest)
         insertTargets(targets)
         upsertSources(sources)
         return SweepRequestCreation(
-            snapshot = SweepRequestWithTargets(request, targets, sources),
+            snapshot = SweepRequestWithTargets(sequencedRequest, targets, sources),
             created = true,
         )
     }
@@ -794,6 +802,178 @@ abstract class PrivilegeSweepDao {
             terminalState = state.name,
             nowMs = nowMs,
             retainUntilEpochMs = nowMs + SWEEP_RESULT_RETENTION_MS,
+        ) == 1
+    }
+
+    /** Called only after the exact owner's child and cleanup have exited, while it remains registered. */
+    @Transaction
+    open suspend fun settleClaimedRequestAfterExit(
+        requestId: String,
+        requestClaimToken: String,
+        nowMs: Long,
+    ): Boolean {
+        require(requestClaimToken.isStorageSafeOwnershipToken())
+        require(nowMs >= 0L)
+        val request = loadRequestEntity(requestId) ?: return true
+        if (hasMalformedRequestOwnership(requestId) || hasMalformedTargetOwnership(requestId)) return false
+        if (request.hasUnownedRequestOwnership()) return loadRunningTarget(requestId) == null
+        if (!request.hasValidOwnedRequestOwnership() || request.claimToken != requestClaimToken) return false
+        if (request.state !in setOf(StoredSweepRequestState.RUNNING.name, StoredSweepRequestState.CANCEL_REQUESTED.name)) return false
+
+        // Reload inside the transaction: a target CAS may have committed without returning to its caller.
+        val target = loadRunningTarget(requestId)
+        if (target != null) {
+            return recoverTargetAfterOwnerLoss(
+                request, target,
+                StoredSweepRecovery.MarkUnknown(SweepTargetResultCode("INTERRUPTED_OUTCOME_UNKNOWN"), nowMs),
+            )
+        }
+        if (request.state == StoredSweepRequestState.CANCEL_REQUESTED.name) {
+            return requestCancellation(requestId, nowMs) is SweepCancellationDecision.Settled
+        }
+        if (countUnfinishedTargets(requestId) == 0) {
+            return finishClaimedRequestIfDrained(requestId, requestClaimToken, nowMs)
+        }
+        if (countTargetsInState(requestId, StoredSweepTargetState.PENDING.name) > 0) {
+            // No ambiguous operation was dispatched. An explicit retry, not an automatic loop, may resume.
+            return blockClaimedRequestForMissingPrivilegeRow(
+                requestId, requestClaimToken, nowMs, StoredSweepBlockReason.START_BLOCKED.name,
+            ) == 1
+        }
+        return blockRecoveredRequest(requestId, request.state, requestClaimToken, nowMs) == 1
+    }
+
+    @Transaction
+    open suspend fun markUnclaimedStartBlocked(
+        requestId: String,
+        reason: StoredSweepBlockReason,
+        nowMs: Long,
+    ): Boolean {
+        require(
+            reason == StoredSweepBlockReason.START_BLOCKED ||
+                    reason == StoredSweepBlockReason.START_BLOCKED_NOTIFICATION,
+        ) { "Only foreground-service start failures may block an unclaimed request" }
+        require(nowMs >= 0L) { "nowMs must not be negative" }
+        val snapshot = load(requestId) ?: return false
+        val request = snapshot.request
+        if (
+            request.state != StoredSweepRequestState.QUEUED.name ||
+            request.terminalState != null ||
+            !request.hasUnownedRequestOwnership() ||
+            snapshot.targets.any { !it.hasValidTargetOwnership() } ||
+            snapshot.targets.any { it.state == StoredSweepTargetState.RUNNING.name }
+        ) {
+            return false
+        }
+        return markUnclaimedStartBlockedRow(requestId, reason.name, nowMs) == 1
+    }
+
+    @Transaction
+    open suspend fun blockClaimedRequestForMissingPrivilege(
+        requestId: String,
+        requestClaimToken: String,
+        nowMs: Long,
+    ): Boolean {
+        require(requestClaimToken.isStorageSafeOwnershipToken()) {
+            "requestClaimToken must be a non-empty storage-safe ownership token"
+        }
+        require(nowMs >= 0L) { "nowMs must not be negative" }
+        val snapshot = load(requestId) ?: return false
+        val request = snapshot.request
+        if (
+            request.state != StoredSweepRequestState.RUNNING.name ||
+            request.terminalState != null ||
+            !request.hasValidOwnedRequestOwnership() ||
+            request.claimToken != requestClaimToken ||
+            snapshot.targets.any { !it.hasValidTargetOwnership() } ||
+            snapshot.targets.any { it.state == StoredSweepTargetState.RUNNING.name } ||
+            snapshot.targets.none { it.state == StoredSweepTargetState.PENDING.name }
+        ) {
+            return false
+        }
+        return blockClaimedRequestForMissingPrivilegeRow(
+            requestId = requestId,
+            requestClaimToken = requestClaimToken,
+            nowMs = nowMs,
+        ) == 1
+    }
+
+    @Transaction
+    open suspend fun resumeBlockedRequest(
+        requestId: String,
+        expectedReason: StoredSweepBlockReason,
+        nowMs: Long,
+    ): Boolean {
+        require(
+            expectedReason == StoredSweepBlockReason.START_BLOCKED ||
+                    expectedReason == StoredSweepBlockReason.START_BLOCKED_NOTIFICATION ||
+                    expectedReason == StoredSweepBlockReason.PRIVILEGE_AUTHORIZATION_REQUIRED,
+        ) { "Only an actionable block reason may be resumed" }
+        require(nowMs >= 0L) { "nowMs must not be negative" }
+        val snapshot = load(requestId) ?: return false
+        val request = snapshot.request
+        if (
+            request.state != StoredSweepRequestState.BLOCKED.name ||
+            request.terminalState != null ||
+            request.blockReason != expectedReason.name ||
+            !request.hasUnownedRequestOwnership() ||
+            snapshot.targets.any { !it.hasValidTargetOwnership() } ||
+            snapshot.targets.any { it.state == StoredSweepTargetState.RUNNING.name } ||
+            snapshot.targets.none { it.state == StoredSweepTargetState.PENDING.name }
+        ) {
+            return false
+        }
+        return resumeBlockedRequestRow(requestId, expectedReason.name, nowMs) == 1
+    }
+
+    @Transaction
+    open suspend fun markLegacyTargetsUnknown(
+        requestId: String,
+        ambiguousOrdinals: List<Int>,
+        nowMs: Long,
+    ): Boolean {
+        require(nowMs >= 0L) { "nowMs must not be negative" }
+        val ordinals = ambiguousOrdinals.distinct()
+        if (ordinals.isEmpty()) return false
+        val snapshot = load(requestId) ?: return false
+        val request = snapshot.request
+        if (
+            request.terminalState != null ||
+            request.state !in setOf(
+                StoredSweepRequestState.QUEUED.name,
+                StoredSweepRequestState.BLOCKED.name,
+            ) ||
+            !request.hasUnownedRequestOwnership() ||
+            snapshot.targets.any { !it.hasValidTargetOwnership() } ||
+            snapshot.targets.any { it.state == StoredSweepTargetState.RUNNING.name }
+        ) {
+            return false
+        }
+        val targetsByOrdinal = snapshot.targets.associateBy(SweepTargetEntity::ordinal)
+        val valid = ordinals.all { ordinal ->
+            val target = targetsByOrdinal[ordinal] ?: return@all false
+            target.isPendingOrCompleteLegacyUnknown()
+        }
+        if (!valid) return false
+
+        ordinals.forEach { ordinal ->
+            val target = requireNotNull(targetsByOrdinal[ordinal])
+            if (target.state == StoredSweepTargetState.PENDING.name &&
+                markLegacyTargetUnknownRow(requestId, ordinal) != 1
+            ) {
+                error("Validated legacy target changed inside one transaction")
+            }
+        }
+        if (refreshRequestAggregates(requestId, nowMs) != 1) return false
+        val hasPending = countTargetsInState(requestId, StoredSweepTargetState.PENDING.name) > 0
+        return settleLegacyRequestRow(
+            requestId = requestId,
+            state = if (hasPending) {
+                StoredSweepRequestState.QUEUED.name
+            } else {
+                StoredSweepRequestState.BLOCKED.name
+            },
+            nowMs = nowMs,
         ) == 1
     }
 
@@ -2211,6 +2391,157 @@ abstract class PrivilegeSweepDao {
 
     @Query(
         """
+        UPDATE sweep_requests
+        SET state = 'BLOCKED',
+            block_reason = :reason,
+            claimed_at_epoch_ms = NULL,
+            updated_at_epoch_ms = :nowMs
+        WHERE request_id = :requestId
+          AND state = 'QUEUED'
+          AND terminal_state IS NULL
+          AND service_session_token IS NULL
+          AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets
+              WHERE sweep_targets.request_id = sweep_requests.request_id
+                AND (sweep_targets.state = 'RUNNING'
+                    OR sweep_targets.claim_token IS NOT NULL
+                    OR sweep_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+          )
+        """
+    )
+    protected abstract suspend fun markUnclaimedStartBlockedRow(
+        requestId: String,
+        reason: String,
+        nowMs: Long,
+    ): Int
+
+    @Query(
+        """
+        UPDATE sweep_requests
+        SET state = 'BLOCKED',
+            block_reason = :reason,
+            service_session_token = NULL,
+            claim_token = NULL,
+            claim_lease_expires_at_epoch_ms = NULL,
+            claimed_at_epoch_ms = NULL,
+            updated_at_epoch_ms = :nowMs
+        WHERE request_id = :requestId
+          AND state = 'RUNNING'
+          AND terminal_state IS NULL
+          AND claim_token = :requestClaimToken
+          AND service_session_token IS NOT NULL
+          AND service_session_token != ''
+          AND claim_lease_expires_at_epoch_ms IS NOT NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets
+              WHERE sweep_targets.request_id = sweep_requests.request_id
+                AND (sweep_targets.state = 'RUNNING'
+                    OR sweep_targets.claim_token IS NOT NULL
+                    OR sweep_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+          )
+          AND EXISTS(
+              SELECT 1 FROM sweep_targets
+              WHERE sweep_targets.request_id = sweep_requests.request_id
+                AND sweep_targets.state = 'PENDING'
+          )
+        """
+    )
+    protected abstract suspend fun blockClaimedRequestForMissingPrivilegeRow(
+        requestId: String,
+        requestClaimToken: String,
+        nowMs: Long,
+        reason: String = StoredSweepBlockReason.PRIVILEGE_AUTHORIZATION_REQUIRED.name,
+    ): Int
+
+    @Query(
+        """
+        UPDATE sweep_requests
+        SET state = 'QUEUED',
+            block_reason = NULL,
+            claimed_at_epoch_ms = NULL,
+            updated_at_epoch_ms = :nowMs
+        WHERE request_id = :requestId
+          AND state = 'BLOCKED'
+          AND terminal_state IS NULL
+          AND block_reason = :expectedReason
+          AND service_session_token IS NULL
+          AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets
+              WHERE sweep_targets.request_id = sweep_requests.request_id
+                AND (sweep_targets.state = 'RUNNING'
+                    OR sweep_targets.claim_token IS NOT NULL
+                    OR sweep_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+          )
+          AND EXISTS(
+              SELECT 1 FROM sweep_targets
+              WHERE sweep_targets.request_id = sweep_requests.request_id
+                AND sweep_targets.state = 'PENDING'
+          )
+        """
+    )
+    protected abstract suspend fun resumeBlockedRequestRow(
+        requestId: String,
+        expectedReason: String,
+        nowMs: Long,
+    ): Int
+
+    @Query(
+        """
+        UPDATE sweep_targets
+        SET state = 'LEGACY_UNKNOWN',
+            claim_token = NULL,
+            claim_lease_expires_at_epoch_ms = NULL,
+            finished_at_epoch_ms = NULL,
+            result_code = NULL,
+            root_lane_degraded = 0
+        WHERE request_id = :requestId
+          AND ordinal = :ordinal
+          AND state = 'PENDING'
+          AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+        """
+    )
+    protected abstract suspend fun markLegacyTargetUnknownRow(
+        requestId: String,
+        ordinal: Int,
+    ): Int
+
+    @Query(
+        """
+        UPDATE sweep_requests
+        SET state = :state,
+            block_reason = NULL,
+            service_session_token = NULL,
+            claim_token = NULL,
+            claim_lease_expires_at_epoch_ms = NULL,
+            claimed_at_epoch_ms = NULL,
+            updated_at_epoch_ms = :nowMs
+        WHERE request_id = :requestId
+          AND terminal_state IS NULL
+          AND service_session_token IS NULL
+          AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM sweep_targets
+              WHERE sweep_targets.request_id = sweep_requests.request_id
+                AND (sweep_targets.state = 'RUNNING'
+                    OR sweep_targets.claim_token IS NOT NULL
+                    OR sweep_targets.claim_lease_expires_at_epoch_ms IS NOT NULL)
+          )
+        """
+    )
+    protected abstract suspend fun settleLegacyRequestRow(
+        requestId: String,
+        state: String,
+        nowMs: Long,
+    ): Int
+
+    @Query(
+        """
         SELECT EXISTS(
             SELECT 1 FROM sweep_requests
             WHERE state = 'QUEUED'
@@ -2490,6 +2821,15 @@ abstract class PrivilegeSweepDao {
         } else {
             claimToken == null && claimLeaseExpiresAtEpochMs == null
         }
+
+    private fun SweepTargetEntity.isPendingOrCompleteLegacyUnknown(): Boolean =
+        state == StoredSweepTargetState.PENDING.name ||
+                (state == StoredSweepTargetState.LEGACY_UNKNOWN.name &&
+                        claimToken == null &&
+                        claimLeaseExpiresAtEpochMs == null &&
+                        finishedAtEpochMs == null &&
+                        resultCode == null &&
+                        !rootLaneDegraded)
 
     private fun StoredSweepRequestState.isTerminal(): Boolean =
         this == StoredSweepRequestState.SUCCEEDED ||

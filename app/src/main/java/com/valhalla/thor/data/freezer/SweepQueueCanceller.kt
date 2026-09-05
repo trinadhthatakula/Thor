@@ -11,15 +11,10 @@ import com.valhalla.thor.domain.repository.PrivilegeSweepStore
 import java.util.concurrent.ExecutionException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 
-/** The narrow WorkManager surface needed to cancel the complete durable sweep queue. */
+/** Narrow WorkManager surface retained only for the one-shot legacy-chain cutover. */
 internal fun interface SweepQueueWorkManager {
     suspend fun cancelQueue()
 }
@@ -35,25 +30,17 @@ internal class WorkManagerSweepQueueWorkManager(
     }
 }
 
-/** Terminalizes Room before cancelling the WorkManager chain under the shared process gate. */
+/** Deprecated queue-shaped adapter; without a displayed request identity it deliberately does nothing. */
 @Single
 internal class SweepQueueCanceller(
-    private val store: PrivilegeSweepStore,
-    private val clock: PrivilegeSweepClock,
-    private val gate: PrivilegeSweepProcessGate,
-    private val workManager: SweepQueueWorkManager,
+    @Suppress("UNUSED_PARAMETER") store: PrivilegeSweepStore,
+    private val cancellation: PrivilegeSweepCancellationCoordinator,
 ) {
-    suspend fun cancelQueue() {
-        val callerJob = currentCoroutineContext()[Job]
-        gate.serialized {
-            // Once Room is terminal, no launch or reconciliation may observe the half-cancelled
-            // queue until WorkManager's cancellation Operation has also settled.
-            withContext(NonCancellable) {
-                store.cancelAllNonterminal(clock.nowMs())
-                workManager.cancelQueue()
-            }
-        }
-        callerJob?.ensureActive()
+    @Deprecated("A displayed request ID is required")
+    suspend fun cancelQueue() = Unit
+
+    suspend fun cancel(requestId: java.util.UUID) {
+        cancellation.cancel(requestId)
     }
 }
 
@@ -64,7 +51,6 @@ internal suspend fun Operation.awaitCompletion() {
         future.addListener(
             {
                 try {
-                    // The listener runs only after completion, so this get cannot block.
                     future.get()
                     continuation.resume(Unit)
                 } catch (e: ExecutionException) {

@@ -182,7 +182,7 @@ class PrivilegeSweepReconcilerTest {
                 throwingStore,
                 RecordingStateReader(failure = IllegalStateException("dynamic path /data/local/tmp")),
                 RecordingCoordinator(),
-            ).reconcileInterruptedClaims("current-session", { _, _ -> false }, verifier())
+            ).reconcileInterruptedClaims("current-session", { _, _ -> false }, reinstallVerifier = verifier())
             assertEquals(
                 listOf(unknown("RECOVERY_INSPECTION_UNAVAILABLE")),
                 throwingStore.candidateRecoveries,
@@ -244,7 +244,7 @@ class PrivilegeSweepReconcilerTest {
         reconciler(store, stateReader, coordinator).reconcileInterruptedClaims(
             "current-session",
             { _, _ -> false },
-            verifier(),
+            reinstallVerifier = verifier(),
         )
 
         assertTrue(store.candidateRecoveries.isEmpty())
@@ -262,7 +262,7 @@ class PrivilegeSweepReconcilerTest {
         reconciler(store).reconcileInterruptedClaims(
             "current-session",
             { _, _ -> false },
-            verifier(),
+            reinstallVerifier = verifier(),
         )
 
         assertEquals(1, store.candidateRecoveryAttempts)
@@ -320,7 +320,7 @@ class PrivilegeSweepReconcilerTest {
                     reconciler(store, stateReader).reconcileUnknownTarget(
                         snapshot.requestId,
                         0,
-                        verifier(),
+                        reinstallVerifier = verifier(),
                     )
                 )
                 assertEquals(0, stateReader.calls)
@@ -350,7 +350,7 @@ class PrivilegeSweepReconcilerTest {
             reconciler(store, stateReader, coordinator).reconcileUnknownTarget(
                 owned.requestId,
                 0,
-                verifier(),
+                reinstallVerifier = verifier(),
             )
         )
         assertEquals(0, stateReader.calls)
@@ -389,7 +389,7 @@ class PrivilegeSweepReconcilerTest {
             reconciler(store, stateReader, coordinator).reconcileUnknownTarget(
                 snapshot.requestId,
                 0,
-                verifier(),
+                reinstallVerifier = verifier(),
             )
         )
         assertEquals(listOf(unknown("CLEAR_CACHE_OUTCOME_UNKNOWN")), store.unownedRecoveries)

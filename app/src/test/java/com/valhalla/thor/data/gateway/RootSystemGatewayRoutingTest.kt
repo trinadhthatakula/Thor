@@ -40,6 +40,7 @@ class RootSystemGatewayRoutingTest {
             original.copy(commandClass = PrivilegeCommandClass("package.force-stop")),
             classified,
         )
+        assertSame(original.provenance, classified.provenance)
     }
 
     @Test

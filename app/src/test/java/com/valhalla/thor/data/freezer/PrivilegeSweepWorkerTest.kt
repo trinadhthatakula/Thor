@@ -71,7 +71,7 @@ class PrivilegeSweepWorkerTest {
         val executor = PrivilegeSweepItemExecutor { snapshot, packageName ->
             events += "execute:$packageName"
             seenSnapshots += snapshot
-            SweepAttemptOutcome.SUCCEEDED
+            itemResult(SweepAttemptOutcome.SUCCEEDED)
         }
 
         val result = runner(store, executor).run(initial.requestId.toString())
@@ -101,7 +101,10 @@ class PrivilegeSweepWorkerTest {
             store,
             PrivilegeSweepItemExecutor { _, packageName ->
                 executed += packageName
-                outcomes.getValue(packageName)
+                itemResult(
+                    outcome = outcomes.getValue(packageName),
+                    rootLaneDegraded = packageName == "two.pkg",
+                )
             },
         ).run(
             initial.requestId.toString(),
@@ -130,7 +133,7 @@ class PrivilegeSweepWorkerTest {
 
         val result = runner(
             store,
-            PrivilegeSweepItemExecutor { _, _ -> SweepAttemptOutcome.SUCCEEDED },
+            PrivilegeSweepItemExecutor { _, _ -> itemResult(SweepAttemptOutcome.SUCCEEDED) },
         ).run(initial.requestId.toString())
 
         assertEquals(PrivilegeSweepRunOutcome.Success, result)
@@ -156,7 +159,7 @@ class PrivilegeSweepWorkerTest {
             store,
             PrivilegeSweepItemExecutor { _, packageName ->
                 executed += packageName
-                SweepAttemptOutcome.SUCCEEDED
+                itemResult(SweepAttemptOutcome.SUCCEEDED)
             },
         ).run(initial.requestId.toString(), noteResult = notices::add)
 
@@ -183,7 +186,7 @@ class PrivilegeSweepWorkerTest {
             store,
             PrivilegeSweepItemExecutor { _, packageName ->
                 executed += packageName
-                SweepAttemptOutcome.SUCCEEDED
+                itemResult(SweepAttemptOutcome.SUCCEEDED)
             },
         ).run(initial.requestId.toString(), noteResult = notices::add)
 
@@ -207,7 +210,7 @@ class PrivilegeSweepWorkerTest {
                 store,
                 PrivilegeSweepItemExecutor { _, _ ->
                     currentCoroutineContext().job.cancel(cancellation)
-                    SweepAttemptOutcome.SUCCEEDED
+                    itemResult(SweepAttemptOutcome.SUCCEEDED)
                 },
             ).run(initial.requestId.toString())
         }
@@ -233,7 +236,7 @@ class PrivilegeSweepWorkerTest {
             if (interruptFirstRun) {
                 currentCoroutineContext().job.cancel(cancellation)
             }
-            SweepAttemptOutcome.SUCCEEDED
+            itemResult(SweepAttemptOutcome.SUCCEEDED)
         }
 
         val firstRun = async {
@@ -304,7 +307,7 @@ class PrivilegeSweepWorkerTest {
                         )
                         throw cancellation
                     }
-                    SweepAttemptOutcome.SUCCEEDED
+                    itemResult(SweepAttemptOutcome.SUCCEEDED)
                 },
             ).run(initial.requestId.toString(), noteResult = notices::add)
         }.exceptionOrNull()
@@ -355,7 +358,7 @@ class PrivilegeSweepWorkerTest {
                 store,
                 PrivilegeSweepItemExecutor { _, _ ->
                     executions++
-                    SweepAttemptOutcome.SUCCEEDED
+                    itemResult(SweepAttemptOutcome.SUCCEEDED)
                 },
             ).run(initial.requestId.toString(), noteResult = notices::add)
 
@@ -371,7 +374,7 @@ class PrivilegeSweepWorkerTest {
         val successStore = FakeStore().apply { seed(stored()) }
         val success = runner(
             successStore,
-            PrivilegeSweepItemExecutor { _, _ -> SweepAttemptOutcome.SUCCEEDED },
+            PrivilegeSweepItemExecutor { _, _ -> itemResult(SweepAttemptOutcome.SUCCEEDED) },
         ).run(successStore.rows.values.single().requestId.toString())
         val failure = runner(FakeStore()).run(null)
 
@@ -385,10 +388,15 @@ class PrivilegeSweepWorkerTest {
         }
     }
 
+    private fun itemResult(
+        outcome: SweepAttemptOutcome,
+        rootLaneDegraded: Boolean = false,
+    ) = PrivilegeSweepItemExecutionResult(outcome, rootLaneDegraded)
+
     private fun runner(
         store: FakeStore,
         executor: PrivilegeSweepItemExecutor = PrivilegeSweepItemExecutor { _, _ ->
-            SweepAttemptOutcome.SUCCEEDED
+            itemResult(SweepAttemptOutcome.SUCCEEDED)
         },
     ) = PrivilegeSweepRunner(
         store = store,

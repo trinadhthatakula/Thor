@@ -22,6 +22,7 @@ import java.util.concurrent.CancellationException
 import kotlin.time.Duration
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,7 +41,7 @@ class PrivilegeSweepItemExecutorTest {
 
         val outcome = executor.execute(snapshot, PACKAGE)
 
-        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
         assertEquals(listOf("state:$PACKAGE", "setAppDisabled:$PACKAGE:true"), trace)
         assertSweepExecution(
             snapshot,
@@ -59,7 +60,7 @@ class PrivilegeSweepItemExecutorTest {
 
         val outcome = executor(repository).execute(snapshot, PACKAGE)
 
-        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
         assertEquals(listOf("setAppSuspended:$PACKAGE:true"), repository.calls)
         assertSweepExecution(
             snapshot,
@@ -76,7 +77,7 @@ class PrivilegeSweepItemExecutorTest {
         val outcome = executor(repository, FakeStateReader(FreezeState.FROZEN))
             .execute(snapshot, PACKAGE)
 
-        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
         assertEquals(
             listOf(
                 "setAppSuspended:$PACKAGE:false",
@@ -103,7 +104,7 @@ class PrivilegeSweepItemExecutorTest {
 
             val outcome = executor(repository).execute(snapshot, PACKAGE)
 
-            assertEquals(operation.name, SweepAttemptOutcome.SUCCEEDED, outcome)
+            assertEquals(operation.name, SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
             assertEquals(operation.name, listOf(expectedCall), repository.calls)
             assertSweepExecution(
                 snapshot,
@@ -128,7 +129,7 @@ class PrivilegeSweepItemExecutorTest {
 
         val interruptedAttempt = executor(repository).execute(snapshot, PACKAGE)
 
-        assertEquals(SweepAttemptOutcome.FAILED, interruptedAttempt)
+        assertEquals(SweepAttemptOutcome.FAILED, interruptedAttempt.outcome)
         assertEquals(listOf("clearCache:$PACKAGE"), repository.calls)
         assertSweepExecution(
             snapshot,
@@ -152,7 +153,8 @@ class PrivilegeSweepItemExecutorTest {
 
             val outcome = executor(repository, FakeStateReader(state)).execute(snapshot, PACKAGE)
 
-            assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome)
+            assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
+            assertFalse(outcome.rootLaneDegraded)
             assertTrue(repository.calls.isEmpty())
         }
     }
@@ -170,7 +172,7 @@ class PrivilegeSweepItemExecutorTest {
             coordinator = coordinator,
         ).execute(snapshot, PACKAGE)
 
-        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
         assertEquals(
             listOf(
                 "lease:start:${PackageOperationOwner.CLEAR_CACHE}",
@@ -207,7 +209,8 @@ class PrivilegeSweepItemExecutorTest {
                 coordinator = coordinator,
             ).execute(snapshot, PACKAGE)
 
-            assertEquals(snapshot.operation.name, SweepAttemptOutcome.BUSY, outcome)
+            assertEquals(snapshot.operation.name, SweepAttemptOutcome.BUSY, outcome.outcome)
+            assertFalse(snapshot.operation.name, outcome.rootLaneDegraded)
             assertEquals(snapshot.operation.name, 1, coordinator.leaseCalls)
             assertTrue(snapshot.operation.name, trace.isEmpty())
             assertTrue(snapshot.operation.name, repository.calls.isEmpty())
@@ -231,7 +234,7 @@ class PrivilegeSweepItemExecutorTest {
             val outcome = executor(repository, FakeStateReader(FreezeState.ABSENT))
                 .execute(snapshot, PACKAGE)
 
-            assertEquals(snapshot.operation.name, SweepAttemptOutcome.FAILED, outcome)
+            assertEquals(snapshot.operation.name, SweepAttemptOutcome.FAILED, outcome.outcome)
             assertTrue(snapshot.operation.name, repository.calls.isEmpty())
         }
     }
@@ -244,7 +247,7 @@ class PrivilegeSweepItemExecutorTest {
         val outcome = executor(repository, FakeStateReader(FreezeState.ABSENT, trace))
             .execute(stored(operation = PrivilegeSweepOperation.REINSTALL), PACKAGE)
 
-        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
         assertEquals(listOf("state:$PACKAGE", "reinstallAppWithGoogle:$PACKAGE"), trace)
     }
 
@@ -258,8 +261,26 @@ class PrivilegeSweepItemExecutorTest {
             coordinator = coordinator,
         ).execute(stored(operation = PrivilegeSweepOperation.CLEAR_CACHE), PACKAGE)
 
-        assertEquals(SweepAttemptOutcome.BUSY, outcome)
+        assertEquals(SweepAttemptOutcome.BUSY, outcome.outcome)
+        assertFalse(outcome.rootLaneDegraded)
         assertTrue(repository.calls.isEmpty())
+    }
+
+    @Test
+    fun `execution result reports only fallback provenance signalled by this target`() = runTest {
+        val degradedRepository = FakeSystemRepository()
+        degradedRepository.onCall = {
+            degradedRepository.executions.last().second.provenance.recordDegradedRootFallback()
+        }
+        val snapshot = stored(operation = PrivilegeSweepOperation.CLEAR_CACHE)
+
+        val degraded = executor(degradedRepository).execute(snapshot, PACKAGE)
+        val isolated = executor(FakeSystemRepository()).execute(snapshot, PACKAGE)
+
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, degraded.outcome)
+        assertTrue(degraded.rootLaneDegraded)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, isolated.outcome)
+        assertFalse(isolated.rootLaneDegraded)
     }
 
     @Test
@@ -274,11 +295,11 @@ class PrivilegeSweepItemExecutorTest {
 
         assertEquals(
             SweepAttemptOutcome.FAILED,
-            executor(failedResultRepository).execute(snapshot, PACKAGE),
+            executor(failedResultRepository).execute(snapshot, PACKAGE).outcome,
         )
         assertEquals(
             SweepAttemptOutcome.FAILED,
-            executor(thrownRepository).execute(snapshot, PACKAGE),
+            executor(thrownRepository).execute(snapshot, PACKAGE).outcome,
         )
     }
 

@@ -951,7 +951,7 @@ fun MainScreen(
                     FreezeLoggerDialog(
                         state = progress,
                         onDismiss = { mainViewModel.dismissFreezeLogger() },
-                        onCancelQueue = { mainViewModel.cancelSweepQueue() },
+                        onCancelQueue = mainViewModel::cancelSweepQueue,
                     )
                 }
 

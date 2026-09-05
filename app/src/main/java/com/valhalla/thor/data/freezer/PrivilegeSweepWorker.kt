@@ -38,6 +38,7 @@ internal sealed interface PrivilegeSweepRunOutcome {
 }
 
 @Single
+@Suppress("DEPRECATION")
 internal class PrivilegeSweepRunner(
     private val store: PrivilegeSweepStore,
     private val executor: PrivilegeSweepItemExecutor,
@@ -71,9 +72,9 @@ internal class PrivilegeSweepRunner(
                     ServiceQueueOperation.PRIVILEGE_SWEEP,
                     ServiceQueueEvent.FIRST_OPERATION,
                 )
-                val outcome = executor.execute(snapshot, packageName)
+                val execution = executor.execute(snapshot, packageName)
                 val recorded = withContext(NonCancellable + ioDispatcher) {
-                    store.recordAttempt(requestId, outcome)
+                    store.recordAttempt(requestId, execution.outcome)
                 }
                 if (!recorded) return settledOutcome(requestId, noteResult)
                 processed++
@@ -185,6 +186,7 @@ internal class PrivilegeSweepWorker(
     notifications: ThorJobNotifications,
     registry: JobRegistry,
     private val runner: PrivilegeSweepRunner,
+    private val executionFence: LegacyPrivilegeSweepExecutionFence,
     sheetTargets: JobSheetTargets,
 ) : ThorJobWorker(
     appContext,
@@ -198,15 +200,23 @@ internal class PrivilegeSweepWorker(
     override val runsForeground = false
     override val sheetTarget: JobSheetTarget? = null
 
-    override suspend fun runJob(): Result = when (
-        val outcome = runner.run(
-            requestIdValue = inputData.getString(SWEEP_REQUEST_ID_KEY),
-            publish = ::publish,
-            noteResult = { snapshot -> noteResult(snapshot.resultNotice()) },
-        )
-    ) {
-        PrivilegeSweepRunOutcome.Success -> Result.success()
-        is PrivilegeSweepRunOutcome.PermanentFailure -> fail(outcome.reason)
+    override suspend fun runJob(): Result {
+        val registration = executionFence.tryRegister()
+            ?: return fail("Legacy sweep execution admission is closed")
+        return try {
+            when (
+                val outcome = runner.run(
+                    requestIdValue = inputData.getString(SWEEP_REQUEST_ID_KEY),
+                    publish = ::publish,
+                    noteResult = { snapshot -> noteResult(snapshot.resultNotice()) },
+                )
+            ) {
+                PrivilegeSweepRunOutcome.Success -> Result.success()
+                is PrivilegeSweepRunOutcome.PermanentFailure -> fail(outcome.reason)
+            }
+        } finally {
+            registration.close()
+        }
     }
 
     private fun StoredPrivilegeSweep.resultNotice(): String = applicationContext.getString(

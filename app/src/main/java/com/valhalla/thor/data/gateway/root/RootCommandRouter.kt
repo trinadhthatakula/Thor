@@ -39,6 +39,7 @@ internal class RootCommandRouter(
     ): RootCommandResult {
         val lane = command.execution.lane
         if (statuses.isDegraded(lane)) {
+            command.execution.provenance.recordDegradedRootFallback()
             return fallback.executeDegraded(main, command)
         }
 
@@ -47,6 +48,7 @@ internal class RootCommandRouter(
             dedicated.execute(command)
         } catch (unavailable: ShellLaneUnavailable) {
             statuses.markDegraded(lane, unavailable.cause ?: unavailable)
+            command.execution.provenance.recordDegradedRootFallback()
             fallback.executeDegraded(main, command)
         } finally {
             statuses.commandFinished(lane)

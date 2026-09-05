@@ -70,7 +70,9 @@ private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
 
 internal fun PrivilegeExecutionContext.forRootCommand(
     commandClass: PrivilegeCommandClass,
-): PrivilegeExecutionContext = copy(commandClass = commandClass)
+): PrivilegeExecutionContext = copy(commandClass = commandClass).also {
+    it.provenance = provenance
+}
 
 /**
  * The Android user every suspend and unsuspend in this gateway writes, verifies, and reads the

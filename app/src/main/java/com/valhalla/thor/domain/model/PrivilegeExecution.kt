@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.model
 
 import java.util.UUID
 import java.util.concurrent.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.flow.StateFlow
@@ -28,7 +29,20 @@ data class PrivilegeExecutionContext(
     val workRequestId: UUID? = null,
     val sweepRequestId: UUID? = null,
     val commandTimeout: Duration? = null,
-)
+) {
+    internal var provenance = PrivilegeExecutionProvenance()
+}
+
+internal class PrivilegeExecutionProvenance {
+    private val degradedRootFallback = AtomicBoolean(false)
+
+    val usedDegradedRootFallback: Boolean
+        get() = degradedRootFallback.get()
+
+    fun recordDegradedRootFallback() {
+        degradedRootFallback.set(true)
+    }
+}
 
 object PrivilegeExecutionTimeouts {
     val INTERACTIVE_ADMISSION: Duration = Duration.ZERO

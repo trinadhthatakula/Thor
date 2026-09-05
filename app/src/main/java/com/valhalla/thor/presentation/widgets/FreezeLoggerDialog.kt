@@ -38,6 +38,7 @@ import com.valhalla.thor.util.ServiceQueueEvent
 import com.valhalla.thor.util.ServiceQueueLatencyProbe
 import com.valhalla.thor.util.ServiceQueueOperation
 import com.valhalla.thor.util.UiText
+import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -51,6 +52,7 @@ data class SweepProgressUiState(
     val unresolved: Int,
     val rootLaneDegraded: Boolean,
     val message: UiText? = null,
+    val requestId: UUID? = null,
 ) {
     val isActive: Boolean
         get() = phase == PrivilegeSweepPhase.QUEUED || phase == PrivilegeSweepPhase.RUNNING
@@ -59,6 +61,7 @@ data class SweepProgressUiState(
 fun PrivilegeSweepStatus.toSweepProgressUiState(): SweepProgressUiState =
     SweepProgressUiState(
         phase = phase,
+        requestId = requestId,
         total = total,
         succeeded = succeeded,
         failed = failed,
@@ -101,13 +104,14 @@ fun SweepProgressUiState?.asObserverFailure(): SweepProgressUiState = SweepProgr
     busy = this?.busy ?: 0,
     unresolved = this?.unresolved ?: 0,
     rootLaneDegraded = this?.rootLaneDegraded ?: false,
+    requestId = this?.requestId,
     message = UiText.StringResource(R.string.sweep_observer_failure_desc),
 )
 
 /**
  * Count-only presentation of a durable privilege sweep.
  *
- * Active work blocks accidental Back/outside dismissal and offers cancellation of the whole queue.
+ * Active work blocks accidental Back/outside dismissal and offers cancellation of the displayed request.
  * Every non-success terminal outcome remains visible until acknowledged; a full success may dismiss
  * itself after [autoDismissMillis].
  */
@@ -115,7 +119,7 @@ fun SweepProgressUiState?.asObserverFailure(): SweepProgressUiState = SweepProgr
 fun FreezeLoggerDialog(
     state: SweepProgressUiState,
     onDismiss: () -> Unit,
-    onCancelQueue: () -> Unit,
+    onCancelQueue: (UUID?) -> Unit,
     modifier: Modifier = Modifier,
     autoDismissMillis: Long = 2000L,
 ) {
@@ -200,7 +204,7 @@ fun FreezeLoggerDialog(
 
                 when {
                     state.isActive -> Button(
-                        onClick = onCancelQueue,
+                        onClick = { onCancelQueue(state.requestId) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(stringResource(R.string.cancel_sweep_queue))

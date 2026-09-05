@@ -83,6 +83,11 @@ internal class PrivilegeSweepReconciler(
     private val stateReader: PrivilegeSweepPackageStateReader? = null,
     private val packageOperationCoordinator: PackageOperationCoordinator? = null,
 ) {
+    /** Startup only prunes. Cutover owns every nonterminal legacy row, including cancelled WorkInfo. */
+    suspend fun pruneRetained() {
+        gate.serialized { store.deleteExpired(clock.nowMs()) }
+    }
+
     suspend fun reconcile() {
         gate.serialized { reconcileInsideGate() }
     }
@@ -115,6 +120,7 @@ internal class PrivilegeSweepReconciler(
     internal suspend fun reconcileInterruptedClaims(
         currentSessionToken: String,
         localOwnerIsLive: (requestId: UUID, requestClaimToken: String) -> Boolean,
+        requestId: UUID? = null,
         reinstallVerifier: PrivilegeSweepReinstallPostconditionVerifier,
     ) {
         gate.serialized {
@@ -122,7 +128,9 @@ internal class PrivilegeSweepReconciler(
             store.recoverRequestClaims(
                 sessionToken = currentSessionToken,
                 nowMs = nowMs,
-                localOwnerIsLive = localOwnerIsLive,
+                localOwnerIsLive = { id, token ->
+                    (requestId != null && id != requestId) || localOwnerIsLive(id, token)
+                },
             ).forEach { candidate ->
                 val snapshot = store.load(candidate.requestId) ?: return@forEach
                 val target = snapshot.targetSnapshots.singleOrNull {

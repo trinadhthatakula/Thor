@@ -10,7 +10,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
-/** Starts durable privilege sweeps and reconstructs their state from Room and WorkManager. */
+/** Starts durable privilege sweeps and reconstructs their state from Room. */
 interface PrivilegeSweepController {
     /** Every retained request, including terminal results that have not been pruned yet. */
     val activeRequests: Flow<List<PrivilegeSweepStatus>>
@@ -23,6 +23,9 @@ interface PrivilegeSweepController {
     /** The newest retained request from [source], or null while that source has no retained work. */
     fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?>
 
-    /** Terminalizes and cancels the complete durable sweep queue. */
+    /** Cancels only the request whose identity was displayed when Cancel was pressed. */
+    suspend fun cancel(requestId: UUID) = Unit
+
+    @Deprecated("Cancellation requires the displayed request ID")
     suspend fun cancelQueue()
 }

@@ -6,6 +6,7 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.data.source.local.room.ClaimedSweepRequest
 import com.valhalla.thor.data.source.local.room.ClaimedSweepTarget
 import com.valhalla.thor.data.source.local.room.PrivilegeSweepDao
+import com.valhalla.thor.data.source.local.room.StoredSweepBlockReason
 import com.valhalla.thor.data.source.local.room.StoredSweepRecovery
 import com.valhalla.thor.data.source.local.room.StoredSweepTargetResult
 import com.valhalla.thor.data.source.local.room.StoredSweepTargetTerminalState
@@ -23,6 +24,7 @@ import com.valhalla.thor.domain.model.SWEEP_RESULT_RETENTION
 import com.valhalla.thor.domain.repository.ClaimedPrivilegeSweepRequest
 import com.valhalla.thor.domain.repository.ClaimedPrivilegeSweepTarget
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
+import com.valhalla.thor.domain.repository.PrivilegeSweepBlockReason
 import com.valhalla.thor.domain.repository.PrivilegeSweepCancellationDecision
 import com.valhalla.thor.domain.repository.PrivilegeSweepRecovery
 import com.valhalla.thor.domain.repository.PrivilegeSweepRecoveryCandidate
@@ -210,6 +212,52 @@ class RoomPrivilegeSweepStore(
     override suspend fun finishDrainIfQueueEmpty(onQueueEmpty: () -> Unit): Boolean =
         dao.finishDrainIfQueueEmpty(onQueueEmpty)
 
+    override suspend fun settleClaimedRequestAfterExit(
+        requestId: UUID,
+        requestClaimToken: String,
+        nowMs: Long,
+    ): Boolean = dao.settleClaimedRequestAfterExit(requestId.toString(), requestClaimToken, nowMs)
+
+    override suspend fun markUnclaimedStartBlocked(
+        requestId: UUID,
+        reason: PrivilegeSweepBlockReason,
+        nowMs: Long,
+    ): Boolean = dao.markUnclaimedStartBlocked(
+        requestId = requestId.toString(),
+        reason = StoredSweepBlockReason.valueOf(reason.name),
+        nowMs = nowMs,
+    )
+
+    override suspend fun blockClaimedRequestForMissingPrivilege(
+        requestId: UUID,
+        requestClaimToken: String,
+        nowMs: Long,
+    ): Boolean = dao.blockClaimedRequestForMissingPrivilege(
+        requestId = requestId.toString(),
+        requestClaimToken = requestClaimToken,
+        nowMs = nowMs,
+    )
+
+    override suspend fun resumeBlockedRequest(
+        requestId: UUID,
+        expectedReason: PrivilegeSweepBlockReason,
+        nowMs: Long,
+    ): Boolean = dao.resumeBlockedRequest(
+        requestId = requestId.toString(),
+        expectedReason = StoredSweepBlockReason.valueOf(expectedReason.name),
+        nowMs = nowMs,
+    )
+
+    override suspend fun markLegacyTargetsUnknown(
+        requestId: UUID,
+        ambiguousOrdinals: List<Int>,
+        nowMs: Long,
+    ): Boolean = dao.markLegacyTargetsUnknown(
+        requestId = requestId.toString(),
+        ambiguousOrdinals = ambiguousOrdinals,
+        nowMs = nowMs,
+    )
+
     @Deprecated("Compatibility for PrivilegeSweepWorker; remove in Task 12")
     override suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep? =
         dao.resetForRun(requestId.toString())?.toDomain()
@@ -269,6 +317,11 @@ class RoomPrivilegeSweepStore(
                 SweepRequestSourceEntity::sourceSurface
             ),
             targetSnapshots = orderedTargets.map { it.toDomain() },
+            requestState = PrivilegeSweepRequestState.valueOf(request.state),
+            blockReason = request.blockReason?.let(PrivilegeSweepBlockReason::valueOf),
+            serviceSessionToken = request.serviceSessionToken,
+            claimToken = request.claimToken,
+            claimLeaseExpiresAtEpochMs = request.claimLeaseExpiresAtEpochMs,
         )
     }
 

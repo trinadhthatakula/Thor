@@ -18,7 +18,7 @@ class ThorTestRunner : AndroidJUnitRunner() {
         isolateApplicationRuntime = arguments.getString(CLASS_ARGUMENT)
             ?.split(',')
             ?.map { selector -> selector.substringBefore('#') }
-            ?.contains(PRIVILEGE_SWEEP_WORKER_TEST) == true
+            ?.any { it in ISOLATED_TESTS } == true
         super.onCreate(arguments)
     }
 
@@ -34,7 +34,10 @@ class ThorTestRunner : AndroidJUnitRunner() {
 
     private companion object {
         const val CLASS_ARGUMENT = "class"
-        const val PRIVILEGE_SWEEP_WORKER_TEST =
-            "com.valhalla.thor.data.freezer.PrivilegeSweepWorkerIntegrationTest"
+        val ISOLATED_TESTS = setOf(
+            "com.valhalla.thor.data.freezer.PrivilegeSweepWorkerIntegrationTest",
+            "com.valhalla.thor.data.freezer.PrivilegeSweepServiceIntegrationTest",
+            "com.valhalla.thor.data.source.local.room.PrivilegeSweepDaoTest",
+        )
     }
 }

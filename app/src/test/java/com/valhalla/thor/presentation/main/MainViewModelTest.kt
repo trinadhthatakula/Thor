@@ -340,9 +340,10 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         vm.cancelSweepQueue()
+        vm.cancelSweepQueue(requestId)
         advanceUntilIdle()
 
-        assertEquals(1, controller.cancelCalls)
+        assertEquals(listOf(requestId), controller.cancelledRequestIds)
         assertEquals(PrivilegeSweepPhase.RUNNING, vm.uiState.value.sweepProgress?.phase)
     }
 

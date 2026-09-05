@@ -1176,8 +1176,9 @@ class MainViewModel(
         _uiState.update { it.copy(sweepProgress = null) }
     }
 
-    fun cancelSweepQueue() {
-        viewModelScope.launch { sweepController.cancelQueue() }
+    fun cancelSweepQueue(requestId: UUID? = null) {
+        val displayedRequestId = requestId ?: return
+        viewModelScope.launch { sweepController.cancel(displayedRequestId) }
     }
 
     /** Stop the export in flight. Whatever it already wrote stays written. */

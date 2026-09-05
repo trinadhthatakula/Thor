@@ -14,7 +14,8 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.koin.core.qualifier.named
 
-/** Receives the notification action that cancels every request on the durable sweep chain. */
+/** Legacy no-identity action retained until Task 12; it cannot select or cancel a request. */
+@Suppress("DEPRECATION")
 class SweepQueueCancelReceiver : BroadcastReceiver(), KoinComponent {
     private val canceller: SweepQueueCanceller by inject()
     private val ioDispatcher: CoroutineDispatcher by inject(named("io"))

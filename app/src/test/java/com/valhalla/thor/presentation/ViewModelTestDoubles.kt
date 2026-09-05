@@ -501,8 +501,10 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
 /** In-memory durable sweep port with controllable retained Room/Work-style status flows. */
 class FakePrivilegeSweepController : PrivilegeSweepController {
     val launched = mutableListOf<PrivilegeSweepSpec>()
+    val cancelledRequestIds = mutableListOf<UUID>()
     var nextLaunchResult: PrivilegeSweepLaunchResult? = null
-    var cancelCalls: Int = 0
+    val cancelCalls: Int
+        get() = cancelledRequestIds.size
 
     private var nextId = 1L
     private val retained = MutableStateFlow<List<PrivilegeSweepStatus>>(emptyList())
@@ -525,9 +527,11 @@ class FakePrivilegeSweepController : PrivilegeSweepController {
     override fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?> =
         retained.map { statuses -> statuses.lastOrNull { it.source == source } }
 
-    override suspend fun cancelQueue() {
-        cancelCalls++
+    override suspend fun cancel(requestId: UUID) {
+        cancelledRequestIds += requestId
     }
+
+    override suspend fun cancelQueue() = Unit
 
     fun emit(status: PrivilegeSweepStatus) {
         requestFlows.getOrPut(status.requestId) { MutableStateFlow(null) }.value = status

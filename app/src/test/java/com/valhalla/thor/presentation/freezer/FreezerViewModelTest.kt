@@ -778,6 +778,7 @@ class FreezerViewModelTest {
         sweepController.emit(status)
         runCurrent()
         vm.cancelSweepQueue()
+        vm.cancelSweepQueue(requestId)
         runCurrent()
 
         assertEquals(listOf(status), vm.uiState.value.runningRequests)
@@ -785,7 +786,7 @@ class FreezerViewModelTest {
         assertEquals(1, vm.uiState.value.sweepProgress?.succeeded)
         assertEquals(1, vm.uiState.value.sweepProgress?.failed)
         assertEquals(1, vm.uiState.value.sweepProgress?.busy)
-        assertEquals(1, sweepController.cancelCalls)
+        assertEquals(listOf(requestId), sweepController.cancelledRequestIds)
     }
 
     @Test

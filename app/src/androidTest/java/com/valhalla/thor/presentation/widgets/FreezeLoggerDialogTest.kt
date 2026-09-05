@@ -25,6 +25,7 @@ import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.util.UiText
+import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -38,6 +39,7 @@ class FreezeLoggerDialogTest {
 
     private var dismissals = 0
     private var cancellations = 0
+    private var cancelledRequestId: UUID? = null
 
     private fun progress(
         phase: PrivilegeSweepPhase,
@@ -48,6 +50,7 @@ class FreezeLoggerDialogTest {
         unresolved: Int = total - succeeded - failed - busy,
         rootLaneDegraded: Boolean = false,
         message: UiText? = null,
+        requestId: UUID? = null,
     ) = SweepProgressUiState(
         phase = phase,
         total = total,
@@ -57,6 +60,7 @@ class FreezeLoggerDialogTest {
         unresolved = unresolved,
         rootLaneDegraded = rootLaneDegraded,
         message = message,
+        requestId = requestId,
     )
 
     private fun setDialog(
@@ -72,13 +76,17 @@ class FreezeLoggerDialogTest {
     ): MutableState<SweepProgressUiState> {
         dismissals = 0
         cancellations = 0
+        cancelledRequestId = null
         val state = mutableStateOf(initialState)
         rule.setContent {
             MaterialTheme {
                 FreezeLoggerDialog(
                     state = state.value,
                     onDismiss = { dismissals++ },
-                    onCancelQueue = { cancellations++ },
+                    onCancelQueue = { requestId ->
+                        cancellations++
+                        cancelledRequestId = requestId
+                    },
                     modifier = Modifier.testTag("sweep-dialog"),
                     autoDismissMillis = autoDismissMillis,
                 )
@@ -103,13 +111,17 @@ class FreezeLoggerDialogTest {
     }
 
     @Test
-    fun queued_showsQueueStateAndCancellation() {
-        setDialog(progress(PrivilegeSweepPhase.QUEUED))
+    fun queued_cancelCarriesTheDisplayedRequestIdentity() {
+        val requestId = UUID(0L, 11L)
+        setDialog(progress(PrivilegeSweepPhase.QUEUED, requestId = requestId))
 
         rule.onNodeWithText("App actions queued").assertExists()
         rule.onNodeWithText("Cancel sweep queue").performClick()
 
-        rule.runOnIdle { assertEquals(1, cancellations) }
+        rule.runOnIdle {
+            assertEquals(1, cancellations)
+            assertEquals(requestId, cancelledRequestId)
+        }
     }
 
     @Test

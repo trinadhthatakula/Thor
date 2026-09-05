@@ -52,6 +52,157 @@ class PrivilegeSweepDaoTest {
     }
 
     @Test
+    fun createAllocatesQueueSequenceAndClaimsInInsertionOrder() = runBlocking {
+        insertSweep(requestId = REQUEST_3, queueSequence = 0L)
+        insertSweep(requestId = REQUEST_1, queueSequence = 0L)
+
+        assertEquals(1L, requireNotNull(dao.load(REQUEST_3)).request.queueSequence)
+        assertEquals(2L, requireNotNull(dao.load(REQUEST_1)).request.queueSequence)
+        assertEquals(
+            REQUEST_3,
+            dao.claimOldestRunnableRequest(
+                sessionToken = "session",
+                claimToken = "claim",
+                nowMs = 2_000L,
+                leaseUntilMs = 3_000L,
+            )?.requestId,
+        )
+    }
+
+    @Test
+    fun startBlockAndResumePreserveTargetsIdentityAndRequireMatchingReason() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        val before = requireNotNull(dao.load(REQUEST_1))
+        assertTrue(dao.markUnclaimedStartBlocked(REQUEST_1, StoredSweepBlockReason.START_BLOCKED_NOTIFICATION, 2_000))
+        assertFalse(dao.resumeBlockedRequest(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_100))
+        assertTrue(dao.resumeBlockedRequest(REQUEST_1, StoredSweepBlockReason.START_BLOCKED_NOTIFICATION, 2_200))
+        val after = requireNotNull(dao.load(REQUEST_1))
+        assertEquals(before.targets, after.targets)
+        assertEquals(before.sources, after.sources)
+        assertEquals(before.request.executionId, after.request.executionId)
+        assertEquals(before.request.workId, after.request.workId)
+        assertEquals(before.request.queueSequence, after.request.queueSequence)
+        assertEquals(StoredSweepRequestState.QUEUED.name, after.request.state)
+        assertNull(after.request.blockReason)
+        var rejected = false
+        try { dao.markUnclaimedStartBlocked(REQUEST_1, StoredSweepBlockReason.PRIVILEGE_AUTHORIZATION_REQUIRED, 2_300) }
+        catch (_: IllegalArgumentException) { rejected = true }
+        assertTrue(rejected)
+    }
+
+    @Test
+    fun privilegeBlockRequiresExactOwnerAndNoRunningTarget() = runBlocking {
+        insertSweep(requestId = REQUEST_1, targetStates = List(2) { StoredSweepTargetState.PENDING })
+        requireNotNull(dao.claimOldestRunnableRequest("session", "owner", 2_000, 9_000))
+        assertFalse(dao.blockClaimedRequestForMissingPrivilege(REQUEST_1, "stale", 2_100))
+        val target = requireNotNull(dao.claimNextPendingTarget(REQUEST_1, "owner", "target", 2_200, 9_000))
+        assertFalse(dao.blockClaimedRequestForMissingPrivilege(REQUEST_1, "owner", 2_300))
+        assertTrue(dao.completeClaimedTarget(REQUEST_1, target.ordinal, "owner", "target", successfulResult(2_400)))
+        val before = requireNotNull(dao.load(REQUEST_1))
+        assertTrue(dao.blockClaimedRequestForMissingPrivilege(REQUEST_1, "owner", 2_500))
+        val after = requireNotNull(dao.load(REQUEST_1))
+        assertEquals(before.targets, after.targets)
+        assertEquals(before.request.succeeded, after.request.succeeded)
+        assertEquals(StoredSweepBlockReason.PRIVILEGE_AUTHORIZATION_REQUIRED.name, after.request.blockReason)
+        assertNull(after.request.claimToken)
+        assertNull(after.request.serviceSessionToken)
+        assertNull(after.request.claimedAtEpochMs)
+        assertNull(after.request.claimLeaseExpiresAtEpochMs)
+    }
+
+    @Test
+    fun blockAndResumeFailClosedForPartialOwnership() = runBlocking {
+        for (requestOwnership in listOf(true, false)) {
+            insertSweep(requestId = REQUEST_1)
+            if (requestOwnership) seedQueuedRequestOwnership("partial", null, null)
+            else seedPartialTargetOwnership(REQUEST_1, 0)
+            val before = dao.load(REQUEST_1)
+            assertFalse(dao.markUnclaimedStartBlocked(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_000))
+            assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0), 2_000))
+            assertEquals(before, dao.load(REQUEST_1))
+            database.openHelper.writableDatabase.execSQL("UPDATE sweep_requests SET state='BLOCKED', block_reason='START_BLOCKED' WHERE request_id=?", arrayOf(REQUEST_1))
+            assertFalse(dao.resumeBlockedRequest(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_100))
+            deleteSweep()
+        }
+    }
+
+    @Test
+    fun legacyConversionHandlesStartBlockedInheritedRowsAndIsAllOrNone() = runBlocking {
+        insertSweep(requestId = REQUEST_1, targetStates = List(3) { StoredSweepTargetState.PENDING })
+        assertTrue(dao.markUnclaimedStartBlocked(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_000))
+        val before = requireNotNull(dao.load(REQUEST_1))
+        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 99), 2_100))
+        assertEquals(before, dao.load(REQUEST_1))
+        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, emptyList(), 2_100))
+        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 0, 1), 2_200))
+        val partial = requireNotNull(dao.load(REQUEST_1))
+        assertEquals(StoredSweepRequestState.QUEUED.name, partial.request.state)
+        assertNull(partial.request.blockReason)
+        assertEquals(listOf(StoredSweepTargetState.LEGACY_UNKNOWN, StoredSweepTargetState.LEGACY_UNKNOWN, StoredSweepTargetState.PENDING), targetStates())
+        assertEquals(before.sources, partial.sources)
+        assertEquals(before.request.executionId, partial.request.executionId)
+        assertEquals(before.request.workId, partial.request.workId)
+        assertEquals(before.targets.map { it.ordinal to it.packageName }, partial.targets.map { it.ordinal to it.packageName })
+        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 1), 2_200))
+        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 1, 2), 2_300))
+        val all = requireNotNull(dao.load(REQUEST_1))
+        assertEquals(StoredSweepRequestState.BLOCKED.name, all.request.state)
+        assertNull(all.request.blockReason)
+        assertEquals(3, all.request.unresolved)
+        assertTrue(all.targets.all { it.claimToken == null && it.claimLeaseExpiresAtEpochMs == null && it.finishedAtEpochMs == null && it.resultCode == null && !it.rootLaneDegraded })
+        assertFalse(dao.resumeBlockedRequest(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_400))
+    }
+
+    @Test
+    fun legacyConversionRejectsBrokenIdempotentPostconditionAndCompletedOrdinal() = runBlocking {
+        for (column in listOf("finished_at_epoch_ms=5", "result_code='BAD'", "root_lane_degraded=1")) {
+            insertSweep(requestId = REQUEST_1, targetStates = listOf(StoredSweepTargetState.LEGACY_UNKNOWN, StoredSweepTargetState.PENDING))
+            database.openHelper.writableDatabase.execSQL("UPDATE sweep_targets SET $column WHERE request_id=? AND ordinal=0", arrayOf(REQUEST_1))
+            val before = dao.load(REQUEST_1)
+            assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1, 0), 2_000))
+            assertEquals(before, dao.load(REQUEST_1))
+            deleteSweep()
+        }
+        insertSweep(requestId = REQUEST_1, targetStates = listOf(StoredSweepTargetState.SUCCEEDED, StoredSweepTargetState.PENDING))
+        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1, 0), 2_000))
+        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1), 2_000))
+        assertEquals(1, requireNotNull(dao.load(REQUEST_1)).request.succeeded)
+    }
+
+    @Test
+    fun startBlockClaimRaceHasOneWinnerAndCancellationCannotBeResumed() = runBlocking {
+        insertSweep(requestId = REQUEST_1)
+        val results = coroutineScope {
+            val block = async(Dispatchers.IO) { dao.markUnclaimedStartBlocked(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_000) }
+            val claim = async(Dispatchers.IO) { dao.claimOldestRunnableRequest("session", "owner", 2_000, 9_000) }
+            block.await() to (claim.await() != null)
+        }
+        assertTrue(results.first xor results.second)
+        dao.requestCancellation(REQUEST_1, 2_100)
+        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0), 2_200))
+        assertFalse(dao.blockClaimedRequestForMissingPrivilege(REQUEST_1, "owner", 2_200))
+        assertFalse(dao.resumeBlockedRequest(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_200))
+        assertEquals(StoredSweepRequestState.CANCELLED.name, requireNotNull(dao.load(REQUEST_1)).request.state)
+    }
+
+    @Test
+    fun exactExitSettlementReloadsLaterActiveTargetAndPreservesWinningCompletion() = runBlocking {
+        insertSweep(requestId = REQUEST_1, targetStates = List(2) { StoredSweepTargetState.PENDING })
+        insertSweep(requestId = REQUEST_2, queueSequence = 2)
+        val untouched = dao.load(REQUEST_2)
+        requireNotNull(dao.claimOldestRunnableRequest("session", "owner", 2_000, 9_000))
+        val first = requireNotNull(dao.claimNextPendingTarget(REQUEST_1, "owner", "t0", 2_100, 9_000))
+        assertTrue(dao.completeClaimedTarget(REQUEST_1, first.ordinal, "owner", "t0", successfulResult(2_200)))
+        requireNotNull(dao.claimNextPendingTarget(REQUEST_1, "owner", "t1", 2_300, 9_000))
+        assertFalse(dao.settleClaimedRequestAfterExit(REQUEST_1, "stale", 2_400))
+        dao.requestCancellation(REQUEST_1, 2_500)
+        assertTrue(dao.settleClaimedRequestAfterExit(REQUEST_1, "owner", 2_600))
+        assertEquals(listOf(StoredSweepTargetState.SUCCEEDED, StoredSweepTargetState.CANCELLED), targetStates())
+        assertEquals(untouched, dao.load(REQUEST_2))
+        assertNull(requireNotNull(dao.load(REQUEST_1)).request.claimToken)
+    }
+
+    @Test
     fun legacyUnknownTargetIsNotClaimedUntilReconciledOrExplicitlyResumed() = runBlocking {
         insertSweep(
             requestId = REQUEST_1,

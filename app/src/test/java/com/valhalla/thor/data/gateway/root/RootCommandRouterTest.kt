@@ -81,9 +81,13 @@ class RootCommandRouterTest {
             sweepFactory = RecordingSessionFactory { sweepSession },
         )
 
-        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.backup", "archive"))
-        fixture.router.execute(command(PrivilegeExecutionLane.SWEEP, "sweep.clear_cache", "sweep"))
+        val archiveCommand = command(PrivilegeExecutionLane.ARCHIVE, "archive.backup", "archive")
+        val sweepCommand = command(PrivilegeExecutionLane.SWEEP, "sweep.clear_cache", "sweep")
+        fixture.router.execute(archiveCommand)
+        fixture.router.execute(sweepCommand)
 
+        assertFalse(archiveCommand.execution.provenance.usedDegradedRootFallback)
+        assertFalse(sweepCommand.execution.provenance.usedDegradedRootFallback)
         assertEquals(listOf("archive"), archiveSession.commands)
         assertEquals(listOf("sweep"), sweepSession.commands)
         assertEquals(0, fixture.main.submissionCount)
@@ -157,8 +161,10 @@ class RootCommandRouterTest {
             archiveFactory = unavailableFactory("archive unavailable"),
         )
 
-        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.backup"))
+        val command = command(PrivilegeExecutionLane.ARCHIVE, "archive.backup")
+        fixture.router.execute(command)
 
+        assertTrue(command.execution.provenance.usedDegradedRootFallback)
         assertEquals(1, fixture.main.submissionCount)
         assertEquals(
             RootLaneMode.DEGRADED,

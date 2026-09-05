@@ -74,7 +74,7 @@ class PrivilegeSweepWorkerIntegrationTest {
     private lateinit var taskExecutor: ExecutorService
     private lateinit var workManager: WorkManager
     private lateinit var testDriver: TestDriver
-    private lateinit var queueCanceller: SweepQueueCanceller
+    private lateinit var executionFence: LegacyPrivilegeSweepExecutionFence
 
     @Before
     fun setUp() {
@@ -87,6 +87,7 @@ class PrivilegeSweepWorkerIntegrationTest {
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         store = RoomPrivilegeSweepStore(database.privilegeSweepDao())
         gate = PrivilegeSweepProcessGate()
+        executionFence = LegacyPrivilegeSweepExecutionFence()
         executor = ControlledItemExecutor()
         workerExecutor = Executors.newSingleThreadExecutor()
         taskExecutor = Executors.newSingleThreadExecutor()
@@ -94,7 +95,9 @@ class PrivilegeSweepWorkerIntegrationTest {
         val configuration = Configuration.Builder()
             .setExecutor(workerExecutor)
             .setTaskExecutor(taskExecutor)
-            .setWorkerFactory(SweepWorkerFactory(context, database, gate, executor))
+            .setWorkerFactory(
+                SweepWorkerFactory(context, database, gate, executor, executionFence)
+            )
             .build()
         WorkManagerTestInitHelper.initializeTestWorkManager(
             context,
@@ -103,12 +106,6 @@ class PrivilegeSweepWorkerIntegrationTest {
         )
         workManager = WorkManager.getInstance(context)
         testDriver = checkNotNull(WorkManagerTestInitHelper.getTestDriver(context))
-        queueCanceller = SweepQueueCanceller(
-            store = store,
-            clock = TestClock,
-            gate = gate,
-            workManager = WorkManagerSweepQueueWorkManager(context),
-        )
     }
 
     @Suppress("RestrictedApi")
@@ -189,7 +186,7 @@ class PrivilegeSweepWorkerIntegrationTest {
         awaitWork(work.id, WorkInfo.State.RUNNING)
 
         assertEquals(targets.first(), firstCall.packageName)
-        assertEquals(work.id, firstCall.snapshot.workId)
+        assertEquals(work.id, firstCall.snapshot.executionId)
         assertEquals(sweep.requestId, firstCall.snapshot.requestId)
         assertFalse(isSystemForegroundServiceRunning())
 
@@ -205,41 +202,21 @@ class PrivilegeSweepWorkerIntegrationTest {
     }
 
     @Test
-    fun queueCancellationBeforeStartLeavesEveryTargetUnresolved() = runBlocking {
+    fun closedAdmissionRejectsRacingWorkerBeforeAnyTargetMutation() = runBlocking {
+        executionFence.closeAdmission()
         val sweep = delayedSweep()
         val work = sweep.work
         val targets = randomTargets()
         persist(sweep, targets)
         enqueue(work)
-        awaitWork(work.id, WorkInfo.State.ENQUEUED)
 
-        queueCanceller.cancelQueue()
-
-        val cancelled = awaitTerminal(sweep.requestId, StoredSweepTerminal.CANCELLED)
-        awaitWork(work.id, WorkInfo.State.CANCELLED)
-        assertTrue(executor.calls.isEmpty())
-        assertEquals(targets.size, cancelled.unresolved)
-    }
-
-    @Test
-    fun queueCancellationWhileRunningPreservesCompletedAndUnresolvedCounts() = runBlocking {
-        executor.block()
-        val sweep = delayedSweep()
-        val work = sweep.work
-        val targets = randomTargets()
-        persist(sweep, targets)
-        enqueue(work)
         testDriver.setInitialDelayMet(work.id)
-        awaitFirstCall(work.id)
-        awaitWork(work.id, WorkInfo.State.RUNNING)
+        awaitWork(work.id, WorkInfo.State.FAILED)
 
-        queueCanceller.cancelQueue()
-
-        val cancelled = awaitTerminal(sweep.requestId, StoredSweepTerminal.CANCELLED)
-        awaitWork(work.id, WorkInfo.State.CANCELLED)
-        assertEquals(listOf(targets.first()), executor.calls.map(ItemCall::packageName))
-        assertEquals(0, cancelled.succeeded)
-        assertEquals(targets.size, cancelled.unresolved)
+        assertTrue(executor.calls.isEmpty())
+        val retained = checkNotNull(store.load(sweep.requestId))
+        assertNull(retained.terminalState)
+        assertEquals(targets.size, retained.unresolved)
     }
 
     private fun delayedSweep(): TestSweep {
@@ -363,12 +340,15 @@ class PrivilegeSweepWorkerIntegrationTest {
         override suspend fun execute(
             snapshot: StoredPrivilegeSweep,
             packageName: String,
-        ): SweepAttemptOutcome {
+        ): PrivilegeSweepItemExecutionResult {
             val call = ItemCall(snapshot, packageName)
             calls += call
             firstCall.complete(call)
             if (shouldBlock) released.await()
-            return SweepAttemptOutcome.SUCCEEDED
+            return PrivilegeSweepItemExecutionResult(
+                outcome = SweepAttemptOutcome.SUCCEEDED,
+                rootLaneDegraded = false,
+            )
         }
     }
 
@@ -377,6 +357,7 @@ class PrivilegeSweepWorkerIntegrationTest {
         private val database: AppDatabase,
         private val gate: PrivilegeSweepProcessGate,
         private val executor: PrivilegeSweepItemExecutor,
+        private val executionFence: LegacyPrivilegeSweepExecutionFence,
     ) : WorkerFactory() {
         private val notifications = ThorJobNotifications(context)
         private val registry = JobRegistry()
@@ -402,6 +383,7 @@ class PrivilegeSweepWorkerIntegrationTest {
                 registry = registry,
                 runner = runner,
                 sheetTargets = sheetTargets,
+                executionFence = executionFence,
             )
         }
     }

@@ -59,6 +59,31 @@ class RoomPrivilegeSweepStoreTest {
     }
 
     @Test
+    fun `service transitions delegate IDs reasons and exact exit settlement`() = runTest {
+        val request = newSnapshot(listOf("com.example.alpha", "com.example.beta"))
+        store.createOrFindEquivalent(request)
+        val id = request.requestId
+        val start = com.valhalla.thor.domain.repository.PrivilegeSweepBlockReason.START_BLOCKED
+        val privilege = com.valhalla.thor.domain.repository.PrivilegeSweepBlockReason.PRIVILEGE_AUTHORIZATION_REQUIRED
+        assertTrue(store.markUnclaimedStartBlocked(id, start, 2))
+        assertFalse(store.resumeBlockedRequest(id, privilege, 3))
+        assertTrue(store.resumeBlockedRequest(id, start, 4))
+        val claim = requireNotNull(store.claimOldestRunnableRequest("session", "owner", 5, 100))
+        assertFalse(store.blockClaimedRequestForMissingPrivilege(id, "stale", 6))
+        assertTrue(store.blockClaimedRequestForMissingPrivilege(id, claim.claimToken, 6))
+        assertTrue(store.resumeBlockedRequest(id, privilege, 7))
+        assertTrue(store.markLegacyTargetsUnknown(id, listOf(0), 8))
+        val second = requireNotNull(store.claimOldestRunnableRequest("session", "owner2", 9, 100))
+        requireNotNull(store.claimNextPendingTarget(id, second.claimToken, "target", 10, 100))
+        assertTrue(store.settleClaimedRequestAfterExit(id, second.claimToken, 11))
+        val row = requireNotNull(store.load(id))
+        assertEquals(listOf(PrivilegeSweepTargetState.LEGACY_UNKNOWN, PrivilegeSweepTargetState.UNKNOWN), row.targetSnapshots.map { it.state })
+        assertEquals(request.sourceAssociations, row.sourceAssociations)
+        assertEquals(request.executionId, row.executionId)
+        assertEquals(2, row.unresolved)
+    }
+
+    @Test
     @Suppress("DEPRECATION")
     fun `snapshots retain legacy work id and expose neutral execution id with ordered targets`() =
         runTest {
