@@ -27,7 +27,11 @@ internal class WorkManagerLegacyDataWorkStateSource(
     override fun observe(): Flow<List<WorkInfo.State>> = states
 }
 
-/** Keeps the Room data lane behind released, persisted WorkManager data work. */
+/**
+ * Keeps the Room data lane behind released, persisted WorkManager data work.
+ *
+ * Remove only after every supported upgrade path has drained its persisted [THOR_JOB_CHAIN] work.
+ */
 @Single
 class LegacyDataWorkDrainGate internal constructor(
     private val source: LegacyDataWorkStateSource,

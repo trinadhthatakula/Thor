@@ -79,7 +79,10 @@ class PrivilegeSweepWorkerIntegrationTest {
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
-        assertNull("production Koin must not start for this integration test", GlobalContext.getOrNull())
+        assertNull(
+            "production Koin must not start for this integration test",
+            GlobalContext.getOrNull()
+        )
         assertEquals(
             TEST_APPLICATION_CLASS,
             context.applicationContext.javaClass.name,
@@ -172,51 +175,21 @@ class PrivilegeSweepWorkerIntegrationTest {
     }
 
     @Test
-    fun workerReconstructsRoomRequestAndRunsWithoutForegroundService() = runBlocking {
-        executor.block()
+    fun workerReconstructsAsTerminalTombstoneWithoutMutationOrForegroundService() = runBlocking {
         val sweep = delayedSweep()
         val work = sweep.work
         val targets = randomTargets()
         persist(sweep, targets)
+        val before = checkNotNull(store.load(sweep.requestId))
         enqueue(work)
 
         assertEquals(setOf(SWEEP_REQUEST_ID_KEY), sweep.inputKeys)
         testDriver.setInitialDelayMet(work.id)
-        val firstCall = awaitFirstCall(work.id)
-        awaitWork(work.id, WorkInfo.State.RUNNING)
-
-        assertEquals(targets.first(), firstCall.packageName)
-        assertEquals(work.id, firstCall.snapshot.executionId)
-        assertEquals(sweep.requestId, firstCall.snapshot.requestId)
-        assertFalse(isSystemForegroundServiceRunning())
-
-        executor.release()
-        awaitWork(work.id, WorkInfo.State.SUCCEEDED)
-        val completed = awaitTerminal(sweep.requestId, StoredSweepTerminal.SUCCEEDED)
-
-        assertEquals(targets, executor.calls.map(ItemCall::packageName))
-        assertEquals(2, completed.succeeded)
-        assertEquals(0, completed.failed)
-        assertEquals(0, completed.busy)
-        assertEquals(0, completed.unresolved)
-    }
-
-    @Test
-    fun closedAdmissionRejectsRacingWorkerBeforeAnyTargetMutation() = runBlocking {
-        executionFence.closeAdmission()
-        val sweep = delayedSweep()
-        val work = sweep.work
-        val targets = randomTargets()
-        persist(sweep, targets)
-        enqueue(work)
-
-        testDriver.setInitialDelayMet(work.id)
         awaitWork(work.id, WorkInfo.State.FAILED)
 
         assertTrue(executor.calls.isEmpty())
-        val retained = checkNotNull(store.load(sweep.requestId))
-        assertNull(retained.terminalState)
-        assertEquals(targets.size, retained.unresolved)
+        assertEquals(before, store.load(sweep.requestId))
+        assertFalse(isSystemForegroundServiceRunning())
     }
 
     private fun delayedSweep(): TestSweep {

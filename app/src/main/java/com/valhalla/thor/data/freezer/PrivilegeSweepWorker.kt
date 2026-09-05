@@ -11,16 +11,12 @@ import com.valhalla.thor.data.backup.job.JobSheetTarget
 import com.valhalla.thor.data.backup.job.JobSheetTargets
 import com.valhalla.thor.data.backup.job.ThorJobNotifications
 import com.valhalla.thor.data.backup.job.ThorJobWorker
-import com.valhalla.thor.domain.model.SWEEP_REQUEST_ID_KEY
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.repository.PrivilegeSweepStore
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.StoredSweepTerminal
-import com.valhalla.thor.util.ServiceQueueEvent
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -68,10 +64,6 @@ internal class PrivilegeSweepRunner(
                 }
                 if (!admitted) return settledOutcome(requestId, noteResult)
 
-                ServiceQueueLatencyProbe.mark(
-                    ServiceQueueOperation.PRIVILEGE_SWEEP,
-                    ServiceQueueEvent.FIRST_OPERATION,
-                )
                 val execution = executor.execute(snapshot, packageName)
                 val recorded = withContext(NonCancellable + ioDispatcher) {
                     store.recordAttempt(requestId, execution.outcome)
@@ -200,30 +192,6 @@ internal class PrivilegeSweepWorker(
     override val runsForeground = false
     override val sheetTarget: JobSheetTarget? = null
 
-    override suspend fun runJob(): Result {
-        val registration = executionFence.tryRegister()
-            ?: return fail("Legacy sweep execution admission is closed")
-        return try {
-            when (
-                val outcome = runner.run(
-                    requestIdValue = inputData.getString(SWEEP_REQUEST_ID_KEY),
-                    publish = ::publish,
-                    noteResult = { snapshot -> noteResult(snapshot.resultNotice()) },
-                )
-            ) {
-                PrivilegeSweepRunOutcome.Success -> Result.success()
-                is PrivilegeSweepRunOutcome.PermanentFailure -> fail(outcome.reason)
-            }
-        } finally {
-            registration.close()
-        }
-    }
-
-    private fun StoredPrivilegeSweep.resultNotice(): String = applicationContext.getString(
-        R.string.sweep_result_summary,
-        succeeded,
-        failed,
-        busy,
-        unresolved,
-    )
+    override suspend fun runJob(): Result =
+        fail("Legacy privilege sweep WorkManager execution is retired")
 }

@@ -4,11 +4,9 @@
 package com.valhalla.thor.data.freezer
 
 import android.content.Context
-import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import com.valhalla.thor.data.backup.job.enqueueUniqueJob
 import com.valhalla.thor.data.service.ServiceStartFailure
 import com.valhalla.thor.data.service.ServiceStartResult
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
@@ -20,7 +18,6 @@ import com.valhalla.thor.domain.model.PrivilegeSweepSpec
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.RootLaneMode
 import com.valhalla.thor.domain.model.RootLaneStatusSource
-import com.valhalla.thor.domain.model.THOR_SWEEP_CHAIN
 import com.valhalla.thor.domain.model.normalizeSweepTargets
 import com.valhalla.thor.domain.model.profileIdsFromSourceAssociations
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
@@ -170,9 +167,11 @@ class DefaultPrivilegeSweepController internal constructor(
         PrivilegeSweepRequestState.QUEUED,
         PrivilegeSweepRequestState.BLOCKED,
             -> PrivilegeSweepPhase.QUEUED
+
         PrivilegeSweepRequestState.RUNNING,
         PrivilegeSweepRequestState.CANCEL_REQUESTED,
             -> PrivilegeSweepPhase.RUNNING
+
         PrivilegeSweepRequestState.SUCCEEDED -> PrivilegeSweepPhase.SUCCEEDED
         PrivilegeSweepRequestState.PARTIAL -> PrivilegeSweepPhase.PARTIAL
         PrivilegeSweepRequestState.CANCELLED -> PrivilegeSweepPhase.CANCELLED
@@ -210,14 +209,7 @@ internal class WorkManagerPrivilegeSweepWorkManager(
     private val workManager: WorkManager
         get() = WorkManager.getInstance(context)
 
-    override suspend fun enqueue(work: OneTimeWorkRequest): Boolean =
-        enqueueUniqueJob(THOR_SWEEP_CHAIN, work) {
-            workManager.beginUniqueWork(
-                THOR_SWEEP_CHAIN,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
-                work,
-            ).enqueue()
-        } != null
+    override suspend fun enqueue(work: OneTimeWorkRequest): Boolean = false
 
     override fun observeState(workId: UUID): Flow<SweepWorkState?> =
         if (workId.isPrivilegeServiceExecutionId()) {

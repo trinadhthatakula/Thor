@@ -37,6 +37,7 @@ class ThorTestRunner : AndroidJUnitRunner() {
         val ISOLATED_TESTS = setOf(
             "com.valhalla.thor.data.freezer.PrivilegeSweepWorkerIntegrationTest",
             "com.valhalla.thor.data.freezer.PrivilegeSweepServiceIntegrationTest",
+            "com.valhalla.thor.data.service.LegacyWorkManagerCutoverIntegrationTest",
             "com.valhalla.thor.data.source.local.room.PrivilegeSweepDaoTest",
         )
     }
