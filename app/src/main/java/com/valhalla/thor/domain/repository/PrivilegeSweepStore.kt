@@ -115,6 +115,8 @@ data class StoredPrivilegeSweep(
     val unresolved: Int,
     val terminalAtEpochMs: Long?,
     val retainUntilEpochMs: Long?,
+    val queueSequence: Long = 0L,
+    val acknowledgedAtEpochMs: Long? = null,
     val sourceAssociations: Set<String> = setOf(source.name),
     val targetSnapshots: List<StoredPrivilegeSweepTarget> = emptyList(),
     val requestState: PrivilegeSweepRequestState = terminalState?.let {
@@ -334,6 +336,11 @@ interface PrivilegeSweepStore {
         expectedReason: PrivilegeSweepBlockReason,
         nowMs: Long,
     ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun acknowledgeTerminalRequest(
+        requestId: UUID,
+        nowMs: Long,
+    ): StoredPrivilegeSweep? = claimAwareStoreUnavailable()
 
     suspend fun markLegacyTargetsUnknown(
         requestId: UUID,

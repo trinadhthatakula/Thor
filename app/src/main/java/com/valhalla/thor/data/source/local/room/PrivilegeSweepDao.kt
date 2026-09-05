@@ -136,6 +136,17 @@ abstract class PrivilegeSweepDao {
     abstract fun observeRetained(sourceSurface: String): Flow<List<SweepRequestWithTargets>>
 
     @Transaction
+    open suspend fun acknowledgeTerminalRequest(
+        requestId: String,
+        nowMs: Long,
+    ): SweepRequestWithTargets? {
+        val request = loadRequestEntity(requestId) ?: return null
+        if (request.state !in ACKNOWLEDGEABLE_REQUEST_STATES) return null
+        if (acknowledgeTerminalRequestRow(requestId, nowMs) != 1) return null
+        return load(requestId)
+    }
+
+    @Transaction
     open suspend fun claimOldestRunnableRequest(
         sessionToken: String,
         claimToken: String,
@@ -818,14 +829,21 @@ abstract class PrivilegeSweepDao {
         if (hasMalformedRequestOwnership(requestId) || hasMalformedTargetOwnership(requestId)) return false
         if (request.hasUnownedRequestOwnership()) return loadRunningTarget(requestId) == null
         if (!request.hasValidOwnedRequestOwnership() || request.claimToken != requestClaimToken) return false
-        if (request.state !in setOf(StoredSweepRequestState.RUNNING.name, StoredSweepRequestState.CANCEL_REQUESTED.name)) return false
+        if (request.state !in setOf(
+                StoredSweepRequestState.RUNNING.name,
+                StoredSweepRequestState.CANCEL_REQUESTED.name
+            )
+        ) return false
 
         // Reload inside the transaction: a target CAS may have committed without returning to its caller.
         val target = loadRunningTarget(requestId)
         if (target != null) {
             return recoverTargetAfterOwnerLoss(
                 request, target,
-                StoredSweepRecovery.MarkUnknown(SweepTargetResultCode("INTERRUPTED_OUTCOME_UNKNOWN"), nowMs),
+                StoredSweepRecovery.MarkUnknown(
+                    SweepTargetResultCode("INTERRUPTED_OUTCOME_UNKNOWN"),
+                    nowMs
+                ),
             )
         }
         if (request.state == StoredSweepRequestState.CANCEL_REQUESTED.name) {
@@ -1184,6 +1202,20 @@ abstract class PrivilegeSweepDao {
 
     @Query("SELECT * FROM sweep_requests WHERE request_id = :requestId")
     protected abstract suspend fun loadRequestEntity(requestId: String): SweepRequestEntity?
+
+    @Query(
+        """
+        UPDATE sweep_requests
+        SET acknowledged_at_epoch_ms = COALESCE(acknowledged_at_epoch_ms, :nowMs)
+        WHERE request_id = :requestId
+          AND state IN ('SUCCEEDED', 'PARTIAL', 'CANCELLED', 'FAILED')
+          AND terminal_state IS NOT NULL
+        """
+    )
+    protected abstract suspend fun acknowledgeTerminalRequestRow(
+        requestId: String,
+        nowMs: Long,
+    ): Int
 
     @Query(
         """
@@ -2838,6 +2870,7 @@ abstract class PrivilegeSweepDao {
                 this == StoredSweepRequestState.FAILED
 
     private companion object {
+        val ACKNOWLEDGEABLE_REQUEST_STATES = setOf("SUCCEEDED", "PARTIAL", "CANCELLED", "FAILED")
         const val SWEEP_RESULT_RETENTION_MS = 24L * 60L * 60L * 1_000L
     }
 }

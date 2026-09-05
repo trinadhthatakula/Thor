@@ -60,6 +60,7 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.SecretKey
 import kotlinx.coroutines.CancellationException
@@ -76,6 +77,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -89,6 +91,7 @@ import org.koin.core.annotation.Single
 internal data class DataSyncClaim(
     val taskId: UUID,
     val claimToken: String,
+    val transientArchiveKeyToken: String? = null,
     val transientSourceToken: String? = null,
     val task: ClaimedDataTask? = null,
     val item: ClaimedDataTaskItem? = null,
@@ -203,8 +206,8 @@ internal class DataTaskRecoveryProcess(
         synchronized(lock) {
             val entry = current ?: return@synchronized false
             (operation == null || entry.operation === operation) &&
-                entry.completedSuccessfully &&
-                entry.operation.completion.isCompleted
+                    entry.completedSuccessfully &&
+                    entry.operation.completion.isCompleted
         }
 
     private suspend fun cleanupPendingTasks() {
@@ -289,14 +292,31 @@ internal class RoomDataSyncCoordinatorRuntime(
     private val powerManager = requireNotNull(
         applicationContext.getSystemService(PowerManager::class.java)
     )
+
+    private data class HandoffGeneration(
+        val archiveKeyToken: String?,
+        val restoreSourceToken: String?,
+    )
+
+    private val recoveryCleanupGenerations = ConcurrentHashMap<UUID, HandoffGeneration>()
     private val recoveryProcess = DataTaskRecoveryProcess(
         dispatcher = ioDispatcher,
         recoverClaims = { sessionToken, localOwnerIsLive ->
+            val generations = store.observeRetained().first().associate { task ->
+                task.taskId to HandoffGeneration(
+                    archiveKeyToken = keys.currentToken(task.taskId.toString()),
+                    restoreSourceToken = restoreSources.currentToken(task.taskId),
+                )
+            }
             store.recoverClaims(sessionToken, nowMs(), localOwnerIsLive)
                 .map { it.taskId }
                 .distinct()
+                .onEach { taskId ->
+                    recoveryCleanupGenerations[taskId] = generations[taskId]
+                        ?: HandoffGeneration(null, null)
+                }
         },
-        cleanupRecoveredClaim = ::cleanupTask,
+        cleanupRecoveredClaim = ::cleanupRecoveredClaim,
     )
 
     override suspend fun awaitLegacyDrain() {
@@ -338,6 +358,7 @@ internal class RoomDataSyncCoordinatorRuntime(
         return DataSyncClaim(
             taskId = work.task.taskId,
             claimToken = work.task.claimToken,
+            transientArchiveKeyToken = keys.currentToken(work.task.taskId.toString()),
             transientSourceToken = restoreSources.currentToken(work.task.taskId),
             task = work.task,
             item = work.item,
@@ -417,12 +438,28 @@ internal class RoomDataSyncCoordinatorRuntime(
         return write
     }
 
-    override suspend fun cleanupClaim(claim: DataSyncClaim) = cleanupTask(claim.taskId)
+    override suspend fun cleanupClaim(claim: DataSyncClaim) {
+        cleanupHandoffs(
+            claim.taskId,
+            HandoffGeneration(claim.transientArchiveKeyToken, claim.transientSourceToken),
+        )
+        registry.clear(claim.taskId)
+    }
 
-    private fun cleanupTask(taskId: UUID) {
-        keys.drop(taskId.toString())
-        restoreSources.dropTask(taskId)
+    private suspend fun cleanupRecoveredClaim(taskId: UUID) {
+        if (taskId in store.uncommittedRestoreSourceCleanupTaskIds()) {
+            restoreSourceStager.discardUncommittedTaskSources(taskId)
+        }
+        val generation = recoveryCleanupGenerations[taskId]
+            ?: HandoffGeneration(null, null)
+        cleanupHandoffs(taskId, generation)
         registry.clear(taskId)
+        recoveryCleanupGenerations.remove(taskId, generation)
+    }
+
+    private fun cleanupHandoffs(taskId: UUID, generation: HandoffGeneration) {
+        generation.archiveKeyToken?.let { token -> keys.drop(taskId.toString(), token) }
+        generation.restoreSourceToken?.let { token -> restoreSources.drop(taskId, token) }
     }
 
     override fun checkpointSink(claim: DataSyncClaim): DataTaskCheckpointSink {

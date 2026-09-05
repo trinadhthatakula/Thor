@@ -312,8 +312,8 @@ class DataTaskRecoveryPolicyTest {
         val secondTask = UUID.fromString("55555555-5555-5555-5555-555555555555")
         val firstUri = "content://provider/first"
         val secondUri = "content://provider/second"
-        val firstToken = holder.register(firstTask, firstUri)
-        val secondToken = holder.register(secondTask, secondUri)
+        val firstToken = holder.registerAuthorized(firstTask, firstUri)
+        val secondToken = holder.registerAuthorized(secondTask, secondUri)
 
         assertNull(holder.take(secondTask, firstToken))
         assertEquals(firstUri, holder.take(firstTask, firstToken))

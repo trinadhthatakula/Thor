@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.time.Duration.Companion.milliseconds
@@ -28,6 +29,7 @@ class RestoreSourceStagerTest {
         val holder = RestoreSourceGrantHolder()
         val first = holder.register(TASK_ID, "content://documents/first")
         val second = holder.register(TASK_ID, "content://documents/second")
+        assertTrue(holder.authorize(TASK_ID, second))
         val stager = RestoreSourceStager(
             takeSource = holder::take,
             copyToPrivate = { _, rawUri, _ ->
@@ -49,8 +51,23 @@ class RestoreSourceStagerTest {
                 appliedCheckpoints(),
             ),
         )
-        assertEquals("content://documents/first", holder.take(TASK_ID, first))
+        assertEquals(null, holder.take(TASK_ID, first))
         assertEquals(null, holder.take(TASK_ID, second))
+    }
+
+    @Test
+    fun `pending replacement source requires exact authorization`() {
+        val holder = RestoreSourceGrantHolder()
+        val first = holder.register(TASK_ID, "content://documents/first")
+        assertTrue(holder.authorize(TASK_ID, first))
+        val second = holder.register(TASK_ID, "content://documents/second")
+
+        assertEquals(null, holder.currentToken(TASK_ID))
+        assertEquals(null, holder.take(TASK_ID, first))
+        assertFalse(holder.drop(TASK_ID, first))
+        assertTrue(holder.authorize(TASK_ID, second))
+        assertEquals(second, holder.currentToken(TASK_ID))
+        assertEquals("content://documents/second", holder.take(TASK_ID, second))
     }
 
     @Test

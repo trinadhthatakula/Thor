@@ -287,6 +287,21 @@ internal class RestoreSourceStager internal constructor(
         }
     }
 
+    /** Resolves an already durable source for foreground reauthentication without persisting it. */
+    fun resolveStoredSourceUri(taskId: UUID, source: StoredRestoreSource): String? = when (source) {
+        StoredRestoreSource.AwaitingTransientGrant -> null
+        is StoredRestoreSource.PersistedGrant ->
+            dependencies.persistedSourceUri(source.grantIdentity)
+
+        is StoredRestoreSource.PrivateCopy -> if (
+            isPrivateRestoreSourceRelativePath(taskId, source.privateRelativePath)
+        ) {
+            dependencies.privateSourceUri(taskId, source.privateRelativePath)
+        } else {
+            null
+        }
+    }
+
     fun discardUncommittedTaskSources(taskId: UUID) {
         dependencies.discardUncommittedTaskSources(taskId)
     }

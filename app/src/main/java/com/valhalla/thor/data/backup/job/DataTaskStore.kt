@@ -124,6 +124,8 @@ internal class DataTaskStore(
 
     fun observeTask(taskId: UUID): Flow<DataTaskSnapshot?> = dao.observeTask(taskId.toString())
 
+    fun observeRetained(): Flow<List<DataTaskSnapshot>> = dao.observeRetained()
+
     fun observeActiveTaskId(kind: DataTaskKind, target: String): Flow<UUID?> =
         dao.observeActiveTaskId(kind, "package:$target")
 
@@ -342,6 +344,18 @@ internal class DataTaskStore(
         taskId: UUID,
         nowMs: Long,
     ): DataTaskSnapshot? = dao.acknowledgeTerminalTask(taskId.toString(), nowMs)
+
+    suspend fun resumeFromUserAction(
+        taskId: UUID,
+        expectedState: DataTaskState,
+        expectedInterruption: DataTaskInterruption,
+        nowMs: Long,
+    ): Boolean = dao.resumeFromUserAction(
+        taskId = taskId.toString(),
+        expectedState = expectedState,
+        expectedInterruption = expectedInterruption,
+        nowMs = nowMs,
+    )
 
     suspend fun hasRunnableTasks(): Boolean = dao.hasRunnableTasks()
 

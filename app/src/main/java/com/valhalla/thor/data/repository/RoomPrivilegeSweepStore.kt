@@ -248,6 +248,14 @@ class RoomPrivilegeSweepStore(
         nowMs = nowMs,
     )
 
+    override suspend fun acknowledgeTerminalRequest(
+        requestId: UUID,
+        nowMs: Long,
+    ): StoredPrivilegeSweep? = dao.acknowledgeTerminalRequest(
+        requestId = requestId.toString(),
+        nowMs = nowMs,
+    )?.toDomain()
+
     override suspend fun markLegacyTargetsUnknown(
         requestId: UUID,
         ambiguousOrdinals: List<Int>,
@@ -312,6 +320,8 @@ class RoomPrivilegeSweepStore(
             unresolved = request.unresolved,
             terminalAtEpochMs = request.terminalAtEpochMs,
             retainUntilEpochMs = request.retainUntilEpochMs,
+            queueSequence = request.queueSequence,
+            acknowledgedAtEpochMs = request.acknowledgedAtEpochMs,
             sourceAssociations = sources.mapTo(
                 linkedSetOf(),
                 SweepRequestSourceEntity::sourceSurface

@@ -96,7 +96,7 @@ internal class RoomDataTaskAcceptanceDependencies(
     }
     override val restoreSourceVault = object : DataTaskRestoreSourceVault {
         override fun put(taskId: UUID, uriString: String) {
-            restoreSources.register(taskId, uriString.toUri())
+            restoreSources.registerAuthorized(taskId, uriString.toUri())
         }
 
         override fun drop(taskId: UUID) {

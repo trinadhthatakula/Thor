@@ -600,7 +600,15 @@ class DataTaskDaoTest {
 
     @Test
     fun nonDestructiveRestoreCancellationRecoveryRemainsCancelled() = runBlocking {
-        dao.insertTask(newRestoreTask())
+        val restoreTask = newRestoreTask()
+        dao.insertTask(
+            restoreTask.copy(
+                initialState = DataTaskState.STAGING_SOURCE,
+                detail = (restoreTask.detail as StoredDataTaskDetail.ArchiveRestore).copy(
+                    source = StoredRestoreSource.AwaitingTransientGrant,
+                ),
+            ),
+        )
         dao.claimOldestRunnableTask("old-session", "task-claim", 2_000L, 3_000L)
         dao.claimNextPendingItem(TASK_1, "task-claim", "item-claim", 2_100L, 3_100L)
         dao.requestCancellation(TASK_1, 2_200L)
@@ -617,6 +625,10 @@ class DataTaskDaoTest {
 
         val recoveredTask = loadPersistedTask()
         assertEquals(DataTaskState.CANCELLED.name, recoveredTask.state)
+        assertEquals(
+            listOf(UUID.fromString(TASK_1)),
+            dao.uncommittedRestoreSourceCleanupTaskIds(),
+        )
         assertNull(recoveredTask.serviceSessionToken)
         assertNull(recoveredTask.claimToken)
         assertNull(recoveredTask.claimLeaseExpiresAtEpochMs)
@@ -728,6 +740,57 @@ class DataTaskDaoTest {
                 4_300L,
             ),
         )
+    }
+
+    @Test
+    fun explicitResumeAfterDestructiveRecoveryRearmsTheInterruptedItem() = runBlocking {
+        val breadcrumb = RestoreMutationBreadcrumb(
+            packageName = "com.example.app",
+            appLabel = "Example",
+            startedAtEpochMs = 2_150L,
+        )
+        dao.insertTask(newRestoreTask())
+        dao.claimOldestRunnableTask("old-session", "old-task-claim", 2_000L, 3_000L)
+        dao.claimNextPendingItem(TASK_1, "old-task-claim", "old-item-claim", 2_100L, 3_100L)
+        assertTrue(
+            dao.checkpointClaimedTask(
+                TASK_1,
+                "old-task-claim",
+                0,
+                "old-item-claim",
+                checkpoint().copy(
+                    destructiveStarted = true,
+                    restoreMutationBreadcrumb = breadcrumb,
+                ),
+                3_200L,
+                transactionNowMs = { 2_200L },
+            ),
+        )
+        dao.recoverClaims("new-session", 3_200L) { _, _ -> false }
+
+        assertTrue(
+            dao.resumeFromUserAction(
+                taskId = TASK_1,
+                expectedState = DataTaskState.INTERRUPTED_REVIEW,
+                expectedInterruption = DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW,
+                nowMs = 3_300L,
+            ),
+        )
+        val claim = requireNotNull(
+            dao.claimOldestRunnableWork(
+                sessionToken = "new-session",
+                taskClaimToken = "new-task-claim",
+                itemClaimToken = "new-item-claim",
+                nowMs = 3_400L,
+                leaseUntilMs = 4_400L,
+            ),
+        )
+
+        assertEquals(UUID.fromString(TASK_1), claim.task.taskId)
+        assertEquals(0, claim.item.ordinal)
+        val checkpoint = requireNotNull(claim.task.lastCheckpoint)
+        assertFalse(checkpoint.destructiveStarted)
+        assertNull(checkpoint.restoreMutationBreadcrumb)
     }
 
     @Test

@@ -100,6 +100,13 @@ abstract class DataTaskDao {
         return observeTaskAggregate(taskId).map { loadTask(taskId) }
     }
 
+    open fun observeRetained(): Flow<List<DataTaskSnapshot>> =
+        observeRetainedAggregate().map { loadRetainedSnapshots() }
+
+    @Transaction
+    open suspend fun loadRetainedSnapshots(): List<DataTaskSnapshot> =
+        loadRetainedTaskIds().mapNotNull { loadSnapshot(it) }
+
     fun observeActiveTaskId(kind: DataTaskKind, targetKey: String): Flow<UUID?> =
         observeActiveTaskIdRow(kind.name, targetKey).map { taskId ->
             taskId?.let(UUID::fromString)
@@ -177,6 +184,54 @@ abstract class DataTaskDao {
         if (DataTaskState.valueOf(task.state) !in ACKNOWLEDGEABLE_STATES) return null
         if (acknowledgeTerminalTaskRow(taskId, nowMs) != 1) return null
         return loadSnapshot(taskId)
+    }
+
+    @Transaction
+    open suspend fun resumeFromUserAction(
+        taskId: String,
+        expectedState: DataTaskState,
+        expectedInterruption: DataTaskInterruption,
+        nowMs: Long,
+    ): Boolean {
+        requireCanonicalUuid(taskId, "taskId")
+        val newState = when (expectedState) {
+            DataTaskState.WAITING_FOR_AUTH -> {
+                require(expectedInterruption == DataTaskInterruption.AUTHENTICATION_REQUIRED)
+                DataTaskState.QUEUED
+            }
+
+            DataTaskState.WAITING_FOR_SOURCE -> {
+                require(expectedInterruption == DataTaskInterruption.SOURCE_REQUIRED)
+                DataTaskState.STAGING_SOURCE
+            }
+
+            DataTaskState.INTERRUPTED_REVIEW -> {
+                require(expectedInterruption == DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW)
+                DataTaskState.QUEUED
+            }
+
+            DataTaskState.START_BLOCKED -> DataTaskState.QUEUED
+            else -> throw IllegalArgumentException("state does not accept a user resume")
+        }
+        if (resumeFromUserActionRow(
+                taskId = taskId,
+                expectedState = expectedState.name,
+                expectedInterruption = expectedInterruption.name,
+                newState = newState.name,
+                nowMs = nowMs,
+            ) != 1
+        ) {
+            return false
+        }
+        if (expectedState == DataTaskState.INTERRUPTED_REVIEW) {
+            check(resetInterruptedRestoreItem(taskId) == 1) {
+                "destructive restore review must own exactly one interrupted item"
+            }
+            check(clearDestructiveRestoreCheckpoint(taskId) == 1) {
+                "destructive restore review must own a destructive checkpoint"
+            }
+        }
+        return true
     }
 
     @Transaction
@@ -1165,6 +1220,22 @@ abstract class DataTaskDao {
 
     @Query(
         """
+        SELECT COUNT(*) FROM (
+            SELECT task_id FROM data_tasks
+            UNION ALL SELECT task_id FROM archive_task_details
+            UNION ALL SELECT task_id FROM export_task_details
+            UNION ALL SELECT task_id FROM data_task_items
+            UNION ALL SELECT task_id FROM data_task_outputs
+        )
+        """
+    )
+    protected abstract fun observeRetainedAggregate(): Flow<Int>
+
+    @Query("SELECT task_id FROM data_tasks ORDER BY queue_sequence ASC, task_id ASC")
+    protected abstract suspend fun loadRetainedTaskIds(): List<String>
+
+    @Query(
+        """
         SELECT task_id FROM data_tasks
         WHERE kind = :kind
           AND target_key = :targetKey
@@ -1242,6 +1313,64 @@ abstract class DataTaskDao {
         """
     )
     protected abstract suspend fun acknowledgeTerminalTaskRow(taskId: String, nowMs: Long): Int
+
+    @Query(
+        """
+        UPDATE data_tasks
+        SET state = :newState,
+            interruption = 'NONE',
+            result_code = NULL,
+            service_session_token = NULL,
+            claim_token = NULL,
+            claim_lease_expires_at_epoch_ms = NULL,
+            updated_at_epoch_ms = :nowMs
+        WHERE task_id = :taskId
+          AND state = :expectedState
+          AND interruption = :expectedInterruption
+          AND terminal_at_epoch_ms IS NULL
+          AND cancel_requested_at_epoch_ms IS NULL
+          AND service_session_token IS NULL
+          AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+        """
+    )
+    protected abstract suspend fun resumeFromUserActionRow(
+        taskId: String,
+        expectedState: String,
+        expectedInterruption: String,
+        newState: String,
+        nowMs: Long,
+    ): Int
+
+    @Query(
+        """
+        UPDATE data_task_items
+        SET state = 'PENDING',
+            claim_token = NULL,
+            claim_lease_expires_at_epoch_ms = NULL,
+            result_code = NULL,
+            started_at_epoch_ms = NULL,
+            finished_at_epoch_ms = NULL
+        WHERE task_id = :taskId
+          AND state = 'RUNNING'
+          AND claim_token IS NULL
+          AND claim_lease_expires_at_epoch_ms IS NULL
+        """
+    )
+    protected abstract suspend fun resetInterruptedRestoreItem(taskId: String): Int
+
+    @Query(
+        """
+        UPDATE archive_task_details
+        SET destructive_started = 0,
+            mutation_package_name = NULL,
+            mutation_app_label = NULL,
+            mutation_started_at_epoch_ms = NULL
+        WHERE task_id = :taskId
+          AND destructive_started = 1
+        """
+    )
+    protected abstract suspend fun clearDestructiveRestoreCheckpoint(taskId: String): Int
 
     @Query(
         """
