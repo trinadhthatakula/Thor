@@ -875,20 +875,11 @@ abstract class DataTaskDao {
             val breadcrumb = archive?.toBreadcrumb()
             val destructiveStarted = archive?.destructiveStarted == true
             val kind = DataTaskKind.valueOf(task.kind)
-            if (
-                task.state == DataTaskState.CANCEL_REQUESTED.name &&
-                !(kind == DataTaskKind.ARCHIVE_RESTORE && destructiveStarted)
-            ) {
-                cancelUnfinishedItems(task.taskId, RESULT_CANCELLED, nowMs)
-                settleRecoveredCancellationRow(
-                    task.taskId,
-                    previousClaim,
-                    nowMs,
-                    RESULT_CANCELLED,
-                )
-                return@mapNotNull null
-            }
             val recovery = when {
+                task.state == DataTaskState.CANCEL_REQUESTED.name &&
+                        !(kind == DataTaskKind.ARCHIVE_RESTORE && destructiveStarted) ->
+                    DataTaskRecovery.Cancelled
+
                 task.state == DataTaskState.WAITING_FOR_AUTH.name ->
                     DataTaskRecovery.WaitingForAuthentication
 
@@ -923,6 +914,18 @@ abstract class DataTaskDao {
                 else -> DataTaskRecovery.Resume
             }
             when (recovery) {
+                DataTaskRecovery.Cancelled -> {
+                    cancelUnfinishedItems(task.taskId, RESULT_CANCELLED, nowMs)
+                    check(
+                        settleRecoveredCancellationRow(
+                            task.taskId,
+                            previousClaim,
+                            nowMs,
+                            RESULT_CANCELLED,
+                        ) == 1
+                    ) { "Recovered cancellation lost exact task ownership" }
+                }
+
                 DataTaskRecovery.Resume -> {
                     clearTaskClaimForRecovery(
                         task.taskId,

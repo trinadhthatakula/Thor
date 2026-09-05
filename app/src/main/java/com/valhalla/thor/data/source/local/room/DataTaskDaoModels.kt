@@ -117,6 +117,7 @@ data class ClaimedDataTaskWork(
 
 sealed interface DataTaskRecovery {
     data object Resume : DataTaskRecovery
+    data object Cancelled : DataTaskRecovery
     data object WaitingForAuthentication : DataTaskRecovery
     data object WaitingForSource : DataTaskRecovery
     data class InterruptedReview(

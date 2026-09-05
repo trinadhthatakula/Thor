@@ -13,6 +13,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -136,7 +137,7 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
-    fun `timed out normal settlement parks drain before another claim`() = runTest {
+    fun `timed out normal settlement exact release continues queue arbitration`() = runTest {
         val settlementStarted = CompletableDeferred<Unit>()
         var claimCalls = 0
         var stops = 0
@@ -165,12 +166,12 @@ class DataSyncCoordinatorTest {
         advanceTimeBy(2.seconds + 1.milliseconds)
         advanceUntilIdle()
 
-        assertEquals(1, claimCalls)
+        assertEquals(3, claimCalls)
         assertEquals(1, stops)
     }
 
     @Test
-    fun `timed out cancellation settlement parks drain before another claim`() = runTest {
+    fun `timed out cancellation release reaches another claim without a false drain`() = runTest {
         val registry = DataTaskOwnerRegistry()
         val runnerStarted = CompletableDeferred<Unit>()
         val settlementStarted = CompletableDeferred<Unit>()
@@ -208,8 +209,8 @@ class DataSyncCoordinatorTest {
         advanceTimeBy(2.seconds + 1.milliseconds)
         advanceUntilIdle()
 
-        assertEquals(1, claimCalls)
-        assertEquals(1, stops)
+        assertEquals(2, claimCalls)
+        assertEquals(0, stops)
     }
 
     @Test
@@ -333,6 +334,121 @@ class DataSyncCoordinatorTest {
                     assertFalse(registry.hasUncertainClaimRelease(token))
                 }
             }
+        }
+
+    @Test
+    fun `on claimed failure is exactly released then reclaimed without a newer wake`() = runTest {
+        val events = mutableListOf<String>()
+        var claimCalls = 0
+        var announced = 0
+        val coordinator = coordinator(
+            claimNext = { _, token ->
+                claimCalls += 1
+                if (claimCalls <= 2) claim(1).copy(claimToken = token) else null
+            },
+            executeClaim = { claimed, _ ->
+                events += "run:${claimed.taskId}"
+                completed()
+            },
+            settleTimeout = {
+                events += "release"
+                true
+            },
+            persistOutcome = { _, _ ->
+                events += "settle"
+                DataTaskSinkWrite.APPLIED
+            },
+            cleanupClaim = { events += "cleanup" },
+            finishDrainIfEmpty = { onEmpty ->
+                events += "finish-empty"
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake(
+            onClaimed = { _, _ ->
+                announced += 1
+                events += "announce:$announced"
+                if (announced == 1) error("notification update failed")
+            },
+            onDrained = { events += "drained" },
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                "announce:1",
+                "release",
+                "cleanup",
+                "announce:2",
+                "run:$TASK_1",
+                "settle",
+                "cleanup",
+                "finish-empty",
+                "drained",
+            ),
+            events,
+        )
+        assertEquals(3, claimCalls)
+        assertEquals(1, coordinator.drainLaunchCountForTest)
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
+    fun `outcome persistence exception is exactly released then reclaimed without a newer wake`() =
+        runTest {
+            val events = mutableListOf<String>()
+            var claimCalls = 0
+            var persistCalls = 0
+            val coordinator = coordinator(
+                claimNext = { _, token ->
+                    claimCalls += 1
+                    if (claimCalls <= 2) claim(1).copy(claimToken = token) else null
+                },
+                executeClaim = { claimed, _ ->
+                    events += "run:${claimed.taskId}"
+                    completed()
+                },
+                settleTimeout = {
+                    events += "release"
+                    true
+                },
+                persistOutcome = { _, _ ->
+                    persistCalls += 1
+                    events += "settle:$persistCalls"
+                    if (persistCalls == 1) error("outcome store unavailable")
+                    DataTaskSinkWrite.APPLIED
+                },
+                cleanupClaim = { events += "cleanup" },
+                finishDrainIfEmpty = { onEmpty ->
+                    events += "finish-empty"
+                    onEmpty()
+                    true
+                },
+            )
+
+            coordinator.wake { events += "drained" }
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(
+                    "run:$TASK_1",
+                    "settle:1",
+                    "release",
+                    "cleanup",
+                    "run:$TASK_1",
+                    "settle:2",
+                    "cleanup",
+                    "finish-empty",
+                    "drained",
+                ),
+                events,
+            )
+            assertEquals(3, claimCalls)
+            assertEquals(2, persistCalls)
+            assertEquals(1, coordinator.drainLaunchCountForTest)
+            assertFalse(coordinator.hasDrainJobForTest)
         }
 
     @Test
@@ -668,7 +784,7 @@ class DataSyncCoordinatorTest {
         advanceTimeBy(2.seconds + 1.milliseconds)
         advanceUntilIdle()
 
-        assertEquals(listOf("release:$claimToken", "stop"), events)
+        assertEquals(listOf("release:$claimToken"), events)
         assertFalse(registry.isLive(TASK_1, claimToken))
     }
 
@@ -694,7 +810,7 @@ class DataSyncCoordinatorTest {
         coordinator.wake { events += "stop" }
         advanceUntilIdle()
 
-        assertEquals(listOf("release:$claimToken", "stop"), events)
+        assertEquals(listOf("release:$claimToken"), events)
         assertFalse(registry.isLive(TASK_1, claimToken))
     }
 
@@ -987,6 +1103,219 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
+    fun `recovered cancelled task is cleaned before transactional final empty`() = runTest {
+        val events = mutableListOf<String>()
+        var finishCalls = 0
+        val coordinator = coordinator(
+            recoverClaims = { _, _ ->
+                events += "recover-cancelled"
+                listOf(TASK_1)
+            },
+            cleanupRecoveredClaim = { taskId ->
+                assertEquals(TASK_1, taskId)
+                events += "cleanup-cancelled"
+            },
+            claimNext = { _, _ ->
+                events += "claim-empty"
+                null
+            },
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                events += "finish-empty"
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake { events += "drained" }
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                "recover-cancelled",
+                "cleanup-cancelled",
+                "claim-empty",
+                "finish-empty",
+                "drained",
+            ),
+            events,
+        )
+        assertEquals(1, finishCalls)
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
+    fun `stop during committed recovery waits for cleanup without a drain callback`() = runTest {
+        val recoveryCommitted = CompletableDeferred<Unit>()
+        val allowRecoveryReturn = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        var finishCalls = 0
+        val coordinator = coordinator(
+            recoverClaims = { _, _ ->
+                events += "recovery-committed"
+                recoveryCommitted.complete(Unit)
+                allowRecoveryReturn.await()
+                events += "recovery-returned"
+                listOf(TASK_1)
+            },
+            cleanupRecoveredClaim = { taskId ->
+                assertEquals(TASK_1, taskId)
+                events += "cleanup"
+            },
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake { events += "drained" }
+        runCurrent()
+        recoveryCommitted.await()
+        val stopping = async { coordinator.stopClaimsAndInterrupt() }
+        runCurrent()
+
+        assertFalse(stopping.isCompleted)
+        allowRecoveryReturn.complete(Unit)
+        stopping.await()
+        advanceUntilIdle()
+
+        assertEquals(listOf("recovery-committed", "recovery-returned", "cleanup"), events)
+        assertEquals(0, finishCalls)
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
+    fun `recovered cleanup failure is retried by an explicit wake without a false drain`() =
+        runTest {
+            val events = mutableListOf<String>()
+            var recoveryCalls = 0
+            var cleanupCalls = 0
+            var finishCalls = 0
+            val coordinator = coordinator(
+                recoverClaims = { _, _ ->
+                    recoveryCalls += 1
+                    if (recoveryCalls == 1) listOf(TASK_1) else emptyList()
+                },
+                cleanupRecoveredClaim = { taskId ->
+                    assertEquals(TASK_1, taskId)
+                    cleanupCalls += 1
+                    if (cleanupCalls == 1) error("process cleanup unavailable")
+                    events += "cleanup"
+                },
+                finishDrainIfEmpty = { onEmpty ->
+                    finishCalls += 1
+                    events += "finish-empty"
+                    onEmpty()
+                    true
+                },
+            )
+
+            coordinator.wake { events += "drained:first" }
+            advanceUntilIdle()
+
+            assertEquals(1, recoveryCalls)
+            assertEquals(1, cleanupCalls)
+            assertEquals(0, finishCalls)
+            assertTrue(events.isEmpty())
+            assertFalse(coordinator.hasDrainJobForTest)
+
+            coordinator.wake { events += "drained:second" }
+            advanceUntilIdle()
+
+            assertEquals(2, recoveryCalls)
+            assertEquals(2, cleanupCalls)
+            assertEquals(1, finishCalls)
+            assertEquals(listOf("cleanup", "finish-empty", "drained:second"), events)
+            assertFalse(coordinator.hasDrainJobForTest)
+        }
+
+    @Test
+    fun `stale wake snapshot cannot resurrect a reconciled exact release`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        val releasePending = AtomicBoolean(true)
+        val snapshotTaken = CountDownLatch(1)
+        val resumeWake = CountDownLatch(1)
+        var claimCalls = 0
+        var recoveryCalls = 0
+        var settlementAttempts = 0
+        var activeCleanupCalls = 0
+        var recoveredCleanupCalls = 0
+        var callbacks = 0
+        var firstToken = ""
+        val coordinator = coordinator(
+            registry = registry,
+            recoverClaims = { _, _ ->
+                recoveryCalls += 1
+                if (recoveryCalls == 2) listOf(TASK_1) else emptyList()
+            },
+            cleanupRecoveredClaim = { taskId ->
+                assertEquals(TASK_1, taskId)
+                recoveredCleanupCalls += 1
+            },
+            claimNext = { _, token ->
+                claimCalls += 1
+                if (claimCalls == 1) {
+                    claim(1).copy(claimToken = token).also { firstToken = token }
+                } else {
+                    null
+                }
+            },
+            executeClaim = { _, _ -> completed() },
+            persistOutcome = { _, _ -> error("outcome commit unavailable") },
+            settleTimeout = {
+                settlementAttempts += 1
+                false
+            },
+            claimReleaseIsPending = { releasePending.get() },
+            cleanupClaim = { activeCleanupCalls += 1 },
+        )
+        coordinator.afterUncertainReleaseSnapshotForTest = {
+            snapshotTaken.countDown()
+            check(resumeWake.await(5, TimeUnit.SECONDS))
+        }
+
+        coordinator.wake { callbacks += 1 }
+        runCurrent()
+        advanceTimeBy(1.seconds)
+        runCurrent()
+
+        assertEquals(4, settlementAttempts)
+        assertTrue(registry.hasUncertainClaimRelease(firstToken))
+        assertEquals(1, coordinator.reconciliationJobCountForTest)
+
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val staleWake = executor.submit<Long> { coordinator.wake { callbacks += 1 } }
+            assertTrue(snapshotTaken.await(5, TimeUnit.SECONDS))
+            releasePending.set(false)
+
+            advanceTimeBy(ForegroundTaskWakeLock.LEASE_MILLIS.milliseconds)
+            advanceUntilIdle()
+
+            assertEquals(1, recoveredCleanupCalls)
+            assertEquals(0, activeCleanupCalls)
+            assertEquals(1, callbacks)
+            assertFalse(registry.hasUncertainClaimRelease(firstToken))
+            assertEquals(0, coordinator.reconciliationJobCountForTest)
+            assertFalse(coordinator.hasDrainJobForTest)
+
+            resumeWake.countDown()
+            assertEquals(2L, staleWake.get(5, TimeUnit.SECONDS))
+            advanceUntilIdle()
+
+            assertEquals(1, recoveredCleanupCalls + activeCleanupCalls)
+            assertEquals(1, callbacks)
+            assertFalse(registry.hasUncertainClaimRelease(firstToken))
+            assertEquals(0, coordinator.reconciliationJobCountForTest)
+            assertFalse(coordinator.hasDrainJobForTest)
+        } finally {
+            resumeWake.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun `coordinator teardown retires pending lease reconciliation without stale callback`() =
         runTest {
             val registry = DataTaskOwnerRegistry()
@@ -1185,7 +1514,7 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
-    fun `post claim callback failure releases owner before newer wake relaunches`() = runTest {
+    fun `post claim callback failure releases owner and continues the same drain`() = runTest {
         val registry = DataTaskOwnerRegistry()
         val events = mutableListOf<String>()
         var claimCalls = 0
@@ -1231,20 +1560,42 @@ class DataSyncCoordinatorTest {
         assertFalse(registry.isLive(TASK_1, firstToken))
         assertTrue(events.contains("run:$TASK_2"))
         assertEquals("stop:latest", events.last())
-        assertEquals(2, coordinator.drainLaunchCountForTest)
+        assertEquals(1, coordinator.drainLaunchCountForTest)
     }
 
     @Test
-    fun `ordinary drain infrastructure failure stops the service generation`() = runTest {
-        var stops = 0
+    fun `recovery failure waits for an explicit wake without a false drain callback`() = runTest {
+        val callbacks = mutableListOf<String>()
+        var recoveryCalls = 0
+        var finishCalls = 0
         val coordinator = coordinator(
-            recoverClaims = { _, _ -> error("room unavailable") },
+            recoverClaims = { _, _ ->
+                recoveryCalls += 1
+                if (recoveryCalls == 1) error("room unavailable")
+                emptyList()
+            },
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                onEmpty()
+                true
+            },
         )
 
-        coordinator.wake { stops += 1 }
+        coordinator.wake { callbacks += "first" }
         advanceUntilIdle()
 
-        assertEquals(1, stops)
+        assertEquals(1, recoveryCalls)
+        assertEquals(0, finishCalls)
+        assertTrue(callbacks.isEmpty())
+        assertFalse(coordinator.hasDrainJobForTest)
+
+        coordinator.wake { callbacks += "second" }
+        advanceUntilIdle()
+
+        assertEquals(2, recoveryCalls)
+        assertEquals(1, finishCalls)
+        assertEquals(listOf("second"), callbacks)
+        assertFalse(coordinator.hasDrainJobForTest)
     }
 
     @Test

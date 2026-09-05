@@ -73,7 +73,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -164,14 +166,9 @@ internal class RoomDataSyncCoordinatorRuntime(
     override suspend fun recoverClaims(
         sessionToken: String,
         localOwnerIsLive: (UUID, String) -> Boolean,
-    ): List<UUID> {
-        val recoveredTaskIds = store.recoverClaims(sessionToken, nowMs(), localOwnerIsLive)
-            .map { it.taskId }
-            .distinct()
-        store.uncommittedRestoreSourceCleanupTaskIds()
-            .forEach(restoreSourceStager::discardUncommittedTaskSources)
-        return recoveredTaskIds
-    }
+    ): List<UUID> = store.recoverClaims(sessionToken, nowMs(), localOwnerIsLive)
+        .map { it.taskId }
+        .distinct()
 
     override suspend fun cleanupRecoveredClaim(taskId: UUID) = cleanupTask(taskId)
 
@@ -661,6 +658,7 @@ class DataSyncCoordinator internal constructor(
     private var latestWake: WakeGeneration? = null
     private var activeClaim: DataSyncClaim? = null
     private var activeTimeoutSettlement: ActiveTimeoutSettlement? = null
+    private val pendingRecoveredClaimCleanup = linkedSetOf<UUID>()
     private val reconciliationJobs = mutableMapOf<String, Job>()
     private val drainLaunches = AtomicInteger()
     private val generationToken = UUID.randomUUID().toString()
@@ -743,6 +741,7 @@ class DataSyncCoordinator internal constructor(
 
     internal var lastClaimTokenForTest: String? = null
         private set
+    internal var afterUncertainReleaseSnapshotForTest: (() -> Unit)? = null
 
     fun wake(
         onClaimed: (UUID, String) -> Unit = { _, _ -> },
@@ -762,7 +761,10 @@ class DataSyncCoordinator internal constructor(
             }
             accepted
         }
-        if (retryPending) pendingReleases.forEach(::handoffUncertainClaimReconciliation)
+        if (retryPending) {
+            afterUncertainReleaseSnapshotForTest?.invoke()
+            pendingReleases.forEach(::handoffUncertainClaimReconciliation)
+        }
         return generation
     }
 
@@ -808,6 +810,7 @@ class DataSyncCoordinator internal constructor(
         var infrastructureFailed = false
         var parkedBeforeClaim = false
         var ownershipUncertain = false
+        var drainCancelled = false
         var laneAcquired = false
         try {
             ownerRegistry.acquireLane(generationToken)
@@ -820,10 +823,7 @@ class DataSyncCoordinator internal constructor(
                 return
             }
             if (!claimsAreEnabled()) return
-            val recoveredTaskIds = runtime.recoverClaims(sessionToken, ownerRegistry::isLive)
-            withContext(NonCancellable) {
-                recoveredTaskIds.forEach { taskId -> runtime.cleanupRecoveredClaim(taskId) }
-            }
+            recoverAndCleanupClaims()
             while (claimsAreEnabled()) {
                 runtime.awaitLegacyDrain()
                 if (!claimsAreEnabled()) break
@@ -908,15 +908,17 @@ class DataSyncCoordinator internal constructor(
                         settleClaimTimedOutBeforeExecution(ownedClaim)
                     }
                     ownershipReleased = true
-                } catch (_: CancellationException) {
+                } catch (cancelled: CancellationException) {
                     try {
                         releaseClaimAfterInfrastructureFailure(ownedClaim)
                         ownershipReleased = true
                     } catch (releaseFailure: Throwable) {
                         ownershipUncertain = true
                         handoffActiveClaimReconciliation(ownedClaim)
-                        throw releaseFailure
+                        cancelled.addSuppressed(releaseFailure)
+                        throw cancelled
                     }
+                    currentCoroutineContext().ensureActive()
                 } catch (failure: Throwable) {
                     try {
                         releaseClaimAfterInfrastructureFailure(ownedClaim)
@@ -927,7 +929,6 @@ class DataSyncCoordinator internal constructor(
                         failure.addSuppressed(releaseFailure)
                         throw failure
                     }
-                    if (failure !is DataTaskOutcomeSettlementLostOwnershipException) throw failure
                 } finally {
                     synchronized(lock) {
                         if (activeClaim?.claimToken == claimToken) activeClaim = null
@@ -943,6 +944,7 @@ class DataSyncCoordinator internal constructor(
                 }
             }
         } catch (cancelled: CancellationException) {
+            drainCancelled = true
             throw cancelled
         } catch (_: Exception) {
             infrastructureFailed = true
@@ -957,21 +959,43 @@ class DataSyncCoordinator internal constructor(
                 val newerWakeExists = acceptedWakeGeneration > observedWakeGeneration
                 when {
                     reconciliationJobs.isNotEmpty() -> null
+                    drainCancelled -> null
                     !claimsEnabled -> latestWake?.onDrained
                     newerWakeExists && !ownershipUncertain -> {
                         launchDrainLocked(requireNotNull(latestWake).number)
                         null
                     }
 
-                    infrastructureFailed || parkedBeforeClaim || ownershipUncertain -> {
-                        latestWake?.onDrained
-                    }
-
+                    parkedBeforeClaim -> latestWake?.onDrained
+                    infrastructureFailed || ownershipUncertain -> null
                     else -> null
                 }
             }
             stopCallback?.invoke()
         }
+    }
+
+    private suspend fun recoverAndCleanupClaims() {
+        runBoundedSettlement {
+            val recoveredTaskIds = runtime.recoverClaims(sessionToken, ownerRegistry::isLive)
+            val cleanupTaskIds = synchronized(lock) {
+                pendingRecoveredClaimCleanup += recoveredTaskIds
+                pendingRecoveredClaimCleanup.toList()
+            }
+            var cleanupFailure: Throwable? = null
+            cleanupTaskIds.forEach { taskId ->
+                try {
+                    runtime.cleanupRecoveredClaim(taskId)
+                    synchronized(lock) { pendingRecoveredClaimCleanup.remove(taskId) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    cleanupFailure?.addSuppressed(failure) ?: run { cleanupFailure = failure }
+                }
+            }
+            cleanupFailure?.let { throw it }
+        }
+        currentCoroutineContext().ensureActive()
     }
 
     private fun timeoutSettlementFor(claim: DataSyncClaim): Deferred<Boolean> {
@@ -1022,12 +1046,15 @@ class DataSyncCoordinator internal constructor(
         handoffClaimReconciliation(DataTaskUncertainClaimRelease.Active(claim))
 
     private fun handoffUncertainClaimReconciliation(release: DataTaskUncertainClaimRelease) =
-        handoffClaimReconciliation(release)
+        handoffClaimReconciliation(release, retainRelease = false)
 
-    private fun handoffClaimReconciliation(release: DataTaskUncertainClaimRelease) {
+    private fun handoffClaimReconciliation(
+        release: DataTaskUncertainClaimRelease,
+        retainRelease: Boolean = true,
+    ) {
         val claimToken = release.claimToken
         val taskId = (release as? DataTaskUncertainClaimRelease.Active)?.claim?.taskId
-        ownerRegistry.retainUncertainClaimRelease(release)
+        if (retainRelease) ownerRegistry.retainUncertainClaimRelease(release)
         val settle: suspend () -> Boolean = when (release) {
             is DataTaskUncertainClaimRelease.Provisional -> {
                 { runtime.settleProvisionalClaim(release.claimToken) }
@@ -1043,8 +1070,10 @@ class DataSyncCoordinator internal constructor(
         }
         val job = synchronized(lock) {
             reconciliationJobs[claimToken]?.let { return }
+            if (!retainRelease && !ownerRegistry.hasUncertainClaimRelease(claimToken)) return
             val drainToAwait = drain
-            scope.launch(start = CoroutineStart.LAZY) {
+            lateinit var reconciliationJob: Job
+            reconciliationJob = scope.launch(start = CoroutineStart.LAZY) {
                 var ownerRegistered = true
                 try {
                     drainToAwait?.join()
@@ -1074,13 +1103,15 @@ class DataSyncCoordinator internal constructor(
                     ownerRegistered = false
                     ownerRegistry.clearUncertainClaimRelease(claimToken)
                     synchronized(lock) {
-                        reconciliationJobs.remove(claimToken)
-                        if (
-                            claimsEnabled &&
-                            latestWake != null &&
-                            drain?.isActive != true
-                        ) {
-                            launchDrainLocked(requireNotNull(latestWake).number)
+                        if (reconciliationJobs[claimToken] === reconciliationJob) {
+                            reconciliationJobs.remove(claimToken)
+                            if (
+                                claimsEnabled &&
+                                latestWake != null &&
+                                drain?.isActive != true
+                            ) {
+                                launchDrainLocked(requireNotNull(latestWake).number)
+                            }
                         }
                     }
                 } finally {
@@ -1092,10 +1123,14 @@ class DataSyncCoordinator internal constructor(
                         }
                     }
                     synchronized(lock) {
-                        reconciliationJobs.remove(claimToken)
+                        if (reconciliationJobs[claimToken] === reconciliationJob) {
+                            reconciliationJobs.remove(claimToken)
+                        }
                     }
                 }
-            }.also { reconciliationJobs[claimToken] = it }
+            }
+            reconciliationJobs[claimToken] = reconciliationJob
+            reconciliationJob
         }
         job.start()
     }
