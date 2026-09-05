@@ -102,6 +102,11 @@ internal class DataTaskRecoveryOperation internal constructor(
     internal val completion: Deferred<Unit>,
 )
 
+internal data class DataTaskRecoveryAdmission(
+    val operation: DataTaskRecoveryOperation,
+    val startedNew: Boolean,
+)
+
 /** Process-scoped recovery and cleanup responsibility owned by the singleton Room runtime. */
 internal class DataTaskRecoveryProcess(
     dispatcher: CoroutineDispatcher,
@@ -117,39 +122,69 @@ internal class DataTaskRecoveryProcess(
     private val lock = Any()
     private val pendingCleanup = linkedSetOf<UUID>()
     private var current: Entry? = null
+    private var retryableFailure: DataTaskRecoveryOperation? = null
 
     fun startOrJoin(
         sessionToken: String,
         localOwnerIsLive: (UUID, String) -> Boolean,
-    ): DataTaskRecoveryOperation {
+    ): DataTaskRecoveryAdmission {
         var shouldStart = false
-        val operation = synchronized(lock) {
-            current?.operation ?: run {
-                lateinit var created: DataTaskRecoveryOperation
-                val completion = scope.async(start = CoroutineStart.LAZY) {
-                    cleanupPendingTasks()
-                    val recoveredTaskIds = recoverClaims(sessionToken, localOwnerIsLive).distinct()
-                    synchronized(lock) { pendingCleanup += recoveredTaskIds }
-                    cleanupPendingTasks()
-                    synchronized(lock) {
-                        current?.takeIf { it.operation === created }?.completedSuccessfully = true
-                    }
-                }
-                created = DataTaskRecoveryOperation(completion)
-                current = Entry(created)
-                completion.invokeOnCompletion { failure ->
-                    if (failure != null) {
-                        synchronized(lock) {
-                            if (current?.operation === created) current = null
-                        }
-                    }
-                }
+        val admission = synchronized(lock) {
+            current?.operation?.let { DataTaskRecoveryAdmission(it, startedNew = false) } ?: run {
+                retryableFailure = null
+                val operation = createOperationLocked(sessionToken, localOwnerIsLive)
                 shouldStart = true
-                created
+                DataTaskRecoveryAdmission(operation, startedNew = true)
             }
         }
-        if (shouldStart) operation.completion.start()
-        return operation
+        if (shouldStart) admission.operation.completion.start()
+        return admission
+    }
+
+    fun retryAfterFailure(
+        failedOperation: DataTaskRecoveryOperation,
+        sessionToken: String,
+        localOwnerIsLive: (UUID, String) -> Boolean,
+    ): DataTaskRecoveryAdmission? {
+        val admission = synchronized(lock) {
+            if (retryableFailure !== failedOperation || current != null) return@synchronized null
+            retryableFailure = null
+            DataTaskRecoveryAdmission(
+                operation = createOperationLocked(sessionToken, localOwnerIsLive),
+                startedNew = true,
+            )
+        }
+        admission?.operation?.completion?.start()
+        return admission
+    }
+
+    private fun createOperationLocked(
+        sessionToken: String,
+        localOwnerIsLive: (UUID, String) -> Boolean,
+    ): DataTaskRecoveryOperation {
+        lateinit var created: DataTaskRecoveryOperation
+        val completion = scope.async(start = CoroutineStart.LAZY) {
+            try {
+                cleanupPendingTasks()
+                val recoveredTaskIds = recoverClaims(sessionToken, localOwnerIsLive).distinct()
+                synchronized(lock) { pendingCleanup += recoveredTaskIds }
+                cleanupPendingTasks()
+                synchronized(lock) {
+                    current?.takeIf { it.operation === created }?.completedSuccessfully = true
+                }
+            } catch (failure: Throwable) {
+                synchronized(lock) {
+                    if (current?.operation === created) {
+                        current = null
+                        retryableFailure = created
+                    }
+                }
+                throw failure
+            }
+        }
+        created = DataTaskRecoveryOperation(completion)
+        current = Entry(created)
+        return created
     }
 
     fun consume(operation: DataTaskRecoveryOperation): Boolean = synchronized(lock) {
@@ -196,7 +231,13 @@ internal interface DataSyncCoordinatorRuntime {
     fun startOrJoinRecovery(
         sessionToken: String,
         localOwnerIsLive: (UUID, String) -> Boolean,
-    ): DataTaskRecoveryOperation
+    ): DataTaskRecoveryAdmission
+
+    fun retryRecoveryAfterFailure(
+        failedOperation: DataTaskRecoveryOperation,
+        sessionToken: String,
+        localOwnerIsLive: (UUID, String) -> Boolean,
+    ): DataTaskRecoveryAdmission?
 
     fun consumeRecovery(operation: DataTaskRecoveryOperation): Boolean
     fun hasUnconsumedRecovery(operation: DataTaskRecoveryOperation? = null): Boolean
@@ -268,7 +309,17 @@ internal class RoomDataSyncCoordinatorRuntime(
     override fun startOrJoinRecovery(
         sessionToken: String,
         localOwnerIsLive: (UUID, String) -> Boolean,
-    ): DataTaskRecoveryOperation = recoveryProcess.startOrJoin(sessionToken, localOwnerIsLive)
+    ): DataTaskRecoveryAdmission = recoveryProcess.startOrJoin(sessionToken, localOwnerIsLive)
+
+    override fun retryRecoveryAfterFailure(
+        failedOperation: DataTaskRecoveryOperation,
+        sessionToken: String,
+        localOwnerIsLive: (UUID, String) -> Boolean,
+    ): DataTaskRecoveryAdmission? = recoveryProcess.retryAfterFailure(
+        failedOperation,
+        sessionToken,
+        localOwnerIsLive,
+    )
 
     override fun consumeRecovery(operation: DataTaskRecoveryOperation): Boolean =
         recoveryProcess.consume(operation)
@@ -752,6 +803,10 @@ class DataSyncCoordinator internal constructor(
         val deferred: Deferred<Boolean>,
     )
 
+    private data class RetainedRecoveryRetry(
+        val operation: DataTaskRecoveryOperation,
+    )
+
     private data class ClaimTransitionResult(val claim: DataSyncClaim?)
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -762,6 +817,7 @@ class DataSyncCoordinator internal constructor(
     private var latestWake: WakeGeneration? = null
     private var activeClaim: DataSyncClaim? = null
     private var activeTimeoutSettlement: ActiveTimeoutSettlement? = null
+    private var retainedRecoveryRetry: RetainedRecoveryRetry? = null
     private val reconciliationJobs = mutableMapOf<String, Job>()
     private val drainLaunches = AtomicInteger()
     private val generationToken = UUID.randomUUID().toString()
@@ -799,8 +855,18 @@ class DataSyncCoordinator internal constructor(
             override fun startOrJoinRecovery(
                 sessionToken: String,
                 localOwnerIsLive: (UUID, String) -> Boolean,
-            ): DataTaskRecoveryOperation =
+            ): DataTaskRecoveryAdmission =
                 recoveryProcess.startOrJoin(sessionToken, localOwnerIsLive)
+
+            override fun retryRecoveryAfterFailure(
+                failedOperation: DataTaskRecoveryOperation,
+                sessionToken: String,
+                localOwnerIsLive: (UUID, String) -> Boolean,
+            ): DataTaskRecoveryAdmission? = recoveryProcess.retryAfterFailure(
+                failedOperation,
+                sessionToken,
+                localOwnerIsLive,
+            )
 
             override fun consumeRecovery(operation: DataTaskRecoveryOperation): Boolean =
                 recoveryProcess.consume(operation)
@@ -880,6 +946,7 @@ class DataSyncCoordinator internal constructor(
     suspend fun stopClaimsAndInterrupt() {
         val (claim, drainJob) = synchronized(lock) {
             claimsEnabled = false
+            retainedRecoveryRetry = null
             activeClaim to drain
         }
         val settlement = claim?.let(::timeoutSettlementFor)
@@ -906,14 +973,18 @@ class DataSyncCoordinator internal constructor(
     private fun launchDrainLocked(
         wakeGeneration: Long,
         parkAfterUnclaimableClaim: Boolean = false,
+        recoveryAdmission: DataTaskRecoveryAdmission? = null,
     ) {
         drainLaunches.incrementAndGet()
-        drain = scope.launch { drainQueue(wakeGeneration, parkAfterUnclaimableClaim) }
+        drain = scope.launch {
+            drainQueue(wakeGeneration, parkAfterUnclaimableClaim, recoveryAdmission)
+        }
     }
 
     private suspend fun drainQueue(
         initialWakeGeneration: Long,
         parkAfterUnclaimableClaim: Boolean,
+        recoveryAdmission: DataTaskRecoveryAdmission?,
     ) {
         var observedWakeGeneration = initialWakeGeneration
         var infrastructureFailed = false
@@ -932,7 +1003,9 @@ class DataSyncCoordinator internal constructor(
                 return
             }
             if (!claimsAreEnabled()) return
-            recoverAndCleanupClaims()
+            recoverAndCleanupClaims(recoveryAdmission)?.let { retryGeneration ->
+                observedWakeGeneration = maxOf(observedWakeGeneration, retryGeneration)
+            }
             while (claimsAreEnabled()) {
                 runtime.awaitLegacyDrain()
                 if (!claimsAreEnabled()) break
@@ -1069,6 +1142,7 @@ class DataSyncCoordinator internal constructor(
                 when {
                     reconciliationJobs.isNotEmpty() -> null
                     drainCancelled || !claimsEnabled -> null
+                    startRetainedRecoveryRetryLocked() -> null
                     runtime.hasUnconsumedRecovery() -> {
                         launchDrainLocked(requireNotNull(latestWake).number)
                         null
@@ -1088,16 +1162,74 @@ class DataSyncCoordinator internal constructor(
         }
     }
 
-    private suspend fun recoverAndCleanupClaims() {
-        val recovery = runtime.startOrJoinRecovery(sessionToken, ownerRegistry::isLive)
-        recovery.completion.invokeOnCompletion { failure ->
-            if (failure == null) resumeAfterCompletedRecovery(recovery)
+    private suspend fun recoverAndCleanupClaims(
+        initialAdmission: DataTaskRecoveryAdmission?,
+    ): Long? {
+        var admission = initialAdmission
+            ?: runtime.startOrJoinRecovery(sessionToken, ownerRegistry::isLive)
+        observeRecoveryCompletion(admission)
+        try {
+            awaitAndConsumeRecovery(admission.operation)
+            return null
+        } catch (failure: Throwable) {
+            if (admission.startedNew) throw failure
+            val retry = retryInheritedRecovery(admission.operation) ?: throw failure
+            admission = retry.first
+            observeRecoveryCompletion(admission)
+            awaitAndConsumeRecovery(admission.operation)
+            return retry.second
         }
-        runBoundedSettlement { recovery.completion.await() }
-        check(runtime.consumeRecovery(recovery)) {
+    }
+
+    private suspend fun awaitAndConsumeRecovery(operation: DataTaskRecoveryOperation) {
+        runBoundedSettlement { operation.completion.await() }
+        check(runtime.consumeRecovery(operation)) {
             "Completed data task recovery was not available for arbitration"
         }
         currentCoroutineContext().ensureActive()
+    }
+
+    private fun observeRecoveryCompletion(admission: DataTaskRecoveryAdmission) {
+        synchronized(lock) {
+            if (admission.startedNew) {
+                if (retainedRecoveryRetry?.operation !== admission.operation) {
+                    retainedRecoveryRetry = null
+                }
+            } else if (claimsEnabled && latestWake != null) {
+                retainedRecoveryRetry = RetainedRecoveryRetry(admission.operation)
+            }
+        }
+        admission.operation.completion.invokeOnCompletion { failure ->
+            if (failure == null) {
+                synchronized(lock) {
+                    if (retainedRecoveryRetry?.operation === admission.operation) {
+                        retainedRecoveryRetry = null
+                    }
+                }
+                resumeAfterCompletedRecovery(admission.operation)
+            } else if (!admission.startedNew) {
+                resumeAfterFailedInheritedRecovery(admission.operation)
+            }
+        }
+    }
+
+    private fun retryInheritedRecovery(
+        failedOperation: DataTaskRecoveryOperation,
+    ): Pair<DataTaskRecoveryAdmission, Long>? = synchronized(lock) {
+        if (
+            !claimsEnabled ||
+            latestWake == null ||
+            retainedRecoveryRetry?.operation !== failedOperation
+        ) {
+            return@synchronized null
+        }
+        val retry = runtime.retryRecoveryAfterFailure(
+            failedOperation,
+            sessionToken,
+            ownerRegistry::isLive,
+        ) ?: return@synchronized null
+        retainedRecoveryRetry = null
+        retry to acceptedWakeGeneration
     }
 
     private fun resumeAfterCompletedRecovery(recovery: DataTaskRecoveryOperation) {
@@ -1112,6 +1244,35 @@ class DataSyncCoordinator internal constructor(
                 launchDrainLocked(requireNotNull(latestWake).number)
             }
         }
+    }
+
+    private fun resumeAfterFailedInheritedRecovery(recovery: DataTaskRecoveryOperation) {
+        synchronized(lock) {
+            if (
+                claimsEnabled &&
+                latestWake != null &&
+                drain?.isActive != true &&
+                reconciliationJobs.isEmpty() &&
+                retainedRecoveryRetry?.operation === recovery
+            ) {
+                startRetainedRecoveryRetryLocked()
+            }
+        }
+    }
+
+    private fun startRetainedRecoveryRetryLocked(): Boolean {
+        val failedOperation = retainedRecoveryRetry?.operation ?: return false
+        val retry = runtime.retryRecoveryAfterFailure(
+            failedOperation,
+            sessionToken,
+            ownerRegistry::isLive,
+        ) ?: return false
+        retainedRecoveryRetry = null
+        launchDrainLocked(
+            wakeGeneration = requireNotNull(latestWake).number,
+            recoveryAdmission = retry,
+        )
+        return true
     }
 
     private fun timeoutSettlementFor(claim: DataSyncClaim): Deferred<Boolean> {

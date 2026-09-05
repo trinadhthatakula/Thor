@@ -1319,6 +1319,216 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
+    fun `wake joining recovery failure retries once while its drain is waiting`() = runTest {
+        val recoveryEntered = CompletableDeferred<Unit>()
+        val failFirstRecovery = CompletableDeferred<Unit>()
+        val callbacks = mutableListOf<String>()
+        var recoveryCalls = 0
+        var concurrentRecoveries = 0
+        var maxConcurrentRecoveries = 0
+        var finishCalls = 0
+        val recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID> =
+            { _, _ ->
+                recoveryCalls += 1
+                concurrentRecoveries += 1
+                maxConcurrentRecoveries = maxOf(maxConcurrentRecoveries, concurrentRecoveries)
+                try {
+                    if (recoveryCalls == 1) {
+                        recoveryEntered.complete(Unit)
+                        failFirstRecovery.await()
+                        error("room unavailable")
+                    }
+                    emptyList()
+                } finally {
+                    concurrentRecoveries -= 1
+                }
+            }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val recoveryProcess = DataTaskRecoveryProcess(dispatcher, recoverClaims) {}
+        val coordinator = coordinator(
+            dispatcher = dispatcher,
+            recoverClaims = recoverClaims,
+            recoveryProcess = recoveryProcess,
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake { callbacks += "first" }
+        runCurrent()
+        recoveryEntered.await()
+        advanceTimeBy(2.seconds)
+        runCurrent()
+
+        coordinator.wake { callbacks += "second" }
+        runCurrent()
+        assertEquals(1, recoveryCalls)
+
+        failFirstRecovery.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(2, recoveryCalls)
+        assertEquals(1, maxConcurrentRecoveries)
+        assertEquals(1, finishCalls)
+        assertEquals(listOf("second"), callbacks)
+        assertEquals(2, coordinator.drainLaunchCountForTest)
+        assertFalse(recoveryProcess.hasUnconsumedSuccess())
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
+    fun `failed retry after inherited recovery waits for another explicit wake`() = runTest {
+        val recoveryEntered = CompletableDeferred<Unit>()
+        val failFirstRecovery = CompletableDeferred<Unit>()
+        val callbacks = mutableListOf<String>()
+        var recoveryCalls = 0
+        var finishCalls = 0
+        val recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID> =
+            { _, _ ->
+                recoveryCalls += 1
+                when (recoveryCalls) {
+                    1 -> {
+                        recoveryEntered.complete(Unit)
+                        failFirstRecovery.await()
+                        error("first recovery unavailable")
+                    }
+
+                    2 -> error("retry unavailable")
+                    else -> emptyList()
+                }
+            }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val recoveryProcess = DataTaskRecoveryProcess(dispatcher, recoverClaims) {}
+        val coordinator = coordinator(
+            dispatcher = dispatcher,
+            recoverClaims = recoverClaims,
+            recoveryProcess = recoveryProcess,
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake { callbacks += "first" }
+        runCurrent()
+        recoveryEntered.await()
+        advanceTimeBy(2.seconds)
+        runCurrent()
+        coordinator.wake { callbacks += "second" }
+        runCurrent()
+
+        failFirstRecovery.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(2, recoveryCalls)
+        assertEquals(0, finishCalls)
+        assertTrue(callbacks.isEmpty())
+        assertEquals(2, coordinator.drainLaunchCountForTest)
+        assertFalse(coordinator.hasDrainJobForTest)
+
+        coordinator.wake { callbacks += "third" }
+        advanceUntilIdle()
+
+        assertEquals(3, recoveryCalls)
+        assertEquals(1, finishCalls)
+        assertEquals(listOf("third"), callbacks)
+        assertEquals(3, coordinator.drainLaunchCountForTest)
+        assertFalse(recoveryProcess.hasUnconsumedSuccess())
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
+    fun `wake joining recovery failure after timeout launches one retained retry drain`() = runTest {
+        val cleanupEntered = CompletableDeferred<Unit>()
+        val failFirstCleanup = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        var recoveryCalls = 0
+        var concurrentRecoveries = 0
+        var maxConcurrentRecoveries = 0
+        var cleanupCalls = 0
+        var finishCalls = 0
+        val recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID> =
+            { _, _ ->
+                recoveryCalls += 1
+                concurrentRecoveries += 1
+                maxConcurrentRecoveries = maxOf(maxConcurrentRecoveries, concurrentRecoveries)
+                try {
+                    events += "recover:$recoveryCalls"
+                    if (recoveryCalls == 1) listOf(TASK_1) else emptyList()
+                } finally {
+                    concurrentRecoveries -= 1
+                }
+            }
+        val cleanupRecoveredClaim: suspend (UUID) -> Unit = { taskId ->
+            assertEquals(TASK_1, taskId)
+            cleanupCalls += 1
+            events += "cleanup:$cleanupCalls"
+            if (cleanupCalls == 1) {
+                cleanupEntered.complete(Unit)
+                failFirstCleanup.await()
+                error("cleanup unavailable")
+            }
+        }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val recoveryProcess = DataTaskRecoveryProcess(
+            dispatcher,
+            recoverClaims,
+            cleanupRecoveredClaim,
+        )
+        val coordinator = coordinator(
+            dispatcher = dispatcher,
+            recoverClaims = recoverClaims,
+            cleanupRecoveredClaim = cleanupRecoveredClaim,
+            recoveryProcess = recoveryProcess,
+            claimNext = { _, _ ->
+                events += "claim-empty"
+                null
+            },
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                events += "finish-empty"
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake { events += "drained:first" }
+        runCurrent()
+        cleanupEntered.await()
+        advanceTimeBy(2.seconds)
+        runCurrent()
+
+        coordinator.wake { events += "drained:second" }
+        runCurrent()
+        assertEquals(1, recoveryCalls)
+        advanceTimeBy(2.seconds)
+        runCurrent()
+
+        assertEquals(1, recoveryCalls)
+        assertEquals(2, coordinator.drainLaunchCountForTest)
+        assertEquals(0, finishCalls)
+        assertFalse(events.any { it.startsWith("drained:") })
+        assertFalse(coordinator.hasDrainJobForTest)
+
+        failFirstCleanup.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(2, recoveryCalls)
+        assertEquals(3, coordinator.drainLaunchCountForTest)
+        assertEquals(1, maxConcurrentRecoveries)
+        assertEquals(2, cleanupCalls)
+        assertEquals(1, finishCalls)
+        assertTrue(events.indexOf("cleanup:2") < events.indexOf("recover:2"))
+        assertTrue(events.indexOf("recover:2") < events.indexOf("claim-empty"))
+        assertEquals(listOf("drained:second"), events.filter { it.startsWith("drained:") })
+        assertFalse(recoveryProcess.hasUnconsumedSuccess())
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
     fun `replacement coordinator retries process scoped recovered cleanup before final empty`() =
         runTest {
             val registry = DataTaskOwnerRegistry()
