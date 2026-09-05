@@ -152,6 +152,26 @@ value class DataTaskResultCode(val value: String) {
     }
 }
 
+internal fun DataTaskResultCode.toUserFacingJobMessage(): String = when (value) {
+    "ARCHIVE_BACKUP_APP_NOT_INSTALLED" -> "the app is not installed"
+    "ARCHIVE_BACKUP_BUNDLE_FAILED" -> "the app's installer bundle could not be built"
+    "ARCHIVE_BACKUP_DESTINATION_REQUIRED" -> "choose a folder for Thor's backups first"
+    "ARCHIVE_RESTORE_NOT_AN_ARCHIVE" -> "that file is not a Thor backup"
+    "ARCHIVE_RESTORE_SOURCE_UNREADABLE", "SOURCE_REQUIRED" ->
+        "Thor could not read that backup file"
+
+    "ARCHIVE_RESTORE_AUTHENTICATION_FAILED" ->
+        "this backup could not be authenticated and was not restored"
+
+    "ARCHIVE_AUTHENTICATION_REQUIRED", "AUTHENTICATION_REQUIRED" ->
+        "this archive's key is no longer in memory — start it again"
+
+    "ARCHIVE_RESTORE_INTERRUPTED", "DESTRUCTIVE_RESTORE_REVIEW" ->
+        "this restore stopped after it began changing the app; review it before trying again"
+
+    else -> "the archive job could not be completed"
+}
+
 data class DataTaskMessage(
     val code: DataTaskResultCode,
     val arguments: List<String> = emptyList(),
@@ -196,6 +216,12 @@ sealed interface StoredRestoreSource {
         }
     }
 }
+
+internal fun privateRestoreSourceRelativePath(taskId: UUID): String =
+    "data_tasks/$taskId/restore-source.thor"
+
+internal fun isPrivateRestoreSourceRelativePath(taskId: UUID, relativePath: String): Boolean =
+    relativePath == privateRestoreSourceRelativePath(taskId)
 
 enum class DataTaskPublicationPolicy { PUBLIC_DOCUMENT, PRIVATE_SHARE_WITH_24_HOUR_EXPIRY }
 

@@ -9,6 +9,8 @@ import com.valhalla.thor.data.source.local.room.DataTaskDao
 import com.valhalla.thor.domain.model.DataTaskCheckpoint
 import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.StoredRestoreSource
+import com.valhalla.thor.domain.model.isPrivateRestoreSourceRelativePath
+import com.valhalla.thor.domain.model.privateRestoreSourceRelativePath
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.AtomicMoveNotSupportedException
@@ -18,14 +20,19 @@ import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 internal sealed interface RestoreSourceResolution {
     data class Ready(val uriString: String) : RestoreSourceResolution
@@ -40,7 +47,7 @@ internal sealed interface RestoreSourceCopyResult {
 }
 
 internal interface RestoreSourceStagingDependencies {
-    fun takeSource(taskId: UUID): String?
+    fun takeSource(taskId: UUID, capabilityToken: String): String?
     suspend fun copyToPrivate(
         taskId: UUID,
         rawUri: String,
@@ -53,9 +60,10 @@ internal interface RestoreSourceStagingDependencies {
         nowMs: Long,
     ): Boolean
 
-    fun privateSourceUri(privateRelativePath: String): String?
+    fun privateSourceUri(taskId: UUID, privateRelativePath: String): String?
     fun persistedSourceUri(grantIdentity: String): String?
-    fun discardPrivateSource(privateRelativePath: String)
+    fun discardPrivateSource(taskId: UUID, privateRelativePath: String)
+    fun discardUncommittedTaskSources(taskId: UUID)
     fun nowMs(): Long
 }
 
@@ -70,15 +78,16 @@ internal class AndroidRestoreSourceStagingDependencies(
     private val filesRoot = applicationContext.filesDir.canonicalFile
     private val store = DataTaskStore(dao)
 
-    override fun takeSource(taskId: UUID): String? = sources.takeForTask(taskId)?.toString()
+    override fun takeSource(taskId: UUID, capabilityToken: String): String? =
+        sources.take(taskId, capabilityToken)
 
     override suspend fun copyToPrivate(
         taskId: UUID,
         rawUri: String,
         reportProgress: suspend (copiedBytes: Long) -> Boolean,
     ): RestoreSourceCopyResult {
-        val relativePath = "data_tasks/$taskId/restore-source.thor"
-        val destination = resolvePrivateFile(relativePath)
+        val relativePath = privateRestoreSourceRelativePath(taskId)
+        val destination = resolvePrivateFile(taskId, relativePath)
             ?: return RestoreSourceCopyResult.SourceUnavailable
         val parent = destination.parentFile ?: return RestoreSourceCopyResult.SourceUnavailable
         if (!parent.exists() && !parent.mkdirs()) return RestoreSourceCopyResult.SourceUnavailable
@@ -125,6 +134,7 @@ internal class AndroidRestoreSourceStagingDependencies(
         privateRelativePath: String,
         nowMs: Long,
     ): Boolean {
+        if (!isPrivateRestoreSourceRelativePath(claim.taskId, privateRelativePath)) return false
         val item = requireNotNull(claim.item)
         return store.commitPrivateRestoreSource(
             taskId = claim.taskId,
@@ -136,8 +146,8 @@ internal class AndroidRestoreSourceStagingDependencies(
         )
     }
 
-    override fun privateSourceUri(privateRelativePath: String): String? =
-        resolvePrivateFile(privateRelativePath)
+    override fun privateSourceUri(taskId: UUID, privateRelativePath: String): String? =
+        resolvePrivateFile(taskId, privateRelativePath)
             ?.takeIf(File::isFile)
             ?.toUri()
             ?.toString()
@@ -149,15 +159,23 @@ internal class AndroidRestoreSourceStagingDependencies(
             .map { it.uri.toString() }
             .firstOrNull { it.toOpaqueGrantIdentity() == grantIdentity }
 
-    override fun discardPrivateSource(privateRelativePath: String) {
-        val file = resolvePrivateFile(privateRelativePath) ?: return
+    override fun discardPrivateSource(taskId: UUID, privateRelativePath: String) {
+        val file = resolvePrivateFile(taskId, privateRelativePath) ?: return
         file.delete()
         file.parentFile?.takeIf { it.listFiles().isNullOrEmpty() }?.delete()
     }
 
+    override fun discardUncommittedTaskSources(taskId: UUID) {
+        val final = resolvePrivateFile(taskId, privateRestoreSourceRelativePath(taskId)) ?: return
+        File(final.parentFile, "${final.name}.part").delete()
+        final.delete()
+        final.parentFile?.takeIf { it.listFiles().isNullOrEmpty() }?.delete()
+    }
+
     override fun nowMs(): Long = System.currentTimeMillis()
 
-    private fun resolvePrivateFile(relativePath: String): File? {
+    private fun resolvePrivateFile(taskId: UUID, relativePath: String): File? {
+        if (!isPrivateRestoreSourceRelativePath(taskId, relativePath)) return null
         val candidate = File(filesRoot, relativePath).canonicalFile
         return candidate.takeIf { it.path.startsWith(filesRoot.path + File.separator) }
     }
@@ -195,20 +213,23 @@ internal class RestoreSourceStager internal constructor(
     private val dependencies: RestoreSourceStagingDependencies,
 ) {
     internal constructor(
-        takeSource: (UUID) -> String?,
+        takeSource: (UUID, String) -> String?,
         copyToPrivate: suspend (
             UUID,
             String,
             suspend (copiedBytes: Long) -> Boolean,
         ) -> RestoreSourceCopyResult,
         commitPrivateSource: suspend (DataSyncClaim, String, Long) -> Boolean,
-        privateSourceUri: (String) -> String?,
+        privateSourceUri: (UUID, String) -> String?,
         persistedSourceUri: (String) -> String? = { null },
-        discardPrivateSource: (String) -> Unit,
+        discardPrivateSource: (UUID, String) -> Unit,
+        discardUncommittedTaskSources: (UUID) -> Unit,
         nowMs: () -> Long,
     ) : this(
         object : RestoreSourceStagingDependencies {
-            override fun takeSource(taskId: UUID): String? = takeSource(taskId)
+            override fun takeSource(taskId: UUID, capabilityToken: String): String? =
+                takeSource(taskId, capabilityToken)
+
             override suspend fun copyToPrivate(
                 taskId: UUID,
                 rawUri: String,
@@ -221,14 +242,17 @@ internal class RestoreSourceStager internal constructor(
                 nowMs: Long,
             ): Boolean = commitPrivateSource(claim, privateRelativePath, nowMs)
 
-            override fun privateSourceUri(privateRelativePath: String): String? =
-                privateSourceUri(privateRelativePath)
+            override fun privateSourceUri(taskId: UUID, privateRelativePath: String): String? =
+                privateSourceUri(taskId, privateRelativePath)
 
             override fun persistedSourceUri(grantIdentity: String): String? =
                 persistedSourceUri(grantIdentity)
 
-            override fun discardPrivateSource(privateRelativePath: String) =
-                discardPrivateSource(privateRelativePath)
+            override fun discardPrivateSource(taskId: UUID, privateRelativePath: String) =
+                discardPrivateSource(taskId, privateRelativePath)
+
+            override fun discardUncommittedTaskSources(taskId: UUID) =
+                discardUncommittedTaskSources(taskId)
 
             override fun nowMs(): Long = nowMs()
         }
@@ -244,14 +268,27 @@ internal class RestoreSourceStager internal constructor(
             ?.let(RestoreSourceResolution::Ready)
             ?: RestoreSourceResolution.WaitingForSource
 
-        is StoredRestoreSource.PrivateCopy -> dependencies.privateSourceUri(source.privateRelativePath)
-            ?.let(RestoreSourceResolution::Ready)
-            ?: RestoreSourceResolution.WaitingForSource
+        is StoredRestoreSource.PrivateCopy -> if (
+            isPrivateRestoreSourceRelativePath(claim.taskId, source.privateRelativePath)
+        ) {
+            dependencies.privateSourceUri(claim.taskId, source.privateRelativePath)
+                ?.let(RestoreSourceResolution::Ready)
+                ?: RestoreSourceResolution.WaitingForSource
+        } else {
+            RestoreSourceResolution.WaitingForSource
+        }
     }
 
-    fun discard(source: StoredRestoreSource) {
-        if (source is StoredRestoreSource.PrivateCopy) {
-            dependencies.discardPrivateSource(source.privateRelativePath)
+    fun discardUncommittedTaskSources(taskId: UUID) {
+        dependencies.discardUncommittedTaskSources(taskId)
+    }
+
+    fun discard(taskId: UUID, source: StoredRestoreSource) {
+        if (
+            source is StoredRestoreSource.PrivateCopy &&
+            isPrivateRestoreSourceRelativePath(taskId, source.privateRelativePath)
+        ) {
+            dependencies.discardPrivateSource(taskId, source.privateRelativePath)
         }
     }
 
@@ -259,8 +296,12 @@ internal class RestoreSourceStager internal constructor(
         claim: DataSyncClaim,
         checkpoints: DataTaskCheckpointSink,
     ): RestoreSourceResolution {
-        val rawUri = dependencies.takeSource(claim.taskId)
-            ?: return RestoreSourceResolution.WaitingForSource
+        val rawUri = claim.transientSourceToken
+            ?.let { token -> dependencies.takeSource(claim.taskId, token) }
+        if (rawUri == null) {
+            dependencies.discardUncommittedTaskSources(claim.taskId)
+            return RestoreSourceResolution.WaitingForSource
+        }
         val item = requireNotNull(claim.item)
         val copy = try {
             withTimeout(RESTORE_STAGING_TIMEOUT) {
@@ -280,7 +321,11 @@ internal class RestoreSourceStager internal constructor(
                 }
             }
         } catch (_: TimeoutCancellationException) {
+            discardUncommitted(claim.taskId)
             return RestoreSourceResolution.WaitingForSource
+        } catch (cancelled: CancellationException) {
+            discardUncommitted(claim.taskId)
+            throw cancelled
         }
         val privatePath = when (copy) {
             is RestoreSourceCopyResult.Completed -> copy.privateRelativePath
@@ -290,16 +335,39 @@ internal class RestoreSourceStager internal constructor(
 
             RestoreSourceCopyResult.OwnershipLost -> return RestoreSourceResolution.OwnershipLost
         }
-        if (!dependencies.commitPrivateSource(claim, privatePath, dependencies.nowMs())) {
-            dependencies.discardPrivateSource(privatePath)
+        if (!isPrivateRestoreSourceRelativePath(claim.taskId, privatePath)) {
+            dependencies.discardUncommittedTaskSources(claim.taskId)
             return RestoreSourceResolution.OwnershipLost
         }
-        val privateUri = dependencies.privateSourceUri(privatePath)
+        val callerJob = currentCoroutineContext()[Job]
+        val committed = withContext(NonCancellable) {
+            val write = withTimeoutOrNull(RESTORE_COMMIT_TIMEOUT) {
+                try {
+                    dependencies.commitPrivateSource(claim, privatePath, dependencies.nowMs())
+                } catch (_: Exception) {
+                    false
+                }
+            } == true
+            if (!write) dependencies.discardUncommittedTaskSources(claim.taskId)
+            write
+        }
+        callerJob?.ensureActive()
+        if (!committed) {
+            return RestoreSourceResolution.OwnershipLost
+        }
+        val privateUri = dependencies.privateSourceUri(claim.taskId, privatePath)
             ?: return RestoreSourceResolution.WaitingForSource
         return RestoreSourceResolution.Ready(privateUri)
     }
 
+    private suspend fun discardUncommitted(taskId: UUID) {
+        withContext(NonCancellable) {
+            dependencies.discardUncommittedTaskSources(taskId)
+        }
+    }
+
     private companion object {
         val RESTORE_STAGING_TIMEOUT = 9.minutes
+        val RESTORE_COMMIT_TIMEOUT = 2.seconds
     }
 }

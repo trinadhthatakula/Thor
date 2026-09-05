@@ -18,25 +18,31 @@ import org.koin.core.annotation.Single
 internal class RestoreSourceGrantHolder {
     private data class GrantKey(val taskId: UUID, val token: String)
 
-    private val grants = ConcurrentHashMap<GrantKey, Uri>()
+    private val grants = ConcurrentHashMap<GrantKey, String>()
+    private val currentTokens = ConcurrentHashMap<UUID, String>()
 
-    fun register(taskId: UUID, uri: Uri): String {
+    fun register(taskId: UUID, uri: Uri): String = register(taskId, uri.toString())
+
+    internal fun register(taskId: UUID, uriString: String): String {
         val token = UUID.randomUUID().toString()
-        grants[GrantKey(taskId, token)] = uri
+        grants[GrantKey(taskId, token)] = uriString
+        currentTokens[taskId] = token
         return token
     }
 
     /** Returns and removes exactly the grant registered for this task and token. */
-    fun take(taskId: UUID, token: String): Uri? = grants.remove(GrantKey(taskId, token))
-
-    /** Consumes the sole transient source owned by a freshly accepted restore task. */
-    fun takeForTask(taskId: UUID): Uri? {
-        val key = grants.keys.firstOrNull { it.taskId == taskId } ?: return null
-        return grants.remove(key)
+    fun take(taskId: UUID, token: String): String? {
+        val uri = grants.remove(GrantKey(taskId, token)) ?: return null
+        currentTokens.remove(taskId, token)
+        return uri
     }
+
+    /** Returns only the opaque process-local capability, never the raw URI. */
+    fun currentToken(taskId: UUID): String? = currentTokens[taskId]
 
     /** Removes every unconsumed grant owned by a cancelled or terminal task. */
     fun dropTask(taskId: UUID) {
+        currentTokens.remove(taskId)
         grants.keys.removeIf { it.taskId == taskId }
     }
 }

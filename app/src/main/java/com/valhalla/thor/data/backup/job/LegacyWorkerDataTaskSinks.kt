@@ -21,6 +21,7 @@ import com.valhalla.thor.domain.model.RESTORE_CLASSES_KEY
 import com.valhalla.thor.domain.model.RESTORE_OBB_KEY
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
+import com.valhalla.thor.domain.model.toUserFacingJobMessage
 import java.util.UUID
 import javax.crypto.SecretKey
 
@@ -106,12 +107,14 @@ internal class LegacyWorkerResultSink(
         when (outcome) {
             is DataTaskRunOutcome.ItemCompleted -> when (outcome.result.terminalState) {
                 DataTaskItemTerminalState.SUCCEEDED -> success(outcome)
-                DataTaskItemTerminalState.FAILED -> failure(outcome.result.resultCode.legacyReason())
+                DataTaskItemTerminalState.FAILED ->
+                    failure(outcome.result.resultCode.toUserFacingJobMessage())
+
                 DataTaskItemTerminalState.CANCELLED -> failure("this job was cancelled")
             }
 
             is DataTaskRunOutcome.TaskFailed -> failure(
-                outcome.arguments.firstOrNull() ?: outcome.resultCode.legacyReason()
+                outcome.arguments.firstOrNull() ?: outcome.resultCode.toUserFacingJobMessage()
             )
 
             is DataTaskRunOutcome.WaitingForAuthentication -> failure(
@@ -133,7 +136,8 @@ internal class LegacyWorkerResultSink(
     private fun success(outcome: DataTaskRunOutcome.ItemCompleted): ListenableWorker.Result {
         if (kind != DataTaskKind.ARCHIVE_RESTORE) return ListenableWorker.Result.success()
         val warnings = outcome.result.warnings.map { warning ->
-            (warning.arguments.firstOrNull() ?: warning.code.legacyReason()).boundedForJobData()
+            (warning.arguments.firstOrNull() ?: warning.code.toUserFacingJobMessage())
+                .boundedForJobData()
         }
         return if (warnings.isEmpty()) {
             ListenableWorker.Result.success()
@@ -162,17 +166,4 @@ private fun DataTaskStage.toLegacyStage(): ThorJobStage = when (this) {
     DataTaskStage.PUBLISHING,
     DataTaskStage.FINISHING,
         -> ThorJobStage.FINISHING
-}
-
-private fun DataTaskResultCode.legacyReason(): String = when (value) {
-    "ARCHIVE_BACKUP_APP_NOT_INSTALLED" -> "the app is not installed"
-    "ARCHIVE_BACKUP_BUNDLE_FAILED" -> "the app's installer bundle could not be built"
-    "ARCHIVE_BACKUP_DESTINATION_REQUIRED" -> "choose a folder for Thor's backups first"
-    "ARCHIVE_RESTORE_NOT_AN_ARCHIVE" -> "that file is not a Thor backup"
-    "ARCHIVE_RESTORE_SOURCE_UNREADABLE" -> "Thor could not read that backup file"
-    "ARCHIVE_RESTORE_AUTHENTICATION_FAILED" -> ARCHIVE_AUTH_FAILURE_REASON
-    "ARCHIVE_RESTORE_INTERRUPTED" ->
-        "this restore stopped after it began changing the app; review it before trying again"
-
-    else -> "the archive job could not be completed"
 }

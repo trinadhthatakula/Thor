@@ -8,6 +8,16 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import org.koin.core.annotation.Single
 
+internal sealed interface DataTaskUncertainClaimRelease {
+    val claimToken: String
+
+    data class Provisional(override val claimToken: String) : DataTaskUncertainClaimRelease
+
+    data class Active(val claim: DataSyncClaim) : DataTaskUncertainClaimRelease {
+        override val claimToken: String = claim.claimToken
+    }
+}
+
 /** Process-wide authority for claims still owned by this process, across service generations. */
 @Single
 class DataTaskOwnerRegistry {
@@ -20,6 +30,8 @@ class DataTaskOwnerRegistry {
     private val lock = Any()
     private val owners = mutableMapOf<String, Owner>()
     private val provisionalCancellations = mutableSetOf<UUID>()
+    private val staleSettlementReservations = mutableSetOf<UUID>()
+    private val uncertainClaimReleases = mutableMapOf<String, DataTaskUncertainClaimRelease>()
     private var laneOwnerToken: String? = null
     private var laneCompletion: CompletableDeferred<Unit>? = null
 
@@ -64,7 +76,12 @@ class DataTaskOwnerRegistry {
         val owner = owners[claimToken] ?: return@synchronized false
         if (owner.taskId != null && owner.taskId != taskId) return@synchronized false
         owner.taskId = taskId
-        if (provisionalCancellations.remove(taskId)) owner.cancellationRequested = true
+        if (
+            provisionalCancellations.remove(taskId) ||
+            taskId in staleSettlementReservations
+        ) {
+            owner.cancellationRequested = true
+        }
         true
     }
 
@@ -84,19 +101,61 @@ class DataTaskOwnerRegistry {
         owners[claimToken]?.let { owner -> owner.taskId == null || owner.taskId == taskId } == true
     }
 
+    /**
+     * Cancels a bound owner and returns whether that exact task has a proven local owner.
+     *
+     * A provisional claim cannot prove which task it owns. Cancellation is retained for a later
+     * matching bind, but callers may still reconcile a stale durable claim.
+     */
     fun cancelActive(taskId: UUID): Boolean {
+        var foundBoundOwner = false
         val child = synchronized(lock) {
             val owner = owners.values.firstOrNull { it.taskId == taskId }
             if (owner == null) {
-                if (owners.values.none { it.taskId == null }) return false
-                provisionalCancellations += taskId
+                if (owners.values.any { it.taskId == null }) provisionalCancellations += taskId
                 return@synchronized null
             }
+            foundBoundOwner = true
             owner.cancellationRequested = true
             owner.child
         }
         child?.cancel()
-        return true
+        return foundBoundOwner
+    }
+
+    /**
+     * Atomically fences an exact stale-claim settlement against task binding.
+     *
+     * A task that binds while the reservation is held inherits cancellation. A task already bound
+     * is cancelled instead and prevents the stale Room transition from running.
+     */
+    fun reserveStaleSettlement(taskId: UUID): Boolean {
+        var child: Job? = null
+        val reserved = synchronized(lock) {
+            val owner = owners.values.firstOrNull { it.taskId == taskId }
+            if (owner != null) {
+                owner.cancellationRequested = true
+                child = owner.child
+                false
+            } else {
+                staleSettlementReservations.add(taskId)
+            }
+        }
+        child?.cancel()
+        return reserved
+    }
+
+    fun finishStaleSettlement(taskId: UUID, settled: Boolean) {
+        synchronized(lock) {
+            staleSettlementReservations.remove(taskId)
+            if (settled) {
+                provisionalCancellations.remove(taskId)
+            } else {
+                // A provisional claim may have registered while Room was unavailable and bind after
+                // this reservation ends. Retain cancellation for that exact task.
+                provisionalCancellations += taskId
+            }
+        }
     }
 
     fun cancelActiveOwnedBy(claimToken: String): Boolean {
@@ -107,6 +166,25 @@ class DataTaskOwnerRegistry {
         }
         child?.cancel()
         return true
+    }
+
+    internal fun retainUncertainClaimRelease(release: DataTaskUncertainClaimRelease) {
+        synchronized(lock) {
+            uncertainClaimReleases[release.claimToken] = release
+        }
+    }
+
+    internal fun pendingUncertainClaimReleases(): List<DataTaskUncertainClaimRelease> =
+        synchronized(lock) { uncertainClaimReleases.values.toList() }
+
+    internal fun clearUncertainClaimRelease(claimToken: String) {
+        synchronized(lock) {
+            uncertainClaimReleases.remove(claimToken)
+        }
+    }
+
+    internal fun hasUncertainClaimRelease(claimToken: String): Boolean = synchronized(lock) {
+        claimToken in uncertainClaimReleases
     }
 
     fun unregister(taskId: UUID, claimToken: String) {

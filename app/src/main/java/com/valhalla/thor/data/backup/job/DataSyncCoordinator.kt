@@ -73,10 +73,12 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Factory
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
@@ -84,6 +86,7 @@ import org.koin.core.annotation.Single
 internal data class DataSyncClaim(
     val taskId: UUID,
     val claimToken: String,
+    val transientSourceToken: String? = null,
     val task: ClaimedDataTask? = null,
     val item: ClaimedDataTaskItem? = null,
 )
@@ -104,6 +107,7 @@ internal interface DataSyncCoordinatorRuntime {
 
     suspend fun settleTimeout(claim: DataSyncClaim): Boolean
     suspend fun settleProvisionalClaim(claimToken: String): Boolean
+    suspend fun claimReleaseIsPending(release: DataTaskUncertainClaimRelease): Boolean
     suspend fun persistOutcome(claim: DataSyncClaim, outcome: DataTaskRunOutcome)
     suspend fun cleanupClaim(claim: DataSyncClaim)
     fun checkpointSink(claim: DataSyncClaim): DataTaskCheckpointSink
@@ -152,6 +156,8 @@ internal class RoomDataSyncCoordinatorRuntime(
         localOwnerIsLive: (UUID, String) -> Boolean,
     ) {
         store.recoverClaims(sessionToken, nowMs(), localOwnerIsLive)
+        store.uncommittedRestoreSourceCleanupTaskIds()
+            .forEach(restoreSourceStager::discardUncommittedTaskSources)
     }
 
     override suspend fun claimNext(sessionToken: String, claimToken: String): DataSyncClaim? {
@@ -166,6 +172,7 @@ internal class RoomDataSyncCoordinatorRuntime(
         return DataSyncClaim(
             taskId = work.task.taskId,
             claimToken = work.task.claimToken,
+            transientSourceToken = restoreSources.currentToken(work.task.taskId),
             task = work.task,
             item = work.item,
         )
@@ -208,6 +215,18 @@ internal class RoomDataSyncCoordinatorRuntime(
     override suspend fun settleProvisionalClaim(claimToken: String): Boolean =
         store.settleClaimAcquisitionFailure(claimToken, nowMs())
 
+    override suspend fun claimReleaseIsPending(
+        release: DataTaskUncertainClaimRelease,
+    ): Boolean = when (release) {
+        is DataTaskUncertainClaimRelease.Provisional ->
+            store.hasClaimTokens(release.claimToken, itemClaimToken = null)
+
+        is DataTaskUncertainClaimRelease.Active -> store.hasClaimTokens(
+            release.claim.claimToken,
+            release.claim.item?.claimToken,
+        )
+    }
+
     override suspend fun persistOutcome(claim: DataSyncClaim, outcome: DataTaskRunOutcome) {
         val task = requireNotNull(claim.task)
         val item = requireNotNull(claim.item)
@@ -223,7 +242,7 @@ internal class RoomDataSyncCoordinatorRuntime(
             val settled = store.loadTask(task.taskId)
             if (settled != null && settled.state.noLongerNeedsRestoreSource()) {
                 val detail = settled.detail as? StoredDataTaskDetail.ArchiveRestore
-                detail?.source?.let(restoreSourceStager::discard)
+                detail?.source?.let { source -> restoreSourceStager.discard(task.taskId, source) }
             }
         }
     }
@@ -608,7 +627,7 @@ class DataSyncCoordinator internal constructor(
 
     private data class ActiveTimeoutSettlement(
         val claimToken: String,
-        val deferred: Deferred<Unit>,
+        val deferred: Deferred<Boolean>,
     )
 
     private data class ClaimTransitionResult(val claim: DataSyncClaim?)
@@ -621,6 +640,7 @@ class DataSyncCoordinator internal constructor(
     private var latestWake: WakeGeneration? = null
     private var activeClaim: DataSyncClaim? = null
     private var activeTimeoutSettlement: ActiveTimeoutSettlement? = null
+    private val reconciliationJobs = mutableMapOf<String, Job>()
     private val drainLaunches = AtomicInteger()
     private val generationToken = UUID.randomUUID().toString()
 
@@ -634,6 +654,7 @@ class DataSyncCoordinator internal constructor(
         executeClaim: suspend (DataSyncClaim, DataTaskCheckpointSink) -> DataTaskRunOutcome,
         settleTimeout: suspend (DataSyncClaim) -> Boolean,
         settleProvisionalClaim: suspend (String) -> Boolean,
+        claimReleaseIsPending: suspend (DataTaskUncertainClaimRelease) -> Boolean,
         persistOutcome: suspend (DataSyncClaim, DataTaskRunOutcome) -> Unit,
         cleanupClaim: suspend (DataSyncClaim) -> Unit,
         checkpointSink: (DataSyncClaim) -> DataTaskCheckpointSink,
@@ -666,6 +687,10 @@ class DataSyncCoordinator internal constructor(
             override suspend fun settleProvisionalClaim(claimToken: String): Boolean =
                 settleProvisionalClaim(claimToken)
 
+            override suspend fun claimReleaseIsPending(
+                release: DataTaskUncertainClaimRelease,
+            ): Boolean = claimReleaseIsPending(release)
+
             override suspend fun persistOutcome(
                 claim: DataSyncClaim,
                 outcome: DataTaskRunOutcome,
@@ -691,11 +716,23 @@ class DataSyncCoordinator internal constructor(
     fun wake(
         onClaimed: (UUID, String) -> Unit = { _, _ -> },
         onDrained: () -> Unit,
-    ): Long = synchronized(lock) {
-        val generation = ++acceptedWakeGeneration
-        latestWake = WakeGeneration(generation, onClaimed, onDrained)
-        if (claimsEnabled && drain?.isActive != true) launchDrainLocked(generation)
-        generation
+    ): Long {
+        val pendingReleases = ownerRegistry.pendingUncertainClaimReleases()
+        var retryPending = false
+        val generation = synchronized(lock) {
+            val accepted = ++acceptedWakeGeneration
+            latestWake = WakeGeneration(accepted, onClaimed, onDrained)
+            if (claimsEnabled && drain?.isActive != true) {
+                if (pendingReleases.isEmpty()) {
+                    launchDrainLocked(accepted)
+                } else {
+                    retryPending = true
+                }
+            }
+            accepted
+        }
+        if (retryPending) pendingReleases.forEach(::handoffUncertainClaimReconciliation)
+        return generation
     }
 
     suspend fun stopClaimsAndInterrupt() {
@@ -707,18 +744,28 @@ class DataSyncCoordinator internal constructor(
         if (claim == null) {
             drainJob?.cancel()
         } else {
+            try {
+                if (settlement?.await() != true) handoffActiveClaimReconciliation(claim)
+            } catch (failure: Throwable) {
+                handoffActiveClaimReconciliation(claim)
+            }
             ownerRegistry.cancelActiveOwnedBy(claim.claimToken)
         }
         drainJob?.join()
-        settlement?.await()
     }
 
-    private fun launchDrainLocked(wakeGeneration: Long) {
+    private fun launchDrainLocked(
+        wakeGeneration: Long,
+        parkAfterUnclaimableClaim: Boolean = false,
+    ) {
         drainLaunches.incrementAndGet()
-        drain = scope.launch { drainQueue(wakeGeneration) }
+        drain = scope.launch { drainQueue(wakeGeneration, parkAfterUnclaimableClaim) }
     }
 
-    private suspend fun drainQueue(initialWakeGeneration: Long) {
+    private suspend fun drainQueue(
+        initialWakeGeneration: Long,
+        parkAfterUnclaimableClaim: Boolean,
+    ) {
         var observedWakeGeneration = initialWakeGeneration
         var infrastructureFailed = false
         var parkedBeforeClaim = false
@@ -752,10 +799,16 @@ class DataSyncCoordinator internal constructor(
                     transition.claim
                 } catch (failure: Throwable) {
                     try {
-                        runBoundedSettlement { runtime.settleProvisionalClaim(claimToken) }
+                        val release = DataTaskUncertainClaimRelease.Provisional(claimToken)
+                        runBoundedSettlement {
+                            check(confirmClaimRelease(release) {
+                                runtime.settleProvisionalClaim(claimToken)
+                            }) { "Provisional data task claim release remains uncertain" }
+                        }
                         ownerRegistry.unregisterProvisional(claimToken)
                     } catch (releaseFailure: Throwable) {
                         ownershipUncertain = true
+                        handoffProvisionalClaimReconciliation(claimToken)
                         failure.addSuppressed(releaseFailure)
                     }
                     throw failure
@@ -772,15 +825,27 @@ class DataSyncCoordinator internal constructor(
                     ) {
                         break
                     }
+                    if (parkAfterUnclaimableClaim) {
+                        parkedBeforeClaim = true
+                        break
+                    }
                     continue
                 }
 
                 if (!ownerRegistry.bindTask(claim.taskId, claimToken)) {
+                    val release = DataTaskUncertainClaimRelease.Active(
+                        claim.copy(claimToken = claimToken)
+                    )
                     try {
-                        runBoundedSettlement { runtime.settleProvisionalClaim(claimToken) }
+                        runBoundedSettlement {
+                            check(confirmClaimRelease(release) {
+                                runtime.settleProvisionalClaim(claimToken)
+                            }) { "Unbound data task claim release remains uncertain" }
+                        }
                         ownerRegistry.unregisterProvisional(claimToken)
                     } catch (releaseFailure: Throwable) {
                         ownershipUncertain = true
+                        handoffClaimReconciliation(release)
                         throw releaseFailure
                     }
                     error("Data task claim lost its process-local owner before execution")
@@ -808,6 +873,7 @@ class DataSyncCoordinator internal constructor(
                         ownershipReleased = true
                     } catch (releaseFailure: Throwable) {
                         ownershipUncertain = true
+                        handoffActiveClaimReconciliation(ownedClaim)
                         throw releaseFailure
                     }
                 } catch (failure: Throwable) {
@@ -816,6 +882,7 @@ class DataSyncCoordinator internal constructor(
                         ownershipReleased = true
                     } catch (releaseFailure: Throwable) {
                         ownershipUncertain = true
+                        handoffActiveClaimReconciliation(ownedClaim)
                         failure.addSuppressed(releaseFailure)
                     }
                     throw failure
@@ -847,6 +914,7 @@ class DataSyncCoordinator internal constructor(
                 drain = null
                 val newerWakeExists = acceptedWakeGeneration > observedWakeGeneration
                 when {
+                    reconciliationJobs.isNotEmpty() -> null
                     !claimsEnabled -> latestWake?.onDrained
                     newerWakeExists && !ownershipUncertain -> {
                         launchDrainLocked(requireNotNull(latestWake).number)
@@ -864,13 +932,15 @@ class DataSyncCoordinator internal constructor(
         }
     }
 
-    private fun timeoutSettlementFor(claim: DataSyncClaim): Deferred<Unit> {
+    private fun timeoutSettlementFor(claim: DataSyncClaim): Deferred<Boolean> {
         val deferred = synchronized(lock) {
             activeTimeoutSettlement
                 ?.takeIf { it.claimToken == claim.claimToken }
                 ?.deferred
                 ?: scope.async(start = CoroutineStart.LAZY) {
-                    runBoundedSettlement { runtime.settleTimeout(claim) }
+                    runBoundedReleaseConfirmation(
+                        DataTaskUncertainClaimRelease.Active(claim)
+                    ) { runtime.settleTimeout(claim) }
                 }.also { created ->
                     activeTimeoutSettlement = ActiveTimeoutSettlement(claim.claimToken, created)
                 }
@@ -881,7 +951,9 @@ class DataSyncCoordinator internal constructor(
 
     private suspend fun settleClaimTimedOutBeforeExecution(claim: DataSyncClaim) {
         runBoundedSettlement {
-            timeoutSettlementFor(claim).await()
+            check(timeoutSettlementFor(claim).await()) {
+                "Timed-out data task claim release remains uncertain"
+            }
             runtime.cleanupClaim(claim)
         }
     }
@@ -893,13 +965,89 @@ class DataSyncCoordinator internal constructor(
                     ?.takeIf { it.claimToken == claim.claimToken }
                     ?.deferred
             }
-            if (timeout == null) {
-                runtime.settleTimeout(claim)
-            } else {
-                timeout.await()
-            }
+            val released = timeout?.await() ?: runBoundedReleaseConfirmation(
+                DataTaskUncertainClaimRelease.Active(claim)
+            ) { runtime.settleTimeout(claim) }
+            check(released) { "Data task claim release remains uncertain" }
             runtime.cleanupClaim(claim)
         }
+    }
+
+    private fun handoffProvisionalClaimReconciliation(claimToken: String) =
+        handoffClaimReconciliation(DataTaskUncertainClaimRelease.Provisional(claimToken))
+
+    private fun handoffActiveClaimReconciliation(claim: DataSyncClaim) =
+        handoffClaimReconciliation(DataTaskUncertainClaimRelease.Active(claim))
+
+    private fun handoffUncertainClaimReconciliation(release: DataTaskUncertainClaimRelease) =
+        handoffClaimReconciliation(release)
+
+    private fun handoffClaimReconciliation(release: DataTaskUncertainClaimRelease) {
+        val claimToken = release.claimToken
+        val taskId = (release as? DataTaskUncertainClaimRelease.Active)?.claim?.taskId
+        ownerRegistry.retainUncertainClaimRelease(release)
+        val settle: suspend () -> Boolean = when (release) {
+            is DataTaskUncertainClaimRelease.Provisional -> {
+                { runtime.settleProvisionalClaim(release.claimToken) }
+            }
+
+            is DataTaskUncertainClaimRelease.Active -> {
+                { runtime.settleTimeout(release.claim) }
+            }
+        }
+        val cleanup: suspend () -> Unit = when (release) {
+            is DataTaskUncertainClaimRelease.Provisional -> ({})
+            is DataTaskUncertainClaimRelease.Active -> ({ runtime.cleanupClaim(release.claim) })
+        }
+        val job = synchronized(lock) {
+            reconciliationJobs[claimToken]?.let { return }
+            val drainToAwait = drain
+            scope.launch(start = CoroutineStart.LAZY) {
+                drainToAwait?.join()
+                val released = withTimeoutOrNull(CLAIM_RECONCILIATION_TIMEOUT) {
+                    repeat(CLAIM_RECONCILIATION_ATTEMPTS) { attempt ->
+                        try {
+                            if (confirmClaimRelease(release, settle)) {
+                                cleanup()
+                                return@withTimeoutOrNull true
+                            }
+                        } catch (_: Exception) {
+                            if (attempt + 1 < CLAIM_RECONCILIATION_ATTEMPTS) {
+                                delay(CLAIM_RECONCILIATION_RETRY_DELAY)
+                            }
+                        }
+                    }
+                    false
+                } == true
+                if (taskId == null) {
+                    ownerRegistry.unregisterProvisional(claimToken)
+                } else {
+                    ownerRegistry.unregister(taskId, claimToken)
+                }
+                if (released) {
+                    ownerRegistry.clearUncertainClaimRelease(claimToken)
+                } else {
+                    ownerRegistry.retainUncertainClaimRelease(release)
+                }
+                val stopCallback = synchronized(lock) {
+                    reconciliationJobs.remove(claimToken)
+                    when {
+                        drain?.isActive == true -> null
+                        claimsEnabled && latestWake != null -> {
+                            launchDrainLocked(
+                                requireNotNull(latestWake).number,
+                                parkAfterUnclaimableClaim = !released,
+                            )
+                            null
+                        }
+
+                        else -> latestWake?.onDrained
+                    }
+                }
+                stopCallback?.invoke()
+            }.also { reconciliationJobs[claimToken] = it }
+        }
+        job.start()
     }
 
     private suspend fun executeOwnedClaim(claim: DataSyncClaim) = coroutineScope {
@@ -935,7 +1083,9 @@ class DataSyncCoordinator internal constructor(
                     runtime.cleanupClaim(claim)
                     runtime.persistOutcome(claim, DataTaskRunOutcome.Cancelled)
                 } else {
-                    timeoutSettlementFor(claim).await()
+                    check(timeoutSettlementFor(claim).await()) {
+                        "Timed-out data task claim release remains uncertain"
+                    }
                     runtime.cleanupClaim(claim)
                 }
             }
@@ -949,6 +1099,22 @@ class DataSyncCoordinator internal constructor(
             runtime.cleanupClaim(claim)
         }
         settlementCompleted.complete(Unit)
+    }
+
+    private suspend fun confirmClaimRelease(
+        release: DataTaskUncertainClaimRelease,
+        settle: suspend () -> Boolean,
+    ): Boolean = settle() || !runtime.claimReleaseIsPending(release)
+
+    private suspend fun runBoundedReleaseConfirmation(
+        release: DataTaskUncertainClaimRelease,
+        settle: suspend () -> Boolean,
+    ): Boolean {
+        var released = false
+        runBoundedSettlement {
+            released = confirmClaimRelease(release, settle)
+        }
+        return released
     }
 
     private suspend fun runBoundedSettlement(block: suspend () -> Unit) {
@@ -965,6 +1131,9 @@ class DataSyncCoordinator internal constructor(
 
     private companion object {
         val CLAIM_TRANSITION_TIMEOUT = 2.seconds
+        val CLAIM_RECONCILIATION_TIMEOUT = 2.seconds
+        val CLAIM_RECONCILIATION_RETRY_DELAY = 100.milliseconds
+        const val CLAIM_RECONCILIATION_ATTEMPTS = 3
     }
 }
 

@@ -23,11 +23,42 @@ import kotlin.time.Duration.Companion.minutes
 class RestoreSourceStagerTest {
 
     @Test
+    fun `transient source is consumed only with its exact capability token`() = runTest {
+        val holder = RestoreSourceGrantHolder()
+        val first = holder.register(TASK_ID, "content://documents/first")
+        val second = holder.register(TASK_ID, "content://documents/second")
+        val stager = RestoreSourceStager(
+            takeSource = holder::take,
+            copyToPrivate = { _, rawUri, _ ->
+                assertEquals("content://documents/second", rawUri)
+                RestoreSourceCopyResult.Completed(PRIVATE_PATH)
+            },
+            commitPrivateSource = { _, _, _ -> true },
+            privateSourceUri = { _, _ -> PRIVATE_URI },
+            discardPrivateSource = { _, _ -> },
+            discardUncommittedTaskSources = {},
+            nowMs = { NOW_MS },
+        )
+
+        assertEquals(
+            RestoreSourceResolution.Ready(PRIVATE_URI),
+            stager.resolve(
+                claim(capabilityToken = second),
+                StoredRestoreSource.AwaitingTransientGrant,
+                appliedCheckpoints(),
+            ),
+        )
+        assertEquals("content://documents/first", holder.take(TASK_ID, first))
+        assertEquals(null, holder.take(TASK_ID, second))
+    }
+
+    @Test
     fun `transient raw URI is copied before only the private path is committed`() = runTest {
         val events = mutableListOf<String>()
         val committed = mutableListOf<String>()
         val stager = RestoreSourceStager(
-            takeSource = {
+            takeSource = { _, token ->
+                assertEquals(CAPABILITY_TOKEN, token)
                 events += "take"
                 RAW_URI
             },
@@ -46,11 +77,13 @@ class RestoreSourceStagerTest {
                 events += "commit"
                 true
             },
-            privateSourceUri = {
-                assertEquals(PRIVATE_PATH, it)
+            privateSourceUri = { taskId, path ->
+                assertEquals(TASK_ID, taskId)
+                assertEquals(PRIVATE_PATH, path)
                 PRIVATE_URI
             },
-            discardPrivateSource = { error("committed source must be retained") },
+            discardPrivateSource = { _, _ -> error("committed source must be retained") },
+            discardUncommittedTaskSources = { error("committed source must be retained") },
             nowMs = { NOW_MS },
         )
 
@@ -70,14 +103,15 @@ class RestoreSourceStagerTest {
     fun `missing transient grant waits for source without copying`() = runTest {
         var copied = false
         val stager = RestoreSourceStager(
-            takeSource = { null },
+            takeSource = { _, _ -> null },
             copyToPrivate = { _, _, _ ->
                 copied = true
                 RestoreSourceCopyResult.Completed(PRIVATE_PATH)
             },
             commitPrivateSource = { _, _, _ -> error("must not commit") },
-            privateSourceUri = { PRIVATE_URI },
-            discardPrivateSource = {},
+            privateSourceUri = { _, _ -> PRIVATE_URI },
+            discardPrivateSource = { _, _ -> },
+            discardUncommittedTaskSources = {},
             nowMs = { NOW_MS },
         )
 
@@ -95,11 +129,12 @@ class RestoreSourceStagerTest {
     fun `lost ownership discards the private copy`() = runTest {
         val discarded = mutableListOf<String>()
         val stager = RestoreSourceStager(
-            takeSource = { RAW_URI },
+            takeSource = { _, _ -> RAW_URI },
             copyToPrivate = { _, _, _ -> RestoreSourceCopyResult.Completed(PRIVATE_PATH) },
             commitPrivateSource = { _, _, _ -> false },
-            privateSourceUri = { PRIVATE_URI },
-            discardPrivateSource = { discarded += it },
+            privateSourceUri = { _, _ -> PRIVATE_URI },
+            discardPrivateSource = { _, path -> discarded += path },
+            discardUncommittedTaskSources = { discarded += PRIVATE_PATH },
             nowMs = { NOW_MS },
         )
 
@@ -114,11 +149,106 @@ class RestoreSourceStagerTest {
     }
 
     @Test
+    fun `cancellation after final rename waits for claim fenced commit`() = runTest {
+        val commitStarted = CompletableDeferred<Unit>()
+        val permitCommit = CompletableDeferred<Unit>()
+        var committed = false
+        var discarded = false
+        val stager = RestoreSourceStager(
+            takeSource = { _, _ -> RAW_URI },
+            copyToPrivate = { _, _, _ -> RestoreSourceCopyResult.Completed(PRIVATE_PATH) },
+            commitPrivateSource = { _, _, _ ->
+                commitStarted.complete(Unit)
+                permitCommit.await()
+                committed = true
+                true
+            },
+            privateSourceUri = { _, _ -> error("cancelled caller must not reopen source") },
+            discardPrivateSource = { _, _ -> discarded = true },
+            discardUncommittedTaskSources = { discarded = true },
+            nowMs = { NOW_MS },
+        )
+
+        val resolution = async {
+            stager.resolve(
+                claim(),
+                StoredRestoreSource.AwaitingTransientGrant,
+                appliedCheckpoints(),
+            )
+        }
+        runCurrent()
+        commitStarted.await()
+        resolution.cancel()
+        permitCommit.complete(Unit)
+        runCurrent()
+        resolution.join()
+
+        assertTrue(committed)
+        assertEquals(false, discarded)
+    }
+
+    @Test
+    fun `cancellation after final rename before commit cleans deterministic task sources`() =
+        runTest {
+            val finalRenamed = CompletableDeferred<Unit>()
+            val cleaned = mutableListOf<UUID>()
+            val stager = RestoreSourceStager(
+                takeSource = { _, _ -> RAW_URI },
+                copyToPrivate = { _, _, _ ->
+                    finalRenamed.complete(Unit)
+                    awaitCancellation()
+                },
+                commitPrivateSource = { _, _, _ -> error("cancelled copy must not commit") },
+                privateSourceUri = { _, _ -> error("cancelled copy must not be exposed") },
+                discardPrivateSource = { _, _ -> },
+                discardUncommittedTaskSources = { cleaned += it },
+                nowMs = { NOW_MS },
+            )
+
+            val resolution = async {
+                stager.resolve(
+                    claim(),
+                    StoredRestoreSource.AwaitingTransientGrant,
+                    appliedCheckpoints(),
+                )
+            }
+            finalRenamed.await()
+            resolution.cancel()
+            resolution.join()
+
+            assertEquals(listOf(TASK_ID), cleaned)
+        }
+
+    @Test
+    fun `missing grant cleans deterministic rename before commit orphan`() = runTest {
+        val cleaned = mutableListOf<UUID>()
+        val stager = RestoreSourceStager(
+            takeSource = { _, _ -> null },
+            copyToPrivate = { _, _, _ -> error("must not copy without a grant") },
+            commitPrivateSource = { _, _, _ -> error("must not commit without a grant") },
+            privateSourceUri = { _, _ -> null },
+            discardPrivateSource = { _, _ -> },
+            discardUncommittedTaskSources = { cleaned += it },
+            nowMs = { NOW_MS },
+        )
+
+        assertEquals(
+            RestoreSourceResolution.WaitingForSource,
+            stager.resolve(
+                claim(),
+                StoredRestoreSource.AwaitingTransientGrant,
+                appliedCheckpoints(),
+            ),
+        )
+        assertEquals(listOf(TASK_ID), cleaned)
+    }
+
+    @Test
     fun `staging aborts and cleans exact partial when byte checkpoint loses ownership`() = runTest {
         val checkpointedBytes = mutableListOf<Long>()
         val cleaned = mutableListOf<String>()
         val stager = RestoreSourceStager(
-            takeSource = { RAW_URI },
+            takeSource = { _, _ -> RAW_URI },
             copyToPrivate = { _, _, reportProgress ->
                 assertTrue(reportProgress(64 * 1024L))
                 if (!reportProgress(128 * 1024L)) {
@@ -129,8 +259,9 @@ class RestoreSourceStagerTest {
                 }
             },
             commitPrivateSource = { _, _, _ -> error("must not commit after ownership loss") },
-            privateSourceUri = { error("must not expose an uncommitted source") },
-            discardPrivateSource = { error("copy dependency already owns partial cleanup") },
+            privateSourceUri = { _, _ -> error("must not expose an uncommitted source") },
+            discardPrivateSource = { _, _ -> error("copy dependency already owns partial cleanup") },
+            discardUncommittedTaskSources = {},
             nowMs = { NOW_MS },
         )
         val checkpoints = DataTaskCheckpointSink { checkpoint ->
@@ -154,57 +285,56 @@ class RestoreSourceStagerTest {
     }
 
     @Test
-    fun `staging deadline cancels copy and cleans only its exact partial`() = runTest {
-        val copyStarted = CompletableDeferred<Unit>()
-        val cleaned = mutableListOf<String>()
-        val stager = RestoreSourceStager(
-            takeSource = { RAW_URI },
-            copyToPrivate = { _, _, _ ->
-                copyStarted.complete(Unit)
-                try {
+    fun `staging deadline after final rename cleans deterministic final and partial paths`() =
+        runTest {
+            val copyStarted = CompletableDeferred<Unit>()
+            val cleaned = mutableListOf<String>()
+            val stager = RestoreSourceStager(
+                takeSource = { _, _ -> RAW_URI },
+                copyToPrivate = { _, _, _ ->
+                    copyStarted.complete(Unit)
                     awaitCancellation()
-                } finally {
-                    cleaned += "$PRIVATE_PATH.part"
-                }
-            },
-            commitPrivateSource = { _, _, _ -> error("timed out copy must not commit") },
-            privateSourceUri = { error("timed out copy must not be exposed") },
-            discardPrivateSource = { error("copy dependency owns partial cleanup") },
-            nowMs = { NOW_MS },
-        )
-
-        val result = async {
-            stager.resolve(
-                claim(),
-                StoredRestoreSource.AwaitingTransientGrant,
-                appliedCheckpoints(),
+                },
+                commitPrivateSource = { _, _, _ -> error("timed out copy must not commit") },
+                privateSourceUri = { _, _ -> error("timed out copy must not be exposed") },
+                discardPrivateSource = { _, _ -> error("uncommitted cleanup owns exact paths") },
+                discardUncommittedTaskSources = { cleaned += "task:$it" },
+                nowMs = { NOW_MS },
             )
-        }
-        runCurrent()
-        copyStarted.await()
-        advanceTimeBy(9.minutes + 1.milliseconds)
-        runCurrent()
 
-        assertEquals(RestoreSourceResolution.WaitingForSource, result.await())
-        assertEquals(listOf("$PRIVATE_PATH.part"), cleaned)
-    }
+            val result = async {
+                stager.resolve(
+                    claim(),
+                    StoredRestoreSource.AwaitingTransientGrant,
+                    appliedCheckpoints(),
+                )
+            }
+            runCurrent()
+            copyStarted.await()
+            advanceTimeBy(9.minutes + 1.milliseconds)
+            runCurrent()
+
+            assertEquals(RestoreSourceResolution.WaitingForSource, result.await())
+            assertEquals(listOf("task:$TASK_ID"), cleaned)
+        }
 
     @Test
     fun `terminal cleanup discards only operation-owned private sources`() {
         val discarded = mutableListOf<String>()
         val stager = RestoreSourceStager(
-            takeSource = { null },
+            takeSource = { _, _ -> null },
             copyToPrivate = { _, _, _ -> RestoreSourceCopyResult.SourceUnavailable },
             commitPrivateSource = { _, _, _ -> false },
-            privateSourceUri = { null },
+            privateSourceUri = { _, _ -> null },
             persistedSourceUri = { null },
-            discardPrivateSource = { discarded += it },
+            discardPrivateSource = { _, path -> discarded += path },
+            discardUncommittedTaskSources = {},
             nowMs = { NOW_MS },
         )
 
-        stager.discard(StoredRestoreSource.AwaitingTransientGrant)
-        stager.discard(StoredRestoreSource.PersistedGrant("grant_identity"))
-        stager.discard(StoredRestoreSource.PrivateCopy(PRIVATE_PATH))
+        stager.discard(TASK_ID, StoredRestoreSource.AwaitingTransientGrant)
+        stager.discard(TASK_ID, StoredRestoreSource.PersistedGrant("grant_identity"))
+        stager.discard(TASK_ID, StoredRestoreSource.PrivateCopy(PRIVATE_PATH))
 
         assertEquals(listOf(PRIVATE_PATH), discarded)
     }
@@ -212,11 +342,15 @@ class RestoreSourceStagerTest {
     @Test
     fun `private copy is reopened from its relative token without a raw URI`() = runTest {
         val stager = RestoreSourceStager(
-            takeSource = { error("must not consume a transient source") },
+            takeSource = { _, _ -> error("must not consume a transient source") },
             copyToPrivate = { _, _, _ -> error("must not copy") },
             commitPrivateSource = { _, _, _ -> error("must not commit") },
-            privateSourceUri = { path -> "file:///private/$path" },
-            discardPrivateSource = {},
+            privateSourceUri = { taskId, path ->
+                assertEquals(TASK_ID, taskId)
+                "file:///private/$path"
+            },
+            discardPrivateSource = { _, _ -> },
+            discardUncommittedTaskSources = {},
             nowMs = { NOW_MS },
         )
 
@@ -232,11 +366,42 @@ class RestoreSourceStagerTest {
         )
     }
 
+    @Test
+    fun `cross task private copy is rejected before open or deletion`() = runTest {
+        var opened = false
+        var discarded = false
+        val stager = RestoreSourceStager(
+            takeSource = { _, _ -> error("must not consume a transient source") },
+            copyToPrivate = { _, _, _ -> error("must not copy") },
+            commitPrivateSource = { _, _, _ -> error("must not commit") },
+            privateSourceUri = { _, _ ->
+                opened = true
+                PRIVATE_URI
+            },
+            discardPrivateSource = { _, _ -> discarded = true },
+            discardUncommittedTaskSources = {},
+            nowMs = { NOW_MS },
+        )
+        val crossTaskSource = StoredRestoreSource.PrivateCopy(
+            "data_tasks/00000000-0000-0000-0000-0000000000a2/restore-source.thor"
+        )
+
+        assertEquals(
+            RestoreSourceResolution.WaitingForSource,
+            stager.resolve(claim(), crossTaskSource, appliedCheckpoints()),
+        )
+        stager.discard(TASK_ID, crossTaskSource)
+
+        assertEquals(false, opened)
+        assertEquals(false, discarded)
+    }
+
     private fun appliedCheckpoints() = DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED }
 
-    private fun claim() = DataSyncClaim(
+    private fun claim(capabilityToken: String = CAPABILITY_TOKEN) = DataSyncClaim(
         taskId = TASK_ID,
         claimToken = CLAIM_TOKEN,
+        transientSourceToken = capabilityToken,
         item = ClaimedDataTaskItem(
             taskId = TASK_ID,
             ordinal = 0,
@@ -253,6 +418,7 @@ class RestoreSourceStagerTest {
         val TASK_ID: UUID = UUID.fromString("00000000-0000-0000-0000-0000000000a1")
         const val CLAIM_TOKEN = "claim-restore-source"
         const val ITEM_CLAIM_TOKEN = "item-claim-restore-source"
+        const val CAPABILITY_TOKEN = "restore-capability"
         const val RAW_URI = "content://documents/raw-restore-source"
         const val PRIVATE_PATH =
             "data_tasks/00000000-0000-0000-0000-0000000000a1/restore-source.thor"

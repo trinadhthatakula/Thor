@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
 import com.valhalla.thor.domain.model.THOR_JOB_CHAIN
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.jobTag
+import com.valhalla.thor.domain.model.toUserFacingJobMessage
 import com.valhalla.thor.domain.repository.ArchiveJobLauncher
 import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.domain.repository.ThorJobWatcher
@@ -174,12 +175,12 @@ class ThorJobLauncher(
     }
 }
 
-private fun DataTaskSnapshot.toThorJobStatus(): ThorJobStatus = when (state) {
+internal fun DataTaskSnapshot.toThorJobStatus(): ThorJobStatus = when (state) {
     DataTaskState.QUEUED, DataTaskState.STAGING_SOURCE -> ThorJobStatus.Pending
     DataTaskState.RUNNING, DataTaskState.CANCEL_REQUESTED -> ThorJobStatus.Running
-    DataTaskState.READY, DataTaskState.SUCCEEDED -> ThorJobStatus.Succeeded(emptyList())
+    DataTaskState.READY, DataTaskState.SUCCEEDED -> ThorJobStatus.Succeeded(warnings)
     DataTaskState.READY_PARTIAL, DataTaskState.PARTIAL ->
-        ThorJobStatus.Succeeded(listOfNotNull(resultCode?.value))
+        ThorJobStatus.Succeeded(warnings)
 
     DataTaskState.CANCELLED -> ThorJobStatus.Cancelled
     DataTaskState.WAITING_FOR_AUTH,
@@ -189,7 +190,23 @@ private fun DataTaskSnapshot.toThorJobStatus(): ThorJobStatus = when (state) {
     DataTaskState.START_BLOCKED_NOTIFICATION,
     DataTaskState.FAILED,
     DataTaskState.EXPIRED,
-        -> ThorJobStatus.Failed(resultCode?.value)
+        -> ThorJobStatus.Failed(failureReason ?: userFacingFallback())
+}
+
+private fun DataTaskSnapshot.userFacingFallback(): String = when (state) {
+    DataTaskState.WAITING_FOR_AUTH ->
+        "this archive's key is no longer in memory — start it again"
+
+    DataTaskState.WAITING_FOR_SOURCE -> "Thor could not read that backup file"
+    DataTaskState.INTERRUPTED_REVIEW ->
+        "this restore stopped after it began changing the app; review it before trying again"
+
+    DataTaskState.START_BLOCKED_NOTIFICATION ->
+        "allow Thor notifications, then try the operation again"
+
+    DataTaskState.START_BLOCKED -> "Android would not allow Thor to start the operation"
+    DataTaskState.EXPIRED -> "this job expired before it could be completed"
+    else -> resultCode?.toUserFacingJobMessage() ?: "the archive job could not be completed"
 }
 
 private fun WorkInfo?.toThorJobStatus(): ThorJobStatus = when (this?.state) {

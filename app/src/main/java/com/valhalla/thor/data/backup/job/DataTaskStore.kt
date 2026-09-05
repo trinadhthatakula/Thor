@@ -205,7 +205,16 @@ internal class DataTaskStore(
         itemClaimToken = itemClaimToken,
         privateRelativePath = privateRelativePath,
         nowMs = nowMs,
+        transactionNowMs = System::currentTimeMillis,
     )
+
+    suspend fun hasClaimTokens(
+        taskClaimToken: String,
+        itemClaimToken: String?,
+    ): Boolean = dao.hasClaimTokens(taskClaimToken, itemClaimToken)
+
+    suspend fun uncommittedRestoreSourceCleanupTaskIds(): List<UUID> =
+        dao.uncommittedRestoreSourceCleanupTaskIds()
 
     suspend fun markClaimInterrupted(
         taskId: UUID,

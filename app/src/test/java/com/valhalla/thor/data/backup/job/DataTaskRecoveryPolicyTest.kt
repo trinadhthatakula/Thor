@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.data.backup.job
 
-import androidx.core.net.toUri
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.DataClass
@@ -257,8 +256,8 @@ class DataTaskRecoveryPolicyTest {
         val holder = RestoreSourceGrantHolder()
         val firstTask = UUID.fromString("44444444-4444-4444-4444-444444444444")
         val secondTask = UUID.fromString("55555555-5555-5555-5555-555555555555")
-        val firstUri = "content://provider/first".toUri()
-        val secondUri = "content://provider/second".toUri()
+        val firstUri = "content://provider/first"
+        val secondUri = "content://provider/second"
         val firstToken = holder.register(firstTask, firstUri)
         val secondToken = holder.register(secondTask, secondUri)
 

@@ -78,9 +78,49 @@ class DataTaskOwnerRegistryTest {
         val child = Job()
         registry.registerProvisional(CLAIM)
 
-        assertTrue(registry.cancelActive(TASK))
+        assertFalse(registry.cancelActive(TASK))
         assertTrue(registry.bindTask(TASK, CLAIM))
         assertTrue(registry.attachChild(TASK, CLAIM, child))
+
+        assertTrue(child.isCancelled)
+    }
+
+    @Test
+    fun `unrelated provisional owner does not prove ownership of cancelled task`() {
+        val registry = DataTaskOwnerRegistry()
+        val unrelatedChild = Job()
+        registry.registerProvisional(OTHER_CLAIM)
+
+        assertFalse(registry.cancelActive(TASK))
+        assertTrue(registry.bindTask(OTHER_TASK, OTHER_CLAIM))
+        assertTrue(registry.attachChild(OTHER_TASK, OTHER_CLAIM, unrelatedChild))
+
+        assertFalse(unrelatedChild.isCancelled)
+    }
+
+    @Test
+    fun `stale settlement reservation cancels target owner that binds during Room transition`() {
+        val registry = DataTaskOwnerRegistry()
+        val child = Job()
+        registry.registerProvisional(CLAIM)
+
+        assertTrue(registry.reserveStaleSettlement(TASK))
+        assertTrue(registry.bindTask(TASK, CLAIM))
+        assertTrue(registry.attachChild(TASK, CLAIM, child))
+        registry.finishStaleSettlement(TASK, settled = false)
+
+        assertTrue(child.isCancelled)
+    }
+
+    @Test
+    fun `bound owner prevents stale settlement reservation and receives cancellation`() {
+        val registry = DataTaskOwnerRegistry()
+        val child = Job()
+        registry.registerProvisional(CLAIM)
+        registry.bindTask(TASK, CLAIM)
+        registry.attachChild(TASK, CLAIM, child)
+
+        assertFalse(registry.reserveStaleSettlement(TASK))
 
         assertTrue(child.isCancelled)
     }

@@ -23,6 +23,7 @@ import com.valhalla.thor.data.source.local.room.DataTaskDao
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -34,6 +35,7 @@ class DataSyncService : Service(), KoinComponent {
     private val coordinator: DataSyncCoordinator by inject()
     private val dataTaskDao: DataTaskDao by inject()
     private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
+    private val mainDispatcher: CoroutineDispatcher by inject(named("main"))
     private val generationFence = DataSyncServiceGenerationFence()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -86,9 +88,7 @@ class DataSyncService : Service(), KoinComponent {
                     dataSyncForegroundServiceType(Build.VERSION.SDK_INT),
                 )
             },
-            onDrained = {
-                generationFence.onDrained(startId)?.let(::finishGeneration)
-            },
+            onDrained = { finishDrainedGeneration(startId) },
         )
         return START_STICKY
     }
@@ -103,10 +103,12 @@ class DataSyncService : Service(), KoinComponent {
                     timeoutMillis = TIMEOUT_UNWIND_MILLIS,
                     settle = coordinator::stopClaimsAndInterrupt,
                     finish = {
-                        val stopped = finishGeneration(startId)
-                        val followUpStartId = generationFence.onTimeoutFinished(startId)
-                        if (!stopped && followUpStartId != null && followUpStartId != startId) {
-                            finishGeneration(followUpStartId)
+                        serializeDataSyncServiceLifecycle(mainDispatcher) {
+                            val stopped = finishGeneration(startId)
+                            val followUpStartId = generationFence.onTimeoutFinished(startId)
+                            if (!stopped && followUpStartId != null && followUpStartId != startId) {
+                                finishGeneration(followUpStartId)
+                            }
                         }
                     },
                 )
@@ -131,7 +133,10 @@ class DataSyncService : Service(), KoinComponent {
             boundedDataSyncPromotionFailure(
                 timeoutMillis = PROMOTION_FAILURE_UNWIND_MILLIS,
                 persist = {
-                    if (taskId != null || mayDiscoverCurrentTask) {
+                    if (
+                        (taskId != null || mayDiscoverCurrentTask) &&
+                        generationFence.beginBlockedPersistence(startId)
+                    ) {
                         DataTaskStore(dataTaskDao).blockCurrentStart(
                             taskId = taskId,
                             blockedState = if (state === ForegroundNotificationState.Blocked) {
@@ -144,9 +149,19 @@ class DataSyncService : Service(), KoinComponent {
                     }
                 },
                 finish = {
-                    generationFence.onBlockedPersistenceFinished(startId)?.let(::finishGeneration)
+                    serializeDataSyncServiceLifecycle(mainDispatcher) {
+                        generationFence.onBlockedPersistenceFinished(startId)
+                            ?.let(::finishGeneration)
+                    }
                 },
             )
+        }
+    }
+
+    private fun finishDrainedGeneration(startId: Int) {
+        val application = applicationContext as ThorApplication
+        application.launchInApplicationScope(mainDispatcher) {
+            generationFence.onDrained(startId)?.let(::finishGeneration)
         }
     }
 
@@ -179,13 +194,15 @@ internal class DataSyncServiceGenerationFence {
     private var latestStartId = 0
     private var activeStartId: Int? = null
     private var timeoutStartId: Int? = null
+    private var retired = false
     private var finishIssuedThrough = 0
     private val blockedPersistence = mutableSetOf<Int>()
+    private val blockedMutationReservations = mutableSetOf<Int>()
 
     /** Returns false when a timeout generation already owns teardown. */
     fun onPromotedStart(startId: Int): Boolean = synchronized(lock) {
         latestStartId = maxOf(latestStartId, startId)
-        if (timeoutStartId != null) {
+        if (timeoutStartId != null || retired || blockedMutationReservations.isNotEmpty()) {
             blockedPersistence += startId
             false
         } else {
@@ -198,12 +215,31 @@ internal class DataSyncServiceGenerationFence {
     fun onBlockedStart(startId: Int): Boolean = synchronized(lock) {
         latestStartId = maxOf(latestStartId, startId)
         blockedPersistence += startId
-        activeStartId == null && timeoutStartId == null
+        activeStartId == null && timeoutStartId == null && blockedMutationReservations.isEmpty()
     }
 
     fun onTimeoutStarted(startId: Int): Boolean = synchronized(lock) {
         if (timeoutStartId != null || activeStartId != startId) return@synchronized false
         timeoutStartId = startId
+        retired = true
+        true
+    }
+
+    /**
+     * Revalidates and reserves a rejected start immediately before its Room mutation.
+     *
+     * A later start may supersede this one before reservation. Once reserved, later starts are
+     * rejected until the bounded mutation releases its reservation.
+     */
+    fun beginBlockedPersistence(startId: Int): Boolean = synchronized(lock) {
+        if (
+            startId !in blockedPersistence ||
+            latestStartId != startId ||
+            (activeStartId != null && !retired)
+        ) {
+            return@synchronized false
+        }
+        blockedMutationReservations += startId
         true
     }
 
@@ -221,6 +257,7 @@ internal class DataSyncServiceGenerationFence {
     }
 
     fun onBlockedPersistenceFinished(startId: Int): Int? = synchronized(lock) {
+        blockedMutationReservations.remove(startId)
         if (!blockedPersistence.remove(startId)) return@synchronized null
         stopCandidateLocked()
     }
@@ -242,7 +279,7 @@ internal class DataSyncServiceGenerationFence {
 internal suspend fun boundedDataSyncPromotionFailure(
     timeoutMillis: Long,
     persist: suspend () -> Unit,
-    finish: () -> Unit,
+    finish: suspend () -> Unit,
 ) {
     try {
         withTimeoutOrNull(timeoutMillis.milliseconds) {
@@ -260,7 +297,7 @@ internal suspend fun boundedDataSyncPromotionFailure(
 internal suspend fun boundedDataSyncTimeoutUnwind(
     timeoutMillis: Long,
     settle: suspend () -> Unit,
-    finish: () -> Unit,
+    finish: suspend () -> Unit,
 ) {
     try {
         withTimeoutOrNull(timeoutMillis.milliseconds) {
@@ -274,6 +311,11 @@ internal suspend fun boundedDataSyncTimeoutUnwind(
         finish()
     }
 }
+
+internal suspend fun <T> serializeDataSyncServiceLifecycle(
+    dispatcher: CoroutineDispatcher,
+    block: () -> T,
+): T = withContext(dispatcher) { block() }
 
 internal fun finishDataSyncServiceGeneration(
     startId: Int,

@@ -80,6 +80,8 @@ data class DataTaskSnapshot(
     val acknowledgedAtEpochMs: Long?,
     val items: List<DataTaskItemSnapshot>,
     val outputs: List<DataTaskOutputSnapshot>,
+    val warnings: List<String> = emptyList(),
+    val failureReason: String? = null,
 )
 
 data class ClaimedDataTask(
@@ -138,5 +140,7 @@ sealed interface DataTaskCancellationDecision {
     data class InterruptActive(
         val snapshot: DataTaskSnapshot,
         val activeItemOrdinal: Int?,
+        val taskClaimToken: String? = null,
+        val itemClaimToken: String? = null,
     ) : DataTaskCancellationDecision
 }

@@ -3,9 +3,14 @@
 
 package com.valhalla.thor.data.backup.service
 
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -65,6 +70,43 @@ class DataSyncServiceTimeoutTest {
     }
 
     @Test
+    fun `foreground removal completes before a newer main dispatcher start can run`() = runTest {
+        val mainDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val events = Collections.synchronizedList(mutableListOf<String>())
+        val stopEntered = CompletableDeferred<Unit>()
+        val releaseStop = CountDownLatch(1)
+        try {
+            val finishing = launch {
+                serializeDataSyncServiceLifecycle(mainDispatcher) {
+                    finishDataSyncServiceGeneration(
+                        startId = 41,
+                        stopSelfResult = {
+                            events += "stop:$it"
+                            stopEntered.complete(Unit)
+                            releaseStop.await()
+                            true
+                        },
+                        removeForeground = { events += "foreground-removed" },
+                    )
+                }
+            }
+            stopEntered.await()
+            val newerStart = launch {
+                withContext(mainDispatcher) { events += "start:42" }
+            }
+
+            releaseStop.countDown()
+            finishing.join()
+            newerStart.join()
+
+            assertEquals(listOf("stop:41", "foreground-removed", "start:42"), events)
+        } finally {
+            releaseStop.countDown()
+            mainDispatcher.close()
+        }
+    }
+
+    @Test
     fun `newer start during older timeout is fenced then owns final stop`() {
         val fence = DataSyncServiceGenerationFence()
         val stopIds = mutableListOf<Int>()
@@ -92,6 +134,47 @@ class DataSyncServiceTimeoutTest {
 
         assertEquals(listOf(41, 42), stopIds)
         assertEquals(1, removed)
+    }
+
+    @Test
+    fun `start delivered after timed out generation finished cannot reuse retired coordinator`() {
+        val fence = DataSyncServiceGenerationFence()
+
+        assertTrue(fence.onPromotedStart(41))
+        assertTrue(fence.onTimeoutStarted(41))
+        assertEquals(41, fence.onTimeoutFinished(41))
+
+        // ActivityManager already knew about start 42, so stopSelfResult(41) returned false, but the
+        // framework did not deliver that start to this service instance until timeout teardown ended.
+        assertFalse(fence.onPromotedStart(42))
+        assertFalse(fence.beginBlockedPersistence(41))
+        assertTrue(fence.beginBlockedPersistence(42))
+        assertEquals(42, fence.onBlockedPersistenceFinished(42))
+    }
+
+    @Test
+    fun `blocked persistence loses mutation authority when a later promoted start supersedes it`() {
+        val fence = DataSyncServiceGenerationFence()
+
+        assertTrue(fence.onBlockedStart(41))
+        assertTrue(fence.onPromotedStart(42))
+
+        assertFalse(fence.beginBlockedPersistence(41))
+        assertEquals(null, fence.onBlockedPersistenceFinished(41))
+        assertEquals(42, fence.onDrained(42))
+    }
+
+    @Test
+    fun `later promoted start is rejected while blocked Room mutation is reserved`() {
+        val fence = DataSyncServiceGenerationFence()
+
+        assertTrue(fence.onBlockedStart(41))
+        assertTrue(fence.beginBlockedPersistence(41))
+        assertFalse(fence.onPromotedStart(42))
+        assertTrue(fence.beginBlockedPersistence(42))
+
+        assertEquals(null, fence.onBlockedPersistenceFinished(41))
+        assertEquals(42, fence.onBlockedPersistenceFinished(42))
     }
 
     @Test

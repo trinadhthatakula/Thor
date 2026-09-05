@@ -10,8 +10,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DataTaskCheckpoint
 import com.valhalla.thor.domain.model.DataTaskInterruption
+import com.valhalla.thor.domain.model.DataTaskItemResult
 import com.valhalla.thor.domain.model.DataTaskItemState
+import com.valhalla.thor.domain.model.DataTaskItemTerminalState
 import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.domain.model.DataTaskMessage
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
@@ -21,6 +24,8 @@ import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
 import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
+import com.valhalla.thor.domain.repository.ThorJobStatus
+import com.valhalla.thor.data.backup.job.toThorJobStatus
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -108,6 +113,88 @@ class DataTaskIdentityDaoTest {
 
         val detail = dao.loadTask(TASK_ID)?.detail as StoredDataTaskDetail.ArchiveRestore
         assertEquals(StoredRestoreSource.PrivateCopy(PRIVATE_SOURCE), detail.source)
+    }
+
+    @Test
+    fun privateRestoreSourceCommitSamplesLeaseClockInsideTransaction() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        dao.claimOldestRunnableTask("session", "task-claim", 2_000L, 4_000L)
+        dao.claimNextPendingItem(TASK_ID, "task-claim", "item-claim", 2_100L, 3_000L)
+
+        assertFalse(
+            dao.commitPrivateRestoreSource(
+                TASK_ID,
+                "task-claim",
+                0,
+                "item-claim",
+                PRIVATE_SOURCE,
+                2_200L,
+                transactionNowMs = { 3_200L },
+            )
+        )
+
+        val detail = dao.loadTask(TASK_ID)?.detail as StoredDataTaskDetail.ArchiveRestore
+        assertEquals(StoredRestoreSource.AwaitingTransientGrant, detail.source)
+    }
+
+    @Test
+    fun claimPresenceRemainsPendingUntilBothExactTokensAreAbsent() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        dao.claimOldestRunnableTask("session", TASK_CLAIM, 2_000L, 4_000L)
+        dao.claimNextPendingItem(TASK_ID, TASK_CLAIM, ITEM_CLAIM, 2_100L, 4_000L)
+
+        assertTrue(dao.hasClaimTokens(TASK_CLAIM, ITEM_CLAIM))
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE data_tasks SET claim_token = NULL WHERE task_id = ?",
+            arrayOf(TASK_ID),
+        )
+        assertTrue(dao.hasClaimTokens(TASK_CLAIM, ITEM_CLAIM))
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE data_task_items SET claim_token = NULL WHERE task_id = ?",
+            arrayOf(TASK_ID),
+        )
+        assertFalse(dao.hasClaimTokens(TASK_CLAIM, ITEM_CLAIM))
+    }
+
+    @Test
+    fun privateRestoreSourceCommitRejectsAnotherTasksPath() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+
+        val failure = runCatching {
+            dao.commitPrivateRestoreSource(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                CROSS_TASK_PRIVATE_SOURCE,
+                2_200L,
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        val detail = dao.loadTask(TASK_ID)?.detail as StoredDataTaskDetail.ArchiveRestore
+        assertEquals(StoredRestoreSource.AwaitingTransientGrant, detail.source)
+    }
+
+    @Test
+    fun malformedPersistedPrivateSourceCannotBeReconstructedForAnotherTask() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        database.openHelper.writableDatabase.execSQL(
+            """
+            UPDATE archive_task_details
+            SET restore_source_kind = 'PRIVATE_COPY',
+                restore_source_private_relative_path = ?
+            WHERE task_id = ?
+            """.trimIndent(),
+            arrayOf(CROSS_TASK_PRIVATE_SOURCE, TASK_ID),
+        )
+        database.close()
+        openDatabase()
+
+        val failure = runCatching { dao.loadTask(TASK_ID) }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
     }
 
     @Test
@@ -211,6 +298,7 @@ class DataTaskIdentityDaoTest {
                     recordedAtEpochMs = 2_200L,
                 ),
                 leaseUntilMs = 4_000L,
+                transactionNowMs = { 2_200L },
             )
         )
 
@@ -332,6 +420,7 @@ class DataTaskIdentityDaoTest {
                     recordedAtEpochMs = 2_200L,
                 ),
                 leaseUntilMs = 4_000L,
+                transactionNowMs = { 2_200L },
             )
         )
         dao.requestCancellation(TASK_ID, 2_300L)
@@ -354,6 +443,278 @@ class DataTaskIdentityDaoTest {
         assertEquals(
             breadcrumb,
             (task.detail as StoredDataTaskDetail.ArchiveRestore).mutationBreadcrumb
+        )
+    }
+
+    @Test
+    fun unexpectedFailureAfterDestructiveCheckpointRequiresReviewAndRetainsSource() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+        assertTrue(
+            dao.commitPrivateRestoreSource(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                PRIVATE_SOURCE,
+                2_150L,
+            )
+        )
+        persistDestructiveCheckpoint()
+
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.TaskFailed(DataTaskResultCode("UNEXPECTED_FAILURE")),
+                2_300L,
+            )
+        )
+
+        val task = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.INTERRUPTED_REVIEW, task.state)
+        assertEquals(DataTaskItemState.RUNNING, task.items.single().state)
+        assertEquals(
+            StoredRestoreSource.PrivateCopy(PRIVATE_SOURCE),
+            (task.detail as StoredDataTaskDetail.ArchiveRestore).source,
+        )
+    }
+
+    @Test
+    fun directCancellationAfterDestructiveCheckpointRequiresReviewAndRetainsSource() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+        assertTrue(
+            dao.commitPrivateRestoreSource(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                PRIVATE_SOURCE,
+                2_150L,
+            )
+        )
+        persistDestructiveCheckpoint()
+
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.Cancelled,
+                2_300L,
+            )
+        )
+
+        val task = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.INTERRUPTED_REVIEW, task.state)
+        assertEquals(DataTaskItemState.RUNNING, task.items.single().state)
+        assertEquals(
+            StoredRestoreSource.PrivateCopy(PRIVATE_SOURCE),
+            (task.detail as StoredDataTaskDetail.ArchiveRestore).source,
+        )
+    }
+
+    @Test
+    fun recoveredAwaitingGrantTaskRemainsDeterministicCleanupCandidateAfterReopen() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+
+        dao.recoverClaims("replacement-session", 2_200L) { _, _ -> false }
+        database.close()
+        openDatabase()
+
+        assertEquals(
+            listOf(UUID.fromString(TASK_ID)),
+            dao.uncommittedRestoreSourceCleanupTaskIds(),
+        )
+    }
+
+    @Test
+    fun committedPrivateRestoreSourceIsNeverAnUncommittedCleanupCandidate() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+        assertTrue(
+            dao.commitPrivateRestoreSource(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                PRIVATE_SOURCE,
+                2_150L,
+            )
+        )
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.TaskFailed(DataTaskResultCode("UNEXPECTED_FAILURE")),
+                2_300L,
+            )
+        )
+
+        assertEquals(DataTaskState.FAILED, requireNotNull(dao.loadTask(TASK_ID)).state)
+        assertTrue(dao.uncommittedRestoreSourceCleanupTaskIds().isEmpty())
+    }
+
+    @Test
+    fun delayedCheckpointCannotReviveAnExpiredItemLeaseOrPartiallyRenewTaskLease() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        dao.claimOldestRunnableTask("session", TASK_CLAIM, 2_000L, 4_000L)
+        dao.claimNextPendingItem(TASK_ID, TASK_CLAIM, ITEM_CLAIM, 2_100L, 3_000L)
+
+        assertFalse(
+            dao.checkpointClaimedTask(
+                taskId = TASK_ID,
+                taskClaimToken = TASK_CLAIM,
+                itemOrdinal = 0,
+                itemClaimToken = ITEM_CLAIM,
+                checkpoint = DataTaskCheckpoint(
+                    stage = DataTaskStage.RESTORING,
+                    completed = 1,
+                    total = 2,
+                    activeItemOrdinal = 0,
+                    activeItemLabel = "Example",
+                    destructiveStarted = false,
+                    restoreMutationBreadcrumb = null,
+                    recordedAtEpochMs = 2_200L,
+                ),
+                leaseUntilMs = 5_000L,
+                transactionNowMs = { 3_200L },
+            )
+        )
+
+        assertEquals(4_000L, taskClaimLease())
+        assertEquals(3_000L, itemClaimLease())
+    }
+
+    @Test
+    fun checkpointSamplesLeaseClockOnlyAtOwnershipBoundary() = runBlocking {
+        dao.insertTask(newExportTask())
+        claimTaskAndItem(TASK_ID)
+        var clockSampled = false
+
+        val failure = runCatching {
+            dao.checkpointClaimedTask(
+                taskId = TASK_ID,
+                taskClaimToken = TASK_CLAIM,
+                itemOrdinal = 0,
+                itemClaimToken = ITEM_CLAIM,
+                checkpoint = DataTaskCheckpoint(
+                    stage = DataTaskStage.RESTORING,
+                    completed = 1,
+                    total = 2,
+                    activeItemOrdinal = 0,
+                    activeItemLabel = "Example",
+                    destructiveStarted = true,
+                    restoreMutationBreadcrumb = RestoreMutationBreadcrumb(
+                        "com.example.app",
+                        "Example",
+                        2_150L,
+                    ),
+                    recordedAtEpochMs = 2_200L,
+                ),
+                leaseUntilMs = 4_000L,
+                transactionNowMs = {
+                    clockSampled = true
+                    2_200L
+                },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertFalse(clockSampled)
+    }
+
+    @Test
+    fun roomStatusRetainsSuccessWarningsAcrossDatabaseReopen() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.ItemCompleted(
+                    DataTaskItemResult(
+                        terminalState = DataTaskItemTerminalState.SUCCEEDED,
+                        resultCode = DataTaskResultCode("ARCHIVE_RESTORE_COMPLETED"),
+                        warnings = listOf(
+                            DataTaskMessage(
+                                code = DataTaskResultCode("ARCHIVE_RESTORE_OBB_SKIPPED"),
+                                arguments = listOf("The OBB directory could not be restored"),
+                            )
+                        ),
+                        outputs = emptyList(),
+                        finishedAtEpochMs = 2_200L,
+                    )
+                ),
+                2_200L,
+            )
+        )
+        database.close()
+        openDatabase()
+
+        assertEquals(
+            ThorJobStatus.Succeeded(listOf("The OBB directory could not be restored")),
+            requireNotNull(dao.loadTask(TASK_ID)).toThorJobStatus(),
+        )
+    }
+
+    @Test
+    fun roomStatusRetainsActionableFailureTextAcrossDatabaseReopen() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.TaskFailed(
+                    resultCode = DataTaskResultCode("ARCHIVE_RESTORE_VERIFICATION_FAILED"),
+                    arguments = listOf("The backup signature no longer matches"),
+                ),
+                2_200L,
+            )
+        )
+        database.close()
+        openDatabase()
+
+        assertEquals(
+            ThorJobStatus.Failed("The backup signature no longer matches"),
+            requireNotNull(dao.loadTask(TASK_ID)).toThorJobStatus(),
+        )
+    }
+
+    @Test
+    fun roomStatusUsesUserFacingTextForActionRequiredStateAfterDatabaseReopen() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        claimTaskAndItem(TASK_ID)
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_ID,
+                TASK_CLAIM,
+                0,
+                ITEM_CLAIM,
+                DataTaskRunOutcome.WaitingForSource(
+                    DataTaskResultCode("ARCHIVE_RESTORE_SOURCE_UNREADABLE")
+                ),
+                2_200L,
+            )
+        )
+        database.close()
+        openDatabase()
+
+        assertEquals(
+            ThorJobStatus.Failed("Thor could not read that backup file"),
+            requireNotNull(dao.loadTask(TASK_ID)).toThorJobStatus(),
         )
     }
 
@@ -392,6 +753,55 @@ class DataTaskIdentityDaoTest {
         dao.claimOldestRunnableTask("session", TASK_CLAIM, 2_000L, 3_000L)
         dao.claimNextPendingItem(taskId, TASK_CLAIM, ITEM_CLAIM, 2_100L, 3_100L)
     }
+
+    private suspend fun persistDestructiveCheckpoint() {
+        assertTrue(
+            dao.checkpointClaimedTask(
+                taskId = TASK_ID,
+                taskClaimToken = TASK_CLAIM,
+                itemOrdinal = 0,
+                itemClaimToken = ITEM_CLAIM,
+                checkpoint = DataTaskCheckpoint(
+                    stage = DataTaskStage.RESTORING,
+                    completed = 1,
+                    total = 2,
+                    activeItemOrdinal = 0,
+                    activeItemLabel = "Example",
+                    destructiveStarted = true,
+                    restoreMutationBreadcrumb = RestoreMutationBreadcrumb(
+                        "com.example.app",
+                        "Example",
+                        2_150L,
+                    ),
+                    recordedAtEpochMs = 2_200L,
+                ),
+                leaseUntilMs = 4_000L,
+                transactionNowMs = { 2_200L },
+            )
+        )
+    }
+
+    private fun taskClaimLease(): Long? =
+        database.openHelper.readableDatabase.query(
+            "SELECT claim_lease_expires_at_epoch_ms FROM data_tasks WHERE task_id = ?",
+            arrayOf(TASK_ID),
+        ).use { cursor ->
+            check(cursor.moveToFirst())
+            cursor.takeUnless { it.isNull(0) }?.getLong(0)
+        }
+
+    private fun itemClaimLease(): Long? =
+        database.openHelper.readableDatabase.query(
+            """
+            SELECT claim_lease_expires_at_epoch_ms
+            FROM data_task_items
+            WHERE task_id = ? AND ordinal = 0
+            """.trimIndent(),
+            arrayOf(TASK_ID),
+        ).use { cursor ->
+            check(cursor.moveToFirst())
+            cursor.takeUnless { it.isNull(0) }?.getLong(0)
+        }
 
     private fun openDatabase() {
         database = Room.databaseBuilder(context, AppDatabase::class.java, DATABASE_NAME).build()
@@ -454,5 +864,7 @@ class DataTaskIdentityDaoTest {
         const val TASK_CLAIM = "task-claim"
         const val ITEM_CLAIM = "item-claim"
         const val PRIVATE_SOURCE = "data_tasks/$TASK_ID/restore-source.thor"
+        const val CROSS_TASK_PRIVATE_SOURCE =
+            "data_tasks/$SECOND_TASK_ID/restore-source.thor"
     }
 }

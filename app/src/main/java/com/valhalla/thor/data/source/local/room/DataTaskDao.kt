@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.model.DataTaskItemResult
 import com.valhalla.thor.domain.model.DataTaskItemState
 import com.valhalla.thor.domain.model.DataTaskItemTerminalState
 import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.domain.model.MAX_TASK_WARNING_COUNT
 import com.valhalla.thor.domain.model.DataTaskOutputState
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskResultCode
@@ -25,6 +26,11 @@ import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
 import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
+import com.valhalla.thor.domain.model.isPrivateRestoreSourceRelativePath
+import com.valhalla.thor.domain.model.requireTaskPresentationArguments
+import com.valhalla.thor.domain.model.toUserFacingJobMessage
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -340,24 +346,45 @@ abstract class DataTaskDao {
         itemClaimToken: String,
         privateRelativePath: String,
         nowMs: Long,
+        transactionNowMs: () -> Long = { nowMs },
     ): Boolean {
-        requireCanonicalUuid(taskId, "taskId")
+        val parsedTaskId = requireCanonicalUuid(taskId, "taskId")
         StoredRestoreSource.PrivateCopy(privateRelativePath)
+        require(isPrivateRestoreSourceRelativePath(parsedTaskId, privateRelativePath)) {
+            "private restore source path must belong to taskId"
+        }
         val task = loadTaskEntity(taskId) ?: return false
         val item = loadItemEntity(taskId, itemOrdinal) ?: return false
+        if (task.kind != DataTaskKind.ARCHIVE_RESTORE.name) return false
+        val detail = loadArchiveDetail(taskId) ?: return false
+        if (detail.restoreSourceKind != RESTORE_SOURCE_AWAITING_GRANT) return false
+        val transactionNow = transactionNowMs()
         if (
-            task.kind != DataTaskKind.ARCHIVE_RESTORE.name ||
-            !task.ownsClaim(taskClaimToken, nowMs) ||
-            !item.ownsClaim(itemClaimToken, nowMs)
+            !task.ownsClaim(taskClaimToken, transactionNow) ||
+            !item.ownsClaim(itemClaimToken, transactionNow)
         ) {
             return false
         }
-        val detail = loadArchiveDetail(taskId) ?: return false
-        if (detail.restoreSourceKind != RESTORE_SOURCE_AWAITING_GRANT) return false
         if (commitPrivateRestoreSourceRow(taskId, privateRelativePath) != 1) return false
-        check(touchClaimedTaskRow(taskId, taskClaimToken, nowMs) == 1)
+        check(touchClaimedTaskRow(taskId, taskClaimToken, transactionNow) == 1)
         return true
     }
+
+    @Transaction
+    open suspend fun hasClaimTokens(
+        taskClaimToken: String,
+        itemClaimToken: String?,
+    ): Boolean {
+        require(taskClaimToken.isNotBlank()) { "taskClaimToken must not be blank" }
+        require(itemClaimToken == null || itemClaimToken.isNotBlank()) {
+            "itemClaimToken must not be blank"
+        }
+        return hasTaskClaimToken(taskClaimToken) ||
+                (itemClaimToken != null && hasItemClaimToken(itemClaimToken))
+    }
+
+    open suspend fun uncommittedRestoreSourceCleanupTaskIds(): List<UUID> =
+        loadUncommittedRestoreSourceCleanupTaskIds().map(UUID::fromString)
 
     suspend fun markClaimInterrupted(
         taskId: String,
@@ -497,6 +524,7 @@ abstract class DataTaskDao {
         itemClaimToken: String,
         checkpoint: DataTaskCheckpoint,
         leaseUntilMs: Long,
+        transactionNowMs: () -> Long = System::currentTimeMillis,
     ): Boolean {
         requireCanonicalUuid(taskId, "taskId")
         require(leaseUntilMs > checkpoint.recordedAtEpochMs) {
@@ -507,18 +535,21 @@ abstract class DataTaskDao {
         }
         val task = loadTaskEntity(taskId) ?: return false
         val item = loadItemEntity(taskId, itemOrdinal) ?: return false
-        if (!task.ownsClaim(taskClaimToken, checkpoint.recordedAtEpochMs) ||
-            !item.ownsClaim(itemClaimToken, checkpoint.recordedAtEpochMs)
-        ) {
-            return false
-        }
         val kind = DataTaskKind.valueOf(task.kind)
         if (checkpoint.destructiveStarted || checkpoint.restoreMutationBreadcrumb != null) {
             require(kind == DataTaskKind.ARCHIVE_RESTORE) {
                 "destructive restore state belongs only to archive restore tasks"
             }
         }
-        if (
+        val authoritativeNowMs = transactionNowMs()
+        require(authoritativeNowMs >= 0) { "transaction time must be non-negative" }
+        if (leaseUntilMs <= authoritativeNowMs ||
+            !task.ownsClaim(taskClaimToken, authoritativeNowMs) ||
+            !item.ownsClaim(itemClaimToken, authoritativeNowMs)
+        ) {
+            return false
+        }
+        check(
             checkpointTaskRow(
                 taskId = taskId,
                 taskClaimToken = taskClaimToken,
@@ -526,31 +557,30 @@ abstract class DataTaskDao {
                 completed = checkpoint.completed,
                 total = checkpoint.total,
                 recordedAtEpochMs = checkpoint.recordedAtEpochMs,
+                ownershipCheckedAtEpochMs = authoritativeNowMs,
                 leaseUntilMs = leaseUntilMs,
-            ) != 1
-        ) {
-            return false
-        }
-        if (
+            ) == 1
+        ) { "task claim changed inside checkpoint transaction" }
+        check(
             renewItemClaimRow(
                 taskId,
                 itemOrdinal,
                 itemClaimToken,
-                checkpoint.recordedAtEpochMs,
+                authoritativeNowMs,
                 leaseUntilMs,
-            ) != 1
-        ) {
-            return false
-        }
+            ) == 1
+        ) { "item claim changed inside checkpoint transaction" }
         if (checkpoint.destructiveStarted || checkpoint.restoreMutationBreadcrumb != null) {
             val breadcrumb = checkpoint.restoreMutationBreadcrumb
-            updateRestoreCheckpoint(
-                taskId = taskId,
-                destructiveStarted = checkpoint.destructiveStarted,
-                mutationPackageName = breadcrumb?.packageName,
-                mutationAppLabel = breadcrumb?.appLabel,
-                mutationStartedAtEpochMs = breadcrumb?.startedAtEpochMs,
-            )
+            check(
+                updateRestoreCheckpoint(
+                    taskId = taskId,
+                    destructiveStarted = checkpoint.destructiveStarted,
+                    mutationPackageName = breadcrumb?.packageName,
+                    mutationAppLabel = breadcrumb?.appLabel,
+                    mutationStartedAtEpochMs = breadcrumb?.startedAtEpochMs,
+                ) == 1
+            ) { "restore detail changed inside checkpoint transaction" }
         }
         return true
     }
@@ -595,7 +625,7 @@ abstract class DataTaskDao {
                 taskClaimToken,
                 itemClaimToken,
                 result.terminalState.toItemState().name,
-                result.resultCode.value,
+                result.toStoredResult(),
                 result.finishedAtEpochMs,
             ) != 1
         ) {
@@ -618,24 +648,43 @@ abstract class DataTaskDao {
         val task = loadTaskEntity(taskId) ?: return false
         val item = loadItemEntity(taskId, itemOrdinal) ?: return false
         if (task.claimToken != taskClaimToken || item.claimToken != itemClaimToken) return false
+        val kind = DataTaskKind.valueOf(task.kind)
+        val terminalFailureOrCancellation = when (outcome) {
+            is DataTaskRunOutcome.TaskFailed,
+            DataTaskRunOutcome.Cancelled,
+                -> true
+
+            is DataTaskRunOutcome.ItemCompleted ->
+                outcome.result.terminalState != DataTaskItemTerminalState.SUCCEEDED
+
+            else -> false
+        }
+        val cancellationRequested = task.state == DataTaskState.CANCEL_REQUESTED.name
+        val restoreDetail = if (kind == DataTaskKind.ARCHIVE_RESTORE) {
+            loadArchiveDetail(taskId)
+        } else {
+            null
+        }
+        if (
+            kind == DataTaskKind.ARCHIVE_RESTORE &&
+            (cancellationRequested || terminalFailureOrCancellation) &&
+            restoreDetail?.destructiveStarted != false &&
+            outcome !is DataTaskRunOutcome.InterruptedReview
+        ) {
+            return pauseClaimedTask(
+                taskId,
+                taskClaimToken,
+                itemOrdinal,
+                itemClaimToken,
+                DataTaskState.INTERRUPTED_REVIEW,
+                DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW,
+                DataTaskResultCode(RESULT_DESTRUCTIVE_RESTORE_REVIEW),
+                nowMs,
+                keepItemRunning = true,
+            )
+        }
         if (task.state == DataTaskState.CANCEL_REQUESTED.name) {
-            val destructiveRestore =
-                DataTaskKind.valueOf(task.kind) == DataTaskKind.ARCHIVE_RESTORE &&
-                        loadArchiveDetail(taskId)?.destructiveStarted == true
-            if (destructiveRestore && outcome !is DataTaskRunOutcome.InterruptedReview) {
-                return pauseClaimedTask(
-                    taskId,
-                    taskClaimToken,
-                    itemOrdinal,
-                    itemClaimToken,
-                    DataTaskState.INTERRUPTED_REVIEW,
-                    DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW,
-                    DataTaskResultCode(RESULT_DESTRUCTIVE_RESTORE_REVIEW),
-                    nowMs,
-                    keepItemRunning = true,
-                )
-            }
-            if (!destructiveRestore && outcome != DataTaskRunOutcome.Cancelled) {
+            if (outcome != DataTaskRunOutcome.Cancelled) {
                 return terminateClaimedTask(
                     taskId,
                     taskClaimToken,
@@ -692,7 +741,7 @@ abstract class DataTaskDao {
             )
 
             is DataTaskRunOutcome.InterruptedReview -> {
-                require(DataTaskKind.valueOf(task.kind) == DataTaskKind.ARCHIVE_RESTORE) {
+                require(kind == DataTaskKind.ARCHIVE_RESTORE) {
                     "interrupted review belongs only to archive restore tasks"
                 }
                 updateRestoreCheckpoint(
@@ -724,6 +773,8 @@ abstract class DataTaskDao {
                 DataTaskItemState.FAILED,
                 outcome.resultCode,
                 nowMs,
+                failureReason = outcome.arguments.firstOrNull()
+                    ?: outcome.resultCode.toUserFacingJobMessage(),
             )
 
             DataTaskRunOutcome.Cancelled -> terminateClaimedTask(
@@ -758,6 +809,8 @@ abstract class DataTaskDao {
             return DataTaskCancellationDecision.InterruptActive(
                 snapshot = requireNotNull(loadSnapshot(taskId)),
                 activeItemOrdinal = activeItem?.ordinal,
+                taskClaimToken = task.claimToken,
+                itemClaimToken = activeItem?.claimToken,
             )
         }
         cancelUnfinishedItems(taskId, RESULT_CANCELLED, nowMs)
@@ -919,7 +972,33 @@ abstract class DataTaskDao {
             failed > 0 -> DataTaskState.FAILED
             else -> DataTaskState.CANCELLED
         }
-        return finishTaskRow(taskId, claimToken, state.name, nowMs) == 1
+        val itemPresentations = loadItemEntities(taskId).map { item ->
+            item.state to decodeStoredResult(item.resultCode)
+        }
+        val explicitWarnings = itemPresentations.flatMap { it.second.warnings }
+        val failedReasons = itemPresentations.mapNotNull { (itemState, presentation) ->
+            if (itemState == DataTaskItemState.FAILED.name) {
+                presentation.failureReason
+                    ?: presentation.resultCode?.toUserFacingJobMessage()
+            } else {
+                null
+            }
+        }
+        val warnings = when (state) {
+            DataTaskState.READY_PARTIAL, DataTaskState.PARTIAL ->
+                (explicitWarnings + failedReasons).take(MAX_TASK_WARNING_COUNT)
+
+            else -> explicitWarnings.take(MAX_TASK_WARNING_COUNT)
+        }
+        val failureReason = if (state == DataTaskState.FAILED) failedReasons.firstOrNull() else null
+        val resultCode = itemPresentations.firstNotNullOfOrNull { it.second.resultCode }
+        return finishTaskRow(
+            taskId = taskId,
+            claimToken = claimToken,
+            state = state.name,
+            resultCode = encodeStoredResult(resultCode, warnings, failureReason),
+            nowMs = nowMs,
+        ) == 1
     }
 
     @Transaction
@@ -1157,6 +1236,26 @@ abstract class DataTaskDao {
     @Query("SELECT * FROM data_tasks WHERE claim_token = :claimToken LIMIT 1")
     protected abstract suspend fun loadClaimedTaskByToken(claimToken: String): DataTaskEntity?
 
+    @Query("SELECT EXISTS(SELECT 1 FROM data_tasks WHERE claim_token = :claimToken)")
+    protected abstract suspend fun hasTaskClaimToken(claimToken: String): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM data_task_items WHERE claim_token = :claimToken)")
+    protected abstract suspend fun hasItemClaimToken(claimToken: String): Boolean
+
+    @Query(
+        """
+        SELECT data_tasks.task_id
+        FROM data_tasks
+        INNER JOIN archive_task_details
+          ON archive_task_details.task_id = data_tasks.task_id
+        WHERE data_tasks.kind = 'ARCHIVE_RESTORE'
+          AND archive_task_details.restore_source_kind = 'AWAITING_TRANSIENT_GRANT'
+          AND data_tasks.state IN ('WAITING_FOR_SOURCE', 'CANCELLED', 'FAILED', 'EXPIRED')
+        ORDER BY data_tasks.queue_sequence ASC, data_tasks.task_id ASC
+        """
+    )
+    protected abstract suspend fun loadUncommittedRestoreSourceCleanupTaskIds(): List<String>
+
     @Query(
         """
         SELECT data_task_items.* FROM data_task_items
@@ -1279,7 +1378,7 @@ abstract class DataTaskDao {
         WHERE task_id = :taskId
           AND state = 'RUNNING'
           AND claim_token = :taskClaimToken
-          AND claim_lease_expires_at_epoch_ms > :recordedAtEpochMs
+          AND claim_lease_expires_at_epoch_ms > :ownershipCheckedAtEpochMs
         """
     )
     protected abstract suspend fun checkpointTaskRow(
@@ -1289,6 +1388,7 @@ abstract class DataTaskDao {
         completed: Long,
         total: Long,
         recordedAtEpochMs: Long,
+        ownershipCheckedAtEpochMs: Long,
         leaseUntilMs: Long,
     ): Int
 
@@ -1684,6 +1784,7 @@ abstract class DataTaskDao {
             service_session_token = NULL,
             claim_token = NULL,
             claim_lease_expires_at_epoch_ms = NULL,
+            result_code = :resultCode,
             updated_at_epoch_ms = :nowMs,
             terminal_at_epoch_ms = CASE
                 WHEN :state IN ('SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED', 'EXPIRED') THEN :nowMs
@@ -1701,6 +1802,7 @@ abstract class DataTaskDao {
         taskId: String,
         claimToken: String,
         state: String,
+        resultCode: String?,
         nowMs: Long,
     ): Int
 
@@ -1920,7 +2022,10 @@ abstract class DataTaskDao {
         when (DataTaskKind.valueOf(task.kind)) {
             DataTaskKind.ARCHIVE_BACKUP,
             DataTaskKind.ARCHIVE_RESTORE,
-                -> requireNotNull(loadArchiveDetail(task.taskId)).toDomain(DataTaskKind.valueOf(task.kind))
+                -> requireNotNull(loadArchiveDetail(task.taskId)).toDomain(
+                DataTaskKind.valueOf(task.kind),
+                UUID.fromString(task.taskId),
+            )
 
             DataTaskKind.APP_EXPORT,
             DataTaskKind.SHARE_PREPARE,
@@ -1964,6 +2069,7 @@ abstract class DataTaskDao {
         itemState: DataTaskItemState,
         resultCode: DataTaskResultCode,
         nowMs: Long,
+        failureReason: String? = null,
     ): Boolean {
         if (
             terminateActiveItemRow(
@@ -1982,10 +2088,74 @@ abstract class DataTaskDao {
             taskId,
             taskClaimToken,
             taskState.name,
-            resultCode.value,
+            encodeStoredResult(resultCode, failureReason = failureReason) ?: resultCode.value,
             nowMs,
         ) == 1
     }
+
+    private fun DataTaskItemResult.toStoredResult(): String = encodeStoredResult(
+        resultCode = resultCode,
+        warnings = warnings.map { warning ->
+            warning.arguments.firstOrNull() ?: warning.code.toUserFacingJobMessage()
+        },
+        failureReason = if (terminalState == DataTaskItemTerminalState.FAILED) {
+            resultCode.toUserFacingJobMessage()
+        } else {
+            null
+        },
+    ) ?: resultCode.value
+
+    private fun encodeStoredResult(
+        resultCode: DataTaskResultCode?,
+        warnings: List<String> = emptyList(),
+        failureReason: String? = null,
+    ): String? {
+        if (warnings.isEmpty() && failureReason == null) return resultCode?.value
+        requireTaskPresentationArguments(warnings, "warnings")
+        failureReason?.let { requireTaskPresentationArguments(listOf(it), "failureReason") }
+        val parts = buildList {
+            add(STORED_RESULT_PREFIX)
+            add(resultCode?.value ?: "-")
+            add(failureReason?.let { "+${it.encodeStoredResultPart()}" } ?: "-")
+            add(warnings.size.toString())
+            warnings.forEach { add(it.encodeStoredResultPart()) }
+        }
+        return parts.joinToString(STORED_RESULT_SEPARATOR)
+    }
+
+    private fun decodeStoredResult(stored: String?): StoredResultPresentation {
+        if (stored == null) return StoredResultPresentation()
+        if (!stored.startsWith("$STORED_RESULT_PREFIX$STORED_RESULT_SEPARATOR")) {
+            return StoredResultPresentation(
+                resultCode = runCatching { DataTaskResultCode(stored) }.getOrNull(),
+            )
+        }
+        return runCatching {
+            val parts = stored.split(STORED_RESULT_SEPARATOR)
+            require(parts.size >= STORED_RESULT_HEADER_PARTS)
+            require(parts.first() == STORED_RESULT_PREFIX)
+            val warningCount = parts[3].toInt()
+            require(warningCount in 0..MAX_TASK_WARNING_COUNT)
+            require(parts.size == STORED_RESULT_HEADER_PARTS + warningCount)
+            val resultCode = parts[1].takeUnless { it == "-" }?.let(::DataTaskResultCode)
+            val failureReason = parts[2].takeUnless { it == "-" }?.also {
+                require(it.startsWith('+'))
+            }?.drop(1)?.decodeStoredResultPart()
+            val warnings =
+                parts.drop(STORED_RESULT_HEADER_PARTS).map { it.decodeStoredResultPart() }
+            requireTaskPresentationArguments(warnings, "stored warnings")
+            failureReason?.let {
+                requireTaskPresentationArguments(listOf(it), "stored failure reason")
+            }
+            StoredResultPresentation(resultCode, warnings, failureReason)
+        }.getOrElse { StoredResultPresentation() }
+    }
+
+    private fun String.encodeStoredResultPart(): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(toByteArray(StandardCharsets.UTF_8))
+
+    private fun String.decodeStoredResultPart(): String =
+        String(Base64.getUrlDecoder().decode(this), StandardCharsets.UTF_8)
 
     private fun validateNewTask(request: NewDataTaskRow) {
         requireCanonicalUuid(request.taskId, "taskId")
@@ -2033,44 +2203,52 @@ abstract class DataTaskDao {
         detail: StoredDataTaskDetail,
         items: List<DataTaskItemSnapshot>,
         outputs: List<DataTaskOutputSnapshot>,
-    ) = DataTaskSnapshot(
-        taskId = UUID.fromString(taskId),
-        queueSequence = queueSequence,
-        payloadSchemaVersion = payloadSchemaVersion,
-        kind = DataTaskKind.valueOf(kind),
-        state = DataTaskState.valueOf(state),
-        targetKey = targetKey,
-        detail = detail,
-        stage = stage?.let(DataTaskStage::valueOf),
-        completed = completed,
-        total = total,
-        attemptCount = attemptCount,
-        interruption = interruption?.let(DataTaskInterruption::valueOf)
-            ?: DataTaskInterruption.NONE,
-        resultCode = resultCode?.let(::DataTaskResultCode),
-        cancelRequestedAtEpochMs = cancelRequestedAtEpochMs,
-        createdAtEpochMs = createdAtEpochMs,
-        claimedAtEpochMs = claimedAtEpochMs,
-        startedAtEpochMs = startedAtEpochMs,
-        updatedAtEpochMs = updatedAtEpochMs,
-        terminalAtEpochMs = terminalAtEpochMs,
-        retainUntilEpochMs = retainUntilEpochMs,
-        acknowledgedAtEpochMs = acknowledgedAtEpochMs,
-        items = items,
-        outputs = outputs,
-    )
+    ): DataTaskSnapshot {
+        val presentation = decodeStoredResult(resultCode)
+        return DataTaskSnapshot(
+            taskId = UUID.fromString(taskId),
+            queueSequence = queueSequence,
+            payloadSchemaVersion = payloadSchemaVersion,
+            kind = DataTaskKind.valueOf(kind),
+            state = DataTaskState.valueOf(state),
+            targetKey = targetKey,
+            detail = detail,
+            stage = stage?.let(DataTaskStage::valueOf),
+            completed = completed,
+            total = total,
+            attemptCount = attemptCount,
+            interruption = interruption?.let(DataTaskInterruption::valueOf)
+                ?: DataTaskInterruption.NONE,
+            resultCode = presentation.resultCode,
+            cancelRequestedAtEpochMs = cancelRequestedAtEpochMs,
+            createdAtEpochMs = createdAtEpochMs,
+            claimedAtEpochMs = claimedAtEpochMs,
+            startedAtEpochMs = startedAtEpochMs,
+            updatedAtEpochMs = updatedAtEpochMs,
+            terminalAtEpochMs = terminalAtEpochMs,
+            retainUntilEpochMs = retainUntilEpochMs,
+            acknowledgedAtEpochMs = acknowledgedAtEpochMs,
+            items = items,
+            outputs = outputs,
+            warnings = presentation.warnings,
+            failureReason = presentation.failureReason,
+        )
+    }
 
-    private fun DataTaskItemEntity.toSnapshot() = DataTaskItemSnapshot(
-        ordinal = ordinal,
-        packageName = packageName,
-        displayLabel = displayLabel,
-        state = DataTaskItemState.valueOf(state),
-        attemptCount = attemptCount,
-        resultCode = resultCode?.let(::DataTaskResultCode),
-        deterministicStagingIdentity = deterministicStagingIdentity,
-        startedAtEpochMs = startedAtEpochMs,
-        finishedAtEpochMs = finishedAtEpochMs,
-    )
+    private fun DataTaskItemEntity.toSnapshot(): DataTaskItemSnapshot {
+        val presentation = decodeStoredResult(resultCode)
+        return DataTaskItemSnapshot(
+            ordinal = ordinal,
+            packageName = packageName,
+            displayLabel = displayLabel,
+            state = DataTaskItemState.valueOf(state),
+            attemptCount = attemptCount,
+            resultCode = presentation.resultCode,
+            deterministicStagingIdentity = deterministicStagingIdentity,
+            startedAtEpochMs = startedAtEpochMs,
+            finishedAtEpochMs = finishedAtEpochMs,
+        )
+    }
 
     private fun DataTaskOutputEntity.toSnapshot() = DataTaskOutputSnapshot(
         outputId = UUID.fromString(outputId),
@@ -2083,7 +2261,10 @@ abstract class DataTaskDao {
         expiresAtEpochMs = expiresAtEpochMs,
     )
 
-    private fun ArchiveTaskDetailEntity.toDomain(kind: DataTaskKind): StoredDataTaskDetail =
+    private fun ArchiveTaskDetailEntity.toDomain(
+        kind: DataTaskKind,
+        ownerTaskId: UUID,
+    ): StoredDataTaskDetail =
         when (kind) {
             DataTaskKind.ARCHIVE_BACKUP -> StoredDataTaskDetail.ArchiveBackup(
                 packageName = packageName,
@@ -2099,6 +2280,7 @@ abstract class DataTaskDao {
                 dataClassIds = JSON.decodeFromString(dataClassIdsJson),
                 restoreObb = requireNotNull(restoreObb),
                 source = requireNotNull(restoreSourceKind).toRestoreSource(
+                    ownerTaskId,
                     restoreSourceGrantIdentity,
                     restoreSourcePrivateRelativePath,
                 ),
@@ -2174,6 +2356,7 @@ abstract class DataTaskDao {
     }
 
     private fun String.toRestoreSource(
+        ownerTaskId: UUID,
         grantIdentity: String?,
         privateRelativePath: String?,
     ): StoredRestoreSource = when (this) {
@@ -2185,9 +2368,11 @@ abstract class DataTaskDao {
         )
 
         RESTORE_SOURCE_PRIVATE_COPY -> StoredRestoreSource.PrivateCopy(
-            requireNotNull(
-                privateRelativePath
-            )
+            requireNotNull(privateRelativePath).also { path ->
+                require(isPrivateRestoreSourceRelativePath(ownerTaskId, path)) {
+                    "private restore source path must belong to taskId"
+                }
+            }
         )
 
         else -> error("Unknown stored restore source: $this")
@@ -2219,6 +2404,12 @@ abstract class DataTaskDao {
         val privateRelativePath: String?,
     )
 
+    private data class StoredResultPresentation(
+        val resultCode: DataTaskResultCode? = null,
+        val warnings: List<String> = emptyList(),
+        val failureReason: String? = null,
+    )
+
     private companion object {
         val JSON = Json
         const val DESTINATION_ARCHIVE_STORE = "ARCHIVE_STORE"
@@ -2228,6 +2419,9 @@ abstract class DataTaskDao {
         const val RESTORE_SOURCE_AWAITING_GRANT = "AWAITING_TRANSIENT_GRANT"
         const val RESTORE_SOURCE_PERSISTED_GRANT = "PERSISTED_GRANT"
         const val RESTORE_SOURCE_PRIVATE_COPY = "PRIVATE_COPY"
+        const val STORED_RESULT_PREFIX = "THOR_RESULT_V1"
+        const val STORED_RESULT_SEPARATOR = "|"
+        const val STORED_RESULT_HEADER_PARTS = 4
         const val RESULT_CANCELLED = "CANCELLED"
         const val RESULT_SERVICE_TIMEOUT = "SERVICE_TIMEOUT"
         const val RESULT_DESTRUCTIVE_RESTORE_REVIEW = "DESTRUCTIVE_RESTORE_REVIEW"

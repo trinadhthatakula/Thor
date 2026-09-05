@@ -9,10 +9,16 @@ import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import java.util.ArrayDeque
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -282,6 +288,55 @@ class DataSyncCoordinatorTest {
         }
 
     @Test
+    fun `timeout settlement completes before child cancellation on multithreaded dispatcher`() =
+        runTest {
+            Executors.newFixedThreadPool(2).asCoroutineDispatcher().use { dispatcher ->
+                val claimStarted = CompletableDeferred<Unit>()
+                val settlementEntered = CompletableDeferred<Unit>()
+                val allowSettlement = CompletableDeferred<Unit>()
+                val childCancelled = CountDownLatch(1)
+                val events = java.util.concurrent.CopyOnWriteArrayList<String>()
+                var claimed = false
+                val coordinator = coordinator(
+                    dispatcher = dispatcher,
+                    claimNext = { _, token ->
+                        if (claimed) null else claim(1).copy(claimToken = token)
+                            .also { claimed = true }
+                    },
+                    executeClaim = { _, _ ->
+                        claimStarted.complete(Unit)
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            events += "child-cancelled"
+                            childCancelled.countDown()
+                        }
+                    },
+                    settleTimeout = {
+                        events += "timeout-entered"
+                        settlementEntered.complete(Unit)
+                        allowSettlement.await()
+                        events += "timeout-completed"
+                        true
+                    },
+                )
+
+                coordinator.wake {}
+                claimStarted.await()
+                val stopping = async { coordinator.stopClaimsAndInterrupt() }
+                settlementEntered.await()
+
+                assertFalse(childCancelled.await(1, TimeUnit.SECONDS))
+                allowSettlement.complete(Unit)
+                stopping.await()
+                assertEquals(
+                    listOf("timeout-entered", "timeout-completed", "child-cancelled"),
+                    events,
+                )
+            }
+        }
+
+    @Test
     fun `timeout settles a claim that commits while claim call is being cancelled`() = runTest {
         val claimEntered = CompletableDeferred<Unit>()
         val releaseClaim = CompletableDeferred<Unit>()
@@ -451,6 +506,239 @@ class DataSyncCoordinatorTest {
         assertEquals(listOf("release:$claimToken", "stop"), events)
         assertFalse(registry.isLive(TASK_1, claimToken))
     }
+
+    @Test
+    fun `ambiguous compensation reconciles owner then services retained newer wake`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        val events = mutableListOf<String>()
+        var claimCalls = 0
+        var compensationAttempts = 0
+        var firstToken = ""
+        lateinit var coordinator: DataSyncCoordinator
+        coordinator = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                claimCalls += 1
+                when (claimCalls) {
+                    1 -> {
+                        firstToken = token
+                        error("claim response lost after commit")
+                    }
+
+                    2 -> claim(2).copy(claimToken = token)
+                    else -> null
+                }
+            },
+            settleProvisionalClaim = { token ->
+                assertEquals(firstToken, token)
+                compensationAttempts += 1
+                if (compensationAttempts == 1) {
+                    coordinator.wake { events += "stop:latest" }
+                    error("first exact-token compensation was ambiguous")
+                }
+                events += "reconciled"
+                true
+            },
+            executeClaim = { claimed, _ ->
+                events += "run:${claimed.taskId}"
+                completed()
+            },
+        )
+
+        coordinator.wake { events += "stop:first" }
+        advanceUntilIdle()
+
+        assertEquals(2, compensationAttempts)
+        assertFalse(registry.isLive(TASK_1, firstToken))
+        assertTrue(events.contains("reconciled"))
+        assertTrue(events.contains("run:$TASK_2"))
+        assertFalse(events.contains("stop:first"))
+        assertEquals("stop:latest", events.last())
+    }
+
+    @Test
+    fun `active claim reconciliation retries exact timeout before servicing retained wake`() =
+        runTest {
+            val registry = DataTaskOwnerRegistry()
+            val events = mutableListOf<String>()
+            var claimCalls = 0
+            var timeoutAttempts = 0
+            var provisionalAttempts = 0
+            lateinit var coordinator: DataSyncCoordinator
+            coordinator = coordinator(
+                registry = registry,
+                claimNext = { _, token ->
+                    claimCalls += 1
+                    when (claimCalls) {
+                        1 -> claim(1).copy(claimToken = token)
+                        2 -> claim(2).copy(claimToken = token)
+                        else -> null
+                    }
+                },
+                executeClaim = { claimed, _ ->
+                    events += "run:${claimed.taskId}"
+                    completed()
+                },
+                persistOutcome = { claimed, _ ->
+                    if (claimed.taskId == TASK_1) error("outcome commit unavailable")
+                },
+                settleTimeout = { claim ->
+                    assertEquals(TASK_1, claim.taskId)
+                    timeoutAttempts += 1
+                    if (timeoutAttempts == 1) {
+                        coordinator.wake { events += "stop:latest" }
+                        error("first exact active compensation was ambiguous")
+                    }
+                    events += "active-reconciled"
+                    true
+                },
+                settleProvisionalClaim = {
+                    provisionalAttempts += 1
+                    true
+                },
+            )
+
+            coordinator.wake { events += "stop:first" }
+            advanceUntilIdle()
+
+            assertEquals(2, timeoutAttempts)
+            assertEquals(0, provisionalAttempts)
+            assertTrue(events.contains("active-reconciled"))
+            assertTrue(events.contains("run:$TASK_2"))
+            assertFalse(events.contains("stop:first"))
+            assertEquals("stop:latest", events.last())
+        }
+
+    @Test
+    fun `false active settlement remains uncertain without task cleanup`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        var claimCalls = 0
+        var settlementAttempts = 0
+        var cleanupCalls = 0
+        var firstToken = ""
+        val coordinator = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                claimCalls += 1
+                if (claimCalls == 1) {
+                    claim(1).copy(claimToken = token).also { firstToken = token }
+                } else {
+                    null
+                }
+            },
+            executeClaim = { _, _ -> completed() },
+            persistOutcome = { _, _ -> error("outcome commit unavailable") },
+            settleTimeout = {
+                settlementAttempts += 1
+                false
+            },
+            cleanupClaim = { cleanupCalls += 1 },
+            claimReleaseIsPending = { true },
+        )
+
+        coordinator.wake {}
+        advanceUntilIdle()
+
+        assertEquals(4, settlementAttempts)
+        assertEquals(0, cleanupCalls)
+        assertTrue(registry.hasUncertainClaimRelease(firstToken))
+    }
+
+    @Test
+    fun `false provisional settlement remains uncertain until absence is observed`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        var claimCalls = 0
+        var settlementAttempts = 0
+        var firstToken = ""
+        val coordinator = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                claimCalls += 1
+                if (claimCalls == 1) {
+                    firstToken = token
+                    error("claim response lost after commit")
+                }
+                null
+            },
+            settleProvisionalClaim = {
+                settlementAttempts += 1
+                false
+            },
+            claimReleaseIsPending = { true },
+        )
+
+        coordinator.wake {}
+        advanceUntilIdle()
+
+        assertEquals(4, settlementAttempts)
+        assertTrue(registry.hasUncertainClaimRelease(firstToken))
+    }
+
+    @Test
+    fun `bounded failed reconciliation retains process recovery without unclaimable drain spin`() =
+        runTest {
+            val registry = DataTaskOwnerRegistry()
+            val events = mutableListOf<String>()
+            var claimCalls = 0
+            var compensationAttempts = 0
+            var firstToken = ""
+            lateinit var coordinator: DataSyncCoordinator
+            coordinator = coordinator(
+                registry = registry,
+                claimNext = { _, token ->
+                    claimCalls += 1
+                    if (claimCalls == 1) {
+                        firstToken = token
+                        error("claim response lost after commit")
+                    }
+                    null
+                },
+                settleProvisionalClaim = {
+                    compensationAttempts += 1
+                    if (compensationAttempts == 1) {
+                        coordinator.wake { events += "stop:latest" }
+                    }
+                    error("Room remains unavailable")
+                },
+            )
+
+            coordinator.wake { events += "stop:first" }
+            advanceUntilIdle()
+
+            assertEquals(2, claimCalls)
+            assertEquals(4, compensationAttempts)
+            assertFalse(registry.isLive(TASK_1, firstToken))
+            assertTrue(registry.hasUncertainClaimRelease(firstToken))
+            assertFalse(events.contains("stop:first"))
+            assertEquals(listOf("stop:latest"), events)
+
+            var recoveryClaimed = false
+            val replacement = coordinator(
+                registry = registry,
+                claimNext = { _, token ->
+                    if (recoveryClaimed) null else claim(2).copy(claimToken = token).also {
+                        recoveryClaimed = true
+                    }
+                },
+                settleProvisionalClaim = { token ->
+                    assertEquals(firstToken, token)
+                    compensationAttempts += 1
+                    true
+                },
+                executeClaim = { claimed, _ ->
+                    events += "run:${claimed.taskId}"
+                    completed()
+                },
+            )
+
+            replacement.wake { events += "stop:replacement" }
+            advanceUntilIdle()
+
+            assertEquals(5, compensationAttempts)
+            assertFalse(registry.hasUncertainClaimRelease(firstToken))
+            assertTrue(events.contains("run:$TASK_2"))
+            assertEquals("stop:replacement", events.last())
+        }
 
     @Test
     fun `launch sweep timeout parks generation before any Room claim`() = runTest {
@@ -689,6 +977,7 @@ class DataSyncCoordinatorTest {
     }
 
     private fun kotlinx.coroutines.test.TestScope.coordinator(
+        dispatcher: CoroutineDispatcher = StandardTestDispatcher(testScheduler),
         registry: DataTaskOwnerRegistry = DataTaskOwnerRegistry(),
         awaitLegacyDrain: suspend () -> Unit = {},
         awaitLaunchSweep: suspend () -> Boolean = { true },
@@ -699,10 +988,12 @@ class DataSyncCoordinatorTest {
         },
         settleTimeout: suspend (DataSyncClaim) -> Boolean = { true },
         settleProvisionalClaim: suspend (String) -> Boolean = { false },
+        claimReleaseIsPending:
+        suspend (DataTaskUncertainClaimRelease) -> Boolean = { false },
         persistOutcome: suspend (DataSyncClaim, DataTaskRunOutcome) -> Unit = { _, _ -> },
         cleanupClaim: suspend (DataSyncClaim) -> Unit = {},
     ) = DataSyncCoordinator(
-        dispatcher = StandardTestDispatcher(testScheduler),
+        dispatcher = dispatcher,
         ownerRegistry = registry,
         awaitLegacyDrain = awaitLegacyDrain,
         awaitLaunchSweep = awaitLaunchSweep,
@@ -711,6 +1002,7 @@ class DataSyncCoordinatorTest {
         executeClaim = executeClaim,
         settleTimeout = settleTimeout,
         settleProvisionalClaim = settleProvisionalClaim,
+        claimReleaseIsPending = claimReleaseIsPending,
         persistOutcome = persistOutcome,
         cleanupClaim = cleanupClaim,
         checkpointSink = { DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED } },
