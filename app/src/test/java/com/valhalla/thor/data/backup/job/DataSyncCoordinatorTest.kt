@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.backup.job
 
+import com.valhalla.thor.data.service.ForegroundTaskWakeLock
 import com.valhalla.thor.domain.model.DataTaskItemResult
 import com.valhalla.thor.domain.model.DataTaskItemTerminalState
 import com.valhalla.thor.domain.model.DataTaskResultCode
@@ -637,11 +638,16 @@ class DataSyncCoordinatorTest {
         )
 
         coordinator.wake {}
-        advanceUntilIdle()
+        runCurrent()
+        advanceTimeBy(1.seconds)
+        runCurrent()
 
         assertEquals(4, settlementAttempts)
         assertEquals(0, cleanupCalls)
+        assertTrue(registry.isLive(TASK_1, firstToken))
         assertTrue(registry.hasUncertainClaimRelease(firstToken))
+        assertEquals(1, coordinator.reconciliationJobCountForTest)
+        coordinator.stopClaimsAndInterrupt()
     }
 
     @Test
@@ -668,30 +674,51 @@ class DataSyncCoordinatorTest {
         )
 
         coordinator.wake {}
-        advanceUntilIdle()
+        runCurrent()
+        advanceTimeBy(1.seconds)
+        runCurrent()
 
         assertEquals(4, settlementAttempts)
+        assertTrue(registry.isLive(TASK_1, firstToken))
         assertTrue(registry.hasUncertainClaimRelease(firstToken))
+        assertEquals(1, coordinator.reconciliationJobCountForTest)
+        coordinator.stopClaimsAndInterrupt()
     }
 
     @Test
-    fun `bounded failed reconciliation retains process recovery without unclaimable drain spin`() =
+    fun `failed claim reconciliation stays live through lease recovery without a new wake`() =
         runTest {
             val registry = DataTaskOwnerRegistry()
             val events = mutableListOf<String>()
             var claimCalls = 0
             var compensationAttempts = 0
+            var recoveryCalls = 0
+            var expiredClaimRecovered = false
             var firstToken = ""
             lateinit var coordinator: DataSyncCoordinator
             coordinator = coordinator(
                 registry = registry,
+                recoverClaims = { _, isLive ->
+                    recoveryCalls += 1
+                    if (recoveryCalls > 1) {
+                        assertFalse(isLive(TASK_1, firstToken))
+                        expiredClaimRecovered = true
+                    }
+                },
                 claimNext = { _, token ->
                     claimCalls += 1
-                    if (claimCalls == 1) {
-                        firstToken = token
-                        error("claim response lost after commit")
+                    when {
+                        claimCalls == 1 -> {
+                            firstToken = token
+                            error("claim response lost after commit")
+                        }
+
+                        expiredClaimRecovered -> claim(1).copy(claimToken = token).also {
+                            expiredClaimRecovered = false
+                        }
+
+                        else -> null
                     }
-                    null
                 },
                 settleProvisionalClaim = {
                     compensationAttempts += 1
@@ -700,44 +727,72 @@ class DataSyncCoordinatorTest {
                     }
                     error("Room remains unavailable")
                 },
-            )
-
-            coordinator.wake { events += "stop:first" }
-            advanceUntilIdle()
-
-            assertEquals(2, claimCalls)
-            assertEquals(4, compensationAttempts)
-            assertFalse(registry.isLive(TASK_1, firstToken))
-            assertTrue(registry.hasUncertainClaimRelease(firstToken))
-            assertFalse(events.contains("stop:first"))
-            assertEquals(listOf("stop:latest"), events)
-
-            var recoveryClaimed = false
-            val replacement = coordinator(
-                registry = registry,
-                claimNext = { _, token ->
-                    if (recoveryClaimed) null else claim(2).copy(claimToken = token).also {
-                        recoveryClaimed = true
-                    }
-                },
-                settleProvisionalClaim = { token ->
-                    assertEquals(firstToken, token)
-                    compensationAttempts += 1
-                    true
-                },
                 executeClaim = { claimed, _ ->
                     events += "run:${claimed.taskId}"
                     completed()
                 },
             )
 
-            replacement.wake { events += "stop:replacement" }
+            coordinator.wake { events += "stop:first" }
+            runCurrent()
+            advanceTimeBy(1.seconds)
+            runCurrent()
+
+            assertEquals(1, claimCalls)
+            assertEquals(4, compensationAttempts)
+            assertEquals(1, recoveryCalls)
+            assertTrue(registry.isLive(TASK_1, firstToken))
+            assertTrue(registry.hasUncertainClaimRelease(firstToken))
+            assertEquals(1, coordinator.reconciliationJobCountForTest)
+            assertTrue(events.isEmpty())
+
+            advanceTimeBy(ForegroundTaskWakeLock.LEASE_MILLIS.milliseconds)
             advanceUntilIdle()
 
-            assertEquals(5, compensationAttempts)
+            assertEquals(3, claimCalls)
+            assertEquals(2, recoveryCalls)
+            assertFalse(registry.isLive(TASK_1, firstToken))
             assertFalse(registry.hasUncertainClaimRelease(firstToken))
-            assertTrue(events.contains("run:$TASK_2"))
-            assertEquals("stop:replacement", events.last())
+            assertEquals(0, coordinator.reconciliationJobCountForTest)
+            assertEquals(2, coordinator.drainLaunchCountForTest)
+            assertEquals(listOf("run:$TASK_1", "stop:latest"), events)
+        }
+
+    @Test
+    fun `coordinator teardown retires pending lease reconciliation without stale callback`() =
+        runTest {
+            val registry = DataTaskOwnerRegistry()
+            val events = mutableListOf<String>()
+            var claimCalls = 0
+            var firstToken = ""
+            val coordinator = coordinator(
+                registry = registry,
+                claimNext = { _, token ->
+                    claimCalls += 1
+                    firstToken = token
+                    error("claim response lost after commit")
+                },
+                settleProvisionalClaim = { error("Room remains unavailable") },
+            )
+
+            coordinator.wake { events += "stop:stale" }
+            runCurrent()
+            advanceTimeBy(1.seconds)
+            runCurrent()
+            assertEquals(1, coordinator.reconciliationJobCountForTest)
+            assertTrue(registry.isLive(TASK_1, firstToken))
+
+            coordinator.stopClaimsAndInterrupt()
+            runCurrent()
+            assertEquals(0, coordinator.reconciliationJobCountForTest)
+            assertFalse(registry.isLive(TASK_1, firstToken))
+            assertTrue(registry.hasUncertainClaimRelease(firstToken))
+
+            advanceTimeBy(ForegroundTaskWakeLock.LEASE_MILLIS.milliseconds)
+            advanceUntilIdle()
+
+            assertEquals(1, claimCalls)
+            assertTrue(events.isEmpty())
         }
 
     @Test

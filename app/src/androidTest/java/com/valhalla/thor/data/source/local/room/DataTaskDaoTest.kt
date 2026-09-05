@@ -29,6 +29,7 @@ import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
 import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
+import com.valhalla.thor.domain.model.privateRestoreSourceRelativePath
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
@@ -122,6 +123,7 @@ class DataTaskDaoTest {
                 "item-claim",
                 checkpoint(),
                 3_200L,
+                transactionNowMs = { 2_200L },
             ),
         )
         assertFalse(
@@ -286,6 +288,7 @@ class DataTaskDaoTest {
                     restoreMutationBreadcrumb = breadcrumb,
                 ),
                 3_200L,
+                transactionNowMs = { 2_200L },
             ),
         )
         dao.requestCancellation(TASK_1, 2_300L)
@@ -339,6 +342,7 @@ class DataTaskDaoTest {
                     restoreMutationBreadcrumb = breadcrumb,
                 ),
                 3_200L,
+                transactionNowMs = { 2_200L },
             ),
         )
         dao.requestCancellation(TASK_1, 2_300L)
@@ -384,6 +388,7 @@ class DataTaskDaoTest {
                     restoreMutationBreadcrumb = breadcrumb,
                 ),
                 3_200L,
+                transactionNowMs = { 2_200L },
             ),
         )
         dao.requestCancellation(TASK_1, 2_300L)
@@ -421,7 +426,7 @@ class DataTaskDaoTest {
     }
 
     @Test
-    fun destructiveRecoveryWithoutBreadcrumbFailsActiveItemAndCancelsPendingItems() = runBlocking {
+    fun destructiveRecoveryWithoutBreadcrumbEntersReviewAndPreservesSource() = runBlocking {
         dao.insertTask(newRestoreTask())
         dao.claimOldestRunnableTask("old-session", "task-claim", 2_000L, 3_000L)
         dao.claimNextPendingItem(TASK_1, "task-claim", "item-claim", 2_100L, 3_100L)
@@ -433,19 +438,39 @@ class DataTaskDaoTest {
                 "item-claim",
                 checkpoint().copy(destructiveStarted = true),
                 3_200L,
+                transactionNowMs = { 2_200L },
             ),
         )
 
         val recovered = dao.recoverClaims("new-session", 3_200L) { _, _ -> false }
 
-        assertTrue(recovered.single().recovery is DataTaskRecovery.Failed)
-        val decision = dao.requestCancellation(TASK_1, 3_300L)
-        val snapshot = (decision as DataTaskCancellationDecision.AlreadyTerminal).snapshot
-        assertEquals(DataTaskState.FAILED, snapshot.state)
-        assertEquals(DataTaskItemState.FAILED, snapshot.items[0].state)
-        assertEquals("RECOVERY_BREADCRUMB_MISSING", snapshot.items[0].resultCode?.value)
-        assertEquals(3_200L, snapshot.items[0].finishedAtEpochMs)
-        assertEquals(DataTaskItemState.CANCELLED, snapshot.items[1].state)
+        assertEquals(
+            DataTaskRecovery.InterruptedReview(
+                breadcrumb = null,
+                resultCode = DataTaskResultCode("RECOVERY_BREADCRUMB_MISSING"),
+            ),
+            recovered.single().recovery,
+        )
+        reopenDatabase()
+        val task = loadPersistedTask()
+        assertEquals(DataTaskState.INTERRUPTED_REVIEW.name, task.state)
+        assertEquals(DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW.name, task.interruption)
+        assertEquals("RECOVERY_BREADCRUMB_MISSING", task.resultCode)
+        assertNull(task.serviceSessionToken)
+        assertNull(task.claimToken)
+        assertNull(task.claimLeaseExpiresAtEpochMs)
+        val activeItem = loadPersistedItem()
+        assertEquals(DataTaskItemState.RUNNING.name, activeItem.state)
+        assertNull(activeItem.claimToken)
+        assertNull(activeItem.claimLeaseExpiresAtEpochMs)
+        val snapshot = requireNotNull(dao.loadTask(TASK_1))
+        assertNull(snapshot.terminalAtEpochMs)
+        assertNull(snapshot.items[0].resultCode)
+        assertNull(snapshot.items[0].finishedAtEpochMs)
+        assertEquals(
+            StoredRestoreSource.PrivateCopy(privateRestoreSourceRelativePath(UUID.fromString(TASK_1))),
+            (snapshot.detail as StoredDataTaskDetail.ArchiveRestore).source,
+        )
     }
 
     @Test
@@ -469,6 +494,7 @@ class DataTaskDaoTest {
                     restoreMutationBreadcrumb = breadcrumb,
                 ),
                 3_200L,
+                transactionNowMs = { 2_200L },
             ),
         )
 
@@ -1180,7 +1206,13 @@ class DataTaskDaoTest {
             expectedPackageName = "com.example.app",
             dataClassIds = listOf("apk", "data"),
             restoreObb = true,
-            source = StoredRestoreSource.PrivateCopy("inputs/archive.thor"),
+            source = StoredRestoreSource.PrivateCopy(
+                privateRestoreSourceRelativePath(
+                    UUID.fromString(
+                        TASK_1
+                    )
+                )
+            ),
             mutationBreadcrumb = null,
             deterministicStagingIdentity = "stage-$TASK_1",
         ),

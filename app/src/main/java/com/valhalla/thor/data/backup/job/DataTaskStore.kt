@@ -119,6 +119,9 @@ internal class DataTaskStore(
 
     suspend fun loadTask(taskId: UUID): DataTaskSnapshot? = dao.loadTask(taskId.toString())
 
+    suspend fun loadRestoreSource(taskId: UUID): StoredRestoreSource? =
+        (loadTask(taskId)?.detail as? StoredDataTaskDetail.ArchiveRestore)?.source
+
     fun observeTask(taskId: UUID): Flow<DataTaskSnapshot?> = dao.observeTask(taskId.toString())
 
     fun observeActiveTaskId(kind: DataTaskKind, target: String): Flow<UUID?> =

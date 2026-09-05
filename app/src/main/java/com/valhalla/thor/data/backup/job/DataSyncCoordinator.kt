@@ -74,6 +74,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -710,6 +711,9 @@ class DataSyncCoordinator internal constructor(
     internal val drainLaunchCountForTest: Int
         get() = drainLaunches.get()
 
+    internal val reconciliationJobCountForTest: Int
+        get() = synchronized(lock) { reconciliationJobs.size }
+
     internal var lastClaimTokenForTest: String? = null
         private set
 
@@ -752,6 +756,13 @@ class DataSyncCoordinator internal constructor(
             ownerRegistry.cancelActiveOwnedBy(claim.claimToken)
         }
         drainJob?.join()
+        cancelReconciliationJobs()
+    }
+
+    private suspend fun cancelReconciliationJobs() {
+        val jobs = synchronized(lock) { reconciliationJobs.values.toList() }
+        jobs.forEach(Job::cancel)
+        jobs.joinAll()
     }
 
     private fun launchDrainLocked(
@@ -1003,48 +1014,56 @@ class DataSyncCoordinator internal constructor(
             reconciliationJobs[claimToken]?.let { return }
             val drainToAwait = drain
             scope.launch(start = CoroutineStart.LAZY) {
-                drainToAwait?.join()
-                val released = withTimeoutOrNull(CLAIM_RECONCILIATION_TIMEOUT) {
-                    repeat(CLAIM_RECONCILIATION_ATTEMPTS) { attempt ->
-                        try {
-                            if (confirmClaimRelease(release, settle)) {
-                                cleanup()
-                                return@withTimeoutOrNull true
-                            }
-                        } catch (_: Exception) {
-                            if (attempt + 1 < CLAIM_RECONCILIATION_ATTEMPTS) {
-                                delay(CLAIM_RECONCILIATION_RETRY_DELAY)
+                var ownerRegistered = true
+                try {
+                    drainToAwait?.join()
+                    val released = withTimeoutOrNull(CLAIM_RECONCILIATION_TIMEOUT) {
+                        repeat(CLAIM_RECONCILIATION_ATTEMPTS) { attempt ->
+                            try {
+                                if (confirmClaimRelease(release, settle)) {
+                                    cleanup()
+                                    return@withTimeoutOrNull true
+                                }
+                            } catch (_: Exception) {
+                                if (attempt + 1 < CLAIM_RECONCILIATION_ATTEMPTS) {
+                                    delay(CLAIM_RECONCILIATION_RETRY_DELAY)
+                                }
                             }
                         }
+                        false
+                    } == true
+                    if (!released) {
+                        delay(ForegroundTaskWakeLock.LEASE_MILLIS.milliseconds)
                     }
-                    false
-                } == true
-                if (taskId == null) {
-                    ownerRegistry.unregisterProvisional(claimToken)
-                } else {
-                    ownerRegistry.unregister(taskId, claimToken)
-                }
-                if (released) {
+                    if (taskId == null) {
+                        ownerRegistry.unregisterProvisional(claimToken)
+                    } else {
+                        ownerRegistry.unregister(taskId, claimToken)
+                    }
+                    ownerRegistered = false
                     ownerRegistry.clearUncertainClaimRelease(claimToken)
-                } else {
-                    ownerRegistry.retainUncertainClaimRelease(release)
-                }
-                val stopCallback = synchronized(lock) {
-                    reconciliationJobs.remove(claimToken)
-                    when {
-                        drain?.isActive == true -> null
-                        claimsEnabled && latestWake != null -> {
-                            launchDrainLocked(
-                                requireNotNull(latestWake).number,
-                                parkAfterUnclaimableClaim = !released,
-                            )
-                            null
+                    synchronized(lock) {
+                        reconciliationJobs.remove(claimToken)
+                        if (
+                            claimsEnabled &&
+                            latestWake != null &&
+                            drain?.isActive != true
+                        ) {
+                            launchDrainLocked(requireNotNull(latestWake).number)
                         }
-
-                        else -> latestWake?.onDrained
+                    }
+                } finally {
+                    if (ownerRegistered) {
+                        if (taskId == null) {
+                            ownerRegistry.unregisterProvisional(claimToken)
+                        } else {
+                            ownerRegistry.unregister(taskId, claimToken)
+                        }
+                    }
+                    synchronized(lock) {
+                        reconciliationJobs.remove(claimToken)
                     }
                 }
-                stopCallback?.invoke()
             }.also { reconciliationJobs[claimToken] = it }
         }
         job.start()

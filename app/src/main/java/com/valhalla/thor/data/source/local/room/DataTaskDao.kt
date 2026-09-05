@@ -660,6 +660,13 @@ abstract class DataTaskDao {
             else -> false
         }
         val cancellationRequested = task.state == DataTaskState.CANCEL_REQUESTED.name
+        if (
+            cancellationRequested &&
+            outcome != DataTaskRunOutcome.Cancelled &&
+            outcome !is DataTaskRunOutcome.InterruptedReview
+        ) {
+            return false
+        }
         val restoreDetail = if (kind == DataTaskKind.ARCHIVE_RESTORE) {
             loadArchiveDetail(taskId)
         } else {
@@ -682,20 +689,6 @@ abstract class DataTaskDao {
                 nowMs,
                 keepItemRunning = true,
             )
-        }
-        if (task.state == DataTaskState.CANCEL_REQUESTED.name) {
-            if (outcome != DataTaskRunOutcome.Cancelled) {
-                return terminateClaimedTask(
-                    taskId,
-                    taskClaimToken,
-                    itemOrdinal,
-                    itemClaimToken,
-                    DataTaskState.CANCELLED,
-                    DataTaskItemState.CANCELLED,
-                    DataTaskResultCode(RESULT_CANCELLED),
-                    nowMs,
-                )
-            }
         }
         if (task.state != DataTaskState.RUNNING.name &&
             task.state != DataTaskState.CANCEL_REQUESTED.name
@@ -744,13 +737,15 @@ abstract class DataTaskDao {
                 require(kind == DataTaskKind.ARCHIVE_RESTORE) {
                     "interrupted review belongs only to archive restore tasks"
                 }
-                updateRestoreCheckpoint(
-                    taskId = taskId,
-                    destructiveStarted = true,
-                    mutationPackageName = outcome.breadcrumb.packageName,
-                    mutationAppLabel = outcome.breadcrumb.appLabel,
-                    mutationStartedAtEpochMs = outcome.breadcrumb.startedAtEpochMs,
-                )
+                outcome.breadcrumb?.let { breadcrumb ->
+                    updateRestoreCheckpoint(
+                        taskId = taskId,
+                        destructiveStarted = true,
+                        mutationPackageName = breadcrumb.packageName,
+                        mutationAppLabel = breadcrumb.appLabel,
+                        mutationStartedAtEpochMs = breadcrumb.startedAtEpochMs,
+                    )
+                }
                 pauseClaimedTask(
                     taskId,
                     taskClaimToken,
@@ -861,12 +856,22 @@ abstract class DataTaskDao {
                     DataTaskRecovery.WaitingForSource
 
                 task.state == DataTaskState.INTERRUPTED_REVIEW.name || destructiveStarted ->
-                    breadcrumb?.let(DataTaskRecovery::InterruptedReview)
-                        ?: DataTaskRecovery.Failed(
-                            DataTaskResultCode(
-                                RESULT_RECOVERY_BREADCRUMB_MISSING
-                            )
+                    if (kind == DataTaskKind.ARCHIVE_RESTORE) {
+                        DataTaskRecovery.InterruptedReview(
+                            breadcrumb = breadcrumb,
+                            resultCode = DataTaskResultCode(
+                                if (breadcrumb == null) {
+                                    RESULT_RECOVERY_BREADCRUMB_MISSING
+                                } else {
+                                    RESULT_DESTRUCTIVE_RESTORE_REVIEW
+                                }
+                            ),
                         )
+                    } else {
+                        DataTaskRecovery.Failed(
+                            DataTaskResultCode(RESULT_RECOVERY_BREADCRUMB_MISSING)
+                        )
+                    }
 
                 kind == DataTaskKind.ARCHIVE_RESTORE &&
                         archive?.restoreSourceKind == RESTORE_SOURCE_AWAITING_GRANT ->
@@ -918,7 +923,7 @@ abstract class DataTaskDao {
                         previousClaim,
                         DataTaskState.INTERRUPTED_REVIEW.name,
                         DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW.name,
-                        RESULT_DESTRUCTIVE_RESTORE_REVIEW,
+                        recovery.resultCode.value,
                         nowMs,
                     )
                     clearItemClaimTokens(task.taskId)

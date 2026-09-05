@@ -119,7 +119,11 @@ sealed interface DataTaskRecovery {
     data object Resume : DataTaskRecovery
     data object WaitingForAuthentication : DataTaskRecovery
     data object WaitingForSource : DataTaskRecovery
-    data class InterruptedReview(val breadcrumb: RestoreMutationBreadcrumb) : DataTaskRecovery
+    data class InterruptedReview(
+        val breadcrumb: RestoreMutationBreadcrumb?,
+        val resultCode: DataTaskResultCode = DataTaskResultCode("DESTRUCTIVE_RESTORE_REVIEW"),
+    ) : DataTaskRecovery
+
     data class Failed(val resultCode: DataTaskResultCode) : DataTaskRecovery
 }
 

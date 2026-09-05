@@ -115,9 +115,12 @@ internal fun recoveryOutcomeFor(request: DataTaskExecutionRequest): DataTaskRunO
     if (request.kind != DataTaskKind.ARCHIVE_RESTORE) {
         return DataTaskRunOutcome.TaskFailed(RECOVERY_BREADCRUMB_MISSING)
     }
-    return checkpoint.restoreMutationBreadcrumb?.let { breadcrumb ->
-        DataTaskRunOutcome.InterruptedReview(ARCHIVE_RESTORE_INTERRUPTED, breadcrumb)
-    } ?: DataTaskRunOutcome.TaskFailed(RECOVERY_BREADCRUMB_MISSING)
+    return DataTaskRunOutcome.InterruptedReview(
+        resultCode = checkpoint.restoreMutationBreadcrumb
+            ?.let { ARCHIVE_RESTORE_INTERRUPTED }
+            ?: RECOVERY_BREADCRUMB_MISSING,
+        breadcrumb = checkpoint.restoreMutationBreadcrumb,
+    )
 }
 
 /**
@@ -165,9 +168,12 @@ private fun interruptionOutcome(
     checkpoint: DataTaskCheckpoint?,
 ): DataTaskRunOutcome {
     if (kind == DataTaskKind.ARCHIVE_RESTORE && checkpoint?.destructiveStarted == true) {
-        return checkpoint.restoreMutationBreadcrumb?.let { breadcrumb ->
-            DataTaskRunOutcome.InterruptedReview(ARCHIVE_RESTORE_INTERRUPTED, breadcrumb)
-        } ?: DataTaskRunOutcome.TaskFailed(RECOVERY_BREADCRUMB_MISSING)
+        return DataTaskRunOutcome.InterruptedReview(
+            resultCode = checkpoint.restoreMutationBreadcrumb
+                ?.let { ARCHIVE_RESTORE_INTERRUPTED }
+                ?: RECOVERY_BREADCRUMB_MISSING,
+            breadcrumb = checkpoint.restoreMutationBreadcrumb,
+        )
     }
     return when (kind) {
         DataTaskKind.ARCHIVE_BACKUP,

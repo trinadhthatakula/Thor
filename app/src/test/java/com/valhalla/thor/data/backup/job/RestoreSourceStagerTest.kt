@@ -18,6 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RestoreSourceStagerTest {
@@ -126,12 +127,17 @@ class RestoreSourceStagerTest {
     }
 
     @Test
-    fun `lost ownership discards the private copy`() = runTest {
+    fun `definitive commit rejection discards exact uncommitted task sources`() = runTest {
         val discarded = mutableListOf<String>()
+        var reconciled = false
         val stager = RestoreSourceStager(
             takeSource = { _, _ -> RAW_URI },
             copyToPrivate = { _, _, _ -> RestoreSourceCopyResult.Completed(PRIVATE_PATH) },
             commitPrivateSource = { _, _, _ -> false },
+            readStoredSource = {
+                reconciled = true
+                error("definitive rejection must not be reconciled")
+            },
             privateSourceUri = { _, _ -> PRIVATE_URI },
             discardPrivateSource = { _, path -> discarded += path },
             discardUncommittedTaskSources = { discarded += PRIVATE_PATH },
@@ -146,6 +152,66 @@ class RestoreSourceStagerTest {
 
         assertEquals(RestoreSourceResolution.OwnershipLost, result)
         assertEquals(listOf(PRIVATE_PATH), discarded)
+        assertEquals(false, reconciled)
+    }
+
+    @Test
+    fun `commit side effect survives lost timeout result after authoritative reconciliation`() =
+        runTest {
+            var storedSource: StoredRestoreSource? = null
+            var discarded = false
+            val stager = RestoreSourceStager(
+                takeSource = { _, _ -> RAW_URI },
+                copyToPrivate = { _, _, _ -> RestoreSourceCopyResult.Completed(PRIVATE_PATH) },
+                commitPrivateSource = { _, privatePath, _ ->
+                    storedSource = StoredRestoreSource.PrivateCopy(privatePath)
+                    awaitCancellation()
+                },
+                readStoredSource = { storedSource },
+                privateSourceUri = { _, _ -> PRIVATE_URI },
+                discardPrivateSource = { _, _ -> discarded = true },
+                discardUncommittedTaskSources = { discarded = true },
+                nowMs = { NOW_MS },
+            )
+
+            val result = async {
+                stager.resolve(
+                    claim(),
+                    StoredRestoreSource.AwaitingTransientGrant,
+                    appliedCheckpoints(),
+                )
+            }
+            runCurrent()
+            advanceTimeBy(2.seconds + 1.milliseconds)
+            runCurrent()
+
+            assertEquals(RestoreSourceResolution.Ready(PRIVATE_URI), result.await())
+            assertEquals(false, discarded)
+        }
+
+    @Test
+    fun `unavailable commit reconciliation preserves deterministic task source`() = runTest {
+        var discarded = false
+        val stager = RestoreSourceStager(
+            takeSource = { _, _ -> RAW_URI },
+            copyToPrivate = { _, _, _ -> RestoreSourceCopyResult.Completed(PRIVATE_PATH) },
+            commitPrivateSource = { _, _, _ -> error("commit result unavailable") },
+            readStoredSource = { error("authoritative read unavailable") },
+            privateSourceUri = { _, _ -> error("ambiguous source must not be exposed") },
+            discardPrivateSource = { _, _ -> discarded = true },
+            discardUncommittedTaskSources = { discarded = true },
+            nowMs = { NOW_MS },
+        )
+
+        assertEquals(
+            RestoreSourceResolution.OwnershipLost,
+            stager.resolve(
+                claim(),
+                StoredRestoreSource.AwaitingTransientGrant,
+                appliedCheckpoints(),
+            ),
+        )
+        assertEquals(false, discarded)
     }
 
     @Test

@@ -317,7 +317,7 @@ sealed interface DataTaskRunOutcome {
 
     data class InterruptedReview(
         val resultCode: DataTaskResultCode,
-        val breadcrumb: RestoreMutationBreadcrumb,
+        val breadcrumb: RestoreMutationBreadcrumb?,
     ) : DataTaskRunOutcome
 
     data class TaskFailed(

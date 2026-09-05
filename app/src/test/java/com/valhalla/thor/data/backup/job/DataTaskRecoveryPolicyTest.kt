@@ -77,6 +77,19 @@ class DataTaskRecoveryPolicyTest {
     }
 
     @Test
+    fun `a destructive restore checkpoint without breadcrumb still requires review`() {
+        assertEquals(
+            DataTaskRunOutcome.InterruptedReview(
+                resultCode = DataTaskResultCode("RECOVERY_BREADCRUMB_MISSING"),
+                breadcrumb = null,
+            ),
+            recoveryOutcomeFor(
+                restoreRequest(checkpoint(destructiveStarted = true)),
+            ),
+        )
+    }
+
+    @Test
     fun `cancellation settles and cleans up in NonCancellable before it is rethrown`() {
         val events = mutableListOf<String>()
         val cancellation = CancellationException("stop this task")
@@ -212,6 +225,47 @@ class DataTaskRecoveryPolicyTest {
                 DataTaskRunOutcome.InterruptedReview(
                     DataTaskResultCode("ARCHIVE_RESTORE_INTERRUPTED"),
                     breadcrumb,
+                ),
+            ),
+            persisted,
+        )
+    }
+
+    @Test
+    fun `destructive cancellation without breadcrumb settles review before cleanup`() {
+        val destructive = checkpoint(destructiveStarted = true)
+        val persisted = mutableListOf<DataTaskRunOutcome>()
+        val cancellation = CancellationException("service timeout")
+        val runner = object : DataTaskRunner {
+            override val kind = DataTaskKind.ARCHIVE_RESTORE
+
+            override suspend fun run(
+                request: DataTaskExecutionRequest,
+                checkpoints: DataTaskCheckpointSink,
+            ): DataTaskRunOutcome {
+                assertEquals(DataTaskSinkWrite.APPLIED, checkpoints.persist(destructive))
+                throw cancellation
+            }
+        }
+
+        val thrown = assertThrows(CancellationException::class.java) {
+            runBlocking {
+                runDataTaskAndPersist(
+                    runner = runner,
+                    request = restoreRequest(),
+                    checkpoints = DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED },
+                    results = DataTaskResultSink { outcome -> persisted += outcome },
+                    cleanup = {},
+                )
+            }
+        }
+
+        assertSame(cancellation, thrown)
+        assertEquals(
+            listOf(
+                DataTaskRunOutcome.InterruptedReview(
+                    DataTaskResultCode("RECOVERY_BREADCRUMB_MISSING"),
+                    breadcrumb = null,
                 ),
             ),
             persisted,

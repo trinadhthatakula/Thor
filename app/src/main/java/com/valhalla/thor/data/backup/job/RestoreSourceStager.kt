@@ -28,7 +28,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import kotlin.time.Duration.Companion.minutes
@@ -59,6 +58,8 @@ internal interface RestoreSourceStagingDependencies {
         privateRelativePath: String,
         nowMs: Long,
     ): Boolean
+
+    suspend fun readStoredSource(taskId: UUID): StoredRestoreSource?
 
     fun privateSourceUri(taskId: UUID, privateRelativePath: String): String?
     fun persistedSourceUri(grantIdentity: String): String?
@@ -146,6 +147,9 @@ internal class AndroidRestoreSourceStagingDependencies(
         )
     }
 
+    override suspend fun readStoredSource(taskId: UUID): StoredRestoreSource? =
+        store.loadRestoreSource(taskId)
+
     override fun privateSourceUri(taskId: UUID, privateRelativePath: String): String? =
         resolvePrivateFile(taskId, privateRelativePath)
             ?.takeIf(File::isFile)
@@ -220,6 +224,7 @@ internal class RestoreSourceStager internal constructor(
             suspend (copiedBytes: Long) -> Boolean,
         ) -> RestoreSourceCopyResult,
         commitPrivateSource: suspend (DataSyncClaim, String, Long) -> Boolean,
+        readStoredSource: suspend (UUID) -> StoredRestoreSource? = { null },
         privateSourceUri: (UUID, String) -> String?,
         persistedSourceUri: (String) -> String? = { null },
         discardPrivateSource: (UUID, String) -> Unit,
@@ -241,6 +246,9 @@ internal class RestoreSourceStager internal constructor(
                 privateRelativePath: String,
                 nowMs: Long,
             ): Boolean = commitPrivateSource(claim, privateRelativePath, nowMs)
+
+            override suspend fun readStoredSource(taskId: UUID): StoredRestoreSource? =
+                readStoredSource(taskId)
 
             override fun privateSourceUri(taskId: UUID, privateRelativePath: String): String? =
                 privateSourceUri(taskId, privateRelativePath)
@@ -341,15 +349,20 @@ internal class RestoreSourceStager internal constructor(
         }
         val callerJob = currentCoroutineContext()[Job]
         val committed = withContext(NonCancellable) {
-            val write = withTimeoutOrNull(RESTORE_COMMIT_TIMEOUT) {
-                try {
+            val write = runCatching {
+                withTimeout(RESTORE_COMMIT_TIMEOUT) {
                     dependencies.commitPrivateSource(claim, privatePath, dependencies.nowMs())
-                } catch (_: Exception) {
+                }
+            }
+            when {
+                write.getOrNull() == true -> true
+                write.isSuccess -> {
+                    dependencies.discardUncommittedTaskSources(claim.taskId)
                     false
                 }
-            } == true
-            if (!write) dependencies.discardUncommittedTaskSources(claim.taskId)
-            write
+
+                else -> reconcileAmbiguousCommit(claim.taskId, privatePath)
+            }
         }
         callerJob?.ensureActive()
         if (!committed) {
@@ -358,6 +371,18 @@ internal class RestoreSourceStager internal constructor(
         val privateUri = dependencies.privateSourceUri(claim.taskId, privatePath)
             ?: return RestoreSourceResolution.WaitingForSource
         return RestoreSourceResolution.Ready(privateUri)
+    }
+
+    private suspend fun reconcileAmbiguousCommit(taskId: UUID, privatePath: String): Boolean {
+        val storedSource = runCatching {
+            withTimeout(RESTORE_COMMIT_TIMEOUT) {
+                dependencies.readStoredSource(taskId)
+            }
+        }
+        if (storedSource.isFailure) return false
+        if (storedSource.getOrNull() == StoredRestoreSource.PrivateCopy(privatePath)) return true
+        dependencies.discardUncommittedTaskSources(taskId)
+        return false
     }
 
     private suspend fun discardUncommitted(taskId: UUID) {
