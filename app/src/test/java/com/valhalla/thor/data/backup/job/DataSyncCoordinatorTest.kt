@@ -548,6 +548,7 @@ class DataSyncCoordinatorTest {
             val claims = ArrayDeque(listOf(claim(1), claim(2)))
             val running = CompletableDeferred<Unit>()
             var claimCalls = 0
+            var finishCalls = 0
             val coordinator = coordinator(
                 claimNext = { _, token ->
                     claimCalls += 1
@@ -570,6 +571,11 @@ class DataSyncCoordinatorTest {
                     events += "settle:${outcome::class.simpleName}"
                     DataTaskSinkWrite.APPLIED
                 },
+                finishDrainIfEmpty = { onEmpty ->
+                    finishCalls += 1
+                    onEmpty()
+                    true
+                },
             )
 
             coordinator.wake { events += "stop" }
@@ -583,10 +589,10 @@ class DataSyncCoordinatorTest {
                     "timeout-settle",
                     "child-cancelled",
                     "cleanup",
-                    "stop",
                 ),
                 events,
             )
+            assertEquals(0, finishCalls)
         }
 
     @Test
@@ -680,7 +686,7 @@ class DataSyncCoordinatorTest {
 
         assertFalse(executed)
         assertEquals(
-            listOf("timeout-settle", "cleanup", "stop"),
+            listOf("timeout-settle", "cleanup"),
             events,
         )
     }
@@ -1145,15 +1151,78 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
-    fun `stop during committed recovery waits for cleanup without a drain callback`() = runTest {
-        val recoveryCommitted = CompletableDeferred<Unit>()
+    fun `late recovery completion cleans and resumes without another wake or recovery`() = runTest {
+        val recoveryEntered = CompletableDeferred<Unit>()
+        val allowRecoveryReturn = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        var recoveryCalls = 0
+        var cleanupCalls = 0
+        var claimCalls = 0
+        var finishCalls = 0
+        val coordinator = coordinator(
+            recoverClaims = { _, _ ->
+                recoveryCalls += 1
+                recoveryEntered.complete(Unit)
+                allowRecoveryReturn.await()
+                events += "recovery-returned"
+                listOf(TASK_1)
+            },
+            cleanupRecoveredClaim = { taskId ->
+                assertEquals(TASK_1, taskId)
+                cleanupCalls += 1
+                events += "cleanup"
+            },
+            claimNext = { _, _ ->
+                claimCalls += 1
+                events += "claim-empty"
+                null
+            },
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                events += "finish-empty"
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake { events += "drained" }
+        runCurrent()
+        recoveryEntered.await()
+        advanceTimeBy(2.seconds)
+        runCurrent()
+
+        assertEquals(1, recoveryCalls)
+        assertEquals(0, cleanupCalls)
+        assertEquals(0, claimCalls)
+        assertEquals(0, finishCalls)
+        assertTrue(events.isEmpty())
+        assertFalse(coordinator.hasDrainJobForTest)
+
+        allowRecoveryReturn.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, recoveryCalls)
+        assertEquals(1, cleanupCalls)
+        assertEquals(1, claimCalls)
+        assertEquals(1, finishCalls)
+        assertEquals(
+            listOf("recovery-returned", "cleanup", "claim-empty", "finish-empty", "drained"),
+            events,
+        )
+        assertEquals(2, coordinator.drainLaunchCountForTest)
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
+    fun `stop during recovery has bounded teardown while process cleanup continues`() = runTest {
+        val recoveryEntered = CompletableDeferred<Unit>()
         val allowRecoveryReturn = CompletableDeferred<Unit>()
         val events = mutableListOf<String>()
         var finishCalls = 0
         val coordinator = coordinator(
             recoverClaims = { _, _ ->
-                events += "recovery-committed"
-                recoveryCommitted.complete(Unit)
+                events += "recovery-entered"
+                recoveryEntered.complete(Unit)
                 allowRecoveryReturn.await()
                 events += "recovery-returned"
                 listOf(TASK_1)
@@ -1171,63 +1240,153 @@ class DataSyncCoordinatorTest {
 
         coordinator.wake { events += "drained" }
         runCurrent()
-        recoveryCommitted.await()
+        recoveryEntered.await()
         val stopping = async { coordinator.stopClaimsAndInterrupt() }
         runCurrent()
 
         assertFalse(stopping.isCompleted)
+        advanceTimeBy(2.seconds)
+        runCurrent()
+        assertTrue(stopping.isCompleted)
+        assertEquals(listOf("recovery-entered"), events)
+
         allowRecoveryReturn.complete(Unit)
-        stopping.await()
         advanceUntilIdle()
 
-        assertEquals(listOf("recovery-committed", "recovery-returned", "cleanup"), events)
+        assertEquals(listOf("recovery-entered", "recovery-returned", "cleanup"), events)
         assertEquals(0, finishCalls)
         assertFalse(coordinator.hasDrainJobForTest)
     }
 
     @Test
-    fun `recovered cleanup failure is retried by an explicit wake without a false drain`() =
+    fun `replacement coordinator joins timed out process recovery without overlap`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        val recoveryEntered = CompletableDeferred<Unit>()
+        val allowRecoveryReturn = CompletableDeferred<Unit>()
+        var roomRecoveryInFlight = false
+        var overlapDetected = false
+        var recoveryCalls = 0
+        var replacementCallbacks = 0
+        val recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID> =
+            { _, _ ->
+                recoveryCalls += 1
+                if (recoveryCalls == 1) {
+                    roomRecoveryInFlight = true
+                    recoveryEntered.complete(Unit)
+                    allowRecoveryReturn.await()
+                    roomRecoveryInFlight = false
+                } else if (roomRecoveryInFlight) {
+                    overlapDetected = true
+                }
+                emptyList()
+            }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val recoveryProcess = DataTaskRecoveryProcess(dispatcher, recoverClaims) {}
+        val first = coordinator(
+            dispatcher = dispatcher,
+            registry = registry,
+            recoverClaims = recoverClaims,
+            recoveryProcess = recoveryProcess,
+        )
+
+        first.wake {}
+        runCurrent()
+        recoveryEntered.await()
+        advanceTimeBy(2.seconds)
+        runCurrent()
+        first.stopClaimsAndInterrupt()
+
+        val replacement = coordinator(
+            dispatcher = dispatcher,
+            registry = registry,
+            recoverClaims = recoverClaims,
+            recoveryProcess = recoveryProcess,
+        )
+        replacement.wake { replacementCallbacks += 1 }
+        runCurrent()
+
+        assertEquals(1, recoveryCalls)
+        assertFalse(overlapDetected)
+        assertEquals(0, replacementCallbacks)
+
+        allowRecoveryReturn.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, recoveryCalls)
+        assertFalse(overlapDetected)
+        assertEquals(1, replacementCallbacks)
+        assertFalse(replacement.hasDrainJobForTest)
+    }
+
+    @Test
+    fun `replacement coordinator retries process scoped recovered cleanup before final empty`() =
         runTest {
+            val registry = DataTaskOwnerRegistry()
             val events = mutableListOf<String>()
             var recoveryCalls = 0
             var cleanupCalls = 0
             var finishCalls = 0
-            val coordinator = coordinator(
-                recoverClaims = { _, _ ->
+            val recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID> =
+                { _, _ ->
                     recoveryCalls += 1
                     if (recoveryCalls == 1) listOf(TASK_1) else emptyList()
-                },
-                cleanupRecoveredClaim = { taskId ->
-                    assertEquals(TASK_1, taskId)
-                    cleanupCalls += 1
-                    if (cleanupCalls == 1) error("process cleanup unavailable")
-                    events += "cleanup"
-                },
-                finishDrainIfEmpty = { onEmpty ->
-                    finishCalls += 1
-                    events += "finish-empty"
-                    onEmpty()
-                    true
-                },
+                }
+            val cleanupRecoveredClaim: suspend (UUID) -> Unit = { taskId ->
+                assertEquals(TASK_1, taskId)
+                cleanupCalls += 1
+                if (cleanupCalls == 1) error("process cleanup unavailable")
+                events += "cleanup:$taskId"
+            }
+            val finishDrainIfEmpty: suspend (() -> Unit) -> Boolean = { onEmpty ->
+                finishCalls += 1
+                events += "finish-empty"
+                onEmpty()
+                true
+            }
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val recoveryProcess = DataTaskRecoveryProcess(
+                dispatcher,
+                recoverClaims,
+                cleanupRecoveredClaim,
+            )
+            val first = coordinator(
+                dispatcher = dispatcher,
+                registry = registry,
+                recoverClaims = recoverClaims,
+                cleanupRecoveredClaim = cleanupRecoveredClaim,
+                recoveryProcess = recoveryProcess,
+                finishDrainIfEmpty = finishDrainIfEmpty,
             )
 
-            coordinator.wake { events += "drained:first" }
+            first.wake { events += "drained:first" }
             advanceUntilIdle()
 
             assertEquals(1, recoveryCalls)
             assertEquals(1, cleanupCalls)
             assertEquals(0, finishCalls)
             assertTrue(events.isEmpty())
-            assertFalse(coordinator.hasDrainJobForTest)
+            assertFalse(first.hasDrainJobForTest)
+            first.stopClaimsAndInterrupt()
 
-            coordinator.wake { events += "drained:second" }
+            val replacement = coordinator(
+                dispatcher = dispatcher,
+                registry = registry,
+                recoverClaims = recoverClaims,
+                cleanupRecoveredClaim = cleanupRecoveredClaim,
+                recoveryProcess = recoveryProcess,
+                finishDrainIfEmpty = finishDrainIfEmpty,
+            )
+            replacement.wake { events += "drained:replacement" }
             advanceUntilIdle()
 
             assertEquals(2, recoveryCalls)
             assertEquals(2, cleanupCalls)
             assertEquals(1, finishCalls)
-            assertEquals(listOf("cleanup", "finish-empty", "drained:second"), events)
-            assertFalse(coordinator.hasDrainJobForTest)
+            assertEquals(
+                listOf("cleanup:$TASK_1", "finish-empty", "drained:replacement"),
+                events,
+            )
+            assertFalse(replacement.hasDrainJobForTest)
         }
 
     @Test
@@ -1241,7 +1400,8 @@ class DataSyncCoordinatorTest {
         var settlementAttempts = 0
         var activeCleanupCalls = 0
         var recoveredCleanupCalls = 0
-        var callbacks = 0
+        var finishCalls = 0
+        val callbacks = mutableListOf<String>()
         var firstToken = ""
         val coordinator = coordinator(
             registry = registry,
@@ -1269,13 +1429,13 @@ class DataSyncCoordinatorTest {
             },
             claimReleaseIsPending = { releasePending.get() },
             cleanupClaim = { activeCleanupCalls += 1 },
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                onEmpty()
+                true
+            },
         )
-        coordinator.afterUncertainReleaseSnapshotForTest = {
-            snapshotTaken.countDown()
-            check(resumeWake.await(5, TimeUnit.SECONDS))
-        }
-
-        coordinator.wake { callbacks += 1 }
+        coordinator.wake { callbacks += "first" }
         runCurrent()
         advanceTimeBy(1.seconds)
         runCurrent()
@@ -1283,10 +1443,14 @@ class DataSyncCoordinatorTest {
         assertEquals(4, settlementAttempts)
         assertTrue(registry.hasUncertainClaimRelease(firstToken))
         assertEquals(1, coordinator.reconciliationJobCountForTest)
+        coordinator.beforeWakeLockForTest = {
+            snapshotTaken.countDown()
+            check(resumeWake.await(5, TimeUnit.SECONDS))
+        }
 
         val executor = Executors.newSingleThreadExecutor()
         try {
-            val staleWake = executor.submit<Long> { coordinator.wake { callbacks += 1 } }
+            val staleWake = executor.submit<Long> { coordinator.wake { callbacks += "second" } }
             assertTrue(snapshotTaken.await(5, TimeUnit.SECONDS))
             releasePending.set(false)
 
@@ -1295,7 +1459,8 @@ class DataSyncCoordinatorTest {
 
             assertEquals(1, recoveredCleanupCalls)
             assertEquals(0, activeCleanupCalls)
-            assertEquals(1, callbacks)
+            assertEquals(1, finishCalls)
+            assertEquals(listOf("first"), callbacks)
             assertFalse(registry.hasUncertainClaimRelease(firstToken))
             assertEquals(0, coordinator.reconciliationJobCountForTest)
             assertFalse(coordinator.hasDrainJobForTest)
@@ -1305,7 +1470,9 @@ class DataSyncCoordinatorTest {
             advanceUntilIdle()
 
             assertEquals(1, recoveredCleanupCalls + activeCleanupCalls)
-            assertEquals(1, callbacks)
+            assertEquals(2, finishCalls)
+            assertEquals(listOf("first", "second"), callbacks)
+            assertEquals(3, coordinator.drainLaunchCountForTest)
             assertFalse(registry.hasUncertainClaimRelease(firstToken))
             assertEquals(0, coordinator.reconciliationJobCountForTest)
             assertFalse(coordinator.hasDrainJobForTest)
@@ -1564,6 +1731,44 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
+    fun `recovered cleanup failure concurrent with stop is not reported as drained`() = runTest {
+        val cleanupEntered = CompletableDeferred<Unit>()
+        val failCleanup = CompletableDeferred<Unit>()
+        var cleanupCalls = 0
+        var finishCalls = 0
+        var callbacks = 0
+        val coordinator = coordinator(
+            recoverClaims = { _, _ -> listOf(TASK_1) },
+            cleanupRecoveredClaim = { taskId ->
+                assertEquals(TASK_1, taskId)
+                cleanupCalls += 1
+                cleanupEntered.complete(Unit)
+                failCleanup.await()
+                error("process cleanup unavailable")
+            },
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake { callbacks += 1 }
+        runCurrent()
+        cleanupEntered.await()
+        val stopping = async { coordinator.stopClaimsAndInterrupt() }
+        runCurrent()
+        failCleanup.complete(Unit)
+        stopping.await()
+        advanceUntilIdle()
+
+        assertEquals(1, cleanupCalls)
+        assertEquals(0, finishCalls)
+        assertEquals(0, callbacks)
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
     fun `recovery failure waits for an explicit wake without a false drain callback`() = runTest {
         val callbacks = mutableListOf<String>()
         var recoveryCalls = 0
@@ -1626,6 +1831,11 @@ class DataSyncCoordinatorTest {
         recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID> =
             { _, _ -> emptyList() },
         cleanupRecoveredClaim: suspend (UUID) -> Unit = {},
+        recoveryProcess: DataTaskRecoveryProcess = DataTaskRecoveryProcess(
+            dispatcher,
+            recoverClaims,
+            cleanupRecoveredClaim,
+        ),
         claimNext: suspend (String, String) -> DataSyncClaim? = { _, _ -> null },
         executeClaim: suspend (DataSyncClaim, DataTaskCheckpointSink) -> DataTaskRunOutcome = { _, _ ->
             completed()
@@ -1648,6 +1858,7 @@ class DataSyncCoordinatorTest {
         awaitLaunchSweep = awaitLaunchSweep,
         recoverClaims = recoverClaims,
         cleanupRecoveredClaim = cleanupRecoveredClaim,
+        recoveryProcess = recoveryProcess,
         claimNext = claimNext,
         executeClaim = executeClaim,
         settleTimeout = settleTimeout,

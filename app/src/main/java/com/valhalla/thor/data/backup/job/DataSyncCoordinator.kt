@@ -98,15 +98,108 @@ private class DataTaskOutcomeSettlementLostOwnershipException : IllegalStateExce
     "Data task outcome settlement lost ownership"
 )
 
+internal class DataTaskRecoveryOperation internal constructor(
+    internal val completion: Deferred<Unit>,
+)
+
+/** Process-scoped recovery and cleanup responsibility owned by the singleton Room runtime. */
+internal class DataTaskRecoveryProcess(
+    dispatcher: CoroutineDispatcher,
+    private val recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID>,
+    private val cleanupRecoveredClaim: suspend (UUID) -> Unit,
+) {
+    private class Entry(
+        val operation: DataTaskRecoveryOperation,
+        var completedSuccessfully: Boolean = false,
+    )
+
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
+    private val lock = Any()
+    private val pendingCleanup = linkedSetOf<UUID>()
+    private var current: Entry? = null
+
+    fun startOrJoin(
+        sessionToken: String,
+        localOwnerIsLive: (UUID, String) -> Boolean,
+    ): DataTaskRecoveryOperation {
+        var shouldStart = false
+        val operation = synchronized(lock) {
+            current?.operation ?: run {
+                lateinit var created: DataTaskRecoveryOperation
+                val completion = scope.async(start = CoroutineStart.LAZY) {
+                    cleanupPendingTasks()
+                    val recoveredTaskIds = recoverClaims(sessionToken, localOwnerIsLive).distinct()
+                    synchronized(lock) { pendingCleanup += recoveredTaskIds }
+                    cleanupPendingTasks()
+                    synchronized(lock) {
+                        current?.takeIf { it.operation === created }?.completedSuccessfully = true
+                    }
+                }
+                created = DataTaskRecoveryOperation(completion)
+                current = Entry(created)
+                completion.invokeOnCompletion { failure ->
+                    if (failure != null) {
+                        synchronized(lock) {
+                            if (current?.operation === created) current = null
+                        }
+                    }
+                }
+                shouldStart = true
+                created
+            }
+        }
+        if (shouldStart) operation.completion.start()
+        return operation
+    }
+
+    fun consume(operation: DataTaskRecoveryOperation): Boolean = synchronized(lock) {
+        val entry = current ?: return@synchronized false
+        if (
+            entry.operation !== operation ||
+            !entry.completedSuccessfully ||
+            !operation.completion.isCompleted
+        ) {
+            return@synchronized false
+        }
+        current = null
+        true
+    }
+
+    fun hasUnconsumedSuccess(operation: DataTaskRecoveryOperation? = null): Boolean =
+        synchronized(lock) {
+            val entry = current ?: return@synchronized false
+            (operation == null || entry.operation === operation) &&
+                entry.completedSuccessfully &&
+                entry.operation.completion.isCompleted
+        }
+
+    private suspend fun cleanupPendingTasks() {
+        val taskIds = synchronized(lock) { pendingCleanup.toList() }
+        var firstFailure: Throwable? = null
+        taskIds.forEach { taskId ->
+            try {
+                cleanupRecoveredClaim(taskId)
+                synchronized(lock) { pendingCleanup.remove(taskId) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                firstFailure?.addSuppressed(failure) ?: run { firstFailure = failure }
+            }
+        }
+        firstFailure?.let { throw it }
+    }
+}
+
 internal interface DataSyncCoordinatorRuntime {
     suspend fun awaitLegacyDrain()
     suspend fun awaitLaunchSweep(): Boolean
-    suspend fun recoverClaims(
+    fun startOrJoinRecovery(
         sessionToken: String,
         localOwnerIsLive: (UUID, String) -> Boolean,
-    ): List<UUID>
+    ): DataTaskRecoveryOperation
 
-    suspend fun cleanupRecoveredClaim(taskId: UUID)
+    fun consumeRecovery(operation: DataTaskRecoveryOperation): Boolean
+    fun hasUnconsumedRecovery(operation: DataTaskRecoveryOperation? = null): Boolean
     suspend fun claimNext(sessionToken: String, claimToken: String): DataSyncClaim?
     suspend fun executeClaim(
         claim: DataSyncClaim,
@@ -156,6 +249,15 @@ internal class RoomDataSyncCoordinatorRuntime(
     private val powerManager = requireNotNull(
         applicationContext.getSystemService(PowerManager::class.java)
     )
+    private val recoveryProcess = DataTaskRecoveryProcess(
+        dispatcher = ioDispatcher,
+        recoverClaims = { sessionToken, localOwnerIsLive ->
+            store.recoverClaims(sessionToken, nowMs(), localOwnerIsLive)
+                .map { it.taskId }
+                .distinct()
+        },
+        cleanupRecoveredClaim = ::cleanupTask,
+    )
 
     override suspend fun awaitLegacyDrain() {
         legacyGate.awaitDrained()
@@ -163,14 +265,16 @@ internal class RoomDataSyncCoordinatorRuntime(
 
     override suspend fun awaitLaunchSweep(): Boolean = launchSweep.awaitSwept()
 
-    override suspend fun recoverClaims(
+    override fun startOrJoinRecovery(
         sessionToken: String,
         localOwnerIsLive: (UUID, String) -> Boolean,
-    ): List<UUID> = store.recoverClaims(sessionToken, nowMs(), localOwnerIsLive)
-        .map { it.taskId }
-        .distinct()
+    ): DataTaskRecoveryOperation = recoveryProcess.startOrJoin(sessionToken, localOwnerIsLive)
 
-    override suspend fun cleanupRecoveredClaim(taskId: UUID) = cleanupTask(taskId)
+    override fun consumeRecovery(operation: DataTaskRecoveryOperation): Boolean =
+        recoveryProcess.consume(operation)
+
+    override fun hasUnconsumedRecovery(operation: DataTaskRecoveryOperation?): Boolean =
+        recoveryProcess.hasUnconsumedSuccess(operation)
 
     override suspend fun claimNext(sessionToken: String, claimToken: String): DataSyncClaim? {
         val now = nowMs()
@@ -658,7 +762,6 @@ class DataSyncCoordinator internal constructor(
     private var latestWake: WakeGeneration? = null
     private var activeClaim: DataSyncClaim? = null
     private var activeTimeoutSettlement: ActiveTimeoutSettlement? = null
-    private val pendingRecoveredClaimCleanup = linkedSetOf<UUID>()
     private val reconciliationJobs = mutableMapOf<String, Job>()
     private val drainLaunches = AtomicInteger()
     private val generationToken = UUID.randomUUID().toString()
@@ -670,6 +773,11 @@ class DataSyncCoordinator internal constructor(
         awaitLaunchSweep: suspend () -> Boolean,
         recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID>,
         cleanupRecoveredClaim: suspend (UUID) -> Unit,
+        recoveryProcess: DataTaskRecoveryProcess = DataTaskRecoveryProcess(
+            dispatcher,
+            recoverClaims,
+            cleanupRecoveredClaim,
+        ),
         claimNext: suspend (String, String) -> DataSyncClaim?,
         executeClaim: suspend (DataSyncClaim, DataTaskCheckpointSink) -> DataTaskRunOutcome,
         settleTimeout: suspend (DataSyncClaim) -> Boolean,
@@ -688,13 +796,18 @@ class DataSyncCoordinator internal constructor(
         runtime = object : DataSyncCoordinatorRuntime {
             override suspend fun awaitLegacyDrain() = awaitLegacyDrain()
             override suspend fun awaitLaunchSweep(): Boolean = awaitLaunchSweep()
-            override suspend fun recoverClaims(
+            override fun startOrJoinRecovery(
                 sessionToken: String,
                 localOwnerIsLive: (UUID, String) -> Boolean,
-            ) = recoverClaims(sessionToken, localOwnerIsLive)
+            ): DataTaskRecoveryOperation =
+                recoveryProcess.startOrJoin(sessionToken, localOwnerIsLive)
 
-            override suspend fun cleanupRecoveredClaim(taskId: UUID) =
-                cleanupRecoveredClaim(taskId)
+            override fun consumeRecovery(operation: DataTaskRecoveryOperation): Boolean =
+                recoveryProcess.consume(operation)
+
+            override fun hasUnconsumedRecovery(
+                operation: DataTaskRecoveryOperation?,
+            ): Boolean = recoveryProcess.hasUnconsumedSuccess(operation)
 
             override suspend fun claimNext(sessionToken: String, claimToken: String) =
                 claimNext(sessionToken, claimToken)
@@ -741,30 +854,26 @@ class DataSyncCoordinator internal constructor(
 
     internal var lastClaimTokenForTest: String? = null
         private set
-    internal var afterUncertainReleaseSnapshotForTest: (() -> Unit)? = null
+    internal var beforeWakeLockForTest: (() -> Unit)? = null
 
     fun wake(
         onClaimed: (UUID, String) -> Unit = { _, _ -> },
         onDrained: () -> Unit,
     ): Long {
-        val pendingReleases = ownerRegistry.pendingUncertainClaimReleases()
-        var retryPending = false
+        beforeWakeLockForTest?.invoke()
+        var pendingReleases = emptyList<DataTaskUncertainClaimRelease>()
         val generation = synchronized(lock) {
             val accepted = ++acceptedWakeGeneration
             latestWake = WakeGeneration(accepted, onClaimed, onDrained)
             if (claimsEnabled && drain?.isActive != true) {
+                pendingReleases = ownerRegistry.pendingUncertainClaimReleases()
                 if (pendingReleases.isEmpty()) {
                     launchDrainLocked(accepted)
-                } else {
-                    retryPending = true
                 }
             }
             accepted
         }
-        if (retryPending) {
-            afterUncertainReleaseSnapshotForTest?.invoke()
-            pendingReleases.forEach(::handoffUncertainClaimReconciliation)
-        }
+        pendingReleases.forEach(::handoffUncertainClaimReconciliation)
         return generation
     }
 
@@ -959,15 +1068,19 @@ class DataSyncCoordinator internal constructor(
                 val newerWakeExists = acceptedWakeGeneration > observedWakeGeneration
                 when {
                     reconciliationJobs.isNotEmpty() -> null
-                    drainCancelled -> null
-                    !claimsEnabled -> latestWake?.onDrained
+                    drainCancelled || !claimsEnabled -> null
+                    runtime.hasUnconsumedRecovery() -> {
+                        launchDrainLocked(requireNotNull(latestWake).number)
+                        null
+                    }
+
                     newerWakeExists && !ownershipUncertain -> {
                         launchDrainLocked(requireNotNull(latestWake).number)
                         null
                     }
 
-                    parkedBeforeClaim -> latestWake?.onDrained
                     infrastructureFailed || ownershipUncertain -> null
+                    parkedBeforeClaim -> latestWake?.onDrained
                     else -> null
                 }
             }
@@ -976,26 +1089,29 @@ class DataSyncCoordinator internal constructor(
     }
 
     private suspend fun recoverAndCleanupClaims() {
-        runBoundedSettlement {
-            val recoveredTaskIds = runtime.recoverClaims(sessionToken, ownerRegistry::isLive)
-            val cleanupTaskIds = synchronized(lock) {
-                pendingRecoveredClaimCleanup += recoveredTaskIds
-                pendingRecoveredClaimCleanup.toList()
-            }
-            var cleanupFailure: Throwable? = null
-            cleanupTaskIds.forEach { taskId ->
-                try {
-                    runtime.cleanupRecoveredClaim(taskId)
-                    synchronized(lock) { pendingRecoveredClaimCleanup.remove(taskId) }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Throwable) {
-                    cleanupFailure?.addSuppressed(failure) ?: run { cleanupFailure = failure }
-                }
-            }
-            cleanupFailure?.let { throw it }
+        val recovery = runtime.startOrJoinRecovery(sessionToken, ownerRegistry::isLive)
+        recovery.completion.invokeOnCompletion { failure ->
+            if (failure == null) resumeAfterCompletedRecovery(recovery)
+        }
+        runBoundedSettlement { recovery.completion.await() }
+        check(runtime.consumeRecovery(recovery)) {
+            "Completed data task recovery was not available for arbitration"
         }
         currentCoroutineContext().ensureActive()
+    }
+
+    private fun resumeAfterCompletedRecovery(recovery: DataTaskRecoveryOperation) {
+        synchronized(lock) {
+            if (
+                claimsEnabled &&
+                latestWake != null &&
+                drain?.isActive != true &&
+                reconciliationJobs.isEmpty() &&
+                runtime.hasUnconsumedRecovery(recovery)
+            ) {
+                launchDrainLocked(requireNotNull(latestWake).number)
+            }
+        }
     }
 
     private fun timeoutSettlementFor(claim: DataSyncClaim): Deferred<Boolean> {
