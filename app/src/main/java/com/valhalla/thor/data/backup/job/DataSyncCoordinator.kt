@@ -109,7 +109,11 @@ internal interface DataSyncCoordinatorRuntime {
     suspend fun settleTimeout(claim: DataSyncClaim): Boolean
     suspend fun settleProvisionalClaim(claimToken: String): Boolean
     suspend fun claimReleaseIsPending(release: DataTaskUncertainClaimRelease): Boolean
-    suspend fun persistOutcome(claim: DataSyncClaim, outcome: DataTaskRunOutcome)
+    suspend fun persistOutcome(
+        claim: DataSyncClaim,
+        outcome: DataTaskRunOutcome,
+    ): DataTaskSinkWrite
+
     suspend fun cleanupClaim(claim: DataSyncClaim)
     fun checkpointSink(claim: DataSyncClaim): DataTaskCheckpointSink
     suspend fun finishDrainIfEmpty(onQueueEmpty: () -> Unit): Boolean
@@ -228,7 +232,10 @@ internal class RoomDataSyncCoordinatorRuntime(
         )
     }
 
-    override suspend fun persistOutcome(claim: DataSyncClaim, outcome: DataTaskRunOutcome) {
+    override suspend fun persistOutcome(
+        claim: DataSyncClaim,
+        outcome: DataTaskRunOutcome,
+    ): DataTaskSinkWrite {
         val task = requireNotNull(claim.task)
         val item = requireNotNull(claim.item)
         val write = RoomDataTaskResultSink(
@@ -246,6 +253,7 @@ internal class RoomDataSyncCoordinatorRuntime(
                 detail?.source?.let { source -> restoreSourceStager.discard(task.taskId, source) }
             }
         }
+        return write
     }
 
     override suspend fun cleanupClaim(claim: DataSyncClaim) {
@@ -656,7 +664,7 @@ class DataSyncCoordinator internal constructor(
         settleTimeout: suspend (DataSyncClaim) -> Boolean,
         settleProvisionalClaim: suspend (String) -> Boolean,
         claimReleaseIsPending: suspend (DataTaskUncertainClaimRelease) -> Boolean,
-        persistOutcome: suspend (DataSyncClaim, DataTaskRunOutcome) -> Unit,
+        persistOutcome: suspend (DataSyncClaim, DataTaskRunOutcome) -> DataTaskSinkWrite,
         cleanupClaim: suspend (DataSyncClaim) -> Unit,
         checkpointSink: (DataSyncClaim) -> DataTaskCheckpointSink,
         finishDrainIfEmpty: suspend (() -> Unit) -> Boolean,
@@ -1099,8 +1107,13 @@ class DataSyncCoordinator internal constructor(
         } catch (cancelled: CancellationException) {
             runBoundedSettlement {
                 if (claimsAreEnabled()) {
+                    check(
+                        runtime.persistOutcome(
+                            claim,
+                            DataTaskRunOutcome.Cancelled,
+                        ) == DataTaskSinkWrite.APPLIED
+                    ) { "Cancelled data task outcome settlement lost ownership" }
                     runtime.cleanupClaim(claim)
-                    runtime.persistOutcome(claim, DataTaskRunOutcome.Cancelled)
                 } else {
                     check(timeoutSettlementFor(claim).await()) {
                         "Timed-out data task claim release remains uncertain"
@@ -1114,7 +1127,9 @@ class DataSyncCoordinator internal constructor(
             DataTaskRunOutcome.TaskFailed(DataTaskResultCode("TASK_EXECUTION_FAILED"))
         }
         runBoundedSettlement {
-            runtime.persistOutcome(claim, outcome)
+            check(runtime.persistOutcome(claim, outcome) == DataTaskSinkWrite.APPLIED) {
+                "Data task outcome settlement lost ownership"
+            }
             runtime.cleanupClaim(claim)
         }
         settlementCompleted.complete(Unit)

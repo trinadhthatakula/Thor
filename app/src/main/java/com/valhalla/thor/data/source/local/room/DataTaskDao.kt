@@ -644,11 +644,69 @@ abstract class DataTaskDao {
         outcome: DataTaskRunOutcome,
         nowMs: Long,
     ): Boolean {
-        if (outcome is DataTaskRunOutcome.OwnershipLost) return false
         val task = loadTaskEntity(taskId) ?: return false
         val item = loadItemEntity(taskId, itemOrdinal) ?: return false
-        if (task.claimToken != taskClaimToken || item.claimToken != itemClaimToken) return false
+        if (
+            task.claimToken != taskClaimToken ||
+            item.state != DataTaskItemState.RUNNING.name ||
+            item.claimToken != itemClaimToken ||
+            task.state !in TIMEOUT_SETTLEABLE_STATES
+        ) {
+            return false
+        }
         val kind = DataTaskKind.valueOf(task.kind)
+        val restoreDetail = if (kind == DataTaskKind.ARCHIVE_RESTORE) {
+            loadArchiveDetail(taskId)
+        } else {
+            null
+        }
+        val cancellationRequested = task.state == DataTaskState.CANCEL_REQUESTED.name
+        if (cancellationRequested) {
+            if (
+                kind == DataTaskKind.ARCHIVE_RESTORE &&
+                restoreDetail?.destructiveStarted != false
+            ) {
+                val review = outcome as? DataTaskRunOutcome.InterruptedReview
+                review?.breadcrumb?.let { breadcrumb ->
+                    updateRestoreCheckpoint(
+                        taskId = taskId,
+                        destructiveStarted = true,
+                        mutationPackageName = breadcrumb.packageName,
+                        mutationAppLabel = breadcrumb.appLabel,
+                        mutationStartedAtEpochMs = breadcrumb.startedAtEpochMs,
+                    )
+                }
+                val breadcrumb = review?.breadcrumb ?: restoreDetail?.toBreadcrumb()
+                return pauseClaimedTask(
+                    taskId,
+                    taskClaimToken,
+                    itemOrdinal,
+                    itemClaimToken,
+                    DataTaskState.INTERRUPTED_REVIEW,
+                    DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW,
+                    review?.resultCode ?: DataTaskResultCode(
+                        if (breadcrumb == null) {
+                            RESULT_RECOVERY_BREADCRUMB_MISSING
+                        } else {
+                            RESULT_DESTRUCTIVE_RESTORE_REVIEW
+                        }
+                    ),
+                    nowMs,
+                    keepItemRunning = true,
+                )
+            }
+            return terminateClaimedTask(
+                taskId,
+                taskClaimToken,
+                itemOrdinal,
+                itemClaimToken,
+                DataTaskState.CANCELLED,
+                DataTaskItemState.CANCELLED,
+                DataTaskResultCode(RESULT_CANCELLED),
+                nowMs,
+            )
+        }
+        if (outcome is DataTaskRunOutcome.OwnershipLost) return false
         val terminalFailureOrCancellation = when (outcome) {
             is DataTaskRunOutcome.TaskFailed,
             DataTaskRunOutcome.Cancelled,
@@ -659,22 +717,9 @@ abstract class DataTaskDao {
 
             else -> false
         }
-        val cancellationRequested = task.state == DataTaskState.CANCEL_REQUESTED.name
-        if (
-            cancellationRequested &&
-            outcome != DataTaskRunOutcome.Cancelled &&
-            outcome !is DataTaskRunOutcome.InterruptedReview
-        ) {
-            return false
-        }
-        val restoreDetail = if (kind == DataTaskKind.ARCHIVE_RESTORE) {
-            loadArchiveDetail(taskId)
-        } else {
-            null
-        }
         if (
             kind == DataTaskKind.ARCHIVE_RESTORE &&
-            (cancellationRequested || terminalFailureOrCancellation) &&
+            terminalFailureOrCancellation &&
             restoreDetail?.destructiveStarted != false &&
             outcome !is DataTaskRunOutcome.InterruptedReview
         ) {
@@ -689,11 +734,6 @@ abstract class DataTaskDao {
                 nowMs,
                 keepItemRunning = true,
             )
-        }
-        if (task.state != DataTaskState.RUNNING.name &&
-            task.state != DataTaskState.CANCEL_REQUESTED.name
-        ) {
-            return false
         }
 
         return when (outcome) {

@@ -244,7 +244,67 @@ class DataTaskDaoTest {
     }
 
     @Test
-    fun cancellationRejectsNonCancellationSettlement() = runBlocking {
+    fun cancellationAtomicallyDefeatsEveryStaleNonCancellationOutcome() = runBlocking {
+        val outcomes = listOf(
+            DataTaskRunOutcome.ItemCompleted(successfulItemResult(2_300L)),
+            DataTaskRunOutcome.ItemCompleted(
+                successfulItemResult(2_300L).copy(
+                    terminalState = DataTaskItemTerminalState.FAILED,
+                    resultCode = DataTaskResultCode("STALE_FAILURE"),
+                    outputs = emptyList(),
+                )
+            ),
+            DataTaskRunOutcome.WaitingForAuthentication(DataTaskResultCode("AUTH_REQUIRED")),
+            DataTaskRunOutcome.WaitingForSource(DataTaskResultCode("SOURCE_REQUIRED")),
+            DataTaskRunOutcome.TaskFailed(DataTaskResultCode("STALE_TASK_FAILURE")),
+            DataTaskRunOutcome.OwnershipLost,
+        )
+
+        outcomes.forEachIndexed { index, outcome ->
+            val taskId = taskId(100 + index)
+            dao.insertTask(newExportTask(taskId))
+            dao.claimOldestRunnableTask("session", "task-claim-$index", 2_000L, 3_000L)
+            dao.claimNextPendingItem(
+                taskId,
+                "task-claim-$index",
+                "item-claim-$index",
+                2_100L,
+                3_100L,
+            )
+            dao.requestCancellation(taskId, 2_200L)
+
+            assertTrue(
+                dao.settleClaimedTask(
+                    taskId,
+                    "task-claim-$index",
+                    0,
+                    "item-claim-$index",
+                    outcome,
+                    2_400L,
+                ),
+            )
+
+            val task = loadPersistedTask(taskId)
+            assertEquals(DataTaskState.CANCELLED.name, task.state)
+            assertEquals(DataTaskInterruption.NONE.name, task.interruption)
+            assertEquals("CANCELLED", task.resultCode)
+            assertNull(task.serviceSessionToken)
+            assertNull(task.claimToken)
+            assertNull(task.claimLeaseExpiresAtEpochMs)
+            val item = loadPersistedItem(taskId)
+            assertEquals(DataTaskItemState.CANCELLED.name, item.state)
+            assertNull(item.claimToken)
+            assertNull(item.claimLeaseExpiresAtEpochMs)
+            val snapshot = requireNotNull(dao.loadTask(taskId))
+            assertEquals(0, snapshot.completed)
+            assertEquals(1, snapshot.total)
+            assertEquals(DataTaskResultCode("CANCELLED"), snapshot.items.single().resultCode)
+            assertTrue(snapshot.outputs.isEmpty())
+        }
+    }
+
+    @Test
+    fun cancellationStillRejectsStaleNormalOutcomeTokens() = runBlocking {
         dao.insertTask(newExportTask(TASK_1))
         dao.claimOldestRunnableTask("session", "task-claim", 2_000L, 3_000L)
         dao.claimNextPendingItem(TASK_1, "task-claim", "item-claim", 2_100L, 3_100L)
@@ -253,17 +313,125 @@ class DataTaskDaoTest {
         assertFalse(
             dao.settleClaimedTask(
                 TASK_1,
+                "stale-task-claim",
+                0,
+                "item-claim",
+                DataTaskRunOutcome.ItemCompleted(successfulItemResult(2_300L)),
+                2_400L,
+            ),
+        )
+
+        val task = loadPersistedTask()
+        assertEquals(DataTaskState.CANCEL_REQUESTED.name, task.state)
+        assertEquals("task-claim", task.claimToken)
+        val item = loadPersistedItem()
+        assertEquals(DataTaskItemState.RUNNING.name, item.state)
+        assertEquals("item-claim", item.claimToken)
+    }
+
+    @Test
+    fun destructiveCancellationDefeatsStaleSuccessWithInterruptedReview() = runBlocking {
+        val breadcrumb = RestoreMutationBreadcrumb(
+            packageName = "com.example.app",
+            appLabel = "Example",
+            startedAtEpochMs = 2_150L,
+        )
+        dao.insertTask(newRestoreTask())
+        dao.claimOldestRunnableTask("session", "task-claim", 2_000L, 3_000L)
+        dao.claimNextPendingItem(TASK_1, "task-claim", "item-claim", 2_100L, 3_100L)
+        assertTrue(
+            dao.checkpointClaimedTask(
+                TASK_1,
+                "task-claim",
+                0,
+                "item-claim",
+                checkpoint().copy(
+                    destructiveStarted = true,
+                    restoreMutationBreadcrumb = breadcrumb,
+                ),
+                3_200L,
+                transactionNowMs = { 2_200L },
+            ),
+        )
+        dao.requestCancellation(TASK_1, 2_300L)
+
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_1,
+                "task-claim",
+                0,
+                "item-claim",
+                DataTaskRunOutcome.ItemCompleted(successfulItemResult(2_350L)),
+                2_400L,
+            ),
+        )
+        reopenDatabase()
+
+        val task = loadPersistedTask()
+        assertEquals(DataTaskState.INTERRUPTED_REVIEW.name, task.state)
+        assertEquals(DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW.name, task.interruption)
+        assertEquals("DESTRUCTIVE_RESTORE_REVIEW", task.resultCode)
+        assertNull(task.serviceSessionToken)
+        assertNull(task.claimToken)
+        assertNull(task.claimLeaseExpiresAtEpochMs)
+        val item = loadPersistedItem()
+        assertEquals(DataTaskItemState.RUNNING.name, item.state)
+        assertNull(item.claimToken)
+        assertNull(item.claimLeaseExpiresAtEpochMs)
+        assertEquals(breadcrumb, loadPersistedBreadcrumb())
+        val snapshot = requireNotNull(dao.loadTask(TASK_1))
+        assertNull(snapshot.terminalAtEpochMs)
+        assertTrue(snapshot.outputs.isEmpty())
+        assertEquals(
+            StoredRestoreSource.PrivateCopy(privateRestoreSourceRelativePath(UUID.fromString(TASK_1))),
+            (snapshot.detail as StoredDataTaskDetail.ArchiveRestore).source,
+        )
+    }
+
+    @Test
+    fun destructiveCancellationWithoutBreadcrumbFailsClosedAfterStaleOutcome() = runBlocking {
+        dao.insertTask(newRestoreTask())
+        dao.claimOldestRunnableTask("session", "task-claim", 2_000L, 3_000L)
+        dao.claimNextPendingItem(TASK_1, "task-claim", "item-claim", 2_100L, 3_100L)
+        assertTrue(
+            dao.checkpointClaimedTask(
+                TASK_1,
+                "task-claim",
+                0,
+                "item-claim",
+                checkpoint().copy(destructiveStarted = true),
+                3_200L,
+                transactionNowMs = { 2_200L },
+            ),
+        )
+        dao.requestCancellation(TASK_1, 2_300L)
+
+        assertTrue(
+            dao.settleClaimedTask(
+                TASK_1,
                 "task-claim",
                 0,
                 "item-claim",
                 DataTaskRunOutcome.WaitingForAuthentication(DataTaskResultCode("AUTH_REQUIRED")),
-                2_300L,
+                2_400L,
             ),
         )
-        val decision = dao.requestCancellation(TASK_1, 2_400L)
+        reopenDatabase()
+
+        val task = loadPersistedTask()
+        assertEquals(DataTaskState.INTERRUPTED_REVIEW.name, task.state)
+        assertEquals(DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW.name, task.interruption)
+        assertEquals("RECOVERY_BREADCRUMB_MISSING", task.resultCode)
+        assertNull(task.claimToken)
+        val item = loadPersistedItem()
+        assertEquals(DataTaskItemState.RUNNING.name, item.state)
+        assertNull(item.claimToken)
+        val snapshot = requireNotNull(dao.loadTask(TASK_1))
+        assertNull(snapshot.terminalAtEpochMs)
+        assertNull(snapshot.items[0].resultCode)
         assertEquals(
-            DataTaskState.CANCEL_REQUESTED,
-            (decision as DataTaskCancellationDecision.InterruptActive).snapshot.state,
+            StoredRestoreSource.PrivateCopy(privateRestoreSourceRelativePath(UUID.fromString(TASK_1))),
+            (snapshot.detail as StoredDataTaskDetail.ArchiveRestore).source,
         )
     }
 
@@ -300,7 +468,7 @@ class DataTaskDaoTest {
                 0,
                 "item-claim",
                 DataTaskRunOutcome.InterruptedReview(
-                    resultCode = DataTaskResultCode("DESTRUCTIVE_RESTORE_REVIEW"),
+                    resultCode = DataTaskResultCode("EXPLICIT_RESTORE_REVIEW"),
                     breadcrumb = breadcrumb,
                 ),
                 2_400L,
@@ -311,6 +479,7 @@ class DataTaskDaoTest {
         val task = loadPersistedTask()
         assertEquals(DataTaskState.INTERRUPTED_REVIEW.name, task.state)
         assertEquals(DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW.name, task.interruption)
+        assertEquals("EXPLICIT_RESTORE_REVIEW", task.resultCode)
         assertNull(task.serviceSessionToken)
         assertNull(task.claimToken)
         assertNull(task.claimLeaseExpiresAtEpochMs)
@@ -1121,16 +1290,16 @@ class DataTaskDaoTest {
             )
         }
 
-    private fun loadPersistedItem(): PersistedItem =
+    private fun loadPersistedItem(taskId: String = TASK_1): PersistedItem =
         database.openHelper.readableDatabase.query(
             """
             SELECT state, claim_token, claim_lease_expires_at_epoch_ms
             FROM data_task_items
             WHERE task_id = ? AND ordinal = ?
             """.trimIndent(),
-            arrayOf<Any?>(TASK_1, 0),
+            arrayOf<Any?>(taskId, 0),
         ).use { cursor ->
-            check(cursor.moveToFirst()) { "Missing item $TASK_1/0" }
+            check(cursor.moveToFirst()) { "Missing item $taskId/0" }
             PersistedItem(
                 state = cursor.getString(cursor.getColumnIndexOrThrow("state")),
                 claimToken = cursor.stringOrNull("claim_token"),
