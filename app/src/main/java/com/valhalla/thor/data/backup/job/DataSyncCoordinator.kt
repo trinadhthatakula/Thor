@@ -92,14 +92,19 @@ internal data class DataSyncClaim(
     val item: ClaimedDataTaskItem? = null,
 )
 
+private class DataTaskOutcomeSettlementLostOwnershipException : IllegalStateException(
+    "Data task outcome settlement lost ownership"
+)
+
 internal interface DataSyncCoordinatorRuntime {
     suspend fun awaitLegacyDrain()
     suspend fun awaitLaunchSweep(): Boolean
     suspend fun recoverClaims(
         sessionToken: String,
         localOwnerIsLive: (UUID, String) -> Boolean,
-    )
+    ): List<UUID>
 
+    suspend fun cleanupRecoveredClaim(taskId: UUID)
     suspend fun claimNext(sessionToken: String, claimToken: String): DataSyncClaim?
     suspend fun executeClaim(
         claim: DataSyncClaim,
@@ -159,11 +164,16 @@ internal class RoomDataSyncCoordinatorRuntime(
     override suspend fun recoverClaims(
         sessionToken: String,
         localOwnerIsLive: (UUID, String) -> Boolean,
-    ) {
-        store.recoverClaims(sessionToken, nowMs(), localOwnerIsLive)
+    ): List<UUID> {
+        val recoveredTaskIds = store.recoverClaims(sessionToken, nowMs(), localOwnerIsLive)
+            .map { it.taskId }
+            .distinct()
         store.uncommittedRestoreSourceCleanupTaskIds()
             .forEach(restoreSourceStager::discardUncommittedTaskSources)
+        return recoveredTaskIds
     }
+
+    override suspend fun cleanupRecoveredClaim(taskId: UUID) = cleanupTask(taskId)
 
     override suspend fun claimNext(sessionToken: String, claimToken: String): DataSyncClaim? {
         val now = nowMs()
@@ -256,10 +266,12 @@ internal class RoomDataSyncCoordinatorRuntime(
         return write
     }
 
-    override suspend fun cleanupClaim(claim: DataSyncClaim) {
-        keys.drop(claim.taskId.toString())
-        restoreSources.dropTask(claim.taskId)
-        registry.clear(claim.taskId)
+    override suspend fun cleanupClaim(claim: DataSyncClaim) = cleanupTask(claim.taskId)
+
+    private fun cleanupTask(taskId: UUID) {
+        keys.drop(taskId.toString())
+        restoreSources.dropTask(taskId)
+        registry.clear(taskId)
     }
 
     override fun checkpointSink(claim: DataSyncClaim): DataTaskCheckpointSink {
@@ -658,7 +670,8 @@ class DataSyncCoordinator internal constructor(
         ownerRegistry: DataTaskOwnerRegistry,
         awaitLegacyDrain: suspend () -> Unit,
         awaitLaunchSweep: suspend () -> Boolean,
-        recoverClaims: suspend (String, (UUID, String) -> Boolean) -> Unit,
+        recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID>,
+        cleanupRecoveredClaim: suspend (UUID) -> Unit,
         claimNext: suspend (String, String) -> DataSyncClaim?,
         executeClaim: suspend (DataSyncClaim, DataTaskCheckpointSink) -> DataTaskRunOutcome,
         settleTimeout: suspend (DataSyncClaim) -> Boolean,
@@ -681,6 +694,9 @@ class DataSyncCoordinator internal constructor(
                 sessionToken: String,
                 localOwnerIsLive: (UUID, String) -> Boolean,
             ) = recoverClaims(sessionToken, localOwnerIsLive)
+
+            override suspend fun cleanupRecoveredClaim(taskId: UUID) =
+                cleanupRecoveredClaim(taskId)
 
             override suspend fun claimNext(sessionToken: String, claimToken: String) =
                 claimNext(sessionToken, claimToken)
@@ -721,6 +737,9 @@ class DataSyncCoordinator internal constructor(
 
     internal val reconciliationJobCountForTest: Int
         get() = synchronized(lock) { reconciliationJobs.size }
+
+    internal val hasDrainJobForTest: Boolean
+        get() = synchronized(lock) { drain != null }
 
     internal var lastClaimTokenForTest: String? = null
         private set
@@ -801,7 +820,10 @@ class DataSyncCoordinator internal constructor(
                 return
             }
             if (!claimsAreEnabled()) return
-            runtime.recoverClaims(sessionToken, ownerRegistry::isLive)
+            val recoveredTaskIds = runtime.recoverClaims(sessionToken, ownerRegistry::isLive)
+            withContext(NonCancellable) {
+                recoveredTaskIds.forEach { taskId -> runtime.cleanupRecoveredClaim(taskId) }
+            }
             while (claimsAreEnabled()) {
                 runtime.awaitLegacyDrain()
                 if (!claimsAreEnabled()) break
@@ -903,8 +925,9 @@ class DataSyncCoordinator internal constructor(
                         ownershipUncertain = true
                         handoffActiveClaimReconciliation(ownedClaim)
                         failure.addSuppressed(releaseFailure)
+                        throw failure
                     }
-                    throw failure
+                    if (failure !is DataTaskOutcomeSettlementLostOwnershipException) throw failure
                 } finally {
                     synchronized(lock) {
                         if (activeClaim?.claimToken == claimToken) activeClaim = null
@@ -1107,12 +1130,14 @@ class DataSyncCoordinator internal constructor(
         } catch (cancelled: CancellationException) {
             runBoundedSettlement {
                 if (claimsAreEnabled()) {
-                    check(
+                    if (
                         runtime.persistOutcome(
                             claim,
                             DataTaskRunOutcome.Cancelled,
-                        ) == DataTaskSinkWrite.APPLIED
-                    ) { "Cancelled data task outcome settlement lost ownership" }
+                        ) != DataTaskSinkWrite.APPLIED
+                    ) {
+                        throw DataTaskOutcomeSettlementLostOwnershipException()
+                    }
                     runtime.cleanupClaim(claim)
                 } else {
                     check(timeoutSettlementFor(claim).await()) {
@@ -1127,8 +1152,8 @@ class DataSyncCoordinator internal constructor(
             DataTaskRunOutcome.TaskFailed(DataTaskResultCode("TASK_EXECUTION_FAILED"))
         }
         runBoundedSettlement {
-            check(runtime.persistOutcome(claim, outcome) == DataTaskSinkWrite.APPLIED) {
-                "Data task outcome settlement lost ownership"
+            if (runtime.persistOutcome(claim, outcome) != DataTaskSinkWrite.APPLIED) {
+                throw DataTaskOutcomeSettlementLostOwnershipException()
             }
             runtime.cleanupClaim(claim)
         }
