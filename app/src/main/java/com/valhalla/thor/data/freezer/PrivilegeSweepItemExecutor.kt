@@ -51,7 +51,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
             lane = PrivilegeExecutionLane.SWEEP,
             commandClass = snapshot.operation.commandClass(),
             packageName = packageName,
-            workRequestId = snapshot.workId,
+            workRequestId = snapshot.executionId,
             sweepRequestId = snapshot.requestId,
             commandTimeout = PrivilegeExecutionTimeouts.SWEEP_COMMAND,
         )

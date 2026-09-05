@@ -14,8 +14,50 @@ enum class SweepAttemptOutcome { SUCCEEDED, FAILED, BUSY }
 
 enum class StoredSweepTerminal { SUCCEEDED, PARTIAL, CANCELLED, FAILED }
 
+enum class PrivilegeSweepRequestState {
+    QUEUED,
+    RUNNING,
+    CANCEL_REQUESTED,
+    BLOCKED,
+    SUCCEEDED,
+    PARTIAL,
+    CANCELLED,
+    FAILED,
+}
+
+enum class PrivilegeSweepBlockReason {
+    PRIVILEGE_AUTHORIZATION_REQUIRED,
+    START_BLOCKED,
+    START_BLOCKED_NOTIFICATION,
+}
+
+enum class PrivilegeSweepTargetState {
+    PENDING,
+    RUNNING,
+    SUCCEEDED,
+    FAILED,
+    BUSY,
+    CANCELLED,
+    UNKNOWN,
+    LEGACY_UNKNOWN,
+}
+
+enum class PrivilegeSweepTargetTerminalState {
+    SUCCEEDED,
+    FAILED,
+    BUSY,
+}
+
+@JvmInline
+value class PrivilegeSweepResultCode(val value: String) {
+    init {
+        require(value.matches(Regex("[A-Z0-9_]{1,64}")))
+    }
+}
+
 data class NewPrivilegeSweepSnapshot(
     val requestId: UUID,
+    @Deprecated("Use executionId", ReplaceWith("executionId"))
     val workId: UUID,
     val operation: PrivilegeSweepOperation,
     val freezerMode: FreezerMode?,
@@ -25,6 +67,10 @@ data class NewPrivilegeSweepSnapshot(
     val targets: List<String>,
     val sourceAssociations: Set<String> = setOf(source.name),
 ) {
+    @Suppress("DEPRECATION")
+    val executionId: UUID
+        get() = workId
+
     init {
         require(targets == normalizeSweepTargets(targets)) {
             "Sweep targets must already be canonical"
@@ -38,8 +84,23 @@ data class NewPrivilegeSweepSnapshot(
     }
 }
 
+data class StoredPrivilegeSweepTarget(
+    val requestId: UUID,
+    val ordinal: Int,
+    val packageName: String,
+    val state: PrivilegeSweepTargetState,
+    val claimToken: String?,
+    val claimLeaseExpiresAtEpochMs: Long?,
+    val attemptCount: Int,
+    val startedAtEpochMs: Long?,
+    val finishedAtEpochMs: Long?,
+    val resultCode: PrivilegeSweepResultCode?,
+    val rootLaneDegraded: Boolean,
+)
+
 data class StoredPrivilegeSweep(
     val requestId: UUID,
+    @Deprecated("Use executionId", ReplaceWith("executionId"))
     val workId: UUID,
     val operation: PrivilegeSweepOperation,
     val freezerMode: FreezerMode?,
@@ -55,7 +116,103 @@ data class StoredPrivilegeSweep(
     val terminalAtEpochMs: Long?,
     val retainUntilEpochMs: Long?,
     val sourceAssociations: Set<String> = setOf(source.name),
+    val targetSnapshots: List<StoredPrivilegeSweepTarget> = emptyList(),
+) {
+    @Suppress("DEPRECATION")
+    val executionId: UUID
+        get() = workId
+}
+
+data class ClaimedPrivilegeSweepRequest(
+    val requestId: UUID,
+    val queueSequence: Long,
+    val payloadSchemaVersion: Int,
+    val executionId: UUID,
+    val operation: PrivilegeSweepOperation,
+    val freezerMode: FreezerMode?,
+    val userId: Int,
+    val source: PrivilegeSweepSource,
+    val sourceAssociations: Set<String>,
+    val targetCount: Int,
+    val succeeded: Int,
+    val failed: Int,
+    val busy: Int,
+    val unresolved: Int,
+    val serviceSessionToken: String,
+    val claimToken: String,
+    val claimLeaseExpiresAtEpochMs: Long,
+    val attemptCount: Int,
+    val createdAtEpochMs: Long,
+    val claimedAtEpochMs: Long,
 )
+
+data class ClaimedPrivilegeSweepTarget(
+    val requestId: UUID,
+    val ordinal: Int,
+    val packageName: String,
+    val claimToken: String,
+    val claimLeaseExpiresAtEpochMs: Long,
+    val attemptCount: Int,
+    val startedAtEpochMs: Long,
+)
+
+data class PrivilegeSweepRecoveryCandidate(
+    val requestId: UUID,
+    val operation: PrivilegeSweepOperation,
+    val freezerMode: FreezerMode?,
+    val userId: Int,
+    val activeTargetOrdinal: Int,
+    val packageName: String,
+    val previousServiceSessionToken: String,
+    val previousRequestClaimToken: String,
+    val previousRequestClaimLeaseExpiresAtEpochMs: Long,
+    val activeTargetClaimToken: String,
+    val activeTargetClaimLeaseExpiresAtEpochMs: Long,
+)
+
+data class PrivilegeSweepTargetResult(
+    val terminalState: PrivilegeSweepTargetTerminalState,
+    val resultCode: PrivilegeSweepResultCode,
+    val rootLaneDegraded: Boolean,
+    val finishedAtEpochMs: Long,
+)
+
+sealed interface PrivilegeSweepRecovery {
+    val recoveredAtEpochMs: Long
+
+    data class Completed(
+        val result: PrivilegeSweepTargetResult,
+        override val recoveredAtEpochMs: Long,
+    ) : PrivilegeSweepRecovery
+
+    data class Requeue(
+        val resultCode: PrivilegeSweepResultCode,
+        override val recoveredAtEpochMs: Long,
+    ) : PrivilegeSweepRecovery
+
+    data class MarkUnknown(
+        val resultCode: PrivilegeSweepResultCode,
+        override val recoveredAtEpochMs: Long,
+    ) : PrivilegeSweepRecovery
+}
+
+sealed interface PrivilegeSweepCancellationDecision {
+    data object NotFound : PrivilegeSweepCancellationDecision
+
+    data class AlreadyTerminal(
+        val requestId: UUID,
+        val state: PrivilegeSweepRequestState,
+    ) : PrivilegeSweepCancellationDecision
+
+    data class Settled(
+        val requestId: UUID,
+    ) : PrivilegeSweepCancellationDecision
+
+    data class InterruptActive(
+        val requestId: UUID,
+        val activeTargetOrdinal: Int,
+    ) : PrivilegeSweepCancellationDecision
+}
 
 sealed interface SweepCreateResult {
     data class Created(val snapshot: StoredPrivilegeSweep) : SweepCreateResult
@@ -70,10 +227,95 @@ interface PrivilegeSweepStore {
 
     /** Retained requests ordered by the most recent launch association for [source]. */
     fun observeRetained(source: PrivilegeSweepSource): Flow<List<StoredPrivilegeSweep>>
+
+    suspend fun claimOldestRunnableRequest(
+        sessionToken: String,
+        claimToken: String,
+        nowMs: Long,
+        leaseUntilMs: Long,
+    ): ClaimedPrivilegeSweepRequest? = claimAwareStoreUnavailable()
+
+    suspend fun claimNextPendingTarget(
+        requestId: UUID,
+        requestClaimToken: String,
+        targetClaimToken: String,
+        nowMs: Long,
+        leaseUntilMs: Long,
+    ): ClaimedPrivilegeSweepTarget? = claimAwareStoreUnavailable()
+
+    suspend fun renewRequestClaim(
+        requestId: UUID,
+        claimToken: String,
+        leaseUntilMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun renewTargetClaim(
+        requestId: UUID,
+        ordinal: Int,
+        claimToken: String,
+        leaseUntilMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun completeClaimedTarget(
+        requestId: UUID,
+        ordinal: Int,
+        requestClaimToken: String,
+        targetClaimToken: String,
+        result: PrivilegeSweepTargetResult,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun requestCancellation(
+        requestId: UUID,
+        nowMs: Long,
+    ): PrivilegeSweepCancellationDecision = claimAwareStoreUnavailable()
+
+    suspend fun recoverRequestClaims(
+        sessionToken: String,
+        nowMs: Long,
+        localOwnerIsLive: (UUID, String) -> Boolean,
+    ): List<PrivilegeSweepRecoveryCandidate> = claimAwareStoreUnavailable()
+
+    suspend fun recoverInterruptedTarget(
+        requestId: UUID,
+        ordinal: Int,
+        recovery: PrivilegeSweepRecovery,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun recoverInterruptedTarget(
+        candidate: PrivilegeSweepRecoveryCandidate,
+        recovery: PrivilegeSweepRecovery,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun authorizeUnknownTargetRetry(
+        requestId: UUID,
+        ordinal: Int,
+        nowMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun finishClaimedRequestIfDrained(
+        requestId: UUID,
+        claimToken: String,
+        nowMs: Long,
+    ): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun hasRunnableRequests(): Boolean = claimAwareStoreUnavailable()
+
+    suspend fun finishDrainIfQueueEmpty(onQueueEmpty: () -> Unit): Boolean =
+        claimAwareStoreUnavailable()
+
+    @Deprecated("Compatibility for PrivilegeSweepWorker; remove in Task 12")
     suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep?
+
+    @Deprecated("Compatibility for PrivilegeSweepWorker; remove in Task 12")
     suspend fun recordAttempt(requestId: UUID, outcome: SweepAttemptOutcome): Boolean
+
+    @Deprecated("Compatibility for WorkManager reconciliation; remove in Task 12")
     suspend fun finish(requestId: UUID, terminal: StoredSweepTerminal, nowMs: Long): Boolean
+
     suspend fun cancelAllNonterminal(nowMs: Long): List<UUID>
     suspend fun delete(requestId: UUID)
     suspend fun deleteExpired(nowMs: Long): Int
 }
+
+private fun claimAwareStoreUnavailable(): Nothing =
+    throw UnsupportedOperationException("Claim-aware sweep storage is not implemented")
