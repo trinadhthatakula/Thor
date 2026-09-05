@@ -34,6 +34,7 @@ class DataSyncService : Service(), KoinComponent {
     private val coordinator: DataSyncCoordinator by inject()
     private val dataTaskDao: DataTaskDao by inject()
     private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
+    private val generationFence = DataSyncServiceGenerationFence()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = DataSyncServiceNotification(this)
@@ -56,7 +57,22 @@ class DataSyncService : Service(), KoinComponent {
             promotion !== ForegroundNotificationState.Available &&
             promotion !== ForegroundNotificationState.PostPermissionDenied
         ) {
-            persistBlockedStartAndStop(intent.taskIdOrNull(), promotion, startId)
+            val mayDiscoverCurrentTask = generationFence.onBlockedStart(startId)
+            persistBlockedStartAndStop(
+                taskId = intent.taskIdOrNull(),
+                state = promotion,
+                startId = startId,
+                mayDiscoverCurrentTask = mayDiscoverCurrentTask,
+            )
+            return START_NOT_STICKY
+        }
+        if (!generationFence.onPromotedStart(startId)) {
+            persistBlockedStartAndStop(
+                taskId = intent.taskIdOrNull(),
+                state = ForegroundNotificationState.Invalid("previous generation is timing out"),
+                startId = startId,
+                mayDiscoverCurrentTask = false,
+            )
             return START_NOT_STICKY
         }
 
@@ -71,11 +87,7 @@ class DataSyncService : Service(), KoinComponent {
                 )
             },
             onDrained = {
-                finishDataSyncServiceGeneration(
-                    startId = startId,
-                    stopSelfResult = ::stopSelfResult,
-                    removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
-                )
+                generationFence.onDrained(startId)?.let(::finishGeneration)
             },
         )
         return START_STICKY
@@ -84,19 +96,21 @@ class DataSyncService : Service(), KoinComponent {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onTimeout(startId: Int, foregroundServiceType: Int) {
-        val application = applicationContext as ThorApplication
-        application.launchInApplicationScope(ioDispatcher) {
-            boundedDataSyncTimeoutUnwind(
-                timeoutMillis = TIMEOUT_UNWIND_MILLIS,
-                settle = coordinator::stopClaimsAndInterrupt,
-                finish = {
-                    finishDataSyncServiceGeneration(
-                        startId = startId,
-                        stopSelfResult = ::stopSelfResult,
-                        removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
-                    )
-                },
-            )
+        if (generationFence.onTimeoutStarted(startId)) {
+            val application = applicationContext as ThorApplication
+            application.launchInApplicationScope(ioDispatcher) {
+                boundedDataSyncTimeoutUnwind(
+                    timeoutMillis = TIMEOUT_UNWIND_MILLIS,
+                    settle = coordinator::stopClaimsAndInterrupt,
+                    finish = {
+                        val stopped = finishGeneration(startId)
+                        val followUpStartId = generationFence.onTimeoutFinished(startId)
+                        if (!stopped && followUpStartId != null && followUpStartId != startId) {
+                            finishGeneration(followUpStartId)
+                        }
+                    },
+                )
+            }
         }
         super.onTimeout(startId, foregroundServiceType)
     }
@@ -110,34 +124,42 @@ class DataSyncService : Service(), KoinComponent {
         taskId: UUID?,
         state: ForegroundNotificationState,
         startId: Int,
+        mayDiscoverCurrentTask: Boolean,
     ) {
         val application = applicationContext as ThorApplication
         application.launchInApplicationScope(ioDispatcher) {
-            try {
-                DataTaskStore(dataTaskDao).blockCurrentStart(
-                    taskId = taskId,
-                    blockedState = if (state === ForegroundNotificationState.Blocked) {
-                        DataTaskState.START_BLOCKED_NOTIFICATION
-                    } else {
-                        DataTaskState.START_BLOCKED
-                    },
-                    nowMs = System.currentTimeMillis(),
-                )
-            } catch (_: Exception) {
-                // Promotion already failed; shutdown must not depend on Room availability.
-            } finally {
-                finishDataSyncServiceGeneration(
-                    startId = startId,
-                    stopSelfResult = ::stopSelfResult,
-                    removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
-                )
-            }
+            boundedDataSyncPromotionFailure(
+                timeoutMillis = PROMOTION_FAILURE_UNWIND_MILLIS,
+                persist = {
+                    if (taskId != null || mayDiscoverCurrentTask) {
+                        DataTaskStore(dataTaskDao).blockCurrentStart(
+                            taskId = taskId,
+                            blockedState = if (state === ForegroundNotificationState.Blocked) {
+                                DataTaskState.START_BLOCKED_NOTIFICATION
+                            } else {
+                                DataTaskState.START_BLOCKED
+                            },
+                            nowMs = System.currentTimeMillis(),
+                        )
+                    }
+                },
+                finish = {
+                    generationFence.onBlockedPersistenceFinished(startId)?.let(::finishGeneration)
+                },
+            )
         }
     }
+
+    private fun finishGeneration(startId: Int): Boolean = finishDataSyncServiceGeneration(
+        startId = startId,
+        stopSelfResult = ::stopSelfResult,
+        removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
+    )
 
     companion object {
         private const val EXTRA_TASK_ID = "task_id"
         private const val TIMEOUT_UNWIND_MILLIS = 3_000L
+        private const val PROMOTION_FAILURE_UNWIND_MILLIS = 2_000L
         private val running = AtomicBoolean(false)
 
         val isRunning: Boolean
@@ -149,6 +171,89 @@ class DataSyncService : Service(), KoinComponent {
 
         private fun Intent?.taskIdOrNull(): UUID? = this?.getStringExtra(EXTRA_TASK_ID)
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+    }
+}
+
+internal class DataSyncServiceGenerationFence {
+    private val lock = Any()
+    private var latestStartId = 0
+    private var activeStartId: Int? = null
+    private var timeoutStartId: Int? = null
+    private var finishIssuedThrough = 0
+    private val blockedPersistence = mutableSetOf<Int>()
+
+    /** Returns false when a timeout generation already owns teardown. */
+    fun onPromotedStart(startId: Int): Boolean = synchronized(lock) {
+        latestStartId = maxOf(latestStartId, startId)
+        if (timeoutStartId != null) {
+            blockedPersistence += startId
+            false
+        } else {
+            activeStartId = startId
+            true
+        }
+    }
+
+    /** Returns whether a sticky null intent may safely discover the current actionable row. */
+    fun onBlockedStart(startId: Int): Boolean = synchronized(lock) {
+        latestStartId = maxOf(latestStartId, startId)
+        blockedPersistence += startId
+        activeStartId == null && timeoutStartId == null
+    }
+
+    fun onTimeoutStarted(startId: Int): Boolean = synchronized(lock) {
+        if (timeoutStartId != null || activeStartId != startId) return@synchronized false
+        timeoutStartId = startId
+        true
+    }
+
+    fun onDrained(startId: Int): Int? = synchronized(lock) {
+        if (activeStartId != startId || timeoutStartId != null) return@synchronized null
+        activeStartId = null
+        stopCandidateLocked()
+    }
+
+    fun onTimeoutFinished(startId: Int): Int? = synchronized(lock) {
+        if (timeoutStartId != startId) return@synchronized null
+        timeoutStartId = null
+        if (activeStartId == startId) activeStartId = null
+        stopCandidateLocked()
+    }
+
+    fun onBlockedPersistenceFinished(startId: Int): Int? = synchronized(lock) {
+        if (!blockedPersistence.remove(startId)) return@synchronized null
+        stopCandidateLocked()
+    }
+
+    private fun stopCandidateLocked(): Int? {
+        if (
+            activeStartId != null ||
+            timeoutStartId != null ||
+            blockedPersistence.isNotEmpty() ||
+            latestStartId <= finishIssuedThrough
+        ) {
+            return null
+        }
+        finishIssuedThrough = latestStartId
+        return latestStartId
+    }
+}
+
+internal suspend fun boundedDataSyncPromotionFailure(
+    timeoutMillis: Long,
+    persist: suspend () -> Unit,
+    finish: () -> Unit,
+) {
+    try {
+        withTimeoutOrNull(timeoutMillis.milliseconds) {
+            try {
+                persist()
+            } catch (_: Exception) {
+                // Promotion already failed; shutdown must not depend on Room availability.
+            }
+        }
+    } finally {
+        finish()
     }
 }
 

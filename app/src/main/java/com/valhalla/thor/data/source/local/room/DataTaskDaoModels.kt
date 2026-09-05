@@ -107,6 +107,12 @@ data class ClaimedDataTaskItem(
     val attemptCount: Int,
 )
 
+/** Task and first item ownership committed by one Room transaction. */
+data class ClaimedDataTaskWork(
+    val task: ClaimedDataTask,
+    val item: ClaimedDataTaskItem,
+)
+
 sealed interface DataTaskRecovery {
     data object Resume : DataTaskRecovery
     data object WaitingForAuthentication : DataTaskRecovery

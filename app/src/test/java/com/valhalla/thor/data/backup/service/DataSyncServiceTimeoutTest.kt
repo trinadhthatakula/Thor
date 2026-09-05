@@ -65,6 +65,72 @@ class DataSyncServiceTimeoutTest {
     }
 
     @Test
+    fun `newer start during older timeout is fenced then owns final stop`() {
+        val fence = DataSyncServiceGenerationFence()
+        val stopIds = mutableListOf<Int>()
+        var removed = 0
+
+        assertTrue(fence.onPromotedStart(41))
+        assertTrue(fence.onTimeoutStarted(41))
+        assertFalse(fence.onPromotedStart(42))
+
+        assertFalse(
+            finishDataSyncServiceGeneration(
+                startId = 41,
+                stopSelfResult = { id -> stopIds += id; false },
+                removeForeground = { removed += 1 },
+            )
+        )
+        assertEquals(null, fence.onTimeoutFinished(41))
+        val finalStartId = fence.onBlockedPersistenceFinished(42)
+        assertEquals(42, finalStartId)
+        finishDataSyncServiceGeneration(
+            startId = requireNotNull(finalStartId),
+            stopSelfResult = { id -> stopIds += id; id == 42 },
+            removeForeground = { removed += 1 },
+        )
+
+        assertEquals(listOf(41, 42), stopIds)
+        assertEquals(1, removed)
+    }
+
+    @Test
+    fun `blocked start cannot stop active or following successful generation`() {
+        val fence = DataSyncServiceGenerationFence()
+
+        assertTrue(fence.onPromotedStart(41))
+        fence.onBlockedStart(42)
+        assertEquals(null, fence.onBlockedPersistenceFinished(42))
+        assertTrue(fence.onPromotedStart(43))
+        assertEquals(null, fence.onDrained(41))
+        assertEquals(43, fence.onDrained(43))
+    }
+
+    @Test
+    fun `promotion failure persistence cannot exceed shutdown bound`() = runTest {
+        val persistenceStarted = CompletableDeferred<Unit>()
+        var finished = false
+        val job = launch {
+            boundedDataSyncPromotionFailure(
+                timeoutMillis = 2_000L,
+                persist = {
+                    persistenceStarted.complete(Unit)
+                    CompletableDeferred<Unit>().await()
+                },
+                finish = { finished = true },
+            )
+        }
+        runCurrent()
+        persistenceStarted.await()
+
+        advanceTimeBy(2_001.milliseconds)
+        runCurrent()
+        job.join()
+
+        assertTrue(finished)
+    }
+
+    @Test
     fun `matching generation removes foreground after stop is accepted`() {
         var removed = false
 

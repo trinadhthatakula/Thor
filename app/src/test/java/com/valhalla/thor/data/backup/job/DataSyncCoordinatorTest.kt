@@ -272,8 +272,8 @@ class DataSyncCoordinatorTest {
             assertEquals(1, claimCalls)
             assertEquals(
                 listOf(
-                    "child-cancelled",
                     "timeout-settle",
+                    "child-cancelled",
                     "cleanup",
                     "stop",
                 ),
@@ -323,6 +323,133 @@ class DataSyncCoordinatorTest {
             listOf("timeout-settle", "cleanup", "stop"),
             events,
         )
+    }
+
+    @Test
+    fun `timeout transaction starts after runner return before normal persistence completes`() =
+        runTest {
+            val normalStarted = CompletableDeferred<Unit>()
+            val allowNormalToFinish = CompletableDeferred<Unit>()
+            val events = mutableListOf<String>()
+            var claimed = false
+            val coordinator = coordinator(
+                claimNext = { _, token ->
+                    if (claimed) null else claim(1).copy(claimToken = token).also { claimed = true }
+                },
+                executeClaim = { _, _ -> completed() },
+                persistOutcome = { _, _ ->
+                    events += "normal-started"
+                    normalStarted.complete(Unit)
+                    allowNormalToFinish.await()
+                    events += "normal-finished"
+                },
+                settleTimeout = {
+                    events += "timeout"
+                    allowNormalToFinish.complete(Unit)
+                    true
+                },
+            )
+
+            coordinator.wake { events += "stop" }
+            runCurrent()
+            normalStarted.await()
+            val stopping = launch { coordinator.stopClaimsAndInterrupt() }
+            runCurrent()
+
+            assertEquals(listOf("normal-started", "timeout"), events.take(2))
+            advanceUntilIdle()
+            stopping.join()
+            assertTrue(events.indexOf("timeout") < events.indexOf("normal-finished"))
+        }
+
+    @Test
+    fun `normal transaction may win before concurrently submitted timeout`() = runTest {
+        val normalCommitted = CompletableDeferred<Unit>()
+        val allowNormalToReturn = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        var claimed = false
+        val coordinator = coordinator(
+            claimNext = { _, token ->
+                if (claimed) null else claim(1).copy(claimToken = token).also { claimed = true }
+            },
+            executeClaim = { _, _ -> completed() },
+            persistOutcome = { _, _ ->
+                events += "normal-committed"
+                normalCommitted.complete(Unit)
+                allowNormalToReturn.await()
+            },
+            settleTimeout = {
+                events += "timeout-rejected"
+                allowNormalToReturn.complete(Unit)
+                false
+            },
+        )
+
+        coordinator.wake { events += "stop" }
+        runCurrent()
+        normalCommitted.await()
+        val stopping = launch { coordinator.stopClaimsAndInterrupt() }
+        runCurrent()
+
+        assertEquals(listOf("normal-committed", "timeout-rejected"), events.take(2))
+        advanceUntilIdle()
+        stopping.join()
+    }
+
+    @Test
+    fun `claim transition deadline compensates before provisional owner unregisters`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        val claimEntered = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        var claimToken = ""
+        val coordinator = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                claimToken = token
+                claimEntered.complete(Unit)
+                awaitCancellation()
+            },
+            settleProvisionalClaim = { token ->
+                assertTrue(registry.isLive(TASK_1, token))
+                events += "release:$token"
+                true
+            },
+        )
+
+        coordinator.wake { events += "stop" }
+        runCurrent()
+        claimEntered.await()
+        advanceTimeBy(2.seconds + 1.milliseconds)
+        advanceUntilIdle()
+
+        assertEquals(listOf("release:$claimToken", "stop"), events)
+        assertFalse(registry.isLive(TASK_1, claimToken))
+    }
+
+    @Test
+    fun `claim transition error compensates before provisional owner unregisters`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        val events = mutableListOf<String>()
+        var claimToken = ""
+        val coordinator = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                claimToken = token
+                assertTrue(registry.isLive(TASK_1, token))
+                error("claim response lost after commit")
+            },
+            settleProvisionalClaim = { token ->
+                assertTrue(registry.isLive(TASK_1, token))
+                events += "release:$token"
+                true
+            },
+        )
+
+        coordinator.wake { events += "stop" }
+        advanceUntilIdle()
+
+        assertEquals(listOf("release:$claimToken", "stop"), events)
+        assertFalse(registry.isLive(TASK_1, claimToken))
     }
 
     @Test
@@ -423,6 +550,28 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
+    fun `two wakes accepted before old drain starts survive recovery failure`() = runTest {
+        val events = mutableListOf<String>()
+        var recoveryCalls = 0
+        val coordinator = coordinator(
+            recoverClaims = { _, _ ->
+                recoveryCalls += 1
+                if (recoveryCalls == 1) error("room unavailable")
+            },
+        )
+
+        val firstGeneration = coordinator.wake { events += "stop:first" }
+        val secondGeneration = coordinator.wake { events += "stop:second" }
+        advanceUntilIdle()
+
+        assertEquals(1L, firstGeneration)
+        assertEquals(2L, secondGeneration)
+        assertEquals(2, recoveryCalls)
+        assertEquals(2, coordinator.drainLaunchCountForTest)
+        assertEquals(listOf("stop:second"), events)
+    }
+
+    @Test
     fun `wake concurrent with infrastructure failure launches a fresh drain`() = runTest {
         val recoveryEntered = CompletableDeferred<Unit>()
         val failFirstRecovery = CompletableDeferred<Unit>()
@@ -457,6 +606,56 @@ class DataSyncCoordinatorTest {
         assertEquals(2, recoveryCalls)
         assertTrue(events.contains("run:$TASK_1"))
         assertEquals("stop:latest", events.last())
+    }
+
+    @Test
+    fun `post claim callback failure releases owner before newer wake relaunches`() = runTest {
+        val registry = DataTaskOwnerRegistry()
+        val events = mutableListOf<String>()
+        var claimCalls = 0
+        var firstReleased = false
+        var firstToken = ""
+        lateinit var wakeLatest: () -> Unit
+        val coordinator = coordinator(
+            registry = registry,
+            claimNext = { _, token ->
+                claimCalls += 1
+                when (claimCalls) {
+                    1 -> claim(1).copy(claimToken = token).also { firstToken = token }
+                    2 -> if (firstReleased) claim(2).copy(claimToken = token) else null
+                    else -> null
+                }
+            },
+            settleTimeout = { claimed ->
+                if (claimed.taskId == TASK_1) {
+                    events += "released:${claimed.taskId}"
+                    firstReleased = true
+                }
+                true
+            },
+            executeClaim = { claimed, _ ->
+                events += "run:${claimed.taskId}"
+                completed()
+            },
+        )
+
+        wakeLatest = { coordinator.wake { events += "stop:latest" } }
+        coordinator.wake(
+            onClaimed = { taskId, _ ->
+                if (taskId == TASK_1) {
+                    wakeLatest()
+                    error("notification update failed")
+                }
+            },
+            onDrained = { events += "stop:first" },
+        )
+        advanceUntilIdle()
+
+        assertTrue(firstReleased)
+        assertFalse(registry.isLive(TASK_1, firstToken))
+        assertTrue(events.contains("run:$TASK_2"))
+        assertEquals("stop:latest", events.last())
+        assertEquals(2, coordinator.drainLaunchCountForTest)
     }
 
     @Test
@@ -499,6 +698,7 @@ class DataSyncCoordinatorTest {
             completed()
         },
         settleTimeout: suspend (DataSyncClaim) -> Boolean = { true },
+        settleProvisionalClaim: suspend (String) -> Boolean = { false },
         persistOutcome: suspend (DataSyncClaim, DataTaskRunOutcome) -> Unit = { _, _ -> },
         cleanupClaim: suspend (DataSyncClaim) -> Unit = {},
     ) = DataSyncCoordinator(
@@ -510,6 +710,7 @@ class DataSyncCoordinatorTest {
         claimNext = claimNext,
         executeClaim = executeClaim,
         settleTimeout = settleTimeout,
+        settleProvisionalClaim = settleProvisionalClaim,
         persistOutcome = persistOutcome,
         cleanupClaim = cleanupClaim,
         checkpointSink = { DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED } },

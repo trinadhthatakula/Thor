@@ -22,8 +22,11 @@ import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -106,6 +109,85 @@ class DataTaskIdentityDaoTest {
         val detail = dao.loadTask(TASK_ID)?.detail as StoredDataTaskDetail.ArchiveRestore
         assertEquals(StoredRestoreSource.PrivateCopy(PRIVATE_SOURCE), detail.source)
     }
+
+    @Test
+    fun atomicWorkClaimDefersCancellationUntilTaskAndItemClaimsCommit() = runBlocking {
+        dao.insertTask(newExportTask())
+        val taskClaimed = CompletableDeferred<Unit>()
+        val cancellationStarted = CompletableDeferred<Unit>()
+        val allowItemClaim = CompletableDeferred<Unit>()
+        val acquisition = async {
+            dao.claimOldestRunnableWork(
+                sessionToken = "session",
+                taskClaimToken = TASK_CLAIM,
+                itemClaimToken = ITEM_CLAIM,
+                nowMs = 2_000L,
+                leaseUntilMs = 3_000L,
+                afterTaskClaimed = {
+                    taskClaimed.complete(Unit)
+                    allowItemClaim.await()
+                },
+            )
+        }
+        taskClaimed.await()
+        val cancellation = async {
+            cancellationStarted.complete(Unit)
+            dao.requestCancellation(TASK_ID, 2_100L)
+        }
+        cancellationStarted.await()
+        yield()
+        allowItemClaim.complete(Unit)
+
+        val claimed = requireNotNull(acquisition.await())
+        val decision = cancellation.await()
+        val snapshot = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(TASK_ID, claimed.task.taskId.toString())
+        assertEquals(0, claimed.item.ordinal)
+        assertTrue(decision is DataTaskCancellationDecision.InterruptActive)
+        assertEquals(DataTaskState.CANCEL_REQUESTED, snapshot.state)
+        assertEquals(DataTaskItemState.RUNNING, snapshot.items.single().state)
+    }
+
+    @Test
+    fun provisionalTaskClaimIsReleasedAfterTransitionFailureBeforeItemClaim() = runBlocking {
+        dao.insertTask(newExportTask())
+        assertEquals(
+            UUID.fromString(TASK_ID),
+            dao.claimOldestRunnableTask("session", TASK_CLAIM, 2_000L, 3_000L)?.taskId,
+        )
+
+        assertTrue(dao.settleClaimAcquisitionFailure(TASK_CLAIM, 2_100L))
+
+        val snapshot = requireNotNull(dao.loadTask(TASK_ID))
+        assertEquals(DataTaskState.QUEUED, snapshot.state)
+        assertEquals(DataTaskItemState.PENDING, snapshot.items.single().state)
+        assertEquals(DataTaskInterruption.SERVICE_TIMEOUT, snapshot.interruption)
+    }
+
+    @Test
+    fun timeoutExactOwnerSettlesAfterLeaseExpiryAndRecoveredOwnerRejectsStaleTokens() =
+        runBlocking {
+            dao.insertTask(newExportTask())
+            claimTaskAndItem(TASK_ID)
+
+            assertTrue(dao.settleClaimTimeout(TASK_ID, TASK_CLAIM, 0, ITEM_CLAIM, 4_000L))
+            val timedOut = requireNotNull(dao.loadTask(TASK_ID))
+            assertEquals(DataTaskState.QUEUED, timedOut.state)
+            assertEquals(DataTaskItemState.PENDING, timedOut.items.single().state)
+
+            val recovered = requireNotNull(
+                dao.claimOldestRunnableWork(
+                    sessionToken = "replacement-session",
+                    taskClaimToken = "replacement-task",
+                    itemClaimToken = "replacement-item",
+                    nowMs = 4_100L,
+                    leaseUntilMs = 5_100L,
+                )
+            )
+            assertEquals(UUID.fromString(TASK_ID), recovered.task.taskId)
+            assertFalse(dao.settleClaimTimeout(TASK_ID, TASK_CLAIM, 0, ITEM_CLAIM, 5_200L))
+            assertEquals(DataTaskState.RUNNING, dao.loadTask(TASK_ID)?.state)
+        }
 
     @Test
     fun timeoutReloadsDestructiveRestoreCheckpointWrittenAfterClaimSnapshot() = runBlocking {

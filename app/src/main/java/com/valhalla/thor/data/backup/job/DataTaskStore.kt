@@ -5,6 +5,7 @@ package com.valhalla.thor.data.backup.job
 
 import com.valhalla.thor.data.source.local.room.ClaimedDataTask
 import com.valhalla.thor.data.source.local.room.ClaimedDataTaskItem
+import com.valhalla.thor.data.source.local.room.ClaimedDataTaskWork
 import com.valhalla.thor.data.source.local.room.DataTaskCancellationDecision
 import com.valhalla.thor.data.source.local.room.DataTaskDao
 import com.valhalla.thor.data.source.local.room.DataTaskOutputSnapshot
@@ -170,6 +171,25 @@ internal class DataTaskStore(
         nowMs = nowMs,
         leaseUntilMs = leaseUntilMs,
     )
+
+    suspend fun claimOldestRunnableWork(
+        sessionToken: String,
+        taskClaimToken: String,
+        itemClaimToken: String,
+        nowMs: Long,
+        leaseUntilMs: Long,
+    ): ClaimedDataTaskWork? = dao.claimOldestRunnableWork(
+        sessionToken = sessionToken,
+        taskClaimToken = taskClaimToken,
+        itemClaimToken = itemClaimToken,
+        nowMs = nowMs,
+        leaseUntilMs = leaseUntilMs,
+    )
+
+    suspend fun settleClaimAcquisitionFailure(
+        taskClaimToken: String,
+        nowMs: Long,
+    ): Boolean = dao.settleClaimAcquisitionFailure(taskClaimToken, nowMs)
 
     suspend fun commitPrivateRestoreSource(
         taskId: UUID,

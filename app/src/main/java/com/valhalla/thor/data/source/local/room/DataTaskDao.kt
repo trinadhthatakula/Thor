@@ -227,6 +227,111 @@ abstract class DataTaskDao {
         }
     }
 
+    /**
+     * Acquires task and item ownership in one transaction. Cancellation cannot observe the task-only
+     * intermediate state; an exception or coroutine timeout rolls both claims back together.
+     */
+    @Transaction
+    open suspend fun claimOldestRunnableWork(
+        sessionToken: String,
+        taskClaimToken: String,
+        itemClaimToken: String,
+        nowMs: Long,
+        leaseUntilMs: Long,
+        afterTaskClaimed: suspend () -> Unit = {},
+    ): ClaimedDataTaskWork? {
+        require(sessionToken.isNotBlank()) { "sessionToken must not be blank" }
+        require(taskClaimToken.isNotBlank()) { "taskClaimToken must not be blank" }
+        require(itemClaimToken.isNotBlank()) { "itemClaimToken must not be blank" }
+        require(leaseUntilMs > nowMs) { "leaseUntilMs must be after nowMs" }
+        while (true) {
+            val candidate = findOldestRunnableTask() ?: return null
+            if (
+                claimTaskRow(
+                    candidate.taskId,
+                    sessionToken,
+                    taskClaimToken,
+                    nowMs,
+                    leaseUntilMs,
+                ) != 1
+            ) {
+                continue
+            }
+            afterTaskClaimed()
+            val item = findNextPendingItem(candidate.taskId, taskClaimToken, nowMs)
+            if (item == null) {
+                check(finishClaimedTaskIfDrained(candidate.taskId, taskClaimToken, nowMs)) {
+                    "claimed data task has unfinished but unclaimable items"
+                }
+                return null
+            }
+            check(
+                claimItemRow(
+                    candidate.taskId,
+                    item.ordinal,
+                    taskClaimToken,
+                    itemClaimToken,
+                    nowMs,
+                    leaseUntilMs,
+                ) == 1
+            ) { "pending data task item changed inside claim transaction" }
+            return ClaimedDataTaskWork(
+                task = requireNotNull(loadClaimedTask(candidate.taskId)),
+                item = requireNotNull(loadClaimedItem(candidate.taskId, item.ordinal)),
+            )
+        }
+    }
+
+    /** Releases an unknown claim-commit result while the provisional token is still registered. */
+    @Transaction
+    open suspend fun settleClaimAcquisitionFailure(
+        taskClaimToken: String,
+        nowMs: Long,
+    ): Boolean {
+        require(taskClaimToken.isNotBlank()) { "taskClaimToken must not be blank" }
+        val task = loadClaimedTaskByToken(taskClaimToken) ?: return false
+        val activeItem = loadRunningItem(task.taskId)
+        if (activeItem?.claimToken != null) {
+            return settleClaimTimeout(
+                taskId = task.taskId,
+                taskClaimToken = taskClaimToken,
+                itemOrdinal = activeItem.ordinal,
+                itemClaimToken = activeItem.claimToken,
+                nowMs = nowMs,
+            )
+        }
+        if (task.state == DataTaskState.CANCEL_REQUESTED.name) {
+            cancelUnfinishedItems(task.taskId, RESULT_CANCELLED, nowMs)
+            return settleRecoveredCancellationRow(
+                task.taskId,
+                taskClaimToken,
+                nowMs,
+                RESULT_CANCELLED,
+            ) == 1
+        }
+        val archive = if (task.kind == DataTaskKind.ARCHIVE_RESTORE.name) {
+            loadArchiveDetail(task.taskId)
+        } else {
+            null
+        }
+        return pauseTaskRow(
+            taskId = task.taskId,
+            taskClaimToken = taskClaimToken,
+            state = if (archive?.destructiveStarted == true) {
+                DataTaskState.INTERRUPTED_REVIEW.name
+            } else {
+                DataTaskState.QUEUED.name
+            },
+            interruption = if (archive?.destructiveStarted == true) {
+                DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW.name
+            } else {
+                DataTaskInterruption.SERVICE_TIMEOUT.name
+            },
+            resultCode = RESULT_SERVICE_TIMEOUT,
+            nowMs = nowMs,
+        ) == 1
+    }
+
     @Transaction
     open suspend fun commitPrivateRestoreSource(
         taskId: String,
@@ -289,8 +394,8 @@ abstract class DataTaskDao {
         if (
             task.state !in TIMEOUT_SETTLEABLE_STATES ||
             task.claimToken != taskClaimToken ||
-            task.claimLeaseExpiresAtEpochMs?.let { it > nowMs } != true ||
-            !item.ownsClaim(itemClaimToken, nowMs)
+            item.state != DataTaskItemState.RUNNING.name ||
+            item.claimToken != itemClaimToken
         ) {
             return false
         }
@@ -1048,6 +1153,9 @@ abstract class DataTaskDao {
 
     @Query("SELECT * FROM data_tasks WHERE task_id = :taskId AND claim_token IS NOT NULL")
     protected abstract suspend fun loadClaimedTaskEntity(taskId: String): DataTaskEntity?
+
+    @Query("SELECT * FROM data_tasks WHERE claim_token = :claimToken LIMIT 1")
+    protected abstract suspend fun loadClaimedTaskByToken(claimToken: String): DataTaskEntity?
 
     @Query(
         """
