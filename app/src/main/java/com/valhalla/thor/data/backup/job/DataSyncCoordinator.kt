@@ -154,7 +154,6 @@ internal class DataTaskRecoveryProcess(
                 startedNew = true,
             )
         }
-        admission?.operation?.completion?.start()
         return admission
     }
 

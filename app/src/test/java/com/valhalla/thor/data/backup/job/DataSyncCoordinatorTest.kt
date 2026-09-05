@@ -1529,6 +1529,87 @@ class DataSyncCoordinatorTest {
     }
 
     @Test
+    fun `false sweep keeps inherited recovery retry cold until a later wake`() = runTest {
+        val recoveryEntered = CompletableDeferred<Unit>()
+        val failFirstRecovery = CompletableDeferred<Unit>()
+        val callbacks = mutableListOf<String>()
+        var sweepCalls = 0
+        var recoveryCalls = 0
+        var concurrentRecoveries = 0
+        var maxConcurrentRecoveries = 0
+        var finishCalls = 0
+        val recoverClaims: suspend (String, (UUID, String) -> Boolean) -> List<UUID> =
+            { _, _ ->
+                recoveryCalls += 1
+                concurrentRecoveries += 1
+                maxConcurrentRecoveries = maxOf(maxConcurrentRecoveries, concurrentRecoveries)
+                try {
+                    if (recoveryCalls == 1) {
+                        recoveryEntered.complete(Unit)
+                        failFirstRecovery.await()
+                        error("room unavailable")
+                    }
+                    emptyList()
+                } finally {
+                    concurrentRecoveries -= 1
+                }
+            }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val recoveryProcess = DataTaskRecoveryProcess(dispatcher, recoverClaims) {}
+        val coordinator = coordinator(
+            dispatcher = dispatcher,
+            awaitLaunchSweep = {
+                sweepCalls += 1
+                sweepCalls != 3
+            },
+            recoverClaims = recoverClaims,
+            recoveryProcess = recoveryProcess,
+            finishDrainIfEmpty = { onEmpty ->
+                finishCalls += 1
+                onEmpty()
+                true
+            },
+        )
+
+        coordinator.wake { callbacks += "first" }
+        runCurrent()
+        recoveryEntered.await()
+        advanceTimeBy(2.seconds)
+        runCurrent()
+
+        coordinator.wake { callbacks += "second" }
+        runCurrent()
+        assertEquals(1, recoveryCalls)
+        advanceTimeBy(2.seconds)
+        runCurrent()
+        assertFalse(coordinator.hasDrainJobForTest)
+
+        failFirstRecovery.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, recoveryCalls)
+        assertEquals(0, concurrentRecoveries)
+        assertEquals(3, sweepCalls)
+        assertEquals(3, coordinator.drainLaunchCountForTest)
+        assertEquals(0, finishCalls)
+        assertEquals(listOf("second"), callbacks)
+        assertFalse(recoveryProcess.hasUnconsumedSuccess())
+        assertFalse(coordinator.hasDrainJobForTest)
+
+        coordinator.wake { callbacks += "third" }
+        advanceUntilIdle()
+
+        assertEquals(2, recoveryCalls)
+        assertEquals(1, maxConcurrentRecoveries)
+        assertEquals(4, sweepCalls)
+        assertEquals(4, coordinator.drainLaunchCountForTest)
+        assertEquals(1, finishCalls)
+        assertEquals(listOf("second", "third"), callbacks)
+        assertFalse(recoveryProcess.hasUnconsumedSuccess())
+        assertFalse(coordinator.hasDrainJobForTest)
+    }
+
+    @Test
     fun `replacement coordinator retries process scoped recovered cleanup before final empty`() =
         runTest {
             val registry = DataTaskOwnerRegistry()
