@@ -18,7 +18,6 @@ import androidx.core.content.ContextCompat
 import androidx.work.ForegroundInfo
 import androidx.work.WorkManager
 import com.valhalla.thor.R
-import com.valhalla.thor.data.freezer.SweepQueueCancelReceiver
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.presentation.launcher.JobSheetLaunchActivity
@@ -233,31 +232,15 @@ class ThorJobNotifications(private val context: Context) : ThorJobNotificationCa
             if (percent == null) setProgress(0, 0, true) else setProgress(100, percent, false)
             addAction(
                 0,
-                context.getString(
-                    if (kind == ThorJobKind.PRIVILEGE_SWEEP) {
-                        R.string.cancel_sweep_queue
-                    } else {
-                        android.R.string.cancel
-                    }
-                ),
-                cancellationIntent(kind, jobId),
+                context.getString(android.R.string.cancel),
+                cancellationIntent(jobId),
             )
         }.build()
 
-    private fun cancellationIntent(kind: ThorJobKind, jobId: UUID): PendingIntent =
-        if (kind == ThorJobKind.PRIVILEGE_SWEEP) {
-            PendingIntent.getBroadcast(
-                context,
-                notificationId(kind),
-                Intent(context, SweepQueueCancelReceiver::class.java)
-                    .setAction(SweepQueueCancelReceiver.ACTION_CANCEL_SWEEP_QUEUE),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-        } else {
-            // Archive and export jobs retain per-work cancellation. Only sweep cancellation is
-            // queue-wide because every queued sweep snapshot is terminalized in one transaction.
-            WorkManager.getInstance(context).createCancelPendingIntent(jobId)
-        }
+    // Legacy notifications carry a WorkRequest UUID. Exact durable-request cancellation belongs to
+    // the service notification, whose PendingIntent carries the durable task UUID instead.
+    private fun cancellationIntent(jobId: UUID): PendingIntent =
+        WorkManager.getInstance(context).createCancelPendingIntent(jobId)
 
     private fun titleFor(kind: ThorJobKind) = when (kind) {
         ThorJobKind.ARCHIVE_BACKUP -> R.string.job_backing_up

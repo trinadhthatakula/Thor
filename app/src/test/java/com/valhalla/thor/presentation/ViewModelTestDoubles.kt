@@ -501,8 +501,10 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
 /** In-memory durable sweep port with controllable retained Room/Work-style status flows. */
 class FakePrivilegeSweepController : PrivilegeSweepController {
     val launched = mutableListOf<PrivilegeSweepSpec>()
+    val launchedRequestIds = mutableListOf<UUID>()
     val cancelledRequestIds = mutableListOf<UUID>()
     var nextLaunchResult: PrivilegeSweepLaunchResult? = null
+    var launchFailure: Exception? = null
     val cancelCalls: Int
         get() = cancelledRequestIds.size
 
@@ -512,10 +514,18 @@ class FakePrivilegeSweepController : PrivilegeSweepController {
 
     override val activeRequests: Flow<List<PrivilegeSweepStatus>> = retained
 
-    override suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult {
+    override suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult =
+        launch(UUID(0L, nextId++), spec)
+
+    override suspend fun launch(
+        requestId: UUID,
+        spec: PrivilegeSweepSpec,
+    ): PrivilegeSweepLaunchResult {
+        launchFailure?.let { throw it }
         launched += spec
+        launchedRequestIds += requestId
         return nextLaunchResult ?: PrivilegeSweepLaunchResult.Accepted(
-            requestId = UUID(0L, nextId++),
+            requestId = requestId,
             workId = UUID(1L, nextId),
             coalesced = false,
         )
@@ -530,8 +540,6 @@ class FakePrivilegeSweepController : PrivilegeSweepController {
     override suspend fun cancel(requestId: UUID) {
         cancelledRequestIds += requestId
     }
-
-    override suspend fun cancelQueue() = Unit
 
     fun emit(status: PrivilegeSweepStatus) {
         requestFlows.getOrPut(status.requestId) { MutableStateFlow(null) }.value = status

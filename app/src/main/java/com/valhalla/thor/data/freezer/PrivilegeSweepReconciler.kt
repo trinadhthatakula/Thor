@@ -16,30 +16,11 @@ import com.valhalla.thor.domain.repository.PrivilegeSweepTargetResult
 import com.valhalla.thor.domain.repository.PrivilegeSweepTargetState
 import com.valhalla.thor.domain.repository.PrivilegeSweepTargetTerminalState
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
-import com.valhalla.thor.domain.repository.StoredSweepTerminal
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koin.core.annotation.Single
-
-internal enum class SweepWorkState {
-    BLOCKED,
-    ENQUEUED,
-    RUNNING,
-    SUCCEEDED,
-    FAILED,
-    CANCELLED,
-}
-
-/** The narrow WorkManager surface needed by launch, observation, and reconciliation. */
-internal interface PrivilegeSweepWorkManager {
-    suspend fun enqueue(work: androidx.work.OneTimeWorkRequest): Boolean
-    fun observeState(workId: UUID): Flow<SweepWorkState?>
-    suspend fun currentState(workId: UUID): SweepWorkState?
-}
 
 /** One process-wide gate shared by every sweep launch and reconciliation entry point. */
 @Single
@@ -77,7 +58,6 @@ internal fun interface PrivilegeSweepReinstallPostconditionVerifier {
 @Single
 internal class PrivilegeSweepReconciler(
     private val store: PrivilegeSweepStore,
-    private val workManager: PrivilegeSweepWorkManager,
     private val clock: PrivilegeSweepClock,
     private val gate: PrivilegeSweepProcessGate,
     private val stateReader: PrivilegeSweepPackageStateReader? = null,
@@ -86,35 +66,6 @@ internal class PrivilegeSweepReconciler(
     /** Startup only prunes. Cutover owns every nonterminal legacy row, including cancelled WorkInfo. */
     suspend fun pruneRetained() {
         gate.serialized { store.deleteExpired(clock.nowMs()) }
-    }
-
-    suspend fun reconcile() {
-        gate.serialized { reconcileInsideGate() }
-    }
-
-    /** Called only by a launch that already owns [gate]. */
-    @Suppress("DEPRECATION")
-    internal suspend fun reconcileInsideGate() {
-        val nowMs = clock.nowMs()
-        store.observeRetained().first().forEach { snapshot ->
-            if (snapshot.terminalState != null) return@forEach
-            when (workManager.currentState(snapshot.workId)) {
-                SweepWorkState.BLOCKED,
-                SweepWorkState.ENQUEUED,
-                SweepWorkState.RUNNING,
-                    -> Unit
-
-                SweepWorkState.CANCELLED ->
-                    store.finish(snapshot.requestId, StoredSweepTerminal.CANCELLED, nowMs)
-
-                SweepWorkState.SUCCEEDED,
-                SweepWorkState.FAILED,
-                null,
-                    -> store.finish(snapshot.requestId, StoredSweepTerminal.FAILED, nowMs)
-            }
-        }
-        // Repair first so a row that became terminal above receives its full retention window.
-        store.deleteExpired(nowMs)
     }
 
     internal suspend fun reconcileInterruptedClaims(

@@ -17,7 +17,10 @@ import com.valhalla.thor.domain.model.TaskProgress
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.repository.TaskActionController
 import com.valhalla.thor.domain.repository.TaskActionDispatch
+import com.valhalla.thor.domain.repository.TaskActionRejection
 import com.valhalla.thor.domain.repository.TaskQueueRepository
+import com.valhalla.thor.presentation.navigation.ThorRoute
+import com.valhalla.thor.util.Logger
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -35,8 +38,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.koin.core.annotation.Single
+import org.koin.core.annotation.InjectedParam
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Single
 
 /** Optional exact-task progress that is newer than the last Room projection. */
 interface TaskProgressOverlaySource {
@@ -54,16 +58,23 @@ data class ProvisionalTaskIdentity(
     val operationId: String,
 )
 
+@Immutable
+data class ProvisionalTaskState(
+    val identity: ProvisionalTaskIdentity,
+    val rejected: Boolean = false,
+    val sameQueueSuppressed: Boolean = false,
+)
+
 /** Bounded process-memory identity for a task accepted before Room emits its row. */
 @Single
 class ProvisionalTaskIdentityRegistry {
-    private val identities = MutableStateFlow<Map<UUID, ProvisionalTaskIdentity>>(emptyMap())
+    private val states = MutableStateFlow<Map<UUID, ProvisionalTaskState>>(emptyMap())
 
     fun register(taskId: UUID, identity: ProvisionalTaskIdentity) {
-        identities.update { current ->
+        states.update { current ->
             LinkedHashMap(current).apply {
                 remove(taskId)
-                put(taskId, identity)
+                put(taskId, ProvisionalTaskState(identity))
                 while (size > MAX_IDENTITIES) {
                     remove(keys.first())
                 }
@@ -71,14 +82,40 @@ class ProvisionalTaskIdentityRegistry {
         }
     }
 
-    fun current(taskId: UUID): ProvisionalTaskIdentity? = identities.value[taskId]
+    fun current(taskId: UUID): ProvisionalTaskIdentity? = currentState(taskId)?.identity
 
-    fun observe(taskId: UUID): Flow<ProvisionalTaskIdentity?> = identities
+    fun currentState(taskId: UUID): ProvisionalTaskState? = states.value[taskId]
+
+    fun observe(taskId: UUID): Flow<ProvisionalTaskState?> = states
         .map { it[taskId] }
         .distinctUntilChanged()
 
+    fun reject(taskId: UUID) {
+        states.update { current ->
+            val state = current[taskId] ?: return@update current
+            current + (taskId to state.copy(rejected = true))
+        }
+    }
+
+    fun markSameQueueSuppressed(taskId: UUID) {
+        states.update { current ->
+            val state = current[taskId] ?: return@update current
+            current + (taskId to state.copy(sameQueueSuppressed = true))
+        }
+    }
+
+    fun move(fromTaskId: UUID, toTaskId: UUID) {
+        states.update { current ->
+            val state = current[fromTaskId] ?: return@update current
+            LinkedHashMap(current).apply {
+                remove(fromTaskId)
+                put(toTaskId, state)
+            }
+        }
+    }
+
     fun clear(taskId: UUID) {
-        identities.update { current ->
+        states.update { current ->
             if (taskId !in current) current else current - taskId
         }
     }
@@ -118,6 +155,7 @@ private sealed interface TaskDetailObservation {
 
 @KoinViewModel
 class TaskDetailViewModel(
+    @InjectedParam route: ThorRoute.TaskDetail,
     savedStateHandle: SavedStateHandle,
     taskQueueRepository: TaskQueueRepository,
     progressOverlaySource: TaskProgressOverlaySource,
@@ -125,7 +163,15 @@ class TaskDetailViewModel(
     private val provisionalIdentityRegistry: ProvisionalTaskIdentityRegistry,
 ) : ViewModel() {
 
-    val taskId: UUID = UUID.fromString(checkNotNull(savedStateHandle[TASK_ID_KEY]))
+    val taskId: UUID = canonicalTaskId(route.taskId)
+
+    init {
+        val restoredTaskId = savedStateHandle.get<String>(TASK_ID_KEY)
+        require(restoredTaskId == null || restoredTaskId == route.taskId) {
+            "Task detail route does not match restored state"
+        }
+        savedStateHandle[TASK_ID_KEY] = route.taskId
+    }
 
     private val cancellationRequested = MutableStateFlow(false)
 
@@ -155,7 +201,7 @@ class TaskDetailViewModel(
         observedDetail,
         provisionalIdentityRegistry.observe(taskId),
         cancellationRequested,
-    ) { observation, provisionalIdentity, stopping ->
+    ) { observation, provisionalState, stopping ->
         val detail = (observation as? TaskDetailObservation.Value)?.detail
         when {
             observation is TaskDetailObservation.Failure -> TaskDetailUiState(
@@ -163,10 +209,16 @@ class TaskDetailViewModel(
                 phase = TaskLifecyclePhase.OBSERVER_FAILURE,
             )
 
-            detail == null && provisionalIdentity != null -> TaskDetailUiState(
+            detail == null && provisionalState?.rejected == true -> TaskDetailUiState(
+                taskId = taskId,
+                phase = TaskLifecyclePhase.FAILED,
+                provisionalIdentity = provisionalState.identity,
+            )
+
+            detail == null && provisionalState != null -> TaskDetailUiState(
                 taskId = taskId,
                 phase = TaskLifecyclePhase.STARTING,
-                provisionalIdentity = provisionalIdentity,
+                provisionalIdentity = provisionalState.identity,
             )
 
             detail == null -> TaskDetailUiState(
@@ -198,11 +250,17 @@ class TaskDetailViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
-        initialValue = TaskDetailUiState(
-            taskId = taskId,
-            phase = TaskLifecyclePhase.STARTING,
-            provisionalIdentity = provisionalIdentityRegistry.current(taskId),
-        ),
+        initialValue = provisionalIdentityRegistry.currentState(taskId).let { provisional ->
+            TaskDetailUiState(
+                taskId = taskId,
+                phase = if (provisional?.rejected == true) {
+                    TaskLifecyclePhase.FAILED
+                } else {
+                    TaskLifecyclePhase.STARTING
+                },
+                provisionalIdentity = provisional?.identity,
+            )
+        },
     )
 
     private val actionResultChannel = Channel<TaskDetailActionResult>(Channel.BUFFERED)
@@ -217,6 +275,10 @@ class TaskDetailViewModel(
             } catch (exception: CancellationException) {
                 if (cancellation) cancellationRequested.value = false
                 throw exception
+            } catch (exception: Exception) {
+                if (cancellation) cancellationRequested.value = false
+                Logger.e(TAG, "task action failed for $taskId", exception)
+                TaskActionDispatch.Rejected(TaskActionRejection.OPERATION_FAILED)
             }
             if (cancellation && dispatch != TaskActionDispatch.Applied) {
                 cancellationRequested.value = false
@@ -236,8 +298,15 @@ class TaskDetailViewModel(
         if (lines.zipWithNext().all { (first, second) -> first.order <= second.order }) this
         else copy(lines = lines.sortedBy(TaskLogLine::order))
 
+    private fun canonicalTaskId(raw: String): UUID {
+        val parsed = runCatching { UUID.fromString(raw) }.getOrNull()
+        require(parsed != null && parsed.toString() == raw) { "Invalid task detail id" }
+        return parsed
+    }
+
     companion object {
-        const val TASK_ID_KEY = "task_detail_id"
+        const val TASK_ID_KEY = "taskId"
+        private const val TAG = "TaskDetailViewModel"
 
         private val CANCELLABLE_PHASES = setOf(
             TaskLifecyclePhase.QUEUED,

@@ -17,6 +17,12 @@ interface PrivilegeSweepController {
 
     suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult
 
+    /** Uses [requestId] as the identity when this launch creates a new durable request. */
+    suspend fun launch(
+        requestId: UUID,
+        spec: PrivilegeSweepSpec,
+    ): PrivilegeSweepLaunchResult = launch(spec)
+
     /** Emits null after the retained Room snapshot is absent or has been pruned. */
     fun observe(requestId: UUID): Flow<PrivilegeSweepStatus?>
 
@@ -26,6 +32,4 @@ interface PrivilegeSweepController {
     /** Cancels only the request whose identity was displayed when Cancel was pressed. */
     suspend fun cancel(requestId: UUID) = Unit
 
-    @Deprecated("Cancellation requires the displayed request ID")
-    suspend fun cancelQueue()
 }

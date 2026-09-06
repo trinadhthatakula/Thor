@@ -32,18 +32,13 @@ import com.valhalla.thor.domain.model.SWEEP_REQUEST_ID_KEY
 import com.valhalla.thor.domain.model.THOR_SWEEP_CHAIN
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
 import com.valhalla.thor.domain.repository.PrivilegeSweepStore
-import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
-import com.valhalla.thor.domain.repository.StoredSweepTerminal
-import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import com.valhalla.thor.domain.repository.SweepCreateResult
 import java.time.Duration
 import java.util.UUID
-import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -68,13 +63,10 @@ class PrivilegeSweepWorkerIntegrationTest {
     private lateinit var context: Context
     private lateinit var database: AppDatabase
     private lateinit var store: PrivilegeSweepStore
-    private lateinit var gate: PrivilegeSweepProcessGate
-    private lateinit var executor: ControlledItemExecutor
     private lateinit var workerExecutor: ExecutorService
     private lateinit var taskExecutor: ExecutorService
     private lateinit var workManager: WorkManager
     private lateinit var testDriver: TestDriver
-    private lateinit var executionFence: LegacyPrivilegeSweepExecutionFence
 
     @Before
     fun setUp() {
@@ -89,18 +81,13 @@ class PrivilegeSweepWorkerIntegrationTest {
         )
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         store = RoomPrivilegeSweepStore(database.privilegeSweepDao())
-        gate = PrivilegeSweepProcessGate()
-        executionFence = LegacyPrivilegeSweepExecutionFence()
-        executor = ControlledItemExecutor()
         workerExecutor = Executors.newSingleThreadExecutor()
         taskExecutor = Executors.newSingleThreadExecutor()
 
         val configuration = Configuration.Builder()
             .setExecutor(workerExecutor)
             .setTaskExecutor(taskExecutor)
-            .setWorkerFactory(
-                SweepWorkerFactory(context, database, gate, executor, executionFence)
-            )
+            .setWorkerFactory(SweepWorkerFactory(context))
             .build()
         WorkManagerTestInitHelper.initializeTestWorkManager(
             context,
@@ -125,7 +112,6 @@ class PrivilegeSweepWorkerIntegrationTest {
                 }
             }
 
-            cleanup("release item executor") { if (::executor.isInitialized) executor.release() }
             cleanup("cancel WorkManager") {
                 if (::workManager.isInitialized) {
                     withContext(Dispatchers.IO) {
@@ -187,7 +173,6 @@ class PrivilegeSweepWorkerIntegrationTest {
         testDriver.setInitialDelayMet(work.id)
         awaitWork(work.id, WorkInfo.State.FAILED)
 
-        assertTrue(executor.calls.isEmpty())
         assertEquals(before, store.load(sweep.requestId))
         assertFalse(isSystemForegroundServiceRunning())
     }
@@ -207,20 +192,18 @@ class PrivilegeSweepWorkerIntegrationTest {
         sweep: TestSweep,
         targets: List<String>,
     ) {
-        val created = gate.serialized {
-            store.createOrFindEquivalent(
-                NewPrivilegeSweepSnapshot(
-                    requestId = sweep.requestId,
-                    workId = sweep.work.id,
-                    operation = PrivilegeSweepOperation.CLEAR_CACHE,
-                    freezerMode = null,
-                    userId = 0,
-                    source = PrivilegeSweepSource.SETTINGS,
-                    createdAtEpochMs = System.currentTimeMillis(),
-                    targets = targets,
-                )
+        val created = store.createOrFindEquivalent(
+            NewPrivilegeSweepSnapshot(
+                requestId = sweep.requestId,
+                workId = sweep.work.id,
+                operation = PrivilegeSweepOperation.CLEAR_CACHE,
+                freezerMode = null,
+                userId = 0,
+                source = PrivilegeSweepSource.SETTINGS,
+                createdAtEpochMs = System.currentTimeMillis(),
+                targets = targets,
             )
-        }
+        )
         assertTrue(created is SweepCreateResult.Created)
     }
 
@@ -234,10 +217,6 @@ class PrivilegeSweepWorkerIntegrationTest {
         }
     }
 
-    private suspend fun awaitFirstCall(workId: UUID): ItemCall =
-        withTimeoutOrNull(10.seconds) { executor.firstCall.await() }
-            ?: error("Timed out waiting for item execution; work=${currentWorkState(workId)}")
-
     private suspend fun awaitWork(
         workId: UUID,
         state: WorkInfo.State,
@@ -246,15 +225,6 @@ class PrivilegeSweepWorkerIntegrationTest {
             .filterNotNull()
             .first { it.state == state }
     } ?: error("Timed out waiting for work state $state; current=${currentWorkState(workId)}")
-
-    private suspend fun awaitTerminal(
-        requestId: UUID,
-        terminal: StoredSweepTerminal,
-    ): StoredPrivilegeSweep = withTimeoutOrNull(10.seconds) {
-        store.observe(requestId)
-            .filterNotNull()
-            .first { it.terminalState == terminal }
-    } ?: error("Timed out waiting for Room terminal $terminal; current=${store.load(requestId)}")
 
     private suspend fun currentWorkState(workId: UUID): WorkInfo.State? =
         withContext(Dispatchers.IO) {
@@ -291,46 +261,8 @@ class PrivilegeSweepWorkerIntegrationTest {
         val inputKeys: Set<String>,
     )
 
-    private data class ItemCall(
-        val snapshot: StoredPrivilegeSweep,
-        val packageName: String,
-    )
-
-    private class ControlledItemExecutor : PrivilegeSweepItemExecutor {
-        val calls = CopyOnWriteArrayList<ItemCall>()
-        val firstCall = CompletableDeferred<ItemCall>()
-        private var shouldBlock = false
-        private val released = CompletableDeferred<Unit>()
-
-        fun block() {
-            shouldBlock = true
-        }
-
-        fun release() {
-            released.complete(Unit)
-        }
-
-        override suspend fun execute(
-            snapshot: StoredPrivilegeSweep,
-            packageName: String,
-        ): PrivilegeSweepItemExecutionResult {
-            val call = ItemCall(snapshot, packageName)
-            calls += call
-            firstCall.complete(call)
-            if (shouldBlock) released.await()
-            return PrivilegeSweepItemExecutionResult(
-                outcome = SweepAttemptOutcome.SUCCEEDED,
-                rootLaneDegraded = false,
-            )
-        }
-    }
-
     private class SweepWorkerFactory(
         context: Context,
-        private val database: AppDatabase,
-        private val gate: PrivilegeSweepProcessGate,
-        private val executor: PrivilegeSweepItemExecutor,
-        private val executionFence: LegacyPrivilegeSweepExecutionFence,
     ) : WorkerFactory() {
         private val notifications = ThorJobNotifications(context)
         private val registry = JobRegistry()
@@ -342,27 +274,14 @@ class PrivilegeSweepWorkerIntegrationTest {
             workerParameters: WorkerParameters,
         ): ListenableWorker? {
             if (workerClassName != PrivilegeSweepWorker::class.java.name) return null
-            val runner = PrivilegeSweepRunner(
-                store = RoomPrivilegeSweepStore(database.privilegeSweepDao()),
-                executor = executor,
-                clock = TestClock,
-                gate = gate,
-                ioDispatcher = Dispatchers.IO,
-            )
             return PrivilegeSweepWorker(
                 appContext = appContext,
                 params = workerParameters,
                 notifications = notifications,
                 registry = registry,
-                runner = runner,
                 sheetTargets = sheetTargets,
-                executionFence = executionFence,
             )
         }
-    }
-
-    private object TestClock : PrivilegeSweepClock {
-        override fun nowMs(): Long = System.currentTimeMillis()
     }
 
     private companion object {

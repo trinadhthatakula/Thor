@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.repository.TaskActionRejection
 import com.valhalla.thor.domain.repository.TaskQueueRepository
 import com.valhalla.thor.domain.repository.TaskUiRoute
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.presentation.navigation.ThorRoute
 import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -36,6 +37,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -78,6 +80,23 @@ class TaskDetailViewModelTest {
             assertTrue(TaskLifecyclePhase.OBSERVER_FAILURE !in observedPhases)
             collection.cancel()
         }
+
+    @Test
+    fun `rejected provisional remains a failed task instead of observer failure`() = runTest {
+        val identity = ProvisionalTaskIdentity(
+            queueKind = TaskQueueKind.DATA,
+            operationId = DataTaskKind.APP_EXPORT.name,
+        )
+        val viewModel = viewModel(
+            repository = FakeTaskQueueRepository(flowOf(null)),
+            provisionalIdentity = identity,
+            rejectedProvisional = true,
+        )
+
+        assertEquals(TaskLifecyclePhase.FAILED, viewModel.uiState.value.phase)
+        assertEquals(identity, viewModel.uiState.value.provisionalIdentity)
+        assertTrue(viewModel.uiState.value.actions.isEmpty())
+    }
 
     @Test
     fun `persisted start rejection replaces provisional state and remains actionable`() = runTest {
@@ -154,6 +173,28 @@ class TaskDetailViewModelTest {
         viewModel.perform(TaskAction.CANCEL)
         assertEquals(
             TaskDetailActionResult(TaskAction.CANCEL, controller.nextDispatch),
+            viewModel.actionResults.firstResult(),
+        )
+        assertEquals(TaskLifecyclePhase.RUNNING, viewModel.uiState.value.phase)
+    }
+
+    @Test
+    fun `ordinary cancellation failure clears stopping and reports operation failure`() = runTest {
+        val controller = FakeTaskActionController().apply {
+            failure = IllegalStateException("controller unavailable")
+        }
+        val viewModel = viewModel(
+            FakeTaskQueueRepository(flowOf(detail(TaskLifecyclePhase.RUNNING))),
+            controller = controller,
+        )
+
+        viewModel.perform(TaskAction.CANCEL)
+
+        assertEquals(
+            TaskDetailActionResult(
+                TaskAction.CANCEL,
+                TaskActionDispatch.Rejected(TaskActionRejection.OPERATION_FAILED),
+            ),
             viewModel.actionResults.firstResult(),
         )
         assertEquals(TaskLifecyclePhase.RUNNING, viewModel.uiState.value.phase)
@@ -265,6 +306,32 @@ class TaskDetailViewModelTest {
     }
 
     @Test
+    fun `malformed route task id fails before repository observation`() {
+        val repository = FakeTaskQueueRepository(flowOf(null))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            viewModel(repository, routeTaskId = "not-a-uuid")
+        }
+
+        assertTrue(repository.observedTaskIds.isEmpty())
+    }
+
+    @Test
+    fun `route task id must match restored state`() {
+        val repository = FakeTaskQueueRepository(flowOf(null))
+        val savedState = SavedStateHandle(
+            mapOf(TaskDetailViewModel.TASK_ID_KEY to LATER_TASK_ID.toString()),
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            viewModel(repository, savedState = savedState)
+        }
+
+        assertEquals(LATER_TASK_ID.toString(), savedState[TaskDetailViewModel.TASK_ID_KEY])
+        assertTrue(repository.observedTaskIds.isEmpty())
+    }
+
+    @Test
     fun `missing task becomes observer failure without performing writes`() = runTest {
         val controller = FakeTaskActionController()
         val viewModel = viewModel(
@@ -306,10 +373,14 @@ class TaskDetailViewModelTest {
             mapOf(TaskDetailViewModel.TASK_ID_KEY to TASK_ID.toString()),
         ),
         provisionalIdentity: ProvisionalTaskIdentity? = null,
+        rejectedProvisional: Boolean = false,
+        routeTaskId: String = TASK_ID.toString(),
     ): TaskDetailViewModel {
         val registry = ProvisionalTaskIdentityRegistry()
         provisionalIdentity?.let { registry.register(TASK_ID, it) }
+        if (rejectedProvisional) registry.reject(TASK_ID)
         return TaskDetailViewModel(
+            route = ThorRoute.TaskDetail(routeTaskId),
             savedStateHandle = savedState,
             taskQueueRepository = repository,
             progressOverlaySource = overlay,
@@ -387,10 +458,12 @@ class TaskDetailViewModelTest {
 
     private class FakeTaskActionController : TaskActionController {
         var nextDispatch: TaskActionDispatch = TaskActionDispatch.Applied
+        var failure: Exception? = null
         val performed = mutableListOf<Pair<UUID, TaskAction>>()
 
         override suspend fun perform(taskId: UUID, action: TaskAction): TaskActionDispatch {
             performed += taskId to action
+            failure?.let { throw it }
             return nextDispatch
         }
 

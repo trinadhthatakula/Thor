@@ -57,6 +57,7 @@ enum class TaskActionRejection {
     AUTHORIZATION_NOT_GRANTED,
     OUTPUT_EXPIRED,
     START_REJECTED,
+    OPERATION_FAILED,
 }
 
 sealed interface TaskActionDispatch {

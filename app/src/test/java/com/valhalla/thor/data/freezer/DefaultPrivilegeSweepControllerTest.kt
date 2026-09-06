@@ -67,6 +67,43 @@ class DefaultPrivilegeSweepControllerTest {
     }
 
     @Test
+    fun `caller request id is persisted returned and woken unchanged`() = runTest {
+        val fixture = Fixture()
+        val requestId = UUID.fromString("11111111-2222-3333-4444-555555555555")
+
+        val accepted = fixture.controller.launch(requestId, spec())
+            as PrivilegeSweepLaunchResult.Accepted
+
+        assertEquals(requestId, accepted.requestId)
+        assertEquals(requestId, fixture.store.rows.keys.single())
+        assertEquals(listOf(requestId), fixture.wakes)
+        assertFalse(accepted.coalesced)
+    }
+
+    @Test
+    fun `equivalent caller request id resolves to canonical request and merges source`() = runTest {
+        val fixture = Fixture()
+        val canonicalId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        val candidateId = UUID.fromString("ffffffff-1111-2222-3333-444444444444")
+        val first = fixture.controller.launch(canonicalId, spec())
+            as PrivilegeSweepLaunchResult.Accepted
+
+        val second = fixture.controller.launch(
+            candidateId,
+            spec(source = PrivilegeSweepSource.QS_TILE),
+        ) as PrivilegeSweepLaunchResult.Accepted
+
+        assertEquals(canonicalId, first.requestId)
+        assertEquals(canonicalId, second.requestId)
+        assertTrue(second.coalesced)
+        assertEquals(
+            setOf(PrivilegeSweepSource.MAIN.name, PrivilegeSweepSource.QS_TILE.name),
+            fixture.store.rows.getValue(canonicalId).sourceAssociations,
+        )
+        assertFalse(candidateId in fixture.store.rows)
+    }
+
+    @Test
     fun `accepted service-start rejection durably blocks unclaimed request`() = runTest {
         val fixture = Fixture(startResult = ServiceStartResult.Rejected(
             ServiceStartFailure.BACKGROUND_START_NOT_ALLOWED
@@ -194,7 +231,7 @@ class DefaultPrivilegeSweepControllerTest {
             wake = { ServiceStartResult.AlreadyRunning },
             reconcileStaleClaim = {},
         )
-        private val canceller = SweepQueueCanceller(store, cancellation)
+        private val canceller = SweepQueueCanceller(cancellation)
         private val rootLaneStatusSource = object : RootLaneStatusSource {
             override val statuses = rootStatuses
         }
@@ -302,10 +339,6 @@ class DefaultPrivilegeSweepControllerTest {
         override fun observeRetained(): Flow<List<StoredPrivilegeSweep>> = retained
         override fun observeRetained(source: PrivilegeSweepSource): Flow<List<StoredPrivilegeSweep>> =
             MutableStateFlow(rows.values.filter { source.name in it.sourceAssociations })
-        override suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep? = error("unused")
-        override suspend fun recordAttempt(requestId: UUID, outcome: SweepAttemptOutcome): Boolean = error("unused")
-        override suspend fun finish(requestId: UUID, terminal: StoredSweepTerminal, nowMs: Long): Boolean = error("unused")
-        override suspend fun cancelAllNonterminal(nowMs: Long): List<UUID> = error("unused")
         override suspend fun delete(requestId: UUID) = error("unused")
         override suspend fun deleteExpired(nowMs: Long): Int = error("unused")
 

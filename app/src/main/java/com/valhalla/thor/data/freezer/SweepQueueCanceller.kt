@@ -7,7 +7,6 @@ import android.content.Context
 import androidx.work.Operation
 import androidx.work.WorkManager
 import com.valhalla.thor.domain.model.THOR_SWEEP_CHAIN
-import com.valhalla.thor.domain.repository.PrivilegeSweepStore
 import java.util.concurrent.ExecutionException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -30,15 +29,11 @@ internal class WorkManagerSweepQueueWorkManager(
     }
 }
 
-/** Deprecated queue-shaped adapter; without a displayed request identity it deliberately does nothing. */
+/** Request-scoped cancellation for the exact task displayed to the user. */
 @Single
 internal class SweepQueueCanceller(
-    @Suppress("UNUSED_PARAMETER") store: PrivilegeSweepStore,
     private val cancellation: PrivilegeSweepCancellationCoordinator,
 ) {
-    @Deprecated("A displayed request ID is required")
-    suspend fun cancelQueue() = Unit
-
     suspend fun cancel(requestId: java.util.UUID) {
         cancellation.cancel(requestId)
     }

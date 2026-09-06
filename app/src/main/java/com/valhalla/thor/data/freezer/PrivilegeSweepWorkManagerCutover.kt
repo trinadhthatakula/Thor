@@ -49,13 +49,21 @@ internal class PrivilegeSweepWorkManagerCutover(
                         }
                         .map { it.ordinal }
                     if (ambiguousOrdinals.isNotEmpty()) {
-                        check(
-                            store.markLegacyTargetsUnknown(
-                                requestId = current.requestId,
-                                ambiguousOrdinals = ambiguousOrdinals,
-                                nowMs = nowMs,
-                            )
-                        ) { "Legacy sweep reconciliation lost ownership" }
+                        val converted = store.markLegacyTargetsUnknown(
+                            requestId = current.requestId,
+                            ambiguousOrdinals = ambiguousOrdinals,
+                            serviceExecutionId = newPrivilegeServiceExecutionId(),
+                            nowMs = nowMs,
+                        )
+                        if (!converted) {
+                            val latest = store.load(current.requestId)
+                            check(
+                                latest == null ||
+                                        latest.terminalState != null ||
+                                        latest.executionId.isPrivilegeServiceExecutionId() ||
+                                        (latest.serviceSessionToken != null && latest.claimToken != null)
+                            ) { "Legacy sweep reconciliation lost ownership" }
+                        }
                     }
                 }
             }

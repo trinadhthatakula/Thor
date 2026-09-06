@@ -182,6 +182,11 @@ class ExportAppUseCase(
         fileStore.currentTargetLabel(savedUri)
     }
 
+    /** Label the already-resolved target without re-reading a preference another sheet can change. */
+    suspend fun targetLabel(target: ExportTargetChoice): String = withContext(ioDispatcher) {
+        fileStore.currentTargetLabel((target as? ExportTargetChoice.Custom)?.treeUri)
+    }
+
     companion object {
         /** Staging scope for one-app exports; a batch takes a scope of its own. */
         const val SINGLE_STAGING_DIR = "export_temp"

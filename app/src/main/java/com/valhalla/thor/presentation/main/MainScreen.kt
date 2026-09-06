@@ -13,7 +13,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -41,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -73,7 +73,12 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.TaskAction
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.repository.InstallerLabelResolver
+import com.valhalla.thor.domain.repository.TaskActionDispatch
+import com.valhalla.thor.domain.repository.TaskQueueRepository
+import com.valhalla.thor.domain.repository.TaskUiRoute
 import com.valhalla.thor.presentation.appList.AppInfoDetailsScreen
 import com.valhalla.thor.presentation.appList.AppListScreen
 import com.valhalla.thor.presentation.appList.AppListViewModel
@@ -83,6 +88,15 @@ import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeScreen
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.navigation.ThorRoute
+import com.valhalla.thor.presentation.navigation.TaskActionRouteHost
+import com.valhalla.thor.presentation.navigation.TaskNavigationCoordinator
+import com.valhalla.thor.presentation.navigation.TaskNavigationEffect
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.navigation.rememberTaskActionRouteState
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
+import com.valhalla.thor.presentation.queue.QueueScreen
+import com.valhalla.thor.presentation.queue.TaskDetailActionResult
+import com.valhalla.thor.presentation.queue.TaskDetailScreen
 import com.valhalla.asgard.navigation.AsgardNavItem
 import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
@@ -105,9 +119,10 @@ import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.ClearAllCacheSheet
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.ExportProgressBar
-import com.valhalla.thor.presentation.widgets.FreezeLoggerDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
 import com.valhalla.thor.presentation.widgets.ThankYouDialog
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
@@ -123,6 +138,74 @@ internal fun DefaultTab.toDestination(): AppDestinations = when (this) {
     DefaultTab.APPS -> AppDestinations.APPS
     DefaultTab.FREEZER -> AppDestinations.FREEZER
     DefaultTab.SETTINGS -> AppDestinations.SETTINGS
+}
+
+internal suspend fun resolveTopTaskQueueKind(
+    provisionalQueueKind: TaskQueueKind?,
+    persistedQueueKind: suspend () -> TaskQueueKind?,
+): TaskQueueKind? = provisionalQueueKind ?: try {
+    persistedQueueKind()
+} catch (exception: CancellationException) {
+    throw exception
+} catch (_: Exception) {
+    null
+}
+
+internal fun bringTaskDetailToFront(
+    backStack: MutableList<NavKey>,
+    taskId: java.util.UUID,
+) {
+    val route = ThorRoute.TaskDetail(taskId.toString())
+    backStack.removeAll { it == route }
+    backStack.add(route)
+}
+
+internal fun handleTaskDetailActionResult(
+    backStack: MutableList<NavKey>,
+    route: ThorRoute.TaskDetail,
+    result: TaskDetailActionResult,
+    onDetailDismissed: (java.util.UUID) -> Unit,
+    onRoute: (TaskUiRoute) -> Unit,
+) {
+    when (val dispatch = result.dispatch) {
+        TaskActionDispatch.Applied -> if (result.action == TaskAction.ACKNOWLEDGE) {
+            val routeIndex = backStack.indexOfLast { it == route }
+            if (routeIndex < 0) return
+            val taskId = runCatching { java.util.UUID.fromString(route.taskId) }.getOrNull()
+                ?: return
+            onDetailDismissed(taskId)
+            backStack.removeAt(routeIndex)
+        }
+
+        is TaskActionDispatch.Route -> onRoute(dispatch.destination)
+        is TaskActionDispatch.Rejected -> Unit
+    }
+}
+
+internal fun replaceRestoredTaskAliases(
+    backStacks: Iterable<MutableList<NavKey>>,
+    canonicalTaskId: (java.util.UUID) -> java.util.UUID?,
+) {
+    backStacks.forEach { backStack ->
+        var index = backStack.lastIndex
+        while (index >= 0) {
+            val route = backStack[index] as? ThorRoute.TaskDetail
+            val provisionalTaskId = route?.taskId?.let { rawTaskId ->
+                runCatching { java.util.UUID.fromString(rawTaskId) }.getOrNull()
+            }
+            val canonicalTaskId = provisionalTaskId?.let(canonicalTaskId)
+            if (canonicalTaskId != null && canonicalTaskId != provisionalTaskId) {
+                val canonicalRoute = ThorRoute.TaskDetail(canonicalTaskId.toString())
+                val canonicalIndex = backStack.indexOf(canonicalRoute)
+                if (canonicalIndex >= 0 && canonicalIndex != index) {
+                    backStack.removeAt(index)
+                } else {
+                    backStack[index] = canonicalRoute
+                }
+            }
+            index--
+        }
+    }
 }
 
 /**
@@ -190,6 +273,109 @@ fun MainScreen(
     }
 
     val currentBackStack = backStacks[activeTab] ?: homeBackStack
+    val currentBackStackState by rememberUpdatedState(currentBackStack)
+    val taskNavigationTargets: TaskNavigationTargets = koinInject()
+    val taskQueueRepository: TaskQueueRepository = koinInject()
+    val provisionalIdentityRegistry: ProvisionalTaskIdentityRegistry = koinInject()
+    val taskNavigationCoordinator = remember(provisionalIdentityRegistry) {
+        TaskNavigationCoordinator(provisionalIdentityRegistry)
+    }
+    val taskActionRouteState = rememberTaskActionRouteState()
+    val handleTaskActionDispatch: (TaskActionDispatch) -> Unit = { dispatch ->
+        if (dispatch is TaskActionDispatch.Route) {
+            taskActionRouteState.activate(dispatch.destination)
+        }
+    }
+
+    val openQueue = {
+        if (currentBackStack.lastOrNull() != ThorRoute.Queue) {
+            currentBackStack.add(ThorRoute.Queue)
+        }
+    }
+    val openTaskDetail: (java.util.UUID) -> Unit = { taskId ->
+        bringTaskDetailToFront(currentBackStack, taskId)
+    }
+
+    val taskNavigationLifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(
+        taskNavigationLifecycleOwner,
+        taskNavigationTargets,
+        taskNavigationCoordinator,
+    ) {
+        taskNavigationTargets.collectWhileResumed(
+            lifecycle = taskNavigationLifecycleOwner.lifecycle,
+            onResumed = {
+                replaceRestoredTaskAliases(
+                    backStacks = backStacks.values,
+                    canonicalTaskId = taskNavigationTargets::restoredCanonicalTaskId,
+                )
+            },
+        ) { request ->
+            val visibleTaskIds = backStacks.values
+                .asSequence()
+                .flatten()
+                .mapNotNull { key ->
+                    (key as? ThorRoute.TaskDetail)?.taskId?.let { rawTaskId ->
+                        runCatching { java.util.UUID.fromString(rawTaskId) }.getOrNull()
+                    }
+                }
+                .toSet()
+            val topTaskId = (currentBackStackState.lastOrNull() as? ThorRoute.TaskDetail)
+                ?.taskId
+                ?.let { rawTaskId ->
+                    runCatching { java.util.UUID.fromString(rawTaskId) }.getOrNull()
+                }
+            val topTaskQueueKind = topTaskId?.let { taskId ->
+                resolveTopTaskQueueKind(
+                    provisionalQueueKind = provisionalIdentityRegistry.current(taskId)?.queueKind,
+                    persistedQueueKind = {
+                        taskQueueRepository.observe(taskId).first()?.summary?.queueKind
+                    },
+                )
+            }
+
+            when (
+                val effect = taskNavigationCoordinator.handle(
+                    request = request,
+                    visibleTaskIds = visibleTaskIds,
+                    topTaskQueueKind = topTaskQueueKind,
+                )
+            ) {
+                is TaskNavigationEffect.Open -> {
+                    bringTaskDetailToFront(currentBackStackState, effect.taskId)
+                }
+
+                is TaskNavigationEffect.Replace -> {
+                    val provisionalRoute = ThorRoute.TaskDetail(
+                        effect.provisionalTaskId.toString(),
+                    )
+                    val canonicalRoute = ThorRoute.TaskDetail(effect.canonicalTaskId.toString())
+                    val taskBackStack = backStacks.values.firstOrNull {
+                        provisionalRoute in it
+                    }
+                    val provisionalIndex = taskBackStack?.indexOfLast {
+                        it == provisionalRoute
+                    } ?: -1
+                    if (taskBackStack != null && provisionalIndex >= 0) {
+                        val canonicalIndex = taskBackStack.indexOf(canonicalRoute)
+                        if (canonicalIndex >= 0 && canonicalIndex != provisionalIndex) {
+                            taskBackStack.removeAt(provisionalIndex)
+                        } else {
+                            taskBackStack[provisionalIndex] = canonicalRoute
+                        }
+                    }
+                }
+
+                TaskNavigationEffect.ShowQueued -> Toast.makeText(
+                    context,
+                    R.string.task_state_queued,
+                    Toast.LENGTH_SHORT,
+                ).show()
+
+                TaskNavigationEffect.None -> Unit
+            }
+        }
+    }
 
     // Consumed once, and the once is counted on `MainViewModel` — NOT in a `rememberSaveable` here.
     // A saveable latch outlives the sheet state it guards, so after process death it would say
@@ -217,9 +403,10 @@ fun MainScreen(
 
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = paneDirective)
 
-    val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+    val isWideScreen =
+        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
     val showNavRailLabel = adaptiveInfo.windowSizeClass.isHeightAtLeastBreakpoint(600)
-    
+
     val configuration = LocalConfiguration.current
     val isLandscapePhone = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
             configuration.smallestScreenWidthDp < 600
@@ -275,7 +462,8 @@ fun MainScreen(
     // Follows [startDestination] rather than a hardcoded HOME: back has to land on the tab the app
     // opens on, or a user whose default is Freezer gets a Home screen they never asked to see and
     // then has to press back a second time to leave.
-    val isNonStartRoot = activeDestination != startDestination && (backStacks[activeTab]?.size ?: 0) == 1
+    val isNonStartRoot =
+        activeDestination != startDestination && (backStacks[activeTab]?.size ?: 0) == 1
     BackHandler(enabled = isNonStartRoot) {
         activeDestination = startDestination
     }
@@ -406,92 +594,132 @@ fun MainScreen(
                 }
             }
         ) { innerPadding ->
-        val spatialSpec = when (state.prefs.animationIntensity) {
-            AnimationIntensity.LOW -> snap<IntOffset>()
-            AnimationIntensity.MEDIUM,
-            AnimationIntensity.HIGH -> MaterialTheme.motionScheme.slowSpatialSpec<IntOffset>()
-        }
-        val effectsSpec = when (state.prefs.animationIntensity) {
-            AnimationIntensity.LOW -> snap<Float>()
-            AnimationIntensity.MEDIUM,
-            AnimationIntensity.HIGH -> MaterialTheme.motionScheme.slowEffectsSpec<Float>()
-        }
-        val useSharedTransitions = state.prefs.animationIntensity == AnimationIntensity.HIGH
+            val spatialSpec = when (state.prefs.animationIntensity) {
+                AnimationIntensity.LOW -> snap<IntOffset>()
+                AnimationIntensity.MEDIUM,
+                AnimationIntensity.HIGH -> MaterialTheme.motionScheme.slowSpatialSpec<IntOffset>()
+            }
+            val effectsSpec = when (state.prefs.animationIntensity) {
+                AnimationIntensity.LOW -> snap<Float>()
+                AnimationIntensity.MEDIUM,
+                AnimationIntensity.HIGH -> MaterialTheme.motionScheme.slowEffectsSpec<Float>()
+            }
+            val useSharedTransitions = state.prefs.animationIntensity == AnimationIntensity.HIGH
 
-        SharedTransitionLayout {
-            val sharedScope = if (useSharedTransitions) this@SharedTransitionLayout else null
-            val entryProvider = entryProvider<NavKey> {
-                entry<ThorRoute.Home> {
-                    HomeScreen(
-                        viewModel = homeViewModel,
-                        onNavigateToApps = {
-                            activeDestination = AppDestinations.APPS
-                        },
-                        onNavigateToFreezer = {
-                            activeDestination = AppDestinations.FREEZER
-                        },
-                        // No confirmation dialog: the action now scans, then opens a picker that
-                        // names every app it would touch. Confirming a list beats confirming a
-                        // warning about a list you were never shown.
-                        onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
-                        // No type argument any more: `pm trim-caches` takes no package list and
-                        // PackageManagerService evicts by LRU across the volume, so "user apps only"
-                        // was never a promise Thor could keep. The tap opens the confirmation sheet.
-                        onClearAllCache = { mainViewModel.requestClearAllCaches() },
-                        onFilterByInstaller = { type, installer ->
-                            appListViewModel.showAppsFromInstaller(type, installer)
-                            activeDestination = AppDestinations.APPS
-                        },
-                        onNavigateToExtensionManager = {
-                            homeBackStack.add(ThorRoute.ExtensionManager)
-                        },
-                        onNavigateToBackupRestoreHub = {
-                            homeBackStack.add(ThorRoute.BackupRestoreHub)
-                        }
-                    )
-                }
-
-                entry<ThorRoute.Apps>(
-                    metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = { AppDetailPlaceholder() })
-                ) {
-                    val activeDetailRoute = appsBackStack.lastOrNull() as? ThorRoute.AppInfoDetails
-                    if (isLandscapePhone && activeDetailRoute != null) {
-                        AppInfoDetailsScreen(
-                            packageName = activeDetailRoute.packageName,
-                            appName = activeDetailRoute.appName,
-                            sharedTransitionScope = sharedScope,
-                            onBack = {
-                                if (appsBackStack.size > 1) {
-                                    appsBackStack.removeLastOrNull()
-                                }
+            SharedTransitionLayout {
+                val sharedScope = if (useSharedTransitions) this@SharedTransitionLayout else null
+                val entryProvider = entryProvider<NavKey> {
+                    entry<ThorRoute.Home> {
+                        HomeScreen(
+                            viewModel = homeViewModel,
+                            onNavigateToApps = {
+                                activeDestination = AppDestinations.APPS
                             },
-                            onNavigateToPermissionManager = { pkg, name ->
-                                appsBackStack.add(ThorRoute.PermissionManager(pkg, name))
+                            onNavigateToFreezer = {
+                                activeDestination = AppDestinations.FREEZER
                             },
-                            onAppAction = { action ->
-                                checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                    mainViewModel.onAppAction(it)
-                                }
+                            // No confirmation dialog: the action now scans, then opens a picker that
+                            // names every app it would touch. Confirming a list beats confirming a
+                            // warning about a list you were never shown.
+                            onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
+                            // No type argument any more: `pm trim-caches` takes no package list and
+                            // PackageManagerService evicts by LRU across the volume, so "user apps only"
+                            // was never a promise Thor could keep. The tap opens the confirmation sheet.
+                            onClearAllCache = { mainViewModel.requestClearAllCaches() },
+                            onFilterByInstaller = { type, installer ->
+                                appListViewModel.showAppsFromInstaller(type, installer)
+                                activeDestination = AppDestinations.APPS
                             },
-                            showOnlyHeaderAndActions = true
+                            onNavigateToExtensionManager = {
+                                homeBackStack.add(ThorRoute.ExtensionManager)
+                            },
+                            onNavigateToBackupRestoreHub = {
+                                homeBackStack.add(ThorRoute.BackupRestoreHub)
+                            },
+                            onNavigateToQueue = openQueue,
                         )
-                    } else {
-                        AppListScreen(
-                            viewModel = appListViewModel,
+                    }
+
+                    entry<ThorRoute.Apps>(
+                        metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = { AppDetailPlaceholder() })
+                    ) {
+                        val activeDetailRoute =
+                            appsBackStack.lastOrNull() as? ThorRoute.AppInfoDetails
+                        if (isLandscapePhone && activeDetailRoute != null) {
+                            AppInfoDetailsScreen(
+                                packageName = activeDetailRoute.packageName,
+                                appName = activeDetailRoute.appName,
+                                sharedTransitionScope = sharedScope,
+                                onBack = {
+                                    if (appsBackStack.size > 1) {
+                                        appsBackStack.removeLastOrNull()
+                                    }
+                                },
+                                onNavigateToPermissionManager = { pkg, name ->
+                                    appsBackStack.add(ThorRoute.PermissionManager(pkg, name))
+                                },
+                                onAppAction = { action ->
+                                    checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                        mainViewModel.onAppAction(it)
+                                    }
+                                },
+                                showOnlyHeaderAndActions = true
+                            )
+                        } else {
+                            AppListScreen(
+                                viewModel = appListViewModel,
+                                sharedTransitionScope = sharedScope,
+                                // Only push the details route where a detail pane can actually show it.
+                                // Without a second partition the route does not sit beside the list, it
+                                // replaces it full-screen — the jump this whole change exists to remove.
+                                // A null callback keeps the tap on AppInfoSheet, which now carries the
+                                // same tabbed body anyway.
+                                onNavigateToAppInfo = if (hasDetailPane) {
+                                    { pkg, name ->
+                                        appsBackStack.add(
+                                            ThorRoute.AppInfoDetails(
+                                                pkg,
+                                                name
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
+                                onAppAction = { action ->
+                                    if (action is AppClickAction.ManagePermissions) {
+                                        appsBackStack.add(
+                                            ThorRoute.PermissionManager(
+                                                action.appInfo.packageName,
+                                                action.appInfo.appName ?: ""
+                                            )
+                                        )
+                                    } else {
+                                        checkAndProcessAction(
+                                            action,
+                                            { pendingSingleAction = it }) {
+                                            mainViewModel.onAppAction(it)
+                                        }
+                                    }
+                                },
+                                onMultiAppAction = { pendingMultiAction = it },
+                                onNavigateToQueue = openQueue,
+                            )
+                        }
+                    }
+
+                    entry<ThorRoute.Freezer>(
+                        metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = { AppDetailPlaceholder() })
+                    ) {
+                        // No landscape detail-pane branch here any more: the freezer's only route to
+                        // ThorRoute.AppInfoDetails was the sheet's "Details" action, which now expands
+                        // the sheet in place instead. Nothing pushes that route onto freezerBackStack.
+                        FreezerScreen(
+                            viewModel = freezerViewModel,
                             sharedTransitionScope = sharedScope,
-                            // Only push the details route where a detail pane can actually show it.
-                            // Without a second partition the route does not sit beside the list, it
-                            // replaces it full-screen — the jump this whole change exists to remove.
-                            // A null callback keeps the tap on AppInfoSheet, which now carries the
-                            // same tabbed body anyway.
-                            onNavigateToAppInfo = if (hasDetailPane) {
-                                { pkg, name -> appsBackStack.add(ThorRoute.AppInfoDetails(pkg, name)) }
-                            } else {
-                                null
-                            },
                             onAppAction = { action ->
                                 if (action is AppClickAction.ManagePermissions) {
-                                    appsBackStack.add(
+                                    freezerBackStack.add(
                                         ThorRoute.PermissionManager(
                                             action.appInfo.packageName,
                                             action.appInfo.appName ?: ""
@@ -503,491 +731,492 @@ fun MainScreen(
                                     }
                                 }
                             },
-                            onMultiAppAction = { pendingMultiAction = it }
+                            onMultiAppAction = { pendingMultiAction = it },
+                            onNavigateToQueue = openQueue,
                         )
                     }
-                }
 
-                entry<ThorRoute.Freezer>(
-                    metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = { AppDetailPlaceholder() })
-                ) {
-                    // No landscape detail-pane branch here any more: the freezer's only route to
-                    // ThorRoute.AppInfoDetails was the sheet's "Details" action, which now expands
-                    // the sheet in place instead. Nothing pushes that route onto freezerBackStack.
-                    FreezerScreen(
-                        viewModel = freezerViewModel,
-                        sharedTransitionScope = sharedScope,
-                        onAppAction = { action ->
-                            if (action is AppClickAction.ManagePermissions) {
-                                freezerBackStack.add(
-                                    ThorRoute.PermissionManager(
-                                        action.appInfo.packageName,
-                                        action.appInfo.appName ?: ""
-                                    )
-                                )
+                    entry<ThorRoute.Settings>(
+                        metadata = ListDetailSceneStrategy.listPane(
+                            detailPlaceholder = { SettingsDetailPlaceholder() }
+                        )
+                    ) {
+                        SettingsScreen(
+                            viewModel = settingsViewModel,
+                            // Gated on the pane directive, never on isWideScreen — the two are in scope
+                            // four lines apart above and the comment there exists because this mistake
+                            // has been made once already. On a 600-839 dp window isWideScreen is true
+                            // while maxHorizontalPartitions is still 1, so the index would mark a row as
+                            // selected while occupying the whole window and showing none of it.
+                            selectedCategory = if (hasDetailPane) {
+                                (settingsBackStack.lastOrNull() as? ThorRoute.SettingsCategory)
+                                    ?.let { SettingsCategory.fromId(it.id) }
                             } else {
+                                null
+                            },
+                            onOpenCategory = { category, focus ->
+                                val route = ThorRoute.SettingsCategory(category.id, focus?.name)
+                                // Replace, don't stack. Picking a second category is ordinary use of a
+                                // two-pane layout — the list stays put and the right-hand side changes —
+                                // and stacking would make Back walk every category visited on the way in
+                                // before it reaches the index. The hierarchy is two deep by design
+                                // (Option C's depth limit); a settings back stack four entries tall means
+                                // the index is no longer one Back away, which is the property the split
+                                // was for.
+                                //
+                                // Everything above the index goes, not merely a SettingsCategory sitting
+                                // on top. Extensions pushes ExtensionManager, which is *also* a detail
+                                // pane, so the index stays visible beside it — the user can pick a second
+                                // category at a moment when the top of the stack is not a category, and a
+                                // guard that only recognised SettingsCategory appended instead. Truncating
+                                // to the index is the only spelling of "replace" that holds for every
+                                // route a category can open. Index 0 is ThorRoute.Settings by
+                                // construction (rememberNavBackStack above), so size 1 *is* the index.
+                                while (settingsBackStack.size > 1) {
+                                    settingsBackStack.removeAt(settingsBackStack.lastIndex)
+                                }
+                                settingsBackStack.add(route)
+                            },
+                            onNavigateToQueue = openQueue,
+                        )
+                    }
+
+                    entry<ThorRoute.Queue> {
+                        QueueScreen(
+                            onBack = { currentBackStack.removeLastOrNull() },
+                            onTaskSelected = openTaskDetail,
+                            onActionDispatch = handleTaskActionDispatch,
+                        )
+                    }
+
+                    entry<ThorRoute.TaskDetail> { route ->
+                        TaskDetailScreen(
+                            route = route,
+                            onBackground = {
+                                taskNavigationCoordinator.onDetailDismissed(
+                                    java.util.UUID.fromString(route.taskId),
+                                )
+                                currentBackStack.removeLastOrNull()
+                            },
+                            onActionDispatch = { result ->
+                                handleTaskDetailActionResult(
+                                    backStack = currentBackStack,
+                                    route = route,
+                                    result = result,
+                                    onDetailDismissed = taskNavigationCoordinator::onDetailDismissed,
+                                    onRoute = taskActionRouteState::activate,
+                                )
+                            },
+                        )
+                    }
+
+                    entry<ThorRoute.SettingsCategory>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) { route ->
+                        val popSelf = {
+                            if (settingsBackStack.size > 1) {
+                                settingsBackStack.removeLastOrNull()
+                            }
+                            Unit
+                        }
+                        // Resolved here rather than in the route, because a route holds data and this is
+                        // a question only the current build can answer. A persisted back stack outlives
+                        // an app update (see ThorRoute.SettingsCategory), so `id` can name a category
+                        // this build merged away — null, and the entry shows nothing and pops itself,
+                        // which lands the user on the index rather than on a blank screen.
+                        //
+                        // Unqualified `SettingsCategory` is the settings *enum*; the route of the same
+                        // name is nested in ThorRoute and is spelled with that prefix everywhere here.
+                        val category = remember(route.id) { SettingsCategory.fromId(route.id) }
+                        if (category == null) {
+                            LaunchedEffect(route) { popSelf() }
+                        } else {
+                            SettingsCategoryScreen(
+                                category = category,
+                                // Same tolerance for the same reason: a row renamed between the save and
+                                // the restore is simply no focus, not a crash and not a wrong row.
+                                focus = remember(route.focus) {
+                                    route.focus?.let { name ->
+                                        SettingsRowId.entries.firstOrNull { it.name == name }
+                                    }
+                                },
+                                viewModel = settingsViewModel,
+                                onBack = popSelf,
+                                onOpenRestore = { mainViewModel.openRestoreSheet() },
+                                onNavigateToExtensionManager = {
+                                    settingsBackStack.add(ThorRoute.ExtensionManager)
+                                },
+                                onNavigateToCustomizeAppInfoActions = {
+                                    settingsBackStack.add(ThorRoute.AppInfoActionsCustomization)
+                                }
+                            )
+                        }
+                    }
+
+                    // A shim, and the only thing left of the restore *route*. Restore is a sheet now
+                    // (hosted in GLOBAL OVERLAYS below), so nothing pushes this — but a back stack saved
+                    // by the previous build can still hold it: `rememberNavBackStack` state is persisted
+                    // for task restoration, which survives an app update. Deleting the route outright
+                    // would make that stack fail to deserialise, so the entry stays for one release and
+                    // forwards to the sheet instead of rendering anything.
+                    entry<ThorRoute.ArchiveRestore> { route ->
+                        LaunchedEffect(route) {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
+                            mainViewModel.openRestoreSheet(route.uriString)
+                        }
+                    }
+
+                    entry<ThorRoute.ExtensionManager>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) {
+                        ExtensionManagerScreen(
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            onBrowse = {
+                                currentBackStack.add(ThorRoute.ExtensionBrowse)
+                            }
+                        )
+                    }
+
+                    entry<ThorRoute.ExtensionBrowse>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) {
+                        ExtensionBrowseScreen(
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            }
+                        )
+                    }
+
+                    entry<ThorRoute.AppInfoActionsCustomization>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) {
+                        AppInfoActionsCustomizationScreen(
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            viewModel = settingsViewModel
+                        )
+                    }
+
+                    entry<ThorRoute.BackupRestoreHub>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) {
+                        BackupRestoreHubScreen(
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            onOpenBackupSheet = { pkg, label ->
+                                mainViewModel.openBackupSheet(pkg, label)
+                            },
+                            onOpenRestoreSheet = { uriString ->
+                                mainViewModel.openRestoreSheet(uriString)
+                            },
+                        )
+                    }
+
+                    entry<ThorRoute.PermissionManager>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) { route ->
+                        PermissionManagerScreen(
+                            packageName = route.packageName,
+                            appName = route.appName,
+                            sharedTransitionScope = sharedScope,
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            }
+                        )
+                    }
+
+                    entry<ThorRoute.AppInfoDetails>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) { route ->
+                        AppInfoDetailsScreen(
+                            packageName = route.packageName,
+                            appName = route.appName,
+                            sharedTransitionScope = sharedScope,
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            onNavigateToPermissionManager = { pkg, name ->
+                                currentBackStack.add(ThorRoute.PermissionManager(pkg, name))
+                            },
+                            onAppAction = { action ->
                                 checkAndProcessAction(action, { pendingSingleAction = it }) {
                                     mainViewModel.onAppAction(it)
                                 }
-                            }
-                        },
-                        onMultiAppAction = { pendingMultiAction = it }
-                    )
-                }
-
-                entry<ThorRoute.Settings>(
-                    metadata = ListDetailSceneStrategy.listPane(
-                        detailPlaceholder = { SettingsDetailPlaceholder() }
-                    )
-                ) {
-                    SettingsScreen(
-                        viewModel = settingsViewModel,
-                        // Gated on the pane directive, never on isWideScreen — the two are in scope
-                        // four lines apart above and the comment there exists because this mistake
-                        // has been made once already. On a 600-839 dp window isWideScreen is true
-                        // while maxHorizontalPartitions is still 1, so the index would mark a row as
-                        // selected while occupying the whole window and showing none of it.
-                        selectedCategory = if (hasDetailPane) {
-                            (settingsBackStack.lastOrNull() as? ThorRoute.SettingsCategory)
-                                ?.let { SettingsCategory.fromId(it.id) }
-                        } else {
-                            null
-                        },
-                        onOpenCategory = { category, focus ->
-                            val route = ThorRoute.SettingsCategory(category.id, focus?.name)
-                            // Replace, don't stack. Picking a second category is ordinary use of a
-                            // two-pane layout — the list stays put and the right-hand side changes —
-                            // and stacking would make Back walk every category visited on the way in
-                            // before it reaches the index. The hierarchy is two deep by design
-                            // (Option C's depth limit); a settings back stack four entries tall means
-                            // the index is no longer one Back away, which is the property the split
-                            // was for.
-                            //
-                            // Everything above the index goes, not merely a SettingsCategory sitting
-                            // on top. Extensions pushes ExtensionManager, which is *also* a detail
-                            // pane, so the index stays visible beside it — the user can pick a second
-                            // category at a moment when the top of the stack is not a category, and a
-                            // guard that only recognised SettingsCategory appended instead. Truncating
-                            // to the index is the only spelling of "replace" that holds for every
-                            // route a category can open. Index 0 is ThorRoute.Settings by
-                            // construction (rememberNavBackStack above), so size 1 *is* the index.
-                            while (settingsBackStack.size > 1) {
-                                settingsBackStack.removeAt(settingsBackStack.lastIndex)
-                            }
-                            settingsBackStack.add(route)
-                        }
-                    )
-                }
-
-                entry<ThorRoute.SettingsCategory>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) { route ->
-                    val popSelf = {
-                        if (settingsBackStack.size > 1) {
-                            settingsBackStack.removeLastOrNull()
-                        }
-                        Unit
-                    }
-                    // Resolved here rather than in the route, because a route holds data and this is
-                    // a question only the current build can answer. A persisted back stack outlives
-                    // an app update (see ThorRoute.SettingsCategory), so `id` can name a category
-                    // this build merged away — null, and the entry shows nothing and pops itself,
-                    // which lands the user on the index rather than on a blank screen.
-                    //
-                    // Unqualified `SettingsCategory` is the settings *enum*; the route of the same
-                    // name is nested in ThorRoute and is spelled with that prefix everywhere here.
-                    val category = remember(route.id) { SettingsCategory.fromId(route.id) }
-                    if (category == null) {
-                        LaunchedEffect(route) { popSelf() }
-                    } else {
-                        SettingsCategoryScreen(
-                            category = category,
-                            // Same tolerance for the same reason: a row renamed between the save and
-                            // the restore is simply no focus, not a crash and not a wrong row.
-                            focus = remember(route.focus) {
-                                route.focus?.let { name ->
-                                    SettingsRowId.entries.firstOrNull { it.name == name }
-                                }
                             },
-                            viewModel = settingsViewModel,
-                            onBack = popSelf,
-                            onOpenRestore = { mainViewModel.openRestoreSheet() },
-                            onNavigateToExtensionManager = {
-                                settingsBackStack.add(ThorRoute.ExtensionManager)
-                            },
-                            onNavigateToCustomizeAppInfoActions = {
-                                settingsBackStack.add(ThorRoute.AppInfoActionsCustomization)
-                            }
+                            // showOnlyTabs suppresses this screen's top bar *and* its header and action
+                            // row, on the understanding that the list pane is rendering those instead
+                            // (the isLandscapePhone branch on entry<ThorRoute.Apps>). With no second
+                            // partition there is no list pane doing that, and NavDisplay renders this
+                            // entry alone — tabs with no title, no actions and no way back. Nothing
+                            // pushes the route without a detail pane any more, but a window can still
+                            // shrink under a route that is already on the stack (unfolding, resizing a
+                            // split-screen window), so the condition has to be checked here too.
+                            showOnlyTabs = isLandscapePhone && hasDetailPane
                         )
                     }
                 }
 
-                // A shim, and the only thing left of the restore *route*. Restore is a sheet now
-                // (hosted in GLOBAL OVERLAYS below), so nothing pushes this — but a back stack saved
-                // by the previous build can still hold it: `rememberNavBackStack` state is persisted
-                // for task restoration, which survives an app update. Deleting the route outright
-                // would make that stack fail to deserialise, so the entry stays for one release and
-                // forwards to the sheet instead of rendering anything.
-                entry<ThorRoute.ArchiveRestore> { route ->
-                    LaunchedEffect(route) {
-                        if (currentBackStack.size > 1) {
-                            currentBackStack.removeLastOrNull()
-                        }
-                        mainViewModel.openRestoreSheet(route.uriString)
-                    }
-                }
-
-                entry<ThorRoute.ExtensionManager>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) {
-                    ExtensionManagerScreen(
-                        onBack = {
-                            if (currentBackStack.size > 1) {
-                                currentBackStack.removeLastOrNull()
-                            }
-                        },
-                        onBrowse = {
-                            currentBackStack.add(ThorRoute.ExtensionBrowse)
-                        }
-                    )
-                }
-
-                entry<ThorRoute.ExtensionBrowse>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) {
-                    ExtensionBrowseScreen(
-                        onBack = {
-                            if (currentBackStack.size > 1) {
-                                currentBackStack.removeLastOrNull()
-                            }
-                        }
-                    )
-                }
-
-                entry<ThorRoute.AppInfoActionsCustomization>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) {
-                    AppInfoActionsCustomizationScreen(
-                        onBack = {
-                            if (currentBackStack.size > 1) {
-                                currentBackStack.removeLastOrNull()
-                            }
-                        },
-                        viewModel = settingsViewModel
-                    )
-                }
-
-                entry<ThorRoute.BackupRestoreHub>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) {
-                    BackupRestoreHubScreen(
-                        onBack = {
-                            if (currentBackStack.size > 1) {
-                                currentBackStack.removeLastOrNull()
-                            }
-                        },
-                        onOpenBackupSheet = { pkg, label ->
-                            mainViewModel.openBackupSheet(pkg, label)
-                        },
-                        onOpenRestoreSheet = { uriString ->
-                            mainViewModel.openRestoreSheet(uriString)
-                        },
-                    )
-                }
-
-                entry<ThorRoute.PermissionManager>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) { route ->
-                    PermissionManagerScreen(
-                        packageName = route.packageName,
-                        appName = route.appName,
-                        sharedTransitionScope = sharedScope,
-                        onBack = {
-                            if (currentBackStack.size > 1) {
-                                currentBackStack.removeLastOrNull()
-                            }
-                        }
-                    )
-                }
-
-                entry<ThorRoute.AppInfoDetails>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) { route ->
-                    AppInfoDetailsScreen(
-                        packageName = route.packageName,
-                        appName = route.appName,
-                        sharedTransitionScope = sharedScope,
-                        onBack = {
-                            if (currentBackStack.size > 1) {
-                                currentBackStack.removeLastOrNull()
-                            }
-                        },
-                        onNavigateToPermissionManager = { pkg, name ->
-                            currentBackStack.add(ThorRoute.PermissionManager(pkg, name))
-                        },
-                        onAppAction = { action ->
-                            checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                mainViewModel.onAppAction(it)
-                            }
-                        },
-                        // showOnlyTabs suppresses this screen's top bar *and* its header and action
-                        // row, on the understanding that the list pane is rendering those instead
-                        // (the isLandscapePhone branch on entry<ThorRoute.Apps>). With no second
-                        // partition there is no list pane doing that, and NavDisplay renders this
-                        // entry alone — tabs with no title, no actions and no way back. Nothing
-                        // pushes the route without a detail pane any more, but a window can still
-                        // shrink under a route that is already on the stack (unfolding, resizing a
-                        // split-screen window), so the condition has to be checked here too.
-                        showOnlyTabs = isLandscapePhone && hasDetailPane
-                    )
-                }
-            }
-
-            // Decorate entries for each back stack
-            val homeDecorators = listOf(
-                rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
-                rememberViewModelStoreNavEntryDecorator()
-            )
-            val homeEntries = rememberDecoratedNavEntries(
-                backStack = homeBackStack,
-                entryDecorators = homeDecorators,
-                entryProvider = entryProvider
-            )
-
-            val appsDecorators = listOf(
-                rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
-                rememberViewModelStoreNavEntryDecorator()
-            )
-            val appsEntries = rememberDecoratedNavEntries(
-                backStack = appsBackStack,
-                entryDecorators = appsDecorators,
-                entryProvider = entryProvider
-            )
-
-            val freezerDecorators = listOf(
-                rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
-                rememberViewModelStoreNavEntryDecorator()
-            )
-            val freezerEntries = rememberDecoratedNavEntries(
-                backStack = freezerBackStack,
-                entryDecorators = freezerDecorators,
-                entryProvider = entryProvider
-            )
-
-            val settingsDecorators = listOf(
-                rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
-                rememberViewModelStoreNavEntryDecorator()
-            )
-            val settingsEntries = rememberDecoratedNavEntries(
-                backStack = settingsBackStack,
-                entryDecorators = settingsDecorators,
-                entryProvider = entryProvider
-            )
-
-            val entries = remember(activeTab, homeEntries, appsEntries, freezerEntries, settingsEntries) {
-                when (activeTab) {
-                    ThorRoute.Home -> homeEntries
-                    ThorRoute.Apps -> appsEntries
-                    ThorRoute.Freezer -> freezerEntries
-                    ThorRoute.Settings -> settingsEntries
-                    else -> homeEntries
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize()
-            ) {
-                NavDisplay(
-                    entries = entries,
-                    onBack = {
-                        if (currentBackStack.size > 1) {
-                            currentBackStack.removeLastOrNull()
-                        }
-                    },
-                    sceneStrategies = listOf(listDetailStrategy),
-                    transitionSpec = {
-                        (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
-                            initialOffsetX = { it },
-                            animationSpec = spatialSpec
-                        )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
-                            targetOffsetX = { -it },
-                            animationSpec = spatialSpec
-                        ))
-                    },
-                    popTransitionSpec = {
-                        (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
-                            initialOffsetX = { -it },
-                            animationSpec = spatialSpec
-                        )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
-                            targetOffsetX = { it },
-                            animationSpec = spatialSpec
-                        ))
-                    },
-                    predictivePopTransitionSpec = {
-                        (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
-                            initialOffsetX = { -it },
-                            animationSpec = spatialSpec
-                        )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
-                            targetOffsetX = { it },
-                            animationSpec = spatialSpec
-                        ))
-                    }
+                // Decorate entries for each back stack
+                val homeDecorators = listOf(
+                    rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
+                    rememberViewModelStoreNavEntryDecorator()
+                )
+                val homeEntries = rememberDecoratedNavEntries(
+                    backStack = homeBackStack,
+                    entryDecorators = homeDecorators,
+                    entryProvider = entryProvider
                 )
 
-                // --- GLOBAL OVERLAYS (Unchanged) ---
-                if (pendingMultiAction != null) {
-                    MultiAppAffirmationDialog(
-                        multiAppAction = pendingMultiAction!!,
-                        onConfirm = {
-                            mainViewModel.onMultiAppAction(pendingMultiAction!!)
-                            pendingMultiAction = null
+                val appsDecorators = listOf(
+                    rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
+                    rememberViewModelStoreNavEntryDecorator()
+                )
+                val appsEntries = rememberDecoratedNavEntries(
+                    backStack = appsBackStack,
+                    entryDecorators = appsDecorators,
+                    entryProvider = entryProvider
+                )
+
+                val freezerDecorators = listOf(
+                    rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
+                    rememberViewModelStoreNavEntryDecorator()
+                )
+                val freezerEntries = rememberDecoratedNavEntries(
+                    backStack = freezerBackStack,
+                    entryDecorators = freezerDecorators,
+                    entryProvider = entryProvider
+                )
+
+                val settingsDecorators = listOf(
+                    rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
+                    rememberViewModelStoreNavEntryDecorator()
+                )
+                val settingsEntries = rememberDecoratedNavEntries(
+                    backStack = settingsBackStack,
+                    entryDecorators = settingsDecorators,
+                    entryProvider = entryProvider
+                )
+
+                val entries =
+                    remember(activeTab, homeEntries, appsEntries, freezerEntries, settingsEntries) {
+                        when (activeTab) {
+                            ThorRoute.Home -> homeEntries
+                            ThorRoute.Apps -> appsEntries
+                            ThorRoute.Freezer -> freezerEntries
+                            ThorRoute.Settings -> settingsEntries
+                            else -> homeEntries
+                        }
+                    }
+
+                Box(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize()
+                ) {
+                    NavDisplay(
+                        entries = entries,
+                        onBack = {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
                         },
-                        onRejected = { pendingMultiAction = null }
+                        sceneStrategies = listOf(listDetailStrategy),
+                        transitionSpec = {
+                            (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
+                                initialOffsetX = { it },
+                                animationSpec = spatialSpec
+                            )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
+                                targetOffsetX = { -it },
+                                animationSpec = spatialSpec
+                            ))
+                        },
+                        popTransitionSpec = {
+                            (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
+                                initialOffsetX = { -it },
+                                animationSpec = spatialSpec
+                            )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
+                                targetOffsetX = { it },
+                                animationSpec = spatialSpec
+                            ))
+                        },
+                        predictivePopTransitionSpec = {
+                            (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
+                                initialOffsetX = { -it },
+                                animationSpec = spatialSpec
+                            )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
+                                targetOffsetX = { it },
+                                animationSpec = spatialSpec
+                            ))
+                        }
                     )
-                }
 
-                if (pendingSingleAction != null) {
-                    val action = pendingSingleAction!!
-                    val (title, text, icon) = when (action) {
-                        is AppClickAction.Kill -> Triple(
-                            stringResource(R.string.kill_app_title),
-                            stringResource(R.string.kill_app_desc, action.appInfo.appName ?: ""),
-                            R.drawable.danger
-                        )
+                    TaskActionRouteHost(state = taskActionRouteState)
 
-                        else -> Triple(
-                            stringResource(R.string.confirm),
-                            stringResource(R.string.are_you_sure),
-                            R.drawable.thor_mono
+                    // --- GLOBAL OVERLAYS ---
+                    if (pendingMultiAction != null) {
+                        MultiAppAffirmationDialog(
+                            multiAppAction = pendingMultiAction!!,
+                            onConfirm = {
+                                mainViewModel.onMultiAppAction(pendingMultiAction!!)
+                                pendingMultiAction = null
+                            },
+                            onRejected = { pendingMultiAction = null }
                         )
                     }
 
-                    AffirmationDialog(
-                        title = title,
-                        text = text,
-                        icon = icon,
-                        onConfirm = {
-                            mainViewModel.onAppAction(action)
-                            pendingSingleAction = null
-                        },
-                        onRejected = { pendingSingleAction = null }
-                    )
-                }
+                    if (pendingSingleAction != null) {
+                        val action = pendingSingleAction!!
+                        val (title, text, icon) = when (action) {
+                            is AppClickAction.Kill -> Triple(
+                                stringResource(R.string.kill_app_title),
+                                stringResource(
+                                    R.string.kill_app_desc,
+                                    action.appInfo.appName ?: ""
+                                ),
+                                R.drawable.danger
+                            )
 
-                state.fixStoreSelection?.let { selection ->
-                    val labelResolver: InstallerLabelResolver = koinInject()
-                    FixStoreSheet(
-                        selection = selection,
-                        labelFor = labelResolver::labelFor,
-                        onToggle = { mainViewModel.toggleFixStoreTarget(it) },
-                        onSetAll = { mainViewModel.setAllFixStoreTargets(it) },
-                        onConfirm = { mainViewModel.confirmFixStore() },
-                        onDismiss = { mainViewModel.dismissFixStorePicker() }
-                    )
-                }
+                            else -> Triple(
+                                stringResource(R.string.confirm),
+                                stringResource(R.string.are_you_sure),
+                                R.drawable.thor_mono
+                            )
+                        }
 
-                if (state.loggerState.isVisible) {
-                    TermLoggerDialog(
-                        title = state.loggerState.title,
-                        logs = state.loggerState.logs,
-                        isOperationComplete = state.loggerState.isComplete,
-                        isStopping = state.loggerState.isStopping,
-                        onStop = if (state.loggerState.canStop) {
-                            { mainViewModel.requestStopBatch() }
-                        } else {
-                            null
-                        },
-                        onDismiss = { mainViewModel.dismissLogger() }
-                    )
-                }
+                        AffirmationDialog(
+                            title = title,
+                            text = text,
+                            icon = icon,
+                            onConfirm = {
+                                mainViewModel.onAppAction(action)
+                                pendingSingleAction = null
+                            },
+                            onRejected = { pendingSingleAction = null }
+                        )
+                    }
 
-                // Hosted here rather than in HomeScreen because the clear outlives the screen that
-                // started it: switching tabs mid-operation must not cancel it or lose the byte
-                // count. The state lives in MainViewModel for the same reason.
-                state.cacheClear?.let { cacheClear ->
-                    ClearAllCacheSheet(
-                        state = cacheClear,
-                        // Formatted here, not in the ViewModel: Formatter needs a Context, and the
-                        // short form is locale-aware, so it has to be resolved at draw time.
-                        // Zero is formatted like any other number rather than being filtered out —
-                        // the sheet has a sentence for "there was nothing left", and dropping it to
-                        // null here would put a measured zero in the *unmeasured* branch and tell a
-                        // user who has usage access to go and grant usage access.
-                        formattedFreedBytes = (cacheClear as? CacheClearState.Done)
-                            ?.freedBytes
-                            ?.let { Formatter.formatShortFileSize(context, it) },
-                        onConfirm = { mainViewModel.confirmClearAllCaches() },
-                        onDismiss = { mainViewModel.dismissCacheClear() }
-                    )
-                }
+                    state.fixStoreSelection?.let { selection ->
+                        val labelResolver: InstallerLabelResolver = koinInject()
+                        FixStoreSheet(
+                            selection = selection,
+                            labelFor = labelResolver::labelFor,
+                            onToggle = { mainViewModel.toggleFixStoreTarget(it) },
+                            onSetAll = { mainViewModel.setAllFixStoreTargets(it) },
+                            onConfirm = { mainViewModel.confirmFixStore() },
+                            onDismiss = { mainViewModel.dismissFixStorePicker() }
+                        )
+                    }
 
-                // Restore is a sheet, and it is hosted here rather than in a tab's back stack because
-                // a restore outlives the section it was started from: the Settings row, an incoming
-                // `.thorbak`, and a tap on a running restore's notification all open the same one,
-                // and switching tabs mid-restore must not tear it down. This is also what makes the
-                // suppression in ObserveInterruptedRestoreUseCase load-bearing — the Settings section
-                // really is composed underneath, so it must not announce the restore that is on
-                // screen above it.
-                state.restoreSheet?.let { restore ->
-                    ArchiveRestoreSheet(
-                        uriString = restore.uriString,
-                        onDismiss = { mainViewModel.dismissRestoreSheet() }
-                    )
-                }
+                    if (state.loggerState.isVisible) {
+                        TermLoggerDialog(
+                            title = state.loggerState.title,
+                            logs = state.loggerState.logs,
+                            isOperationComplete = state.loggerState.isComplete,
+                            isStopping = state.loggerState.isStopping,
+                            onStop = if (state.loggerState.canStop) {
+                                { mainViewModel.requestStopBatch() }
+                            } else {
+                                null
+                            },
+                            onDismiss = { mainViewModel.dismissLogger() }
+                        )
+                    }
 
-                // Only ever opened by a notification tap — see [BackupSheetState]. The in-app route
-                // is the copy the app-info surfaces host themselves.
-                state.backupSheet?.let { backup ->
-                    AppBackupSheet(
-                        packageName = backup.packageName,
-                        appLabel = backup.appLabel,
-                        onDismiss = { mainViewModel.dismissBackupSheet() }
-                    )
-                }
+                    // Hosted here rather than in HomeScreen because the clear outlives the screen that
+                    // started it: switching tabs mid-operation must not cancel it or lose the byte
+                    // count. The state lives in MainViewModel for the same reason.
+                    state.cacheClear?.let { cacheClear ->
+                        ClearAllCacheSheet(
+                            state = cacheClear,
+                            // Formatted here, not in the ViewModel: Formatter needs a Context, and the
+                            // short form is locale-aware, so it has to be resolved at draw time.
+                            // Zero is formatted like any other number rather than being filtered out —
+                            // the sheet has a sentence for "there was nothing left", and dropping it to
+                            // null here would put a measured zero in the *unmeasured* branch and tell a
+                            // user who has usage access to go and grant usage access.
+                            formattedFreedBytes = (cacheClear as? CacheClearState.Done)
+                                ?.freedBytes
+                                ?.let { Formatter.formatShortFileSize(context, it) },
+                            onConfirm = { mainViewModel.confirmClearAllCaches() },
+                            onDismiss = { mainViewModel.dismissCacheClear() }
+                        )
+                    }
 
-                state.sweepProgress?.let { progress ->
-                    FreezeLoggerDialog(
-                        state = progress,
-                        onDismiss = { mainViewModel.dismissFreezeLogger() },
-                        onCancelQueue = mainViewModel::cancelSweepQueue,
-                    )
-                }
+                    // Restore is a sheet, and it is hosted here rather than in a tab's back stack because
+                    // a restore outlives the section it was started from: the Settings row, an incoming
+                    // `.thorbak`, and a tap on a running restore's notification all open the same one,
+                    // and switching tabs mid-restore must not tear it down. This is also what makes the
+                    // suppression in ObserveInterruptedRestoreUseCase load-bearing — the Settings section
+                    // really is composed underneath, so it must not announce the restore that is on
+                    // screen above it.
+                    state.restoreSheet?.let { restore ->
+                        ArchiveRestoreSheet(
+                            uriString = restore.uriString,
+                            onDismiss = { mainViewModel.dismissRestoreSheet() }
+                        )
+                    }
 
-                if (showExitConfirmation) {
-                    AffirmationDialog(
-                        title = stringResource(R.string.exit_thor_title),
-                        text = stringResource(R.string.exit_thor_desc),
-                        icon = R.drawable.exit_to_app,
-                        onConfirm = {
-                            showExitConfirmation = false
-                            onExit()
-                        },
-                        onRejected = { showExitConfirmation = false }
-                    )
-                }
+                    // Only ever opened by a notification tap — see [BackupSheetState]. The in-app route
+                    // is the copy the app-info surfaces host themselves.
+                    state.backupSheet?.let { backup ->
+                        AppBackupSheet(
+                            packageName = backup.packageName,
+                            appLabel = backup.appLabel,
+                            onDismiss = { mainViewModel.dismissBackupSheet() }
+                        )
+                    }
 
-                // Resolved here rather than in MainScreen's parameter defaults: a default argument
-                // is evaluated during the first composition, and instantiating the store flavour's
-                // processor there put the Play billing bind on the first-frame main thread purely
-                // to observe one flag.
-                val billingProcessor: BillingProcessor = koinInject()
-                val showThankYouDialog by billingProcessor.showThankYouDialog.collectAsStateWithLifecycle()
-                if (showThankYouDialog) {
-                    ThankYouDialog(
-                        onDismiss = { billingProcessor.dismissThankYouDialog() }
-                    )
-                }
+                    if (showExitConfirmation) {
+                        AffirmationDialog(
+                            title = stringResource(R.string.exit_thor_title),
+                            text = stringResource(R.string.exit_thor_desc),
+                            icon = R.drawable.exit_to_app,
+                            onConfirm = {
+                                showExitConfirmation = false
+                                onExit()
+                            },
+                            onRejected = { showExitConfirmation = false }
+                        )
+                    }
 
-                if (state.showSupportDeveloperPrompt) {
-                    SupportDeveloperHelper(
-                        onDismiss = { mainViewModel.markSupportDeveloperPromptShown() }
-                    )
+                    // Resolved here rather than in MainScreen's parameter defaults: a default argument
+                    // is evaluated during the first composition, and instantiating the store flavour's
+                    // processor there put the Play billing bind on the first-frame main thread purely
+                    // to observe one flag.
+                    val billingProcessor: BillingProcessor = koinInject()
+                    val showThankYouDialog by billingProcessor.showThankYouDialog.collectAsStateWithLifecycle()
+                    if (showThankYouDialog) {
+                        ThankYouDialog(
+                            onDismiss = { billingProcessor.dismissThankYouDialog() }
+                        )
+                    }
+
+                    if (state.showSupportDeveloperPrompt) {
+                        SupportDeveloperHelper(
+                            onDismiss = { mainViewModel.markSupportDeveloperPromptShown() }
+                        )
+                    }
                 }
             }
         }
-    }
     }
 }
 

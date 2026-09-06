@@ -56,18 +56,59 @@ class RestoreSourceStagerTest {
     }
 
     @Test
-    fun `pending replacement source requires exact authorization`() {
+    fun `pending replacement preserves the exact authorized source for staging`() = runTest {
         val holder = RestoreSourceGrantHolder()
         val first = holder.register(TASK_ID, "content://documents/first")
         assertTrue(holder.authorize(TASK_ID, first))
         val second = holder.register(TASK_ID, "content://documents/second")
+        val copiedSources = mutableListOf<String>()
+        val committedSources = mutableListOf<String>()
+        val stager = RestoreSourceStager(
+            takeSource = holder::take,
+            copyToPrivate = { _, rawUri, _ ->
+                copiedSources += rawUri
+                RestoreSourceCopyResult.Completed(PRIVATE_PATH)
+            },
+            commitPrivateSource = { _, privatePath, _ ->
+                committedSources += privatePath
+                true
+            },
+            privateSourceUri = { _, _ -> PRIVATE_URI },
+            discardPrivateSource = { _, _ -> },
+            discardUncommittedTaskSources = {},
+            nowMs = { NOW_MS },
+        )
 
+        assertEquals(first, holder.currentToken(TASK_ID))
+        assertFalse(holder.authorize(TASK_ID, second))
+        assertFalse(holder.dropIfUnauthorized(TASK_ID, first))
+        assertEquals(
+            RestoreSourceResolution.WaitingForSource,
+            stager.resolve(
+                claim(capabilityToken = second),
+                StoredRestoreSource.AwaitingTransientGrant,
+                appliedCheckpoints(),
+            ),
+        )
+        assertTrue(copiedSources.isEmpty())
+        assertTrue(committedSources.isEmpty())
+        assertEquals(first, holder.currentToken(TASK_ID))
+        assertTrue(holder.dropIfUnauthorized(TASK_ID, second))
+        assertEquals(first, holder.currentToken(TASK_ID))
+
+        assertEquals(
+            RestoreSourceResolution.Ready(PRIVATE_URI),
+            stager.resolve(
+                claim(capabilityToken = first),
+                StoredRestoreSource.AwaitingTransientGrant,
+                appliedCheckpoints(),
+            ),
+        )
+        assertEquals(listOf("content://documents/first"), copiedSources)
+        assertEquals(listOf(PRIVATE_PATH), committedSources)
         assertEquals(null, holder.currentToken(TASK_ID))
         assertEquals(null, holder.take(TASK_ID, first))
-        assertFalse(holder.drop(TASK_ID, first))
-        assertTrue(holder.authorize(TASK_ID, second))
-        assertEquals(second, holder.currentToken(TASK_ID))
-        assertEquals("content://documents/second", holder.take(TASK_ID, second))
+        assertEquals(null, holder.take(TASK_ID, second))
     }
 
     @Test

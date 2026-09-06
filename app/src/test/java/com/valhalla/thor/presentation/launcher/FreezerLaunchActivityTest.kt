@@ -68,7 +68,6 @@ class FreezerLaunchActivityTest {
             override fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?> =
                 flowOf(null)
 
-            override suspend fun cancelQueue() = Unit
         }
         val launcher = PrivilegeSweepSurfaceLauncher(
             resolver = privilegeSweepResolver(

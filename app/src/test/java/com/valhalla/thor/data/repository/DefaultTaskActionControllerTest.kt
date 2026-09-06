@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.data.backup.job.RestoreSourceGrantHolder
 import com.valhalla.thor.data.service.ServiceStartFailure
 import com.valhalla.thor.data.service.ServiceStartResult
 import com.valhalla.thor.data.source.local.room.DataTaskItemSnapshot
@@ -33,6 +34,7 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
@@ -173,7 +175,54 @@ class DefaultTaskActionControllerTest {
     }
 
     @Test
-    fun `concurrent restore submissions cannot revoke the winning authorization`() = runTest {
+    fun `definite restore rejections discard only the submitted source generation`() = runTest {
+        val waiting = dataTask(
+            state = DataTaskState.WAITING_FOR_SOURCE,
+            kind = DataTaskKind.ARCHIVE_RESTORE,
+            detail = restoreDetail(null),
+            interruption = DataTaskInterruption.SOURCE_REQUIRED,
+        )
+        val noLongerWaiting = waiting.copy(
+            taskId = UUID.randomUUID(),
+            state = DataTaskState.STAGING_SOURCE,
+            interruption = DataTaskInterruption.NONE,
+        )
+        val missing = UUID.randomUUID()
+        val missingToken = UUID.randomUUID()
+        val matching = UUID.randomUUID()
+        val wrong = UUID.randomUUID()
+        val stale = UUID.randomUUID()
+        val data = FakeDataTaskActionPort(waiting, noLongerWaiting).apply {
+            sourceTokens[waiting.taskId] = matching
+            sourceTokens[noLongerWaiting.taskId] = stale
+        }
+        val controller = DefaultTaskActionController(data, FakeSweepTaskActionPort())
+
+        assertEquals(
+            TaskActionDispatch.Rejected(TaskActionRejection.NOT_FOUND),
+            controller.submitRestoreSource(missing, missingToken),
+        )
+        assertEquals(
+            TaskActionDispatch.Rejected(TaskActionRejection.INVALID_STATE),
+            controller.submitRestoreSource(noLongerWaiting.taskId, stale),
+        )
+        assertEquals(
+            TaskActionDispatch.Rejected(TaskActionRejection.AUTHORIZATION_NOT_GRANTED),
+            controller.submitRestoreSource(waiting.taskId, wrong),
+        )
+
+        assertEquals(
+            listOf(
+                missing to missingToken,
+                noLongerWaiting.taskId to stale,
+                waiting.taskId to wrong,
+            ),
+            data.droppedSourceTokens,
+        )
+    }
+
+    @Test
+    fun `restore wake rejection preserves the accepted source capability`() = runTest {
         val task = dataTask(
             state = DataTaskState.WAITING_FOR_SOURCE,
             kind = DataTaskKind.ARCHIVE_RESTORE,
@@ -181,12 +230,65 @@ class DefaultTaskActionControllerTest {
             interruption = DataTaskInterruption.SOURCE_REQUIRED,
         )
         val token = UUID.randomUUID()
+        val data = FakeDataTaskActionPort(task).apply {
+            sourceTokens[task.taskId] = token
+            wakeResult = ServiceStartResult.Rejected(
+                ServiceStartFailure.NOTIFICATION_CHANNEL_BLOCKED,
+            )
+        }
+        val controller = DefaultTaskActionController(data, FakeSweepTaskActionPort())
+
+        assertEquals(
+            TaskActionDispatch.Rejected(TaskActionRejection.START_REJECTED),
+            controller.submitRestoreSource(task.taskId, token),
+        )
+        assertTrue(data.droppedSourceTokens.isEmpty())
+        assertEquals(listOf(task.taskId to true), data.startBlocks)
+    }
+
+    @Test
+    fun `ambiguous restore submission exception preserves the source capability`() = runTest {
+        val task = dataTask(
+            state = DataTaskState.WAITING_FOR_SOURCE,
+            kind = DataTaskKind.ARCHIVE_RESTORE,
+            detail = restoreDetail(null),
+            interruption = DataTaskInterruption.SOURCE_REQUIRED,
+        )
+        val token = UUID.randomUUID()
+        val data = FakeDataTaskActionPort(task).apply {
+            sourceTokens[task.taskId] = token
+            resumeHandler = { error("ambiguous resume") }
+        }
+        val controller = DefaultTaskActionController(data, FakeSweepTaskActionPort())
+
+        try {
+            controller.submitRestoreSource(task.taskId, token)
+            fail("Expected restore submission failure")
+        } catch (exception: IllegalStateException) {
+            assertEquals("ambiguous resume", exception.message)
+        }
+        assertTrue(data.droppedSourceTokens.isEmpty())
+    }
+
+    @Test
+    fun `concurrent restore registration cannot revoke the winning authorization`() = runTest {
+        val task = dataTask(
+            state = DataTaskState.WAITING_FOR_SOURCE,
+            kind = DataTaskKind.ARCHIVE_RESTORE,
+            detail = restoreDetail(null),
+            interruption = DataTaskInterruption.SOURCE_REQUIRED,
+        )
+        val holder = RestoreSourceGrantHolder()
+        val firstToken = UUID.fromString(
+            holder.register(task.taskId, "content://restore/first"),
+        )
         val firstResumeEntered = CompletableDeferred<Unit>()
         val releaseFirstResume = CompletableDeferred<Unit>()
         var resumeCalls = 0
-        val data = FakeDataTaskActionPort(task).apply { sourceTokens[task.taskId] = token }
+        val data = FakeDataTaskActionPort(task, restoreSources = holder)
         data.resumeHandler = {
             resumeCalls += 1
+            assertEquals(firstToken.toString(), holder.currentToken(task.taskId))
             firstResumeEntered.complete(Unit)
             releaseFirstResume.await()
             data.replace(
@@ -199,12 +301,15 @@ class DefaultTaskActionControllerTest {
         }
         val controller = DefaultTaskActionController(data, FakeSweepTaskActionPort())
 
-        val first = async { controller.submitRestoreSource(task.taskId, token) }
+        val first = async { controller.submitRestoreSource(task.taskId, firstToken) }
         firstResumeEntered.await()
-        val second = async { controller.submitRestoreSource(task.taskId, token) }
+        val secondToken = UUID.fromString(
+            holder.register(task.taskId, "content://restore/second"),
+        )
+        val second = async { controller.submitRestoreSource(task.taskId, secondToken) }
         runCurrent()
 
-        assertEquals(1, data.authorizedSourceTokens.size)
+        assertEquals(firstToken.toString(), holder.currentToken(task.taskId))
         assertEquals(1, resumeCalls)
         releaseFirstResume.complete(Unit)
 
@@ -213,10 +318,51 @@ class DefaultTaskActionControllerTest {
             TaskActionDispatch.Rejected(TaskActionRejection.INVALID_STATE),
             second.await(),
         )
-        assertEquals(1, data.authorizedSourceTokens.size)
+        assertEquals(firstToken.toString(), holder.currentToken(task.taskId))
+        assertEquals("content://restore/first", holder.take(task.taskId, firstToken.toString()))
+        assertFalse(holder.authorize(task.taskId, secondToken.toString()))
         assertEquals(1, resumeCalls)
-        assertTrue(data.revokedSourceTokens.isEmpty())
     }
+
+    @Test
+    fun `cancelled restore submission drops its unaccepted candidate while waiting for ownership`() =
+        runTest {
+            val task = dataTask(
+                state = DataTaskState.WAITING_FOR_SOURCE,
+                kind = DataTaskKind.ARCHIVE_RESTORE,
+                detail = restoreDetail(null),
+                interruption = DataTaskInterruption.SOURCE_REQUIRED,
+            )
+            val holder = RestoreSourceGrantHolder()
+            val firstToken = UUID.fromString(
+                holder.register(task.taskId, "content://restore/first"),
+            )
+            val firstResumeEntered = CompletableDeferred<Unit>()
+            val releaseFirstResume = CompletableDeferred<Unit>()
+            val data = FakeDataTaskActionPort(task, restoreSources = holder).apply {
+                resumeHandler = {
+                    firstResumeEntered.complete(Unit)
+                    releaseFirstResume.await()
+                    true
+                }
+            }
+            val controller = DefaultTaskActionController(data, FakeSweepTaskActionPort())
+
+            val first = async { controller.submitRestoreSource(task.taskId, firstToken) }
+            firstResumeEntered.await()
+            val secondToken = UUID.fromString(
+                holder.register(task.taskId, "content://restore/second"),
+            )
+            val second = async { controller.submitRestoreSource(task.taskId, secondToken) }
+            runCurrent()
+
+            second.cancelAndJoin()
+
+            assertEquals(firstToken.toString(), holder.currentToken(task.taskId))
+            assertFalse(holder.authorize(task.taskId, secondToken.toString()))
+            releaseFirstResume.complete(Unit)
+            assertEquals(TaskActionDispatch.Applied, first.await())
+        }
 
     @Test
     fun `stale restore resume revokes the exact source authorization`() = runTest {
@@ -237,7 +383,7 @@ class DefaultTaskActionControllerTest {
             TaskActionDispatch.Rejected(TaskActionRejection.STALE_PROJECTION),
             controller.submitRestoreSource(task.taskId, token),
         )
-        assertEquals(listOf(task.taskId to token), data.revokedSourceTokens)
+        assertEquals(listOf(task.taskId to token), data.droppedSourceTokens)
         assertTrue(data.woken.isEmpty())
     }
 
@@ -449,7 +595,10 @@ class DefaultTaskActionControllerTest {
         }
     }
 
-    private class FakeDataTaskActionPort(vararg initial: DataTaskSnapshot) : DataTaskActionPort {
+    private class FakeDataTaskActionPort(
+        vararg initial: DataTaskSnapshot,
+        private val restoreSources: RestoreSourceGrantHolder? = null,
+    ) : DataTaskActionPort {
         private val tasks = initial.associateBy { it.taskId }.toMutableMap()
         val cancelled = mutableListOf<UUID>()
         val acknowledged = mutableListOf<UUID>()
@@ -460,7 +609,7 @@ class DefaultTaskActionControllerTest {
         val submittedSourceTokens = mutableListOf<UUID>()
         val startBlocks = mutableListOf<Pair<UUID, Boolean>>()
         val droppedKeyTokens = mutableListOf<Pair<UUID, String>>()
-        val revokedSourceTokens = mutableListOf<Pair<UUID, UUID>>()
+        val droppedSourceTokens = mutableListOf<Pair<UUID, UUID>>()
         val persistedSecrets = mutableListOf<String>()
         var authenticatedWith: CharArray? = null
         var prepareArchiveKeyHandler: suspend () -> Boolean = { true }
@@ -496,12 +645,20 @@ class DefaultTaskActionControllerTest {
         }
 
         override fun authorizeRestoreSourceToken(taskId: UUID, token: UUID): Boolean =
-            (sourceTokens[taskId] == token).also { authorized ->
+            (restoreSources?.authorize(taskId, token.toString())
+                ?: (sourceTokens[taskId] == token)).also { authorized ->
                 if (authorized) authorizedSourceTokens += taskId to token
             }
 
-        override fun revokeRestoreSourceToken(taskId: UUID, token: UUID) {
-            revokedSourceTokens += taskId to token
+        override fun dropUnacceptedRestoreSourceToken(taskId: UUID, token: UUID) {
+            val dropped = restoreSources?.dropIfUnauthorized(taskId, token.toString())
+                ?: (taskId to token !in authorizedSourceTokens)
+            if (dropped) droppedSourceTokens += taskId to token
+        }
+
+        override fun dropRestoreSourceToken(taskId: UUID, token: UUID) {
+            restoreSources?.drop(taskId, token.toString())
+            droppedSourceTokens += taskId to token
         }
 
         override suspend fun resume(

@@ -13,7 +13,6 @@ import androidx.room.Transaction
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
-import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import kotlinx.coroutines.flow.Flow
 
 data class SweepRequestWithTargets(
@@ -55,6 +54,7 @@ abstract class PrivilegeSweepDao {
         """
         SELECT * FROM sweep_requests
         WHERE terminal_state IS NULL
+          AND state != 'CANCEL_REQUESTED'
           AND operation = :operation
           AND user_id = :userId
           AND ((freezer_mode IS NULL AND :freezerMode IS NULL) OR freezer_mode = :freezerMode)
@@ -948,8 +948,12 @@ abstract class PrivilegeSweepDao {
     open suspend fun markLegacyTargetsUnknown(
         requestId: String,
         ambiguousOrdinals: List<Int>,
+        serviceExecutionId: String,
         nowMs: Long,
     ): Boolean {
+        require(serviceExecutionId.isStorageSafeOwnershipToken()) {
+            "serviceExecutionId must be a non-empty storage-safe token"
+        }
         require(nowMs >= 0L) { "nowMs must not be negative" }
         val ordinals = ambiguousOrdinals.distinct()
         if (ordinals.isEmpty()) return false
@@ -986,6 +990,7 @@ abstract class PrivilegeSweepDao {
         val hasPending = countTargetsInState(requestId, StoredSweepTargetState.PENDING.name) > 0
         return settleLegacyRequestRow(
             requestId = requestId,
+            serviceExecutionId = serviceExecutionId,
             state = if (hasPending) {
                 StoredSweepRequestState.QUEUED.name
             } else {
@@ -2546,6 +2551,7 @@ abstract class PrivilegeSweepDao {
         """
         UPDATE sweep_requests
         SET state = :state,
+            execution_id = :serviceExecutionId,
             block_reason = NULL,
             service_session_token = NULL,
             claim_token = NULL,
@@ -2568,6 +2574,7 @@ abstract class PrivilegeSweepDao {
     )
     protected abstract suspend fun settleLegacyRequestRow(
         requestId: String,
+        serviceExecutionId: String,
         state: String,
         nowMs: Long,
     ): Int
@@ -2609,120 +2616,6 @@ abstract class PrivilegeSweepDao {
         """
     )
     protected abstract suspend fun hasRunnableRequestsQuery(): Boolean
-
-    @Query(
-        """
-        UPDATE sweep_requests
-        SET succeeded = 0, failed = 0, busy = 0, unresolved = 0
-        WHERE request_id = :requestId AND terminal_state IS NULL
-        """
-    )
-    abstract suspend fun resetForRunRow(requestId: String): Int
-
-    @Transaction
-    open suspend fun resetForRun(requestId: String): SweepRequestWithTargets? {
-        if (resetForRunRow(requestId) != 1) return null
-        return load(requestId)
-    }
-
-    @Query(
-        """
-        UPDATE sweep_requests
-        SET succeeded = COALESCE(succeeded, 0) + 1
-        WHERE request_id = :requestId AND terminal_state IS NULL
-        """
-    )
-    abstract suspend fun incrementSucceeded(requestId: String): Int
-
-    @Query(
-        """
-        UPDATE sweep_requests
-        SET failed = COALESCE(failed, 0) + 1
-        WHERE request_id = :requestId AND terminal_state IS NULL
-        """
-    )
-    abstract suspend fun incrementFailed(requestId: String): Int
-
-    @Query(
-        """
-        UPDATE sweep_requests
-        SET busy = COALESCE(busy, 0) + 1
-        WHERE request_id = :requestId AND terminal_state IS NULL
-        """
-    )
-    abstract suspend fun incrementBusy(requestId: String): Int
-
-    open suspend fun recordAttempt(requestId: String, outcome: SweepAttemptOutcome): Int =
-        when (outcome) {
-            SweepAttemptOutcome.SUCCEEDED -> incrementSucceeded(requestId)
-            SweepAttemptOutcome.FAILED -> incrementFailed(requestId)
-            SweepAttemptOutcome.BUSY -> incrementBusy(requestId)
-        }
-
-    @Query(
-        """
-        UPDATE sweep_requests
-        SET terminal_state = :terminalState,
-            succeeded = COALESCE(succeeded, 0),
-            failed = COALESCE(failed, 0),
-            busy = COALESCE(busy, 0),
-            unresolved = (
-                SELECT COUNT(*) FROM sweep_targets
-                WHERE sweep_targets.request_id = sweep_requests.request_id
-            ) - COALESCE(succeeded, 0) - COALESCE(failed, 0) - COALESCE(busy, 0),
-            terminal_at_epoch_ms = :nowMs,
-            retain_until_epoch_ms = :retainUntilEpochMs
-        WHERE request_id = :requestId AND terminal_state IS NULL
-        """
-    )
-    abstract suspend fun finish(
-        requestId: String,
-        terminalState: String,
-        nowMs: Long,
-        retainUntilEpochMs: Long,
-    ): Int
-
-    @Query(
-        """
-        SELECT request_id FROM sweep_requests
-        WHERE terminal_state IS NULL
-        ORDER BY created_at_epoch_ms ASC, request_id ASC
-        """
-    )
-    abstract suspend fun loadNonterminalRequestIds(): List<String>
-
-    @Query(
-        """
-        UPDATE sweep_requests
-        SET terminal_state = :terminalState,
-            succeeded = COALESCE(succeeded, 0),
-            failed = COALESCE(failed, 0),
-            busy = COALESCE(busy, 0),
-            unresolved = (
-                SELECT COUNT(*) FROM sweep_targets
-                WHERE sweep_targets.request_id = sweep_requests.request_id
-            ) - COALESCE(succeeded, 0) - COALESCE(failed, 0) - COALESCE(busy, 0),
-            terminal_at_epoch_ms = :nowMs,
-            retain_until_epoch_ms = :retainUntilEpochMs
-        WHERE terminal_state IS NULL
-        """
-    )
-    abstract suspend fun cancelNonterminalRows(
-        terminalState: String,
-        nowMs: Long,
-        retainUntilEpochMs: Long,
-    ): Int
-
-    @Transaction
-    open suspend fun cancelAllNonterminal(
-        terminalState: String,
-        nowMs: Long,
-        retainUntilEpochMs: Long,
-    ): List<String> {
-        val requestIds = loadNonterminalRequestIds()
-        cancelNonterminalRows(terminalState, nowMs, retainUntilEpochMs)
-        return requestIds
-    }
 
     @Query("DELETE FROM sweep_requests WHERE request_id = :requestId")
     abstract suspend fun delete(requestId: String)

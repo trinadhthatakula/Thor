@@ -59,7 +59,8 @@ internal interface DataTaskActionPort {
     suspend fun prepareArchiveKey(task: DataTaskSnapshot, passphrase: CharArray): String?
     fun dropArchiveKey(taskId: UUID, token: String)
     fun authorizeRestoreSourceToken(taskId: UUID, token: UUID): Boolean
-    fun revokeRestoreSourceToken(taskId: UUID, token: UUID)
+    fun dropUnacceptedRestoreSourceToken(taskId: UUID, token: UUID)
+    fun dropRestoreSourceToken(taskId: UUID, token: UUID)
     suspend fun resume(
         taskId: UUID,
         expectedState: DataTaskState,
@@ -112,8 +113,12 @@ internal class RoomDataTaskActionPort(
     override fun authorizeRestoreSourceToken(taskId: UUID, token: UUID): Boolean =
         restoreSources.authorize(taskId, token.toString())
 
-    override fun revokeRestoreSourceToken(taskId: UUID, token: UUID) {
-        restoreSources.revokeAuthorization(taskId, token.toString())
+    override fun dropUnacceptedRestoreSourceToken(taskId: UUID, token: UUID) {
+        restoreSources.dropIfUnauthorized(taskId, token.toString())
+    }
+
+    override fun dropRestoreSourceToken(taskId: UUID, token: UUID) {
+        restoreSources.drop(taskId, token.toString())
     }
 
     override suspend fun resume(
@@ -290,25 +295,29 @@ class DefaultTaskActionController internal constructor(
     override suspend fun submitRestoreSource(
         taskId: UUID,
         transientSourceToken: UUID,
-    ): TaskActionDispatch = dataHandoffLock(taskId).withLock {
-        val subject = resolve(taskId)
-        if (subject !is Subject.Data) return@withLock subject.rejection()
-        val task = subject.snapshot
-        if (task.state != DataTaskState.WAITING_FOR_SOURCE ||
-            task.interruption != DataTaskInterruption.SOURCE_REQUIRED
-        ) {
-            return@withLock rejected(TaskActionRejection.INVALID_STATE)
-        }
-        settleAction {
-            if (!data.authorizeRestoreSourceToken(taskId, transientSourceToken)) {
-                rejected(TaskActionRejection.AUTHORIZATION_NOT_GRANTED)
-            } else if (!data.resume(taskId, task.state, task.interruption, transientSourceToken)) {
-                data.revokeRestoreSourceToken(taskId, transientSourceToken)
-                rejected(TaskActionRejection.STALE_PROJECTION)
-            } else {
-                wakeData(taskId)
+    ): TaskActionDispatch = try {
+        dataHandoffLock(taskId).withLock {
+            val subject = resolve(taskId)
+            if (subject !is Subject.Data) return@withLock subject.rejection()
+            val task = subject.snapshot
+            if (task.state != DataTaskState.WAITING_FOR_SOURCE ||
+                task.interruption != DataTaskInterruption.SOURCE_REQUIRED
+            ) {
+                return@withLock rejected(TaskActionRejection.INVALID_STATE)
+            }
+            settleAction {
+                if (!data.authorizeRestoreSourceToken(taskId, transientSourceToken)) {
+                    rejected(TaskActionRejection.AUTHORIZATION_NOT_GRANTED)
+                } else if (!data.resume(taskId, task.state, task.interruption, transientSourceToken)) {
+                    data.dropRestoreSourceToken(taskId, transientSourceToken)
+                    rejected(TaskActionRejection.STALE_PROJECTION)
+                } else {
+                    wakeData(taskId)
+                }
             }
         }
+    } finally {
+        data.dropUnacceptedRestoreSourceToken(taskId, transientSourceToken)
     }
 
     override suspend fun privilegeAuthorizationReturned(taskId: UUID): TaskActionDispatch {

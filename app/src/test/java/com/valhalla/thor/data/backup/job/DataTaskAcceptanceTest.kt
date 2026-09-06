@@ -11,6 +11,9 @@ import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataTaskState
+import com.valhalla.thor.domain.model.ThorJobKind
+import com.valhalla.thor.domain.repository.ThorJobStatus
+import com.valhalla.thor.domain.repository.ThorJobWatcher
 import java.util.UUID
 import java.util.concurrent.CancellationException
 import javax.crypto.SecretKey
@@ -18,6 +21,8 @@ import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
@@ -192,6 +197,58 @@ class DataTaskAcceptanceTest {
                 )
             },
         )
+    }
+
+    @Test
+    fun callerOwnedExportIdIsInsertedAndReturned() = runTest {
+        val events = mutableListOf<String>()
+        val store = RecordingAcceptanceStore(events)
+        val acceptance = DataTaskAcceptance(
+            store = store,
+            deriveKey = { _, _, _ -> KEY },
+            keyVault = RecordingKeyVault(events),
+            wakeSignal = DataQueueWakeSignal { taskId ->
+                assertEquals(CALLER_TASK_ID, taskId)
+                events += "wake"
+                ServiceStartResult.Requested
+            },
+            taskIdFactory = { error("caller-owned export must not allocate another ID") },
+            clock = { NOW_MS },
+        )
+
+        val accepted = acceptance.acceptExport(CALLER_TASK_ID, exportRequest())
+
+        assertEquals(CALLER_TASK_ID, accepted)
+        assertEquals(DataTaskState.QUEUED, store.states.getValue(CALLER_TASK_ID))
+        assertEquals(listOf("insert", "wake"), events)
+    }
+
+    @Test
+    fun exportLauncherReturnsTheDurableIdWhenWakeSettlementFailsAfterInsertion() = runTest {
+        val events = mutableListOf<String>()
+        val store = RecordingAcceptanceStore(events).apply {
+            blockFailure = IllegalStateException("start-blocked settlement failed")
+        }
+        val acceptance = acceptance(
+            store = store,
+            keyVault = RecordingKeyVault(events),
+            events = events,
+            wakeResult = ServiceStartResult.Rejected(ServiceStartFailure.SECURITY_EXCEPTION),
+        )
+        val launcher = ExportJobLauncherImpl(
+            acceptance = acceptance,
+            watcher = object : ThorJobWatcher {
+                override fun status(jobId: UUID): Flow<ThorJobStatus> = emptyFlow()
+                override fun runningJobFor(kind: ThorJobKind, target: String): Flow<UUID?> =
+                    emptyFlow()
+            },
+        )
+
+        val accepted = launcher.startExport(TASK_ID, exportRequest())
+
+        assertEquals(TASK_ID, accepted)
+        assertEquals(DataTaskState.QUEUED, store.states.getValue(TASK_ID))
+        assertEquals(listOf("insert", "wake", "block:QUEUED:START_BLOCKED"), events)
     }
 
     @Test
@@ -421,6 +478,7 @@ class DataTaskAcceptanceTest {
     ) : DataTaskAcceptanceStore {
         val states = mutableMapOf<UUID, DataTaskState>()
         var insertFailure: Throwable? = null
+        var blockFailure: Throwable? = null
         var beforeInsert: (() -> Unit)? = null
         var afterInsertCommit: (suspend () -> Unit)? = null
 
@@ -449,6 +507,7 @@ class DataTaskAcceptanceTest {
             nowMs: Long,
         ): Boolean {
             events += "block:$expectedState:$blockedState"
+            blockFailure?.let { throw it }
             if (states[taskId] != expectedState) return false
             states[taskId] = blockedState
             return true
@@ -506,6 +565,7 @@ class DataTaskAcceptanceTest {
 
     private companion object {
         val TASK_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000005")
+        val CALLER_TASK_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000006")
         val PASSPHRASE = "correct horse battery staple".toCharArray()
         val KEY: SecretKey = SecretKeySpec(ByteArray(32) { 9 }, "AES")
         const val NOW_MS = 5_000L

@@ -638,7 +638,6 @@
     <string name="profile_delete_desc">يُحذف الملف فقط. تبقى التطبيقات التي بداخله كما هي — وما كان مجمدًا يظل مجمدًا.</string>
     <string name="profile_saved">تم حفظ الملف</string>
     <string name="profile_deleted">تم حذف الملف</string>
-    <string name="profile_nothing_to_do">لا يوجد ما يمكن فعله لهذا الملف</string>
     <string name="bulk_run_failed">لم تكتمل هذه العملية — تحقّق من التطبيقات قبل الاعتماد عليها</string>
     <string name="error_profile_name_taken">اسم الملف هذا مستخدم بالفعل</string>
     <string name="error_profile_delete_failed">تعذر حذف هذا الملف</string>
@@ -794,7 +793,6 @@
     <string name="component_disclaimer_confirm">تعطيله</string>
     <string name="component_disclaimer_dont_ask_session">لا تسأل مرة أخرى في هذه الجلسة</string>
     <string name="component_disabled_unrecorded">تم تعطيل %1$s، لكن Thor لم يتمكن من تسجيل هذا التعطيل، لذا لن تشمله ميزة استعادة الكل</string>
-    <string name="cancel_sweep_queue">إلغاء قائمة انتظار الإجراءات</string>
     <string name="sweep_notification_title">جارٍ تنفيذ إجراءات التطبيقات</string>
     <string name="sweep_queued">إجراءات التطبيقات في قائمة الانتظار</string>
     <string name="sweep_running">جارٍ تنفيذ %1$d من %2$d</string>
@@ -802,11 +800,8 @@
     <string name="sweep_partial">انتهت إجراءات التطبيقات مع وجود مشكلات</string>
     <string name="sweep_cancelled">أُلغيت قائمة انتظار الإجراءات</string>
     <string name="sweep_failed">فشلت إجراءات التطبيقات</string>
-    <string name="sweep_launch_failed_title">تعذّر بدء إجراءات التطبيقات</string>
     <string name="sweep_observer_failure">التقدّم غير متاح</string>
-    <string name="sweep_observer_failure_desc">تعذّر على Thor إعادة الاتصال بإجراءات التطبيقات هذه. تحقّق من التطبيقات قبل الاعتماد على النتيجة.</string>
     <string name="sweep_root_lane_degraded">مسار Root للأرشفة/المعالجة يعمل في وضع احتياطي</string>
-    <string name="sweep_progress_summary">نجحت: %1$d · فشلت: %2$d · مشغولة: %3$d · غير محسومة: %4$d</string>
     <string name="sweep_result_summary">إجراءات التطبيقات — نجحت: %1$d · فشلت: %2$d · مشغولة: %3$d · غير محسومة: %4$d</string>
 
     <!-- قوائم انتظار دائمة لخدمات الواجهة الأمامية -->

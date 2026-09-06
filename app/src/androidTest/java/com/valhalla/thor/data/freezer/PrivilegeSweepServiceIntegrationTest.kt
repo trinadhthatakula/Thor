@@ -51,12 +51,7 @@ class PrivilegeSweepServiceIntegrationTest {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         store = RoomPrivilegeSweepStore(db.privilegeSweepDao())
         val gate = PrivilegeSweepProcessGate()
-        val wm = object : PrivilegeSweepWorkManager {
-            override suspend fun enqueue(work: androidx.work.OneTimeWorkRequest) = error("unused")
-            override fun observeState(workId: UUID) = flowOf<SweepWorkState?>(null)
-            override suspend fun currentState(workId: UUID): SweepWorkState? = null
-        }
-        val reconciler = PrivilegeSweepReconciler(store, wm, clock, gate)
+        val reconciler = PrivilegeSweepReconciler(store, clock, gate)
         val verifier = PrivilegeSweepReinstallPostconditionVerifier { _, _, _, _ -> ReinstallPostcondition.UNKNOWN }
         val runtime = RoomPrivilegeSweepDrainRuntime(context,
             PrivilegeSweepWorkManagerCutover(LegacyPrivilegeSweepExecutionFence(), SweepQueueWorkManager {}, store, clock, gate),

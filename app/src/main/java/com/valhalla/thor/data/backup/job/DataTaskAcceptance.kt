@@ -203,11 +203,18 @@ class DataTaskAcceptance internal constructor(
     suspend fun acceptExport(
         request: AppExportRequest,
         onDurablyAccepted: () -> Unit = {},
-    ): UUID {
-        val taskId = dependencies.newTaskId()
-        return acceptPersistedTask(taskId, onDurablyAccepted = onDurablyAccepted) {
-            store.insertExport(taskId, request, dependencies.nowMs())
-        }
+    ): UUID = acceptExport(
+        taskId = dependencies.newTaskId(),
+        request = request,
+        onDurablyAccepted = onDurablyAccepted,
+    )
+
+    suspend fun acceptExport(
+        taskId: UUID,
+        request: AppExportRequest,
+        onDurablyAccepted: () -> Unit = {},
+    ): UUID = acceptPersistedTask(taskId, onDurablyAccepted = onDurablyAccepted) {
+        store.insertExport(taskId, request, dependencies.nowMs())
     }
 
     private suspend fun acceptPersistedTask(

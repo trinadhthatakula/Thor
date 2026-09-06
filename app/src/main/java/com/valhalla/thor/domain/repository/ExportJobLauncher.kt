@@ -26,4 +26,9 @@ interface ExportJobLauncher : ThorJobWatcher {
      *   rather than showing a progress bar for a job that will never run. See `enqueueUniqueJob`.
      */
     suspend fun startExport(request: AppExportRequest): UUID?
+
+    suspend fun startExport(
+        taskId: UUID,
+        request: AppExportRequest,
+    ): UUID? = startExport(request)
 }

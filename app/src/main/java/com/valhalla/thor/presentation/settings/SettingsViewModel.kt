@@ -14,10 +14,11 @@ import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.AnyFileOpenerController
@@ -26,9 +27,14 @@ import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.presentation.security.biometricRefusalMessage
 import com.valhalla.thor.util.LocaleManager
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -46,17 +52,6 @@ import kotlinx.coroutines.sync.withLock
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
 
-private fun PrivilegeSweepLaunchRejection.asSweepMessage(): UiText.StringResource =
-    UiText.StringResource(
-        when (this) {
-            PrivilegeSweepLaunchRejection.NotificationsRequired ->
-                R.string.notification_access_needed_subtitle
-            PrivilegeSweepLaunchRejection.NoPrivilege -> R.string.tile_grant_privilege_toast
-            PrivilegeSweepLaunchRejection.NoTargets -> R.string.tile_no_apps_toast
-            is PrivilegeSweepLaunchRejection.EnqueueFailed -> R.string.bulk_run_failed
-        }
-    )
-
 @KoinViewModel
 class SettingsViewModel(
     private val preferenceRepository: PreferenceRepository,
@@ -65,6 +60,7 @@ class SettingsViewModel(
     private val localeManager: LocaleManager,
     private val sweepResolver: PrivilegeSweepTargetResolver,
     private val sweepController: PrivilegeSweepController,
+    private val taskNavigationTargets: TaskNavigationTargets,
     private val appShortcuts: AppShortcutController,
     private val anyFileOpenerController: AnyFileOpenerController,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
@@ -300,18 +296,35 @@ class SettingsViewModel(
 
     /** Enqueues a cross-app restore for every frozen package stored for Thor's current user. */
     fun unfreezeAll() {
+        val requestId = UUID.randomUUID()
+        taskNavigationTargets.requestOpenProvisional(
+            requestId,
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.UNFREEZE.name,
+            ),
+        )
         viewModelScope.launch {
-            val spec = sweepResolver.resolve(
-                BulkRequest(BulkOp.UNFREEZE),
-                PrivilegeSweepSource.SETTINGS,
-            )
-            _events.send(
-                when (val launch = sweepController.launch(spec)) {
-                    is PrivilegeSweepLaunchResult.Accepted ->
-                        UiText.StringResource(R.string.sweep_queued)
-                    is PrivilegeSweepLaunchResult.Rejected -> launch.reason.asSweepMessage()
+            try {
+                val spec = sweepResolver.resolve(
+                    BulkRequest(BulkOp.UNFREEZE),
+                    PrivilegeSweepSource.SETTINGS,
+                )
+                when (val launch = sweepController.launch(requestId, spec)) {
+                    is PrivilegeSweepLaunchResult.Accepted -> taskNavigationTargets.requestAccepted(
+                        provisionalTaskId = requestId,
+                        canonicalTaskId = launch.requestId,
+                    )
+
+                    is PrivilegeSweepLaunchResult.Rejected ->
+                        taskNavigationTargets.requestRejected(requestId)
                 }
-            )
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                Logger.e("SettingsViewModel", "restore-all sweep launch failed", exception)
+                taskNavigationTargets.requestRejected(requestId)
+            }
         }
     }
 

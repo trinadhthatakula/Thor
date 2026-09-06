@@ -61,6 +61,7 @@ import org.koin.androidx.compose.koinViewModel
 fun HomeScreen(
     onNavigateToApps: () -> Unit,
     onNavigateToFreezer: () -> Unit,
+    onNavigateToQueue: () -> Unit,
     onReinstallAll: () -> Unit,
     /**
      * Asks for the whole-device cache clear. No [AppListType] any more, and no dialog here either:
@@ -144,6 +145,7 @@ fun HomeScreen(
             onTypeChanged = { viewModel.onTypeChanged(it) },
             onPrivilegeChanged = { viewModel.onPrivilegeModeChanged(it) },
             onRestrictedStatusClick = { showPrivilegeDialog = true },
+            onNavigateToQueue = onNavigateToQueue,
             extensionsUnlocked = state.extensionsUnlocked,
             onCrack = { viewModel.crackEasterEgg() },
             onShowSupport = { showSupportSheet = true }

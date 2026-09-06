@@ -306,10 +306,6 @@
             android:exported="false" />
 
         <receiver
-            android:name=".data.freezer.SweepQueueCancelReceiver"
-            android:exported="false" />
-
-        <receiver
             android:name=".data.receivers.InstallReceiver"
             android:exported="false">
             <intent-filter>
@@ -392,6 +388,22 @@
              stacking on another, and noHistory already finishes this one inside onCreate. -->
         <activity
             android:name=".presentation.launcher.JobSheetLaunchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <activity
+            android:name=".presentation.launcher.TaskQueueLaunchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <activity
+            android:name=".presentation.launcher.ShareHandoffActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:noHistory="true"

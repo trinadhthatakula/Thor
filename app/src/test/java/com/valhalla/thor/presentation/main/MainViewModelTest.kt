@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.presentation.main
 
-import androidx.lifecycle.SavedStateHandle
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.data.backup.job.JobSheetTarget
@@ -16,9 +15,8 @@ import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
-import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
-import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -38,7 +36,11 @@ import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.blockedSystemApp
+import com.valhalla.thor.presentation.navigation.TaskNavigationRequest
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
 import com.valhalla.thor.presentation.privilegeSweepResolver
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
 import com.valhalla.thor.presentation.systemApp
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
@@ -134,7 +136,8 @@ class MainViewModelTest {
         // which is the one moment a test body cannot otherwise reach. See FakeAppBundleBuilder.onBuild.
         bundleBuilder: FakeAppBundleBuilder = FakeAppBundleBuilder(),
         sweepController: FakePrivilegeSweepController = FakePrivilegeSweepController(),
-        savedStateHandle: SavedStateHandle = SavedStateHandle(),
+        taskNavigationTargets: TaskNavigationTargets =
+            TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
     ): MainViewModel {
         val vm = MainViewModel(
             manageAppUseCase = ManageAppUseCase(systemRepository, DefaultPackageOperationCoordinator()),
@@ -154,7 +157,7 @@ class MainViewModelTest {
                 preferenceRepository = preferenceRepository,
             ),
             sweepController = sweepController,
-            savedStateHandle = savedStateHandle,
+            taskNavigationTargets = taskNavigationTargets,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
@@ -201,12 +204,27 @@ class MainViewModelTest {
         return received
     }
 
+    private fun TestScope.navigationRequestsOf(
+        targets: TaskNavigationTargets,
+    ): List<TaskNavigationRequest> {
+        val received = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            targets.requests.collect { received += it }
+        }
+        return received
+    }
+
     // --- Durable selection sweeps -------------------------------------------------------------
 
     @Test
-    fun `freeze selection launches one durable sweep`() = runTest {
+    fun `freeze selection opens its caller owned task before accepting the durable sweep`() = runTest {
         val controller = FakePrivilegeSweepController()
-        val vm = viewModel(sweepController = controller)
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
+        val vm = viewModel(
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
 
         vm.onMultiAppAction(
             MultiAppAction.Freeze(
@@ -227,6 +245,21 @@ class MainViewModelTest {
         assertEquals(FreezerMode.SUSPEND, controller.launched.single().freezerMode)
         assertEquals(PrivilegeSweepSource.MAIN, controller.launched.single().source)
         assertTrue(system.calls.isEmpty())
+
+        assertEquals(2, requests.size)
+        val open = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.FREEZE.name,
+            ),
+            open.identity,
+        )
+        assertEquals(open.taskId, controller.launchedRequestIds.single())
+        assertEquals(
+            TaskNavigationRequest.Accepted(open.taskId, open.taskId),
+            requests[1],
+        )
     }
 
     @Test
@@ -249,102 +282,82 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `notification rejection clears launch state and shows actionable error`() = runTest {
+    fun `rejected sweep keeps the provisional detail visible with rejected state`() = runTest {
         val controller = FakePrivilegeSweepController().apply {
             nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(
                 PrivilegeSweepLaunchRejection.NotificationsRequired
             )
         }
-        val savedState = SavedStateHandle(mapOf("main_sweep_request_id" to UUID(0L, 99L).toString()))
-        val vm = viewModel(sweepController = controller, savedStateHandle = savedState)
-        val effects = effectsOf(vm)
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
+        val vm = viewModel(
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
 
         vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("a"))))
         advanceUntilIdle()
 
-        assertEquals(null, savedState.get<String>("main_sweep_request_id"))
-        assertEquals(PrivilegeSweepPhase.FAILED, vm.uiState.value.sweepProgress?.phase)
-        assertEquals(
-            UiText.StringResource(R.string.notification_access_needed_subtitle),
-            vm.uiState.value.sweepProgress?.message,
-        )
-        assertTrue("launch failure is durable screen state, not a transient toast", effects.isEmpty())
+        assertEquals(2, requests.size)
+        val open = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(open.taskId, controller.launchedRequestIds.single())
+        assertEquals(TaskNavigationRequest.Rejected(open.taskId), requests[1])
     }
 
     @Test
-    fun `queued running partial cancelled and observer failure statuses reach UI`() = runTest {
-        val controller = FakePrivilegeSweepController()
-        val requestId = UUID(0L, 41L)
-        controller.nextLaunchResult = PrivilegeSweepLaunchResult.Accepted(
-            requestId,
-            UUID(1L, 41L),
-            coalesced = false,
-        )
-        val vm = viewModel(sweepController = controller)
-        vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("a"), userApp("b"))))
-        advanceUntilIdle()
-
-        val phases = listOf(
-            PrivilegeSweepPhase.QUEUED,
-            PrivilegeSweepPhase.RUNNING,
-            PrivilegeSweepPhase.PARTIAL,
-            PrivilegeSweepPhase.CANCELLED,
-            PrivilegeSweepPhase.OBSERVER_FAILURE,
-        )
-        phases.forEach { phase ->
-            controller.emit(status(requestId, phase))
-            advanceUntilIdle()
-            assertEquals(phase, vm.uiState.value.sweepStatus?.phase)
-            assertEquals(phase, vm.uiState.value.sweepProgress?.phase)
+    fun `sweep launch exception rejects the exact provisional task`() = runTest {
+        val controller = FakePrivilegeSweepController().apply {
+            launchFailure = IllegalStateException("acceptance failed")
         }
-    }
-
-    @Test
-    fun `active retained request reconnects without launching duplicate work`() = runTest {
-        val controller = FakePrivilegeSweepController()
-        val requestId = UUID(0L, 52L)
-        val savedState = SavedStateHandle(mapOf("main_sweep_request_id" to requestId.toString()))
-        val vm = viewModel(sweepController = controller, savedStateHandle = savedState)
-        advanceUntilIdle()
-        assertEquals(PrivilegeSweepPhase.OBSERVER_FAILURE, vm.uiState.value.sweepProgress?.phase)
-
-        controller.emit(status(requestId, PrivilegeSweepPhase.RUNNING))
-        advanceUntilIdle()
-
-        assertTrue(controller.launched.isEmpty())
-        assertEquals(requestId, vm.uiState.value.sweepStatus?.requestId)
-        assertEquals(PrivilegeSweepPhase.RUNNING, vm.uiState.value.sweepProgress?.phase)
-    }
-
-    @Test
-    fun `missing retained request becomes terminal observer failure instead of endless progress`() = runTest {
-        val requestId = UUID(0L, 53L)
-        val savedState = SavedStateHandle(mapOf("main_sweep_request_id" to requestId.toString()))
-
-        val vm = viewModel(savedStateHandle = savedState)
-        advanceUntilIdle()
-
-        assertEquals(PrivilegeSweepPhase.OBSERVER_FAILURE, vm.uiState.value.sweepProgress?.phase)
-        assertEquals(UiText.StringResource(R.string.sweep_observer_failure_desc), vm.uiState.value.sweepProgress?.message)
-    }
-
-    @Test
-    fun `cancel action terminates the durable queue without hiding active progress`() = runTest {
-        val controller = FakePrivilegeSweepController()
-        val requestId = UUID(0L, 54L)
-        controller.emit(status(requestId, PrivilegeSweepPhase.RUNNING))
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
         val vm = viewModel(
             sweepController = controller,
-            savedStateHandle = SavedStateHandle(mapOf("main_sweep_request_id" to requestId.toString())),
+            taskNavigationTargets = targets,
         )
+
+        vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("a"))))
         advanceUntilIdle()
 
-        vm.cancelSweepQueue()
-        vm.cancelSweepQueue(requestId)
+        assertEquals(2, requests.size)
+        val open = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(TaskNavigationRequest.Rejected(open.taskId), requests[1])
+    }
+
+    @Test
+    fun `coalesced sweep replaces the caller owned candidate with the canonical request`() = runTest {
+        val canonicalId = UUID(0L, 41L)
+        val controller = FakePrivilegeSweepController().apply {
+            nextLaunchResult = PrivilegeSweepLaunchResult.Accepted(
+                requestId = canonicalId,
+                workId = UUID(1L, 41L),
+                coalesced = true,
+            )
+        }
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
+        val vm = viewModel(
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
+
+        vm.onMultiAppAction(MultiAppAction.ClearCache(listOf(userApp("a"))))
         advanceUntilIdle()
 
-        assertEquals(listOf(requestId), controller.cancelledRequestIds)
-        assertEquals(PrivilegeSweepPhase.RUNNING, vm.uiState.value.sweepProgress?.phase)
+        assertEquals(2, requests.size)
+        val open = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(open.taskId, controller.launchedRequestIds.single())
+        assertEquals(
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.CLEAR_CACHE.name,
+            ),
+            open.identity,
+        )
+        assertEquals(
+            TaskNavigationRequest.Accepted(open.taskId, canonicalId),
+            requests[1],
+        )
     }
 
     @Test
@@ -357,20 +370,6 @@ class MainViewModelTest {
 
         assertEquals(listOf("setAppSuspended:a:true", "setAppSuspended:b:false"), system.calls)
     }
-
-    private fun status(requestId: UUID, phase: PrivilegeSweepPhase) = PrivilegeSweepStatus(
-        requestId = requestId,
-        workId = UUID(1L, requestId.leastSignificantBits),
-        operation = PrivilegeSweepOperation.FREEZE,
-        source = PrivilegeSweepSource.MAIN,
-        phase = phase,
-        total = 2,
-        succeeded = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
-        failed = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
-        busy = 0,
-        unresolved = if (phase == PrivilegeSweepPhase.QUEUED) 2 else 0,
-        rootLaneDegraded = false,
-    )
 
     // --- Bulk uninstall: the tier gate and the watchlist -----------------------------------
 
@@ -536,7 +535,6 @@ class MainViewModelTest {
         // run completes, so reusing it here would pin the user to a screen for the length of a run
         // that is explicitly designed to outlive that screen.
         assertFalse(vm.uiState.value.loggerState.isVisible)
-        assertNull(vm.uiState.value.sweepProgress)
         // Exactly one, whatever the outcome was: the completions collector is the only reporter.
         // Awaiting the Deferred `start` returns as well — the obvious way to "make sure" the result
         // is seen — toasts the same run twice.

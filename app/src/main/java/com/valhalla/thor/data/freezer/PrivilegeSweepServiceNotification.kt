@@ -16,6 +16,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.service.FOREGROUND_PENDING_INTENT_FLAGS
 import com.valhalla.thor.data.service.ForegroundPendingIntentNamespace
 import com.valhalla.thor.data.service.PRIVILEGED_FOREGROUND_CHANNEL_ID
+import com.valhalla.thor.presentation.launcher.TaskQueueLaunchActivity
 import java.util.UUID
 
 internal class PrivilegeSweepServiceNotification(
@@ -38,13 +39,13 @@ internal class PrivilegeSweepServiceNotification(
     fun preparing(): Notification = baseBuilder()
         .setContentTitle(context.getString(R.string.privilege_queue_notification_title))
         .setContentText(context.getString(R.string.task_state_starting))
-        .setContentIntent(contentIntent(PREPARING_ID))
+        .setContentIntent(genericContentIntent())
         .build()
 
     fun running(requestId: UUID, packageName: String): Notification = baseBuilder()
         .setContentTitle(context.getString(R.string.privilege_queue_notification_title))
         .setContentText(packageName)
-        .setContentIntent(contentIntent(requestId))
+        .setContentIntent(taskContentIntent(requestId))
         .addAction(
             0,
             context.getString(R.string.task_queue_notification_cancel),
@@ -64,10 +65,18 @@ internal class PrivilegeSweepServiceNotification(
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
 
-    private fun contentIntent(requestId: UUID): PendingIntent = PendingIntent.getActivity(
+    private fun genericContentIntent(): PendingIntent = PendingIntent.getActivity(
+        context,
+        ForegroundPendingIntentNamespace.PRIVILEGED_CONTENT.requestCode(PREPARING_ID),
+        Intent(context, HomeActivity::class.java),
+        FOREGROUND_PENDING_INTENT_FLAGS,
+    )
+
+    private fun taskContentIntent(requestId: UUID): PendingIntent = PendingIntent.getActivity(
         context,
         ForegroundPendingIntentNamespace.PRIVILEGED_CONTENT.requestCode(requestId),
-        Intent(context, HomeActivity::class.java),
+        Intent(context, TaskQueueLaunchActivity::class.java)
+            .putExtra(TaskQueueLaunchActivity.EXTRA_TASK_ID, requestId.toString()),
         FOREGROUND_PENDING_INTENT_FLAGS,
     )
 

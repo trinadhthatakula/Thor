@@ -603,7 +603,6 @@
     <string name="profile_delete_desc">Seul le profil est supprimé. Les applications qu\'il contient restent telles quelles — ce qui est congelé le reste.</string>
     <string name="profile_saved">Profil enregistré</string>
     <string name="profile_deleted">Profil supprimé</string>
-    <string name="profile_nothing_to_do">Rien à faire pour ce profil</string>
     <string name="bulk_run_failed">L\'opération n\'est pas allée au bout — vérifiez les applis avant de vous y fier</string>
     <string name="error_profile_name_taken">Ce nom de profil est déjà pris</string>
     <string name="error_profile_delete_failed">Impossible de supprimer ce profil</string>
@@ -742,7 +741,6 @@
     <string name="component_disclaimer_confirm">Le désactiver</string>
     <string name="component_disclaimer_dont_ask_session">Ne plus demander pendant cette session</string>
     <string name="component_disabled_unrecorded">Thor n\'a pas pu enregistrer la désactivation de %1$s : Tout rétablir ne la proposera pas</string>
-    <string name="cancel_sweep_queue">Annuler la file d’actions</string>
     <string name="sweep_notification_title">Exécution des actions sur les applications</string>
     <string name="sweep_queued">Actions mises en file d’attente</string>
     <string name="sweep_running">Traitement de %1$d sur %2$d</string>
@@ -750,11 +748,8 @@
     <string name="sweep_partial">Les actions se sont terminées avec des problèmes</string>
     <string name="sweep_cancelled">La file d’actions a été annulée</string>
     <string name="sweep_failed">Échec des actions</string>
-    <string name="sweep_launch_failed_title">Impossible de lancer les actions</string>
     <string name="sweep_observer_failure">Progression indisponible</string>
-    <string name="sweep_observer_failure_desc">Thor n’a pas pu se reconnecter à ces actions sur les applications. Vérifiez les applications avant de vous fier au résultat.</string>
     <string name="sweep_root_lane_degraded">Le canal root d’archivage/balayage fonctionne en mode dégradé</string>
-    <string name="sweep_progress_summary">Réussites : %1$d · échecs : %2$d · occupées : %3$d · non résolues : %4$d</string>
     <string name="sweep_result_summary">Actions sur les applications — réussites : %1$d · échecs : %2$d · occupées : %3$d · non résolues : %4$d</string>
 
     <!-- Files durables des services au premier plan -->

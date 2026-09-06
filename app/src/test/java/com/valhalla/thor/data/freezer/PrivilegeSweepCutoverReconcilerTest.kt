@@ -70,6 +70,19 @@ class PrivilegeSweepCutoverReconcilerTest {
     }
 
     @Test
+    fun `cancellation settling between load and conversion is benign`() = runTest {
+        val events = mutableListOf<String>()
+        val legacy = stored(LEGACY_ID)
+        val store = FakeStore(listOf(legacy), events, settleCancellationOnMark = true)
+        val cutover = cutover(LegacyPrivilegeSweepExecutionFence(), store) {}
+
+        cutover.awaitCompleted()
+
+        assertEquals(StoredSweepTerminal.CANCELLED, store.load(legacy.requestId)?.terminalState)
+        assertEquals(listOf("legacy-unknown"), events)
+    }
+
+    @Test
     fun `failed cutover is retried once and only successful completion is cached`() {
         val fence = LegacyPrivilegeSweepExecutionFence()
         var calls = 0
@@ -139,6 +152,7 @@ class PrivilegeSweepCutoverReconcilerTest {
     private class FakeStore(
         initial: List<StoredPrivilegeSweep>,
         private val events: MutableList<String>,
+        private val settleCancellationOnMark: Boolean = false,
     ) : PrivilegeSweepStore {
         private val rows = initial.associateByTo(linkedMapOf(), StoredPrivilegeSweep::requestId)
         private val retained = MutableStateFlow(initial)
@@ -147,11 +161,18 @@ class PrivilegeSweepCutoverReconcilerTest {
         override suspend fun markLegacyTargetsUnknown(
             requestId: UUID,
             ambiguousOrdinals: List<Int>,
+            serviceExecutionId: UUID,
             nowMs: Long,
         ): Boolean {
             events += "legacy-unknown"
             marked += requestId
             assertEquals(listOf(0, 1), ambiguousOrdinals)
+            if (settleCancellationOnMark) {
+                rows[requestId] = requireNotNull(rows[requestId]).copy(
+                    terminalState = StoredSweepTerminal.CANCELLED,
+                )
+                return false
+            }
             return true
         }
 
@@ -160,10 +181,6 @@ class PrivilegeSweepCutoverReconcilerTest {
         override suspend fun createOrFindEquivalent(snapshot: NewPrivilegeSweepSnapshot): SweepCreateResult = error("unused")
         override fun observe(requestId: UUID): Flow<StoredPrivilegeSweep?> = error("unused")
         override fun observeRetained(source: PrivilegeSweepSource): Flow<List<StoredPrivilegeSweep>> = error("unused")
-        override suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep? = error("unused")
-        override suspend fun recordAttempt(requestId: UUID, outcome: SweepAttemptOutcome): Boolean = error("unused")
-        override suspend fun finish(requestId: UUID, terminal: StoredSweepTerminal, nowMs: Long): Boolean = error("unused")
-        override suspend fun cancelAllNonterminal(nowMs: Long): List<UUID> = error("unused")
         override suspend fun delete(requestId: UUID) = error("unused")
         override suspend fun deleteExpired(nowMs: Long): Int = error("unused")
     }

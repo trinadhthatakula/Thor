@@ -3,10 +3,6 @@
 
 package com.valhalla.thor.data.freezer
 
-import android.content.Context
-import androidx.work.OneTimeWorkRequest
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
 import com.valhalla.thor.data.service.ServiceStartFailure
 import com.valhalla.thor.data.service.ServiceStartResult
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
@@ -34,9 +30,6 @@ import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import org.koin.core.annotation.Single
 
 /** Foreground-service-backed implementation of the durable privilege-sweep boundary. */
@@ -58,7 +51,13 @@ class DefaultPrivilegeSweepController internal constructor(
         snapshots.map { it.toStatus(degraded) }
     }
 
-    override suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult {
+    override suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult =
+        launch(UUID.randomUUID(), spec)
+
+    override suspend fun launch(
+        requestId: UUID,
+        spec: PrivilegeSweepSpec,
+    ): PrivilegeSweepLaunchResult {
         val targets = normalizeSweepTargets(spec.packageNames)
         if (targets.isEmpty()) {
             return PrivilegeSweepLaunchResult.Rejected(PrivilegeSweepLaunchRejection.NoTargets)
@@ -68,7 +67,7 @@ class DefaultPrivilegeSweepController internal constructor(
             val nowMs = clock.nowMs()
             val created = store.createOrFindEquivalent(
                 NewPrivilegeSweepSnapshot(
-                    requestId = UUID.randomUUID(),
+                    requestId = requestId,
                     workId = newPrivilegeServiceExecutionId(),
                     operation = spec.operation,
                     freezerMode = spec.freezerMode,
@@ -121,12 +120,6 @@ class DefaultPrivilegeSweepController internal constructor(
 
     override suspend fun cancel(requestId: UUID) {
         queueCanceller.cancel(requestId)
-    }
-
-    @Deprecated("Cancellation requires the displayed request ID")
-    @Suppress("DEPRECATION")
-    override suspend fun cancelQueue() {
-        queueCanceller.cancelQueue()
     }
 
     override fun observe(requestId: UUID): Flow<PrivilegeSweepStatus?> = combine(
@@ -200,33 +193,3 @@ internal fun newPrivilegeServiceExecutionId(): UUID {
 }
 
 internal fun UUID.isPrivilegeServiceExecutionId(): Boolean = version() == 8
-
-/** Retained only for legacy chain cutover and Task 12 compatibility. */
-@Single(binds = [PrivilegeSweepWorkManager::class])
-internal class WorkManagerPrivilegeSweepWorkManager(
-    private val context: Context,
-) : PrivilegeSweepWorkManager {
-    private val workManager: WorkManager
-        get() = WorkManager.getInstance(context)
-
-    override suspend fun enqueue(work: OneTimeWorkRequest): Boolean = false
-
-    override fun observeState(workId: UUID): Flow<SweepWorkState?> =
-        if (workId.isPrivilegeServiceExecutionId()) {
-            flowOf(SweepWorkState.ENQUEUED)
-        } else {
-            workManager.getWorkInfoByIdFlow(workId).map { it?.state?.toSweepState() }
-        }
-
-    override suspend fun currentState(workId: UUID): SweepWorkState? =
-        observeState(workId).first()
-
-    private fun WorkInfo.State.toSweepState(): SweepWorkState = when (this) {
-        WorkInfo.State.BLOCKED -> SweepWorkState.BLOCKED
-        WorkInfo.State.ENQUEUED -> SweepWorkState.ENQUEUED
-        WorkInfo.State.RUNNING -> SweepWorkState.RUNNING
-        WorkInfo.State.SUCCEEDED -> SweepWorkState.SUCCEEDED
-        WorkInfo.State.FAILED -> SweepWorkState.FAILED
-        WorkInfo.State.CANCELLED -> SweepWorkState.CANCELLED
-    }
-}

@@ -19,18 +19,14 @@ internal class RestoreSourceGrantHolder {
 
     private val lock = Any()
     private val grants = mutableMapOf<GrantKey, String>()
-    private val currentTokens = mutableMapOf<UUID, String>()
     private val authorizedTokens = mutableMapOf<UUID, String>()
 
     fun register(taskId: UUID, uri: Uri): String = register(taskId, uri.toString())
 
     internal fun register(taskId: UUID, uriString: String): String = synchronized(lock) {
-        val token = UUID.randomUUID().toString()
-        currentTokens.remove(taskId)?.let { previous -> grants.remove(GrantKey(taskId, previous)) }
-        grants[GrantKey(taskId, token)] = uriString
-        currentTokens[taskId] = token
-        authorizedTokens.remove(taskId)
-        token
+        UUID.randomUUID().toString().also { token ->
+            grants[GrantKey(taskId, token)] = uriString
+        }
     }
 
     /** Registers the source already authorized by initial task acceptance. */
@@ -39,20 +35,25 @@ internal class RestoreSourceGrantHolder {
 
     internal fun registerAuthorized(taskId: UUID, uriString: String): String {
         val token = register(taskId, uriString)
-        check(authorize(taskId, token))
+        if (!authorize(taskId, token)) {
+            drop(taskId, token)
+            error("Restore source already authorized for task $taskId")
+        }
         return token
     }
 
-    /** Binds a pending UI grant to the exact token whose task transition is being resumed. */
+    /** Atomically nominates the first exact pending token as this task's authorized source. */
     fun authorize(taskId: UUID, token: String): Boolean = synchronized(lock) {
-        if (currentTokens[taskId] != token || GrantKey(taskId, token) !in grants) return false
-        authorizedTokens[taskId] = token
-        true
-    }
+        if (GrantKey(taskId, token) !in grants) return false
+        when (authorizedTokens[taskId]) {
+            null -> {
+                authorizedTokens[taskId] = token
+                true
+            }
 
-    fun revokeAuthorization(taskId: UUID, token: String) = synchronized(lock) {
-        authorizedTokens.remove(taskId, token)
-        Unit
+            token -> true
+            else -> false
+        }
     }
 
     /** Returns and removes exactly the authorized grant registered for this task and token. */
@@ -60,27 +61,34 @@ internal class RestoreSourceGrantHolder {
         if (authorizedTokens[taskId] != token) return null
         val uri = grants.remove(GrantKey(taskId, token)) ?: return null
         authorizedTokens.remove(taskId, token)
-        currentTokens.remove(taskId, token)
         uri
     }
 
     /** Returns only an authorized process-local capability, never the raw URI. */
     fun currentToken(taskId: UUID): String? = synchronized(lock) {
-        authorizedTokens[taskId]?.takeIf { currentTokens[taskId] == it }
+        authorizedTokens[taskId]?.takeIf { GrantKey(taskId, it) in grants }
+    }
+
+    /** Removes the exact pending grant unless a durable resume already authorized it. */
+    fun dropIfUnauthorized(taskId: UUID, expectedToken: String): Boolean = synchronized(lock) {
+        if (authorizedTokens[taskId] == expectedToken) return false
+        dropLocked(taskId, expectedToken)
     }
 
     /** Removes only the generation captured by a retiring claim. */
     fun drop(taskId: UUID, expectedToken: String): Boolean = synchronized(lock) {
+        dropLocked(taskId, expectedToken)
+    }
+
+    private fun dropLocked(taskId: UUID, expectedToken: String): Boolean {
         val removed = grants.remove(GrantKey(taskId, expectedToken)) != null
         authorizedTokens.remove(taskId, expectedToken)
-        currentTokens.remove(taskId, expectedToken)
-        removed
+        return removed
     }
 
     /** Removes every unconsumed grant owned by a cancelled or terminal task. */
     fun dropTask(taskId: UUID) {
         synchronized(lock) {
-            currentTokens.remove(taskId)
             authorizedTokens.remove(taskId)
             grants.keys.removeAll { it.taskId == taskId }
         }

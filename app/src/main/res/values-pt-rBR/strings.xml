@@ -601,7 +601,6 @@
     <string name="component_disabled_unrecorded">O Thor não conseguiu registrar a desativação de %1$s — Restaurar tudo não vai incluí-la</string>
     <string name="notification_access_granted_subtitle">As ações em aplicativos em segundo plano mostram o progresso nas notificações</string>
     <string name="notification_access_needed_subtitle">Permita as notificações nas configurações do sistema para executar ações em aplicativos em segundo plano e acompanhar o progresso</string>
-    <string name="cancel_sweep_queue">Cancelar fila de ações</string>
     <string name="sweep_notification_title">Aplicando ações aos aplicativos</string>
     <string name="sweep_queued">Ações de aplicativos na fila</string>
     <string name="sweep_running">Executando %1$d de %2$d</string>
@@ -609,11 +608,8 @@
     <string name="sweep_partial">As ações terminaram com problemas</string>
     <string name="sweep_cancelled">A fila de ações foi cancelada</string>
     <string name="sweep_failed">As ações falharam</string>
-    <string name="sweep_launch_failed_title">Não foi possível iniciar as ações</string>
     <string name="sweep_observer_failure">Progresso indisponível</string>
-    <string name="sweep_observer_failure_desc">O Thor não conseguiu se reconectar a estas ações em aplicativos. Verifique os aplicativos antes de confiar no resultado.</string>
     <string name="sweep_root_lane_degraded">Canal root de arquivo/ações em modo degradado</string>
-    <string name="sweep_progress_summary">Concluídas: %1$d · falhas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
     <string name="sweep_result_summary">Ações de aplicativos — concluídas: %1$d · falhas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
 
     <!-- Filas duráveis de serviços em primeiro plano -->

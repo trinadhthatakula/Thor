@@ -603,7 +603,6 @@
     <string name="profile_delete_desc">Solo se elimina el perfil. Las aplicaciones que contiene se quedan tal cual — lo que esté congelado sigue congelado.</string>
     <string name="profile_saved">Perfil guardado</string>
     <string name="profile_deleted">Perfil eliminado</string>
-    <string name="profile_nothing_to_do">No hay nada que hacer con este perfil</string>
     <string name="bulk_run_failed">La operación no terminó: revisa las apps antes de darla por hecha</string>
     <string name="error_profile_name_taken">Ese nombre de perfil ya está en uso</string>
     <string name="error_profile_delete_failed">No se pudo eliminar ese perfil</string>
@@ -742,7 +741,6 @@
     <string name="component_disclaimer_confirm">Desactivarlo</string>
     <string name="component_disclaimer_dont_ask_session">No volver a preguntar en esta sesión</string>
     <string name="component_disabled_unrecorded">Se desactivó %1$s, pero Thor no pudo registrar el cambio: Restaurar todo no lo incluirá</string>
-    <string name="cancel_sweep_queue">Cancelar cola de acciones</string>
     <string name="sweep_notification_title">Ejecutando acciones en las aplicaciones</string>
     <string name="sweep_queued">Acciones de aplicaciones en cola</string>
     <string name="sweep_running">Procesando %1$d de %2$d</string>
@@ -750,11 +748,8 @@
     <string name="sweep_partial">Las acciones terminaron con problemas</string>
     <string name="sweep_cancelled">Se canceló la cola de acciones</string>
     <string name="sweep_failed">Las acciones fallaron</string>
-    <string name="sweep_launch_failed_title">No se pudieron iniciar las acciones</string>
     <string name="sweep_observer_failure">Progreso no disponible</string>
-    <string name="sweep_observer_failure_desc">Thor no pudo volver a conectarse con estas acciones en las aplicaciones. Comprueba las aplicaciones antes de confiar en el resultado.</string>
     <string name="sweep_root_lane_degraded">El canal root de archivo/acciones funciona en modo degradado</string>
-    <string name="sweep_progress_summary">Completadas: %1$d · fallidas: %2$d · ocupadas: %3$d · sin resolver: %4$d</string>
     <string name="sweep_result_summary">Acciones de aplicaciones — completadas: %1$d · fallidas: %2$d · ocupadas: %3$d · sin resolver: %4$d</string>
 
     <!-- Colas duraderas de servicios en primer plano -->

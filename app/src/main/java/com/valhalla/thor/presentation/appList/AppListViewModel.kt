@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.presentation.appList
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
@@ -19,13 +18,11 @@ import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
-import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
-import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
-import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.SortBy
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.filterApps
 import com.valhalla.thor.domain.model.freezeTier
@@ -48,11 +45,8 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.presentation.launchGuarded
-import com.valhalla.thor.presentation.widgets.SweepProgressUiState
-import com.valhalla.thor.presentation.widgets.asObserverFailure
-import com.valhalla.thor.presentation.widgets.failedSweepProgress
-import com.valhalla.thor.presentation.widgets.queuedSweepProgress
-import com.valhalla.thor.presentation.widgets.toSweepProgressUiState
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
@@ -80,19 +74,6 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
 import java.util.UUID
-
-private const val APP_LIST_SWEEP_REQUEST_ID = "app_list_sweep_request_id"
-
-private fun PrivilegeSweepLaunchRejection.asAppListMessage(): UiText.StringResource =
-    UiText.StringResource(
-        when (this) {
-            PrivilegeSweepLaunchRejection.NotificationsRequired ->
-                R.string.notification_access_needed_subtitle
-            PrivilegeSweepLaunchRejection.NoPrivilege -> R.string.tile_grant_privilege_toast
-            PrivilegeSweepLaunchRejection.NoTargets -> R.string.tile_no_apps_toast
-            is PrivilegeSweepLaunchRejection.EnqueueFailed -> R.string.bulk_run_failed
-        }
-    )
 
 // ... AppListUiState remains same ...
 data class AppListUiState(
@@ -146,8 +127,6 @@ data class AppListUiState(
     // this permission, so "not granted" there must never be mistaken for "denied" and turned into a
     // banner nobody can ever dismiss. See installedAppsPermissionState().
     val installedAppsPermission: InstalledAppsPermission = InstalledAppsPermission.Unsupported,
-    val sweepStatus: PrivilegeSweepStatus? = null,
-    val sweepProgress: SweepProgressUiState? = null,
 )
 
 /**
@@ -181,7 +160,7 @@ class AppListViewModel(
     private val exportAppListUseCase: ExportAppListUseCase,
     private val sweepResolver: PrivilegeSweepTargetResolver,
     private val sweepController: PrivilegeSweepController,
-    private val savedStateHandle: SavedStateHandle,
+    private val taskNavigationTargets: TaskNavigationTargets,
     // Injected rather than hardcoded so a test can put every stage of this view model on one
     // scheduler: the sort/filter pipeline below runs off-main, and a `Dispatchers.Default` baked
     // in here would keep it on a real thread pool while the rest ran on virtual time.
@@ -194,8 +173,6 @@ class AppListViewModel(
     private var refreshIndicatorJob: Job? = null
     private var permissionIndexJob: Job? = null
     private var permissionRefreshJob: Job? = null
-    private var sweepObservation: Job? = null
-    private var acknowledgedSweepRequestId: UUID? = null
 
     /**
      * The one list export in flight, save or share.
@@ -248,10 +225,6 @@ class AppListViewModel(
         observeFreezerMembership()
         observePermissionFilter()
         refreshInstalledAppsPermission()
-        observeSweep(
-            savedStateHandle.get<String>(APP_LIST_SWEEP_REQUEST_ID)
-                ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
-        )
     }
 
     /**
@@ -316,7 +289,8 @@ class AppListViewModel(
     private fun observePermissionFilter() {
         viewModelScope.launch {
             combine(
-                preferenceRepository.userPreferences.map { it.appFilterType }.distinctUntilChanged(),
+                preferenceRepository.userPreferences.map { it.appFilterType }
+                    .distinctUntilChanged(),
                 _rawState.map { state ->
                     (state.allUserApps + state.allSystemApps)
                         .mapTo(HashSet()) { "${it.packageName}@${it.lastUpdateTime}" }
@@ -744,7 +718,11 @@ class AppListViewModel(
                 val app = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
                     .firstOrNull { it.packageName == packageName }
                 val restored =
-                    if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
+                    if (app != null) manageAppUseCase.restoreApp(
+                        packageName,
+                        app.enabled,
+                        app.isSuspended
+                    )
                     else manageAppUseCase.forceUnfreeze(packageName)
                 restored.onFailure { e ->
                     _events.send(
@@ -765,7 +743,10 @@ class AppListViewModel(
                 // contradicting its own toast, on the one path where the toast is certainly true.
                 _rawState.update { state ->
                     fun restore(list: List<AppInfo>) = list.map {
-                        if (it.packageName == packageName) it.copy(enabled = true, isSuspended = false)
+                        if (it.packageName == packageName) it.copy(
+                            enabled = true,
+                            isSuspended = false
+                        )
                         else it
                     }
                     state.copy(
@@ -825,107 +806,42 @@ class AppListViewModel(
         }
     }
 
-    private fun observeSweep(requestId: UUID?) {
-        sweepObservation?.cancel()
-        sweepObservation = viewModelScope.launch {
-            var lastStatus: PrivilegeSweepStatus? = null
-            val statuses = requestId?.let(sweepController::observe)
-                ?: sweepController.observeLatest(PrivilegeSweepSource.APP_LIST)
-            statuses
-                .catch { error ->
-                    Logger.e("AppListViewModel", "observe sweep failed", error)
-                    _rawState.update { state ->
-                        state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
-                    }
-                }
-                .collect { status ->
-                    if (status == null) {
-                        val lastPhase = lastStatus?.phase
-                        if (
-                            requestId != null &&
-                            (lastPhase == null ||
-                                lastPhase == PrivilegeSweepPhase.QUEUED ||
-                                lastPhase == PrivilegeSweepPhase.RUNNING)
-                        ) {
-                            _rawState.update { state ->
-                                state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
-                            }
-                        }
-                        return@collect
-                    }
-                    lastStatus = status
-                    savedStateHandle[APP_LIST_SWEEP_REQUEST_ID] = status.requestId.toString()
-                    if (status.requestId == acknowledgedSweepRequestId &&
-                        status.phase != PrivilegeSweepPhase.QUEUED &&
-                        status.phase != PrivilegeSweepPhase.RUNNING
-                    ) {
-                        return@collect
-                    }
-                    _rawState.update {
-                        it.copy(
-                            sweepStatus = status,
-                            sweepProgress = status.toSweepProgressUiState(),
-                        )
-                    }
-                    if (status.phase != PrivilegeSweepPhase.QUEUED) {
-                        loadApps(deferForTransition = false)
-                    }
-                }
-        }
-    }
-
     private suspend fun launchSelectionSweep(
         operation: PrivilegeSweepOperation,
         apps: List<AppInfo>,
         freezerMode: FreezerMode? = null,
     ) {
-        val spec = sweepResolver.resolveSelection(
-            operation = operation,
-            packageNames = apps.map(AppInfo::packageName),
-            source = PrivilegeSweepSource.APP_LIST,
-            freezerMode = freezerMode,
+        val provisionalTaskId = UUID.randomUUID()
+        taskNavigationTargets.requestOpenProvisional(
+            provisionalTaskId,
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = operation.name,
+            ),
         )
-        acknowledgedSweepRequestId = null
-        _rawState.update {
-            it.copy(
-                sweepStatus = null,
-                sweepProgress = queuedSweepProgress(spec.packageNames.size),
+        try {
+            val spec = sweepResolver.resolveSelection(
+                operation = operation,
+                packageNames = apps.map(AppInfo::packageName),
+                source = PrivilegeSweepSource.APP_LIST,
+                freezerMode = freezerMode,
             )
-        }
-        when (val launch = sweepController.launch(spec)) {
-            is PrivilegeSweepLaunchResult.Accepted -> {
-                savedStateHandle[APP_LIST_SWEEP_REQUEST_ID] = launch.requestId.toString()
-                observeSweep(launch.requestId)
-            }
+            when (val launch = sweepController.launch(provisionalTaskId, spec)) {
+                is PrivilegeSweepLaunchResult.Accepted -> taskNavigationTargets.requestAccepted(
+                    provisionalTaskId,
+                    launch.requestId,
+                )
 
-            is PrivilegeSweepLaunchResult.Rejected -> {
-                savedStateHandle.remove<String>(APP_LIST_SWEEP_REQUEST_ID)
-                _rawState.update {
-                    it.copy(
-                        sweepStatus = null,
-                        sweepProgress = failedSweepProgress(
-                            total = spec.packageNames.size,
-                            message = launch.reason.asAppListMessage(),
-                        ),
-                    )
+                is PrivilegeSweepLaunchResult.Rejected -> {
+                    taskNavigationTargets.requestRejected(provisionalTaskId)
                 }
             }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            Logger.e("AppListViewModel", "selection sweep launch failed", exception)
+            taskNavigationTargets.requestRejected(provisionalTaskId)
         }
-    }
-
-    fun dismissSweepProgress() {
-        _rawState.value.sweepStatus
-            ?.takeUnless {
-                it.phase == PrivilegeSweepPhase.QUEUED ||
-                    it.phase == PrivilegeSweepPhase.RUNNING
-            }
-            ?.let { acknowledgedSweepRequestId = it.requestId }
-        _rawState.update { it.copy(sweepProgress = null) }
-    }
-
-    fun cancelSweepQueue(requestId: UUID? = null) {
-        val displayedRequestId = requestId ?: return
-        viewModelScope.launch { sweepController.cancel(displayedRequestId) }
     }
 
     fun performMultiAction(action: MultiAppAction) {

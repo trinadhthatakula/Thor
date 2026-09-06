@@ -36,7 +36,6 @@ class LocalePolicyTest {
     private val sweepLifecycleKeys = setOf(
         "notification_access_granted_subtitle",
         "notification_access_needed_subtitle",
-        "cancel_sweep_queue",
         "sweep_notification_title",
         "sweep_queued",
         "sweep_running",
@@ -44,11 +43,8 @@ class LocalePolicyTest {
         "sweep_partial",
         "sweep_cancelled",
         "sweep_failed",
-        "sweep_launch_failed_title",
         "sweep_observer_failure",
-        "sweep_observer_failure_desc",
         "sweep_root_lane_degraded",
-        "sweep_progress_summary",
         "sweep_result_summary",
     )
 

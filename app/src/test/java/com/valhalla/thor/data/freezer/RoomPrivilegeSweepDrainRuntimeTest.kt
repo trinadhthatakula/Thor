@@ -153,7 +153,7 @@ class RoomPrivilegeSweepDrainRuntimeTest {
         assertEquals(listOf(true, false), completed.targetSnapshots.map { it.rootLaneDegraded })
         val fresh = DefaultRootLaneStatusSource()
         val cancellation = PrivilegeSweepCancellationCoordinator({ PrivilegeSweepCancellationDecision.NotFound }, { false }, { ServiceStartResult.AlreadyRunning }, {})
-        val controller = DefaultPrivilegeSweepController(store, clock, gate, PrivilegeQueueWakeSignal { ServiceStartResult.AlreadyRunning }, SweepQueueCanceller(store, cancellation), fresh)
+        val controller = DefaultPrivilegeSweepController(store, clock, gate, PrivilegeQueueWakeSignal { ServiceStartResult.AlreadyRunning }, SweepQueueCanceller(cancellation), fresh)
         assertTrue(requireNotNull(controller.observe(request).first()).rootLaneDegraded)
     }
 
@@ -199,21 +199,19 @@ class RoomPrivilegeSweepDrainRuntimeTest {
         )
     }
 
-    @Test fun `startup prune preserves cancelled missing and converted legacy work`() = runBlocking {
-        for (workState in listOf(SweepWorkState.CANCELLED, null)) {
-            val id = create("legacy$workState", legacy = true)
-            for (converted in listOf(false, true)) {
-                if (converted) assertTrue(store.markLegacyTargetsUnknown(id, listOf(0, 1), 10_000))
-                val before = store.load(id)
-                val startup = PrivilegeSweepReconciler(store, object : PrivilegeSweepWorkManager {
-                    override suspend fun enqueue(work: androidx.work.OneTimeWorkRequest) = error("unused")
-                    override fun observeState(workId: UUID) = flowOf(workState)
-                    override suspend fun currentState(workId: UUID): SweepWorkState? = error("startup must not consult WorkInfo")
-                }, clock, PrivilegeSweepProcessGate())
-                startup.pruneRetained()
-                assertEquals(before, store.load(id))
-                assertNull(store.load(id)?.retainUntilEpochMs)
-            }
+    @Test fun `startup prune preserves converted and unconverted legacy work`() = runBlocking {
+        val id = create("legacy-prune", legacy = true)
+        for (converted in listOf(false, true)) {
+            if (converted) assertTrue(store.markLegacyTargetsUnknown(id, listOf(0, 1), newPrivilegeServiceExecutionId(), 10_000))
+            val before = store.load(id)
+            val startup = PrivilegeSweepReconciler(
+                store,
+                clock,
+                PrivilegeSweepProcessGate(),
+            )
+            startup.pruneRetained()
+            assertEquals(before, store.load(id))
+            assertNull(store.load(id)?.retainUntilEpochMs)
         }
     }
 
@@ -236,12 +234,7 @@ class RoomPrivilegeSweepDrainRuntimeTest {
         },
     ): RoomPrivilegeSweepDrainRuntime {
         val cutover = PrivilegeSweepWorkManagerCutover(LegacyPrivilegeSweepExecutionFence(), SweepQueueWorkManager {}, port, clock, gate)
-        val wm = object : PrivilegeSweepWorkManager {
-            override suspend fun enqueue(work: androidx.work.OneTimeWorkRequest) = error("unused")
-            override fun observeState(workId: UUID) = flowOf<SweepWorkState?>(null)
-            override suspend fun currentState(workId: UUID): SweepWorkState? = null
-        }
-        return RoomPrivilegeSweepDrainRuntime(ApplicationProvider.getApplicationContext(), cutover, PrivilegeSweepReconciler(port, wm, clock, gate), PrivilegeSweepReinstallPostconditionVerifier { _, _, _, _ -> ReinstallPostcondition.UNKNOWN }, port,
+        return RoomPrivilegeSweepDrainRuntime(ApplicationProvider.getApplicationContext(), cutover, PrivilegeSweepReconciler(port, clock, gate), PrivilegeSweepReinstallPostconditionVerifier { _, _, _, _ -> ReinstallPostcondition.UNKNOWN }, port,
             object : PrivilegeStateProvider { override val state = privilege }, PrivilegeSweepItemExecutor(execute), clock, Dispatchers.IO,
             wakeLockFactory = { ForegroundTaskWakeLock(ForegroundTaskOwner.PRIVILEGE_SWEEP, ForegroundWakeLockFactory { _, _ -> wake }) })
     }

@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.data.freezer
 
-import androidx.work.OneTimeWorkRequest
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PackageLeaseResult
@@ -22,7 +21,6 @@ import com.valhalla.thor.domain.repository.PrivilegeSweepTargetTerminalState
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweepTarget
 import com.valhalla.thor.domain.repository.StoredSweepTerminal
-import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import com.valhalla.thor.domain.repository.SweepCreateResult
 import java.util.UUID
 import kotlin.time.Duration
@@ -397,30 +395,12 @@ class PrivilegeSweepReconcilerTest {
         assertEquals(0, coordinator.leaseCalls)
     }
 
-    @Test
-    fun `legacy WorkManager reconciliation stays separate from claim recovery`() = runTest {
-        val snapshot = stored(operation = PrivilegeSweepOperation.FREEZE)
-        val store = FakeStore(snapshot, listOf(candidate(snapshot)))
-        val work = FakeWorkManager(mapOf(snapshot.executionId to SweepWorkState.CANCELLED))
-
-        PrivilegeSweepReconciler(store, work, FixedClock(), PrivilegeSweepProcessGate()).reconcile()
-
-        assertEquals(
-            listOf(Triple(snapshot.requestId, StoredSweepTerminal.CANCELLED, NOW_MS)),
-            store.legacyFinishes,
-        )
-        assertEquals(1, store.deleteExpiredCalls)
-        assertEquals(0, store.recoverRequestClaimsCalls)
-        assertTrue(store.candidateRecoveries.isEmpty())
-    }
-
     private fun reconciler(
         store: FakeStore,
         stateReader: PrivilegeSweepPackageStateReader = RecordingStateReader(FreezeState.ACTIVE),
         coordinator: PackageOperationCoordinator = RecordingCoordinator(),
     ) = PrivilegeSweepReconciler(
         store = store,
-        workManager = FakeWorkManager(),
         clock = FixedClock(),
         gate = PrivilegeSweepProcessGate(),
         stateReader = stateReader,
@@ -568,15 +548,6 @@ class PrivilegeSweepReconcilerTest {
         }
     }
 
-    private class FakeWorkManager(
-        private val states: Map<UUID, SweepWorkState?> = emptyMap(),
-    ) : PrivilegeSweepWorkManager {
-        override suspend fun enqueue(work: OneTimeWorkRequest): Boolean = error("not used")
-        override fun observeState(workId: UUID): Flow<SweepWorkState?> = flowOf(states[workId])
-        override suspend fun currentState(workId: UUID): SweepWorkState? = states[workId]
-    }
-
-    @Suppress("OVERRIDE_DEPRECATION")
     private class FakeStore(
         snapshot: StoredPrivilegeSweep,
         private val recoveryCandidates: List<PrivilegeSweepRecoveryCandidate> = emptyList(),
@@ -584,11 +555,8 @@ class PrivilegeSweepReconcilerTest {
         private val snapshots = mutableMapOf(snapshot.requestId to snapshot)
         val candidateRecoveries = mutableListOf<PrivilegeSweepRecovery>()
         val unownedRecoveries = mutableListOf<PrivilegeSweepRecovery>()
-        val legacyFinishes = mutableListOf<Triple<UUID, StoredSweepTerminal, Long>>()
         var candidateRecoveryResult = true
         var candidateRecoveryAttempts = 0
-        var recoverRequestClaimsCalls = 0
-        var deleteExpiredCalls = 0
 
         override suspend fun createOrFindEquivalent(
             snapshot: NewPrivilegeSweepSnapshot,
@@ -610,7 +578,6 @@ class PrivilegeSweepReconcilerTest {
             nowMs: Long,
             localOwnerIsLive: (UUID, String) -> Boolean,
         ): List<PrivilegeSweepRecoveryCandidate> {
-            recoverRequestClaimsCalls++
             return recoveryCandidates.filterNot {
                 localOwnerIsLive(it.requestId, it.previousRequestClaimToken)
             }
@@ -634,33 +601,11 @@ class PrivilegeSweepReconcilerTest {
             return true
         }
 
-        override suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep? =
-            snapshots[requestId]
-
-        override suspend fun recordAttempt(
-            requestId: UUID,
-            outcome: SweepAttemptOutcome,
-        ): Boolean = true
-
-        override suspend fun finish(
-            requestId: UUID,
-            terminal: StoredSweepTerminal,
-            nowMs: Long,
-        ): Boolean {
-            legacyFinishes += Triple(requestId, terminal, nowMs)
-            return true
-        }
-
-        override suspend fun cancelAllNonterminal(nowMs: Long): List<UUID> = emptyList()
-
         override suspend fun delete(requestId: UUID) {
             snapshots.remove(requestId)
         }
 
-        override suspend fun deleteExpired(nowMs: Long): Int {
-            deleteExpiredCalls++
-            return 0
-        }
+        override suspend fun deleteExpired(nowMs: Long): Int = 0
     }
 
     private companion object {

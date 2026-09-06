@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
+import com.valhalla.thor.presentation.queue.QueueNavigationButton
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import com.valhalla.thor.presentation.widgets.AppItemGrid
@@ -85,7 +86,6 @@ import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
-import com.valhalla.thor.presentation.widgets.FreezeLoggerDialog
 import com.valhalla.thor.presentation.widgets.ScrollToTopOnChange
 import org.koin.androidx.compose.koinViewModel
 
@@ -99,7 +99,8 @@ fun FreezerScreen(
     viewModel: FreezerViewModel = koinViewModel(),
     sharedTransitionScope: SharedTransitionScope? = null,
     onAppAction: (AppClickAction) -> Unit = {},
-    onMultiAppAction: (MultiAppAction) -> Unit = {}
+    onMultiAppAction: (MultiAppAction) -> Unit = {},
+    onNavigateToQueue: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -119,7 +120,9 @@ fun FreezerScreen(
     // the profile changed underneath it.
     var editorProfileId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editorSeed by rememberSaveable(
-        stateSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() })
+        stateSaver = listSaver<Set<String>, String>(
+            save = { it.toList() },
+            restore = { it.toSet() })
     ) { mutableStateOf(emptySet<String>()) }
     // Whether closing the editor should land back on the profiles list. True when the editor was
     // opened from it; false for "save selection as profile", which starts from the app grid and
@@ -187,8 +190,8 @@ fun FreezerScreen(
     }
 
     // Apps the "Freeze all" / "Unfreeze all" toolbar acts on. These route through the
-    // shared batch action (MultiAppAction) so progress streams into the FreezeLoggerDialog;
-    // the unsafe/UAD eligibility skip is applied once, centrally, by
+    // shared batch action (MultiAppAction), which owns durable task navigation; the unsafe/UAD
+    // eligibility skip is applied once, centrally, by
     // MainViewModel.performCountedFreeze. Unfreeze restores by each app's actual state.
     // "Active" = freezable (enabled & not suspended); "frozen" = disabled OR suspended (GH#239).
     val appsToFreeze = remember(state.freezerApps) { state.freezerApps.filter { it.isActive } }
@@ -291,22 +294,27 @@ fun FreezerScreen(
                                 color = MaterialTheme.colorScheme.primary,
                                 letterSpacing = (-1).sp,
                                 maxLines = 1,
-                                modifier = Modifier.weight(1f).basicMarquee()
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .basicMarquee()
                             )
                         }
-                        ConnectedButtonGroup(
-                            items = AppListType.entries.map { type ->
-                                ConnectedButtonGroupItem.Icon(
-                                    icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                                    contentDescription = stringResource(
-                                        if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            QueueNavigationButton(onClick = onNavigateToQueue)
+                            ConnectedButtonGroup(
+                                items = AppListType.entries.map { type ->
+                                    ConnectedButtonGroupItem.Icon(
+                                        icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
+                                        contentDescription = stringResource(
+                                            if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                                        )
                                     )
-                                )
-                            },
-                            selectedIndex = AppListType.entries.indexOf(state.appListType),
-                            onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
-                            modifier = Modifier.width(IntrinsicSize.Max)
-                        )
+                                },
+                                selectedIndex = AppListType.entries.indexOf(state.appListType),
+                                onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
+                                modifier = Modifier.width(IntrinsicSize.Max)
+                            )
+                        }
                     }
 
                     // Search bar — config icon opens settings sheet
@@ -359,7 +367,9 @@ fun FreezerScreen(
                                     Text(
                                         stringResource(R.string.no_profiles_yet_desc),
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.7f
+                                        ),
                                         textAlign = TextAlign.Center,
                                         modifier = Modifier.padding(horizontal = 32.dp)
                                     )
@@ -722,14 +732,6 @@ fun FreezerScreen(
                 }
             },
             onListTypeChanged = viewModel::updateListType
-        )
-    }
-
-    state.sweepProgress?.let { progress ->
-        FreezeLoggerDialog(
-            state = progress,
-            onDismiss = viewModel::dismissSweepProgress,
-            onCancelQueue = viewModel::cancelSweepQueue,
         )
     }
 

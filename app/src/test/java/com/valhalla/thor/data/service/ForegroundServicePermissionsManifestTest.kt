@@ -42,6 +42,20 @@ class ForegroundServicePermissionsManifestTest {
     }
 
     @Test
+    fun `task queue launch trampoline is private transient and task neutral`() {
+        val declaration = Regex(
+            """<activity\b(?=[^>]*android:name="\.presentation\.launcher\.TaskQueueLaunchActivity")[^>]*/>""",
+        ).find(manifestText)?.value
+            ?: throw AssertionError("TaskQueueLaunchActivity declaration missing")
+
+        assertTrue(declaration.contains("android:exported=\"false\""))
+        assertTrue(declaration.contains("android:excludeFromRecents=\"true\""))
+        assertTrue(declaration.contains("android:noHistory=\"true\""))
+        assertTrue(declaration.contains("android:taskAffinity=\"\""))
+        assertTrue(declaration.contains("@android:style/Theme.Translucent.NoTitleBar"))
+    }
+
+    @Test
     fun `manifest test read the real application manifest`() {
         val xml = manifestText
 

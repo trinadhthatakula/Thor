@@ -19,10 +19,11 @@ import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
@@ -34,11 +35,8 @@ import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.launchGuarded
-import com.valhalla.thor.presentation.widgets.SweepProgressUiState
-import com.valhalla.thor.presentation.widgets.asObserverFailure
-import com.valhalla.thor.presentation.widgets.failedSweepProgress
-import com.valhalla.thor.presentation.widgets.queuedSweepProgress
-import com.valhalla.thor.presentation.widgets.toSweepProgressUiState
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.asUiText
@@ -91,17 +89,6 @@ sealed interface FreezerEvent {
     data class ProfileSaveSucceeded(val editorSession: Int) : FreezerEvent
 }
 
-private fun PrivilegeSweepLaunchRejection.asSweepMessage(): UiText.StringResource =
-    UiText.StringResource(
-        when (this) {
-            PrivilegeSweepLaunchRejection.NotificationsRequired ->
-                R.string.notification_access_needed_subtitle
-            PrivilegeSweepLaunchRejection.NoPrivilege -> R.string.tile_grant_privilege_toast
-            PrivilegeSweepLaunchRejection.NoTargets -> R.string.profile_nothing_to_do
-            is PrivilegeSweepLaunchRejection.EnqueueFailed -> R.string.bulk_run_failed
-        }
-    )
-
 data class FreezerUiState(
     val isLoading: Boolean = true,
     val isRoot: Boolean = false,
@@ -139,7 +126,6 @@ data class FreezerUiState(
      * watchlist freeze must not erase the freeze that is actually running.
      */
     val runningRequests: List<PrivilegeSweepStatus> = emptyList(),
-    val sweepProgress: SweepProgressUiState? = null,
 )
 
 @KoinViewModel
@@ -148,6 +134,7 @@ class FreezerViewModel(
     private val freezeProfileRepository: FreezeProfileRepository,
     private val sweepResolver: PrivilegeSweepTargetResolver,
     private val sweepController: PrivilegeSweepController,
+    private val taskNavigationTargets: TaskNavigationTargets,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
@@ -176,8 +163,6 @@ class FreezerViewModel(
     // and delivered when the screen subscribes rather than silently dropped. Matches MainViewModel.
     private val _events = Channel<FreezerEvent>(Channel.BUFFERED)
     val events: Flow<FreezerEvent> = _events.receiveAsFlow()
-    private val acknowledgedSweepRequestIds = mutableSetOf<UUID>()
-    private var visibleSweepRequestId: UUID? = null
 
     init {
         observeApps()
@@ -460,24 +445,9 @@ class FreezerViewModel(
             sweepController.activeRequests
                 .catch { error ->
                     Logger.e("FreezeViewModel", "observe profile sweep failed", error)
-                    _uiState.update { state ->
-                        state.copy(sweepProgress = state.sweepProgress.asObserverFailure())
-                    }
                 }
                 .collect { requests ->
-                    val latestProfile = requests.firstOrNull {
-                        it.source == PrivilegeSweepSource.PROFILE &&
-                            it.profileIds.isNotEmpty() &&
-                            it.requestId !in acknowledgedSweepRequestIds
-                    }
-                    visibleSweepRequestId = latestProfile?.requestId
-                    _uiState.update { state ->
-                        state.copy(
-                            runningRequests = requests,
-                            sweepProgress = latestProfile?.toSweepProgressUiState()
-                                ?: state.sweepProgress,
-                        )
-                    }
+                    _uiState.update { it.copy(runningRequests = requests) }
                 }
         }
     }
@@ -488,42 +458,40 @@ class FreezerViewModel(
 
     /** Resolves a profile snapshot before handing it to the durable sweep queue. */
     fun runProfile(profileId: Long, op: BulkOp, mode: FreezerMode? = null) {
+        val operation = when (op) {
+            BulkOp.FREEZE -> PrivilegeSweepOperation.FREEZE
+            BulkOp.UNFREEZE -> PrivilegeSweepOperation.UNFREEZE
+        }
+        val provisionalTaskId = UUID.randomUUID()
+        taskNavigationTargets.requestOpenProvisional(
+            provisionalTaskId,
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = operation.name,
+            ),
+        )
         viewModelScope.launch {
-            val spec = sweepResolver.resolve(
-                BulkRequest(op, BulkScope.Profile(profileId), mode),
-                PrivilegeSweepSource.PROFILE,
-            )
-            visibleSweepRequestId = null
-            _uiState.update { it.copy(sweepProgress = queuedSweepProgress(spec.packageNames.size)) }
-            when (val launch = sweepController.launch(spec)) {
-                is PrivilegeSweepLaunchResult.Accepted -> {
-                    acknowledgedSweepRequestIds.remove(launch.requestId)
-                    visibleSweepRequestId = launch.requestId
-                }
+            try {
+                val spec = sweepResolver.resolve(
+                    BulkRequest(op, BulkScope.Profile(profileId), mode),
+                    PrivilegeSweepSource.PROFILE,
+                )
+                when (val launch = sweepController.launch(provisionalTaskId, spec)) {
+                    is PrivilegeSweepLaunchResult.Accepted -> taskNavigationTargets.requestAccepted(
+                        provisionalTaskId,
+                        launch.requestId,
+                    )
 
-                is PrivilegeSweepLaunchResult.Rejected -> {
-                    _uiState.update {
-                        it.copy(
-                            sweepProgress = failedSweepProgress(
-                                total = spec.packageNames.size,
-                                message = launch.reason.asSweepMessage(),
-                            )
-                        )
-                    }
+                    is PrivilegeSweepLaunchResult.Rejected ->
+                        taskNavigationTargets.requestRejected(provisionalTaskId)
                 }
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                Logger.e("FreezeViewModel", "profile sweep launch failed", exception)
+                taskNavigationTargets.requestRejected(provisionalTaskId)
             }
         }
-    }
-
-    fun cancelSweepQueue(requestId: UUID? = null) {
-        val displayedRequestId = requestId ?: return
-        viewModelScope.launch { sweepController.cancel(displayedRequestId) }
-    }
-
-    fun dismissSweepProgress() {
-        visibleSweepRequestId?.let(acknowledgedSweepRequestIds::add)
-        visibleSweepRequestId = null
-        _uiState.update { it.copy(sweepProgress = null) }
     }
 
     fun createProfile(editorSession: Int, name: String, packageNames: List<String>) {

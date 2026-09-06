@@ -732,7 +732,6 @@
     <string name="profile_delete_desc">Usuwany jest tylko profil. Aplikacje w nim pozostają dokładnie takie, jakie są — co jest zamrożone, zostaje zamrożone.</string>
     <string name="profile_saved">Zapisano profil</string>
     <string name="profile_deleted">Usunięto profil</string>
-    <string name="profile_nothing_to_do">Nic do zrobienia dla tego profilu</string>
     <string name="bulk_run_failed">To uruchomienie nie zostało ukończone — sprawdź aplikacje, zanim zaczniesz na nim polegać</string>
     <string name="error_profile_name_taken">Ta nazwa profilu jest już zajęta</string>
     <string name="error_profile_delete_failed">Nie udało się usunąć tego profilu</string>
@@ -824,7 +823,6 @@
     <string name="component_disclaimer_confirm">Wyłącz go</string>
     <string name="component_disclaimer_dont_ask_session">Nie pytaj ponownie w tej sesji</string>
     <string name="component_disabled_unrecorded">Wyłączono %1$s, ale Thor nie zdołał tego zapisać — Przywróć wszystkie tego nie obejmie</string>
-    <string name="cancel_sweep_queue">Anuluj kolejkę działań</string>
     <string name="sweep_notification_title">Wykonywanie działań na aplikacjach</string>
     <string name="sweep_queued">Umieszczono działania w kolejce</string>
     <string name="sweep_running">Przetwarzanie: %1$d z %2$d</string>
@@ -832,11 +830,8 @@
     <string name="sweep_partial">Działania zakończyły się z problemami</string>
     <string name="sweep_cancelled">Anulowano kolejkę działań</string>
     <string name="sweep_failed">Nie udało się wykonać działań</string>
-    <string name="sweep_launch_failed_title">Nie udało się rozpocząć działań</string>
     <string name="sweep_observer_failure">Postęp niedostępny</string>
-    <string name="sweep_observer_failure_desc">Thor nie mógł ponownie połączyć się z tymi działaniami na aplikacjach. Sprawdź aplikacje, zanim zaufasz wynikowi.</string>
     <string name="sweep_root_lane_degraded">Tor root archiwizacji/operacji działa w trybie awaryjnym</string>
-    <string name="sweep_progress_summary">Powodzenie: %1$d · błędy: %2$d · zajęte: %3$d · nierozstrzygnięte: %4$d</string>
     <string name="sweep_result_summary">Działania na aplikacjach — powodzenie: %1$d · błędy: %2$d · zajęte: %3$d · nierozstrzygnięte: %4$d</string>
 
     <!-- Trwałe kolejki usług pierwszoplanowych -->

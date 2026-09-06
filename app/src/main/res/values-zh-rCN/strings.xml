@@ -595,7 +595,6 @@
     <string name="profile_delete_desc">仅删除该配置。其中的应用保持原状 — 已冻结的仍保持冻结。</string>
     <string name="profile_saved">配置已保存</string>
     <string name="profile_deleted">配置已删除</string>
-    <string name="profile_nothing_to_do">此配置无需操作</string>
     <string name="bulk_run_failed">本次操作未完成——请先确认各应用的状态</string>
     <string name="error_profile_name_taken">该配置名称已被占用</string>
     <string name="error_profile_delete_failed">无法删除该配置</string>
@@ -730,7 +729,6 @@
     <string name="component_disclaimer_confirm">确认禁用</string>
     <string name="component_disclaimer_dont_ask_session">本次会话不再询问</string>
     <string name="component_disabled_unrecorded">已禁用 %1$s，但 Thor 未能记录此次更改——“全部恢复”不会包含它</string>
-    <string name="cancel_sweep_queue">取消操作队列</string>
     <string name="sweep_notification_title">正在执行应用操作</string>
     <string name="sweep_queued">应用操作已加入队列</string>
     <string name="sweep_running">正在执行第 %1$d 项，共 %2$d 项</string>
@@ -738,11 +736,8 @@
     <string name="sweep_partial">应用操作完成，但存在问题</string>
     <string name="sweep_cancelled">操作队列已取消</string>
     <string name="sweep_failed">应用操作失败</string>
-    <string name="sweep_launch_failed_title">无法启动应用操作</string>
     <string name="sweep_observer_failure">无法获取进度</string>
-    <string name="sweep_observer_failure_desc">Thor 无法重新连接到这些应用操作。请先检查应用状态，再决定是否采用该结果。</string>
     <string name="sweep_root_lane_degraded">Root 归档/批处理通道已降级</string>
-    <string name="sweep_progress_summary">成功：%1$d · 失败：%2$d · 忙碌：%3$d · 未确定：%4$d</string>
     <string name="sweep_result_summary">应用操作 — 成功：%1$d · 失败：%2$d · 忙碌：%3$d · 未确定：%4$d</string>
 
     <!-- 持久前台服务队列 -->

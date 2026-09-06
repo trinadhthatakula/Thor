@@ -46,7 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -58,10 +57,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
 import coil3.compose.AsyncImage
-import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -72,7 +71,6 @@ import com.valhalla.thor.presentation.common.JobRunningFrame
 import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.util.Logger
-import com.valhalla.thor.util.ServiceQueueEvent
 import com.valhalla.thor.util.ServiceQueueLatencyProbe
 import com.valhalla.thor.util.ServiceQueueOperation
 import kotlinx.coroutines.CancellationException
@@ -122,6 +120,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
         viewModelStoreOwner = rememberViewModelStoreOwner()
     )
     val phase by viewModel.phase.collectAsStateWithLifecycle()
+    val canSubmit by viewModel.canSubmit.collectAsStateWithLifecycle()
 
     // Two options, never three. The native container for this app — .apk for a monolithic app,
     // .apks for a split one — plus .xapk, which is meaningful either way because it is the format
@@ -139,13 +138,20 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
     val defaultDestLabel = stringResource(R.string.export_dest_downloads)
 
     var targetLabel by remember { mutableStateOf(defaultDestLabel) }
+    var targetTreeUri by remember { mutableStateOf<String?>(null) }
+    var targetResolved by remember { mutableStateOf(false) }
     // Defaults to autoFor(), i.e. the format the builder has always picked on its own, so an
     // export where nobody touches the row is byte-for-byte what shipped before the selector existed.
     var format by remember(appInfo.packageName) { mutableStateOf(formatOptions.first()) }
     // null while the probe is in flight — distinct from ObbProbe.None, which is an answer.
     var obbProbe by remember(appInfo.packageName) { mutableStateOf<ObbProbe?>(null) }
 
-    LaunchedEffect(Unit) { targetLabel = exportUseCase.currentTargetLabel() }
+    LaunchedEffect(Unit) {
+        val target = exportUseCase.openSession(ExportAppUseCase.SINGLE_STAGING_DIR).target
+        targetTreeUri = (target as? ExportTargetChoice.Custom)?.treeUri
+        targetLabel = exportUseCase.targetLabel(target)
+        targetResolved = true
+    }
 
     LaunchedEffect(appInfo.packageName) {
         obbProbe = probeObbForPresentation {
@@ -177,6 +183,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
             packageName = appInfo.packageName,
             label = appInfo.appName ?: appInfo.packageName,
             format = format,
+            treeUri = targetTreeUri,
         )
     }
 
@@ -191,6 +198,9 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
+            val selectedTreeUri = uri.toString()
+            targetTreeUri = selectedTreeUri
+            targetResolved = true
             // runCatching because the persist can be refused: the grant table is capped (128 entries
             // per app on most builds) and some providers hand back a tree they will not persist at
             // all. Unguarded, that SecurityException propagates out of the picker callback and takes
@@ -205,8 +215,8 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 )
             }.onFailure { Logger.w("Export", "could not persist $uri: $it") }
             scope.launch {
-                preferenceRepository.setExportDirUri(uri.toString())
-                targetLabel = exportUseCase.currentTargetLabel()
+                preferenceRepository.setExportDirUri(selectedTreeUri)
+                targetLabel = exportUseCase.targetLabel(ExportTargetChoice.Custom(selectedTreeUri))
             }
         }
     }
@@ -307,17 +317,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                     backgroundLabel = stringResource(R.string.export_job_background),
                     backgroundDescription = stringResource(R.string.export_job_background_desc),
                     onBackground = onDismiss,
-                    modifier = if (BuildConfig.DEBUG) {
-                        Modifier.drawWithContent {
-                            drawContent()
-                            ServiceQueueLatencyProbe.mark(
-                                ServiceQueueOperation.EXPORT,
-                                ServiceQueueEvent.LOGGER_VISIBLE,
-                            )
-                        }
-                    } else {
-                        Modifier
-                    },
+                    modifier = Modifier,
                 )
 
                 finished is JobFinish.Succeeded -> {
@@ -495,7 +495,8 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                                     runExport()
                                 }
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            enabled = canSubmit && targetResolved,
                         ) {
                             // No spinner and no "Exporting…" label. The button does not stay on
                             // screen long enough to need either — `phase.running` swaps this whole

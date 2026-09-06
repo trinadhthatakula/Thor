@@ -38,15 +38,10 @@ import com.valhalla.thor.data.backup.job.decodeLegacyArchiveRestoreRequest
 import com.valhalla.thor.data.backup.job.runLegacyAppExportTask
 import com.valhalla.thor.data.backup.job.runLegacyArchiveTask
 import com.valhalla.thor.data.backup.service.DataSyncService
-import com.valhalla.thor.data.freezer.LegacyPrivilegeSweepExecutionFence
 import com.valhalla.thor.data.freezer.PrivilegeSweepClock
-import com.valhalla.thor.data.freezer.PrivilegeSweepItemExecutionResult
 import com.valhalla.thor.data.freezer.PrivilegeSweepProcessGate
 import com.valhalla.thor.data.freezer.PrivilegeSweepReconciler
-import com.valhalla.thor.data.freezer.PrivilegeSweepRunner
-import com.valhalla.thor.data.freezer.PrivilegeSweepWorkManager
 import com.valhalla.thor.data.freezer.PrivilegeSweepWorker
-import com.valhalla.thor.data.freezer.SweepWorkState
 import com.valhalla.thor.data.repository.RoomPrivilegeSweepStore
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.domain.model.BACKUP_BUNDLE_KEY
@@ -74,7 +69,6 @@ import com.valhalla.thor.domain.model.THOR_JOB_CHAIN
 import com.valhalla.thor.domain.model.THOR_SWEEP_CHAIN
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
 import com.valhalla.thor.domain.repository.PrivilegeSweepStore
-import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import com.valhalla.thor.domain.repository.SweepCreateResult
 import java.util.Base64
 import java.util.UUID
@@ -125,7 +119,7 @@ class LegacyWorkManagerCutoverIntegrationTest {
         store = RoomPrivilegeSweepStore(database.privilegeSweepDao())
         workerExecutor = Executors.newSingleThreadExecutor()
         taskExecutor = Executors.newSingleThreadExecutor()
-        workerFactory = CutoverWorkerFactory(context, store)
+        workerFactory = CutoverWorkerFactory(context)
 
         val configuration = Configuration.Builder()
             .setExecutor(workerExecutor)
@@ -290,24 +284,12 @@ class LegacyWorkManagerCutoverIntegrationTest {
         assertEquals(WorkInfo.State.FAILED, terminal.state)
         assertEquals(PrivilegeSweepWorker::class.java.name, workerFactory.workerClasses[work.id])
         assertEquals(before, store.load(requestId))
-        assertEquals(0, workerFactory.sweepExecutions)
     }
 
     @Test
     fun startupPruningDoesNotStartEitherForegroundService() = runBlocking {
         val reconciler = PrivilegeSweepReconciler(
             store = store,
-            workManager = object : PrivilegeSweepWorkManager {
-                override suspend fun enqueue(work: OneTimeWorkRequest): Boolean =
-                    error("startup pruning must not enqueue work")
-
-                override fun observeState(workId: UUID): Flow<SweepWorkState?> =
-                    error("startup pruning must not observe WorkManager")
-
-                override suspend fun currentState(workId: UUID): SweepWorkState? {
-                    error("startup pruning must not query WorkManager")
-                }
-            },
             clock = TestClock,
             gate = PrivilegeSweepProcessGate(),
         )
@@ -357,18 +339,14 @@ class LegacyWorkManagerCutoverIntegrationTest {
 
     private class CutoverWorkerFactory(
         context: Context,
-        private val store: PrivilegeSweepStore,
     ) : WorkerFactory() {
         val workerClasses = ConcurrentHashMap<UUID, String>()
         val exportRequest = CompletableDeferred<DataTaskExecutionRequest>()
         var archiveRunnerCalls = 0
-        var sweepExecutions = 0
 
         private val notifications = ThorJobNotifications(context)
         private val registry = JobRegistry()
         private val sheetTargets = JobSheetTargets()
-        private val sweepGate = PrivilegeSweepProcessGate()
-        private val sweepFence = LegacyPrivilegeSweepExecutionFence()
 
         override fun createWorker(
             appContext: Context,
@@ -402,20 +380,6 @@ class LegacyWorkManagerCutoverIntegrationTest {
                     params = workerParameters,
                     notifications = notifications,
                     registry = registry,
-                    runner = PrivilegeSweepRunner(
-                        store = store,
-                        executor = { _, _ ->
-                            sweepExecutions++
-                            PrivilegeSweepItemExecutionResult(
-                                outcome = SweepAttemptOutcome.SUCCEEDED,
-                                rootLaneDegraded = false,
-                            )
-                        },
-                        clock = TestClock,
-                        gate = sweepGate,
-                        ioDispatcher = Dispatchers.IO,
-                    ),
-                    executionFence = sweepFence,
                     sheetTargets = sheetTargets,
                 )
 

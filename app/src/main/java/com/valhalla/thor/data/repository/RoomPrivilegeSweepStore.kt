@@ -20,7 +20,6 @@ import com.valhalla.thor.data.source.local.room.SweepTargetResultCode
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
-import com.valhalla.thor.domain.model.SWEEP_RESULT_RETENTION
 import com.valhalla.thor.domain.repository.ClaimedPrivilegeSweepRequest
 import com.valhalla.thor.domain.repository.ClaimedPrivilegeSweepTarget
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
@@ -36,7 +35,6 @@ import com.valhalla.thor.domain.repository.PrivilegeSweepTargetState
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweepTarget
 import com.valhalla.thor.domain.repository.StoredSweepTerminal
-import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import com.valhalla.thor.domain.repository.SweepCreateResult
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -259,39 +257,14 @@ class RoomPrivilegeSweepStore(
     override suspend fun markLegacyTargetsUnknown(
         requestId: UUID,
         ambiguousOrdinals: List<Int>,
+        serviceExecutionId: UUID,
         nowMs: Long,
     ): Boolean = dao.markLegacyTargetsUnknown(
         requestId = requestId.toString(),
         ambiguousOrdinals = ambiguousOrdinals,
+        serviceExecutionId = serviceExecutionId.toString(),
         nowMs = nowMs,
     )
-
-    @Deprecated("Compatibility for PrivilegeSweepWorker; remove in Task 12")
-    override suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep? =
-        dao.resetForRun(requestId.toString())?.toDomain()
-
-    @Deprecated("Compatibility for PrivilegeSweepWorker; remove in Task 12")
-    override suspend fun recordAttempt(requestId: UUID, outcome: SweepAttemptOutcome): Boolean =
-        dao.recordAttempt(requestId.toString(), outcome) == 1
-
-    @Deprecated("Compatibility for WorkManager reconciliation; remove in Task 12")
-    override suspend fun finish(
-        requestId: UUID,
-        terminal: StoredSweepTerminal,
-        nowMs: Long,
-    ): Boolean = dao.finish(
-        requestId = requestId.toString(),
-        terminalState = terminal.name,
-        nowMs = nowMs,
-        retainUntilEpochMs = nowMs + SWEEP_RESULT_RETENTION.inWholeMilliseconds,
-    ) == 1
-
-    override suspend fun cancelAllNonterminal(nowMs: Long): List<UUID> =
-        dao.cancelAllNonterminal(
-            terminalState = StoredSweepTerminal.CANCELLED.name,
-            nowMs = nowMs,
-            retainUntilEpochMs = nowMs + SWEEP_RESULT_RETENTION.inWholeMilliseconds,
-        ).map(UUID::fromString)
 
     override suspend fun delete(requestId: UUID) {
         dao.delete(requestId.toString())
@@ -307,6 +280,7 @@ class RoomPrivilegeSweepStore(
         return StoredPrivilegeSweep(
             requestId = UUID.fromString(request.requestId),
             workId = UUID.fromString(request.workId),
+            executionId = UUID.fromString(request.executionId),
             operation = PrivilegeSweepOperation.valueOf(request.operation),
             freezerMode = request.freezerMode?.let(FreezerMode::valueOf),
             userId = request.userId,

@@ -102,6 +102,7 @@ data class StoredPrivilegeSweep(
     val requestId: UUID,
     @Deprecated("Use executionId", ReplaceWith("executionId"))
     val workId: UUID,
+    val executionId: UUID = workId,
     val operation: PrivilegeSweepOperation,
     val freezerMode: FreezerMode?,
     val userId: Int,
@@ -126,11 +127,7 @@ data class StoredPrivilegeSweep(
     val serviceSessionToken: String? = null,
     val claimToken: String? = null,
     val claimLeaseExpiresAtEpochMs: Long? = null,
-) {
-    @Suppress("DEPRECATION")
-    val executionId: UUID
-        get() = workId
-}
+)
 
 data class ClaimedPrivilegeSweepRequest(
     val requestId: UUID,
@@ -345,19 +342,10 @@ interface PrivilegeSweepStore {
     suspend fun markLegacyTargetsUnknown(
         requestId: UUID,
         ambiguousOrdinals: List<Int>,
+        serviceExecutionId: UUID,
         nowMs: Long,
     ): Boolean = claimAwareStoreUnavailable()
 
-    @Deprecated("Compatibility for PrivilegeSweepWorker; remove in Task 12")
-    suspend fun resetForRun(requestId: UUID): StoredPrivilegeSweep?
-
-    @Deprecated("Compatibility for PrivilegeSweepWorker; remove in Task 12")
-    suspend fun recordAttempt(requestId: UUID, outcome: SweepAttemptOutcome): Boolean
-
-    @Deprecated("Compatibility for WorkManager reconciliation; remove in Task 12")
-    suspend fun finish(requestId: UUID, terminal: StoredSweepTerminal, nowMs: Long): Boolean
-
-    suspend fun cancelAllNonterminal(nowMs: Long): List<UUID>
     suspend fun delete(requestId: UUID)
     suspend fun deleteExpired(nowMs: Long): Int
 }

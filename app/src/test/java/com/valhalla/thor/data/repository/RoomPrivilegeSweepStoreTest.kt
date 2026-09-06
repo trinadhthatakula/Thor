@@ -6,6 +6,8 @@ package com.valhalla.thor.data.repository
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.valhalla.thor.data.freezer.isPrivilegeServiceExecutionId
+import com.valhalla.thor.data.freezer.newPrivilegeServiceExecutionId
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.SweepRequestEntity
 import com.valhalla.thor.data.source.local.room.SweepRequestSourceEntity
@@ -72,14 +74,15 @@ class RoomPrivilegeSweepStoreTest {
         assertFalse(store.blockClaimedRequestForMissingPrivilege(id, "stale", 6))
         assertTrue(store.blockClaimedRequestForMissingPrivilege(id, claim.claimToken, 6))
         assertTrue(store.resumeBlockedRequest(id, privilege, 7))
-        assertTrue(store.markLegacyTargetsUnknown(id, listOf(0), 8))
+        val serviceExecutionId = newPrivilegeServiceExecutionId()
+        assertTrue(store.markLegacyTargetsUnknown(id, listOf(0), serviceExecutionId, 8))
         val second = requireNotNull(store.claimOldestRunnableRequest("session", "owner2", 9, 100))
         requireNotNull(store.claimNextPendingTarget(id, second.claimToken, "target", 10, 100))
         assertTrue(store.settleClaimedRequestAfterExit(id, second.claimToken, 11))
         val row = requireNotNull(store.load(id))
         assertEquals(listOf(PrivilegeSweepTargetState.LEGACY_UNKNOWN, PrivilegeSweepTargetState.UNKNOWN), row.targetSnapshots.map { it.state })
         assertEquals(request.sourceAssociations, row.sourceAssociations)
-        assertEquals(request.executionId, row.executionId)
+        assertEquals(serviceExecutionId, row.executionId)
         assertEquals(2, row.unresolved)
     }
 
@@ -158,8 +161,26 @@ class RoomPrivilegeSweepStoreTest {
 
         assertEquals(requestId, stored.requestId)
         assertEquals(workId, stored.workId)
-        assertEquals(workId, stored.executionId)
+        assertEquals(requestId, stored.executionId)
         assertEquals(requestId, claimed.executionId)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `legacy conversion preserves work id and persists service execution provenance`() = runTest {
+        val request = newSnapshot(
+            targets = listOf("com.example.legacy"),
+            operation = PrivilegeSweepOperation.CLEAR_CACHE,
+            freezerMode = null,
+        )
+        assertFalse(request.executionId.isPrivilegeServiceExecutionId())
+        store.createOrFindEquivalent(request)
+
+        assertTrue(store.markLegacyTargetsUnknown(request.requestId, listOf(0), newPrivilegeServiceExecutionId(), 2_000L))
+
+        val converted = checkNotNull(store.load(request.requestId))
+        assertEquals(request.workId, converted.workId)
+        assertTrue(converted.executionId.isPrivilegeServiceExecutionId())
     }
 
     @Test
@@ -300,6 +321,34 @@ class RoomPrivilegeSweepStoreTest {
             PrivilegeSweepCancellationDecision.InterruptActive(activeRequest.requestId, 0),
             store.requestCancellation(activeRequest.requestId, 2_200L),
         )
+    }
+
+    @Test
+    fun `cancelling request is not an equivalent candidate`() = runTest {
+        val original = newSnapshot(targets = listOf("com.example.cancelling"))
+        store.createOrFindEquivalent(original)
+        val claim = checkNotNull(
+            store.claimOldestRunnableRequest("session-cancel", "request-cancel", 2_000L, 3_000L)
+        )
+        checkNotNull(
+            store.claimNextPendingTarget(
+                original.requestId,
+                claim.claimToken,
+                "target-cancel",
+                2_100L,
+                3_100L,
+            )
+        )
+        assertEquals(
+            PrivilegeSweepCancellationDecision.InterruptActive(original.requestId, 0),
+            store.requestCancellation(original.requestId, 2_200L),
+        )
+
+        val replacement = newSnapshot(targets = original.targets, createdAtEpochMs = 3L)
+        val result = store.createOrFindEquivalent(replacement)
+
+        val created = result as SweepCreateResult.Created
+        assertEquals(replacement.requestId, created.snapshot.requestId)
     }
 
     @Test

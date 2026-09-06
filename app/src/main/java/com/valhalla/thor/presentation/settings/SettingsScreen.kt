@@ -47,6 +47,7 @@ import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.usecase.ObserveInterruptedRestoreUseCase
 import com.valhalla.thor.presentation.main.toDestination
+import com.valhalla.thor.presentation.queue.QueueNavigationButton
 import com.valhalla.thor.util.displayedLanguage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -70,6 +71,7 @@ import org.koin.compose.koinInject
 @Composable
 fun SettingsScreen(
     onOpenCategory: (SettingsCategory, SettingsRowId?) -> Unit,
+    onNavigateToQueue: () -> Unit,
     selectedCategory: SettingsCategory? = null,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
@@ -143,12 +145,19 @@ fun SettingsScreen(
             .padding(horizontal = 24.dp)
             .padding(top = 64.dp, bottom = 120.dp)
     ) {
-        Text(
-            text = stringResource(R.string.settings),
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-1).sp
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.settings),
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-1).sp,
+                modifier = Modifier.weight(1f),
+            )
+            QueueNavigationButton(onClick = onNavigateToQueue)
+        }
         Text(
             text = stringResource(R.string.config_engine_v, versionName),
             style = MaterialTheme.typography.labelSmall,

@@ -118,7 +118,7 @@ class PrivilegeSweepDaoTest {
             else seedPartialTargetOwnership(REQUEST_1, 0)
             val before = dao.load(REQUEST_1)
             assertFalse(dao.markUnclaimedStartBlocked(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_000))
-            assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0), 2_000))
+            assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0), SERVICE_EXECUTION_ID, 2_000))
             assertEquals(before, dao.load(REQUEST_1))
             database.openHelper.writableDatabase.execSQL("UPDATE sweep_requests SET state='BLOCKED', block_reason='START_BLOCKED' WHERE request_id=?", arrayOf(REQUEST_1))
             assertFalse(dao.resumeBlockedRequest(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_100))
@@ -131,20 +131,20 @@ class PrivilegeSweepDaoTest {
         insertSweep(requestId = REQUEST_1, targetStates = List(3) { StoredSweepTargetState.PENDING })
         assertTrue(dao.markUnclaimedStartBlocked(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_000))
         val before = requireNotNull(dao.load(REQUEST_1))
-        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 99), 2_100))
+        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 99), SERVICE_EXECUTION_ID, 2_100))
         assertEquals(before, dao.load(REQUEST_1))
-        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, emptyList(), 2_100))
-        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 0, 1), 2_200))
+        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, emptyList(), SERVICE_EXECUTION_ID, 2_100))
+        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 0, 1), SERVICE_EXECUTION_ID, 2_200))
         val partial = requireNotNull(dao.load(REQUEST_1))
         assertEquals(StoredSweepRequestState.QUEUED.name, partial.request.state)
         assertNull(partial.request.blockReason)
         assertEquals(listOf(StoredSweepTargetState.LEGACY_UNKNOWN, StoredSweepTargetState.LEGACY_UNKNOWN, StoredSweepTargetState.PENDING), targetStates())
         assertEquals(before.sources, partial.sources)
-        assertEquals(before.request.executionId, partial.request.executionId)
+        assertEquals(SERVICE_EXECUTION_ID, partial.request.executionId)
         assertEquals(before.request.workId, partial.request.workId)
         assertEquals(before.targets.map { it.ordinal to it.packageName }, partial.targets.map { it.ordinal to it.packageName })
-        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 1), 2_200))
-        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 1, 2), 2_300))
+        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 1), SERVICE_EXECUTION_ID, 2_200))
+        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0, 1, 2), SERVICE_EXECUTION_ID, 2_300))
         val all = requireNotNull(dao.load(REQUEST_1))
         assertEquals(StoredSweepRequestState.BLOCKED.name, all.request.state)
         assertNull(all.request.blockReason)
@@ -159,13 +159,13 @@ class PrivilegeSweepDaoTest {
             insertSweep(requestId = REQUEST_1, targetStates = listOf(StoredSweepTargetState.LEGACY_UNKNOWN, StoredSweepTargetState.PENDING))
             database.openHelper.writableDatabase.execSQL("UPDATE sweep_targets SET $column WHERE request_id=? AND ordinal=0", arrayOf(REQUEST_1))
             val before = dao.load(REQUEST_1)
-            assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1, 0), 2_000))
+            assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1, 0), SERVICE_EXECUTION_ID, 2_000))
             assertEquals(before, dao.load(REQUEST_1))
             deleteSweep()
         }
         insertSweep(requestId = REQUEST_1, targetStates = listOf(StoredSweepTargetState.SUCCEEDED, StoredSweepTargetState.PENDING))
-        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1, 0), 2_000))
-        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1), 2_000))
+        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1, 0), SERVICE_EXECUTION_ID, 2_000))
+        assertTrue(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1), SERVICE_EXECUTION_ID, 2_000))
         assertEquals(1, requireNotNull(dao.load(REQUEST_1)).request.succeeded)
     }
 
@@ -179,7 +179,7 @@ class PrivilegeSweepDaoTest {
         }
         assertTrue(results.first xor results.second)
         dao.requestCancellation(REQUEST_1, 2_100)
-        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0), 2_200))
+        assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0), SERVICE_EXECUTION_ID, 2_200))
         assertFalse(dao.blockClaimedRequestForMissingPrivilege(REQUEST_1, "owner", 2_200))
         assertFalse(dao.resumeBlockedRequest(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_200))
         assertEquals(StoredSweepRequestState.CANCELLED.name, requireNotNull(dao.load(REQUEST_1)).request.state)
@@ -1851,6 +1851,7 @@ class PrivilegeSweepDaoTest {
         const val REQUEST_1 = "00000000-0000-0000-0000-000000000101"
         const val REQUEST_2 = "00000000-0000-0000-0000-000000000102"
         const val REQUEST_3 = "00000000-0000-0000-0000-000000000103"
+        const val SERVICE_EXECUTION_ID = "00000000-0000-8000-8000-000000000301"
 
         val MALFORMED_OWNERSHIP_TOKENS = listOf(
             "spaces" to "   ",

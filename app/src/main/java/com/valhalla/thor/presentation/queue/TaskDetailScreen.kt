@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.queue
 import androidx.annotation.StringRes
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -36,6 +37,7 @@ import com.valhalla.thor.domain.model.TaskActionRequirement
 import com.valhalla.thor.domain.model.TaskLifecyclePhase
 import com.valhalla.thor.domain.model.TaskLogLine
 import com.valhalla.thor.domain.model.TaskQueueKind
+import com.valhalla.thor.presentation.navigation.ThorRoute
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.TermLoggerContent
 import com.valhalla.thor.presentation.widgets.TermLoggerStatus
@@ -43,14 +45,17 @@ import com.valhalla.thor.util.ServiceQueueEvent
 import com.valhalla.thor.util.ServiceQueueLatencyProbe
 import com.valhalla.thor.util.ServiceQueueOperation
 import com.valhalla.thor.util.UiText
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 @Composable
 fun TaskDetailScreen(
+    route: ThorRoute.TaskDetail,
     onBackground: () -> Unit,
     onActionDispatch: (TaskDetailActionResult) -> Unit = {},
-    viewModel: TaskDetailViewModel = koinViewModel(),
+    viewModel: TaskDetailViewModel = koinViewModel { parametersOf(route) },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ObserveAsEvents(viewModel.actionResults, onEvent = onActionDispatch)
@@ -102,6 +107,11 @@ internal fun TaskDetailContent(
                 },
             contentAlignment = Alignment.BottomCenter,
         ) {
+            Spacer(
+                modifier = Modifier
+                    .matchParentSize()
+                    .testTag(taskDetailRouteTag(state.taskId)),
+            )
             TermLoggerContent(
                 title = state.title(),
                 logs = state.loggerLines(),
@@ -181,10 +191,10 @@ internal fun TaskDetailUiState.loggerStatus(): TermLoggerStatus = when (phase) {
 private fun TaskDetailUiState.loggerLines(): List<UiText> {
     val summary = summary ?: return listOf(
         UiText.StringResource(
-            if (phase == TaskLifecyclePhase.STARTING) {
-                R.string.log_initializing
-            } else {
-                R.string.task_reason_observer_failure
+            when (phase) {
+                TaskLifecyclePhase.STARTING -> R.string.log_initializing
+                TaskLifecyclePhase.FAILED -> R.string.task_reason_failed
+                else -> R.string.task_reason_observer_failure
             },
         ),
     )
@@ -416,6 +426,8 @@ private val ACTIVE_LOGGER_PHASES = setOf(
     TaskLifecyclePhase.RUNNING,
     TaskLifecyclePhase.STOPPING,
 )
+
+internal fun taskDetailRouteTag(taskId: UUID): String = "task-detail-route-$taskId"
 
 internal const val TASK_DETAIL_SCRIM_TAG = "task-detail-scrim"
 internal const val TASK_DETAIL_LOGGER_TAG = "task-detail-logger"

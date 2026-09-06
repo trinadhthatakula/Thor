@@ -28,6 +28,8 @@ import com.valhalla.thor.presentation.FakeAppBundleBuilder
 import com.valhalla.thor.presentation.FakeAppBundleFileStore
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
 import com.valhalla.thor.presentation.userApp
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -188,7 +190,16 @@ class ExportBottomSheetTest {
             single { exportUseCase }
             single<ExportJobLauncher> { launcher }
             single { JobRegistry() }
-            viewModel { ExportViewModel(get(), get(), get()) }
+            single { ProvisionalTaskIdentityRegistry() }
+            single { TaskNavigationTargets(get()) }
+            single {
+                ExportSubmissionCoordinator(
+                    launcher = get(),
+                    taskNavigationTargets = get(),
+                    ioDispatcher = Dispatchers.Unconfined,
+                )
+            }
+            viewModel { ExportViewModel(get(), get(), get(), get()) }
         }
         val testKoin = KoinApplication.init().also { it.koin.loadModules(listOf(testModule)) }
         composeRule.setContent {

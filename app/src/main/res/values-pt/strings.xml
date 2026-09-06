@@ -721,7 +721,6 @@
     <string name="profile_delete_desc">Só o perfil é removido. As aplicações que ele contém ficam exatamente como estão — o que estiver congelado continua congelado.</string>
     <string name="profile_saved">Perfil guardado</string>
     <string name="profile_deleted">Perfil eliminado</string>
-    <string name="profile_nothing_to_do">Não há nada a fazer para este perfil</string>
     <string name="bulk_run_failed">Essa execução não chegou ao fim — verifique as aplicações antes de confiar nela</string>
     <string name="error_profile_name_taken">Esse nome de perfil já está a ser usado</string>
     <string name="error_profile_delete_failed">Não foi possível eliminar esse perfil</string>
@@ -805,7 +804,6 @@
     <string name="component_disclaimer_confirm">Desativá-lo</string>
     <string name="component_disclaimer_dont_ask_session">Não perguntar novamente nesta sessão</string>
     <string name="component_disabled_unrecorded">O Thor não conseguiu registar a desativação de %1$s — Repor tudo não a incluirá</string>
-    <string name="cancel_sweep_queue">Cancelar fila de ações</string>
     <string name="sweep_notification_title">A aplicar ações às aplicações</string>
     <string name="sweep_queued">Ações em fila</string>
     <string name="sweep_running">A executar %1$d de %2$d</string>
@@ -813,11 +811,8 @@
     <string name="sweep_partial">As ações terminaram com problemas</string>
     <string name="sweep_cancelled">A fila de ações foi cancelada</string>
     <string name="sweep_failed">As ações falharam</string>
-    <string name="sweep_launch_failed_title">Não foi possível iniciar as ações</string>
     <string name="sweep_observer_failure">Progresso indisponível</string>
-    <string name="sweep_observer_failure_desc">O Thor não conseguiu voltar a ligar-se a estas ações nas aplicações. Verifique as aplicações antes de confiar no resultado.</string>
     <string name="sweep_root_lane_degraded">Via Root de arquivo/ações em modo degradado</string>
-    <string name="sweep_progress_summary">Com êxito: %1$d · falhadas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
     <string name="sweep_result_summary">Ações em aplicações — com êxito: %1$d · falhadas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
 
     <!-- Filas duradouras de serviços em primeiro plano -->

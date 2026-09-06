@@ -16,6 +16,7 @@ class ShizukuPermissionHandler(
 ) {
 
     private var isRequestInProgress = false
+    private var activeRequestCode: Int? = null
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         if (checkPermission()) {
@@ -29,7 +30,9 @@ class ShizukuPermissionHandler(
 
     private val requestPermissionResultListener =
         Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
-            isRequestInProgress = false // Reset flag
+            if (requestCode != activeRequestCode) return@OnRequestPermissionResultListener
+            activeRequestCode = null
+            isRequestInProgress = false
             if (grantResult == PackageManager.PERMISSION_GRANTED) {
                 onPermissionGranted()
             } else {
@@ -71,9 +74,11 @@ class ShizukuPermissionHandler(
             if (Shizuku.shouldShowRequestPermissionRationale()) {
                 // Ideally show UI rationale here.
             }
-            isRequestInProgress = true // Set flag
+            activeRequestCode = requestCode
+            isRequestInProgress = true
             Shizuku.requestPermission(requestCode)
         } catch (_: Exception) {
+            activeRequestCode = null
             isRequestInProgress = false
             return false
         }

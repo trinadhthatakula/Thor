@@ -34,9 +34,17 @@ class ExportJobLauncherImpl(
      * The task's durable kind and target key let the shared watcher suppress duplicate submissions
      * even after process recreation.
      */
-    override suspend fun startExport(request: AppExportRequest): UUID? {
-        val taskId = try {
-            acceptance.acceptExport(request) {
+    override suspend fun startExport(request: AppExportRequest): UUID? =
+        startExport(UUID.randomUUID(), request)
+
+    override suspend fun startExport(
+        taskId: UUID,
+        request: AppExportRequest,
+    ): UUID? {
+        var durablyAccepted = false
+        val acceptedTaskId = try {
+            acceptance.acceptExport(taskId, request) {
+                durablyAccepted = true
                 ServiceQueueLatencyProbe.mark(
                     ServiceQueueOperation.EXPORT,
                     ServiceQueueEvent.DURABLE_ACCEPTED,
@@ -46,9 +54,9 @@ class ExportJobLauncherImpl(
             throw cancelled
         } catch (failure: Exception) {
             Logger.e(TAG, "export acceptance failed for ${request.packageName}", failure)
-            return null
+            return if (durablyAccepted) taskId else null
         }
-        return taskId
+        return acceptedTaskId
     }
 
     private companion object {
