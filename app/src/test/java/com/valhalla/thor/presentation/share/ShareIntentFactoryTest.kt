@@ -23,6 +23,7 @@ import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.domain.model.NewDataTaskOutput
+import com.valhalla.thor.domain.model.SharePrepareFormat
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import java.io.File
@@ -152,6 +153,205 @@ class ShareIntentFactoryTest {
 
         assertNull(factory.create(taskId, NOW_MS))
         assertTrue(fileStore.files.isEmpty())
+    }
+
+    @Test
+    fun `automatic share mixes APK and APKS only after validating the whole ordered output set`() = runTest {
+        val taskId = newTaskId()
+        val outputs = listOf(
+            output(taskId, ordinal = 0, displayName = "first.apk"),
+            output(taskId, ordinal = 1, displayName = "second.apks", mimeType = BundleFormat.APKS.mime),
+            output(taskId, ordinal = 2, displayName = "third.apk", packageName = "com.example.gamma"),
+        )
+        persistReadyTask(taskId, outputs.reversed(), requestedFormat = SharePrepareFormat.AUTO)
+        outputs.forEach { writeOutput(it) }
+
+        val intent = requireNotNull(factory.create(taskId, NOW_MS))
+        val streams = requireNotNull(intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM))
+        val clip = requireNotNull(intent.clipData)
+
+        assertEquals(Intent.ACTION_SEND_MULTIPLE, intent.action)
+        assertEquals("*/*", intent.type)
+        assertEquals(outputs.map { File(context.cacheDir, it.relativePath).canonicalFile }, fileStore.files)
+        assertEquals(fileStore.uris, streams)
+        assertEquals(streams, (0 until clip.itemCount).map { clip.getItemAt(it).uri })
+        assertEquals(
+            listOf("application/vnd.android.package-archive", "application/octet-stream"),
+            (0 until clip.description.mimeTypeCount).map(clip.description::getMimeType),
+        )
+        assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, intent.flags)
+    }
+
+    @Test
+    fun `automatic share with only APK outputs retains the package MIME`() = runTest {
+        val taskId = newTaskId()
+        val outputs = listOf(
+            output(taskId, ordinal = 0, displayName = "first.apk"),
+            output(taskId, ordinal = 1, displayName = "second.apk"),
+        )
+        persistReadyTask(taskId, outputs, requestedFormat = SharePrepareFormat.AUTO)
+        outputs.forEach { writeOutput(it) }
+
+        val intent = requireNotNull(factory.create(taskId, NOW_MS))
+
+        assertEquals("application/vnd.android.package-archive", intent.type)
+        assertEquals(1, requireNotNull(intent.clipData).description.mimeTypeCount)
+    }
+
+    @Test
+    fun `automatic share with only APKS outputs retains the binary MIME`() = runTest {
+        val taskId = newTaskId()
+        val output = output(taskId, ordinal = 0, displayName = "split.apks", mimeType = BundleFormat.APKS.mime)
+        persistReadyTask(taskId, listOf(output), requestedFormat = SharePrepareFormat.AUTO)
+        writeOutput(output)
+
+        val intent = requireNotNull(factory.create(taskId, NOW_MS))
+
+        assertEquals(Intent.ACTION_SEND, intent.action)
+        assertEquals("application/octet-stream", intent.type)
+        assertEquals("application/octet-stream", requireNotNull(intent.clipData).description.getMimeType(0))
+    }
+
+    @Test
+    fun `explicit APKS and XAPK outputs retain their exact extensions and MIME`() = runTest {
+        for ((policy, format) in listOf(
+            SharePrepareFormat.APKS to BundleFormat.APKS,
+            SharePrepareFormat.XAPK to BundleFormat.XAPK,
+        )) {
+            val taskId = newTaskId()
+            val output = output(taskId, ordinal = 0, displayName = "bundle.${format.extension}", mimeType = format.mime)
+            persistReadyTask(taskId, listOf(output), requestedFormat = policy)
+            writeOutput(output)
+
+            val intent = requireNotNull(factory.create(taskId, NOW_MS))
+
+            assertEquals("application/octet-stream", intent.type)
+            assertEquals(output.displayName, intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.lastPathSegment)
+        }
+    }
+
+    @Test
+    fun `explicit policies reject the wrong extension even when the MIME matches`() = runTest {
+        for ((policy, filename, mime) in listOf(
+            Triple(SharePrepareFormat.APK, "renamed.zip", BundleFormat.APK.mime),
+            Triple(SharePrepareFormat.APKS, "wrong.xapk", BundleFormat.APKS.mime),
+            Triple(SharePrepareFormat.XAPK, "wrong.apks", BundleFormat.XAPK.mime),
+        )) {
+            val taskId = newTaskId()
+            val output = output(taskId, ordinal = 0, displayName = filename, mimeType = mime)
+            persistReadyTask(taskId, listOf(output), requestedFormat = policy)
+            writeOutput(output)
+
+            assertNull("Policy $policy accepted $filename", factory.create(taskId, NOW_MS))
+            assertTrue(fileStore.files.isEmpty())
+        }
+    }
+
+    @Test
+    fun `automatic policy rejects XAPK even though its MIME matches APKS`() = runTest {
+        val taskId = newTaskId()
+        val output = output(taskId, ordinal = 0, displayName = "unexpected.xapk", mimeType = BundleFormat.XAPK.mime)
+        persistReadyTask(taskId, listOf(output), requestedFormat = SharePrepareFormat.AUTO)
+        writeOutput(output)
+
+        assertNull(factory.create(taskId, NOW_MS))
+        assertTrue(fileStore.files.isEmpty())
+    }
+
+    @Test
+    fun `automatic policy rejects mismatched extension MIME pairs before generating any URI`() = runTest {
+        for ((filename, mime) in listOf(
+            "wrong.apk" to BundleFormat.APKS.mime,
+            "wrong.apks" to BundleFormat.APK.mime,
+            "wrong.apks" to "application/zip",
+            "wrong.zip" to BundleFormat.APKS.mime,
+        )) {
+            val taskId = newTaskId()
+            val outputs = listOf(
+                output(taskId, ordinal = 0, displayName = "valid.apk"),
+                output(taskId, ordinal = 1, displayName = filename, mimeType = mime),
+            )
+            persistReadyTask(taskId, outputs, requestedFormat = SharePrepareFormat.AUTO)
+            outputs.forEach { writeOutput(it) }
+
+            assertNull("Accepted $filename with $mime", factory.create(taskId, NOW_MS))
+            assertTrue(fileStore.files.isEmpty())
+        }
+    }
+
+    @Test
+    fun `a succeeded item without its output refuses the complete handoff`() = runTest {
+        val taskId = newTaskId()
+        val outputs = listOf(
+            output(taskId, ordinal = 0, displayName = "first.apk"),
+            output(taskId, ordinal = 1, displayName = "second.apk"),
+        )
+        persistReadyTask(taskId, outputs)
+        outputs.forEach { writeOutput(it) }
+        database.openHelper.writableDatabase.execSQL(
+            "DELETE FROM data_task_outputs WHERE task_id = ? AND item_ordinal = 1",
+            arrayOf(taskId.toString()),
+        )
+
+        assertNull(factory.create(taskId, NOW_MS))
+        assertTrue(fileStore.files.isEmpty())
+    }
+
+    @Test
+    fun `ready partial shares all succeeded items in ordinal order and omits failed items`() = runTest {
+        val taskId = newTaskId()
+        val outputs = listOf(
+            output(taskId, ordinal = 0, displayName = "first.apk"),
+            output(taskId, ordinal = 1, displayName = "failed.apk"),
+            output(taskId, ordinal = 2, displayName = "third.apk", packageName = "com.example.gamma"),
+        )
+        persistReadyTask(taskId, outputs)
+        outputs.forEach { writeOutput(it) }
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE data_task_items SET state = 'FAILED' WHERE task_id = ? AND ordinal = 1",
+            arrayOf(taskId.toString()),
+        )
+        database.openHelper.writableDatabase.execSQL(
+            "DELETE FROM data_task_outputs WHERE task_id = ? AND item_ordinal = 1",
+            arrayOf(taskId.toString()),
+        )
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE data_tasks SET state = 'READY_PARTIAL' WHERE task_id = ?",
+            arrayOf(taskId.toString()),
+        )
+
+        val intent = requireNotNull(factory.create(taskId, NOW_MS))
+
+        assertEquals(Intent.ACTION_SEND_MULTIPLE, intent.action)
+        assertEquals(listOf("first.apk", "third.apk"), fileStore.files.map(File::getName))
+    }
+
+    @Test
+    fun `foreground single share uses matching stream clip MIME and only read permission`() {
+        val uri = "content://${BuildConfig.APPLICATION_ID}.provider/ready/app.apks".let(Uri::parse)
+
+        val intent = requireNotNull(ShareIntentFactory.createSingleShare(uri, "application/octet-stream"))
+        val clip = requireNotNull(intent.clipData)
+
+        assertEquals(Intent.ACTION_SEND, intent.action)
+        assertEquals("application/octet-stream", intent.type)
+        assertEquals(uri, intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+        assertEquals(uri, clip.getItemAt(0).uri)
+        assertEquals(1, clip.itemCount)
+        assertEquals(1, clip.description.mimeTypeCount)
+        assertEquals("application/octet-stream", clip.description.getMimeType(0))
+        assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, intent.flags)
+    }
+
+    @Test
+    fun `foreground single share refuses file URIs and other providers`() {
+        for (uri in listOf(
+            "file:///data/user/0/com.valhalla.thor/cache/app.apk",
+            "content://example.invalid/app.apk",
+            "https://${BuildConfig.APPLICATION_ID}.provider/app.apk",
+        )) {
+            assertNull(ShareIntentFactory.createSingleShare(Uri.parse(uri), BundleFormat.APK.mime))
+        }
     }
 
     @Test
@@ -298,6 +498,7 @@ class ShareIntentFactoryTest {
         taskId: UUID,
         outputs: List<OutputSpec>,
         firstItemIdentity: String = "item-$taskId-0",
+        requestedFormat: SharePrepareFormat = SharePrepareFormat.APK,
         publicationPolicy: DataTaskPublicationPolicy =
             DataTaskPublicationPolicy.PRIVATE_SHARE_WITH_24_HOUR_EXPIRY,
     ) {
@@ -310,7 +511,7 @@ class ShareIntentFactoryTest {
                 targetKey = "share:$taskId",
                 initialState = DataTaskState.QUEUED,
                 detail = StoredDataTaskDetail.SharePrepare(
-                    requestedFormat = BundleFormat.APK,
+                    requestedFormat = requestedFormat,
                     publicationPolicy = publicationPolicy,
                     deterministicStagingIdentity = "stage-$taskId",
                 ),

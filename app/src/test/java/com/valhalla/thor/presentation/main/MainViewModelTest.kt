@@ -132,9 +132,9 @@ class MainViewModelTest {
         // on it, so a test can drive a notification tap by calling `requestOpen` on the same instance
         // the view model is watching. Defaulted so the tests that predate it read unchanged.
         sheetTargets: JobSheetTargets = JobSheetTargets(),
-        // Only the two stop-reporting tests pass one: they need to act from *inside* the share loop,
-        // which is the one moment a test body cannot otherwise reach. See FakeAppBundleBuilder.onBuild.
         bundleBuilder: FakeAppBundleBuilder = FakeAppBundleBuilder(),
+        shareLauncher: com.valhalla.thor.domain.repository.ShareTaskLauncher =
+            com.valhalla.thor.domain.repository.ShareTaskLauncher { id, _ -> id },
         sweepController: FakePrivilegeSweepController = FakePrivilegeSweepController(),
         taskNavigationTargets: TaskNavigationTargets =
             TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
@@ -158,6 +158,9 @@ class MainViewModelTest {
             ),
             sweepController = sweepController,
             taskNavigationTargets = taskNavigationTargets,
+            shareSubmissionCoordinator = com.valhalla.thor.presentation.share.ShareSubmissionCoordinator(
+                shareLauncher, taskNavigationTargets, mainDispatcherRule.dispatcher,
+            ),
             ioDispatcher = mainDispatcherRule.dispatcher
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
@@ -1131,29 +1134,85 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `a stop during the last shared app does not report a stopped batch either`() = runTest {
-        // The share branch keeps its own copy of the batch loop, so it needs its own pin. Driven from
-        // the bundle builder rather than the system fake because sharing never reaches the privilege
-        // layer — it stages files.
-        // Assigned after construction because the builder is a constructor argument of the thing it
-        // has to call back into.
-        var stopper: MainViewModel? = null
-        val builder = FakeAppBundleBuilder { app ->
-            if (app.packageName == "com.b") stopper?.requestStopBatch()
+    fun `bulk share opens exact provisional detail before asynchronous preparation`() = runTest {
+        var localBuilds = 0
+        val builder = FakeAppBundleBuilder { localBuilds++ }
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            targets.requests.collect { requests += it }
         }
-        val vm = viewModel(bundleBuilder = builder)
-        stopper = vm
+        val admission = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val vm = viewModel(
+            bundleBuilder = builder,
+            taskNavigationTargets = targets,
+            shareLauncher = com.valhalla.thor.domain.repository.ShareTaskLauncher { id, _ ->
+                admission.await()
+                id
+            },
+        )
 
         vm.onMultiAppAction(MultiAppAction.Share(listOf(userApp("com.a"), userApp("com.b"))))
+
+        assertEquals(1, requests.size)
+        val provisional = requests.single() as TaskNavigationRequest.OpenProvisional
+        assertEquals(TaskQueueKind.DATA, provisional.identity.queueKind)
+        assertEquals("SHARE_PREPARE", provisional.identity.operationId)
+        admission.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(TaskNavigationRequest.Accepted(provisional.taskId, provisional.taskId), requests.last())
+        assertEquals(0, localBuilds)
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+    }
+
+    @Test
+    fun `bulk share keeps the selection snapshot and backgrounding does not cancel admission`() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<UUID?>()
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        val submitted = mutableListOf<Pair<UUID, com.valhalla.thor.domain.model.AppShareRequest>>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            targets.requests.collect { requests += it }
+        }
+        val vm = viewModel(
+            taskNavigationTargets = targets,
+            shareLauncher = com.valhalla.thor.domain.repository.ShareTaskLauncher { id, request ->
+                submitted += id to request
+                gate.await()
+            },
+        )
+        val selection = mutableListOf(userApp("com.a"), userApp("com.b"))
+        vm.onMultiAppAction(MultiAppAction.Share(selection))
+        val provisional = requests.single() as TaskNavigationRequest.OpenProvisional
+        selection.clear()
+        vm.dismissLogger()
         advanceUntilIdle()
 
-        // Both bundles fail here (no device), so the logger stays up to be read instead of being
-        // dismissed for a share sheet — which is what makes this assertion possible at all.
-        assertFalse(
-            vm.uiState.value.loggerState.logs.any {
-                it is UiText.StringResource && it.resId == R.string.log_stopped
-            }
+        assertEquals(provisional.taskId, submitted.single().first)
+        assertEquals(listOf("com.a", "com.b"), submitted.single().second.targets.map { it.packageName })
+        assertEquals(com.valhalla.thor.domain.model.SharePrepareFormat.AUTO, submitted.single().second.format)
+        gate.complete(provisional.taskId)
+        advanceUntilIdle()
+        assertEquals(TaskNavigationRequest.Accepted(provisional.taskId, provisional.taskId), requests.last())
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+    }
+
+    @Test
+    fun `empty bulk share creates no provisional request or preparation`() = runTest {
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        var submissions = 0
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            targets.requests.collect { requests += it }
+        }
+        val vm = viewModel(
+            taskNavigationTargets = targets,
+            shareLauncher = com.valhalla.thor.domain.repository.ShareTaskLauncher { id, _ -> submissions++; id },
         )
+        vm.onMultiAppAction(MultiAppAction.Share(emptyList()))
+        advanceUntilIdle()
+        assertTrue(requests.isEmpty())
+        assertEquals(0, submissions)
     }
 
     // --- Job sheets ---------------------------------------------------------------------------

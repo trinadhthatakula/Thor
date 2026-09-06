@@ -14,6 +14,7 @@ import com.valhalla.thor.data.source.local.room.DataTaskSnapshot
 import com.valhalla.thor.data.source.local.room.NewDataTaskItem
 import com.valhalla.thor.data.source.local.room.NewDataTaskRow
 import com.valhalla.thor.domain.model.AppExportRequest
+import com.valhalla.thor.domain.model.AppShareRequest
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.DataClass
@@ -113,6 +114,34 @@ internal class DataTaskStore(
                 deterministicStagingIdentity = taskId.stagingIdentity(),
             ),
             items = listOf(request.packageName.toItem(taskId, request.label)),
+            createdAtEpochMs = nowMs,
+        ),
+    ).state
+
+    override suspend fun insertShare(
+        taskId: UUID,
+        request: AppShareRequest,
+        nowMs: Long,
+    ): DataTaskState = dao.insertTask(
+        NewDataTaskRow(
+            taskId = taskId.toString(),
+            payloadSchemaVersion = PAYLOAD_SCHEMA_VERSION,
+            kind = DataTaskKind.SHARE_PREPARE,
+            targetKey = "share:$taskId",
+            initialState = DataTaskState.QUEUED,
+            detail = StoredDataTaskDetail.SharePrepare(
+                requestedFormat = request.format,
+                publicationPolicy = DataTaskPublicationPolicy.PRIVATE_SHARE_WITH_24_HOUR_EXPIRY,
+                deterministicStagingIdentity = taskId.stagingIdentity(),
+            ),
+            items = request.targets.distinctBy { it.packageName }.mapIndexed { ordinal, target ->
+                NewDataTaskItem(
+                    ordinal = ordinal,
+                    packageName = target.packageName,
+                    displayLabel = target.label,
+                    deterministicStagingIdentity = "item-$taskId-$ordinal",
+                )
+            },
             createdAtEpochMs = nowMs,
         ),
     ).state
@@ -329,6 +358,22 @@ internal class DataTaskStore(
 
     suspend fun expiredReadyOutputs(nowMs: Long): List<DataTaskOutputSnapshot> =
         dao.expiredReadyOutputs(nowMs)
+
+    suspend fun expiredReadyShareTasks(nowMs: Long): List<DataTaskSnapshot> =
+        dao.expiredReadyShareTasks(nowMs)
+
+    suspend fun readyShareRetentionSnapshot(taskId: UUID, nowMs: Long): DataTaskSnapshot? =
+        dao.readyShareRetentionSnapshot(taskId.toString(), nowMs)
+
+    suspend fun markReadyTaskExpiredAfterCleanup(
+        expected: DataTaskSnapshot,
+        outputIds: List<UUID>,
+        nowMs: Long,
+    ): Boolean = dao.markReadyTaskExpiredAfterCleanup(
+        expected = expected,
+        outputIds = outputIds.map(UUID::toString),
+        nowMs = nowMs,
+    )
 
     suspend fun markReadyTaskExpiredAfterCleanup(
         taskId: UUID,

@@ -10,6 +10,8 @@ import com.valhalla.thor.domain.model.DataTaskOutputState
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.SharePrepareFormat
 import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import java.io.File
@@ -105,6 +107,16 @@ class SharePrepareTaskRunnerTest {
         assertTrue(outcome.result.outputs.isEmpty())
         val reason = outcome.result.warnings.single().arguments.single()
         assertTrue(reason.length <= MAX_JOB_MESSAGE_CHARS)
+    }
+
+    @Test
+    fun `builder exception paths never enter durable warning arguments`() = runBlocking {
+        val operations = RecordingShareOperations(bundleResult = Result.failure(
+            java.io.IOException("/data/user/0/private/cache/share_work/private.apk: access denied"),
+        ))
+        val outcome = SharePrepareTaskRunner(operations, Dispatchers.Unconfined)
+            .run(shareRequest(), acceptingCheckpoints()) as DataTaskRunOutcome.ItemCompleted
+        assertEquals("the operation could not be completed", outcome.result.warnings.single().arguments.single())
     }
 
     @Test
@@ -312,12 +324,92 @@ class SharePrepareTaskRunnerTest {
         assertSame(cancellation, thrown)
     }
 
+    @Test
+    fun `AUTO prepares each app with its own APK or APKS format and matching metadata`() = runBlocking {
+        for ((splitPaths, expectedFormat) in listOf(
+            emptyList<String>() to BundleFormat.APK,
+            listOf("/apps/$PACKAGE_NAME/split_config.apk") to BundleFormat.APKS,
+        )) {
+            val fileName = "Example_1.0_com.example.app_0.${expectedFormat.extension}"
+            val operations = RecordingShareOperations(
+                bundle = bundle(fileName, "complete"),
+                splitPaths = splitPaths,
+            )
+            val outcome = SharePrepareTaskRunner(operations, Dispatchers.Unconfined).run(
+                shareRequest(requestedFormat = SharePrepareFormat.AUTO),
+                acceptingCheckpoints(),
+            ) as DataTaskRunOutcome.ItemCompleted
+
+            assertEquals(DataTaskItemTerminalState.SUCCEEDED, outcome.result.terminalState)
+            assertEquals(expectedFormat, operations.builds.single().format)
+            assertEquals(fileName, outcome.result.outputs.single().displayName)
+            assertEquals(expectedFormat.mime, outcome.result.outputs.single().mimeType)
+        }
+    }
+
+    @Test
+    fun `explicit APK APKS and XAPK are never replaced by split auto detection`() = runBlocking {
+        for ((requestedFormat, expectedFormat) in listOf(
+            SharePrepareFormat.APK to BundleFormat.APK,
+            SharePrepareFormat.APKS to BundleFormat.APKS,
+            SharePrepareFormat.XAPK to BundleFormat.XAPK,
+        )) {
+            val fileName = "Example_1.0_com.example.app_0.${expectedFormat.extension}"
+            val operations = RecordingShareOperations(
+                bundle = bundle(fileName, "complete"),
+                splitPaths = if (requestedFormat == SharePrepareFormat.APK) emptyList()
+                    else listOf("/apps/$PACKAGE_NAME/split_config.apk"),
+            )
+            val outcome = SharePrepareTaskRunner(operations, Dispatchers.Unconfined).run(
+                shareRequest(requestedFormat = requestedFormat),
+                acceptingCheckpoints(),
+            ) as DataTaskRunOutcome.ItemCompleted
+
+            assertEquals(DataTaskItemTerminalState.SUCCEEDED, outcome.result.terminalState)
+            assertEquals(expectedFormat, operations.builds.single().format)
+            assertEquals(expectedFormat.mime, outcome.result.outputs.single().mimeType)
+        }
+    }
+
+    @Test
+    fun `share preparation preserves ARCHIVE lane and task identity for package reads`() = runBlocking {
+        val operations = RecordingShareOperations(
+            bundle = bundle("Example_1.0_com.example.app_0.apk", "payload"),
+        )
+
+        SharePrepareTaskRunner(operations, Dispatchers.Unconfined).run(
+            shareRequest(),
+            acceptingCheckpoints(),
+        )
+
+        val execution = operations.builds.single().execution
+        assertEquals(PrivilegeExecutionLane.ARCHIVE, execution.lane)
+        assertEquals("archive.share.prepare", execution.commandClass.value)
+        assertEquals(PACKAGE_NAME, execution.packageName)
+        assertEquals(TASK_ID, execution.workRequestId)
+    }
+
+    @Test
+    fun `explicit APK rejects a split app before staging or building`() = runBlocking {
+        val operations = RecordingShareOperations(
+            splitPaths = listOf("/apps/$PACKAGE_NAME/split_config.apk"),
+        )
+        val outcome = SharePrepareTaskRunner(operations, Dispatchers.Unconfined).run(
+            shareRequest(requestedFormat = SharePrepareFormat.APK), acceptingCheckpoints(),
+        ) as DataTaskRunOutcome.ItemCompleted
+        assertEquals(DataTaskItemTerminalState.FAILED, outcome.result.terminalState)
+        assertEquals("SHARE_PREPARE_SPLIT_APK_UNSUPPORTED", outcome.result.resultCode.value)
+        assertTrue(operations.discards.isEmpty())
+        assertTrue(operations.builds.isEmpty())
+    }
+
     private fun shareRequest(
         stagingIdentity: String = "item-$TASK_ID-0",
+        requestedFormat: SharePrepareFormat = SharePrepareFormat.APK,
     ) = DataTaskExecutionRequest(
         taskId = TASK_ID,
         payload = DataTaskExecutionPayload.SharePrepare(
-            requestedFormat = BundleFormat.APK,
+            requestedFormat = requestedFormat,
             publicationPolicy = DataTaskPublicationPolicy.PRIVATE_SHARE_WITH_24_HOUR_EXPIRY,
         ),
         item = DataTaskExecutionItem(
@@ -341,6 +433,7 @@ class SharePrepareTaskRunnerTest {
         private val bundle: File? = null,
         private val bundleResult: Result<File>? = null,
         private val buildFailure: CancellationException? = null,
+        private val splitPaths: List<String> = emptyList(),
         private val progressScript: suspend (
             VerifiedProgress,
             VerifiedOperationBoundary,
@@ -360,6 +453,7 @@ class SharePrepareTaskRunnerTest {
             versionName = "1.0",
             versionCode = 1L,
             publicSourceDir = "/apps/$packageName/base.apk",
+            splitPublicSourceDirs = splitPaths,
         )
 
         override suspend fun discardIncomplete(
@@ -381,7 +475,7 @@ class SharePrepareTaskRunnerTest {
             operationBoundary: VerifiedOperationBoundary,
         ): Result<File> {
             if (incompletePartPresent) builtOnlyAfterDiscard = false
-            builds += BuildCall(cacheSubDir, fileName)
+            builds += BuildCall(cacheSubDir, fileName, format, execution)
             buildFailure?.let { throw it }
             progressScript(progress, operationBoundary)
             sideEffectAfterProgress = true
@@ -390,7 +484,12 @@ class SharePrepareTaskRunnerTest {
 
     }
 
-    private data class BuildCall(val stagingSubDir: String, val fileName: String)
+    private data class BuildCall(
+        val stagingSubDir: String,
+        val fileName: String,
+        val format: BundleFormat,
+        val execution: PrivilegeExecutionContext,
+    )
 
     private companion object {
         const val PACKAGE_NAME = "com.example.app"

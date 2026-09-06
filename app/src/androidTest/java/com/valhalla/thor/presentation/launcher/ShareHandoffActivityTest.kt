@@ -14,9 +14,11 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.backup.job.DataTaskStore
 import com.valhalla.thor.data.repository.AppBundleFileStoreImpl
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.DataTaskDao
+import com.valhalla.thor.data.source.local.room.DataTaskSnapshot
 import com.valhalla.thor.data.source.local.room.NewDataTaskItem
 import com.valhalla.thor.data.source.local.room.NewDataTaskRow
 import com.valhalla.thor.domain.model.BundleFormat
@@ -28,14 +30,20 @@ import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.domain.model.NewDataTaskOutput
+import com.valhalla.thor.domain.model.SharePrepareFormat
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
+import com.valhalla.thor.presentation.share.ReadyShareAccessLock
+import com.valhalla.thor.presentation.share.ReadyShareRetentionDependencies
+import com.valhalla.thor.presentation.share.ReadyShareRetentionSweeper
 import com.valhalla.thor.presentation.share.ShareIntentFactory
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -58,6 +66,7 @@ class ShareHandoffActivityTest {
     private lateinit var dao: DataTaskDao
     private lateinit var fileStore: AppBundleFileStoreImpl
     private lateinit var productionFactory: ShareIntentFactory
+    private lateinit var accessLock: ReadyShareAccessLock
 
     @Before
     fun setUp() {
@@ -65,6 +74,9 @@ class ShareHandoffActivityTest {
         productionFactory = requireNotNull(
             GlobalContext.get().getOrNull<ShareIntentFactory>(),
         )
+        // Resolve the running application's singleton, just as for productionFactory above.
+        // This test compilation has no statically loaded application module of its own.
+        accessLock = requireNotNull(koin.getOrNull<ReadyShareAccessLock>())
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         dao = database.dataTaskDao()
         fileStore = AppBundleFileStoreImpl(context, Dispatchers.IO)
@@ -221,6 +233,166 @@ class ShareHandoffActivityTest {
         assertNoChooser(taskId)
     }
 
+    @Test
+    fun oneMissingOutputRefusesTheWholeOtherwiseReadySet() = runBlocking {
+        val taskId = UUID.randomUUID()
+        val outputs = listOf(
+            output(taskId, ordinal = 0, displayName = "present.apk"),
+            output(taskId, ordinal = 1, displayName = "missing.apk"),
+        )
+        persistReadyTask(taskId, outputs)
+        writeOutput(outputs.first())
+
+        assertNoChooser(taskId)
+
+        assertTrue(File(context.cacheDir, outputs.first().relativePath).isFile)
+    }
+
+    @Test
+    fun oneExpiredOutputRefusesTheWholeOtherwiseReadySet() = runBlocking {
+        val taskId = UUID.randomUUID()
+        val outputs = listOf(
+            output(taskId, ordinal = 0, displayName = "expired.apk", expiresAtEpochMs = EXPIRED_AT_MS),
+            output(taskId, ordinal = 1, displayName = "valid.apk"),
+        )
+        persistReadyTask(taskId, outputs)
+        outputs.forEach(::writeOutput)
+
+        assertNoChooser(taskId)
+
+        assertTrue(File(context.cacheDir, outputs.last().relativePath).isFile)
+    }
+
+    @Test
+    fun firstExpiredLeafDisablesHandoffWhileLaterLeafRemainsPrivate() = runBlocking {
+        val taskId = UUID.randomUUID()
+        val outputs = listOf(
+            output(taskId, ordinal = 0, displayName = "due.apk", expiresAtEpochMs = EXPIRED_AT_MS),
+            output(taskId, ordinal = 1, displayName = "later.apk"),
+        )
+        persistReadyTask(taskId, outputs)
+        outputs.forEach(::writeOutput)
+        val lock = accessLock
+
+        retentionSweeper(lock, EXPIRED_AT_MS).sweep()
+
+        assertFalse(File(context.cacheDir, outputs.first().relativePath).exists())
+        assertTrue(File(context.cacheDir, outputs.last().relativePath).isFile)
+        assertEquals(DataTaskState.EXPIRED, dao.loadTask(taskId.toString())!!.state)
+        assertNoChooser(taskId)
+    }
+
+    @Test
+    fun handoffCannotFinishOrLaunchChooserDuringRetentionDeletion() = runBlocking {
+        val taskId = UUID.randomUUID()
+        // Handoff's real clock still sees both outputs as valid; the injected retention clock is due.
+        val deadline = System.currentTimeMillis() + VALID_FOR_MS
+        val outputs = listOf(
+            output(taskId, ordinal = 0, displayName = "first.apk", expiresAtEpochMs = deadline),
+            output(taskId, ordinal = 1, displayName = "second.apk", expiresAtEpochMs = deadline),
+        )
+        persistReadyTask(taskId, outputs)
+        outputs.forEach(::writeOutput)
+        val lock = accessLock
+        val deletionEntered = CountDownLatch(1)
+        val releaseDeletion = CountDownLatch(1)
+        val sweeper = retentionSweeper(lock, deadline) { file ->
+            if (file.name == outputs.first().displayName) {
+                deletionEntered.countDown()
+                check(releaseDeletion.await(TIMEOUT_MS, TimeUnit.MILLISECONDS)) { "deletion release timed out" }
+            }
+        }
+        val sweep = async(Dispatchers.IO) { sweeper.sweep() }
+        try {
+            assertTrue("retention did not delete the first leaf", deletionEntered.await(TIMEOUT_MS, TimeUnit.MILLISECONDS))
+            assertHandoffWaitsThenRefuses(taskId) { releaseDeletion.countDown() }
+            sweep.await()
+            assertEquals(DataTaskState.EXPIRED, dao.loadTask(taskId.toString())!!.state)
+        } finally {
+            releaseDeletion.countDown()
+            sweep.cancel()
+        }
+    }
+
+    @Test
+    fun handoffReloadsReplacementAfterWaitingForSharedLock() = runBlocking {
+        val taskId = UUID.randomUUID()
+        val original = output(taskId, ordinal = 0, displayName = "original.apk")
+        val replacement = output(taskId, ordinal = 0, displayName = "replacement.apk")
+        persistReadyTask(taskId, listOf(original))
+        writeOutput(original)
+        val lock = accessLock
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val mutation = async(Dispatchers.IO) {
+            lock.withLock {
+                locked.countDown()
+                check(release.await(TIMEOUT_MS, TimeUnit.MILLISECONDS)) { "mutation release timed out" }
+                database.openHelper.writableDatabase.execSQL(
+                    "UPDATE data_task_outputs SET output_id = ?, private_relative_path = ?, display_name = ? WHERE task_id = ?",
+                    arrayOf(UUID.randomUUID().toString(), replacement.relativePath, replacement.displayName, taskId.toString()),
+                )
+            }
+        }
+        try {
+            assertTrue(locked.await(TIMEOUT_MS, TimeUnit.MILLISECONDS))
+            assertHandoffWaitsThenRefuses(taskId) { release.countDown() }
+            mutation.await()
+            assertTrue("the replaced row must not reuse the stale existing file", File(context.cacheDir, original.relativePath).isFile)
+        } finally {
+            release.countDown()
+            mutation.cancel()
+        }
+    }
+
+    private fun retentionSweeper(
+        lock: ReadyShareAccessLock,
+        nowMs: Long,
+        afterDelete: (File) -> Unit = {},
+    ): ReadyShareRetentionSweeper {
+        val store = DataTaskStore(dao)
+        return ReadyShareRetentionSweeper(object : ReadyShareRetentionDependencies {
+            override val cacheDirectory: File = context.cacheDir
+            override val accessLock = lock
+            override val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+            override fun nowMs(): Long = nowMs
+            override fun deleteFile(file: File): Boolean = file.delete().also { afterDelete(file) }
+            override suspend fun expiredReadyShareTasks(nowMs: Long): List<DataTaskSnapshot> =
+                store.expiredReadyShareTasks(nowMs)
+            override suspend fun readyShareRetentionSnapshot(taskId: UUID, nowMs: Long): DataTaskSnapshot? =
+                store.readyShareRetentionSnapshot(taskId, nowMs)
+            override suspend fun markReadyTaskExpiredAfterCleanup(
+                expected: DataTaskSnapshot,
+                outputIds: List<UUID>,
+                nowMs: Long,
+            ): Boolean = store.markReadyTaskExpiredAfterCleanup(expected, outputIds, nowMs)
+        })
+    }
+
+    private fun assertHandoffWaitsThenRefuses(taskId: UUID, releaseMutation: () -> Unit) {
+        val chooserMonitor = ChooserMonitor()
+        val activityMonitor = instrumentation.addMonitor(ShareHandoffActivity::class.java.name, null, false)
+        instrumentation.addMonitor(chooserMonitor)
+        try {
+            context.startActivity(ShareHandoffActivity.intent(context, taskId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val activity = requireNotNull(instrumentation.waitForMonitorWithTimeout(activityMonitor, TIMEOUT_MS)) {
+                "ShareHandoffActivity did not launch"
+            }
+            instrumentation.waitForIdleSync()
+            assertEquals(null, chooserMonitor.await(NO_CHOOSER_GRACE_MS))
+            assertFalse("handoff must wait for deletion/mutation rather than inspect a partial set", activity.isFinishing || activity.isDestroyed)
+
+            releaseMutation()
+            awaitFinished(activity)
+            assertEquals(0, chooserMonitor.hits)
+            assertEquals(null, chooserMonitor.await(NO_CHOOSER_GRACE_MS))
+        } finally {
+            releaseMutation()
+            instrumentation.removeMonitor(chooserMonitor)
+            instrumentation.removeMonitor(activityMonitor)
+        }
+    }
+
     private fun launchAndCaptureTarget(taskId: UUID): Intent {
         val chooserMonitor = ChooserMonitor()
         val activityMonitor = instrumentation.addMonitor(
@@ -331,7 +503,7 @@ class ShareHandoffActivityTest {
                 targetKey = "share:$taskId",
                 initialState = DataTaskState.QUEUED,
                 detail = StoredDataTaskDetail.SharePrepare(
-                    requestedFormat = BundleFormat.APK,
+                    requestedFormat = SharePrepareFormat.APK,
                     publicationPolicy = DataTaskPublicationPolicy
                         .PRIVATE_SHARE_WITH_24_HOUR_EXPIRY,
                     deterministicStagingIdentity = "stage-$taskId",

@@ -13,6 +13,10 @@ import com.valhalla.thor.data.backup.job.JobSheetTargets
 import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppShareRequest
+import com.valhalla.thor.domain.model.AppShareTarget
+import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.presentation.share.ShareSubmissionCoordinator
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.FreezeTier
@@ -69,7 +73,6 @@ sealed interface MainSideEffect {
     data class OpenAppSettings(val packageName: String) : MainSideEffect
     /** [mime] describes the container that was actually built, not the app it came from. */
     data class ShareApp(val uri: android.net.Uri, val mime: String) : MainSideEffect
-    data class ShareApps(val uris: List<android.net.Uri>) : MainSideEffect
     data class NormalUninstall(val packageName: String) : MainSideEffect
 
     /** Transient user feedback (Toast). Consumed once by the screen, never re-shown on recomposition. */
@@ -233,6 +236,7 @@ class MainViewModel(
     private val sweepResolver: PrivilegeSweepTargetResolver,
     private val sweepController: PrivilegeSweepController,
     private val taskNavigationTargets: TaskNavigationTargets,
+    private val shareSubmissionCoordinator: ShareSubmissionCoordinator,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -835,6 +839,17 @@ class MainViewModel(
     // --- Multi App Action Handler ---
 
     fun onMultiAppAction(action: MultiAppAction) {
+        if (action is MultiAppAction.Share) {
+            if (action.appList.isEmpty()) return
+            val request = AppShareRequest(action.appList.map { AppShareTarget(it.packageName, it.appName) })
+            val taskId = UUID.randomUUID()
+            taskNavigationTargets.requestOpenProvisional(
+                taskId,
+                ProvisionalTaskIdentity(TaskQueueKind.DATA, DataTaskKind.SHARE_PREPARE.name),
+            )
+            shareSubmissionCoordinator.submit(taskId, request)
+            return
+        }
         if (action is MultiAppAction.ReInstall || action is MultiAppAction.ClearCache) {
             ServiceQueueLatencyProbe.begin(ServiceQueueOperation.PRIVILEGE_SWEEP)
         }
@@ -958,61 +973,8 @@ class MainViewModel(
                     manageAppUseCase.setAppSuspended(it.packageName, false)
                 }
 
-                is MultiAppAction.Share -> {
-                    viewModelScope.launch {
-                        // `canStop` and the break below are what every other batch has had since
-                        // `performLoggedMultiAction` grew them. This loop is hand-rolled — it
-                        // collects Uris rather than counting successes, which is why it never went
-                        // through the shared helper — and the Stop button was simply never wired
-                        // to it. Preparing 50 installer bundles is the slowest batch Thor has, so
-                        // it was the one batch most likely to be stopped and the only one that
-                        // could not be.
-                        startLogger(
-                            UiText.StringResource(R.string.log_sharing_batch),
-                            canStop = action.appList.size > 1
-                        )
-                        val uris = mutableListOf<android.net.Uri>()
-                        var processed = 0
-
-                        withContext(ioDispatcher) {
-                            for ((index, app) in action.appList.withIndex()) {
-                                // Between apps, never during one — same contract as
-                                // `performLoggedMultiAction`. Whatever is already staged is still
-                                // shared; stopping declines to prepare the rest, it does not
-                                // discard the work already done.
-                                if (stopRequested) break
-                                addLog(UiText.StringResource(R.string.log_batch_preparing, index + 1, action.appList.size, app.appName ?: ""))
-                                val result = shareAppUseCase(app)
-                                processed++
-                                if (result.isSuccess) {
-                                    uris.add(result.getOrThrow())
-                                    addLog(UiText.StringResource(R.string.log_ready))
-                                } else {
-                                    val exception = result.exceptionOrNull()
-                                    val errorLog = if (exception is UiTextException) {
-                                        UiText.StringResource(R.string.log_failed, exception.uiText)
-                                    } else {
-                                        UiText.StringResource(R.string.log_failed, exception?.message ?: "")
-                                    }
-                                    addLog(errorLog)
-                                }
-                            }
-                        }
-
-                        // `processed <`, not `stopRequested` alone — see the same gate at the end of
-                        // [performLoggedMultiAction] for why. A Stop tapped while the last
-                        // `shareAppUseCase` runs would otherwise report "Stopped: 20 of 20".
-                        if (processed < action.appList.size) {
-                            addLog(UiText.StringResource(R.string.log_stopped, processed, action.appList.size))
-                        }
-                        if (uris.isNotEmpty()) {
-                            dismissLogger()
-                            _effect.send(MainSideEffect.ShareApps(uris))
-                        } else {
-                            finishLogger()
-                        }
-                    }
-                }
+                // Admission was handed to the process-owned coordinator before this coroutine.
+                is MultiAppAction.Share -> Unit
 
                 // Deliberately not run here. Exporting 200 apps takes minutes and has to survive
                 // the toolbox, this ViewModel and usually the Activity behind it, so the work

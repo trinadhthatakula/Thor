@@ -23,6 +23,7 @@ import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
+import com.valhalla.thor.domain.model.SharePrepareFormat
 import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
@@ -88,6 +89,73 @@ abstract class DataTaskDao {
         })
         return requireNotNull(loadSnapshot(request.taskId))
     }
+
+    /** Terminal ownership proof for private bytes that will never be offered by foreground handoff. */
+    @Transaction
+    open suspend fun unownedShareCleanupSnapshot(taskId: String): DataTaskSnapshot? {
+        val task = loadTaskEntity(taskId) ?: return null
+        if (task.kind != DataTaskKind.SHARE_PREPARE.name || task.payloadSchemaVersion != 1 ||
+            task.state !in setOf("READY", "READY_PARTIAL", "EXPIRED", "FAILED", "CANCELLED") ||
+            task.claimToken != null || task.serviceSessionToken != null || task.claimLeaseExpiresAtEpochMs != null ||
+            loadItemEntities(taskId).any { it.claimToken != null || it.state == "RUNNING" }) return null
+        return loadSnapshot(taskId)
+    }
+
+    @Transaction
+    open suspend fun expireDiscardedShareOutputs(expected: DataTaskSnapshot, outputIds: List<String>): Boolean {
+        if (unownedShareCleanupSnapshot(expected.taskId.toString()) != expected ||
+            expected.state !in setOf(DataTaskState.CANCELLED, DataTaskState.FAILED)) return false
+        val matching = expected.outputs.filter { it.state == DataTaskOutputState.READY && it.outputId.toString() in outputIds }
+        if (matching.map { it.outputId.toString() } != outputIds) return false
+        return expireDiscardedShareOutputRows(expected.taskId.toString(), outputIds) == outputIds.size
+    }
+
+    @Query("UPDATE data_task_outputs SET state = 'EXPIRED' WHERE task_id = :taskId AND output_id IN (:outputIds) AND state = 'READY'")
+    protected abstract suspend fun expireDiscardedShareOutputRows(taskId: String, outputIds: List<String>): Int
+
+    /** Rebuild only missing prepared items of an unowned runnable share, never a replacement set. */
+    @Transaction
+    open suspend fun requeueMissingShareOutputs(
+        expected: DataTaskSnapshot,
+        outputIds: List<String>,
+        nowMs: Long,
+    ): Boolean {
+        val taskId = expected.taskId.toString()
+        val task = loadTaskEntity(taskId) ?: return false
+        if (task.kind != DataTaskKind.SHARE_PREPARE.name || task.payloadSchemaVersion != 1 ||
+            task.state != DataTaskState.QUEUED.name || task.claimToken != null ||
+            task.serviceSessionToken != null || task.claimLeaseExpiresAtEpochMs != null ||
+            loadItemEntities(taskId).any { it.claimToken != null || it.state == DataTaskItemState.RUNNING.name } ||
+            loadSnapshot(taskId) != expected) return false
+        val outputs = expected.outputs.filter { it.outputId.toString() in outputIds }
+        if (outputs.isEmpty() || outputs.map { it.outputId.toString() } != outputIds ||
+            outputs.any { output -> expected.items.none {
+                it.ordinal == output.itemOrdinal && it.state == DataTaskItemState.SUCCEEDED
+            } }) return false
+        check(deleteMissingShareOutputRows(taskId, outputIds) == outputIds.size)
+        val ordinals = outputs.map { it.itemOrdinal }.distinct()
+        check(resetMissingShareItems(taskId, ordinals) == ordinals.size)
+        check(refreshQueuedShareProgress(taskId, nowMs) == 1)
+        return true
+    }
+
+    @Query("DELETE FROM data_task_outputs WHERE task_id = :taskId AND output_id IN (:outputIds)")
+    protected abstract suspend fun deleteMissingShareOutputRows(taskId: String, outputIds: List<String>): Int
+
+    @Query("""
+        UPDATE data_task_items SET state = 'PENDING', result_code = NULL,
+            started_at_epoch_ms = NULL, finished_at_epoch_ms = NULL
+        WHERE task_id = :taskId AND ordinal IN (:ordinals) AND state = 'SUCCEEDED'
+    """)
+    protected abstract suspend fun resetMissingShareItems(taskId: String, ordinals: List<Int>): Int
+
+    @Query("""
+        UPDATE data_tasks SET completed = (SELECT COUNT(*) FROM data_task_items
+            WHERE task_id = :taskId AND state IN ('SUCCEEDED', 'FAILED', 'CANCELLED')),
+            updated_at_epoch_ms = :nowMs
+        WHERE task_id = :taskId AND state = 'QUEUED'
+    """)
+    protected abstract suspend fun refreshQueuedShareProgress(taskId: String, nowMs: Long): Int
 
     @Transaction
     open suspend fun loadTask(taskId: String): DataTaskSnapshot? {
@@ -690,6 +758,19 @@ abstract class DataTaskDao {
         return true
     }
 
+    @Query(
+        """
+        UPDATE data_tasks
+        SET state = 'QUEUED', service_session_token = NULL, claim_token = NULL,
+            claim_lease_expires_at_epoch_ms = NULL, claimed_at_epoch_ms = NULL,
+            updated_at_epoch_ms = :nowMs
+        WHERE task_id = :taskId AND state = 'RUNNING' AND claim_token = :taskClaimToken
+          AND NOT EXISTS (SELECT 1 FROM data_task_items
+              WHERE task_id = :taskId AND (state = 'RUNNING' OR claim_token IS NOT NULL))
+        """
+    )
+    protected abstract suspend fun requeueBetweenItems(taskId: String, taskClaimToken: String, nowMs: Long): Int
+
     @Transaction
     open suspend fun settleClaimedTask(
         taskId: String,
@@ -799,10 +880,13 @@ abstract class DataTaskDao {
                     taskClaimToken,
                     itemClaimToken,
                     outcome.result,
-                ) && (
-                        countUnfinishedItems(taskId) != 0 ||
-                                finishClaimedTaskIfDrained(taskId, taskClaimToken, nowMs)
-                        )
+                ) && if (countUnfinishedItems(taskId) != 0) {
+                    // The service consumes one item per claim. Preserve FIFO position, but release
+                    // this completed claim so the next item is runnable without process recovery.
+                    requeueBetweenItems(taskId, taskClaimToken, nowMs) == 1
+                } else {
+                    finishClaimedTaskIfDrained(taskId, taskClaimToken, nowMs)
+                }
 
             is DataTaskRunOutcome.WaitingForAuthentication -> pauseClaimedTask(
                 taskId,
@@ -1118,19 +1202,71 @@ abstract class DataTaskDao {
         loadExpiredReadyOutputs(nowMs).map { it.toSnapshot() }
 
     @Transaction
+    open suspend fun expiredReadyShareTasks(nowMs: Long): List<DataTaskSnapshot> =
+        loadExpiredReadyShareTaskIds(nowMs).mapNotNull { readyShareRetentionSnapshot(it, nowMs) }
+
+    @Transaction
+    open suspend fun readyShareRetentionSnapshot(taskId: String, nowMs: Long): DataTaskSnapshot? {
+        requireCanonicalUuid(taskId, "taskId")
+        if (taskId !in loadExpiredReadyShareTaskIds(nowMs)) return null
+        return try {
+            loadSnapshot(taskId)?.takeIf { snapshot ->
+                snapshot.payloadSchemaVersion == 1 &&
+                    (snapshot.detail as? StoredDataTaskDetail.SharePrepare)?.publicationPolicy ==
+                    DataTaskPublicationPolicy.PRIVATE_SHARE_WITH_24_HOUR_EXPIRY
+            }
+        } catch (_: IllegalArgumentException) {
+            // Unknown historic/corrupt payloads never authorize filesystem cleanup.
+            null
+        }
+    }
+
+    @Transaction
+    open suspend fun markReadyTaskExpiredAfterCleanup(
+        expected: DataTaskSnapshot,
+        outputIds: List<String>,
+        nowMs: Long,
+    ): Boolean {
+        val taskId = expected.taskId.toString()
+        val current = readyShareRetentionSnapshot(taskId, nowMs) ?: return false
+        if (current != expected) return false
+        val dueIds = current.outputs.filter {
+            it.state == DataTaskOutputState.READY && it.expiresAtEpochMs?.let { time -> time <= nowMs } == true
+        }.map { it.outputId.toString() }
+        if (dueIds.isEmpty() || outputIds != dueIds) return false
+        // All predicates are checked before writes, in the same Room transaction. A failure rolls back.
+        check(expireReadyOutputs(taskId, outputIds, nowMs) == outputIds.size)
+        if (current.state != DataTaskState.EXPIRED) check(expireReadyTask(taskId, nowMs) == 1)
+        return true
+    }
+
+    @Query(
+        """
+        SELECT task.task_id FROM data_tasks AS task
+        INNER JOIN export_task_details AS detail ON detail.task_id = task.task_id
+        WHERE task.kind = 'SHARE_PREPARE' AND task.payload_schema_version = 1
+          AND task.state IN ('READY', 'READY_PARTIAL', 'EXPIRED')
+          AND task.claim_token IS NULL AND task.service_session_token IS NULL
+          AND task.claim_lease_expires_at_epoch_ms IS NULL
+          AND detail.publication_policy = 'PRIVATE_SHARE_WITH_24_HOUR_EXPIRY'
+          AND NOT EXISTS (SELECT 1 FROM data_task_items AS item WHERE item.task_id = task.task_id
+              AND (item.state IN ('PENDING', 'RUNNING') OR item.claim_token IS NOT NULL
+                   OR item.claim_lease_expires_at_epoch_ms IS NOT NULL))
+          AND EXISTS (SELECT 1 FROM data_task_outputs AS output WHERE output.task_id = task.task_id
+              AND output.state = 'READY' AND output.expires_at_epoch_ms <= :nowMs)
+        ORDER BY task.queue_sequence, task.task_id
+        """
+    )
+    protected abstract suspend fun loadExpiredReadyShareTaskIds(nowMs: Long): List<String>
+
+    @Transaction
     open suspend fun markReadyTaskExpiredAfterCleanup(
         taskId: String,
         outputIds: List<String>,
         nowMs: Long,
     ): Boolean {
-        requireCanonicalUuid(taskId, "taskId")
-        if (outputIds.isEmpty()) return false
-        outputIds.forEach { requireCanonicalUuid(it, "outputId") }
-        require(outputIds.distinct().size == outputIds.size) { "outputIds must be unique" }
-        if (countExpiredReadyOutputs(taskId, outputIds, nowMs) != outputIds.size) return false
-        if (expireReadyOutputs(taskId, outputIds, nowMs) != outputIds.size) return false
-        if (countOutputsInState(taskId, DataTaskOutputState.READY.name) != 0) return false
-        return expireReadyTask(taskId, nowMs) == 1
+        val expected = readyShareRetentionSnapshot(taskId, nowMs) ?: return false
+        return markReadyTaskExpiredAfterCleanup(expected, outputIds, nowMs)
     }
 
     @Transaction
@@ -2479,7 +2615,7 @@ abstract class DataTaskDao {
             )
 
             DataTaskKind.SHARE_PREPARE -> StoredDataTaskDetail.SharePrepare(
-                requestedFormat = BundleFormat.valueOf(requestedFormat),
+                requestedFormat = SharePrepareFormat.valueOf(requestedFormat),
                 publicationPolicy = DataTaskPublicationPolicy.valueOf(publicationPolicy),
                 deterministicStagingIdentity = deterministicStagingIdentity,
             )

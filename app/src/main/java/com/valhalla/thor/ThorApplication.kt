@@ -23,6 +23,7 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.settings.BillingProcessor
+import com.valhalla.thor.presentation.share.ReadyShareRetentionStartup
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.ArchiveIconFetcher
@@ -197,6 +198,8 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val autoFreezeManager: AutoFreezeManager by inject()
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager by inject()
     private val archiveOrphanSweeper: ArchiveOrphanSweeper by inject()
+    private val readyShareRetentionStartup: ReadyShareRetentionStartup by inject()
+    private val sharePrepareCleanup: com.valhalla.thor.data.backup.job.SharePrepareCleanup by inject()
     private val privilegeSweepReconciler: PrivilegeSweepReconciler by inject()
 
     /**
@@ -305,6 +308,7 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
             DhizukuHelper.markClientInitialised(false)
         }
 
+        readyShareRetentionStartup.start(appScope)
         autoFreezeManager.startObserving()
 
         // After the Dhizuku init above, not before: that call is what lets the Dhizuku rung of the
@@ -353,7 +357,16 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
             // the report may carry is the restore screen's to show; Application has no UI, so the
             // report here is a log line and the breadcrumb is left standing for Task 17 to clear.
             try {
-                runCatching { withContext(ioDispatcher) { archiveOrphanSweeper.sweep() } }
+                runCatching {
+                    withContext(ioDispatcher) {
+                        try {
+                            archiveOrphanSweeper.sweep()
+                        } finally {
+                            // No share runner can stage until this same launch barrier is released.
+                            sharePrepareCleanup.sweepAfterProcessStart()
+                        }
+                    }
+                }
                     .onFailure { throwable ->
                         // Same rethrow as above: runCatching swallows CancellationException, and
                         // appScope.cancel() in onTerminate must not be logged as a sweep failure.

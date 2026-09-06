@@ -111,7 +111,10 @@ class AppBundleBuilderImpl(
         // this whole tree at launch, which is the only thing that cleans up after a *kill* mid-build,
         // and a second spelling would point the sweep at a directory nothing writes to.
         val obbStagingDir = context.externalCacheDir?.let {
-            File(it, "${ObbExportStagingDir.NAME}/${appInfo.packageName}")
+            // Match the private bundle scope: a durable read must not wipe a legacy share/export
+            // of the same package (those direct paths deliberately do not take the durable lease).
+            val scope = java.util.UUID.nameUUIDFromBytes(cacheSubDir.toByteArray(Charsets.UTF_8))
+            File(it, "${ObbExportStagingDir.NAME}/scoped/$scope/${appInfo.packageName}")
         }
         try {
             if (cacheDir.exists()) cacheDir.deleteRecursively()

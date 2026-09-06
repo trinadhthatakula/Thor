@@ -498,21 +498,13 @@ fun MainScreen(
                     }
 
                     is MainSideEffect.ShareApp -> {
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = effect.mime
-                            putExtra(Intent.EXTRA_STREAM, effect.uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        val intent = com.valhalla.thor.presentation.share.ShareIntentFactory
+                            .createSingleShare(effect.uri, effect.mime)
+                        if (intent != null) {
+                            context.startActivity(Intent.createChooser(intent, shareApp))
+                        } else {
+                            Toast.makeText(context, R.string.task_dialog_share_expired_message, Toast.LENGTH_SHORT).show()
                         }
-                        context.startActivity(Intent.createChooser(intent, shareApp))
-                    }
-
-                    is MainSideEffect.ShareApps -> {
-                        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                            type = "*/*"
-                            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(effect.uris))
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(Intent.createChooser(intent, shareApp))
                     }
 
                     is MainSideEffect.NormalUninstall -> {

@@ -267,7 +267,7 @@ internal interface DataSyncCoordinatorRuntime {
 @Single(binds = [DataSyncCoordinatorRuntime::class])
 internal class RoomDataSyncCoordinatorRuntime(
     context: Context,
-    dao: DataTaskDao,
+    private val dao: DataTaskDao,
     private val legacyGate: LegacyDataWorkDrainGate,
     private val launchSweep: LaunchSweepBarrier,
     private val keys: ArchiveKeyHolder,
@@ -285,6 +285,10 @@ internal class RoomDataSyncCoordinatorRuntime(
     private val openArchive: OpenArchiveUseCase,
     private val installedFacts: ReadInstalledAppFactsUseCase,
     private val registry: JobRegistry,
+    private val shareOperations: SharePrepareTaskOperations,
+    private val packageOperations: com.valhalla.thor.domain.repository.PackageOperationCoordinator,
+    private val readyShareNotification: ReadyShareNotification,
+    private val shareCleanup: SharePrepareCleanup,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : DataSyncCoordinatorRuntime {
     private val applicationContext = context.applicationContext
@@ -347,6 +351,7 @@ internal class RoomDataSyncCoordinatorRuntime(
         recoveryProcess.hasUnconsumedSuccess(operation)
 
     override suspend fun claimNext(sessionToken: String, claimToken: String): DataSyncClaim? {
+        reconcileMissingShareOutputs()
         val now = nowMs()
         val work = store.claimOldestRunnableWork(
             sessionToken = sessionToken,
@@ -363,6 +368,24 @@ internal class RoomDataSyncCoordinatorRuntime(
             task = work.task,
             item = work.item,
         )
+    }
+
+    private suspend fun reconcileMissingShareOutputs() = withContext(ioDispatcher) {
+        for (task in store.observeRetained().first()) {
+            if (task.kind != DataTaskKind.SHARE_PREPARE || task.state != DataTaskState.QUEUED) continue
+            val missing = task.outputs.filter { output ->
+                val item = task.items.singleOrNull { it.ordinal == output.itemOrdinal }
+                val file = item?.let {
+                    com.valhalla.thor.presentation.share.readyShareOwnedFile(applicationContext.cacheDir, task.taskId, it, output)
+                }
+                file == null || java.nio.file.Files.notExists(file.toPath()) || (file.isFile && file.length() == 0L)
+            }
+            if (missing.isNotEmpty()) {
+                // No file is deleted here. The full snapshot/owner CAS refuses a concurrent claim;
+                // the eventual claimed runner alone replaces incomplete bytes under its read lease.
+                dao.requeueMissingShareOutputs(task, missing.map { it.outputId.toString() }, nowMs())
+            }
+        }
     }
 
     override suspend fun executeClaim(
@@ -435,10 +458,17 @@ internal class RoomDataSyncCoordinatorRuntime(
                 detail?.source?.let { source -> restoreSourceStager.discard(task.taskId, source) }
             }
         }
+        if (write == DataTaskSinkWrite.APPLIED && task.kind == DataTaskKind.SHARE_PREPARE) {
+            val settled = store.loadTask(task.taskId)
+            if (settled != null && settled.state in setOf(DataTaskState.READY, DataTaskState.READY_PARTIAL)) {
+                readyShareNotification.post(settled.taskId, settled.outputs.size, settled.items.size)
+            }
+        }
         return write
     }
 
     override suspend fun cleanupClaim(claim: DataSyncClaim) {
+        if (claim.task?.kind == DataTaskKind.SHARE_PREPARE) shareCleanup.cleanup(claim.taskId)
         cleanupHandoffs(
             claim.taskId,
             HandoffGeneration(claim.transientArchiveKeyToken, claim.transientSourceToken),
@@ -507,8 +537,8 @@ internal class RoomDataSyncCoordinatorRuntime(
             }
 
             is StoredDataTaskDetail.AppExport -> prepareExport(item, detail)
-            is StoredDataTaskDetail.SharePrepare -> return PreparedTask.Refused(
-                DataTaskRunOutcome.TaskFailed(DataTaskResultCode("TASK_KIND_NOT_ACTIVE"))
+            is StoredDataTaskDetail.SharePrepare -> PreparedPayload.Ready(
+                DataTaskExecutionPayload.SharePrepare(detail.requestedFormat, detail.publicationPolicy)
             )
         }
         if (payload is PreparedPayload.Refused) return PreparedTask.Refused(payload.outcome)
@@ -523,8 +553,10 @@ internal class RoomDataSyncCoordinatorRuntime(
         val runner = when (request.kind) {
             DataTaskKind.ARCHIVE_BACKUP -> backupRunner()
             DataTaskKind.ARCHIVE_RESTORE -> restoreRunner()
-            DataTaskKind.APP_EXPORT -> exportRunner()
-            DataTaskKind.SHARE_PREPARE -> error("share preparation is not active in this task")
+            DataTaskKind.APP_EXPORT -> PackageReadDataTaskRunner(exportRunner(), packageOperations)
+            DataTaskKind.SHARE_PREPARE -> PackageReadDataTaskRunner(
+                SharePrepareTaskRunner(shareOperations, ioDispatcher), packageOperations,
+            )
         }
         return PreparedTask.Ready(request, runner)
     }

@@ -208,9 +208,12 @@ class DataTaskDaoTest {
                 3_200L,
             ),
         )
+        assertEquals(DataTaskState.QUEUED, dao.loadTask(TASK_1)!!.state)
+        assertNull(dao.claimNextPendingItem(TASK_1, "task-claim", "stale-item-claim", 3_300L, 4_300L))
+        assertNotNull(dao.claimOldestRunnableTask("session", "next-task-claim", 3_300L, 4_300L))
         assertEquals(
             1,
-            dao.claimNextPendingItem(TASK_1, "task-claim", "item-claim-1", 2_300L, 3_300L)?.ordinal,
+            dao.claimNextPendingItem(TASK_1, "next-task-claim", "item-claim-1", 3_400L, 4_400L)?.ordinal,
         )
     }
 

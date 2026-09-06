@@ -39,6 +39,62 @@ import org.junit.runners.JUnit4
 class DataTaskAcceptanceTest {
 
     @Test
+    fun sharePersistsExactSelectionBeforeAcceptanceCallbackAndWakeWithoutSecrets() = runTest {
+        val events = mutableListOf<String>()
+        val store = RecordingAcceptanceStore(events)
+        val keyVault = RecordingKeyVault(events)
+        val acceptance = acceptance(store, keyVault, events)
+
+        val accepted = acceptance.acceptShare(TASK_ID, shareRequest()) { events += "accepted" }
+
+        assertEquals(TASK_ID, accepted)
+        assertEquals(listOf("insert", "accepted", "wake"), events)
+        assertEquals(DataTaskState.QUEUED, store.states[TASK_ID])
+        assertTrue(keyVault.ids().isEmpty())
+    }
+
+    @Test
+    fun shareWakeRejectionRetainsDurableIdentityAndBlockedState() = runTest {
+        val events = mutableListOf<String>()
+        val store = RecordingAcceptanceStore(events)
+        val acceptance = acceptance(
+            store, RecordingKeyVault(events), events,
+            wakeResult = ServiceStartResult.Rejected(ServiceStartFailure.NOTIFICATION_CHANNEL_BLOCKED),
+        )
+
+        assertEquals(TASK_ID, acceptance.acceptShare(TASK_ID, shareRequest()))
+        assertEquals(DataTaskState.START_BLOCKED_NOTIFICATION, store.states[TASK_ID])
+        assertEquals(listOf("insert", "wake", "block:QUEUED:START_BLOCKED_NOTIFICATION"), events)
+    }
+
+    @Test
+    fun shareLauncherDoesNotRejectPersistedTaskWhenWakeThrows() = runTest {
+        val events = mutableListOf<String>()
+        val store = RecordingAcceptanceStore(events)
+        val acceptance = acceptance(store, RecordingKeyVault(events), events, wake = {
+            error("Android wake failure")
+        })
+
+        assertEquals(TASK_ID, ShareTaskLauncherImpl(acceptance).startShare(TASK_ID, shareRequest()))
+        assertEquals(DataTaskState.QUEUED, store.states[TASK_ID])
+    }
+
+    @Test
+    fun shareLauncherRejectsOnlyDefiniteInsertionFailure() = runTest {
+        val events = mutableListOf<String>()
+        val store = RecordingAcceptanceStore(events).apply { insertFailure = IllegalStateException("disk") }
+        val acceptance = acceptance(store, RecordingKeyVault(events), events)
+
+        assertEquals(null, ShareTaskLauncherImpl(acceptance).startShare(TASK_ID, shareRequest()))
+        assertEquals(listOf("insert"), events)
+        assertTrue(store.states.isEmpty())
+    }
+
+    private fun shareRequest() = com.valhalla.thor.domain.model.AppShareRequest(
+        listOf(com.valhalla.thor.domain.model.AppShareTarget("com.example.share", "Share")),
+    )
+
+    @Test
     fun keyIsAvailableBeforeBackupBecomesRunnable() = runTest {
         val events = mutableListOf<String>()
         val keyVault = RecordingKeyVault(events)
@@ -497,6 +553,12 @@ class DataTaskAcceptanceTest {
         override suspend fun insertExport(
             taskId: UUID,
             request: AppExportRequest,
+            nowMs: Long,
+        ): DataTaskState = insert(taskId, DataTaskState.QUEUED)
+
+        override suspend fun insertShare(
+            taskId: UUID,
+            request: com.valhalla.thor.domain.model.AppShareRequest,
             nowMs: Long,
         ): DataTaskState = insert(taskId, DataTaskState.QUEUED)
 

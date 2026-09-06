@@ -9,6 +9,7 @@ import com.valhalla.thor.data.service.ServiceStartFailure
 import com.valhalla.thor.data.service.ServiceStartResult
 import com.valhalla.thor.data.source.local.room.DataTaskDao
 import com.valhalla.thor.domain.model.AppExportRequest
+import com.valhalla.thor.domain.model.AppShareRequest
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.DataTaskState
@@ -43,6 +44,12 @@ internal interface DataTaskAcceptanceStore {
     suspend fun insertExport(
         taskId: UUID,
         request: AppExportRequest,
+        nowMs: Long,
+    ): DataTaskState
+
+    suspend fun insertShare(
+        taskId: UUID,
+        request: AppShareRequest,
         nowMs: Long,
     ): DataTaskState
 
@@ -215,6 +222,14 @@ class DataTaskAcceptance internal constructor(
         onDurablyAccepted: () -> Unit = {},
     ): UUID = acceptPersistedTask(taskId, onDurablyAccepted = onDurablyAccepted) {
         store.insertExport(taskId, request, dependencies.nowMs())
+    }
+
+    suspend fun acceptShare(
+        taskId: UUID,
+        request: AppShareRequest,
+        onDurablyAccepted: () -> Unit = {},
+    ): UUID = acceptPersistedTask(taskId, onDurablyAccepted = onDurablyAccepted) {
+        store.insertShare(taskId, request, dependencies.nowMs())
     }
 
     private suspend fun acceptPersistedTask(

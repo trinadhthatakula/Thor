@@ -6,7 +6,7 @@ package com.valhalla.thor.data.backup.job
 import com.valhalla.thor.domain.model.AppExportRequest
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
-import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.SharePrepareFormat
 import com.valhalla.thor.domain.model.DataTaskCheckpoint
 import com.valhalla.thor.domain.model.DataTaskKind
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
@@ -65,7 +65,7 @@ sealed interface DataTaskExecutionPayload {
     }
 
     data class SharePrepare(
-        val requestedFormat: BundleFormat,
+        val requestedFormat: SharePrepareFormat,
         val publicationPolicy: DataTaskPublicationPolicy,
     ) : DataTaskExecutionPayload {
         override val kind = DataTaskKind.SHARE_PREPARE

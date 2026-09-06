@@ -62,6 +62,7 @@ enum class PackageOperationOwner {
     FORCE_STOP,
     UNINSTALL,
     OTHER_MUTATION,
+    BUNDLE_READ,
 }
 
 sealed interface PackageLeaseResult<out T> {

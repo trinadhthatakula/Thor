@@ -79,7 +79,7 @@ internal class SharePrepareTaskRunner(
         if (
             payload.publicationPolicy !=
             DataTaskPublicationPolicy.PRIVATE_SHARE_WITH_24_HOUR_EXPIRY ||
-            !isSafeDataTaskStagingIdentity(request.item.deterministicStagingIdentity)
+            request.item.deterministicStagingIdentity != "item-${request.taskId}-${request.item.ordinal}"
         ) {
             return exportTaskFailure(
                 SHARE_PREPARE_REQUEST_MISMATCH,
@@ -116,6 +116,14 @@ internal class SharePrepareTaskRunner(
                         nowMs = nowMs(),
                     )
                 activeLabel = appInfo.appName ?: activeLabel
+                val format = payload.requestedFormat.resolve(appInfo)
+                if (format == BundleFormat.APK && appInfo.splitPublicSourceDirs.isNotEmpty()) {
+                    return@withContext failedShareItem(
+                        code = DataTaskResultCode("SHARE_PREPARE_SPLIT_APK_UNSUPPORTED"),
+                        reason = "a split app requires a split bundle format",
+                        nowMs = nowMs(),
+                    )
+                }
 
                 if (
                     checkpoints.persist(
@@ -140,7 +148,7 @@ internal class SharePrepareTaskRunner(
 
                 val fileName = bundleFileNameFor(
                     appInfo = appInfo,
-                    format = payload.requestedFormat,
+                    format = format,
                     discriminator = "${request.item.packageName}_${request.item.ordinal}",
                 )
                 val execution = archiveExecutionContext(
@@ -162,7 +170,7 @@ internal class SharePrepareTaskRunner(
                     operations.buildBundle(
                         appInfo = appInfo,
                         cacheSubDir = stagingSubDir,
-                        format = payload.requestedFormat,
+                        format = format,
                         fileName = fileName,
                         execution = execution,
                         progress = progress,
@@ -201,7 +209,7 @@ internal class SharePrepareTaskRunner(
                         outputId = deterministicShareOutputId(request),
                         privateRelativePath = "$stagingSubDir/${request.item.packageName}/$fileName",
                         displayName = fileName,
-                        mimeType = payload.requestedFormat.mime,
+                        mimeType = format.mime,
                         byteSize = file.length(),
                         state = DataTaskOutputState.READY,
                         expiresAtEpochMs = finishedAt + SHARE_READY_RETENTION_MS,

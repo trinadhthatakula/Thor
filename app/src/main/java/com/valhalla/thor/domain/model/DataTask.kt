@@ -255,7 +255,7 @@ sealed interface StoredDataTaskDetail {
     ) : StoredDataTaskDetail
 
     data class SharePrepare(
-        val requestedFormat: BundleFormat,
+        val requestedFormat: SharePrepareFormat,
         val publicationPolicy: DataTaskPublicationPolicy,
         override val deterministicStagingIdentity: String,
     ) : StoredDataTaskDetail
