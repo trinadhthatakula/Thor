@@ -477,6 +477,7 @@ internal class RoomDataSyncCoordinatorRuntime(
     }
 
     private suspend fun cleanupRecoveredClaim(taskId: UUID) {
+        if (store.loadTask(taskId)?.kind == DataTaskKind.SHARE_PREPARE) shareCleanup.cleanup(taskId)
         if (taskId in store.uncommittedRestoreSourceCleanupTaskIds()) {
             restoreSourceStager.discardUncommittedTaskSources(taskId)
         }

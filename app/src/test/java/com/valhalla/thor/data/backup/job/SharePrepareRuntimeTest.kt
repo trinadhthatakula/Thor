@@ -10,6 +10,10 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
+import com.valhalla.thor.data.service.ServiceStartResult
+import com.valhalla.thor.data.source.local.room.DataTaskCancellationDecision
+import com.valhalla.thor.data.source.local.room.DataTaskSnapshot
+import com.valhalla.thor.presentation.share.ReadyShareAccessLock
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.domain.model.*
 import com.valhalla.thor.domain.repository.*
@@ -19,7 +23,15 @@ import java.io.File
 import java.lang.reflect.Proxy
 import java.util.UUID
 import kotlin.time.Duration
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -31,6 +43,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], application = Application::class)
 class SharePrepareRuntimeTest {
@@ -45,6 +58,9 @@ class SharePrepareRuntimeTest {
     }
     private val store by lazy { DataTaskStore(db.dataTaskDao()) }
     private val packages = DefaultPackageOperationCoordinator()
+    private val access = ReadyShareAccessLock()
+    private val cleanup by lazy { SharePrepareCleanup(context, db.dataTaskDao(), access, Dispatchers.Unconfined) }
+    private var beforeBuild: suspend (AppInfo) -> Unit = {}
     private val reads = mutableListOf<String>()
     private val apps = FakeAppRepository(listOf(
         AppInfo(packageName = "com.example.one", appName = "One", versionName = "1"),
@@ -54,6 +70,7 @@ class SharePrepareRuntimeTest {
         override suspend fun build(appInfo: AppInfo, cacheSubDir: String, format: BundleFormat, fileName: String?, execution: PrivilegeExecutionContext): Result<File> {
             assertEquals(PackageLeaseResult.Busy(PackageOperationOwner.BUNDLE_READ),
                 packages.withPackageLease(appInfo.packageName, PackageOperationOwner.UNINSTALL, Duration.ZERO) { error("mutation entered") })
+            beforeBuild(appInfo)
             reads += appInfo.packageName
             return Result.success(File(context.cacheDir, "$cacheSubDir/${appInfo.packageName}/$fileName").apply {
                 parentFile!!.mkdirs(); writeText("bundle ${appInfo.packageName}")
@@ -197,6 +214,182 @@ class SharePrepareRuntimeTest {
         assertEquals(1, context.getSystemService(NotificationManager::class.java).activeNotifications.size)
     }
 
+    @Test fun `timeout child completion then queue cancel reclaims persisted share output`() = runTest {
+        val (queued, retained) = prepareQueuedShareWithUnrelatedReadyTask()
+        val owners = DataTaskOwnerRegistry()
+        val entered = CompletableDeferred<Unit>()
+        val exited = CompletableDeferred<Unit>()
+        beforeBuild = { app ->
+            assertEquals("com.example.two", app.packageName)
+            entered.complete(Unit)
+            try {
+                awaitCancellation()
+            } finally {
+                exited.complete(Unit)
+            }
+        }
+        val coordinator = DataSyncCoordinator(StandardTestDispatcher(testScheduler), owners, runtime())
+        coordinator.wake(onDrained = { error("timeout must not report a completed drain") })
+        try {
+            entered.await()
+            val running = store.loadTask(queued.taskId)!!
+            assertEquals(DataTaskState.RUNNING, running.state)
+            val claimToken = coordinator.lastClaimTokenForTest!!
+            assertTrue(owners.isLive(queued.taskId, claimToken))
+            coordinator.stopClaimsAndInterrupt()
+            assertTrue("the timed-out child has completed", exited.isCompleted)
+            assertFalse(coordinator.hasDrainJobForTest)
+            assertFalse(owners.isLive(queued.taskId, claimToken))
+            assertFalse(store.hasClaimTokens(claimToken, null))
+            assertQueuedAndResumable(queued)
+
+            assertTrue(cancellationCoordinator(owners).cancel(queued.taskId) is DataTaskCancellationDecision.Settled)
+
+            assertCancelledAndReclaimed(queued, retained)
+        } finally {
+            coordinator.stopClaimsAndInterrupt()
+        }
+    }
+
+    @Test fun `between item queue cancel reclaims persisted share output`() = runTest {
+        val (queued, retained) = prepareQueuedShareWithUnrelatedReadyTask()
+        assertQueuedAndResumable(queued)
+
+        assertTrue(cancellationCoordinator().cancel(queued.taskId) is DataTaskCancellationDecision.Settled)
+
+        assertCancelledAndReclaimed(queued, retained)
+    }
+
+    @Test fun `stale claimed queue cancel reclaims persisted share output`() = runTest {
+        val (queued, retained) = prepareQueuedShareWithUnrelatedReadyTask()
+        val claim = runtime().claimNext("dead-session", "dead-claim")!!
+        assertEquals(1, claim.item!!.ordinal)
+        assertEquals(DataTaskState.RUNNING, store.loadTask(queued.taskId)!!.state)
+
+        assertTrue(cancellationCoordinator().cancel(queued.taskId) is DataTaskCancellationDecision.InterruptActive)
+
+        assertCancelledAndReclaimed(queued, retained)
+    }
+
+    @Test fun `startup recovery reclaims owned cancel requested share after startup sweep refuses it`() = runTest {
+        val (queued, retained) = prepareQueuedShareWithUnrelatedReadyTask()
+        val claim = runtime().claimNext("dead-session", "dead-claim")!!
+        assertEquals(1, claim.item!!.ordinal)
+        assertTrue(store.requestCancellation(queued.taskId, System.currentTimeMillis()) is DataTaskCancellationDecision.InterruptActive)
+        val owned = store.loadTask(queued.taskId)!!
+        assertEquals(DataTaskState.CANCEL_REQUESTED, owned.state)
+        assertTrue(store.hasClaimTokens(claim.claimToken, claim.item.claimToken))
+        cleanup.sweepAfterProcessStart()
+        assertEquals("startup must leave the owned task alone", owned, store.loadTask(queued.taskId))
+        assertTrue(File(context.cacheDir, queued.outputs.single().privateRelativePath!!).isFile)
+        val drained = CompletableDeferred<Unit>()
+        val coordinator = DataSyncCoordinator(StandardTestDispatcher(testScheduler), DataTaskOwnerRegistry(), runtime())
+        coordinator.wake(onDrained = { drained.complete(Unit) })
+        try {
+            drained.await()
+
+            assertCancelledAndReclaimed(queued, retained)
+            assertEquals("recovery must not rerun either package", listOf("com.example.one", "com.example.one"), reads)
+        } finally {
+            coordinator.stopClaimsAndInterrupt()
+        }
+    }
+
+    @Test fun `queue cancellation cleanup survives caller cancellation while awaiting share access`() = runTest {
+        val (queued, retained) = prepareQueuedShareWithUnrelatedReadyTask()
+        val locked = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val holder = launch {
+            access.withLock {
+                locked.complete(Unit)
+                release.await()
+            }
+        }
+        locked.await()
+        val cancellation = launch { cancellationCoordinator().cancel(queued.taskId) }
+        try {
+            runCurrent()
+            assertEquals(DataTaskState.CANCELLED, store.loadTask(queued.taskId)!!.state)
+            cancellation.cancel()
+            release.complete(Unit)
+            cancellation.join()
+
+            assertCancelledAndReclaimed(queued, retained)
+        } finally {
+            release.complete(Unit)
+            holder.join()
+            cancellation.join()
+        }
+    }
+
+    @Test fun `queue cancellation cleanup bounds lock waiting and leaves retryable output`() = runTest {
+        val (queued, retained) = prepareQueuedShareWithUnrelatedReadyTask()
+        val locked = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val holder = launch {
+            access.withLock {
+                locked.complete(Unit)
+                release.await()
+            }
+        }
+        locked.await()
+        val cancellation = async { runCatching { cancellationCoordinator().cancel(queued.taskId) } }
+        try {
+            runCurrent()
+            assertEquals(DataTaskState.CANCELLED, store.loadTask(queued.taskId)!!.state)
+            advanceTimeBy(2_000L)
+            runCurrent()
+            assertTrue("cleanup must not wait indefinitely for a share handoff", cancellation.isCompleted)
+            assertTrue(cancellation.await().exceptionOrNull() is TimeoutCancellationException)
+            assertEquals(DataTaskOutputState.READY, store.loadTask(queued.taskId)!!.outputs.single().state)
+            assertTrue(File(context.cacheDir, queued.outputs.single().privateRelativePath!!).isFile)
+            assertEquals(retained, store.loadTask(retained.taskId))
+        } finally {
+            release.complete(Unit)
+            holder.join()
+            cancellation.join()
+        }
+        cancellationCoordinator().cancel(queued.taskId)
+        assertCancelledAndReclaimed(queued, retained)
+    }
+
+    private suspend fun prepareQueuedShareWithUnrelatedReadyTask(): Pair<DataTaskSnapshot, DataTaskSnapshot> {
+        val retainedId = UUID.randomUUID()
+        store.insertShare(retainedId, AppShareRequest(listOf(selection().targets.first())), System.currentTimeMillis())
+        completeNext(runtime())
+        val queuedId = UUID.randomUUID()
+        store.insertShare(queuedId, selection(), System.currentTimeMillis())
+        completeNext(runtime())
+        return store.loadTask(queuedId)!! to store.loadTask(retainedId)!!
+    }
+
+    private suspend fun assertQueuedAndResumable(expected: DataTaskSnapshot) {
+        val queued = store.loadTask(expected.taskId)!!
+        assertEquals(DataTaskState.QUEUED, queued.state)
+        assertEquals(listOf(DataTaskItemState.SUCCEEDED, DataTaskItemState.PENDING), queued.items.map { it.state })
+        assertEquals(expected.outputs, queued.outputs)
+        assertEquals(DataTaskOutputState.READY, queued.outputs.single().state)
+        assertTrue(File(context.cacheDir, queued.outputs.single().privateRelativePath!!).isFile)
+    }
+
+    private suspend fun assertCancelledAndReclaimed(expected: DataTaskSnapshot, retained: DataTaskSnapshot) {
+        val cancelled = store.loadTask(expected.taskId)!!
+        assertEquals(DataTaskState.CANCELLED, cancelled.state)
+        assertEquals(cancelled, db.dataTaskDao().unownedShareCleanupSnapshot(expected.taskId.toString()))
+        assertEquals(expected.outputs.map { it.outputId }, cancelled.outputs.map { it.outputId })
+        assertEquals(listOf(DataTaskOutputState.EXPIRED), cancelled.outputs.map { it.state })
+        assertFalse(File(context.cacheDir, expected.outputs.single().privateRelativePath!!).exists())
+        assertEquals(retained, store.loadTask(retained.taskId))
+        assertEquals("bundle com.example.one", File(context.cacheDir, retained.outputs.single().privateRelativePath!!).readText())
+    }
+
+    private fun cancellationCoordinator(owners: DataTaskOwnerRegistry = DataTaskOwnerRegistry()) =
+        DataTaskCancellationCoordinator(RoomDataTaskCancellationActions(
+            db.dataTaskDao(), ArchiveKeyHolder(Dispatchers.Unconfined), RestoreSourceGrantHolder(),
+            RestoreSourceStager(unused<RestoreSourceStagingDependencies>()), owners,
+            DataQueueWakeSignal { ServiceStartResult.Requested }, cleanup,
+        ))
+
     private suspend fun completeNext(runtime: RoomDataSyncCoordinatorRuntime) {
         val claim = runtime.claimNext("session", UUID.randomUUID().toString())!!
         val result = runtime.executeClaim(claim, runtime.checkpointSink(claim))
@@ -225,7 +418,7 @@ class SharePrepareRuntimeTest {
             ReadInstalledAppFactsUseCase(apps, gateway), JobRegistry(),
             DefaultSharePrepareTaskOperations(context, barrier, apps, builder, Dispatchers.Unconfined),
             packages, ReadyShareNotification(context),
-            SharePrepareCleanup(context, db.dataTaskDao(), com.valhalla.thor.presentation.share.ReadyShareAccessLock(), Dispatchers.Unconfined),
+            cleanup,
             Dispatchers.Unconfined,
         )
     }

@@ -26,6 +26,7 @@ import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.domain.model.NewDataTaskOutput
 import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
+import com.valhalla.thor.domain.model.SharePrepareFormat
 import com.valhalla.thor.domain.model.StoredDataDestination
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
 import com.valhalla.thor.domain.model.StoredRestoreSource
@@ -1177,7 +1178,24 @@ class DataTaskDaoTest {
         assertTerminalRetention(successful, DataTaskState.SUCCEEDED, 12_200L)
 
         val expiring = taskId(93)
-        dao.insertTask(newExportTask(expiring))
+        dao.insertTask(newExportTask(expiring).copy(
+            kind = DataTaskKind.SHARE_PREPARE,
+            targetKey = "share:$expiring",
+            detail = StoredDataTaskDetail.SharePrepare(
+                requestedFormat = SharePrepareFormat.AUTO,
+                publicationPolicy = DataTaskPublicationPolicy.PRIVATE_SHARE_WITH_24_HOUR_EXPIRY,
+                deterministicStagingIdentity = "stage-$expiring",
+            ),
+        ))
+        val expiresAtEpochMs = 86_413_200L // 13_200 + 24 hours.
+        val prepared = successfulItemResult(13_200L).let { result ->
+            result.copy(outputs = result.outputs.map { output ->
+                output.copy(
+                    privateRelativePath = "share_ready/item-$expiring-0/com.example.app.0/Example.apk",
+                    expiresAtEpochMs = expiresAtEpochMs,
+                )
+            })
+        }
         dao.claimOldestRunnableTask("session", "ready-task", 13_000L, 14_000L)
         dao.claimNextPendingItem(expiring, "ready-task", "ready-item", 13_100L, 14_100L)
         assertTrue(
@@ -1186,16 +1204,41 @@ class DataTaskDaoTest {
                 "ready-task",
                 0,
                 "ready-item",
-                DataTaskRunOutcome.ItemCompleted(successfulItemResult(13_200L)),
+                DataTaskRunOutcome.ItemCompleted(prepared),
                 13_200L,
             ),
         )
-        assertNull(dao.loadTask(expiring)?.retainUntilEpochMs)
-        val outputIds = dao.expiredReadyOutputs(23_200L)
-            .filter { it.itemOrdinal == 0 }
-            .map { it.outputId.toString() }
-        assertTrue(dao.markReadyTaskExpiredAfterCleanup(expiring, outputIds, 23_200L))
-        assertTerminalRetention(expiring, DataTaskState.EXPIRED, 23_200L)
+        val ready = requireNotNull(dao.loadTask(expiring))
+        assertNull(ready.retainUntilEpochMs)
+        val outputIds = ready.outputs.map { it.outputId.toString() }
+        assertEquals(prepared.outputs.map { it.outputId.toString() }, outputIds)
+        assertFalse(dao.markReadyTaskExpiredAfterCleanup(expiring, emptyList(), expiresAtEpochMs))
+        assertFalse(dao.markReadyTaskExpiredAfterCleanup(expiring, listOf(taskId(999)), expiresAtEpochMs))
+        assertEquals(ready, dao.loadTask(expiring))
+        assertTrue(dao.markReadyTaskExpiredAfterCleanup(expiring, outputIds, expiresAtEpochMs))
+        assertTerminalRetention(expiring, DataTaskState.EXPIRED, expiresAtEpochMs)
+    }
+
+    @Test
+    fun publicExportRejectsPrivateShareExpiryWithoutChangingItsOutput() = runBlocking {
+        val publicExport = taskId(94)
+        dao.insertTask(newExportTask(publicExport))
+        dao.claimOldestRunnableTask("session", "public-task", 13_000L, 14_000L)
+        dao.claimNextPendingItem(publicExport, "public-task", "public-item", 13_100L, 14_100L)
+        assertTrue(dao.settleClaimedTask(
+            publicExport, "public-task", 0, "public-item",
+            DataTaskRunOutcome.ItemCompleted(successfulItemResult(13_200L)), 13_200L,
+        ))
+        val ready = requireNotNull(dao.loadTask(publicExport))
+        val outputIds = ready.outputs.map { it.outputId.toString() }
+        assertEquals(DataTaskKind.APP_EXPORT, ready.kind)
+        assertEquals(DataTaskState.READY, ready.state)
+        assertEquals(DataTaskPublicationPolicy.PUBLIC_DOCUMENT,
+            (ready.detail as StoredDataTaskDetail.AppExport).publicationPolicy)
+        assertNull(dao.readyShareRetentionSnapshot(publicExport, 23_200L))
+        assertFalse(dao.markReadyTaskExpiredAfterCleanup(publicExport, outputIds, 23_200L))
+        assertFalse(dao.markReadyTaskExpiredAfterCleanup(ready, outputIds, 23_200L))
+        assertEquals(ready, dao.loadTask(publicExport))
     }
 
     @Test
