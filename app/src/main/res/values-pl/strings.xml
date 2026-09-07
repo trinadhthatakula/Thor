@@ -832,7 +832,9 @@
     <string name="sweep_result_summary">Działania na aplikacjach — powodzenie: %1$d · błędy: %2$d · zajęte: %3$d · nierozstrzygnięte: %4$d</string>
 
     <!-- Trwałe kolejki usług pierwszoplanowych -->
-    <string name="task_queue_title">Kolejka</string>
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">Kolejka zadań</string>
+    <string name="task_queue_providers">Dostawcy uprawnień</string>
     <string name="task_queue_section_running">W toku</string>
     <string name="task_queue_section_queued">W kolejce / wymagane działanie</string>
     <string name="task_queue_section_recent">Ostatnie</string>

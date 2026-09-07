@@ -92,6 +92,84 @@ class QueueNotificationTest {
         }
     }
 
+    @Test fun `backup notification uses backup icon`() =
+        assertOperationIcon(TaskQueueKind.DATA, "ARCHIVE_BACKUP", R.drawable.settings_backup_restore)
+
+    @Test fun `restore notification uses backup icon`() =
+        assertOperationIcon(TaskQueueKind.DATA, "ARCHIVE_RESTORE", R.drawable.settings_backup_restore)
+
+    @Test fun `export notification uses download icon`() =
+        assertOperationIcon(TaskQueueKind.DATA, "APP_EXPORT", R.drawable.arrow_downward)
+
+    @Test fun `share preparation notification uses share icon`() =
+        assertOperationIcon(TaskQueueKind.DATA, "SHARE_PREPARE", R.drawable.share)
+
+    @Test fun `freeze notification uses freeze icon`() =
+        assertOperationIcon(TaskQueueKind.PRIVILEGE, "FREEZE", R.drawable.frozen)
+
+    @Test fun `unfreeze notification uses unfreeze icon`() =
+        assertOperationIcon(TaskQueueKind.PRIVILEGE, "UNFREEZE", R.drawable.freeze_off)
+
+    @Test fun `cache clearing notification uses clear icon`() =
+        assertOperationIcon(TaskQueueKind.PRIVILEGE, "CLEAR_CACHE", R.drawable.clear_all)
+
+    @Test fun `Fix Store notification uses install icon instead of freeze icon`() =
+        assertOperationIcon(TaskQueueKind.PRIVILEGE, "REINSTALL", R.drawable.apk_install)
+
+    @Test fun `unknown operations use a neutral icon in either queue`() {
+        TaskQueueKind.entries.forEach { queue ->
+            assertOperationIcon(queue, "FUTURE_OPERATION", R.drawable.list_alt)
+        }
+    }
+
+    @Test fun `preparing notifications do not guess an operation`() {
+        assertEquals(R.drawable.list_alt, DataSyncServiceNotification(context).preparing().smallIcon.resId)
+        assertEquals(R.drawable.list_alt, PrivilegeSweepServiceNotification(context).preparing().smallIcon.resId)
+    }
+
+    @Test fun `claim notifications without operation metadata do not guess from labels`() {
+        val id = UUID(0, 42)
+        assertEquals(R.drawable.list_alt,
+            DataSyncServiceNotification(context).running(id, "FREEZE").smallIcon.resId)
+        assertEquals(R.drawable.list_alt,
+            PrivilegeSweepServiceNotification(context).running(id, "ARCHIVE_BACKUP").smallIcon.resId)
+    }
+
+    @Test fun `notification icon follows active task handover not queued or terminal tasks`() {
+        val export = iconTask(TaskQueueKind.DATA, "APP_EXPORT")
+        val share = export.copy(taskId = UUID(0, 43), operationId = "SHARE_PREPARE",
+            phase = TaskLifecyclePhase.QUEUED)
+        val backup = export.copy(taskId = UUID(0, 44), operationId = "ARCHIVE_BACKUP",
+            phase = TaskLifecyclePhase.SUCCEEDED)
+        val builder = DataSyncServiceNotification(context)
+        val snapshot = requireNotNull(queueNotificationSnapshot(export.taskId, listOf(export, share, backup)))
+        assertEquals(R.drawable.arrow_downward, builder.running(snapshot).smallIcon.resId)
+        val handedOver = listOf(export.copy(phase = TaskLifecyclePhase.SUCCEEDED),
+            share.copy(phase = TaskLifecyclePhase.RUNNING), backup)
+        assertNull(queueNotificationSnapshot(export.taskId, handedOver))
+        assertEquals(R.drawable.share, builder.running(requireNotNull(
+            queueNotificationSnapshot(share.taskId, handedOver),
+        )).smallIcon.resId)
+        assertNull(queueNotificationSnapshot(null, handedOver))
+    }
+
+    private fun assertOperationIcon(queue: TaskQueueKind, operation: String, expectedIcon: Int) {
+        val task = iconTask(queue, operation)
+        for (phase in listOf(TaskLifecyclePhase.RUNNING, TaskLifecyclePhase.STOPPING)) {
+            for (count in listOf(0, 2)) {
+                val snapshot = QueueNotificationSnapshot(task.copy(phase = phase), count)
+                val notification = if (queue == TaskQueueKind.DATA) DataSyncServiceNotification(context).running(snapshot)
+                    else PrivilegeSweepServiceNotification(context).running(snapshot)
+                assertEquals("$operation $phase queued=$count", expectedIcon, notification.smallIcon.resId)
+            }
+        }
+    }
+
+    private fun iconTask(queue: TaskQueueKind, operation: String) = QueuedTaskSummary(
+        UUID(0, 42), queue, operation, emptyList(), 10, TaskLifecyclePhase.RUNNING,
+        TaskProgress(3, 100, null), "example.app", null, emptySet(), null, null, false,
+    )
+
     @Test fun `quantity resources select authored locale forms for representative counts`() {
         val samples = mapOf(
             "en" to listOf(1 to "1 more task queued", 2 to "2 more tasks queued"),

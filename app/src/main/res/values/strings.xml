@@ -815,7 +815,12 @@
     <string name="sweep_result_summary">App actions — succeeded: %1$d · failed: %2$d · busy: %3$d · unresolved: %4$d</string>
 
     <!-- Durable foreground-service queues -->
-    <string name="task_queue_title">Queue</string>
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">Task queue</string>
+    <string name="task_queue_providers">Privilege providers</string>
+    <string name="guardian_groot" translatable="false">Groot</string>
+    <string name="guardian_rocket" translatable="false">Rocket</string>
+    <string name="guardian_starlord" translatable="false">Star-Lord</string>
     <string name="task_queue_section_running">Running</string>
     <string name="task_queue_section_queued">Queued / action required</string>
     <string name="task_queue_section_recent">Recent</string>

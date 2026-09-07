@@ -18,6 +18,7 @@ import com.valhalla.thor.data.service.FOREGROUND_PENDING_INTENT_FLAGS
 import com.valhalla.thor.data.service.ForegroundPendingIntentNamespace
 import com.valhalla.thor.data.service.QueueNotificationSnapshot
 import com.valhalla.thor.data.service.queueNotificationStatus
+import com.valhalla.thor.data.service.queueNotificationSmallIcon
 import com.valhalla.thor.data.service.PRIVILEGED_FOREGROUND_CHANNEL_ID
 import com.valhalla.thor.presentation.launcher.TaskQueueLaunchActivity
 import java.util.UUID
@@ -49,6 +50,7 @@ internal class PrivilegeSweepServiceNotification(
 
     fun running(snapshot: QueueNotificationSnapshot): Notification =
         runningBuilder(snapshot.task.taskId, context.queueNotificationStatus(snapshot))
+            .setSmallIcon(queueNotificationSmallIcon(snapshot.task.operationId))
             .setSubText(context.resources.getQuantityString(
                 R.plurals.task_queue_notification_later_count,
                 snapshot.laterQueuedTasks, snapshot.laterQueuedTasks,
@@ -73,7 +75,7 @@ internal class PrivilegeSweepServiceNotification(
 
     private fun baseBuilder(): NotificationCompat.Builder =
         NotificationCompat.Builder(context, PRIVILEGED_FOREGROUND_CHANNEL_ID)
-            .setSmallIcon(R.drawable.frozen)
+            .setSmallIcon(R.drawable.list_alt)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)

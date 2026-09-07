@@ -750,7 +750,9 @@
     <string name="sweep_result_summary">Acciones de aplicaciones — completadas: %1$d · fallidas: %2$d · ocupadas: %3$d · sin resolver: %4$d</string>
 
     <!-- Colas duraderas de servicios en primer plano -->
-    <string name="task_queue_title">Cola</string>
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">Cola de tareas</string>
+    <string name="task_queue_providers">Proveedores de privilegios</string>
     <string name="task_queue_section_running">En ejecución</string>
     <string name="task_queue_section_queued">En cola / acción requerida</string>
     <string name="task_queue_section_recent">Recientes</string>

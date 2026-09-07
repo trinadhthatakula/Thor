@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.service
 
 import android.content.Context
+import androidx.annotation.DrawableRes
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.QueuedTaskSummary
 import com.valhalla.thor.domain.model.TaskLifecyclePhase
@@ -56,6 +57,18 @@ internal fun CoroutineScope.observeQueueNotifications(
             if (snapshot != null && activeId.value == snapshot.task.taskId) publish(snapshot)
             delay(1_000L)
         }
+}
+
+@DrawableRes
+internal fun queueNotificationSmallIcon(operationId: String): Int = when (operationId) {
+    "ARCHIVE_BACKUP", "ARCHIVE_RESTORE" -> R.drawable.settings_backup_restore
+    "APP_EXPORT" -> R.drawable.arrow_downward
+    "SHARE_PREPARE" -> R.drawable.share
+    "FREEZE" -> R.drawable.frozen
+    "UNFREEZE" -> R.drawable.freeze_off
+    "CLEAR_CACHE" -> R.drawable.clear_all
+    "REINSTALL" -> R.drawable.apk_install
+    else -> R.drawable.list_alt
 }
 
 internal fun Context.queueNotificationStatus(snapshot: QueueNotificationSnapshot): String {

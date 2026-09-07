@@ -52,6 +52,26 @@ class TaskDetailFooterTest {
         checkRouteFooter(TaskLifecyclePhase.RUNNING, TaskAction.CANCEL)
     }
 
+    @Test fun terminalDetailCloseStillDispatchesAcknowledgement() {
+        val actions = mutableListOf<TaskAction>()
+        var backgrounds = 0
+        rule.setContent {
+            MaterialTheme {
+                TaskDetailContent(
+                    detailState(TaskLifecyclePhase.SUCCEEDED),
+                    onBackground = { backgrounds++ }, onAction = actions::add,
+                )
+            }
+        }
+        rule.onNodeWithTag(TASK_DETAIL_BACKGROUND_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(taskDetailActionTag(TaskAction.ACKNOWLEDGE))
+            .assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
+        rule.runOnIdle {
+            assertEquals(listOf(TaskAction.ACKNOWLEDGE), actions)
+            assertEquals(0, backgrounds)
+        }
+    }
+
     @Test fun measuredSmallReadyLoggerKeepsFooterInsideViewport() {
         checkBoundedLogger(TaskLifecyclePhase.READY, TaskAction.SHARE)
     }

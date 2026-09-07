@@ -50,6 +50,8 @@ class LocalePolicyTest {
 
     private val taskQueueKeys = setOf(
         "task_queue_title",
+        "task_queue_subtitle",
+        "task_queue_providers",
         "task_queue_section_running",
         "task_queue_section_queued",
         "task_queue_section_recent",

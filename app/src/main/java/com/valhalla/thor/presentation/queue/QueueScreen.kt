@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -78,11 +79,18 @@ internal fun QueueContent(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.task_queue_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Column {
+                        Text(
+                            text = stringResource(R.string.task_queue_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = stringResource(R.string.task_queue_subtitle),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(
@@ -97,6 +105,7 @@ internal fun QueueContent(
                         )
                     }
                 },
+                windowInsets = WindowInsets(0,0,0,0)
             )
         },
     ) { padding ->
@@ -145,6 +154,9 @@ private fun QueueList(
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        item(key = "guardian-providers") {
+            GuardianRoster()
+        }
         if (state.isEmpty) {
             item(key = "queue-empty") {
                 Text(
@@ -263,6 +275,7 @@ private fun QueueTaskRow(
     onSelected: () -> Unit,
     onAction: (TaskAction) -> Unit,
 ) {
+    val actions = task.actions - TaskAction.ACKNOWLEDGE
     Card(
         onClick = onSelected,
         modifier = Modifier
@@ -319,14 +332,14 @@ private fun QueueTaskRow(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
-            if (task.actions.isNotEmpty()) {
+            if (actions.isNotEmpty()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TaskAction.entries.forEach { action ->
-                        if (action in task.actions) {
+                        if (action in actions) {
                             TextButton(
                                 onClick = { onAction(action) },
                                 modifier = Modifier

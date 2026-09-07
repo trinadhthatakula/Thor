@@ -738,7 +738,9 @@
     <string name="sweep_result_summary">应用操作 — 成功：%1$d · 失败：%2$d · 忙碌：%3$d · 未确定：%4$d</string>
 
     <!-- 持久前台服务队列 -->
-    <string name="task_queue_title">队列</string>
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">任务队列</string>
+    <string name="task_queue_providers">特权提供方</string>
     <string name="task_queue_section_running">正在运行</string>
     <string name="task_queue_section_queued">已排队 / 需要操作</string>
     <string name="task_queue_section_recent">最近任务</string>

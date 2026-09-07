@@ -7,15 +7,18 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.valhalla.thor.R
@@ -60,7 +63,7 @@ class QueueScreenTest {
             R.string.task_queue_section_queued,
             R.string.task_queue_section_recent,
         ).forEach { label ->
-            rule.onNodeWithText(rule.activity.getString(label)).assert(heading)
+            scrollToNode(hasText(rule.activity.getString(label))).assert(heading)
         }
     }
 
@@ -81,7 +84,7 @@ class QueueScreenTest {
             ),
         )
 
-        rule.onNodeWithTag(queueRowTag(PRIVILEGE_TASK)).assertTextContains(
+        scrollToNode(hasTestTag(queueRowTag(PRIVILEGE_TASK))).assertTextContains(
             rule.activity.resources.getQuantityString(R.plurals.profile_app_count, 2, 2),
         )
     }
@@ -107,19 +110,19 @@ class QueueScreenTest {
             ),
         )
 
-        rule.onNodeWithTag(queueRowTag(DATA_TASK)).assertExists()
-        rule.onNodeWithTag(queueRowTag(PRIVILEGE_TASK)).assertExists()
+        scrollToNode(hasTestTag(queueRowTag(DATA_TASK))).assertExists()
+        scrollToNode(hasTestTag(queueRowTag(PRIVILEGE_TASK))).assertExists()
         assertText(R.string.task_operation_archive_backup)
         assertText(R.string.task_operation_freeze)
-        rule.onNodeWithTag(queueRowTag(DATA_TASK))
+        scrollToNode(hasTestTag(queueRowTag(DATA_TASK)))
             .assertTextContains(rule.activity.getString(R.string.task_state_running))
-        rule.onNodeWithTag(queueRowTag(PRIVILEGE_TASK))
+        scrollToNode(hasTestTag(queueRowTag(PRIVILEGE_TASK)))
             .assertTextContains(rule.activity.getString(R.string.task_state_stopping))
-        rule.onNodeWithTag(queueRowTag(DATA_TASK))
+        scrollToNode(hasTestTag(queueRowTag(DATA_TASK)))
             .assertTextContains(rule.activity.getString(R.string.task_queue_kind_data))
-        rule.onNodeWithTag(queueRowTag(PRIVILEGE_TASK))
+        scrollToNode(hasTestTag(queueRowTag(PRIVILEGE_TASK)))
             .assertTextContains(rule.activity.getString(R.string.task_queue_kind_privilege))
-        rule.onNodeWithTag(queueRowTag(DATA_TASK))
+        scrollToNode(hasTestTag(queueRowTag(DATA_TASK)))
             .assertTextContains(rule.activity.getString(R.string.task_queue_progress, 1, 2))
     }
 
@@ -143,8 +146,7 @@ class QueueScreenTest {
             onAction = { taskId, action -> performed = taskId to action },
         )
 
-        rule.onNodeWithTag(queueActionTag(DATA_TASK, TaskAction.PROVIDE_SOURCE))
-            .performScrollTo()
+        scrollToNode(hasTestTag(queueActionTag(DATA_TASK, TaskAction.PROVIDE_SOURCE)))
             .assertHeightIsAtLeast(48.dp)
             .performClick()
         rule.runOnIdle {
@@ -153,7 +155,7 @@ class QueueScreenTest {
         }
         rule.onNodeWithTag(queueActionTag(DATA_TASK, TaskAction.CANCEL)).assertDoesNotExist()
 
-        rule.onNodeWithTag(queueRowTag(DATA_TASK)).performClick()
+        scrollToNode(hasTestTag(queueRowTag(DATA_TASK))).performClick()
         rule.runOnIdle { assertEquals(DATA_TASK, selected) }
     }
 
@@ -180,7 +182,7 @@ class QueueScreenTest {
             onTaskSelected = selections::add,
         )
 
-        rule.onNodeWithTag(queueRowTag(SECOND_DATA_TASK)).performScrollTo().performClick()
+        scrollToNode(hasTestTag(queueRowTag(SECOND_DATA_TASK))).performClick()
 
         rule.runOnIdle { assertEquals(listOf(SECOND_DATA_TASK), selections) }
     }
@@ -219,9 +221,12 @@ class QueueScreenTest {
     }
 
     private fun assertText(stringRes: Int) {
-        rule.onNodeWithText(rule.activity.getString(stringRes))
-            .performScrollTo()
-            .assertExists()
+        scrollToNode(hasText(rule.activity.getString(stringRes))).assertExists()
+    }
+
+    private fun scrollToNode(matcher: SemanticsMatcher): SemanticsNodeInteraction {
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(matcher)
+        return rule.onNode(matcher)
     }
 
     private fun task(

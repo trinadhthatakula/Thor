@@ -750,7 +750,9 @@
     <string name="sweep_result_summary">Actions sur les applications — réussites : %1$d · échecs : %2$d · occupées : %3$d · non résolues : %4$d</string>
 
     <!-- Files durables des services au premier plan -->
-    <string name="task_queue_title">File d’attente</string>
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">File d’attente des tâches</string>
+    <string name="task_queue_providers">Fournisseurs de privilèges</string>
     <string name="task_queue_section_running">En cours</string>
     <string name="task_queue_section_queued">En attente / action requise</string>
     <string name="task_queue_section_recent">Récentes</string>

@@ -1,8 +1,8 @@
 # Thor service-queue progress
 
-**Updated:** 7 September 2026. Times below are UTC.
+**Updated:** 8 September 2026. Times below are UTC.
 
-**22 agreed milestones: 20 complete, T19 and T22 pending/blocked on remaining runtime acceptance.** The bounded physical-device logger correction is implemented, locally validated and narrowly reviewed; its updated APK needs device confirmation. No new milestone has been added.
+**22 agreed milestones: 20 complete, T19 and T22 pending/blocked on remaining runtime acceptance.** The Recent Close correction and Guardians follow-up are implemented, locally tested, narrowly reviewed and included in a fresh debug APK. Groot = Root, Rocket = Shizuku, Star-Lord = Dhizuku; portraits now use the theme's **primary** color as requested. Final primary-tint publication gates are complete; PR #453 is the publication/check-status record. The user's inset edit and supplied vector bytes are preserved. No active implementation owner or new milestone remains. Existing queue execution and outstanding runtime gates are unchanged.
 
 **Branch:** `feat/worker-shell-lanes` · **PR:** [#453](https://github.com/trinadhthatakula/Thor/pull/453), open, unmerged, targeting `dev` · **Version:** 1952.
 
@@ -13,11 +13,58 @@
 | Milestone | Status | What remains | Evidence required to close |
 |---|---|---|---|
 | **T19 — Shizuku emulator acceptance and latency** | **Pending — blocked** | Establish authorized Shizuku/fixture prerequisites; test real operations, cancellation, reopening, recovery and package conflicts; collect at least 20 warm exports and 20 warm sweeps; remove temporary latency hooks and rebuild. | Genuine Manager consent, scenario postconditions and raw distributions; honest baseline comparison; final APK without hooks. |
-| **T22 — Startup and jank check** | **Pending — runtime confirmation** | Retest the corrected logger/count/footer APK. Prior startup/navigation measurements remain accepted. Scrolling/populated-detail and operation-loaded acceptance plus matched-baseline comparison remain outstanding. | Logger host regressions and narrow review pass; device confirmation and the remaining runtime matrix are still required. The reported physical-device test is not blanket acceptance. |
+| **T22 — Startup and jank check** | **Pending — remaining runtime acceptance** | The user reports Queue working. Subsequent Close/Guardians/icon corrections, including primary-color portraits, are locally verified with a fresh debug APK ready; publication/check status is on PR #453. Prior startup/navigation measurements remain accepted; scrolling/populated-detail and operation-loaded acceptance plus matched-baseline comparison remain outstanding. | Both full JVM variants pass 2,679 tests, both lint gates have zero errors, and Android test sources compile. These host gates and user-reported Queue success do not establish the remaining runtime matrix. |
 
-**Logger implementation, local builds and narrow reviews are finished.** Publication uses the existing PR; consult its live checks for CI on the logger commit rather than applying earlier CI results to new code. No assistant device operation was performed for this follow-up. Reviews, fixture maintenance and validation attempts are not new milestones. No runtime milestone closes merely because host tests pass.
+**The 7 September logger correction is published as `45bf8b24`; its required hosted CI passed.** [Run `34147705978`, job `101823212355`](https://github.com/trinadhthatakula/Thor/actions/runs/34147705978/job/101823212355) validated synthetic merge `617c2e6e` into `deaf370a`, with Zulu21.0.12+8 configured, Foss unit/Android-test compilation, Store lint, both release R8 tasks and the missing-rules gate. This is the preceding checkpoint, not validation of the new Recent actions or Guardians corrections. No assistant device operation was performed for these follow-ups. Reviews, fixture maintenance and validation attempts are not new milestones. No runtime milestone closes merely because host tests pass.
 
-### Physical-device feedback follow-up
+### 8 September primary-color publication gate
+
+The final requested presentation adjustment uses `MaterialTheme.colorScheme.primary` for all three portraits; labels retain their existing colors. The supplied artwork is unchanged. This is a tint-only follow-up to the presentation change below, not new execution behavior or another milestone.
+
+Final source validation used `--rerun-tasks --max-workers=1` with the recorded Corretto21 exception:
+
+- Foss and Store each passed **2,679 tests / 221 suites**, zero failures/errors/skips, with fresh XML independently parsed. The combined test/debug-APK/Android-test compilation run executed **120/120 tasks**.
+- Foss lint passed with **zero errors**, 66 warnings and 15 hints (**70/70 tasks**); Store release lint passed with **zero errors**, 53 warnings and 15 hints (**51/51 tasks**). The three supplied portrait complexity hints remain disclosed.
+- A final scoped review of the **22 intended paths** found no publication blockers. It was not a whole-branch re-audit. Current 100dp worktree assets were deliberately staged instead of the older 1254dp indexed versions; their approved content hashes are unchanged. `.kotlin/`, private evidence and unrelated files are excluded.
+- The targeted IDE build tool **timed out** on this final tint invocation; no successful tool result is claimed. The subsequent native Gradle gates above completed successfully.
+- No new pixel-level tint/contrast or device-rendering acceptance is claimed. Existing Compose pairing, geometry, action and notification tests remain covered by the full suites; Android-test compilation is not execution.
+
+**Current test APK:** `app/build/outputs/apk/foss/debug/app-foss-debug.apk`, **28,416,015 bytes**, package `com.valhalla.thor.debug`, version **1952 / 1.95.2**, SHA-256 `3052bff1e5bec9900873b1edab52ae70e7c2806f8b012a365ebeb0ef548b877b`. Signature verification passed with the same debug certificate `df90ba957f0bd9048795102bafe01745d05b9ce73d0f28d07559aaf52fd8a50b`. It supersedes the initial Guardians APK below.
+
+The user authorized publication to the existing PR #453, not a merge or release. The PR remains the source for commit and hosted-check status; earlier hosted CI is not evidence for these new changes. No version bump, device operation, consent change or closure of T19/T22 runtime acceptance is part of this follow-up.
+
+### 8 September Guardians presentation follow-up
+
+The approved presentation change names the screen **Guardians**, retains a localized **Task queue** subtitle, and displays a static, accessible provider roster: **Groot — Root**, **Rocket — Shizuku**, **Star-Lord — Dhizuku**. The supplied 100dp vectors are used unchanged and tinted for the current theme. All eight locales define the subtitle/provider heading; character names are non-translatable proper names. The shared navigation button picks up the new accessible screen name. Technical provider settings, task statuses, the two queues and execution/storage contracts are unchanged. The roster identifies providers, not installed/authorized availability or the provider that executed a particular task; no per-task provenance is fabricated from preferences or degraded Root-shell state.
+
+Both foreground notification builders now choose their small icon from the active task's operation: backup/restore → backup, export → download, share preparation → share, freeze → freeze, unfreeze → freeze-off, cache clearing → clear, Fix Store/reinstall → install. Preparing, claim callbacks without operation metadata and unknown operations use a neutral list icon. Character portraits never replace notification small icons. Existing notification channels, UUID intents, cancellation and active-task observation remain intact.
+
+**Initial presentation gates (before the primary-color follow-up above):**
+
+| Gate | Result |
+|---|---|
+| Regression RED | **60 tests / 12 intended failures**, zero errors/skips, exposing missing branding/locales and hardcoded icons; an earlier test-import compilation error is recorded separately, not counted as RED |
+| Focused GREEN | **126 tests / 11 suites**, zero failures/errors/skips; 54/54 forced Gradle tasks executed |
+| Full Foss JVM suite | **2,679 tests / 221 suites**, zero failures/errors/skips; fresh XML |
+| Full Store JVM suite | **2,679 tests / 221 suites**, zero failures/errors/skips; fresh XML; combined variant run executed 88/88 tasks |
+| Foss debug lint / APK / Android-test compilation | **Passed**, 104/104 tasks executed; lint zero errors, 66 `SyntheticAccessor` warnings and 15 hints |
+| Store release lint | **Passed**, 51/51 tasks executed; lint zero errors, 53 `SyntheticAccessor` warnings and 15 hints |
+| Targeted IDE build | **Passed**, no reported problems |
+| Narrow review | **No actionable blockers** in branding, notification mapping, resources and JVM coverage; not a repeated whole-branch audit |
+
+The roster caused three old JVM tests to expose their assumption that off-screen lazy-list rows were already composed. Tests now scroll the list to the target before existing assertions/clicks; production scrolling was not changed. Equivalent instrumented-test maintenance retains all seven tests and 28 assertion calls. Those instrumented sources **compiled but were not device-executed**. Focused coverage includes active-task icon handover, running/stopping phases, neutral fallbacks, exact character/provider pairing, 280dp RTL roster geometry at 1.5× font scale, both Recent lanes, other action dispatch and functional detail Close. Dark-theme composition is covered, not pixel-level contrast or physical rendering. Lint hints include three additional `VectorPath` complexity hints from the supplied portraits; no warnings or hints were suppressed and the assets were not rewritten. Local builds use the existing **Corretto21.0.12.1 exception**, not Zulu compliance.
+
+**Initial Guardians test APK (superseded by the primary-tint build above):** `app/build/outputs/apk/foss/debug/app-foss-debug.apk`, **28,416,015 bytes**, package `com.valhalla.thor.debug`, version **1952 / 1.95.2**, SHA-256 `436736e33d1377c8a660c3c5271eb93120ba169fb6c7fd536491cd02d2fb665e`. Signature verification passed and certificate SHA-256 `df90ba957f0bd9048795102bafe01745d05b9ce73d0f28d07559aaf52fd8a50b` matches the previous debug APK. Packaged resources contain all three portraits and Guardians/title/subtitle/provider labels. This APK includes the inset and Recent Close corrections; the previous `c5e2ad…` logger APK does not establish these new changes.
+
+At this initial Guardians checkpoint, all edits were **uncommitted** over `45bf8b24` and the user's existing staged/unstaged asset state was untouched. The subsequent primary-color publication gate above deliberately selects the current 100dp assets and includes all these changes. No release APK, merge, version bump, emulator operation or physical-device acceptance is claimed. T19/T22 runtime acceptance remains pending.
+
+### 8 September Recent actions follow-up
+
+The user reports Queue working after their own window-inset adjustment, but Recent rows still expose a Close button with no visible effect. `ACKNOWLEDGE` updates acknowledgement metadata without deleting history; the list host handles routed actions but has no detail window to dismiss. `QueueTaskRow` now omits that detail-only action and omits the action strip when no other controls remain. It preserves row selection and other advertised controls. The shared action policy, acknowledgement persistence, functional detail Close and both lines of the user's inset fix remain unchanged.
+
+Regression evidence: before the production change, **15 tests / 2 intended failures** reproduced the Close button on Recent data and privilege rows. After the three-line list projection change, **50 tests across five Foss JVM suites passed**, zero failures/errors/skips, with all 54 Gradle tasks executed using `--rerun-tasks`. Coverage includes both Recent lanes, row selection, another action's exact UUID/dispatch without click-through, terminal detail Close and navigation dismissal. The targeted IDE build also passed with no reported problems. Local Gradle used the existing Corretto21.0.12.1 exception, not Zulu compliance. At that checkpoint, source/tests and the progress update were **uncommitted** alongside the user's preserved inset edit, with no new APK build, hosted CI, PR update or device run. The later Guardians and primary-color publication gates above include this correction and a fresh debug APK; device acceptance is still not claimed.
+
+### 7 September logger feedback follow-up
 
 The user reports that a bulk Fix Store request for approximately 63 apps produces approximately 64 repeated “task accepted and queued” lines, and that the footer buttons need more spacing. Tracing found one identical presentation placeholder per pending child and an existing 64-line detail cap; it did **not** prove an extra submitted task or parent acceptance line. The correction counts all pending children before applying the display cap, places one live summary after individual results, and keeps the running app separate. The count decreases when an app leaves the pending state; running is not mislabeled as queued. For oversized batches, the bounded projection must retain the current running app and recent outcomes and explicitly disclose omitted older results. Footer spacing is 16dp above the group, 8dp between controls, and an additional 6dp side inset, preserving at least 48dp controls and the non-scrolling footer. Queue execution and durable storage are outside this correction's scope. Implementation and local validation are complete; the older full-suite/CI results below remain historical checkpoints, not tests of this follow-up.
 

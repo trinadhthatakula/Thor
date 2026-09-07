@@ -802,7 +802,9 @@
     <string name="sweep_result_summary">إجراءات التطبيقات — نجحت: %1$d · فشلت: %2$d · مشغولة: %3$d · غير محسومة: %4$d</string>
 
     <!-- قوائم انتظار دائمة لخدمات الواجهة الأمامية -->
-    <string name="task_queue_title">قائمة الانتظار</string>
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">قائمة انتظار المهام</string>
+    <string name="task_queue_providers">مزوّدو الامتيازات</string>
     <string name="task_queue_section_running">قيد التنفيذ</string>
     <string name="task_queue_section_queued">في قائمة الانتظار / يلزم إجراء</string>
     <string name="task_queue_section_recent">الأخيرة</string>

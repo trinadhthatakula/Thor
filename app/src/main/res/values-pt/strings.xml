@@ -813,7 +813,9 @@
     <string name="sweep_result_summary">Ações em aplicações — com êxito: %1$d · falhadas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
 
     <!-- Filas duradouras de serviços em primeiro plano -->
-    <string name="task_queue_title">Fila</string>
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">Fila de tarefas</string>
+    <string name="task_queue_providers">Fornecedores de privilégios</string>
     <string name="task_queue_section_running">Em execução</string>
     <string name="task_queue_section_queued">Em fila / ação necessária</string>
     <string name="task_queue_section_recent">Recentes</string>
