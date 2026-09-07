@@ -1,292 +1,281 @@
-# Workers, sweep queues, and root shell lanes
+# Typed service queues and root shell lanes
 
-This document describes the background-work boundary that is implemented in Thor. It is intentionally
-narrow: being a long-running or multi-app operation does not by itself make something a WorkManager
-job.
+This document describes the background-work boundary implemented on `feat/worker-shell-lanes`.
+WorkManager remains for compatibility with previously persisted work; **new queue submissions use
+Room-backed foreground services, not WorkManager chains**.
 
-**Last verified:** 2026-09-02 on `feat/worker-shell-lanes`.
+**Source mapping updated:** 7 September 2026. Source behavior is not device-acceptance evidence; see
+[service-queue-progress.md](service-queue-progress.md) for current validation and open gates. The
+[binding design](../superpowers/specs/2026-09-03-privilege-action-service-design.md) also includes
+requirements that must not be mistaken for completed producer migrations.
 
 ## At a glance
 
-Thor has two independent serial WorkManager chains:
-
-| Unique work name | Work on the chain | Execution shape |
+| Durable queue | Executor / Android foreground-service type | Supported work |
 |---|---|---|
-| `THOR_JOB_CHAIN` (`"thor.job.chain"`) | Single-app archive backup, single-app archive restore, and single-app `.apk`/`.apks`/`.xapk` export | Byte-moving jobs; foreground `dataSync` work |
-| `THOR_SWEEP_CHAIN` (`"thor.sweep.chain"`) | Freeze, unfreeze, per-app cache clear, and verified Fix Store over a resolved selection | Durable privilege sweeps; non-foreground workers with visible progress notifications |
+| Data | `DataSyncService` / `dataSync` | Archive backup, archive restore, app export, durable share preparation |
+| Privilege | `PrivilegeSweepService` / `specialUse` | Freeze, unfreeze, per-app cache clear, verified Fix Store |
 
-Both chains use `ExistingWorkPolicy.APPEND_OR_REPLACE`. Work is serial within its own chain, but an
-archive/export job and a privilege sweep may run at the same time. The split prevents a short sweep
-from waiting behind a large archive and prevents queued sweeps from delaying byte-moving work.
+Each queue has one active consumer and its own durable FIFO sequence. The queues may advance
+concurrently; they do not share a global execution order. Services are non-exported, run in Thor's
+application process, and do not bind the UI to their lifetime.
 
-The root transport has three execution lanes:
+Three boundaries are deliberately separate:
 
-| Lane | Normal root transport | Typical callers |
+- **Room queues** determine durable admission, ordering, claims, results and recovery.
+- **Package-operation leases** prevent conflicting operations on the same package.
+- **Root shell lanes** isolate root-command transport. Shizuku and Dhizuku do not use Odin lanes.
+
+An Intent carries a task UUID wake signal, not the task's payload or authoritative state. A successful
+service-start request is not proof that foreground promotion or execution succeeded.
+
+## Current producers and deliberate exceptions
+
+| Operation/path | Current producer | Execution |
 |---|---|---|
-| `INTERACTIVE` | Odin `MainShell` | Direct, user-facing actions |
-| `ARCHIVE` | An owned, reusable dedicated root shell | Archive backup and restore commands |
-| `SWEEP` | A different owned, reusable dedicated root shell | Items in a privilege sweep |
+| Archive backup/restore | `ThorJobLauncher` through `DataTaskAcceptance` | Durable data queue |
+| Single-app export | `ExportJobLauncherImpl.startExport` | Durable data queue |
+| Bulk share preparation | `ShareSubmissionCoordinator` → `ShareTaskLauncherImpl` | Durable data queue |
+| Supported privilege selection | `DefaultPrivilegeSweepController` | Durable privilege queue |
+| Single-app quick share | `ShareAppUseCase` | Direct foreground path |
+| Multi-app “Backup”/export | `BackupRunner.start` → `BackupAppsUseCase` | Process-owned coroutine, not a durable service producer |
 
-The WorkManager chain and the root shell lane are separate concepts. A chain controls job ordering;
-a lane controls root-command transport. Shizuku and Dhizuku keep their own gateway behavior and do
-not use Odin's root shell lanes.
+Do not describe the design's planned single/multi-export convergence as completed while that last
+producer remains direct. A supported operation name also does not imply that every single-app quick
+action with that name goes through a queue.
 
-## The byte-moving job chain
+Other paths remain outside these typed queues: force-stop, uninstall, clear-data, explicit
+suspend/unsuspend, whole-device cache trim, ordinary installer streaming, auto-freeze, auto-reinstall,
+and component-control Restore all. Restore all concerns Thor-recorded component overrides across
+packages for the current Android user, not every user on the device.
 
-`THOR_JOB_CHAIN` contains exactly three operations:
+Do not use bulk export/share or automatic freeze/reinstall as justification for `specialUse`.
+Byte-moving durable work belongs to `dataSync`; the privilege service has the explicit operation
+allowlist above.
 
-| Kind | Worker | Producer |
-|---|---|---|
-| `ARCHIVE_BACKUP` | `ArchiveBackupWorker` | `ThorJobLauncher.startBackup` |
-| `ARCHIVE_RESTORE` | `ArchiveRestoreWorker` | `ThorJobLauncher.startRestore` |
-| `APP_EXPORT` | `AppExportWorker` | `ExportJobLauncherImpl.startExport` |
+## Admission and Room authority
 
-All three requests receive a package-specific work tag even though they share one unique chain. The
-tag lets a screen detect or reattach to work for one package without allowing two byte-heavy jobs to
-run concurrently.
+Data producers persist through `DataTaskAcceptance`; privilege producers resolve their selection and
+persist through `DefaultPrivilegeSweepController`. Sweep resolution fixes package order, Android
+user, relevant freezer mode and source/profile associations before execution. Equivalent active
+sweep submissions can coalesce.
 
-Archive backup and restore keep derived encryption keys only in `ArchiveKeyHolder`, in process
-memory. A process-death rerun therefore fails before touching archive contents; WorkManager does not
-make those two operations durable across process death. App export carries no secret key and can run
-again in a new process. Before it stages files, it waits for `LaunchSweepBarrier` so the application
-startup cleanup cannot delete its staging directory while it is being written.
+The order is **persist, then request a service wake**. Data admission explicitly protects the
+insertion/wake handoff from a submitting caller's cancellation. Sweep surface launchers use
+process-owned execution; the sweep controller itself serializes admission but does not provide that
+same cancellation-shielded handoff. Dismissing a screen does not withdraw accepted work. A rejected
+start retains actionable durable work, such as `START_BLOCKED` or `START_BLOCKED_NOTIFICATION`; it is
+not the old enqueue-failure rollback model.
 
-These jobs run through `ThorJobWorker` as foreground `dataSync` work. They publish in-memory progress
-to `JobRegistry`, throttle notification updates, and return bounded error/warning data. The archive
-and export cancel actions remain per-work cancellation; they do not cancel every item on
-`THOR_JOB_CHAIN`.
+Queue sequence is assigned durably within each queue. Claims use sequence with a stable UUID
+tie-breaker; nested items/targets use their own stable ordinals. Only runnable work participates in
+claiming. An authentication-blocked backup does not prevent a later export from running. When the
+backup becomes runnable again, its original sequence is preserved, but it does not pre-empt the
+currently active task.
 
-`ThorJobKind` is append-only. Notification ids and `PendingIntent` request codes are derived from its
-ordinal, so inserting or reordering entries can retarget an existing notification after an app update.
+Room persists task/request and item/target state. Session identity, claim tokens and leases fence
+ownership-sensitive writes. In-memory registries and service instances support execution but cannot
+replace that authority. Do not infer success from absent callbacks, missing observer data, lease age
+alone or process death.
 
-## The durable privilege-sweep chain
+## Foreground lifecycle and notifications
 
-`THOR_SWEEP_CHAIN` is live. `DefaultPrivilegeSweepController` creates a
-`PrivilegeSweepWorker`, persists the request, and enqueues it on that chain. The supported operations
-are the four members of `PrivilegeSweepOperation`:
+Initial foreground promotion precedes coordinator execution. Repeated wakes must not create repeated
+consumers. Successful service admission uses sticky restart behavior and generation-aware shutdown;
+that is not a guarantee of scheduling, reboot auto-resume or restart after force-stop.
 
-- `FREEZE`, using the freezer mode resolved before enqueue;
-- `UNFREEZE`, restoring either disabled or suspended targets to active;
-- `CLEAR_CACHE`, for each selected app rather than the whole-device trim command;
-- `REINSTALL`, the Fix Store path, including its postcondition verification.
+`DataSyncService` handles platform timeout by stopping new claims and initiating bounded interruption
+and settlement. Startup/legacy-drain barriers must settle before cleanup-sensitive data execution.
+Final-empty shutdown must account for runnable and settling work, including a wake racing shutdown.
 
-### Resolve first, then persist
+Separate low-importance channels are used:
 
-`PrivilegeSweepTargetResolver` turns a mutable screen, profile, watchlist, tile, or launcher selection
-into an immutable, normalized package list before enqueue. It also records the current Android user
-and resolves the freezer mode at that boundary. The request, target order, source associations,
-WorkManager id, counts, and terminal state are stored in Room.
+- `thor.jobs.data` for data operations;
+- `thor.jobs.privileged` for privilege operations.
 
-Equivalent active requests are coalesced rather than appended twice. Source surfaces can reconnect to
-the retained request. Terminal snapshots are retained for 24 hours so a recreated screen can still
-show the outcome.
+Notification capability is typed, not a single permission Boolean:
 
-The Room-to-WorkManager handoff is serialized by `PrivilegeSweepProcessGate`. A failed enqueue removes
-the new snapshot. `PrivilegeSweepReconciler` repairs nonterminal Room state from WorkManager state and
-then prunes expired terminal snapshots.
+1. On API 33+, denied `POST_NOTIFICATIONS` does not itself prohibit foreground execution. Android's
+   Task Manager and Thor's in-app Queue/logger remain relevant visibility/cancellation surfaces.
+2. A valid but user-blocked channel is a product start block for new tasks. Retain actionable state
+   rather than beginning work without the promised surface. A later channel revocation does not
+   rewrite an operation's execution result.
+3. Missing/invalid notification infrastructure or failed initial foreground promotion is a start
+   failure. Never continue execution as an unforegrounded service.
 
-### Execution and states
+Active-task content and cancel PendingIntents are immutable and task-specific. Active-task content
+opens that UUID's Queue detail; cancel persists cancellation before signalling the owner. Initial
+preparing notifications instead show Starting with a generic Home destination. Ready-share content
+opens `ShareHandoffActivity` for foreground validation and handoff, not Queue detail. Terminal
+notifications are best-effort, unlike required initial foreground promotion.
 
-`PrivilegeSweepRunner` processes the persisted targets in their stable order. Each item is recorded as
-one of:
+Each claimed active-task notification shows operation, coarse progress and other queued-task count.
+The count uses the existing Queue projection, excludes the active task and action-required/terminal
+rows, and includes an older task resumed behind the active task rather than filtering solely by
+greater queue sequence. Nested items/targets are not separate queued tasks. The service-owned
+observer conflates updates; claiming a task immediately publishes the correct UUID. Cancellation
+renders the localized **Stopping** state while command/IO cleanup unwinds, without dropping operation,
+progress or queued count. Identity checks prevent delayed updates from restoring an old task's
+notification after handover or shutdown. See the progress document for validation scope.
 
-- succeeded;
-- failed;
-- busy because another operation owns that package.
+## Execution, cancellation and recovery
 
-Anything not recorded at a terminal interruption is unresolved. The UI derives these lifecycle states
-from Room plus WorkManager:
+`DataSyncCoordinator` and the privilege executor drain their respective durable stores. Task/item or
+request/target settlement preserves completed results; one item's outcome is not permission to
+invent the outcome of unresolved items.
 
-- `QUEUED`
-- `RUNNING`
-- `SUCCEEDED`
-- `PARTIAL`
-- `CANCELLED`
-- `FAILED`
-- `OBSERVER_FAILURE`
+**Cancellation affects one task/request**, not the entire privilege queue. Room records cancellation
+before the active owner is signalled. The UI can show `STOPPING` until settlement; cancelling does not
+promise immediate rollback or undo already completed effects. A later queued task survives
+cancellation of the current one.
 
-A successful run requires every target to have been processed with no failed or busy result. Other
-completed mixes are partial. An observer failure is deliberately distinct from an execution failure:
-it says Thor can no longer establish the result and the user should inspect the affected apps.
+Recovery combines durable ownership with process/session knowledge. A known-live owner is not stolen
+merely because its lease appears old. Important recovery distinctions include:
 
-The sweep worker uses `ThorJobWorker` but sets `runsForeground = false`. It still posts a progress
-notification through `NotificationManagerCompat`, including a cancel action, but does not spend the
-app's foreground-service `dataSync` slot. Sweep launch is rejected if Thor cannot keep that visible
-notification surface available.
+- Archive keys remain process-memory-only. Lost authentication yields `WAITING_FOR_AUTH`, not a
+  persisted key or an automatic unauthenticated retry.
+- A restore source that cannot be recovered requires `WAITING_FOR_SOURCE`. Interruption after a
+  destructive restore mutation requires `INTERRUPTED_REVIEW`, including relevant cancellation paths.
+- Export/share can resume eligible unfinished items while retaining completed results. Ready-share
+  output loss is explicitly reconciled rather than treated as successful delivery.
+- Sweep recovery can check freeze/unfreeze state and reinstall postconditions. Ambiguous cache-clear
+  effects remain `UNKNOWN`; `UNKNOWN` and `LEGACY_UNKNOWN` are not runnable work until reconciled or
+  explicitly authorized for retry.
 
-### Cancellation means the whole sweep queue
+Ordinary persisted failures use bounded typed codes and sanitized arguments. Passphrases, derived
+keys, raw command output and stack traces do not become Room/Intent/notification payloads.
 
-The sweep notification and active progress dialog both say **Cancel queue**. They do not cancel only
-the currently displayed request.
+## Prepared share and retention
 
-`SweepQueueCanceller` performs cancellation in this order while holding the process gate:
+`SHARE_PREPARE` stages operation/item-owned private files and completes as `READY` or `READY_PARTIAL`.
+It does not open a chooser from a background service. Ready outputs have a 24-hour expiry policy.
+`SharePrepareFormat` is distinct from export's bundle format: AUTO resolves fresh app metadata,
+choosing APK for monolithic apps and APKS for split apps, not automatic XAPK. Explicit APK rejects
+split apps.
 
-1. mark every nonterminal sweep snapshot `CANCELLED` in Room;
-2. call `WorkManager.cancelUniqueWork(THOR_SWEEP_CHAIN)`;
-3. wait for WorkManager's cancellation operation to settle;
-4. release the gate.
+Foreground handoff receives only the task UUID, reloads Room and validates the complete output set,
+ownership, expiry and files before generating fresh provider URIs. The chooser receives read-only
+grants with matching streams/ClipData. `ReadyShareAccessLock` serializes this validation/dispatch
+against retention cleanup.
 
-The critical section is non-cancellable once it begins, so a launch or reconciliation cannot observe a
-half-cancelled queue. Completed counts remain in Room; unattempted targets remain unresolved. The
-worker's outcome notification reads those persisted counts because WorkManager discards a cancelled
-worker's returned `Result`.
+Cleanup deletes eligible owned leaves only, without following symlinks or deleting another task's
+files. Exact-snapshot/output-set settlement prevents a stale cleanup result from expiring replacement
+outputs. Cancellation and recovery use the same guarded cleanup. Its timeout is cooperative: it
+bounds suspension/lock waiting, not arbitrary blocking filesystem calls.
 
-## Root shell lane routing
+Startup retention is best-effort once per process, not an exact expiry alarm. Handoff independently
+rejects expired/missing outputs; a delayed sweep is not permission to share stale content.
 
-`RootCommandRouter` routes each `RootCommand` from its `PrivilegeExecutionContext`:
+## Queue and logger UI
 
-- `INTERACTIVE` goes to `MainShellCommandExecutor`, which uses Odin `MainShell`.
-- `ARCHIVE` goes to the `@Named("archive")` `OwnedRootShellExecutor`.
-- `SWEEP` goes to the `@Named("sweep")` `OwnedRootShellExecutor`.
+`RoomTaskQueueRepository` combines the two stores for presentation, without imposing cross-queue
+execution order. Queue exposes running, queued/action-required and retained recent sections, with the
+data and privilege lanes distinguished.
 
-The two owned executors are separate objects and open separate Odin shell sessions. Each keeps one
-healthy session, serializes commands within that lane, and owns that session's cleanup. Cancellation
-or timeout invalidates exactly the generation that ran the command. A transport death after a session
-was acquired fails that command and discards the dead session; it is not replayed invisibly.
+`ThorRoute.Queue` and `ThorRoute.TaskDetail(taskId)` are durable navigation destinations. Home, Apps,
+Freezer and Settings provide entry points. Detail observes a task rather than holding a service
+instance. Background, Back and outside dismissal dismiss presentation—not accepted execution.
 
-This replaces the old assumption that every root operation necessarily queues through one
-`MainShell`. In the normal isolated mode, archive, sweep, and interactive root commands have separate
-transports.
+A same-queue submission need not replace the currently displayed task; acceptance can acknowledge
+that another task was queued. Dismissing a provisional detail must not cause late acceptance to reopen
+it. `STARTING` and `OBSERVER_FAILURE` are presentation states, not persisted execution states. Observer
+failure means that the result cannot currently be established, not that the operation failed.
 
-### Degraded fallback is explicit
+The repository supports an optional progress overlay, but the current production binding is
+`EmptyTaskProgressOverlaySource`. Do not claim a wired high-frequency Queue overlay. Compatibility
+`JobRegistry` progress remains in use; durable lifecycle/results still come from Room.
 
-If an archive or sweep lane cannot open its dedicated shell, `RootCommandRouter` marks that lane
-`DEGRADED` for the rest of the process and routes it through coordinated `MainShell`. It does not keep
-retrying a known-unavailable dedicated lane for every package.
+## Released WorkManager compatibility and schema 9
 
-`RootFallbackCoordinator` gives degraded background work an exclusive lease on `MainShell`:
+There are no new WorkRequest producers for the migrated paths. WorkManager remains initialized via
+Koin's `workManagerFactory()` so previously persisted archive/export work can drain through retained
+adapters. AndroidX Startup's default initializer remains removed; this is not a
+`Configuration.Provider` application.
 
-- degraded archive/sweep commands wait until the fallback is available;
-- an interactive command never waits behind a degraded background command;
-- if the fallback is already leased, interactive admission fails immediately with
-  `ShellLaneBusy(owner)` so the UI can report a busy result instead of appearing frozen.
+- `ArchiveBackupWorker`, `ArchiveRestoreWorker` and `AppExportWorker` retain released compatibility
+  responsibilities. Their old `THOR_JOB_CHAIN` is not the current data producer path.
+- `LegacyDataWorkDrainGate.awaitDrained` waits for persisted legacy data work to become terminal before
+  new data-lane execution proceeds. The independent privilege lane is not globally held behind it.
+- Feature-only sweep cutover closes legacy admission, awaits whole-chain cancellation and execution
+  fence quiescence, then preserves ambiguous legacy target outcomes as unknown.
+- `PrivilegeSweepWorker` is a non-executing tombstone, not a retained sweep executor.
+  `SweepQueueCanceller.cancel(requestId)` is request-scoped; whole-chain cancellation belongs to the
+  compatibility cutover, not normal user cancellation.
 
-`DefaultRootLaneStatusSource` records lane mode, active command class, and fallback ownership. Sweep
-status exposes the SWEEP lane's degraded state and the progress surfaces display it. This is a visible
-degraded mode, not silent serialization through `MainShell`.
+`AppDatabase` is version **9**. `MIGRATION_8_9` adds typed data-task tables and evolves sweep
+ownership/state. Legacy target rows become `LEGACY_UNKNOWN`; nonterminal legacy requests are blocked
+with unresolved targets rather than fabricated completion. Terminal history/counters and retention
+are preserved without inventing per-target success.
 
-## Same-package coordination
+Do not delete released Worker classes while persisted work may still refer to them. Do not reinstate
+`APPEND_OR_REPLACE` producers as a shortcut around the service admission contract.
 
-Separate chains and shell sessions allow unrelated work to overlap; they do not permit conflicting
-mutations of the same package.
+## Root shell lanes and package exclusion
 
-`DefaultPackageOperationCoordinator` owns a process-wide lease per package. Archive backup/restore,
-sweep items, and direct mutations acquire that lease through their use cases. Admission timeouts are:
-
-| Lane | Package admission |
+| Lane | Normal root transport |
 |---|---|
-| `INTERACTIVE` | immediate (`0`) |
-| `SWEEP` | 2 seconds |
-| `ARCHIVE` | 5 seconds |
+| `INTERACTIVE` | Coordinated Odin `MainShell` access |
+| `ARCHIVE` | Owned, reusable dedicated root shell |
+| `SWEEP` | Separate owned, reusable dedicated root shell |
 
-A prompt action therefore reports `PackageOperationBusy` immediately when the same package is already
-owned. A sweep waits briefly and records the item as busy if it still cannot enter. An archive waits
-longer but still fails rather than blocking indefinitely. Different packages are not globally locked.
+`RootCommandRouter` chooses transport from `PrivilegeExecutionContext`. Each owned executor manages
+its session and generation. Timeout/cancellation invalidates the exact generation; arbitrary command
+failure or transport loss is not silently replayed.
 
-This package lease is independent of degraded `MainShell` coordination. A caller can be rejected
-because the package is busy even when its shell lane is isolated, or because `MainShell` is leased even
-when the package itself is free.
+If a dedicated background lane cannot open, it enters explicit degraded MainShell fallback.
+`RootFallbackCoordinator` allows background commands to wait for coordinated access while interactive
+admission fails promptly when occupied. Lane degradation and fallback ownership remain observable;
+they are not silent global serialization.
 
-## Operations deliberately outside these chains
+`DefaultPackageOperationCoordinator` provides same-package exclusion independently of root transport.
+Archive work, supported sweep items and coordinated direct mutations acquire package leases. Durable
+export/share additionally use `PackageReadDataTaskRunner` with `PackageOperationOwner.BUNDLE_READ`;
+delegate cleanup finishes before that lease is released. Different packages are not globally locked.
 
-The following remain direct operations or ordinary coroutines and must not be described as sweep
-workers:
-
-- force-stop;
-- uninstall;
-- whole-device cache trim (`clearAllCaches`), distinct from per-app cache clear;
-- share;
-- explicit suspend and unsuspend actions;
-- multi-app export (the `BackupRunner`/"backup all" path).
-
-Single-app export is the exception to the last item: it is `APP_EXPORT` on `THOR_JOB_CHAIN`.
-
-Force-stop and uninstall are intentionally excluded from durable sweeps because an interrupted worker
-may be re-run by WorkManager, and a second pass can act on a selection whose state was changed by the
-first pass. Adding one of these requires a persisted per-target resume contract, not just another enum
-arm.
-
-Explicit suspend/unsuspend remain distinct from sweep freeze/unfreeze. A freeze sweep may use suspend
-mode because that mode was resolved into its snapshot; this does not move the separate explicit
-suspend actions onto WorkManager.
-
-Component-control **Restore all** is also not a privilege sweep. It restores all component overrides
-recorded by Thor across packages for the current `thorUserId`. It is cross-app but single-Android-user,
-not device-wide.
-
-## Enqueue and retry rules
-
-`enqueueUniqueJob` awaits WorkManager's `Operation`. A synchronous rejection or an asynchronous
-failure returns no accepted work id, and sweep launch rolls back the Room snapshot. Cancelling only
-the coroutine that is waiting for enqueue does not cancel work already handed to WorkManager.
-
-`APPEND_OR_REPLACE` does not pre-empt current work. It appends behind a live chain and replaces a chain
-whose leaf is failed or cancelled so that a terminal predecessor cannot wedge future requests.
-
-No `ThorJobWorker` subclass returns `Result.retry()`. That does not remove the requirement to tolerate
-a process-death rerun: WorkManager can rerun interrupted work regardless of the result the old process
-would have returned. The archive jobs fail closed without their in-memory key; export and the four
-accepted sweep operations are designed around replay-safe effects and persisted state.
-
-## Notifications and progress
-
-All kinds share the `thor.jobs` low-importance channel. `ThorJobNotifications` owns progress rows,
-cancel actions, transient outcome rows, ids, and the one-second notification throttle.
-`JobRegistry` carries high-frequency in-process progress; WorkManager progress data is intentionally
-not written on every byte or item.
-
-Byte-moving jobs call `setForeground`. Sweeps post the same style of ongoing row without starting a
-foreground service. A sweep result notification is assembled from the persisted succeeded, failed,
-busy, and unresolved counts, including cancellation paths.
-
-Notification capability is checked before a sweep is persisted. A permission or channel revocation
-that races a running job is caught so the operation is not turned into a failure, but it can still
-remove the user's visible progress surface for the remainder of that run.
-
-## Initialization and boundaries
-
-Koin's `workManagerFactory()` initializes WorkManager with the generated worker factory. Thor removes
-AndroidX Startup's default `WorkManagerInitializer`; it does not implement
-`Configuration.Provider`.
-
-Workers run in Thor's main application process. Several parts of the design are process-memory
-singletons (`ArchiveKeyHolder`, `JobRegistry`, `JobSheetTargets`, `LaunchSweepBarrier`, and root lane
-status), so moving a worker to another Android process would break those contracts.
-
-Nothing in `:bypass` or `:vm-runtime` contributes a worker. Extensions call Thor through their bridge;
-they do not enqueue Thor work directly.
+Root availability probes are serialized by `ActiveGatewayResolver.rootProbeMutex` above command-lane
+admission. This avoids competing startup probes without weakening fail-fast admission for real
+interactive commands. Shizuku Manager remains the authorization boundary; probe serialization does
+not remove the intentional consent flow or grant broker permissions on Thor's behalf.
 
 ## Change checklist
 
 Before adding or moving an operation:
 
-1. Decide whether it moves bytes (`THOR_JOB_CHAIN`), is a replay-safe privilege sweep
-   (`THOR_SWEEP_CHAIN`), or should remain direct.
-2. Prove behavior after process death; banning `Result.retry()` is not enough.
-3. Select the correct `PrivilegeExecutionLane` for every root command.
-4. Use the package-operation coordinator for package mutations; do not replace it with a global lock.
-5. Persist every value a sweep needs before enqueue. Do not make a worker reconstruct a mutable screen
-   selection.
-6. Await the enqueue `Operation` and define rollback for a rejected handoff.
-7. Add user-visible queued, running, terminal, degraded, busy, observer-failure, and cancellation copy
-   to all shipped locales with matching positional placeholders.
-8. Keep cancellation wording honest: per-work for archive/export, whole-queue for sweeps.
-9. Keep `ThorJobKind` append-only and add exhaustive notification title/icon handling.
-10. Validate JVM tests, both lint variants, and a resource/build compile gate.
+1. Decide whether it belongs to the data allowlist, privilege allowlist, or a direct path. Do not infer
+   a queue from an operation's duration, name or number of apps.
+2. Resolve immutable inputs before admission; persist payload/state in Room and send only UUID wakes.
+3. Define session/claim fencing, interruption, cancellation and recovery—including uncertainty—not
+   merely success and retry.
+4. Preserve foreground promotion before execution, typed channel/permission handling and race-safe
+   final-empty shutdown.
+5. Select root lanes and package leases independently. Preserve startup-probe serialization and
+   Shizuku/Dhizuku consent boundaries.
+6. Keep secrets memory-only, cleanup ownership-bounded and restore interruption actionable.
+7. Preserve legacy drain and migration semantics; do not fabricate migrated outcomes or add new
+   WorkManager producers.
+8. Keep notification UUID routing, cancellation wording, localized quantities and accessible Queue
+   actions consistent with actual behavior.
+9. Validate focused regressions, complete Foss/Store JVM suites, instrumentation compilation, separate
+   lint variants and assemblies. Keep emulator evidence distinct from physical-device verification.
+10. Update this boundary document and the progress record with what was actually implemented and
+    verified, including remaining direct producers.
 
 ## Useful entry points
 
-- `domain/model/ThorJob.kt` — chain constants, job kinds, and progress stages.
-- `domain/model/PrivilegeExecution.kt` — lane, timeout, busy, and degradation contracts.
-- `domain/model/PrivilegeSweep.kt` — sweep operations, sources, states, and retention.
-- `data/backup/job/ThorJobLauncher.kt` — archive enqueue and the shared enqueue helper.
-- `data/backup/job/ExportJobLauncherImpl.kt` — single-app export producer.
-- `data/backup/job/ThorJobWorker.kt` — common lifecycle, notification, and result behavior.
-- `data/freezer/DefaultPrivilegeSweepController.kt` — durable sweep handoff and observation.
-- `data/freezer/PrivilegeSweepWorker.kt` — per-target execution and terminalization.
-- `data/freezer/SweepQueueCanceller.kt` — whole-chain cancellation.
-- `data/repository/RoomPrivilegeSweepStore.kt` — persisted sweep snapshots and counts.
-- `data/gateway/root/RootCommandRouter.kt` — lane routing and degradation.
-- `data/gateway/root/OwnedRootShellExecutor.kt` — dedicated shell ownership.
-- `data/gateway/root/RootFallbackCoordinator.kt` — coordinated MainShell fallback.
-- `data/privilege/DefaultPackageOperationCoordinator.kt` — same-package exclusion.
+Paths below are under `app/src/main/java/com/valhalla/thor/` unless noted.
+
+- `domain/model/DataTask.kt`, `domain/model/PrivilegeSweep.kt` — durable models and operation allowlists.
+- `data/backup/job/DataTaskAcceptance.kt` — data admission and service-wake handoff.
+- `data/backup/job/DataSyncCoordinator.kt`, `data/backup/service/DataSyncService.kt` — data execution/lifecycle.
+- `data/freezer/DefaultPrivilegeSweepController.kt`, `data/freezer/PrivilegeSweepService.kt` — privilege admission/lifecycle.
+- `data/source/local/room/DataTaskDao.kt`, `PrivilegeSweepDao.kt`, `AppDatabase.kt` — claims, settlement and migration.
+- `data/service/ForegroundServiceNotificationCapability.kt` — typed notification capability.
+- `data/backup/job/DataTaskCancellationCoordinator.kt`, `data/freezer/PrivilegeSweepCancellationCoordinator.kt` — task cancellation.
+- `data/freezer/PrivilegeSweepReconciler.kt` — privilege recovery/reconciliation.
+- `data/backup/job/LegacyDataWorkDrainGate.kt`, `data/freezer/PrivilegeSweepWorkManagerCutover.kt` — compatibility barriers.
+- `data/backup/job/PackageReadDataTaskRunner.kt` — durable export/share package-read lease.
+- `presentation/share/ShareIntentFactory.kt`, `ReadyShareRetentionSweeper.kt` — foreground handoff and expiry.
+- `data/repository/RoomTaskQueueRepository.kt`, `presentation/queue/TaskDetailViewModel.kt` — durable Queue/detail projection.
+- `data/gateway/root/RootCommandRouter.kt`, `OwnedRootShellExecutor.kt`, `RootFallbackCoordinator.kt` — root transport.
+- `data/repository/ActiveGatewayResolver.kt` — startup capability-probe serialization.
+- `data/privilege/DefaultPackageOperationCoordinator.kt` — package exclusion.
