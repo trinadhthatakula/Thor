@@ -613,10 +613,7 @@
     <string name="log_uninstalling_batch">A desinstalar aplicações</string>
     <string name="log_suspending_batch">A suspender aplicações</string>
     <string name="log_unsuspending_batch">A anular a suspensão das aplicações</string>
-    <string name="log_sharing_batch">A partilhar aplicações</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] A preparar %3$s…</string>
-    <string name="log_ready"> -> Pronto</string>
     <string name="log_success"> -> Sucesso</string>
     <string name="log_failed"> -> Falhou: %1$s</string>
 
@@ -830,7 +827,6 @@
     <string name="task_queue_cancel">Cancelar</string>
     <string name="task_queue_close">Fechar</string>
     <string name="task_queue_progress">%1$d de %2$d</string>
-    <string name="task_queue_later_count">%1$d mais tarde nesta fila</string>
 
     <string name="task_action_authenticate_archive">Autenticar arquivo</string>
     <string name="task_action_provide_source">Fornecer origem</string>
@@ -877,8 +873,14 @@
     <string name="task_reason_waiting_for_privilege">Configure o Root, o Shizuku ou o Dhizuku e volte ao Thor.</string>
     <string name="task_reason_interrupted_restore">O restauro de %1$s foi interrompido depois de as alterações aos dados terem começado. Reveja-o antes de retomar.</string>
     <string name="task_reason_interrupted_sweep">O Thor não conseguiu verificar %1$s depois de %2$s. Tente novamente apenas após rever a aplicação.</string>
-    <string name="task_reason_ready">Estão prontos para partilhar %1$d ficheiros preparados.</string>
-    <string name="task_reason_ready_partial">%1$d de %2$d ficheiros estão prontos para partilhar; os restantes não puderam ser preparados.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="one">Está pronto para partilhar %1$d ficheiro preparado.</item>
+        <item quantity="other">Estão prontos para partilhar %1$d ficheiros preparados.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="one">%1$d de %2$d ficheiros está pronto para partilhar; os restantes não puderam ser preparados.</item>
+        <item quantity="other">%1$d de %2$d ficheiros estão prontos para partilhar; os restantes não puderam ser preparados.</item>
+    </plurals>
     <string name="task_reason_start_blocked">O Android impediu o início desta tarefa. Tente novamente com o Thor aberto.</string>
     <string name="task_reason_start_blocked_notification">Este canal de notificações está bloqueado. Ative-o antes de tentar novamente.</string>
     <string name="task_reason_failed">A tarefa não terminou. Reveja os detalhes antes de tentar novamente.</string>
@@ -893,14 +895,21 @@
     <string name="data_queue_notification_title">Operação de dados em curso</string>
     <string name="privilege_queue_notification_title">Ação numa aplicação em curso</string>
     <string name="task_queue_notification_status">%1$s · %2$d de %3$d</string>
-    <string name="task_queue_notification_later_count">Mais %1$d em fila</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="one">Mais %1$d tarefa em fila</item>
+        <item quantity="other">Mais %1$d tarefas em fila</item>
+    </plurals>
     <string name="task_queue_notification_cancel">Cancelar</string>
     <string name="task_queue_notification_ready_title">Pronto para partilhar</string>
-    <string name="task_queue_notification_ready_text">Estão prontos %1$d ficheiros preparados.</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="one">Está pronto %1$d ficheiro preparado.</item>
+        <item quantity="other">Estão prontos %1$d ficheiros preparados.</item>
+    </plurals>
     <string name="task_queue_notification_ready_partial_title">Alguns ficheiros estão prontos para partilhar</string>
-    <string name="task_queue_notification_ready_partial_text">%1$d de %2$d ficheiros estão prontos.</string>
-    <string name="task_queue_notification_expired_title">Os ficheiros preparados expiraram</string>
-    <string name="task_queue_notification_expired_text">Abra o Thor para rever a tarefa expirada.</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="one">%1$d de %2$d ficheiros está pronto.</item>
+        <item quantity="other">%1$d de %2$d ficheiros estão prontos.</item>
+    </plurals>
 
     <string name="task_dialog_archive_auth_title">Autenticar arquivo</string>
     <string name="task_dialog_archive_auth_message">Introduza a frase-passe do arquivo de %1$s. Só é usada nesta tentativa e não é guardada.</string>
@@ -912,26 +921,12 @@
     <string name="task_dialog_restore_review_title">Rever restauro interrompido</string>
     <string name="task_dialog_restore_review_message">O restauro de %1$s parou depois de as alterações aos dados terem começado. Verifique a aplicação antes de escolher Retomar.</string>
     <string name="task_dialog_restore_review_resume">Retomar restauro</string>
-    <string name="task_dialog_privilege_title">Privilégio necessário</string>
-    <string name="task_dialog_privilege_message">Configure o Root, o Shizuku ou o Dhizuku em primeiro plano. O Thor voltará a verificar o acesso quando regressar.</string>
-    <string name="task_dialog_privilege_open">Configurar privilégio</string>
     <string name="task_dialog_sweep_retry_title">Autorizar nova tentativa no alvo</string>
     <string name="task_dialog_sweep_retry_message">O Thor não conseguiu verificar %1$s depois de %2$s. Tente novamente neste alvo apenas se for seguro repetir a ação.</string>
     <string name="task_dialog_sweep_retry_confirm">Tentar novamente neste alvo</string>
-    <string name="task_dialog_share_ready_title">Ficheiros prontos para partilhar</string>
-    <string name="task_dialog_share_ready_message">Partilhar agora os %1$d ficheiros preparados?</string>
-    <string name="task_dialog_share_partial_title">Alguns ficheiros estão prontos</string>
-    <string name="task_dialog_share_partial_message">Partilhar os %1$d ficheiros preparados de um total de %2$d?</string>
-    <string name="task_dialog_share_expired_title">Ficheiros expirados</string>
     <string name="task_dialog_share_expired_message">Estes ficheiros privados para partilha atingiram o limite de 24 horas e foram removidos.</string>
 
     <string name="task_log_queued">Tarefa aceite e colocada em fila.</string>
-    <string name="task_log_started">%1$s iniciada.</string>
-    <string name="task_log_stopping">Cancelamento pedido; à espera da conclusão da limpeza segura.</string>
-    <string name="task_log_waiting_for_auth">À espera da frase-passe do arquivo de %1$s.</string>
-    <string name="task_log_waiting_for_source">À espera de uma origem de restauro para %1$s.</string>
-    <string name="task_log_waiting_for_privilege">À espera da autorização do privilégio.</string>
-    <string name="task_log_interrupted_review">O trabalho interrompido tem de ser revisto antes de retomar.</string>
     <string name="task_log_stage_preparing">A preparar a tarefa.</string>
     <string name="task_log_stage_staging_source">A copiar a origem selecionada para a área privada temporária.</string>
     <string name="task_log_stage_measuring">A medir os dados da aplicação.</string>
@@ -947,12 +942,5 @@
     <string name="task_log_item_cancelled">%1$s cancelado.</string>
     <string name="task_log_item_busy">%1$s foi ignorado porque está a ser usado por outra operação.</string>
     <string name="task_log_item_unknown">Não foi possível verificar o estado final de %1$s.</string>
-    <string name="task_log_root_lane_degraded">O canal root dedicado ficou indisponível; a usar o canal alternativo partilhado.</string>
-    <string name="task_log_output_ready">%1$s está pronto.</string>
-    <string name="task_log_output_expired">%1$s expirou e foi removido.</string>
-    <string name="task_log_result_succeeded">Concluídos %1$d de %2$d itens.</string>
-    <string name="task_log_result_partial">Com êxito: %1$d · falhados: %2$d.</string>
-    <string name="task_log_result_failed">A tarefa falhou.</string>
-    <string name="task_log_result_cancelled">Cancelada depois de concluir %1$d de %2$d itens.</string>
 
 </resources>

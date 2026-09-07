@@ -15,6 +15,8 @@ import com.valhalla.thor.HomeActivity
 import com.valhalla.thor.R
 import com.valhalla.thor.data.service.FOREGROUND_PENDING_INTENT_FLAGS
 import com.valhalla.thor.data.service.ForegroundPendingIntentNamespace
+import com.valhalla.thor.data.service.QueueNotificationSnapshot
+import com.valhalla.thor.data.service.queueNotificationStatus
 import com.valhalla.thor.data.service.PRIVILEGED_FOREGROUND_CHANNEL_ID
 import com.valhalla.thor.presentation.launcher.TaskQueueLaunchActivity
 import java.util.UUID
@@ -42,7 +44,17 @@ internal class PrivilegeSweepServiceNotification(
         .setContentIntent(genericContentIntent())
         .build()
 
-    fun running(requestId: UUID, packageName: String): Notification = baseBuilder()
+    fun running(requestId: UUID, packageName: String): Notification = runningBuilder(requestId, packageName).build()
+
+    fun running(snapshot: QueueNotificationSnapshot): Notification =
+        runningBuilder(snapshot.task.taskId, context.queueNotificationStatus(snapshot))
+            .setSubText(context.resources.getQuantityString(
+                R.plurals.task_queue_notification_later_count,
+                snapshot.laterQueuedTasks, snapshot.laterQueuedTasks,
+            ))
+            .build()
+
+    private fun runningBuilder(requestId: UUID, packageName: String): NotificationCompat.Builder = baseBuilder()
         .setContentTitle(context.getString(R.string.privilege_queue_notification_title))
         .setContentText(packageName)
         .setContentIntent(taskContentIntent(requestId))
@@ -56,7 +68,6 @@ internal class PrivilegeSweepServiceNotification(
                 FOREGROUND_PENDING_INTENT_FLAGS,
             ),
         )
-        .build()
 
     private fun baseBuilder(): NotificationCompat.Builder =
         NotificationCompat.Builder(context, PRIVILEGED_FOREGROUND_CHANNEL_ID)

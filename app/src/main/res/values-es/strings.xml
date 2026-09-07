@@ -387,10 +387,7 @@
     <string name="log_uninstalling_batch">Desinstalando aplicaciones</string>
     <string name="log_suspending_batch">Suspendiendo aplicaciones</string>
     <string name="log_unsuspending_batch">Reanudando aplicaciones</string>
-    <string name="log_sharing_batch">Compartiendo aplicaciones</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] Preparando %3$s…</string>
-    <string name="log_ready"> -> Listo</string>
     <string name="log_success"> -> Éxito</string>
     <string name="log_failed"> -> Falló: %1$s</string>
 
@@ -767,7 +764,6 @@
     <string name="task_queue_cancel">Cancelar</string>
     <string name="task_queue_close">Cerrar</string>
     <string name="task_queue_progress">%1$d de %2$d</string>
-    <string name="task_queue_later_count">%1$d después en esta cola</string>
 
     <string name="task_action_authenticate_archive">Autenticar archivo</string>
     <string name="task_action_provide_source">Proporcionar origen</string>
@@ -814,8 +810,14 @@
     <string name="task_reason_waiting_for_privilege">Configura Root, Shizuku o Dhizuku y vuelve a Thor.</string>
     <string name="task_reason_interrupted_restore">La restauración de %1$s se interrumpió después de empezar a cambiar los datos. Revísala antes de reanudarla.</string>
     <string name="task_reason_interrupted_sweep">Thor no pudo verificar %1$s después de %2$s. Reintenta solo después de revisar la aplicación.</string>
-    <string name="task_reason_ready">Hay %1$d archivos preparados listos para compartir.</string>
-    <string name="task_reason_ready_partial">%1$d de %2$d archivos están listos para compartir; no se pudo preparar el resto.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="one">Hay %1$d archivo preparado listo para compartir.</item>
+        <item quantity="other">Hay %1$d archivos preparados listos para compartir.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="one">%1$d de %2$d archivos está listo para compartir; no se pudo preparar el resto.</item>
+        <item quantity="other">%1$d de %2$d archivos están listos para compartir; no se pudo preparar el resto.</item>
+    </plurals>
     <string name="task_reason_start_blocked">Android impidió que se iniciara esta tarea. Reinténtalo con Thor abierto.</string>
     <string name="task_reason_start_blocked_notification">Este canal de notificaciones está bloqueado. Actívalo antes de reintentar.</string>
     <string name="task_reason_failed">La tarea no terminó. Revisa los detalles antes de volver a intentarlo.</string>
@@ -830,14 +832,21 @@
     <string name="data_queue_notification_title">Operación de datos en curso</string>
     <string name="privilege_queue_notification_title">Acción en una aplicación en curso</string>
     <string name="task_queue_notification_status">%1$s · %2$d de %3$d</string>
-    <string name="task_queue_notification_later_count">%1$d más en cola</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="one">%1$d tarea más en cola</item>
+        <item quantity="other">%1$d tareas más en cola</item>
+    </plurals>
     <string name="task_queue_notification_cancel">Cancelar</string>
     <string name="task_queue_notification_ready_title">Listo para compartir</string>
-    <string name="task_queue_notification_ready_text">Hay %1$d archivos preparados.</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="one">Hay %1$d archivo preparado.</item>
+        <item quantity="other">Hay %1$d archivos preparados.</item>
+    </plurals>
     <string name="task_queue_notification_ready_partial_title">Algunos archivos están listos para compartir</string>
-    <string name="task_queue_notification_ready_partial_text">%1$d de %2$d archivos están listos.</string>
-    <string name="task_queue_notification_expired_title">Los archivos preparados han caducado</string>
-    <string name="task_queue_notification_expired_text">Abre Thor para revisar la tarea caducada.</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="one">%1$d de %2$d archivos está listo.</item>
+        <item quantity="other">%1$d de %2$d archivos están listos.</item>
+    </plurals>
 
     <string name="task_dialog_archive_auth_title">Autenticar archivo</string>
     <string name="task_dialog_archive_auth_message">Introduce la frase de contraseña del archivo de %1$s. Solo se usa en este intento y no se guarda.</string>
@@ -849,26 +858,12 @@
     <string name="task_dialog_restore_review_title">Revisar restauración interrumpida</string>
     <string name="task_dialog_restore_review_message">La restauración de %1$s se detuvo después de empezar a cambiar los datos. Comprueba la aplicación antes de elegir Reanudar.</string>
     <string name="task_dialog_restore_review_resume">Reanudar restauración</string>
-    <string name="task_dialog_privilege_title">Privilegio requerido</string>
-    <string name="task_dialog_privilege_message">Configura Root, Shizuku o Dhizuku en primer plano. Thor volverá a comprobar el acceso cuando regreses.</string>
-    <string name="task_dialog_privilege_open">Configurar privilegio</string>
     <string name="task_dialog_sweep_retry_title">Autorizar reintento del objetivo</string>
     <string name="task_dialog_sweep_retry_message">Thor no pudo verificar %1$s después de %2$s. Reintenta este objetivo solo si es seguro repetir la acción.</string>
     <string name="task_dialog_sweep_retry_confirm">Reintentar este objetivo</string>
-    <string name="task_dialog_share_ready_title">Archivos listos para compartir</string>
-    <string name="task_dialog_share_ready_message">¿Compartir ahora los %1$d archivos preparados?</string>
-    <string name="task_dialog_share_partial_title">Algunos archivos están listos</string>
-    <string name="task_dialog_share_partial_message">¿Compartir los %1$d archivos preparados de un total de %2$d?</string>
-    <string name="task_dialog_share_expired_title">Archivos caducados</string>
     <string name="task_dialog_share_expired_message">Estos archivos privados para compartir alcanzaron el límite de 24 horas y se eliminaron.</string>
 
     <string name="task_log_queued">Tarea aceptada y puesta en cola.</string>
-    <string name="task_log_started">Se inició %1$s.</string>
-    <string name="task_log_stopping">Cancelación solicitada; esperando a que termine la limpieza segura.</string>
-    <string name="task_log_waiting_for_auth">Esperando la frase de contraseña del archivo de %1$s.</string>
-    <string name="task_log_waiting_for_source">Esperando un origen de restauración para %1$s.</string>
-    <string name="task_log_waiting_for_privilege">Esperando la autorización del privilegio.</string>
-    <string name="task_log_interrupted_review">El trabajo interrumpido debe revisarse antes de reanudarlo.</string>
     <string name="task_log_stage_preparing">Preparando la tarea.</string>
     <string name="task_log_stage_staging_source">Copiando el origen seleccionado al almacenamiento privado temporal.</string>
     <string name="task_log_stage_measuring">Midiendo los datos de la aplicación.</string>
@@ -884,12 +879,5 @@
     <string name="task_log_item_cancelled">Se canceló %1$s.</string>
     <string name="task_log_item_busy">Se omitió %1$s porque otra operación lo está usando.</string>
     <string name="task_log_item_unknown">No se pudo verificar el estado final de %1$s.</string>
-    <string name="task_log_root_lane_degraded">El canal root dedicado dejó de estar disponible; se usa el canal alternativo compartido.</string>
-    <string name="task_log_output_ready">%1$s está listo.</string>
-    <string name="task_log_output_expired">%1$s caducó y se eliminó.</string>
-    <string name="task_log_result_succeeded">Se completaron %1$d de %2$d elementos.</string>
-    <string name="task_log_result_partial">Completados: %1$d · fallidos: %2$d.</string>
-    <string name="task_log_result_failed">La tarea falló.</string>
-    <string name="task_log_result_cancelled">Se canceló después de completar %1$d de %2$d elementos.</string>
 
 </resources>

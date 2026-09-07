@@ -5,6 +5,7 @@ package com.valhalla.thor.data.backup.service
 
 import android.annotation.SuppressLint
 import android.app.Service
+import android.app.Notification
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -17,12 +18,20 @@ import com.valhalla.thor.data.backup.job.evaluateDataNotificationCapability
 import com.valhalla.thor.data.backup.job.DataTaskStore
 import com.valhalla.thor.data.service.DATA_FOREGROUND_CHANNEL_ID
 import com.valhalla.thor.data.service.ForegroundNotificationState
+import com.valhalla.thor.data.service.observeQueueNotifications
+import com.valhalla.thor.data.repository.toQueuedSummary
 import com.valhalla.thor.data.service.ForegroundServiceNotificationCapability
 import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.data.source.local.room.DataTaskDao
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.component.KoinComponent
@@ -37,10 +46,35 @@ class DataSyncService : Service(), KoinComponent {
     private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
     private val mainDispatcher: CoroutineDispatcher by inject(named("main"))
     private val generationFence = DataSyncServiceGenerationFence()
+    private val notificationLock = Any()
+    private var activeNotification: Notification? = null
+    private val activeNotificationTask = MutableStateFlow<UUID?>(null)
+    private val notificationScope by lazy { CoroutineScope(SupervisorJob() + ioDispatcher) }
+    private var notificationObserver: Job? = null
+    private var destroyed = false
+
+    private fun observeNotifications(notification: DataSyncServiceNotification) {
+        if (notificationObserver != null) return
+        notificationObserver = notificationScope.observeQueueNotifications(
+            activeNotificationTask,
+            dataTaskDao.observeRetained().map { rows -> rows.map { it.toQueuedSummary() } },
+        ) { snapshot ->
+            synchronized(notificationLock) {
+                if (!destroyed && activeNotificationTask.value == snapshot.task.taskId) {
+                    ForegroundServiceNotificationCapability(this).evaluateAndPromote(DATA_FOREGROUND_CHANNEL_ID) {
+                        val updated = notification.running(snapshot)
+                        ServiceCompat.startForeground(this, DataSyncServiceNotification.NOTIFICATION_ID,
+                            updated, dataSyncForegroundServiceType(Build.VERSION.SDK_INT))
+                        activeNotification = updated
+                    }
+                }
+            }
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = DataSyncServiceNotification(this)
-        val promotion = evaluateDataNotificationCapability(
+        val promotion = synchronized(notificationLock) { evaluateDataNotificationCapability(
             ensureChannel = notification::ensureChannel,
             evaluate = {
                 ForegroundServiceNotificationCapability(this).evaluateAndPromote(
@@ -49,12 +83,12 @@ class DataSyncService : Service(), KoinComponent {
                     ServiceCompat.startForeground(
                         this,
                         DataSyncServiceNotification.NOTIFICATION_ID,
-                        notification.preparing(),
+                        activeNotification ?: notification.preparing(),
                         dataSyncForegroundServiceType(Build.VERSION.SDK_INT),
                     )
                 }
             },
-        )
+        ) }
         if (
             promotion !== ForegroundNotificationState.Available &&
             promotion !== ForegroundNotificationState.PostPermissionDenied
@@ -79,14 +113,20 @@ class DataSyncService : Service(), KoinComponent {
         }
 
         running.set(true)
+        observeNotifications(notification)
         coordinator.wake(
             onClaimed = { taskId, label ->
-                ServiceCompat.startForeground(
-                    this,
-                    DataSyncServiceNotification.NOTIFICATION_ID,
-                    notification.running(taskId, label),
-                    dataSyncForegroundServiceType(Build.VERSION.SDK_INT),
-                )
+                synchronized(notificationLock) {
+                    if (!destroyed) {
+                        val updated = notification.running(taskId, label)
+                        ServiceCompat.startForeground(
+                            this, DataSyncServiceNotification.NOTIFICATION_ID, updated,
+                            dataSyncForegroundServiceType(Build.VERSION.SDK_INT),
+                        )
+                        activeNotificationTask.value = taskId
+                        activeNotification = updated
+                    }
+                }
             },
             onDrained = { finishDrainedGeneration(startId) },
         )
@@ -118,6 +158,13 @@ class DataSyncService : Service(), KoinComponent {
     }
 
     override fun onDestroy() {
+        synchronized(notificationLock) {
+            destroyed = true
+            activeNotificationTask.value = null
+            activeNotification = null
+            notificationObserver?.cancel()
+        }
+        if (notificationObserver != null) notificationScope.cancel()
         running.set(false)
         super.onDestroy()
     }
@@ -168,7 +215,15 @@ class DataSyncService : Service(), KoinComponent {
     private fun finishGeneration(startId: Int): Boolean = finishDataSyncServiceGeneration(
         startId = startId,
         stopSelfResult = ::stopSelfResult,
-        removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
+        removeForeground = {
+            synchronized(notificationLock) {
+                destroyed = true
+                activeNotificationTask.value = null
+                activeNotification = null
+                notificationObserver?.cancel()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+        },
     )
 
     companion object {

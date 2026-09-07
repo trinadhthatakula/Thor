@@ -63,7 +63,6 @@ class LocalePolicyTest {
         "task_queue_cancel",
         "task_queue_close",
         "task_queue_progress",
-        "task_queue_later_count",
         "task_action_authenticate_archive",
         "task_action_provide_source",
         "task_action_review_restore",
@@ -106,8 +105,6 @@ class LocalePolicyTest {
         "task_reason_waiting_for_privilege",
         "task_reason_interrupted_restore",
         "task_reason_interrupted_sweep",
-        "task_reason_ready",
-        "task_reason_ready_partial",
         "task_reason_start_blocked",
         "task_reason_start_blocked_notification",
         "task_reason_failed",
@@ -121,14 +118,9 @@ class LocalePolicyTest {
         "data_queue_notification_title",
         "privilege_queue_notification_title",
         "task_queue_notification_status",
-        "task_queue_notification_later_count",
         "task_queue_notification_cancel",
         "task_queue_notification_ready_title",
-        "task_queue_notification_ready_text",
         "task_queue_notification_ready_partial_title",
-        "task_queue_notification_ready_partial_text",
-        "task_queue_notification_expired_title",
-        "task_queue_notification_expired_text",
         "task_dialog_archive_auth_title",
         "task_dialog_archive_auth_message",
         "task_dialog_archive_passphrase_label",
@@ -139,25 +131,11 @@ class LocalePolicyTest {
         "task_dialog_restore_review_title",
         "task_dialog_restore_review_message",
         "task_dialog_restore_review_resume",
-        "task_dialog_privilege_title",
-        "task_dialog_privilege_message",
-        "task_dialog_privilege_open",
         "task_dialog_sweep_retry_title",
         "task_dialog_sweep_retry_message",
         "task_dialog_sweep_retry_confirm",
-        "task_dialog_share_ready_title",
-        "task_dialog_share_ready_message",
-        "task_dialog_share_partial_title",
-        "task_dialog_share_partial_message",
-        "task_dialog_share_expired_title",
         "task_dialog_share_expired_message",
         "task_log_queued",
-        "task_log_started",
-        "task_log_stopping",
-        "task_log_waiting_for_auth",
-        "task_log_waiting_for_source",
-        "task_log_waiting_for_privilege",
-        "task_log_interrupted_review",
         "task_log_stage_preparing",
         "task_log_stage_staging_source",
         "task_log_stage_measuring",
@@ -173,13 +151,14 @@ class LocalePolicyTest {
         "task_log_item_cancelled",
         "task_log_item_busy",
         "task_log_item_unknown",
-        "task_log_root_lane_degraded",
-        "task_log_output_ready",
-        "task_log_output_expired",
-        "task_log_result_succeeded",
-        "task_log_result_partial",
-        "task_log_result_failed",
-        "task_log_result_cancelled",
+    )
+
+    private val taskQueuePluralKeys = setOf(
+        "task_reason_ready",
+        "task_reason_ready_partial",
+        "task_queue_notification_ready_text",
+        "task_queue_notification_ready_partial_text",
+        "task_queue_notification_later_count",
     )
 
     private val shippedResourceDirectories = listOf(
@@ -845,6 +824,47 @@ class LocalePolicyTest {
             "Task queue placeholder mismatches: ${mismatches.joinToString()}",
             mismatches.isEmpty()
         )
+    }
+
+    @Test
+    fun taskQueuePluralsCoverLocaleCategoriesAndPreserveEveryArgument() {
+        val english = pluralResources("values")
+        for (directory in shippedResourceDirectories) {
+            val expectedCategories = when (directory) {
+                "values-ar" -> setOf("zero", "one", "two", "few", "many", "other")
+                "values-pl" -> setOf("one", "few", "many", "other")
+                "values-zh-rCN" -> setOf("other")
+                else -> setOf("one", "other")
+            }
+            val localized = pluralResources(directory)
+            for (key in taskQueuePluralKeys) {
+                val forms = localized[key]
+                assertEquals("$directory/$key categories", expectedCategories, forms?.keys)
+                val expected = placeholderSignature(english.getValue(key).getValue("other"))
+                for ((quantity, text) in requireNotNull(forms)) {
+                    assertEquals("$directory/$key/$quantity arguments", expected, placeholderSignature(text))
+                    assertTrue("$directory/$key/$quantity is blank", text.isNotBlank())
+                }
+                if (expectedCategories.size > 1) {
+                    assertTrue("$directory/$key must adapt grammatical number", forms.values.toSet().size > 1)
+                }
+                assertFalse("$directory/$key still has an obsolete string", key in stringResources(directory))
+            }
+        }
+    }
+
+    private fun pluralResources(directory: String): Map<String, Map<String, String>> {
+        val document = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+            .newDocumentBuilder().parse(File(resourceRoot(), "$directory/strings.xml"))
+        val plurals = document.getElementsByTagName("plurals")
+        return (0 until plurals.length).associate { index ->
+            val plural = plurals.item(index) as org.w3c.dom.Element
+            val items = plural.getElementsByTagName("item")
+            plural.getAttribute("name") to (0 until items.length).associate { itemIndex ->
+                val item = items.item(itemIndex) as org.w3c.dom.Element
+                item.getAttribute("quantity") to item.textContent
+            }
+        }
     }
 
     private fun stringResources(directory: String): Map<String, String> {

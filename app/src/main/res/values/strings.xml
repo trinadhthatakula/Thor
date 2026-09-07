@@ -668,10 +668,7 @@
     <string name="log_uninstalling_batch">Uninstalling Apps</string>
     <string name="log_suspending_batch">Suspending Apps</string>
     <string name="log_unsuspending_batch">Unsuspending Apps</string>
-    <string name="log_sharing_batch">Sharing Apps</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] Preparing %3$s…</string>
-    <string name="log_ready"> -> Ready</string>
     <string name="log_success"> -> Success</string>
     <string name="log_failed"> -> Failed: %1$s</string>
 
@@ -832,7 +829,6 @@
     <string name="task_queue_cancel">Cancel</string>
     <string name="task_queue_close">Close</string>
     <string name="task_queue_progress">%1$d of %2$d</string>
-    <string name="task_queue_later_count">%1$d later in this queue</string>
 
     <string name="task_action_authenticate_archive">Authenticate archive</string>
     <string name="task_action_provide_source">Provide source</string>
@@ -879,8 +875,14 @@
     <string name="task_reason_waiting_for_privilege">Set up Root, Shizuku, or Dhizuku, then return to Thor.</string>
     <string name="task_reason_interrupted_restore">%1$s was interrupted after app data changes began. Review before resuming.</string>
     <string name="task_reason_interrupted_sweep">Thor could not verify %1$s after %2$s. Retry only after reviewing the app.</string>
-    <string name="task_reason_ready">%1$d prepared files are ready to share.</string>
-    <string name="task_reason_ready_partial">%1$d of %2$d files are ready to share; the rest could not be prepared.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="one">%1$d prepared file is ready to share.</item>
+        <item quantity="other">%1$d prepared files are ready to share.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="one">%1$d of %2$d files is ready to share; the rest could not be prepared.</item>
+        <item quantity="other">%1$d of %2$d files are ready to share; the rest could not be prepared.</item>
+    </plurals>
     <string name="task_reason_start_blocked">Android prevented this task from starting. Retry while Thor is open.</string>
     <string name="task_reason_start_blocked_notification">This notification channel is blocked. Enable it before retrying.</string>
     <string name="task_reason_failed">The task did not finish. Review the details before trying again.</string>
@@ -895,14 +897,21 @@
     <string name="data_queue_notification_title">Data operation in progress</string>
     <string name="privilege_queue_notification_title">App action in progress</string>
     <string name="task_queue_notification_status">%1$s · %2$d of %3$d</string>
-    <string name="task_queue_notification_later_count">%1$d more queued</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="one">%1$d more task queued</item>
+        <item quantity="other">%1$d more tasks queued</item>
+    </plurals>
     <string name="task_queue_notification_cancel">Cancel</string>
     <string name="task_queue_notification_ready_title">Ready to share</string>
-    <string name="task_queue_notification_ready_text">%1$d prepared files are ready.</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="one">%1$d prepared file is ready.</item>
+        <item quantity="other">%1$d prepared files are ready.</item>
+    </plurals>
     <string name="task_queue_notification_ready_partial_title">Some files are ready to share</string>
-    <string name="task_queue_notification_ready_partial_text">%1$d of %2$d files are ready.</string>
-    <string name="task_queue_notification_expired_title">Prepared files expired</string>
-    <string name="task_queue_notification_expired_text">Open Thor to review the expired task.</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="one">%1$d of %2$d files is ready.</item>
+        <item quantity="other">%1$d of %2$d files are ready.</item>
+    </plurals>
 
     <string name="task_dialog_archive_auth_title">Authenticate archive</string>
     <string name="task_dialog_archive_auth_message">Enter the archive passphrase for %1$s. It is used only for this attempt and is not saved.</string>
@@ -914,26 +923,12 @@
     <string name="task_dialog_restore_review_title">Review interrupted restore</string>
     <string name="task_dialog_restore_review_message">The restore for %1$s stopped after app data changes began. Check the app before choosing Resume.</string>
     <string name="task_dialog_restore_review_resume">Resume restore</string>
-    <string name="task_dialog_privilege_title">Privilege required</string>
-    <string name="task_dialog_privilege_message">Set up Root, Shizuku, or Dhizuku in the foreground. Thor will check access again when you return.</string>
-    <string name="task_dialog_privilege_open">Set up privilege</string>
     <string name="task_dialog_sweep_retry_title">Authorize target retry</string>
     <string name="task_dialog_sweep_retry_message">Thor could not verify %1$s after %2$s. Retry this target only if repeating the action is safe.</string>
     <string name="task_dialog_sweep_retry_confirm">Retry this target</string>
-    <string name="task_dialog_share_ready_title">Files ready to share</string>
-    <string name="task_dialog_share_ready_message">Share %1$d prepared files now?</string>
-    <string name="task_dialog_share_partial_title">Some files are ready</string>
-    <string name="task_dialog_share_partial_message">Share the %1$d files prepared out of %2$d?</string>
-    <string name="task_dialog_share_expired_title">Files expired</string>
     <string name="task_dialog_share_expired_message">These private share files reached their 24-hour limit and were removed.</string>
 
     <string name="task_log_queued">Task accepted and queued.</string>
-    <string name="task_log_started">Started %1$s.</string>
-    <string name="task_log_stopping">Cancellation requested; waiting for safe cleanup.</string>
-    <string name="task_log_waiting_for_auth">Waiting for the archive passphrase for %1$s.</string>
-    <string name="task_log_waiting_for_source">Waiting for a restore source for %1$s.</string>
-    <string name="task_log_waiting_for_privilege">Waiting for privilege authorization.</string>
-    <string name="task_log_interrupted_review">Interrupted work needs review before it can resume.</string>
     <string name="task_log_stage_preparing">Preparing task.</string>
     <string name="task_log_stage_staging_source">Copying the selected source to private staging.</string>
     <string name="task_log_stage_measuring">Measuring app data.</string>
@@ -949,12 +944,5 @@
     <string name="task_log_item_cancelled">Cancelled %1$s.</string>
     <string name="task_log_item_busy">Skipped %1$s because another operation is using it.</string>
     <string name="task_log_item_unknown">The final state of %1$s could not be verified.</string>
-    <string name="task_log_root_lane_degraded">The dedicated root lane became unavailable; using the shared fallback lane.</string>
-    <string name="task_log_output_ready">%1$s is ready.</string>
-    <string name="task_log_output_expired">%1$s expired and was removed.</string>
-    <string name="task_log_result_succeeded">Completed %1$d of %2$d items.</string>
-    <string name="task_log_result_partial">Succeeded: %1$d · failed: %2$d.</string>
-    <string name="task_log_result_failed">The task failed.</string>
-    <string name="task_log_result_cancelled">Cancelled after completing %1$d of %2$d items.</string>
 
 </resources>

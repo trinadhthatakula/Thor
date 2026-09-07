@@ -17,7 +17,6 @@ import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.EXPORT_LABEL_KEY
 import com.valhalla.thor.domain.model.EXPORT_TREE_KEY
-import com.valhalla.thor.domain.model.JOB_ERROR_KEY
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
@@ -169,7 +168,7 @@ internal class AppExportWorker(
             },
             ioDispatcher = ioDispatcher,
         )
-        val result = runLegacyAppExportTask(
+        return runLegacyAppExportTask(
             taskId = id,
             decodedRequest = decoded,
             runAttemptCount = runAttemptCount,
@@ -193,21 +192,18 @@ internal class AppExportWorker(
                     } ?: progress
                 )
             },
-            results = LegacyWorkerResultSink(DataTaskKind.APP_EXPORT),
+            results = LegacyWorkerResultSink(
+                kind = DataTaskKind.APP_EXPORT,
+                onSuccess = {
+                    destination?.let { location ->
+                        val label = decoded?.label ?: initialLabel
+                        noteResult(getString(R.string.export_job_saved, label, location))
+                    }
+                },
+                onFailure = ::noteResult,
+            ),
             failureReason = { code, detail -> legacyFailureReason(code, detail, decoded) },
         )
-        when (result) {
-            is Result.Success -> destination?.let { location ->
-                val label = decoded?.label ?: initialLabel
-                noteResult(getString(R.string.export_job_saved, label, location))
-            }
-
-            is Result.Failure -> result.outputData.getString(JOB_ERROR_KEY)
-                ?.let(::noteResult)
-
-            is Result.Retry -> Unit
-        }
-        return result
     }
 
     private fun legacyFailureReason(

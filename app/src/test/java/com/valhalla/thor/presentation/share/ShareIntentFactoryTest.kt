@@ -7,6 +7,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.BuildConfig
@@ -350,7 +351,7 @@ class ShareIntentFactoryTest {
             "content://example.invalid/app.apk",
             "https://${BuildConfig.APPLICATION_ID}.provider/app.apk",
         )) {
-            assertNull(ShareIntentFactory.createSingleShare(Uri.parse(uri), BundleFormat.APK.mime))
+            assertNull(ShareIntentFactory.createSingleShare(uri.toUri(), BundleFormat.APK.mime))
         }
     }
 

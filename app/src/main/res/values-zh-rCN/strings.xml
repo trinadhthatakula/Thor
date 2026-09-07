@@ -381,10 +381,7 @@
     <string name="log_uninstalling_batch">正在批量卸载应用</string>
     <string name="log_suspending_batch">正在批量暂停应用</string>
     <string name="log_unsuspending_batch">正在批量取消暂停应用</string>
-    <string name="log_sharing_batch">正在批量分享应用</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] 正在准备 %3$s…</string>
-    <string name="log_ready"> -> 就绪</string>
     <string name="log_success"> -> 成功</string>
     <string name="log_failed"> -> 失败：%1$s</string>
 
@@ -755,7 +752,6 @@
     <string name="task_queue_cancel">取消</string>
     <string name="task_queue_close">关闭</string>
     <string name="task_queue_progress">%1$d / %2$d</string>
-    <string name="task_queue_later_count">此队列中还有 %1$d 项</string>
 
     <string name="task_action_authenticate_archive">验证归档</string>
     <string name="task_action_provide_source">提供源文件</string>
@@ -802,8 +798,12 @@
     <string name="task_reason_waiting_for_privilege">请设置 Root、Shizuku 或 Dhizuku，然后返回 Thor。</string>
     <string name="task_reason_interrupted_restore">%1$s 的恢复在开始更改应用数据后中断。请先检查，再继续。</string>
     <string name="task_reason_interrupted_sweep">Thor 在执行 %2$s 后无法验证 %1$s。请先检查应用，再重试。</string>
-    <string name="task_reason_ready">%1$d 个已准备文件可供分享。</string>
-    <string name="task_reason_ready_partial">%2$d 个文件中有 %1$d 个可供分享；其余文件无法准备。</string>
+    <plurals name="task_reason_ready">
+        <item quantity="other">%1$d 个已准备文件可供分享。</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="other">%2$d 个文件中有 %1$d 个可供分享；其余文件无法准备。</item>
+    </plurals>
     <string name="task_reason_start_blocked">Android 阻止了此任务启动。请在 Thor 打开时重试。</string>
     <string name="task_reason_start_blocked_notification">此通知渠道已被阻止。请先启用它，再重试。</string>
     <string name="task_reason_failed">任务未完成。请查看详情后再试。</string>
@@ -818,14 +818,18 @@
     <string name="data_queue_notification_title">正在执行数据操作</string>
     <string name="privilege_queue_notification_title">正在执行应用操作</string>
     <string name="task_queue_notification_status">%1$s · %2$d / %3$d</string>
-    <string name="task_queue_notification_later_count">还有 %1$d 项已排队</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="other">还有 %1$d 项任务已排队</item>
+    </plurals>
     <string name="task_queue_notification_cancel">取消</string>
     <string name="task_queue_notification_ready_title">可供分享</string>
-    <string name="task_queue_notification_ready_text">%1$d 个已准备文件可供分享。</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="other">%1$d 个已准备文件可供分享。</item>
+    </plurals>
     <string name="task_queue_notification_ready_partial_title">部分文件可供分享</string>
-    <string name="task_queue_notification_ready_partial_text">%2$d 个文件中有 %1$d 个已准备好。</string>
-    <string name="task_queue_notification_expired_title">已准备文件已过期</string>
-    <string name="task_queue_notification_expired_text">打开 Thor 以查看已过期的任务。</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="other">%2$d 个文件中有 %1$d 个已准备好。</item>
+    </plurals>
 
     <string name="task_dialog_archive_auth_title">验证归档</string>
     <string name="task_dialog_archive_auth_message">请输入 %1$s 的归档密码短语。它仅用于本次尝试，不会被保存。</string>
@@ -837,26 +841,12 @@
     <string name="task_dialog_restore_review_title">检查中断的恢复</string>
     <string name="task_dialog_restore_review_message">%1$s 的恢复在开始更改应用数据后停止。请先检查应用，再选择“继续”。</string>
     <string name="task_dialog_restore_review_resume">继续恢复</string>
-    <string name="task_dialog_privilege_title">需要特权</string>
-    <string name="task_dialog_privilege_message">请在前台设置 Root、Shizuku 或 Dhizuku。返回后，Thor 会再次检查访问权限。</string>
-    <string name="task_dialog_privilege_open">设置特权</string>
     <string name="task_dialog_sweep_retry_title">授权重试目标</string>
     <string name="task_dialog_sweep_retry_message">Thor 在执行 %2$s 后无法验证 %1$s。仅当重复操作安全时，才重试此目标。</string>
     <string name="task_dialog_sweep_retry_confirm">重试此目标</string>
-    <string name="task_dialog_share_ready_title">文件可供分享</string>
-    <string name="task_dialog_share_ready_message">现在分享 %1$d 个已准备文件吗？</string>
-    <string name="task_dialog_share_partial_title">部分文件已准备好</string>
-    <string name="task_dialog_share_partial_message">分享 %2$d 个文件中已准备好的 %1$d 个吗？</string>
-    <string name="task_dialog_share_expired_title">文件已过期</string>
     <string name="task_dialog_share_expired_message">这些私人分享文件已达到 24 小时期限并被移除。</string>
 
     <string name="task_log_queued">任务已接受并加入队列。</string>
-    <string name="task_log_started">已开始%1$s。</string>
-    <string name="task_log_stopping">已请求取消；正在等待安全清理完成。</string>
-    <string name="task_log_waiting_for_auth">正在等待 %1$s 的归档密码短语。</string>
-    <string name="task_log_waiting_for_source">正在等待 %1$s 的恢复源文件。</string>
-    <string name="task_log_waiting_for_privilege">正在等待特权授权。</string>
-    <string name="task_log_interrupted_review">必须先检查中断的任务，然后才能继续。</string>
     <string name="task_log_stage_preparing">正在准备任务。</string>
     <string name="task_log_stage_staging_source">正在将所选源文件复制到私人暂存区。</string>
     <string name="task_log_stage_measuring">正在测量应用数据。</string>
@@ -872,12 +862,5 @@
     <string name="task_log_item_cancelled">已取消 %1$s。</string>
     <string name="task_log_item_busy">已跳过 %1$s，因为另一个操作正在使用它。</string>
     <string name="task_log_item_unknown">无法验证 %1$s 的最终状态。</string>
-    <string name="task_log_root_lane_degraded">专用 Root 通道不可用；正在使用共享备用通道。</string>
-    <string name="task_log_output_ready">%1$s 已准备好。</string>
-    <string name="task_log_output_expired">%1$s 已过期并被移除。</string>
-    <string name="task_log_result_succeeded">已完成 %2$d 项中的 %1$d 项。</string>
-    <string name="task_log_result_partial">成功：%1$d · 失败：%2$d。</string>
-    <string name="task_log_result_failed">任务失败。</string>
-    <string name="task_log_result_cancelled">完成 %2$d 项中的 %1$d 项后取消。</string>
 
 </resources>

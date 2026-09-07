@@ -14,6 +14,8 @@ import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import com.valhalla.thor.ThorApplication
 import com.valhalla.thor.data.service.ForegroundNotificationState
+import com.valhalla.thor.data.service.observeQueueNotifications
+import com.valhalla.thor.data.repository.toQueuedSummary
 import com.valhalla.thor.data.service.ForegroundServiceNotificationCapability
 import com.valhalla.thor.data.service.PRIVILEGED_FOREGROUND_CHANNEL_ID
 import com.valhalla.thor.domain.repository.PrivilegeSweepBlockReason
@@ -22,6 +24,12 @@ import com.valhalla.thor.domain.repository.PrivilegeSweepStore
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -40,6 +48,28 @@ class PrivilegeSweepService : Service(), KoinComponent {
     private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
     private val mainDispatcher: CoroutineDispatcher by inject(named("main"))
     private val generationFence = PrivilegeSweepServiceGenerationFence()
+    private val activeNotificationTask = MutableStateFlow<UUID?>(null)
+    private val notificationScope by lazy { CoroutineScope(SupervisorJob() + ioDispatcher) }
+    private var notificationObserver: Job? = null
+
+    private fun observeNotifications(notification: PrivilegeSweepServiceNotification) {
+        if (notificationObserver != null) return
+        notificationObserver = notificationScope.observeQueueNotifications(
+            activeNotificationTask,
+            store.observeRetained().map { rows -> rows.map { it.toQueuedSummary() } },
+        ) { snapshot ->
+            synchronized(notificationLock) {
+                if (!destroyed && activeNotificationTask.value == snapshot.task.taskId) {
+                    ForegroundServiceNotificationCapability(this).evaluateAndPromote(PRIVILEGED_FOREGROUND_CHANNEL_ID) {
+                        val updated = notification.running(snapshot)
+                        ServiceCompat.startForeground(this, PrivilegeSweepServiceNotification.NOTIFICATION_ID,
+                            updated, privilegeForegroundServiceType(Build.VERSION.SDK_INT))
+                        activeNotification = updated
+                    }
+                }
+            }
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = PrivilegeSweepServiceNotification(this)
@@ -84,6 +114,7 @@ class PrivilegeSweepService : Service(), KoinComponent {
         }
 
         running.set(true)
+        observeNotifications(notification)
         coordinator.wake(
             onClaimed = { requestId, packageName ->
                 synchronized(notificationLock) {
@@ -93,6 +124,7 @@ class PrivilegeSweepService : Service(), KoinComponent {
                             this, PrivilegeSweepServiceNotification.NOTIFICATION_ID,
                             runningNotification, privilegeForegroundServiceType(Build.VERSION.SDK_INT),
                         )
+                        activeNotificationTask.value = requestId
                         activeNotification = runningNotification
                     }
                 }
@@ -106,9 +138,14 @@ class PrivilegeSweepService : Service(), KoinComponent {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        destroyed = true
+        synchronized(notificationLock) {
+            destroyed = true
+            activeNotificationTask.value = null
+            activeNotification = null
+            notificationObserver?.cancel()
+        }
+        if (notificationObserver != null) notificationScope.cancel()
         if (coordinatorDelegate.isInitialized()) coordinator.shutdown()
-        synchronized(notificationLock) { activeNotification = null }
         running.set(false)
         super.onDestroy()
     }
@@ -174,7 +211,13 @@ class PrivilegeSweepService : Service(), KoinComponent {
 
     private fun finishGeneration(startId: Int): Boolean {
         val stopped = stopSelfResult(startId)
-        if (stopped) stopForeground(STOP_FOREGROUND_REMOVE)
+        if (stopped) synchronized(notificationLock) {
+            destroyed = true
+            activeNotificationTask.value = null
+            activeNotification = null
+            notificationObserver?.cancel()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
         return stopped
     }
 

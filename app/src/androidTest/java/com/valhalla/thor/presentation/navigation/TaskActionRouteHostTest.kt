@@ -118,8 +118,7 @@ class TaskActionRouteHostTest {
         }
         setHost(state, controller, privilegeActions)
 
-        rule.onNodeWithText(rule.activity.getString(R.string.task_dialog_privilege_title))
-            .assertDoesNotExist()
+        rule.onNode(androidx.compose.ui.test.isDialog()).assertDoesNotExist()
         rule.waitUntil { controller.privilegeReturns == 1 }
         rule.runOnIdle { assertNull(state.active) }
     }

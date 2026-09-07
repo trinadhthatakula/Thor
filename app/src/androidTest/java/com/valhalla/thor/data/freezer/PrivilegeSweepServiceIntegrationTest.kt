@@ -7,6 +7,7 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -46,8 +47,10 @@ class PrivilegeSweepServiceIntegrationTest {
     @Before fun setup() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         assertNull("isolated test must not boot production Koin", GlobalContext.getOrNull())
-        InstrumentationRegistry.getInstrumentation().uiAutomation
-            .executeShellCommand("pm grant ${context.packageName} ${Manifest.permission.POST_NOTIFICATIONS}").close()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            InstrumentationRegistry.getInstrumentation().uiAutomation
+                .executeShellCommand("pm grant ${context.packageName} ${Manifest.permission.POST_NOTIFICATIONS}").close()
+        }
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         store = RoomPrivilegeSweepStore(db.privilegeSweepDao())
         val gate = PrivilegeSweepProcessGate()
@@ -96,7 +99,9 @@ class PrivilegeSweepServiceIntegrationTest {
         awaitEntered(a, "A")
         val original = notification()
         val cancelA = original.actions.single().actionIntent
-        assertTrue(cancelA.isImmutable)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            assertTrue(cancelA.isImmutable)
+        }
         start(b)
         assertNotNull("repeat wake changed A cancellation identity", withTimeoutOrNull(10_000) {
             while (notification().actions.single().actionIntent != cancelA) delay(20)

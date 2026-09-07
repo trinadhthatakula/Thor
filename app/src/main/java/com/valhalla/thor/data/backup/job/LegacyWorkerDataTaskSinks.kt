@@ -102,6 +102,8 @@ internal class LegacyWorkerCheckpointSink(
 /** Maps the typed runner outcome back to the exact released WorkManager result channel. */
 internal class LegacyWorkerResultSink(
     private val kind: DataTaskKind,
+    private val onSuccess: () -> Unit = {},
+    private val onFailure: (String) -> Unit = {},
 ) : DataTaskResultSink<ListenableWorker.Result> {
     override suspend fun persist(outcome: DataTaskRunOutcome): ListenableWorker.Result =
         when (outcome) {
@@ -134,6 +136,7 @@ internal class LegacyWorkerResultSink(
         }
 
     private fun success(outcome: DataTaskRunOutcome.ItemCompleted): ListenableWorker.Result {
+        onSuccess()
         if (kind != DataTaskKind.ARCHIVE_RESTORE) return ListenableWorker.Result.success()
         val warnings = outcome.result.warnings.map { warning ->
             (warning.arguments.firstOrNull() ?: warning.code.toUserFacingJobMessage())
@@ -148,9 +151,11 @@ internal class LegacyWorkerResultSink(
         }
     }
 
-    private fun failure(reason: String): ListenableWorker.Result = ListenableWorker.Result.failure(
-        workDataOf(JOB_ERROR_KEY to reason.boundedForJobData())
-    )
+    private fun failure(reason: String): ListenableWorker.Result {
+        val bounded = reason.boundedForJobData()
+        onFailure(bounded)
+        return ListenableWorker.Result.failure(workDataOf(JOB_ERROR_KEY to bounded))
+    }
 }
 
 private fun DataTaskStage.toLegacyStage(): ThorJobStage = when (this) {

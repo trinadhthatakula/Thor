@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.backup.job
 
 import androidx.work.ListenableWorker
+import androidx.work.workDataOf
 import com.valhalla.thor.domain.model.AppExportRequest
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DataTaskItemResult
@@ -114,12 +115,12 @@ class LegacyAppExportWorkerAdapterTest {
         )
 
         assertFalse(runnerCalled)
-        assertTrue(result is ListenableWorker.Result.Failure)
         assertEquals(
-            "this export's request could not be read",
-            result.outputData.getString(JOB_ERROR_KEY)
+            ListenableWorker.Result.failure(
+                workDataOf(JOB_ERROR_KEY to "this export's request could not be read")
+            ),
+            result,
         )
-        assertFalse(result is ListenableWorker.Result.Retry)
     }
 
     @Test
@@ -153,8 +154,7 @@ class LegacyAppExportWorkerAdapterTest {
                 results = LegacyWorkerResultSink(DataTaskKind.APP_EXPORT),
             )
 
-            assertTrue(result is ListenableWorker.Result.Success)
-            assertTrue(result.outputData.keyValueMap.isEmpty())
+            assertEquals(ListenableWorker.Result.success(), result)
             val request = requireNotNull(captured)
             val payload = request.payload as DataTaskExecutionPayload.AppExport
             assertEquals(TASK_ID, request.taskId)
@@ -184,12 +184,11 @@ class LegacyAppExportWorkerAdapterTest {
                 results = LegacyWorkerResultSink(DataTaskKind.APP_EXPORT),
             )
 
-            assertTrue(result is ListenableWorker.Result.Failure)
-            val reason = result.outputData.getString(JOB_ERROR_KEY)
-            assertEquals(MAX_JOB_MESSAGE_CHARS, reason?.length)
-            assertTrue(reason?.startsWith("not enough space") == true)
-            assertTrue(reason?.endsWith("…") == true)
-            assertFalse(result is ListenableWorker.Result.Retry)
+            val expected = hugeReason.take(MAX_JOB_MESSAGE_CHARS - 1) + "…"
+            assertEquals(
+                ListenableWorker.Result.failure(workDataOf(JOB_ERROR_KEY to expected)),
+                result,
+            )
         }
 
     @Test
@@ -222,6 +221,59 @@ class LegacyAppExportWorkerAdapterTest {
 
         assertSame(cancellation, thrown)
         assertFalse(persisted)
+    }
+
+    @Test
+    fun `terminal callbacks match the public worker result exactly once`() = runBlocking {
+        val events = mutableListOf<String>()
+        val sink = LegacyWorkerResultSink(
+            DataTaskKind.APP_EXPORT,
+            onSuccess = { events += "saved" },
+            onFailure = { events += it },
+        )
+        assertEquals(ListenableWorker.Result.success(), sink.persist(successfulItem()))
+        assertEquals(listOf("saved"), events)
+        events.clear()
+
+        // Typed outcomes already reject oversized arguments; retain their bounded failure verbatim.
+        val bounded = "x".repeat(MAX_JOB_MESSAGE_CHARS - 1) + "…"
+        val outcome = DataTaskRunOutcome.TaskFailed(
+            DataTaskResultCode("APP_EXPORT_FAILED"), listOf(bounded),
+        )
+        assertEquals(
+            ListenableWorker.Result.failure(workDataOf(JOB_ERROR_KEY to bounded)),
+            sink.persist(outcome),
+        )
+        assertEquals(listOf(bounded), events)
+    }
+
+    @Test
+    fun `malformed and mapped failed exports notify without reading worker internals`() = runBlocking {
+        for ((decoded, outcome, expected) in listOf(
+            Triple(null, successfulItem(), "invalid request"),
+            Triple(request(), failedItem("no space"), "localized: no space"),
+        )) {
+            val events = mutableListOf<String>()
+            val result = runLegacyAppExportTask(
+                taskId = TASK_ID,
+                decodedRequest = decoded,
+                runAttemptCount = 1,
+                invalidRequestReason = "invalid request",
+                runner = fixedRunner(outcome),
+                checkpoints = DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED },
+                results = LegacyWorkerResultSink(
+                    DataTaskKind.APP_EXPORT,
+                    onSuccess = { events += "unexpected success" },
+                    onFailure = { events += it },
+                ),
+                failureReason = { _, detail -> "localized: $detail" },
+            )
+            assertEquals(
+                ListenableWorker.Result.failure(workDataOf(JOB_ERROR_KEY to expected)),
+                result,
+            )
+            assertEquals(listOf(expected), events)
+        }
     }
 
     private fun request() = AppExportRequest(

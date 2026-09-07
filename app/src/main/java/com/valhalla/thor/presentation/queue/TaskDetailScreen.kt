@@ -296,13 +296,14 @@ private fun QueuedTaskSummary.reason(): UiText? = when (phase) {
     }
 
     TaskLifecyclePhase.READY -> (actionRequirement as? TaskActionRequirement.PreparedShare)?.let {
-        UiText.StringResource(R.string.task_reason_ready, it.outputIds.size)
+        UiText.PluralsResource(R.plurals.task_reason_ready, it.outputIds.size)
     }
 
     TaskLifecyclePhase.READY_PARTIAL ->
         (actionRequirement as? TaskActionRequirement.PreparedShare)?.let {
-            UiText.StringResource(
-                R.string.task_reason_ready_partial,
+            UiText.PluralsResource(
+                R.plurals.task_reason_ready_partial,
+                it.outputIds.size,
                 it.outputIds.size,
                 progress.total,
             )

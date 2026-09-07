@@ -624,10 +624,7 @@
     <string name="log_uninstalling_batch">Odinstalowywanie aplikacji</string>
     <string name="log_suspending_batch">Zawieszanie aplikacji</string>
     <string name="log_unsuspending_batch">Wznawianie aplikacji</string>
-    <string name="log_sharing_batch">Udostępnianie aplikacji</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] Przygotowywanie: %3$s…</string>
-    <string name="log_ready"> -> Gotowe</string>
     <string name="log_success"> -> Sukces</string>
     <string name="log_failed"> -> Niepowodzenie: %1$s</string>
 
@@ -849,7 +846,6 @@
     <string name="task_queue_cancel">Anuluj</string>
     <string name="task_queue_close">Zamknij</string>
     <string name="task_queue_progress">%1$d z %2$d</string>
-    <string name="task_queue_later_count">%1$d później w tej kolejce</string>
 
     <string name="task_action_authenticate_archive">Uwierzytelnij archiwum</string>
     <string name="task_action_provide_source">Wskaż źródło</string>
@@ -896,8 +892,18 @@
     <string name="task_reason_waiting_for_privilege">Skonfiguruj Root, Shizuku lub Dhizuku, a następnie wróć do aplikacji Thor.</string>
     <string name="task_reason_interrupted_restore">Przywracanie %1$s przerwano po rozpoczęciu zmian danych. Sprawdź je przed wznowieniem.</string>
     <string name="task_reason_interrupted_sweep">Thor nie mógł zweryfikować %1$s po działaniu %2$s. Ponów dopiero po sprawdzeniu aplikacji.</string>
-    <string name="task_reason_ready">Przygotowane pliki (%1$d) są gotowe do udostępnienia.</string>
-    <string name="task_reason_ready_partial">Gotowe do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="one">Przygotowany plik (%1$d) jest gotowy do udostępnienia.</item>
+        <item quantity="few">Przygotowane pliki (%1$d) są gotowe do udostępnienia.</item>
+        <item quantity="many">Przygotowane pliki (%1$d) są gotowe do udostępnienia.</item>
+        <item quantity="other">Przygotowane pliki (%1$d) są gotowe do udostępnienia.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="one">Gotowy do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</item>
+        <item quantity="few">Gotowe do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</item>
+        <item quantity="many">Gotowe do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</item>
+        <item quantity="other">Gotowe do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</item>
+    </plurals>
     <string name="task_reason_start_blocked">Android uniemożliwił uruchomienie tego zadania. Spróbuj ponownie przy otwartej aplikacji Thor.</string>
     <string name="task_reason_start_blocked_notification">Ten kanał powiadomień jest zablokowany. Włącz go przed ponowieniem.</string>
     <string name="task_reason_failed">Zadanie nie zostało ukończone. Przed ponowieniem sprawdź szczegóły.</string>
@@ -912,14 +918,27 @@
     <string name="data_queue_notification_title">Trwa operacja na danych</string>
     <string name="privilege_queue_notification_title">Trwa działanie na aplikacji</string>
     <string name="task_queue_notification_status">%1$s · %2$d z %3$d</string>
-    <string name="task_queue_notification_later_count">Jeszcze %1$d w kolejce</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="one">Jeszcze %1$d zadanie w kolejce</item>
+        <item quantity="few">Jeszcze %1$d zadania w kolejce</item>
+        <item quantity="many">Jeszcze %1$d zadań w kolejce</item>
+        <item quantity="other">Jeszcze %1$d zadania w kolejce</item>
+    </plurals>
     <string name="task_queue_notification_cancel">Anuluj</string>
     <string name="task_queue_notification_ready_title">Gotowe do udostępnienia</string>
-    <string name="task_queue_notification_ready_text">Przygotowane pliki (%1$d) są gotowe.</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="one">Przygotowany plik (%1$d) jest gotowy.</item>
+        <item quantity="few">Przygotowane pliki (%1$d) są gotowe.</item>
+        <item quantity="many">Przygotowane pliki (%1$d) są gotowe.</item>
+        <item quantity="other">Przygotowane pliki (%1$d) są gotowe.</item>
+    </plurals>
     <string name="task_queue_notification_ready_partial_title">Niektóre pliki są gotowe do udostępnienia</string>
-    <string name="task_queue_notification_ready_partial_text">Gotowe pliki: %1$d z %2$d.</string>
-    <string name="task_queue_notification_expired_title">Przygotowane pliki wygasły</string>
-    <string name="task_queue_notification_expired_text">Otwórz aplikację Thor, aby sprawdzić wygasłe zadanie.</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="one">Gotowy plik: %1$d z %2$d.</item>
+        <item quantity="few">Gotowe pliki: %1$d z %2$d.</item>
+        <item quantity="many">Gotowe pliki: %1$d z %2$d.</item>
+        <item quantity="other">Gotowe pliki: %1$d z %2$d.</item>
+    </plurals>
 
     <string name="task_dialog_archive_auth_title">Uwierzytelnij archiwum</string>
     <string name="task_dialog_archive_auth_message">Wprowadź hasło archiwum dla %1$s. Zostanie użyte tylko w tej próbie i nie będzie zapisane.</string>
@@ -931,26 +950,12 @@
     <string name="task_dialog_restore_review_title">Sprawdź przerwane przywracanie</string>
     <string name="task_dialog_restore_review_message">Przywracanie %1$s zatrzymało się po rozpoczęciu zmian danych aplikacji. Sprawdź aplikację przed wybraniem opcji Wznów.</string>
     <string name="task_dialog_restore_review_resume">Wznów przywracanie</string>
-    <string name="task_dialog_privilege_title">Wymagane uprawnienie</string>
-    <string name="task_dialog_privilege_message">Skonfiguruj Root, Shizuku lub Dhizuku na pierwszym planie. Thor ponownie sprawdzi dostęp po powrocie.</string>
-    <string name="task_dialog_privilege_open">Skonfiguruj uprawnienie</string>
     <string name="task_dialog_sweep_retry_title">Autoryzuj ponowienie dla celu</string>
     <string name="task_dialog_sweep_retry_message">Thor nie mógł zweryfikować %1$s po działaniu %2$s. Ponów dla tego celu tylko wtedy, gdy powtórzenie działania jest bezpieczne.</string>
     <string name="task_dialog_sweep_retry_confirm">Ponów dla tego celu</string>
-    <string name="task_dialog_share_ready_title">Pliki gotowe do udostępnienia</string>
-    <string name="task_dialog_share_ready_message">Udostępnić teraz przygotowane pliki (%1$d)?</string>
-    <string name="task_dialog_share_partial_title">Niektóre pliki są gotowe</string>
-    <string name="task_dialog_share_partial_message">Udostępnić przygotowane pliki (%1$d z %2$d)?</string>
-    <string name="task_dialog_share_expired_title">Pliki wygasły</string>
     <string name="task_dialog_share_expired_message">Te prywatne pliki do udostępnienia osiągnęły limit 24 godzin i zostały usunięte.</string>
 
     <string name="task_log_queued">Zadanie przyjęte i dodane do kolejki.</string>
-    <string name="task_log_started">Rozpoczęto: %1$s.</string>
-    <string name="task_log_stopping">Zażądano anulowania; oczekiwanie na bezpieczne zakończenie czyszczenia.</string>
-    <string name="task_log_waiting_for_auth">Oczekiwanie na hasło archiwum dla %1$s.</string>
-    <string name="task_log_waiting_for_source">Oczekiwanie na źródło przywracania dla %1$s.</string>
-    <string name="task_log_waiting_for_privilege">Oczekiwanie na autoryzację uprawnienia.</string>
-    <string name="task_log_interrupted_review">Przerwane zadanie wymaga sprawdzenia przed wznowieniem.</string>
     <string name="task_log_stage_preparing">Przygotowywanie zadania.</string>
     <string name="task_log_stage_staging_source">Kopiowanie wybranego źródła do prywatnego obszaru tymczasowego.</string>
     <string name="task_log_stage_measuring">Mierzenie danych aplikacji.</string>
@@ -966,12 +971,5 @@
     <string name="task_log_item_cancelled">Anulowano %1$s.</string>
     <string name="task_log_item_busy">Pominięto %1$s, ponieważ używa go inna operacja.</string>
     <string name="task_log_item_unknown">Nie udało się zweryfikować końcowego stanu %1$s.</string>
-    <string name="task_log_root_lane_degraded">Dedykowany kanał root stał się niedostępny; używany jest wspólny kanał awaryjny.</string>
-    <string name="task_log_output_ready">%1$s jest gotowy.</string>
-    <string name="task_log_output_expired">%1$s wygasł i został usunięty.</string>
-    <string name="task_log_result_succeeded">Ukończono %1$d z %2$d elementów.</string>
-    <string name="task_log_result_partial">Powodzenie: %1$d · błędy: %2$d.</string>
-    <string name="task_log_result_failed">Zadanie nie powiodło się.</string>
-    <string name="task_log_result_cancelled">Anulowano po ukończeniu %1$d z %2$d elementów.</string>
 
 </resources>

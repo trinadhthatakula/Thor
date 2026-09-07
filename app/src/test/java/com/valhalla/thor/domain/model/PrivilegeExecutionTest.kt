@@ -108,6 +108,7 @@ class PrivilegeExecutionTest {
                 PackageOperationOwner.FORCE_STOP,
                 PackageOperationOwner.UNINSTALL,
                 PackageOperationOwner.OTHER_MUTATION,
+                PackageOperationOwner.BUNDLE_READ,
             ),
             PackageOperationOwner.entries,
         )

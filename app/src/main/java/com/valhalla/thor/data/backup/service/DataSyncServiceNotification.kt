@@ -15,6 +15,8 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.service.DATA_FOREGROUND_CHANNEL_ID
 import com.valhalla.thor.data.service.FOREGROUND_PENDING_INTENT_FLAGS
 import com.valhalla.thor.data.service.ForegroundPendingIntentNamespace
+import com.valhalla.thor.data.service.QueueNotificationSnapshot
+import com.valhalla.thor.data.service.queueNotificationStatus
 import com.valhalla.thor.HomeActivity
 import com.valhalla.thor.presentation.launcher.TaskQueueLaunchActivity
 import java.util.UUID
@@ -43,7 +45,17 @@ class DataSyncServiceNotification(
         .setContentIntent(genericContentIntent())
         .build()
 
-    fun running(taskId: UUID, label: String): Notification = baseBuilder()
+    fun running(taskId: UUID, label: String): Notification = runningBuilder(taskId, label).build()
+
+    internal fun running(snapshot: QueueNotificationSnapshot): Notification =
+        runningBuilder(snapshot.task.taskId, context.queueNotificationStatus(snapshot))
+            .setSubText(context.resources.getQuantityString(
+                R.plurals.task_queue_notification_later_count,
+                snapshot.laterQueuedTasks, snapshot.laterQueuedTasks,
+            ))
+            .build()
+
+    private fun runningBuilder(taskId: UUID, label: String): NotificationCompat.Builder = baseBuilder()
         .setContentTitle(context.getString(R.string.data_queue_notification_title))
         .setContentText(label)
         .setContentIntent(taskContentIntent(taskId))
@@ -57,7 +69,6 @@ class DataSyncServiceNotification(
                 FOREGROUND_PENDING_INTENT_FLAGS,
             ),
         )
-        .build()
 
     private fun baseBuilder(): NotificationCompat.Builder =
         NotificationCompat.Builder(context, DATA_FOREGROUND_CHANNEL_ID)

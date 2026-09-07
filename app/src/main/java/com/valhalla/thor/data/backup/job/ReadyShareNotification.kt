@@ -35,8 +35,11 @@ internal class ReadyShareNotification(private val context: Context) {
         require(readyCount in 1..totalCount)
         val partial = readyCount < totalCount
         val title = if (partial) R.string.task_queue_notification_ready_partial_title else R.string.task_queue_notification_ready_title
-        val text = if (partial) context.getString(R.string.task_queue_notification_ready_partial_text, readyCount, totalCount)
-            else context.getString(R.string.task_queue_notification_ready_text, readyCount)
+        val text = if (partial) context.resources.getQuantityString(
+            R.plurals.task_queue_notification_ready_partial_text, readyCount, readyCount, totalCount,
+        ) else context.resources.getQuantityString(
+            R.plurals.task_queue_notification_ready_text, readyCount, readyCount,
+        )
         val intent = ShareHandoffActivity.intent(context, taskId).apply {
             // UUID hash collisions must not retarget another task's immutable PendingIntent.
             data = "thor-share://ready/$taskId".toUri()

@@ -413,10 +413,7 @@
     <string name="log_uninstalling_batch">جارٍ إلغاء تثبيت التطبيقات</string>
     <string name="log_suspending_batch">جارٍ تعليق التطبيقات</string>
     <string name="log_unsuspending_batch">جارٍ إلغاء تعليق التطبيقات</string>
-    <string name="log_sharing_batch">جارٍ مشاركة التطبيقات</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] جارٍ تجهيز %3$s…</string>
-    <string name="log_ready"> -> جاهز</string>
     <string name="log_success"> -> نجاح</string>
     <string name="log_failed"> -> فشل: %1$s</string>
 
@@ -819,7 +816,6 @@
     <string name="task_queue_cancel">إلغاء</string>
     <string name="task_queue_close">إغلاق</string>
     <string name="task_queue_progress">%1$d من %2$d</string>
-    <string name="task_queue_later_count">%1$d لاحقًا في قائمة الانتظار هذه</string>
 
     <string name="task_action_authenticate_archive">مصادقة الأرشيف</string>
     <string name="task_action_provide_source">توفير المصدر</string>
@@ -866,8 +862,22 @@
     <string name="task_reason_waiting_for_privilege">أعِدّ Root أو Shizuku أو Dhizuku، ثم ارجع إلى Thor.</string>
     <string name="task_reason_interrupted_restore">توقفت استعادة %1$s بعد بدء تغييرات بيانات التطبيق. راجعها قبل الاستئناف.</string>
     <string name="task_reason_interrupted_sweep">تعذّر على Thor التحقق من %1$s بعد %2$s. أعد المحاولة فقط بعد مراجعة التطبيق.</string>
-    <string name="task_reason_ready">هناك %1$d ملفات مجهزة وجاهزة للمشاركة.</string>
-    <string name="task_reason_ready_partial">هناك %1$d من أصل %2$d ملفات جاهزة للمشاركة؛ تعذّر تجهيز الباقي.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="zero">لا توجد ملفات مجهزة وجاهزة للمشاركة (%1$d).</item>
+        <item quantity="one">هناك ملف واحد مجهز وجاهز للمشاركة (%1$d).</item>
+        <item quantity="two">هناك ملفان مجهزان وجاهزان للمشاركة (%1$d).</item>
+        <item quantity="few">هناك %1$d ملفات مجهزة وجاهزة للمشاركة.</item>
+        <item quantity="many">هناك %1$d ملفًا مجهزًا وجاهزًا للمشاركة.</item>
+        <item quantity="other">هناك %1$d ملف مجهز وجاهز للمشاركة.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="zero">لا توجد ملفات جاهزة للمشاركة (%1$d من إجمالي %2$d)؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="one">هناك ملف واحد جاهز للمشاركة (%1$d من إجمالي %2$d)؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="two">هناك ملفان جاهزان للمشاركة (%1$d من إجمالي %2$d)؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="few">هناك %1$d ملفات جاهزة للمشاركة من إجمالي %2$d؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="many">هناك %1$d ملفًا جاهزًا للمشاركة من إجمالي %2$d؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="other">هناك %1$d ملف جاهز للمشاركة من إجمالي %2$d؛ تعذّر تجهيز الباقي.</item>
+    </plurals>
     <string name="task_reason_start_blocked">منع Android بدء هذه المهمة. أعد المحاولة بينما يكون Thor مفتوحًا.</string>
     <string name="task_reason_start_blocked_notification">قناة الإشعارات هذه محظورة. فعّلها قبل إعادة المحاولة.</string>
     <string name="task_reason_failed">لم تكتمل المهمة. راجع التفاصيل قبل إعادة المحاولة.</string>
@@ -882,14 +892,33 @@
     <string name="data_queue_notification_title">عملية بيانات قيد التنفيذ</string>
     <string name="privilege_queue_notification_title">إجراء تطبيق قيد التنفيذ</string>
     <string name="task_queue_notification_status">%1$s · %2$d من %3$d</string>
-    <string name="task_queue_notification_later_count">%1$d أخرى في قائمة الانتظار</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="zero">لا توجد مهام أخرى في قائمة الانتظار (%1$d)</item>
+        <item quantity="one">مهمة أخرى في قائمة الانتظار (%1$d)</item>
+        <item quantity="two">مهمتان أخريان في قائمة الانتظار (%1$d)</item>
+        <item quantity="few">%1$d مهام أخرى في قائمة الانتظار</item>
+        <item quantity="many">%1$d مهمة أخرى في قائمة الانتظار</item>
+        <item quantity="other">%1$d مهمة أخرى في قائمة الانتظار</item>
+    </plurals>
     <string name="task_queue_notification_cancel">إلغاء</string>
     <string name="task_queue_notification_ready_title">جاهز للمشاركة</string>
-    <string name="task_queue_notification_ready_text">هناك %1$d ملفات مجهزة وجاهزة.</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="zero">لا توجد ملفات مجهزة وجاهزة (%1$d).</item>
+        <item quantity="one">هناك ملف واحد مجهز وجاهز (%1$d).</item>
+        <item quantity="two">هناك ملفان مجهزان وجاهزان (%1$d).</item>
+        <item quantity="few">هناك %1$d ملفات مجهزة وجاهزة.</item>
+        <item quantity="many">هناك %1$d ملفًا مجهزًا وجاهزًا.</item>
+        <item quantity="other">هناك %1$d ملف مجهز وجاهز.</item>
+    </plurals>
     <string name="task_queue_notification_ready_partial_title">بعض الملفات جاهزة للمشاركة</string>
-    <string name="task_queue_notification_ready_partial_text">هناك %1$d من أصل %2$d ملفات جاهزة.</string>
-    <string name="task_queue_notification_expired_title">انتهت صلاحية الملفات المجهزة</string>
-    <string name="task_queue_notification_expired_text">افتح Thor لمراجعة المهمة المنتهية الصلاحية.</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="zero">لا توجد ملفات جاهزة (%1$d من إجمالي %2$d).</item>
+        <item quantity="one">هناك ملف واحد جاهز (%1$d من إجمالي %2$d).</item>
+        <item quantity="two">هناك ملفان جاهزان (%1$d من إجمالي %2$d).</item>
+        <item quantity="few">هناك %1$d ملفات جاهزة من إجمالي %2$d.</item>
+        <item quantity="many">هناك %1$d ملفًا جاهزًا من إجمالي %2$d.</item>
+        <item quantity="other">هناك %1$d ملف جاهز من إجمالي %2$d.</item>
+    </plurals>
 
     <string name="task_dialog_archive_auth_title">مصادقة الأرشيف</string>
     <string name="task_dialog_archive_auth_message">أدخل عبارة مرور أرشيف %1$s. تُستخدم لهذه المحاولة فقط ولا يتم حفظها.</string>
@@ -901,26 +930,12 @@
     <string name="task_dialog_restore_review_title">مراجعة الاستعادة المتوقفة</string>
     <string name="task_dialog_restore_review_message">توقفت استعادة %1$s بعد بدء تغييرات بيانات التطبيق. افحص التطبيق قبل اختيار استئناف.</string>
     <string name="task_dialog_restore_review_resume">استئناف الاستعادة</string>
-    <string name="task_dialog_privilege_title">الامتياز مطلوب</string>
-    <string name="task_dialog_privilege_message">أعِدّ Root أو Shizuku أو Dhizuku في الواجهة الأمامية. سيتحقق Thor من الوصول مجددًا عند عودتك.</string>
-    <string name="task_dialog_privilege_open">إعداد الامتياز</string>
     <string name="task_dialog_sweep_retry_title">السماح بإعادة محاولة الهدف</string>
     <string name="task_dialog_sweep_retry_message">تعذّر على Thor التحقق من %1$s بعد %2$s. أعد محاولة هذا الهدف فقط إذا كان تكرار الإجراء آمنًا.</string>
     <string name="task_dialog_sweep_retry_confirm">إعادة محاولة هذا الهدف</string>
-    <string name="task_dialog_share_ready_title">ملفات جاهزة للمشاركة</string>
-    <string name="task_dialog_share_ready_message">هل تريد مشاركة %1$d ملفات مجهزة الآن؟</string>
-    <string name="task_dialog_share_partial_title">بعض الملفات جاهزة</string>
-    <string name="task_dialog_share_partial_message">هل تريد مشاركة %1$d ملفات مجهزة من أصل %2$d؟</string>
-    <string name="task_dialog_share_expired_title">انتهت صلاحية الملفات</string>
     <string name="task_dialog_share_expired_message">بلغت ملفات المشاركة الخاصة هذه حد 24 ساعة وأُزيلت.</string>
 
     <string name="task_log_queued">قُبلت المهمة ووُضعت في قائمة الانتظار.</string>
-    <string name="task_log_started">بدأت %1$s.</string>
-    <string name="task_log_stopping">طُلب الإلغاء؛ في انتظار اكتمال التنظيف الآمن.</string>
-    <string name="task_log_waiting_for_auth">في انتظار عبارة مرور أرشيف %1$s.</string>
-    <string name="task_log_waiting_for_source">في انتظار مصدر استعادة لـ %1$s.</string>
-    <string name="task_log_waiting_for_privilege">في انتظار منح الامتياز.</string>
-    <string name="task_log_interrupted_review">يجب مراجعة العمل المتوقف قبل استئنافه.</string>
     <string name="task_log_stage_preparing">جارٍ تحضير المهمة.</string>
     <string name="task_log_stage_staging_source">جارٍ نسخ المصدر المحدد إلى التخزين المرحلي الخاص.</string>
     <string name="task_log_stage_measuring">جارٍ قياس بيانات التطبيق.</string>
@@ -936,12 +951,5 @@
     <string name="task_log_item_cancelled">أُلغيت معالجة %1$s.</string>
     <string name="task_log_item_busy">تم تخطي %1$s لأن عملية أخرى تستخدمه.</string>
     <string name="task_log_item_unknown">تعذّر التحقق من الحالة النهائية لـ %1$s.</string>
-    <string name="task_log_root_lane_degraded">أصبح مسار Root المخصص غير متاح؛ جارٍ استخدام المسار الاحتياطي المشترك.</string>
-    <string name="task_log_output_ready">%1$s جاهز.</string>
-    <string name="task_log_output_expired">انتهت صلاحية %1$s وأُزيل.</string>
-    <string name="task_log_result_succeeded">اكتمل %1$d من أصل %2$d عناصر.</string>
-    <string name="task_log_result_partial">نجحت: %1$d · فشلت: %2$d.</string>
-    <string name="task_log_result_failed">فشلت المهمة.</string>
-    <string name="task_log_result_cancelled">أُلغيت بعد إكمال %1$d من أصل %2$d عناصر.</string>
 
 </resources>

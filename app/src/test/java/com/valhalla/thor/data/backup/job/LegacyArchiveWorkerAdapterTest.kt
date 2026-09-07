@@ -307,11 +307,12 @@ class LegacyArchiveWorkerAdapterTest {
         )
 
         assertFalse(runnerCalled)
-        assertTrue(result is ListenableWorker.Result.Failure)
-        val error = result.outputData.getString(JOB_ERROR_KEY)
-        assertEquals(MAX_JOB_MESSAGE_CHARS, error?.length)
-        assertTrue(error?.endsWith("…") == true)
-        assertFalse(result is ListenableWorker.Result.Retry)
+        assertEquals(
+            ListenableWorker.Result.failure(
+                workDataOf(JOB_ERROR_KEY to ("x".repeat(MAX_JOB_MESSAGE_CHARS - 1) + "…"))
+            ),
+            result,
+        )
     }
 
     @Test
@@ -351,12 +352,13 @@ class LegacyArchiveWorkerAdapterTest {
             completed(warnings = listOf("w".repeat(MAX_JOB_MESSAGE_CHARS))),
         )
 
-        assertTrue(backup is ListenableWorker.Result.Success)
-        assertTrue(backup.outputData.keyValueMap.isEmpty())
-        assertTrue(restore is ListenableWorker.Result.Success)
-        val warnings = restore.outputData.getStringArray(JOB_WARNINGS_KEY)
-        assertEquals(1, warnings?.size)
-        assertEquals(MAX_JOB_MESSAGE_CHARS, warnings?.single()?.length)
+        assertEquals(ListenableWorker.Result.success(), backup)
+        assertEquals(
+            ListenableWorker.Result.success(
+                workDataOf(JOB_WARNINGS_KEY to arrayOf("w".repeat(MAX_JOB_MESSAGE_CHARS)))
+            ),
+            restore,
+        )
     }
 
     @Test
