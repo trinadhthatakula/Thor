@@ -139,6 +139,7 @@ class ExportAppUseCase(
         captureProgress: VerifiedProgress = VerifiedProgress.NONE,
         captureBoundary: VerifiedOperationBoundary = VerifiedOperationBoundary.NONE,
         publicationProgress: VerifiedProgress = VerifiedProgress.NONE,
+        publicationStart: suspend () -> Unit,
     ): Result<AppExportPublication> = withContext(ioDispatcher) {
         exportDurableBundle(
             bundleBuilder = bundleBuilder,
@@ -151,6 +152,7 @@ class ExportAppUseCase(
             captureProgress = captureProgress,
             captureBoundary = captureBoundary,
             publicationProgress = publicationProgress,
+            publicationStart = publicationStart,
         )
     }
 
@@ -208,13 +210,21 @@ internal suspend fun exportDurableBundle(
     captureProgress: VerifiedProgress,
     captureBoundary: VerifiedOperationBoundary,
     publicationProgress: VerifiedProgress,
+    publicationStart: suspend () -> Unit,
 ): Result<AppExportPublication> {
     var staged: File? = null
     return try {
         when (val reconciliation =
             fileStore.reconcilePublicExport(session.target, publicationIdentity)) {
-            is AppExportPublicationReconciliation.Complete ->
-                Result.success(reconciliation.publication)
+            is AppExportPublicationReconciliation.Complete -> {
+                // Only the runner's interrupted PUBLISHING path may adopt a SAF final. A fresh or
+                // pre-publication attempt has no evidence that an existing document belongs to it.
+                if (session.target is ExportTargetChoice.Custom) {
+                    Result.failure(java.io.IOException("An export with this identity already exists"))
+                } else {
+                    Result.success(reconciliation.publication)
+                }
+            }
 
             AppExportPublicationReconciliation.Absent -> {
                 val file = bundleBuilder.buildWithProgress(
@@ -227,6 +237,8 @@ internal suspend fun exportDurableBundle(
                     operationBoundary = captureBoundary,
                 ).getOrElse { return Result.failure(it) }
                 staged = file
+                // This durable boundary must commit before SAF create, not after the first copy.
+                publicationStart()
                 Result.success(
                     fileStore.publishPublicExport(
                         file = file,

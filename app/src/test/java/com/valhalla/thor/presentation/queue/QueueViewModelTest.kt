@@ -43,6 +43,50 @@ class QueueViewModelTest {
     private val clock = QueueClock { NOW }
 
     @Test
+    fun `retained query failure after snapshot does not escape or claim an empty queue`() = runTest {
+        val fail = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val snapshot = task(DATA_1, TaskQueueKind.DATA, 1, TaskLifecyclePhase.QUEUED)
+        val failingRepository = FakeTaskQueueRepository(kotlinx.coroutines.flow.flow {
+            emit(listOf(snapshot))
+            fail.await()
+            throw java.io.IOException("retained query unavailable")
+        })
+        val vm = QueueViewModel(failingRepository, controller, clock)
+        runCurrent()
+        assertEquals(listOf(snapshot), vm.uiState.value.queued.data)
+        fail.complete(Unit)
+        runCurrent()
+        assertFalse(vm.uiState.value.isLoading)
+        org.junit.Assert.assertTrue(vm.uiState.value.observationUnavailable)
+        assertFalse(vm.uiState.value.isEmpty)
+        assertEquals(listOf(snapshot), vm.uiState.value.queued.data)
+        assertEquals(emptyList<Pair<UUID, TaskAction>>(), controller.performed)
+    }
+
+    @Test
+    fun `retained query cancellation cancels observation instead of reporting failure`() = runTest {
+        val cancel = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var cancelled = false
+        val cancellingRepository = FakeTaskQueueRepository(kotlinx.coroutines.flow.flow {
+            emit(listOf(task(DATA_1, TaskQueueKind.DATA, 1, TaskLifecyclePhase.QUEUED)))
+            try {
+                cancel.await()
+                throw kotlinx.coroutines.CancellationException("observation stopped")
+            } finally {
+                cancelled = true
+            }
+        })
+        val vm = QueueViewModel(cancellingRepository, controller, clock)
+        runCurrent()
+        cancel.complete(Unit)
+        runCurrent()
+        org.junit.Assert.assertTrue(cancelled)
+        assertFalse(vm.uiState.value.observationUnavailable)
+        assertEquals(DATA_1, vm.uiState.value.queued.data.single().taskId)
+        assertEquals(emptyList<Pair<UUID, TaskAction>>(), controller.performed)
+    }
+
+    @Test
     fun `running exposes at most one task per independent queue`() = runTest {
         tasks.value = listOf(
             task(DATA_RUNNING_2, TaskQueueKind.DATA, 2, TaskLifecyclePhase.RUNNING),

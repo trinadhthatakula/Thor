@@ -159,7 +159,7 @@ class AppArchiveInstallerImpl(
         // same reason: presence cannot say whether *this* install landed, since restoring over an
         // existing copy is the normal case and a failed update leaves the old one there.
         val stampBefore = installStamp(packageName)
-        var installInvoked = false
+        var installSucceeded = false
 
         val settled = try {
             withTimeoutOrNull(INSTALL_WAIT_MS) {
@@ -188,9 +188,8 @@ class AppArchiveInstallerImpl(
                         mode = mode,
                         canDowngrade = true,
                         execution = execution,
-                        // The repository invokes this only after its dispatcher-entry cancellation
-                        // check, with no suspension between the callback and its install body.
-                        onInvocationStarted = { installInvoked = true },
+                        // Only this invocation's installer success can authorize cancellation rollback.
+                        onInstallSucceeded = { installSucceeded = true },
                     )
                     // `latest` is the last word the bus was given; `terminal.value` is only the
                     // last word this watcher has caught up with. They differ on exactly the path
@@ -209,11 +208,13 @@ class AppArchiveInstallerImpl(
             // The install call may have landed immediately before cancellation. The caller cannot
             // receive a receipt from a cancelled function, so corroborate and clean it here while its
             // outer package lease is still held, then preserve the original cancellation.
+            // A package that merely appeared during preflight could belong to another installer;
+            // without operation-local success, retain it even if its timestamp looks new.
             withContext(NonCancellable) {
                 val stampAfter = installStamp(packageName)
                 cancelledInstallRollbackReceipt(
                     packageName = packageName,
-                    installInvoked = installInvoked,
+                    installSucceeded = installSucceeded,
                     before = stampBefore,
                     after = stampAfter,
                 )?.let { rollbackNewInstall(it, execution) }
@@ -400,11 +401,11 @@ internal sealed interface InstallStamp {
 
 internal fun cancelledInstallRollbackReceipt(
     packageName: String,
-    installInvoked: Boolean,
+    installSucceeded: Boolean,
     before: InstallStamp,
     after: InstallStamp,
 ): ArchiveRollbackReceipt? {
-    if (!installInvoked) return null
+    if (!installSucceeded) return null
     return newInstallRollbackReceipt(
         packageName = packageName,
         before = before,

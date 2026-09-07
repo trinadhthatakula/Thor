@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
-import com.valhalla.thor.data.repository.installerPackageNameOf
+import com.valhalla.thor.data.repository.readInstallerPackageName
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.model.ReinstallPostconditionFailed
 import java.util.concurrent.CancellationException
@@ -56,13 +56,16 @@ internal class AndroidReinstallStateReader(
         return ReinstallFinalState(
             installedForThorUser = installed,
             installerPackageName = if (installed) {
-                packageManager.installerPackageNameOf(packageName)
+                packageManager.readInstallerPackageName(packageName)
             } else {
                 null
             },
         )
     }
 }
+
+/** Bounded failure distinct from a successfully observed postcondition mismatch. */
+internal class ReinstallInspectionUnavailable : Exception("Reinstall state inspection unavailable")
 
 @Single
 internal class ReinstallPostconditionVerifier(
@@ -74,7 +77,7 @@ internal class ReinstallPostconditionVerifier(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            return Result.failure(ReinstallPostconditionFailed(packageName))
+            return Result.failure(ReinstallInspectionUnavailable())
         }
 
         return if (

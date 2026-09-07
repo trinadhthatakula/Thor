@@ -189,6 +189,7 @@ fun TermLoggerContent(
         LazyColumn(
             state = lazyListState,
             modifier = Modifier
+                .weight(1f, fill = false)
                 .fillMaxWidth()
                 .padding(top = 10.dp),
         ) {

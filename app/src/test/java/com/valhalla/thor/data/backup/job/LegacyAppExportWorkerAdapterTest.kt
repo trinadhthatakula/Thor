@@ -97,6 +97,7 @@ class LegacyAppExportWorkerAdapterTest {
 
         val result = runLegacyAppExportTask(
             taskId = TASK_ID,
+                packages = com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator(),
             decodedRequest = null,
             runAttemptCount = 4,
             invalidRequestReason = "this export's request could not be read",
@@ -137,6 +138,7 @@ class LegacyAppExportWorkerAdapterTest {
 
             val result = runLegacyAppExportTask(
                 taskId = TASK_ID,
+                packages = com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator(),
                 decodedRequest = decoded,
                 runAttemptCount = 7,
                 invalidRequestReason = "invalid",
@@ -176,6 +178,7 @@ class LegacyAppExportWorkerAdapterTest {
 
             val result = runLegacyAppExportTask(
                 taskId = TASK_ID,
+                packages = com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator(),
                 decodedRequest = request(),
                 runAttemptCount = 1,
                 invalidRequestReason = "invalid",
@@ -200,6 +203,7 @@ class LegacyAppExportWorkerAdapterTest {
             runBlocking {
                 runLegacyAppExportTask(
                     taskId = TASK_ID,
+                packages = com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator(),
                     decodedRequest = request(),
                     runAttemptCount = 1,
                     invalidRequestReason = "invalid",
@@ -256,6 +260,7 @@ class LegacyAppExportWorkerAdapterTest {
             val events = mutableListOf<String>()
             val result = runLegacyAppExportTask(
                 taskId = TASK_ID,
+                packages = com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator(),
                 decodedRequest = decoded,
                 runAttemptCount = 1,
                 invalidRequestReason = "invalid request",

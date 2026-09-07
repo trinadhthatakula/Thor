@@ -189,9 +189,7 @@ class AppBundleFileStoreImpl(
 
             is ExportTargetChoice.Custom -> {
                 val treeUri = target.treeUri.toUri()
-                val tree = DocumentFile.fromTreeUri(context, treeUri)
-                    ?: throw IOException("Invalid folder")
-                openInTree(treeUri, tree, identity.fileName, mime)
+                openExactInTree(treeUri, identity.fileName, mime)
             }
         } ?: throw IOException("Could not create file")
         destination.write(file, progress)
@@ -334,23 +332,16 @@ class AppBundleFileStoreImpl(
         treeUriString: String,
         identity: AppExportPublicationIdentity,
     ): Boolean {
-        val tree = DocumentFile.fromTreeUri(context, treeUriString.toUri())
-            ?: throw IOException("Invalid folder")
-        val documents = tree.listFiles()
-        val byUri = documents.associateBy { it.uri.toString() }
-        val entries = documents.mapNotNull { document ->
-            val name = document.name ?: return@mapNotNull null
-            ExportPublicationEntry(
-                id = document.uri.toString(),
-                displayName = name,
-                isComplete = document.isFile && name == identity.fileName,
-            )
-        }
-        return reconcileExactExportPublication(identity, entries) { id ->
-            if (byUri[id]?.delete() != true) {
-                throw IOException("Could not remove incomplete ${identity.fileName}")
-            }
-        } != null
+        // SAF has no pending bit or durable returned-URI receipt. Exact final names are the only
+        // publication proof under the strict writer's ordering: no bytes before an exact partial
+        // name, and no rename until copying and stream close finish. Positive size is only a guard
+        // against create normalizing straight to final before that name check, not proof by itself.
+        // Providers must truthfully create a new empty document and report metadata; concurrent
+        // external replacement is not attributable without a durable receipt (which we do not have).
+        // Do not delete even a partial here: reconciliation is inspection, not guessed rollback.
+        return treeEntries(treeUriString.toUri()).count {
+            it.displayName == identity.fileName && it.isComplete
+        } == 1
     }
 
     /**
@@ -377,6 +368,86 @@ class AppBundleFileStoreImpl(
             discard()
         }
         if (publication == null) throw IOException("Could not publish ${source.name}")
+    }
+
+    /** Unlike DocumentFile.listFiles(), an unreadable listing must not mean an empty folder. */
+    private fun treeEntries(treeUri: Uri): List<ExportPublicationEntry> {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(
+            treeUri, DocumentsContract.getTreeDocumentId(treeUri),
+        )
+        return context.contentResolver.query(
+            children,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+                DocumentsContract.Document.COLUMN_SIZE,
+            ),
+            null, null, null,
+        )?.use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(1)
+                        ?: throw IOException("Could not inspect export destination")
+                    add(ExportPublicationEntry(
+                        id = cursor.getString(0),
+                        displayName = name,
+                        isComplete = cursor.getString(2)?.let {
+                            it.isNotEmpty() && it != DocumentsContract.Document.MIME_TYPE_DIR
+                        } == true && !cursor.isNull(3) && cursor.getLong(3) > 0L,
+                    ))
+                }
+            }
+        } ?: throw IOException("Could not inspect export destination")
+    }
+
+    /**
+     * Durable SAF publication never replaces an existing document. The caller must persist its
+     * PUBLISHING fence before entering here: a process death can lose either returned URI, so name
+     * enforcement alone cannot authorize replay. Cleanup uses only a positively returned identity.
+     */
+    private fun openExactInTree(treeUri: Uri, fileName: String, mime: String): ArchiveDestination? {
+        if (treeEntries(treeUri).any { it.displayName == fileName }) return null
+        val resolver = context.contentResolver
+        val parent = DocumentsContract.buildDocumentUriUsingTree(
+            treeUri, DocumentsContract.getTreeDocumentId(treeUri),
+        )
+        val partial = DocumentsContract.createDocument(resolver, parent, mime, partialName(fileName))
+            ?: return null
+        var ownedUri: Uri? = partial
+        var opened = false
+        fun discardOwned() {
+            ownedUri?.let { uri ->
+                if (!DocumentsContract.deleteDocument(resolver, uri)) {
+                    throw IOException("Could not discard rejected export")
+                }
+            }
+        }
+        try {
+            if (displayNameOf(resolver, partial) != partialName(fileName) ||
+                renameKnownUnsupported(resolver, partial)) return null
+            val stream = resolver.openOutputStream(partial) ?: return null
+            opened = true
+            return object : BaseDestination(stream, onSettled = {}) {
+                override fun onPublish(): ArchivePublication? {
+                    if (displayNameOf(resolver, partial) != partialName(fileName) ||
+                        treeEntries(treeUri).any { it.displayName == fileName }) return null
+                    // If rename throws or returns no URI, its side effect is unknown. Do not guess
+                    // that the old URI still identifies our document after a provider-side rename.
+                    ownedUri = null
+                    val renamed = DocumentsContract.renameDocument(resolver, partial, fileName)
+                        ?: return null
+                    ownedUri = renamed
+                    if (displayNameOf(resolver, renamed) != fileName) return null
+                    return ArchivePublication(fileName, writtenBytes)
+                }
+
+                override fun onDiscard() = discardOwned()
+            }
+        } finally {
+            if (!opened) runCatching { discardOwned() }
+                .onFailure { Logger.e(TAG, "could not discard rejected export", it) }
+        }
     }
 
     /**

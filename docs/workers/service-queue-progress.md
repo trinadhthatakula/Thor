@@ -1,36 +1,81 @@
 # Thor service-queue progress
 
-**Updated:** 7 September 2026. Latest independently checked host reports: 7 September UTC.
-
-**Branch:** `feat/worker-shell-lanes` · **Validated app-source checkpoint:** `cc67ad66` · **Build-tool checkpoint:** `c8da3fb3`
-
-**PR:** [#453](https://github.com/trinadhthatakula/Thor/pull/453), open, unmerged, targeting `dev`. Implementation and documentation pushed through `92e7d476`; remote/local/PR-head equality verified after publication.
-
-## The actual position
+**Updated:** 7 September 2026. Times below are UTC.
 
 **22 agreed milestones: 19 complete, 1 in progress, 2 pending. Three milestones remain.**
 
-**T18 is complete locally.** The lint/notification corrections are committed as `cc67ad66`. Final full suites passed **2,566 Foss tests and 2,566 Store tests**, with zero failures/errors/skips and no stale XML. Both required lint variants passed with **zero errors**; **63 Foss / 52 Store `SyntheticAccessor` warnings and 9 hints each remain**. Four final APK identities were independently verified. Scoped review found one missing Stopping notification state; genuine regressions reproduced it, the minimal correction passed, and narrow specification/quality re-review returned PASS/PASS with no findings.
+**Branch:** `feat/worker-shell-lanes` · **PR:** [#453](https://github.com/trinadhthatakula/Thor/pull/453), open, unmerged, targeting `dev` · **Version:** 1952.
 
-**T19 remains prerequisite-blocked:** read-only checks found no installed Shizuku Manager or running Shizuku server on the approved emulator, and no established disposable test fixture. Current Shizuku authorization/mode remain unestablished. No setup, grants or app mutations were made to bypass that blocker.
-
-**T20 is complete:** fact-checked documentation is committed and pushed; #453's title/body now describe the typed service migration, retained archive hardening, actual host evidence and outstanding runtime gates. Blocked Shizuku acceptance is prominent. Publishing the verified host work does not complete or waive T19.
-
-**T21 is in progress; no whole-branch approval yet.** Required `build-and-test` failed on published head `b4d3328b`: 2 of 2,566 Foss tests failed with Java regex `StackOverflowError` in `NoNewWorkRequestArchitectureTest`; later CI lint/R8 gates were skipped. The one-character possessive-quantifier correction now has genuine **RED: 4 tests / 3 expected stack overflows → GREEN: 8 tests / zero failures/errors/skips**, with fresh GREEN XML independently checked. Narrow specification/quality review returned **PASS/PASS**, preserving the original architecture assertions byte-for-byte. No JVM stack/config change was made. The separate narrow `fast-uri` 3.1.7 update passed audit (zero vulnerabilities), all **304 web tests**, build and structural accessibility checks (contrast excluded). These corrections are locally validated and scoped-reviewed; fresh remote CI and the final full-host gates remain pending.
-
-The first eight reviewers all failed during context compaction and returned **zero review reports**. Their journal confirms no accepted coverage. Recovery now uses 60 size-bounded diff batches covering all 359 paths, plus six independent security-boundary reviews; candidates receive independent verification. These are execution batches **inside T21, not additional milestones**. Reviewers use immutable published git objects while the separate owner corrects the two known CI/tooling files. CodeRabbit also skipped the 359-file PR because its limit is 150—its SUCCESS check is not review approval.
-
-Counts are milestones, not effort percentages or an ETA. Corrections stay inside their existing milestone.
+Earlier hosted checkpoint: `98be2f6c`, whose required Zulu CI passed. **The correction checkpoint below has passed local host validation and narrow reviews; fresh hosted CI is still required.** The older CI does not cover these corrections. No release, version bump, merge or physical-device acceptance is part of this work.
 
 ## Definite remaining list
 
-| Milestone | Status | Work remaining | Evidence required to close |
+| Milestone | Status | What remains | Evidence required to close |
 |---|---|---|---|
-| **T19 — Shizuku emulator acceptance and latency** | **Pending — blocked** | Establish authorized Shizuku/fixture prerequisites; exercise real operations, cancellation, reopening, recovery and package conflicts; measure at least 20 warm exports and 20 warm sweeps; remove temporary latency hooks and rebuild. | Genuine Manager consent, scenario postconditions/raw distributions, honest baseline comparability and final APK without hooks. Handoff/DAO tests are not Shizuku-operation evidence. |
-| **T21 — Final whole-branch review** | **In progress** | Review the complete feature diff against `dev`, independently verify findings, fix real defects, revalidate, check required CI and push corrections. | No verified blocking finding unresolved; required CI green; PR still open. Distinct from completed scoped reviews. |
-| **T22 — Startup and jank check** | Pending | Measure cold/warm startup and visible jank; fix only demonstrated regressions; validate/review/push changes. | Before/after measurements for corrections; final remote state verified; PR left for the user's merge. |
+| **T19 — Shizuku emulator acceptance and latency** | **Pending — blocked** | Establish authorized Shizuku/fixture prerequisites; test real operations, cancellation, reopening, recovery and package conflicts; collect at least 20 warm exports and 20 warm sweeps; remove temporary latency hooks and rebuild. | Genuine Manager consent, scenario postconditions and raw distributions; honest baseline comparison; final APK without hooks. |
+| **T21 — Final whole-branch review** | **In progress** | Publish the reviewed, locally validated correction checkpoint and verify current-head CI. All final host gates and narrow reviews passed. | No unresolved verified blocking finding, complete final-source host validation and required CI green; PR stays open. |
+| **T22 — Startup and jank check** | **Pending — after T21** | Measure startup and visible jank in a safe existing emulator state; fix only demonstrated regressions; validate/review/push any changes. | Actual measurements with environment limitations; before/after evidence for any correction; final remote state verified. |
 
-**Not part of this work:** releasing a version, bumping to 1953, merging #453, expanding the feature set, or claiming physical-device verification.
+**Host builds are complete; build ownership is released.** Publication and CI verification remain inside T21. Reviews, fixture maintenance and validation attempts are not new milestones. No milestone closes merely because a subagent reports completion.
+
+## Current T21 position
+
+Whole-branch primary review and finite security-boundary follow-ups are complete. **Fifteen confirmed candidate IDs resolve to fourteen distinct production defects**, all implemented, focused-tested and narrowly accepted. A missed instrumentation-fixture argument was subsequently corrected and reviewed PASS/PASS without changing assertions or production APIs.
+
+The final Foss lint gate exposed ten errors in five of the reviewed files. The bounded correction is implemented:
+
+- Scope an API30-only test shadow accurately, retaining its existing Robolectric API36 configuration.
+- Replace restricted `ViewModelStore.put` calls with public `ViewModelProvider` ownership of the same instance/key, preserving clear/cancellation/admission schedules.
+- Replace six `Uri.parse` calls with equivalent `toUri()` calls, preserving the URI expressions and notification identities.
+
+**All seven final host gates pass. Foss and Store each pass 2,643 tests across 220 suites, zero failures/errors/skips; both lint variants have zero errors.** Four APK identities/signatures, actual Koin production compilation and both executed release R8 tasks were independently checked. No `missing_rules.txt` exists. The controller independently verified all 814 input hashes, 931 evidence-file hashes and report/artifact freshness. The exact five-file lint delta passed specification/quality review: five files, 15 hunks, no unread changed hunks or blocking findings.
+
+The APKs were built before the correction commit. Their release metadata therefore embeds `98be2f6c`; the source fingerprint below identifies their actual corrected bytes. No instrumentation execution or device acceptance is implied.
+
+The targeted IDE tool timed out, but the matching Gradle daemon and IDE logs independently confirm that its underlying build completed successfully. That distinction is preserved: the timeout is not relabeled as a successful tool response. Native Foss reports were regenerated after that IDE build.
+
+### Corrections — not additional milestones
+
+| Correction group | Distinct defects | State |
+|---|---:|---|
+| Rollback ownership, unavailable reinstall inspection, full-UUID notification identity | 3 | Implemented, focused-tested and narrowly reviewed; included in this checkpoint |
+| Restore resume, acknowledged UUID, latest-start timeout, notification retry, background key derivation | 5 | Implemented, focused-tested and narrowly reviewed; included in this checkpoint |
+| SAF publication recovery and legacy-export package admission | 2 | Implemented, focused-tested and narrowly reviewed under explicit provider assumptions; included in this checkpoint |
+| Profile lifetime, Queue observation failure, tile count, logger footer | 4 | Implemented, focused-tested and narrowly reviewed; corrected footer evidence accepted PASS/PASS; included in this checkpoint |
+
+The five-file lint delta is maintenance of this correction set, not five new production defects. All other 45 correction paths remain unchanged. No lint suppression, policy/configuration/dependency change, visibility widening or new production behavior was authorized.
+
+## Current validation evidence
+
+Final-source fingerprint: `c10facb4a2f0c74aa2577123dee96991226f3ba01bd7f5840d6c25f35cc4d712`, covering **814 source/build inputs**, with an explicit **50-path correction inventory**. Exactly the authorized five paths differ from the preceding host snapshot.
+
+| Check | Actual result | Scope / limitation |
+|---|---|---|
+| **Final-source Foss JVM suite** | **2,643 tests / 220 suites; zero failures/errors/skips** | Forced run, exit 0, 54/54 tasks executed; 06:55–06:56. Saved/native XML, identities, hashes and freshness independently verified. |
+| **Final-source Foss lint** | **Exit 0; zero errors, 66 warnings, 9 hints** | Forced run, 70/70 tasks executed; 06:56–06:58. All warnings are `SyntheticAccessor`; fresh XML independently parsed. |
+| **Final-source Store JVM suite** | **2,643 tests / 220 suites; zero failures/errors/skips** | Forced run, exit 0, 54/54 tasks executed; 07:09–07:10. Saved/native XML, identities, hashes and freshness independently verified. |
+| **Final-source Store release lint** | **Exit 0; zero errors, 53 warnings, 9 hints** | Forced run, 51/51 tasks executed; 07:10–07:12. All warnings are `SyntheticAccessor`; fresh XML independently parsed. |
+| **Final APK/Koin/R8 gates** | **Four APKs verified; all forced assemblies passed** | Debug/test: 99/99 tasks; each release: 92/92. Production Koin compilation and both R8 tasks executed, no missing-rules files; signatures, package/version identities, native/saved hashes and freshness verified. |
+| Five-file lint delta review | **PASS/PASS; no blocking findings** | All five files / 15 hunks reviewed; no whole-branch re-review. |
+| G6 instrumentation fixture maintenance | Compilation and targeted IDE passed; review PASS/PASS | Real package coordinator supplied, existing assertions unchanged. Compilation is not instrumented execution. |
+| Web dependency correction | **304 tests / 17 files passed; audit zero vulnerabilities; typecheck/build passed** | Narrow `fast-uri` 3.1.7 lockfile update. Structural accessibility checked 11 pages; contrast excluded. |
+| Current-head hosted CI | Pending publication | Required Zulu 21 CI passed on `98be2f6c` (run `34075194730`), before the uncommitted corrections. No remote XML count is claimed. |
+| Shizuku runtime acceptance | **Not executed for T19** | Handoff/DAO/JVM/fake tests do not establish real Shizuku operation delivery. |
+
+### Focused review evidence
+
+These suites overlap; their counts must not be added into a full-suite total.
+
+| Slice | Preserved result / qualification |
+|---|---|
+| Ownership/reinstall/notification | RED 36 tests / 7 intended failures → GREEN 149 tests, zero failures/errors/skips; specification/quality PASS/PASS. |
+| Admission/recovery/key derivation | Sixteen distinct reproduced failures → GREEN 142 tests, zero failures/errors/skips; specification/quality PASS/PASS. Android test sources compiled, not executed. |
+| Export | Twelve distinct reproduced failures → GREEN 88 tests, zero failures/errors/skips. Narrow review passed with documented provider assumptions, not arbitrary-provider or power-loss durability guarantees. |
+| UI/lifecycle | Initial GREEN 82 tests; corrected footer follow-up GREEN 84 tests / 9 suites, zero failures/errors/skips. Final targeted review PASS/PASS. |
+| Footer evidence | Genuine mutation RED 4/4 failures. Direct logger fixtures measure 360×480dp and contain 52dp footer actions; separate real Dialog route tests verify SHARE/CANCEL/Background mapping. No claim that the separate Dialog has those dimensions. |
+| Architecture-regex correction | RED 4 tests / 3 expected stack overflows → GREEN 8/8; narrow PASS/PASS. No JVM stack/configuration change. Full raw RED XML was not retained; parsed RED identities/counts and fresh GREEN evidence were preserved. |
+
+Review coverage comprises **60 primary reports, six security cross-checks and 12 independent verification reports**, covering all **363 assigned diff segments across 359 paths**, with no missing/extra segments or primary unread ranges. The first eight reviewers failed compaction and returned no reports; none counts as coverage. Fifty-six disclosed security scopes were adjudicated into six finite boundary traces, all closed or corrected. CodeRabbit skipped the 359-file PR because its limit is 150; its SUCCESS check is not review approval.
 
 ## Completed milestones
 
@@ -38,108 +83,78 @@ Counts are milestones, not effort percentages or an ETA. Corrections stay inside
 |---|---|
 | T01 | Captured the original operation-latency baseline. |
 | T02 | Defined durable task contracts/state models. |
-| T03 | Added the Room-backed data-task queue/schema. |
+| T03 | Added the Room-backed data queue/schema. |
 | T04 | Evolved privilege-sweep ownership/claim handling. |
-| T05 | Implemented durable data-task launchers/admission. |
+| T05 | Implemented durable data launchers/admission. |
 | T06 | Extracted archive execution into queue runners. |
 | T07 | Extracted export execution into queue runners. |
 | T08 | Added foreground-service platform contracts. |
 | T09 | Implemented data-service execution/lifecycle/recovery. |
-| T10 | Replaced the privilege-sweep store with durable queue handling. |
+| T10 | Replaced the sweep store with durable queue handling. |
 | T11 | Implemented/activated privilege-sweep service execution. |
-| T12 | Cut feature producers over from WorkManager; retained compatibility adapters. |
+| T12 | Cut migrated producers over from WorkManager; retained drain adapters. |
 | T13 | Implemented durable queue/history projection (`0fc62497`). |
 | T14 | Built Queue screen (`81e7e73f`). |
 | T15 | Built task detail/logger UI (`baac6038`). |
 | T16 | Wired durable task navigation/foreground actions (`1fe31820`). |
 | T17 | Completed durable share preparation, guarded cancellation/recovery cleanup, scoped review and 45/45 focused emulator acceptance (`8efa11a7`, `ba9f8281`). |
-| **T18** | **Completed full host validation, lint corrections, localized progress/queued-count/Stopping notifications and scoped review (`cc67ad66`).** |
-| **T20** | **Fact-checked architecture/progress/design/plan documentation committed (`92e7d476`), PR title/body updated, feature commits pushed; remote/local/head equality, base `dev`, open/unmerged state and body match verified.** |
+| T18 | Completed full host validation, lint corrections, localized progress/count/Stopping notifications and scoped review (`cc67ad66`). |
+| T20 | Fact-checked architecture/progress/design/plan documentation committed (`92e7d476`); PR title/body updated, feature commits pushed; branch/base/open/unmerged state verified. |
 
-These are implementation/validation milestones, not a claim that Shizuku acceptance or final whole-branch review has passed. The worker README explicitly identifies remaining direct producers rather than claiming every operation is durable.
+These completed milestones do not imply T19 or T22 runtime acceptance. Single-app export and bulk share preparation are durable; multi-app “Backup”/export and single-app quick share remain intentional direct paths, as the [worker README](README.md) records.
 
-### Additional completed requests
+### Historical host and emulator checkpoints
 
-- Merged requested Dependabot/dev updates (`a3fa6321`): Coil 3.6.1, web dependencies and release-action update.
-- Preserved the intentional Android Studio/AGP update to **9.5.0-alpha04**; not reverted as unknown churn.
-- Reconciled interrupted Task17 edits and stopped overlapping writers. Host builds ran under one owner; the final owner has released that slot.
-- Normally booted approved `Thor_Root_API36`; verified AVD name, API 36, boot completion and SELinux Enforcing. Serial `emulator-5554` was verified, not treated as permanent. No wipe or security/configuration change was needed.
-- Completed the separately requested storage cleanup below.
+- **T18:** full Foss and Store each passed **2,566 tests / 212 suites**, zero failures/errors/skips. Foss lint: zero errors / 63 `SyntheticAccessor` warnings / nine hints; Store lint: zero errors / 52 warnings / nine hints. Four APK identities verified. These results predate T21 corrections.
+- **T18 source fingerprint:** `5289a966b7d0a957fb66a6c0191b39032c4e817b66d255ddc776cf7d6c584811`. Source `cc67ad66`, intended Studio/AGP build-tool checkpoint `c8da3fb3`; APKs built before those commits and matched to source hashes.
+- **T17 emulator:** 45/45 passed (13 handoff + 32 DAO), 90 matched raw start/terminal frames, no failures/errors/skips/crash markers. Approved API36 emulator, before T18; not Shizuku-operation evidence.
+- **Pre-lint-correction T21:** Foss and Store each passed 2,643 tests / 220 suites at 06:36–06:39 against fingerprint `e061fa93a35c0420e4caa52c08da6e65aaf8530e6d82ec66c66a905049580c95`. Preserved separately from final-source results.
 
-## Current validation evidence
+### Failures retained, not hidden by reruns
 
-| Check | Actual result | Scope/limitation |
-|---|---|---|
-| **Full Foss JVM suite** | **2,566 tests / 212 suites; zero failures/errors/skips** | Forced run, exit 0; fresh XML independently parsed, 00:46 UTC. |
-| **Full Store JVM suite** | **2,566 tests / 212 suites; zero failures/errors/skips** | Forced run, exit 0; fresh XML independently parsed, 00:47 UTC. |
-| Foss debug lint | **Exit 0; zero errors, 63 warnings, 9 hints** | Fresh XML independently parsed. All warnings are `SyntheticAccessor`. |
-| Store release lint | **Exit 0; zero errors, 52 warnings, 9 hints** | Fresh XML independently parsed. All warnings are `SyntheticAccessor`. |
-| Stopping regression | **RED: 4 tests / 2 failures → GREEN: 7 tests / zero failures** | Both real builders lacked Stopping before the production edit; operation/progress/count/UUID assertions retained. |
-| Scoped T18 review | **Quality PASS; corrected specification PASS; zero outstanding findings** | Original 27-file review plus narrow two-file correction review; not T21 whole-branch review. |
-| Production/instrumented compilation | **Passed** | Six targets passed separately during lint correction; final affected variants compiled through refreshed full suites/assemblies. Final IDE validation preceded native output recreation. |
-| Four final APK assemblies | **All exit 0; hashes/sizes independently verified** | Foss debug/test and Foss/Store release. Source digest matches committed files; APKs were built before the checkpoint commit. |
-| T17 corrected emulator run | **45/45 passed; zero failures/errors/skips** | 13 handoff + 32 DAO; 90 raw frames, 45 unique matched tests, no unmatched/crash markers. API 36 emulator, before T18 changes. |
-| T21 architecture-regex correction | **RED 4 tests / 3 expected stack overflows; GREEN 8/8; scoped PASS/PASS** | Fresh GREEN XML/source hashes independently checked after IDE build. RED parsed identity/counts/cases were preserved before overwrite; full raw RED XML was not retained. Not a full-suite or Zulu CI result. |
-| Web dependency validation | **304 tests / 17 files passed; audit zero vulnerabilities; typecheck/build passed** | `fast-uri` 3.1.7 locked and installed; only three fields changed. 55 typed files without diagnostics; structural a11y checked 11 pages with contrast excluded. |
-| Actual Shizuku operation/latency acceptance | **Not executed for T19** | No new instrumented execution after T18 edits; JVM/fake/handoff tests are not real Shizuku evidence. |
-| PR | **Updated and pushed; open, unmerged, base `dev`** | Publication verified at `92e7d476`; progress update pushed and remote matched at `b4d3328b`. CI at `b4d3328b` failed; its correction is locally scoped-reviewed and validated, with post-correction remote CI pending. Bounded whole-branch review recovery is in progress. CodeRabbit skipped this 359-file PR rather than reviewing it. |
+- T17 first emulator run: 43/44 passed; one invalid public-export fixture in a private-share expiry test. Fixture corrected without weakening guards; final 45/45. Two transport-blocked retries executed zero tests.
+- Earlier full suite: 2,555 tests / one stale expected enum-list failure omitting intentional `BUNDLE_READ`; corrected expectation and subsequent full runs passed.
+- T18 initial lint: 56 Foss / 44 Store errors, corrected without blanket suppression. Intermediate callback/projection scaffolds and an invalid oversized test fixture are distinguished from genuine production regressions. A combined multi-variant compilation OOM was recovered with serial targets, not configuration changes.
+- T18 narrow review found a missing Stopping notification state. Genuine regressions, minimal correction and scoped PASS/PASS re-review closed it.
+- T21 original tile-state assertion observed the wrong tile. Corrected `service.qsTile` mutation tests reproduced both failures; invalid original evidence is not counted. Original footer wrapper did not constrain the separate Dialog; the corrected evidence above closes that claim.
+- Final host IDE compilation exposed the missing G6 fixture argument; the initial compiler failure remains preserved. The later lint-fix IDE tool timeout is retained separately from the proven successful underlying build.
+- Final Foss lint initially failed with **10 errors: NewApi 1, RestrictedApi 3, UseKtx 6**, plus 66 warnings/nine hints. The five-file correction removes those errors without suppressing checks; fresh final-source Foss lint now passes.
 
-Final reviewed/committed 27-file source fingerprint: `5289a966b7d0a957fb66a6c0191b39032c4e817b66d255ddc776cf7d6c584811`. Version **1952** and Room schema **9** remain unchanged. Validation used the intended AGP alpha04 change, now retained separately with the inspected Studio update in `c8da3fb3`.
+## Blockers and qualifications
 
-### Historical failures and superseded checks
+1. **Shizuku prerequisites:** the 06:18 read-only check uniquely identified approved `Thor_Root_API36` (then `emulator-5554`), API36, boot complete, SELinux Enforcing. No installed Shizuku Manager/server or established disposable fixture was found. Current authorization/mode and app-accessible Root are unestablished. No broker self-grant, permission/security workaround or physical-device testing occurred.
+2. **Local JDK exception:** local evidence uses explicitly pinned Corretto21 because Zulu21 is unavailable. Only the cited hosted run establishes Zulu validation, and it predates current corrections.
+3. **Baseline comparability:** original operation baseline API37 differs from approved API36; a matched retained baseline APK is unproven. Current-only distributions cannot establish a speedup. Startup/jank sampling has not begun.
+4. **Safe performance fixture:** queues must already be idle; never cancel/delete work or clear data to manufacture a benchmark. Warm startup needs a surviving process and genuinely recreated Activity, not an intent delivered to an existing Activity. No sampling during heavy host builds.
+5. **Remaining diagnostics:** current Foss lint retains 66 SyntheticAccessor warnings/nine hints; Store release lint retains 53 SyntheticAccessor warnings/nine hints. No warning-free, post-R8 size or performance-improvement claim. Plural adaptations are automatically checked, not native-speaker reviewed.
+6. **Preserved configuration:** AGP9.5.0-alpha04, Studio's intentional Kotlin-option update, Room schema9 and version1952 remain. Baseline-profile module remains excluded. API28/29 archive package-parser runtime verification is still outstanding.
+7. **Bounded guarantees:** SAF recovery assumes truthful/stable provider metadata and ordinary create/close/rename behavior. Cleanup timeouts bound cooperative suspension/lock waits, not arbitrary blocking filesystem calls; guarded retry may reclaim inaccessible files later.
+8. **Shipping logging:** the bounded static check passed because shipping `DEBUG`/`PRIVILEGE_TRACE` logging is disabled, not because all Throwable forwarding is sanitized. Debug/trace builds are outside that conclusion.
+9. **Emulator startup diagnosis:** the earlier emulator process ended about 1.16 seconds after a 1,000ms launch-tool timeout; a tracked background invocation survived and booted. Invocation lifetime is implicated, but the historical exit signal/sender was not captured.
 
-- T17 initial implementation: 484 JVM tests / 39 suites passed. Cancellation correction: 128 tests / 9 suites passed, including six demonstrated RED→GREEN regressions.
-- Initial focused emulator run: **43/44 passed**, one invalid public-export fixture for private-share expiry. Corrected the fixture without weakening DAO guards; final **45/45 passed**. Two intervening retries executed **zero tests** because emulator transport was unavailable.
-- Initial full Foss suite: **2,555 tests / one failure**, from a stale expected enum list omitting intentional `BUNDLE_READ`. Focused 1/1 and full Foss/Store 2,555 each passed after that expectation correction.
-- Initial lint failed with **56 Foss / 44 Store errors**. Foss: RestrictedApi 14, PluralsCandidate 10, UnusedResources 28, InlinedApi 1, NewApi 2, UseKtx 1. Store: RestrictedApi 5, PluralsCandidate 10, UnusedResources 29. These are corrected; no blanket baseline/suppression was added.
-- During lint correction, callback/projection scaffold tests initially failed, alongside the existing singular grammar defect. These are not all preexisting production bugs. A later 64-test run had one invalid oversized fixture; the domain guard was preserved. Focused 67 and full Foss/Store 2,564 each subsequently passed before the Stopping correction.
-- One combined multi-variant compilation ran out of memory. Serial one-worker targets recovered without configuration changes. The IDE check regenerated `app/build`, so native reports/APKs were recreated afterward rather than relying on deleted or stale outputs.
-- Initial scoped T18 specification review found missing Stopping text during cancellation cleanup. Independent verification confirmed it. Genuine regressions, minimal correction and narrow PASS/PASS re-review closed it; final full totals are 2,566 per variant.
+## Separate completed requests
 
-## Known blockers and qualifications
+- Merged requested Dependabot/dev updates (`a3fa6321`) and preserved the intentional Android Studio/AGP update.
+- Reconciled interrupted T17 edits and stopped overlapping writers; validation uses one build owner.
+- Normally booted the approved API36 AVD without a wipe or security/configuration change. Serial numbers are observations, not permanent AVD identity.
+- **Storage cleanup complete:** deleted exactly the two verified-unused API37 preparation images, reclaiming **4,573,888,512 allocated bytes (4.260GiB / 4.57GB)**. Installed API36 AVD/SDK, memories, transcripts/recovery inputs and other projects were preserved. The scratch API37 bundle is intentionally incomplete; no full AVD rollback backup is claimed. No further deletion or purge is planned.
 
-1. **Shizuku prerequisites:** Manager/server and an authorized disposable fixture are absent. Historical grants do not establish current consent. No broker self-grant, adb/root grant or security workaround is permitted.
-2. **Local JDK exception:** Zulu 21 is unavailable. Evidence uses explicitly pinned Corretto 21 under the recorded local exception; not Zulu-compliance evidence.
-3. **Latency baseline differs:** original API 37 versus current approved API 36; retained comparable historical APK is unproven. Current-only distributions cannot establish a matched speedup.
-4. **Web advisory corrected in T21:** the pre-existing `fast-uri@3.1.5` tooling advisory is addressed by the already-upstreamed 3.1.7 entry, without merging `master` or broad dependency updates. Current audit reports zero vulnerabilities; this is web build/check tooling, not Android runtime code.
-5. **Remaining diagnostics/localization:** 63/52 SyntheticAccessor warnings and nine hints per variant remain accounted for. No mechanical visibility widening or post-R8 performance/size claim. Plural adaptations are authored and automatically checked, not native-speaker-reviewed.
-6. **Preserved build-tool state:** AGP alpha04 and Studio's `.idea/kotlinc.xml` removal of explicit Kotlin API/language 2.4 options are intentional and remain separate from the T18 commit.
-7. **Cleanup timeout is cooperative:** suspension/lock waiting is bounded, not arbitrary blocking filesystem calls. Inaccessible files may await guarded retry/startup reclamation; deterministic retry coverage exists.
-8. **Startup diagnosis limitation:** the original emulator process ended roughly 1.16 seconds after a 1,000 ms context-mode launch timeout. Identical launch through a tracked background process survived and booted. Invocation lifetime is strongly implicated, but historical exit signal/sender were not captured.
+## Tracking and reporting rules
 
-## Separate storage cleanup request — complete
+The old tracker showed 38 in-progress and 72 pending labels, mostly stale or duplicate wrappers—not jobs running continuously for days. That was my tracking error. Removed 104 redundant unresolved entries without pretending their work was complete; retained historical completed records and the same 22 canonical milestones.
 
-The user authorized deletion of verified-unused emulator preparation files only and asked to leave other projects alone. After dependency auditing, exact-file inspection and successful API 36 startup, removed only API 37 scratch `system.img` and `vendor.img`.
-
-- Allocated bytes removed: **4,573,888,512 (4.260 GiB / 4.57 GB)**; observed free-space increase was approximately the same.
-- `.claude/projects`: **9,374,552 KiB → 4,907,928 KiB**, about 9.60 GB → 5.03 GB; active logs continue growing.
-- Remaining preparation content: **139,752 KiB**, including tooling, installers and recovery inputs.
-- Installed API 36 AVD/SDK, memories, transcripts/evidence and other projects were preserved. No purge, retention-setting change or blanket deletion permission was added.
-- Unused API 37 scratch bundle is intentionally incomplete until those two images are restored. The historically documented complete AVD rollback backup is absent; the SDK ramdisk backup is not proven to replace it. Stale memory claims were corrected.
-
-This is not another feature milestone. No further project deletion is planned.
-
-## Why the old tracker showed 33+ running tasks
-
-The tracker contained 376 entries: 266 completed, 38 marked in progress and 72 pending. Those labels were not a process monitor: review/fix wrappers and interrupted entries accumulated stale states; they were not all executing continuously for days.
-
-**That was my tracking error.** On 7 September, removed 104 redundant unresolved entries without falsely completing work. Retained historical completed entries and the same 22 canonical milestones. The current counts above—not historical wrapper counts—describe remaining work.
-
-## Reporting rules
-
-- This is the human-facing source of truth. Keep the 22 milestones stable; fold corrections into their parent.
-- Distinguish implemented, compiled, tested, reviewed, committed, pushed and merged. Preserve failures as history, but do not present superseded results as current.
-- Re-review fixes narrowly; do not restart completed milestones or whole-branch review for each small fix.
-- No competing host builds. Timed performance samples must not overlap CPU-heavy host work.
+- This document is the human-facing source of truth; fold corrections into their existing milestone.
+- Distinguish implemented, compiled, tested, reviewed, committed, pushed and merged.
+- Preserve failures as history, but never present superseded results as current.
+- Review small deltas narrowly; do not restart completed milestones or whole-branch review.
 - Keep #453 open/unmerged for the user's physical-device/emulator verification.
 
 ## Evidence pointers
 
-- [Worker architecture](README.md), [implementation plan](../superpowers/plans/2026-09-03-typed-foreground-service-queues.md), [binding design](../superpowers/specs/2026-09-03-privilege-action-service-design.md), [latency baseline](service-queue-latency-baseline.md).
-- Ignored execution ledger: `.superpowers/sdd/2026-09-03-typed-foreground-service-queues/progress.md`.
-- Current T18 host evidence: `task-18-host-validation/stopping-correction-evidence.json` beneath that directory. Prior `lint-correction-evidence.json` and `resumed-host-evidence.json` are preserved historical results.
-- Scope/review packages: `task-18-review-package.json` and `task-18-stopping-review-package.json` in the same workspace.
-- Corrected T17 emulator: `/tmp/thor-task17-install-9e1ac9bc/{results.json,instrumentation-events.json,instrumentation.log}`.
-- Original emulator RED: `/tmp/thor-task17-instrumentation-o7DJx4/`; blocked retries: `/tmp/thor-task17-device-rerun-pOPu4e/`, `/tmp/thor-task17-device-rerun-4edacde6/`.
-- Normal startup evidence: `/tmp/thor-task17-startup-evidence-20260906T224026Z.json`.
-- Native JVM reports: `app/build/test-results/testFossDebugUnitTest/`, `testStoreDebugUnitTest/`; lint: `app/build/reports/lint-results-fossDebug.*`, `lint-results-storeRelease.*`.
+- [Architecture](README.md), [implementation plan](../superpowers/plans/2026-09-03-typed-foreground-service-queues.md), [binding design](../superpowers/specs/2026-09-03-privilege-action-service-design.md), [latency baseline](service-queue-latency-baseline.md).
+- Ignored execution workspace: `.superpowers/sdd/2026-09-03-typed-foreground-service-queues/`; its `progress.md` holds detailed handoffs and rulings.
+- Current five-file maintenance: `task-21-final-lint-correction-evidence.json`, exact review diff, and preserved `task-21-final-host/09-final-foss-unit/` / `10-final-foss-lint/` reports.
+- `task-21-final-host-evidence.json` records the completed seven-gate result; `task-21-final-host-controller-acceptance.json` records independent verification. Earlier failures remain preserved separately; local acceptance does not close hosted CI or device gates.
+- Historical T18: `task-18-host-validation/stopping-correction-evidence.json`; prior lint/resumed-host manifests remain preserved.
+- Historical T17: `/tmp/thor-task17-install-9e1ac9bc/{results.json,instrumentation-events.json,instrumentation.log}`; earlier RED/transport-blocked attempts remain separately preserved.
+- Native reports under `app/build/` may be regenerated; saved reports and source fingerprints identify each historical gate.

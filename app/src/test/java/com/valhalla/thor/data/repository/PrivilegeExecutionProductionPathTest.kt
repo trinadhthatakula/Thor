@@ -47,6 +47,7 @@ import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -210,6 +211,48 @@ class PrivilegeExecutionProductionPathTest {
     }
 
     @Test
+    fun `production installer corroborates only actual shell success before publishing completion`() = runTest {
+        for (result in listOf("success", "failure", "cancel")) {
+            val trace = mutableListOf<String>()
+            val preferences = FakePreferenceRepository()
+            val bus = InstallerEventBus()
+            val commands = object : RootCommandExecutor {
+                override suspend fun execute(command: RootCommand): RootCommandResult {
+                    trace += "installer:$result"
+                    if (result == "cancel") throw CancellationException("installer cancelled")
+                    return RootCommandResult(if (result == "success") 0 else 1, emptyList(), emptyList())
+                }
+            }
+            val root = RootSystemGateway(context, commands, preferences, Dispatchers.Unconfined).also {
+                it.userIdProvider = { 0 }
+            }
+            val repository = InstallerRepositoryImpl(
+                context, bus, root, ShizukuReflector(context), preferences,
+                ObbInstaller(context, FakeSystemRepository(), Dispatchers.Unconfined),
+                Dispatchers.Unconfined, Dispatchers.Unconfined,
+            )
+            val staged = StagedPackage(temporaryFolder.newFile("callback-$result.apk").apply { writeText("apk") }, "base.apk")
+            val caught = runCatching {
+                repository.installPackage(
+                    staged, Uri.fromFile(staged.file), InstallMode.ROOT,
+                    onInvocationStarted = { trace += "entry" },
+                    onInstallSucceeded = {
+                        assertEquals("installer:success", trace.last())
+                        assertEquals(InstallState.Installing(0.5f), bus.latest)
+                        trace += "corroborated"
+                    },
+                )
+            }
+            assertEquals(
+                listOf("entry", "installer:$result") + if (result == "success") listOf("corroborated") else emptyList(),
+                trace,
+            )
+            if (result == "cancel") assertTrue(caught.exceptionOrNull() is CancellationException)
+            else assertTrue(caught.isSuccess)
+        }
+    }
+
+    @Test
     fun `InstallerRepositoryImpl root install keeps ordinary error state`() = runTest {
         val ordinary = IllegalStateException("ordinary root install failure")
         val fixture = installerRepository(ordinary)
@@ -301,7 +344,69 @@ class PrivilegeExecutionProductionPathTest {
     }
 
     @Test
-    fun `cancellation after installer entry rolls back the exact new install`() = runTest {
+    fun `cancellation during preflight retains external install after invocation entered`() = runTest {
+        val packageName = "com.example.external.preflight"
+        val entered = CompletableDeferred<Unit>()
+        val preflight = CompletableDeferred<Unit>()
+        var thorInstallCalls = 0
+        val repository = object : InstallerRepository {
+            override suspend fun installPackage(
+                staged: StagedPackage,
+                uri: Uri,
+                mode: InstallMode,
+                canDowngrade: Boolean,
+                grantAllPermissions: Boolean?,
+                execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
+                onInvocationStarted: () -> Unit,
+                onInstallSucceeded: () -> Unit,
+            ) {
+                onInvocationStarted()
+                entered.complete(Unit)
+                // Same boundary as InstallerRepositoryImpl's suspending OBB preflight.
+                preflight.await()
+                thorInstallCalls++
+            }
+        }
+        val system = FakeSystemRepository()
+        val packages = shadowOf(context.packageManager)
+        packages.removePackage(packageName)
+        val bus = InstallerEventBus()
+        val installer = AppArchiveInstallerImpl(
+            context = context,
+            installerRepository = repository,
+            systemRepository = system,
+            eventBus = bus,
+            obbInstaller = ObbInstaller(context, system, Dispatchers.Unconfined),
+            privilegeState = FakePrivilegeStateProvider(
+                PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true)
+            ),
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+        val bundle = temporaryFolder.newFile("cancel-preflight.apk").apply { writeText("apk") }
+        val restore = launch(start = CoroutineStart.UNDISPATCHED) {
+            installer.installBundle(
+                bundle, packageName, listOf("base.apk"),
+                com.valhalla.thor.domain.model.PrivilegeExecutionContext(),
+            )
+        }
+        entered.await()
+        packages.installPackage(installedPackage(packageName, lastUpdateTime = 4_000L))
+        // An unrelated install may also publish success on this process-global bus.
+        bus.emit(InstallState.Success)
+        try {
+            restore.cancel()
+            restore.join()
+            assertTrue(restore.isCancelled)
+            assertEquals(0, thorInstallCalls)
+            assertEquals(4_000L, context.packageManager.getPackageInfo(packageName, 0).lastUpdateTime)
+            assertEquals("unknown ownership must not authorize uninstall", emptyList<String>(), system.calls)
+        } finally {
+            packages.removePackage(packageName)
+        }
+    }
+
+    @Test
+    fun `cancellation after operation-local installer success rolls back the exact new install`() = runTest {
         val packageName = "com.example.cancelled.install"
         val system = FakeSystemRepository()
         val shadowPackageManager = shadowOf(context.packageManager)
@@ -534,6 +639,7 @@ class PrivilegeExecutionProductionPathTest {
             grantAllPermissions: Boolean?,
             execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
             onInvocationStarted: () -> Unit,
+            onInstallSucceeded: () -> Unit,
         ) {
             calls++
             withContext(entryDispatcher) {
@@ -556,10 +662,12 @@ class PrivilegeExecutionProductionPathTest {
             grantAllPermissions: Boolean?,
             execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
             onInvocationStarted: () -> Unit,
+            onInstallSucceeded: () -> Unit,
         ) {
             onInvocationStarted()
             invocationEntered = true
             afterEntry()
+            onInstallSucceeded()
             currentCoroutineContext().cancel(CancellationException("cancel after installer entry"))
             currentCoroutineContext().ensureActive()
         }
@@ -578,6 +686,7 @@ class PrivilegeExecutionProductionPathTest {
             grantAllPermissions: Boolean?,
             execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
             onInvocationStarted: () -> Unit,
+            onInstallSucceeded: () -> Unit,
         ) {
             onInvocationStarted()
             calls++

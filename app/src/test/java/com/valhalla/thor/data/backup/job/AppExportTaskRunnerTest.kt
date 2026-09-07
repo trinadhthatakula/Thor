@@ -370,6 +370,21 @@ class AppExportTaskRunnerTest {
         assertFalse(outcome.result.outputs.any { it.state == DataTaskOutputState.READY })
     }
 
+    @Test
+    fun `interrupted SAF publication fails closed without package lookup or resetting its fence`() = runBlocking {
+        val operations = RecordingExportOperations()
+        val stages = mutableListOf<DataTaskStage>()
+        val outcome = AppExportTaskRunner(operations, Dispatchers.Unconfined).run(
+            exportRequest(treeUri = "content://provider/tree", resumedFrom = checkpoint(DataTaskStage.PUBLISHING)),
+            DataTaskCheckpointSink { stages += it.stage; DataTaskSinkWrite.APPLIED },
+        ) as DataTaskRunOutcome.ItemCompleted
+
+        assertEquals("APP_EXPORT_PUBLICATION_UNCERTAIN", outcome.result.resultCode.value)
+        assertTrue(operations.exports.isEmpty())
+        assertTrue(operations.loadedPackages.isEmpty())
+        assertTrue(stages.none { it != DataTaskStage.PUBLISHING })
+    }
+
     private fun exportRequest(
         treeUri: String? = null,
         stagingIdentity: String = "item-$TASK_ID-0",
@@ -459,6 +474,11 @@ class AppExportTaskRunnerTest {
             return treeWritable
         }
 
+        override suspend fun reconcilePublication(
+            target: com.valhalla.thor.domain.model.ExportTargetChoice,
+            identity: AppExportPublicationIdentity,
+        ) = com.valhalla.thor.domain.repository.AppExportPublicationReconciliation.Absent
+
         override suspend fun exportInto(
             appInfo: AppInfo,
             format: BundleFormat,
@@ -468,6 +488,7 @@ class AppExportTaskRunnerTest {
             captureProgress: VerifiedProgress,
             captureBoundary: VerifiedOperationBoundary,
             publicationProgress: VerifiedProgress,
+            publicationStart: suspend () -> Unit,
         ): Result<AppExportPublication> {
             exports += ExportCall(session, publicationIdentity, execution)
             progressScript(captureProgress, captureBoundary, publicationProgress)

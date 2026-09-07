@@ -110,7 +110,7 @@ class TaskDetailViewModelTest {
         assertEquals(TaskLifecyclePhase.START_BLOCKED_NOTIFICATION, viewModel.uiState.value.phase)
         assertEquals("NOTIFICATION_START_REJECTED", viewModel.uiState.value.detail?.resultCode)
         assertEquals(
-            setOf(TaskAction.OPEN_NOTIFICATION_SETTINGS),
+            setOf(TaskAction.OPEN_NOTIFICATION_SETTINGS, TaskAction.RETRY),
             viewModel.uiState.value.actions,
         )
     }

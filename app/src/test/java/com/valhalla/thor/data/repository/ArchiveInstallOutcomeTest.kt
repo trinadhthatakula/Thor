@@ -296,11 +296,11 @@ class ArchiveInstallOutcomeTest {
     }
 
     @Test
-    fun `cancellation before installer invocation cannot create rollback authority`() {
+    fun `cancellation before operation-local installer success cannot create rollback authority`() {
         assertNull(
             cancelledInstallRollbackReceipt(
                 packageName = "com.example.app",
-                installInvoked = false,
+                installSucceeded = false,
                 before = InstallStamp.Absent,
                 after = InstallStamp.At(2_000L),
             )
@@ -308,12 +308,12 @@ class ArchiveInstallOutcomeTest {
     }
 
     @Test
-    fun `cancellation after installer invocation can create exact rollback authority`() {
+    fun `cancellation after operation-local installer success can create exact rollback authority`() {
         assertEquals(
             ArchiveRollbackReceipt("com.example.app", 2_000L),
             cancelledInstallRollbackReceipt(
                 packageName = "com.example.app",
-                installInvoked = true,
+                installSucceeded = true,
                 before = InstallStamp.Absent,
                 after = InstallStamp.At(2_000L),
             )

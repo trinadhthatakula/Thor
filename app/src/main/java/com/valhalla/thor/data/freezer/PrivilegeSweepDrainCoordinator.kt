@@ -6,6 +6,7 @@ package com.valhalla.thor.data.freezer
 import android.content.Context
 import android.os.PowerManager
 import com.valhalla.thor.data.gateway.ReinstallPostconditionVerifier
+import com.valhalla.thor.domain.model.ReinstallPostconditionFailed
 import com.valhalla.thor.data.service.ForegroundTaskOwner
 import com.valhalla.thor.data.service.ForegroundTaskWakeLock
 import com.valhalla.thor.domain.repository.PrivilegeSweepBlockReason
@@ -70,10 +71,11 @@ internal class DefaultPrivilegeSweepReinstallPostconditionVerifier(
         executionId: UUID,
         requestId: UUID,
     ): ReinstallPostcondition = try {
-        if (verifier.verify(packageName, userId).isSuccess) {
-            ReinstallPostcondition.SATISFIED
-        } else {
-            ReinstallPostcondition.NOT_SATISFIED
+        val result = verifier.verify(packageName, userId)
+        when {
+            result.isSuccess -> ReinstallPostcondition.SATISFIED
+            result.exceptionOrNull() is ReinstallPostconditionFailed -> ReinstallPostcondition.NOT_SATISFIED
+            else -> ReinstallPostcondition.UNKNOWN
         }
     } catch (cancelled: CancellationException) {
         throw cancelled

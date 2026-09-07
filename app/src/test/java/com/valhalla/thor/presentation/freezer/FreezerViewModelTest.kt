@@ -133,10 +133,15 @@ class FreezerViewModelTest {
         return FreezerViewModel(
             freezerRepository = freezer,
             freezeProfileRepository = profiles,
-            sweepResolver = privilegeSweepResolver(
-                freezerRepository = freezer,
-                freezeProfileRepository = profiles,
-                preferenceRepository = prefs,
+            profileSubmission = ProfileSubmissionCoordinator(
+                privilegeSweepResolver(
+                    freezerRepository = freezer,
+                    freezeProfileRepository = profiles,
+                    preferenceRepository = prefs,
+                ),
+                controller,
+                taskNavigationTargets,
+                mainDispatcherRule.dispatcher,
             ),
             sweepController = controller,
             taskNavigationTargets = taskNavigationTargets,

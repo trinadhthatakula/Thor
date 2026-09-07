@@ -110,6 +110,13 @@ internal fun QueueContent(
             ) {
                 CircularProgressIndicator()
             }
+        } else if (state.observationUnavailable) {
+            Text(
+                text = stringResource(R.string.task_reason_observer_failure),
+                modifier = Modifier.padding(padding).padding(16.dp),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         } else {
             QueueList(
                 state = state,

@@ -778,6 +778,7 @@ class DataTaskDaoTest {
                 expectedState = DataTaskState.INTERRUPTED_REVIEW,
                 expectedInterruption = DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW,
                 nowMs = 3_300L,
+                confirmedDestructiveReview = true,
             ),
         )
         val claim = requireNotNull(

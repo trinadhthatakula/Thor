@@ -54,6 +54,38 @@ class PrivilegeSweepServiceNotificationTest {
     }
 
     @Test
+    fun `colliding UUID content identities retain original navigation after replacement`() {
+        val a = UUID.fromString("00000000-0000-4000-8000-000000000001")
+        val b = UUID.fromString("00000000-0000-4000-8000-000010000001")
+        val first = requireNotNull(notifications.running(a, "A").contentIntent)
+        val firstFilter = android.content.Intent(shadowOf(first).savedIntent)
+        val second = requireNotNull(notifications.running(b, "B").contentIntent)
+        assertEquals(shadowOf(first).requestCode, shadowOf(second).requestCode)
+        org.junit.Assert.assertFalse(firstFilter.filterEquals(shadowOf(second).savedIntent))
+        assertNotEquals(first, second)
+        first.send()
+        assertEquals(a.toString(), shadowOf(context as Application).nextStartedActivity.getStringExtra(TaskQueueLaunchActivity.EXTRA_TASK_ID))
+    }
+
+    @Test
+    fun `colliding UUID cancel identities retain original target after replacement`() {
+        val a = UUID.fromString("00000000-0000-4000-8000-000000000001")
+        val b = UUID.fromString("00000000-0000-4000-8000-000010000001")
+        val first = notifications.running(a, "A").actions.single().actionIntent
+        val firstFilter = android.content.Intent(shadowOf(first).savedIntent)
+        val second = notifications.running(b, "B").actions.single().actionIntent
+        assertEquals(shadowOf(first).requestCode, shadowOf(second).requestCode)
+        org.junit.Assert.assertFalse(firstFilter.filterEquals(shadowOf(second).savedIntent))
+        assertNotEquals(first, second)
+        val extra = requireNotNull(firstFilter.extras).keySet().single()
+        assertEquals(a.toString(), shadowOf(first).savedIntent.getStringExtra(extra))
+        first.send()
+        assertEquals(a.toString(), shadowOf(context as Application).broadcastIntents.last().getStringExtra(extra))
+        assertEquals("thor://privilege-sweep/$a/cancel", firstFilter.dataString)
+        assertTrue(shadowOf(first).isImmutable)
+    }
+
+    @Test
     fun `preparing notification keeps the generic app target`() {
         val contentIntent = requireNotNull(notifications.preparing().contentIntent)
         val savedIntent = shadowOf(contentIntent).savedIntent

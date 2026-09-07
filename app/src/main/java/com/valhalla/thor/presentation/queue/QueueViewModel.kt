@@ -15,7 +15,11 @@ import com.valhalla.thor.domain.repository.TaskActionDispatch
 import com.valhalla.thor.domain.repository.TaskQueueRepository
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +35,7 @@ import org.koin.core.annotation.KoinViewModel
 @Immutable
 data class QueueUiState(
     val isLoading: Boolean = true,
+    val observationUnavailable: Boolean = false,
     val running: RunningSectionUiState = RunningSectionUiState(),
     val queued: QueueLaneSectionUiState = QueueLaneSectionUiState(),
     val recent: QueueLaneSectionUiState = QueueLaneSectionUiState(),
@@ -73,9 +78,16 @@ class QueueViewModel(
     private val clock: QueueClock,
 ) : ViewModel() {
 
-    val uiState = taskQueueRepository.tasks
-        .flatMapLatest { tasks -> queueUiStates(tasks, clock) }
-        .stateIn(
+    val uiState = flow {
+        var lastKnown = QueueUiState()
+        emitAll(taskQueueRepository.tasks
+            .flatMapLatest { tasks -> queueUiStates(tasks, clock) }
+            .onEach { lastKnown = it }
+            .catch { failure ->
+                if (failure is CancellationException) throw failure
+                emit(lastKnown.copy(isLoading = false, observationUnavailable = true))
+            })
+    }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
             initialValue = QueueUiState(),

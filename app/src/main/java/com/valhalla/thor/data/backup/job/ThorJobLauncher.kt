@@ -81,13 +81,16 @@ class ThorJobLauncher(
         passphrase: CharArray,
     ): UUID? {
         // On `default`, not `io`: PBKDF2 is CPU-bound, and `io`'s pool exists for threads that block.
+        var acceptedTaskId: UUID? = null
         val taskId = try {
-            withContext(defaultDispatcher) { acceptance.acceptBackup(request, passphrase) }
+            withContext(defaultDispatcher) {
+                acceptance.acceptBackup(request, passphrase) { acceptedTaskId = it }
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             Logger.e(TAG, "backup acceptance failed for ${request.packageName}", failure)
-            return null
+            return acceptedTaskId
         }
         return taskId
     }
@@ -113,15 +116,16 @@ class ThorJobLauncher(
         salt: ByteArray,
         iterations: Int,
     ): UUID? {
+        var acceptedTaskId: UUID? = null
         val taskId = try {
             withContext(defaultDispatcher) {
-                acceptance.acceptRestore(request, passphrase, salt, iterations)
+                acceptance.acceptRestore(request, passphrase, salt, iterations) { acceptedTaskId = it }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             Logger.e(TAG, "restore acceptance failed for ${request.packageName}", failure)
-            return null
+            return acceptedTaskId
         }
         return taskId
     }

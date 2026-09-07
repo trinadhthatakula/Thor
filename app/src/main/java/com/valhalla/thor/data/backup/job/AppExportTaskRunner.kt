@@ -13,6 +13,8 @@ import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
+import com.valhalla.thor.domain.model.ExportTargetChoice
+import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
 import com.valhalla.thor.domain.model.MAX_TASK_PRESENTATION_ARGUMENT_CHARS
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
@@ -37,6 +39,7 @@ internal val APP_EXPORT_APP_NOT_INSTALLED = DataTaskResultCode("APP_EXPORT_APP_N
 internal val APP_EXPORT_DESTINATION_UNAVAILABLE =
     DataTaskResultCode("APP_EXPORT_DESTINATION_UNAVAILABLE")
 internal val APP_EXPORT_FAILED = DataTaskResultCode("APP_EXPORT_FAILED")
+internal val APP_EXPORT_PUBLICATION_UNCERTAIN = DataTaskResultCode("APP_EXPORT_PUBLICATION_UNCERTAIN")
 internal val APP_EXPORT_FAILURE_REASON = DataTaskResultCode("APP_EXPORT_FAILURE_REASON")
 
 private val APP_EXPORT_COMMAND = PrivilegeCommandClass("archive.export")
@@ -53,6 +56,11 @@ internal interface AppExportTaskOperations {
 
     suspend fun isTreeWritable(treeUri: String): Boolean
 
+    suspend fun reconcilePublication(
+        target: ExportTargetChoice,
+        identity: AppExportPublicationIdentity,
+    ): AppExportPublicationReconciliation
+
     suspend fun exportInto(
         appInfo: AppInfo,
         format: BundleFormat,
@@ -62,6 +70,7 @@ internal interface AppExportTaskOperations {
         captureProgress: VerifiedProgress,
         captureBoundary: VerifiedOperationBoundary,
         publicationProgress: VerifiedProgress,
+        publicationStart: suspend () -> Unit,
     ): Result<AppExportPublication>
 
     /** Process-local compatibility reporting may retain the destination label; Room never does. */
@@ -96,7 +105,29 @@ internal class AppExportTaskRunner(
             )
         }
 
+        val legacy = request.item.deterministicStagingIdentity == LEGACY_APP_EXPORT_STAGING_IDENTITY
+        val publicationIdentity = if (legacy) null else AppExportPublicationIdentity(
+            "Thor-task-${request.taskId}-${request.item.ordinal}." + payload.request.format.extension
+        )
         var activeLabel = request.item.displayLabel ?: payload.request.label
+        if (!legacy && payload.request.treeUri != null && request.resumedFrom?.stage == DataTaskStage.PUBLISHING) {
+            // Keep this fence through repeated interruption. No PREPARING, package lookup or build
+            // may erase the only durable evidence that a provider side effect could already exist.
+            return try {
+                withContext(ioDispatcher) {
+                    if (checkpoints.persist(request.checkpoint(stage = DataTaskStage.PUBLISHING, label = activeLabel, nowMs = nowMs())) ==
+                        DataTaskSinkWrite.OWNERSHIP_LOST) return@withContext DataTaskRunOutcome.OwnershipLost
+                    when (val reconciled = operations.reconcilePublication(payload.request.target, requireNotNull(publicationIdentity))) {
+                        is AppExportPublicationReconciliation.Complete -> completed(reconciled.publication)
+                        AppExportPublicationReconciliation.Absent -> uncertainPublication()
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                uncertainPublication()
+            }
+        }
         if (
             checkpoints.persist(
                 request.checkpoint(
@@ -148,20 +179,10 @@ internal class AppExportTaskRunner(
                     return@withContext DataTaskRunOutcome.OwnershipLost
                 }
 
-                val legacy = request.item.deterministicStagingIdentity ==
-                        LEGACY_APP_EXPORT_STAGING_IDENTITY
                 val session = ExportSession(
                     target = payload.request.target,
                     stagingSubDir = request.item.deterministicStagingIdentity,
                 )
-                val publicationIdentity = if (legacy) {
-                    null
-                } else {
-                    AppExportPublicationIdentity(
-                        "Thor-task-${request.taskId}-${request.item.ordinal}." +
-                                payload.request.format.extension
-                    )
-                }
                 val execution = archiveExecutionContext(
                     APP_EXPORT_COMMAND,
                     payload.request.packageName,
@@ -198,6 +219,13 @@ internal class AppExportTaskRunner(
                     captureProgress = captureProgress,
                     captureBoundary = captureBoundary,
                     publicationProgress = publicationProgress,
+                    publicationStart = {
+                        if (!legacy && checkpoints.persist(request.checkpoint(
+                                stage = DataTaskStage.PUBLISHING, label = activeLabel, nowMs = nowMs(),
+                            )) == DataTaskSinkWrite.OWNERSHIP_LOST) {
+                            throw ExportTaskOwnershipLostCancellation()
+                        }
+                    },
                 ).getOrElse { cause ->
                     if (cause is CancellationException) throw cause
                     return@withContext failedExportItem(
@@ -206,20 +234,27 @@ internal class AppExportTaskRunner(
                         nowMs = nowMs(),
                     )
                 }
-                operations.onPublished(publication.destinationLabel)
-                DataTaskRunOutcome.ItemCompleted(
-                    DataTaskItemResult(
-                        terminalState = DataTaskItemTerminalState.SUCCEEDED,
-                        resultCode = APP_EXPORT_COMPLETED,
-                        warnings = emptyList(),
-                        outputs = emptyList(),
-                        finishedAtEpochMs = nowMs(),
-                    )
-                )
+                completed(publication)
             }
         } catch (_: ExportTaskOwnershipLostCancellation) {
             DataTaskRunOutcome.OwnershipLost
         }
+    }
+    private fun uncertainPublication() = failedExportItem(
+        code = APP_EXPORT_PUBLICATION_UNCERTAIN,
+        reason = "the interrupted export could not be verified; inspect the selected folder before exporting again",
+        nowMs = nowMs(),
+    )
+
+    private fun completed(publication: AppExportPublication): DataTaskRunOutcome.ItemCompleted {
+        operations.onPublished(publication.destinationLabel)
+        return DataTaskRunOutcome.ItemCompleted(DataTaskItemResult(
+            terminalState = DataTaskItemTerminalState.SUCCEEDED,
+            resultCode = APP_EXPORT_COMPLETED,
+            warnings = emptyList(),
+            outputs = emptyList(),
+            finishedAtEpochMs = nowMs(),
+        ))
     }
 }
 

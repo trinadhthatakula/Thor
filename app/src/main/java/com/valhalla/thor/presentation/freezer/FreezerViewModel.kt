@@ -8,7 +8,6 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
-import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
@@ -19,9 +18,7 @@ import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
-import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.freezeTier
@@ -132,7 +129,7 @@ data class FreezerUiState(
 class FreezerViewModel(
     private val freezerRepository: FreezerRepository,
     private val freezeProfileRepository: FreezeProfileRepository,
-    private val sweepResolver: PrivilegeSweepTargetResolver,
+    private val profileSubmission: ProfileSubmissionCoordinator,
     private val sweepController: PrivilegeSweepController,
     private val taskNavigationTargets: TaskNavigationTargets,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
@@ -470,28 +467,10 @@ class FreezerViewModel(
                 operationId = operation.name,
             ),
         )
-        viewModelScope.launch {
-            try {
-                val spec = sweepResolver.resolve(
-                    BulkRequest(op, BulkScope.Profile(profileId), mode),
-                    PrivilegeSweepSource.PROFILE,
-                )
-                when (val launch = sweepController.launch(provisionalTaskId, spec)) {
-                    is PrivilegeSweepLaunchResult.Accepted -> taskNavigationTargets.requestAccepted(
-                        provisionalTaskId,
-                        launch.requestId,
-                    )
-
-                    is PrivilegeSweepLaunchResult.Rejected ->
-                        taskNavigationTargets.requestRejected(provisionalTaskId)
-                }
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (exception: Exception) {
-                Logger.e("FreezeViewModel", "profile sweep launch failed", exception)
-                taskNavigationTargets.requestRejected(provisionalTaskId)
-            }
-        }
+        profileSubmission.submit(
+            provisionalTaskId,
+            BulkRequest(op, BulkScope.Profile(profileId), mode),
+        )
     }
 
     fun createProfile(editorSession: Int, name: String, packageNames: List<String>) {

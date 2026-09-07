@@ -26,6 +26,7 @@ import com.valhalla.thor.domain.repository.AppExportPublication
 import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
 import com.valhalla.thor.domain.repository.AppExportPublicationStatus
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
@@ -79,6 +80,7 @@ internal class AppExportWorker(
     private val appRepository: AppRepository,
     private val fileStore: AppBundleFileStore,
     private val launchSweep: LaunchSweepBarrier,
+    private val packages: PackageOperationCoordinator,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
     sheetTargets: JobSheetTargets,
 ) : ThorJobWorker(appContext, params, notifications, registry, sheetTargets) {
@@ -121,6 +123,11 @@ internal class AppExportWorker(
                 override suspend fun isTreeWritable(treeUri: String): Boolean =
                     fileStore.isTreeWritable(treeUri)
 
+                override suspend fun reconcilePublication(
+                    target: com.valhalla.thor.domain.model.ExportTargetChoice,
+                    identity: AppExportPublicationIdentity,
+                ) = fileStore.reconcilePublicExport(target, identity)
+
                 override suspend fun exportInto(
                     appInfo: AppInfo,
                     format: BundleFormat,
@@ -130,6 +137,7 @@ internal class AppExportWorker(
                     captureProgress: VerifiedProgress,
                     captureBoundary: VerifiedOperationBoundary,
                     publicationProgress: VerifiedProgress,
+                    publicationStart: suspend () -> Unit,
                 ): KotlinResult<AppExportPublication> {
                     val result = if (publicationIdentity == null) {
                         exportApp.exportInto(
@@ -155,6 +163,7 @@ internal class AppExportWorker(
                             captureProgress = captureProgress,
                             captureBoundary = captureBoundary,
                             publicationProgress = publicationProgress,
+                            publicationStart = publicationStart,
                         )
                     }
                     return result.onFailure { cause ->
@@ -174,6 +183,7 @@ internal class AppExportWorker(
             runAttemptCount = runAttemptCount,
             invalidRequestReason = getString(R.string.export_job_unreadable),
             runner = runner,
+            packages = packages,
             checkpoints = LegacyWorkerCheckpointSink { progress ->
                 publish(
                     decoded?.let { request ->
@@ -258,6 +268,7 @@ internal suspend fun <R> runLegacyAppExportTask(
     runAttemptCount: Int,
     invalidRequestReason: String,
     runner: DataTaskRunner,
+    packages: PackageOperationCoordinator,
     checkpoints: DataTaskCheckpointSink,
     results: DataTaskResultSink<R>,
     failureReason: (DataTaskResultCode, String?) -> String = { _, detail ->
@@ -289,7 +300,9 @@ internal suspend fun <R> runLegacyAppExportTask(
         taskAttemptCount = runAttemptCount,
         resumedFrom = null,
     )
-    val outcome = runner.run(executionRequest, checkpoints)
+    // Retained WorkSpecs enter the same package-read admission as durable exports. Wrap only here,
+    // before package resolution and through delegate cleanup, not in the already-wrapped data lane.
+    val outcome = PackageReadDataTaskRunner(runner, packages).run(executionRequest, checkpoints)
     return results.persist(outcome.toLegacyAppExportOutcome(failureReason))
 }
 

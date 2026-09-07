@@ -231,6 +231,7 @@ class InstallerViewModelTest {
             grantAllPermissions: Boolean?,
             execution: PrivilegeExecutionContext,
             onInvocationStarted: () -> Unit,
+            onInstallSucceeded: () -> Unit,
         ) {
             onInvocationStarted()
             calls += InstallCall(staged, uri, mode, canDowngrade, grantAllPermissions)

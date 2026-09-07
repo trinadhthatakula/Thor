@@ -3,6 +3,14 @@
 
 package com.valhalla.thor.data.repository
 
+import android.content.Context
+import com.valhalla.thor.data.service.DATA_FOREGROUND_CHANNEL_ID
+import com.valhalla.thor.data.service.PRIVILEGED_FOREGROUND_CHANNEL_ID
+import com.valhalla.thor.data.service.ForegroundNotificationState
+import com.valhalla.thor.data.service.ForegroundServiceNotificationCapability
+import com.valhalla.thor.data.service.permitsExecution
+import kotlinx.coroutines.CoroutineDispatcher
+import org.koin.core.annotation.Named
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.backup.job.ArchiveKeyHolder
 import com.valhalla.thor.data.backup.job.DataQueueWakeSignal
@@ -66,8 +74,11 @@ internal interface DataTaskActionPort {
         expectedState: DataTaskState,
         expectedInterruption: DataTaskInterruption,
         sourceToken: UUID? = null,
+        confirmedDestructiveReview: Boolean = false,
+        expectedCancellationAtMs: Long? = null,
     ): Boolean
 
+    fun notificationState(): ForegroundNotificationState
     fun wake(taskId: UUID): ServiceStartResult
     suspend fun markStartBlocked(taskId: UUID, notificationBlocked: Boolean): Boolean
 }
@@ -83,6 +94,8 @@ internal class RoomDataTaskActionPort(
     private val archiveSources: ArchiveSourceFactory,
     private val openArchive: OpenArchiveUseCase,
     private val wakeSignal: DataQueueWakeSignal,
+    private val context: Context,
+    @Named("default") private val defaultDispatcher: CoroutineDispatcher,
 ) : DataTaskActionPort {
     private val store = DataTaskStore(dao)
 
@@ -126,6 +139,8 @@ internal class RoomDataTaskActionPort(
         expectedState: DataTaskState,
         expectedInterruption: DataTaskInterruption,
         sourceToken: UUID?,
+        confirmedDestructiveReview: Boolean,
+        expectedCancellationAtMs: Long?,
     ): Boolean {
         if (sourceToken != null &&
             restoreSources.currentToken(taskId) != sourceToken.toString()
@@ -137,8 +152,13 @@ internal class RoomDataTaskActionPort(
             expectedState = expectedState,
             expectedInterruption = expectedInterruption,
             nowMs = System.currentTimeMillis(),
+            confirmedDestructiveReview = confirmedDestructiveReview,
+            expectedCancellationAtMs = expectedCancellationAtMs,
         )
     }
+
+    override fun notificationState(): ForegroundNotificationState =
+        ForegroundServiceNotificationCapability(context).currentState(DATA_FOREGROUND_CHANNEL_ID)
 
     override fun wake(taskId: UUID): ServiceStartResult = wakeSignal.wake(taskId)
 
@@ -162,18 +182,26 @@ internal class RoomDataTaskActionPort(
         )
     }
 
-    private fun prepareBackupKey(
+    private suspend fun prepareBackupKey(
         taskId: UUID,
         detail: StoredDataTaskDetail.ArchiveBackup,
         passphrase: CharArray,
     ): String? {
-        val key = runCatching {
-            cipher.deriveKey(
-                passphrase,
-                Base64.getDecoder().decode(detail.kdfSaltBase64),
-                KDF_ITERATIONS,
-            )
-        }.getOrNull() ?: return null
+        val key = try {
+            withContext(defaultDispatcher) {
+                cipher.deriveKey(
+                    passphrase,
+                    Base64.getDecoder().decode(detail.kdfSaltBase64),
+                    KDF_ITERATIONS,
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return null
+        }
+        // Publish only after the cancellable dispatcher handoff, never inside the worker block.
+        currentCoroutineContext().ensureActive()
         return keys.put(taskId.toString(), key)
     }
 
@@ -204,6 +232,7 @@ internal interface SweepTaskActionPort {
     suspend fun refreshPrivilegeAndRead(): Boolean
     suspend fun resumeBlocked(taskId: UUID, expectedReason: PrivilegeSweepBlockReason): Boolean
     suspend fun authorizeTargetRetry(taskId: UUID, ordinal: Int): Boolean
+    fun notificationState(): ForegroundNotificationState
     fun wake(taskId: UUID): ServiceStartResult
     suspend fun markStartBlocked(taskId: UUID, notificationBlocked: Boolean): Boolean
 }
@@ -215,6 +244,7 @@ internal class RoomSweepTaskActionPort(
     private val privilegeManager: PrivilegeManager,
     private val wakeSignal: PrivilegeQueueWakeSignal,
     private val clock: PrivilegeSweepClock,
+    private val context: Context,
 ) : SweepTaskActionPort {
     override suspend fun load(taskId: UUID): StoredPrivilegeSweep? = store.load(taskId)
 
@@ -235,6 +265,11 @@ internal class RoomSweepTaskActionPort(
 
     override suspend fun authorizeTargetRetry(taskId: UUID, ordinal: Int): Boolean =
         store.authorizeUnknownTargetRetry(taskId, ordinal, clock.nowMs())
+
+    override fun notificationState(): ForegroundNotificationState =
+        ForegroundServiceNotificationCapability(context).currentState(
+            PRIVILEGED_FOREGROUND_CHANNEL_ID
+        )
 
     override fun wake(taskId: UUID): ServiceStartResult = wakeSignal.wake(taskId)
 
@@ -283,7 +318,13 @@ class DefaultTaskActionController internal constructor(
         val keyToken = data.prepareArchiveKey(task, passphrase)
             ?: return@withLock rejected(TaskActionRejection.AUTHORIZATION_NOT_GRANTED)
         settleAction {
-            if (!data.resume(taskId, task.state, task.interruption)) {
+            val resumed = try {
+                data.resume(taskId, task.state, task.interruption)
+            } catch (failure: Exception) {
+                data.dropArchiveKey(taskId, keyToken)
+                throw failure
+            }
+            if (!resumed) {
                 data.dropArchiveKey(taskId, keyToken)
                 rejected(TaskActionRejection.STALE_PROJECTION)
             } else {
@@ -308,7 +349,13 @@ class DefaultTaskActionController internal constructor(
             settleAction {
                 if (!data.authorizeRestoreSourceToken(taskId, transientSourceToken)) {
                     rejected(TaskActionRejection.AUTHORIZATION_NOT_GRANTED)
-                } else if (!data.resume(taskId, task.state, task.interruption, transientSourceToken)) {
+                } else if (!data.resume(
+                        taskId,
+                        task.state,
+                        task.interruption,
+                        transientSourceToken
+                    )
+                ) {
                     data.dropRestoreSourceToken(taskId, transientSourceToken)
                     rejected(TaskActionRejection.STALE_PROJECTION)
                 } else {
@@ -376,7 +423,13 @@ class DefaultTaskActionController internal constructor(
                 return rejected(TaskActionRejection.INVALID_STATE)
             }
             return transitionAndWake(
-                transition = { data.resume(task.taskId, task.state, task.interruption) },
+                transition = {
+                    data.resume(
+                        task.taskId, task.state, task.interruption,
+                        confirmedDestructiveReview = true,
+                        expectedCancellationAtMs = task.cancelRequestedAtEpochMs,
+                    )
+                },
                 wake = { wakeData(task.taskId) },
             )
         }
@@ -394,10 +447,18 @@ class DefaultTaskActionController internal constructor(
 
             TaskAction.PROVIDE_SOURCE -> requirementRoute(task.taskId, summary.actionRequirement)
             TaskAction.REVIEW_RESTORE -> requirementRoute(task.taskId, summary.actionRequirement)
-            TaskAction.RETRY -> transitionAndWake(
-                transition = { data.resume(task.taskId, task.state, task.interruption) },
-                wake = { wakeData(task.taskId) },
-            )
+            TaskAction.RETRY -> {
+                if (task.state == DataTaskState.START_BLOCKED_NOTIFICATION &&
+                    !data.notificationState().permitsExecution
+                ) {
+                    rejected(TaskActionRejection.START_REJECTED)
+                } else {
+                    transitionAndWake(
+                        transition = { data.resume(task.taskId, task.state, task.interruption) },
+                        wake = { wakeData(task.taskId) },
+                    )
+                }
+            }
 
             TaskAction.SHARE -> requirementRoute(task.taskId, summary.actionRequirement)
             TaskAction.OPEN_NOTIFICATION_SETTINGS -> requirementRoute(
@@ -435,12 +496,23 @@ class DefaultTaskActionController internal constructor(
             TaskAction.OPEN_NOTIFICATION_SETTINGS,
                 -> requirementRoute(task.requestId, summary.actionRequirement)
 
-            TaskAction.RETRY -> transitionAndWake(
-                transition = {
-                    sweeps.resumeBlocked(task.requestId, PrivilegeSweepBlockReason.START_BLOCKED)
-                },
-                wake = { wakeSweep(task.requestId) },
-            )
+            TaskAction.RETRY -> {
+                val reason = task.blockReason ?: return rejected(TaskActionRejection.INVALID_STATE)
+                if (reason == PrivilegeSweepBlockReason.START_BLOCKED_NOTIFICATION &&
+                    !sweeps.notificationState().permitsExecution
+                ) {
+                    rejected(TaskActionRejection.START_REJECTED)
+                } else if (reason == PrivilegeSweepBlockReason.START_BLOCKED_NOTIFICATION &&
+                    !sweeps.refreshPrivilegeAndRead()
+                ) {
+                    rejected(TaskActionRejection.AUTHORIZATION_NOT_GRANTED)
+                } else {
+                    transitionAndWake(
+                        transition = { sweeps.resumeBlocked(task.requestId, reason) },
+                        wake = { wakeSweep(task.requestId) },
+                    )
+                }
+            }
 
             TaskAction.ACKNOWLEDGE -> if (sweeps.acknowledge(task.requestId)) {
                 TaskActionDispatch.Applied

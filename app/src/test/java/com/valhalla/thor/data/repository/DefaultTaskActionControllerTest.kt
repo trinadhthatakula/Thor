@@ -666,11 +666,16 @@ class DefaultTaskActionControllerTest {
             expectedState: DataTaskState,
             expectedInterruption: DataTaskInterruption,
             sourceToken: UUID?,
+            confirmedDestructiveReview: Boolean,
+            expectedCancellationAtMs: Long?,
         ): Boolean {
             resumed += taskId
             sourceToken?.let(submittedSourceTokens::add)
             return resumeHandler(sourceToken)
         }
+
+        override fun notificationState() =
+            com.valhalla.thor.data.service.ForegroundNotificationState.Available
 
         override fun wake(taskId: UUID): ServiceStartResult {
             woken += taskId
@@ -720,6 +725,9 @@ class DefaultTaskActionControllerTest {
             authorizedTargets += taskId to ordinal
             return true
         }
+
+        override fun notificationState() =
+            com.valhalla.thor.data.service.ForegroundNotificationState.Available
 
         override fun wake(taskId: UUID): ServiceStartResult {
             events += "wake"

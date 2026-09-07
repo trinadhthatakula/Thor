@@ -8,6 +8,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import androidx.core.net.toUri
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -65,7 +66,8 @@ class DataSyncServiceNotification(
             PendingIntent.getBroadcast(
                 context,
                 ForegroundPendingIntentNamespace.DATA_CANCELLATION.requestCode(taskId),
-                DataTaskCancelReceiver.intent(context, taskId),
+                DataTaskCancelReceiver.intent(context, taskId)
+                    .setData("thor://data-task/$taskId/cancel".toUri()),
                 FOREGROUND_PENDING_INTENT_FLAGS,
             ),
         )
@@ -88,6 +90,8 @@ class DataSyncServiceNotification(
         context,
         ForegroundPendingIntentNamespace.DATA_CONTENT.requestCode(taskId),
         Intent(context, TaskQueueLaunchActivity::class.java)
+            // Full identity survives request-code hash collisions; extras do not.
+            .setData("thor://data-task/$taskId/view".toUri())
             .putExtra(TaskQueueLaunchActivity.EXTRA_TASK_ID, taskId.toString()),
         FOREGROUND_PENDING_INTENT_FLAGS,
     )

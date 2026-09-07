@@ -8,6 +8,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import androidx.core.net.toUri
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -64,7 +65,8 @@ internal class PrivilegeSweepServiceNotification(
             PendingIntent.getBroadcast(
                 context,
                 ForegroundPendingIntentNamespace.PRIVILEGED_CANCELLATION.requestCode(requestId),
-                PrivilegeSweepCancelReceiver.intent(context, requestId),
+                PrivilegeSweepCancelReceiver.intent(context, requestId)
+                    .setData("thor://privilege-sweep/$requestId/cancel".toUri()),
                 FOREGROUND_PENDING_INTENT_FLAGS,
             ),
         )
@@ -87,6 +89,8 @@ internal class PrivilegeSweepServiceNotification(
         context,
         ForegroundPendingIntentNamespace.PRIVILEGED_CONTENT.requestCode(requestId),
         Intent(context, TaskQueueLaunchActivity::class.java)
+            // Full identity survives request-code hash collisions; extras do not.
+            .setData("thor://privilege-sweep/$requestId/view".toUri())
             .putExtra(TaskQueueLaunchActivity.EXTRA_TASK_ID, requestId.toString()),
         FOREGROUND_PENDING_INTENT_FLAGS,
     )

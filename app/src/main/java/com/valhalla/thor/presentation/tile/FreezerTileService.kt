@@ -23,13 +23,18 @@ import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import org.koin.core.qualifier.named
 
 /**
  * Quick Settings tile that bulk-freezes the freezer watchlist.
@@ -49,8 +54,10 @@ class FreezerTileService : TileService() {
     private val sweepController: PrivilegeSweepController by inject()
     private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
     private val privilegeManager: PrivilegeManager by inject()
+    private val mainDispatcher: CoroutineDispatcher by inject(named("main"))
 
     private var scope: CoroutineScope? = null
+    private var candidateRefresh: Job? = null
     private val freezableCount = MutableStateFlow<Int?>(null)
     private var latestStatus: PrivilegeSweepStatus? = null
 
@@ -109,7 +116,7 @@ class FreezerTileService : TileService() {
         // destroyed instance" claim true by construction, instead of true only as long as that
         // framework detail holds.
         scope?.cancel()
-        val listenScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val listenScope = CoroutineScope(SupervisorJob() + mainDispatcher)
         scope = listenScope
 
         // Phase 1: paint synchronously from whatever is already cached, so the tile is never
@@ -119,10 +126,24 @@ class FreezerTileService : TileService() {
 
         listenScope.launch {
             try {
+                var observedStatus: PrivilegeSweepStatus? = null
+                var hasObservedStatus = false
+                val statuses = sweepController.observeLatest(PrivilegeSweepSource.QS_TILE)
+                    .onEach { status ->
+                        // Only upstream task transitions trigger a read, never our own count or progress.
+                        if (hasObservedStatus && status != null && status.phase in CANDIDATE_TERMINAL_PHASES &&
+                            (status.requestId != observedStatus?.requestId ||
+                                observedStatus?.phase !in CANDIDATE_TERMINAL_PHASES)
+                        ) {
+                            refreshCandidates(listenScope)
+                        }
+                        observedStatus = status
+                        hasObservedStatus = true
+                    }
                 combine(
                     privilegeManager.state,
                     freezableCount,
-                    sweepController.observeLatest(PrivilegeSweepSource.QS_TILE),
+                    statuses,
                 ) { _, _, status -> status }.collect { status ->
                     latestStatus = status
                     paint()
@@ -136,24 +157,7 @@ class FreezerTileService : TileService() {
             }
         }
 
-        // Phase 2: re-derive from live per-app state. The watchlist alone cannot tell us
-        // whether anything is still freezable, which is why the tile used to stay lit after
-        // freezing everything.
-        listenScope.launch {
-            try {
-                refreshFreezableCount()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // This is the one that matters: the sweep does a Room read plus N
-                // PackageManager.getApplicationInfo calls, and AppFreezeStateReader.stateOf
-                // catches only NameNotFoundException. A SQLiteException or a binder-death
-                // RuntimeException would otherwise reach Android's default uncaught handler —
-                // there is no CoroutineExceptionHandler anywhere in :app — and kill the
-                // process straight from the QS shade.
-                Logger.e("FreezerTile", "candidate sweep failed", e)
-            }
-        }
+        refreshCandidates(listenScope)
     }
 
     override fun onDestroy() {
@@ -174,11 +178,24 @@ class FreezerTileService : TileService() {
         )
     }
 
-    private suspend fun refreshFreezableCount() {
-        freezableCount.value = sweepResolver.resolve(
-            BulkRequest(BulkOp.FREEZE),
-            PrivilegeSweepSource.QS_TILE,
-        ).packageNames.size
+    private fun refreshCandidates(listenScope: CoroutineScope) {
+        candidateRefresh?.cancel()
+        freezableCount.value = null
+        candidateRefresh = listenScope.launch {
+            try {
+                val count = sweepResolver.resolve(
+                    BulkRequest(BulkOp.FREEZE),
+                    PrivilegeSweepSource.QS_TILE,
+                ).packageNames.size
+                // A late/non-cancellable read cannot overwrite a newer listening/refresh generation.
+                currentCoroutineContext().ensureActive()
+                freezableCount.value = count
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Logger.e("FreezerTile", "candidate sweep failed", failure)
+            }
+        }
     }
 
     /**
@@ -188,6 +205,7 @@ class FreezerTileService : TileService() {
      * cancelled continuation in the collector can never run its body afterwards.
      */
     private fun paint() {
+        if (scope == null) return
         val tile = qsTile ?: return
         val status = latestStatus
         val visual = tileVisualFor(
@@ -244,3 +262,10 @@ class FreezerTileService : TileService() {
         tile.updateTile()
     }
 }
+
+private val CANDIDATE_TERMINAL_PHASES = setOf(
+    PrivilegeSweepPhase.SUCCEEDED,
+    PrivilegeSweepPhase.PARTIAL,
+    PrivilegeSweepPhase.CANCELLED,
+    PrivilegeSweepPhase.FAILED,
+)

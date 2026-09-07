@@ -190,6 +190,55 @@ class DataSyncServiceTimeoutTest {
     }
 
     @Test
+    fun `framework timeout after blocked newer start retires the accepted owner`() {
+        val fence = DataSyncServiceGenerationFence()
+        assertTrue(fence.onPromotedStart(41))
+        fence.onBlockedStart(42)
+        assertEquals(null, fence.onBlockedPersistenceFinished(42))
+
+        assertFalse(fence.onTimeoutStarted(41))
+        assertTrue(fence.onTimeoutStarted(42))
+        assertFalse(fence.onTimeoutStarted(42))
+        assertEquals(null, fence.onDrained(41))
+        assertEquals(42, fence.onTimeoutFinished(42))
+        assertEquals(null, fence.onTimeoutFinished(42))
+        assertEquals(null, fence.onDrained(41))
+        assertFalse(fence.onPromotedStart(43))
+    }
+
+    @Test
+    fun `timeout of rejected latest start waits for blocked persistence and stops through newest id`() {
+        val fence = DataSyncServiceGenerationFence()
+        assertTrue(fence.onPromotedStart(41))
+        fence.onBlockedStart(42)
+        assertTrue(fence.onTimeoutStarted(42))
+        assertTrue(fence.beginBlockedPersistence(42))
+        assertFalse(fence.onPromotedStart(43))
+        assertEquals(null, fence.onTimeoutFinished(41))
+        assertEquals(null, fence.onTimeoutFinished(42))
+        assertEquals(null, fence.onBlockedPersistenceFinished(42))
+        assertEquals(43, fence.onBlockedPersistenceFinished(43))
+        assertEquals(null, fence.onDrained(41))
+    }
+
+    @Test
+    fun `Room timeout settlement failure still interrupts owner and finishes framework id`() =
+        runTest {
+            val fence = DataSyncServiceGenerationFence()
+            val events = mutableListOf<String>()
+            fence.onPromotedStart(41)
+            fence.onBlockedStart(42)
+            fence.onBlockedPersistenceFinished(42)
+            assertTrue(fence.onTimeoutStarted(42))
+            boundedDataSyncTimeoutUnwind(
+                timeoutMillis = 3_000L,
+                settle = { events += "interrupt:41"; error("Room unavailable") },
+                finish = { events += "stop:${fence.onTimeoutFinished(42)}" },
+            )
+            assertEquals(listOf("interrupt:41", "stop:42"), events)
+        }
+
+    @Test
     fun `promotion failure persistence cannot exceed shutdown bound`() = runTest {
         val persistenceStarted = CompletableDeferred<Unit>()
         var finished = false

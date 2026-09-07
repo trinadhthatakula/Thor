@@ -17,6 +17,8 @@ import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
 import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -49,6 +51,7 @@ class ExportAppUseCaseDurableTest {
                     captureProgress = VerifiedProgress.NONE,
                     captureBoundary = captureBoundary,
                     publicationProgress = VerifiedProgress.NONE,
+                    publicationStart = {},
                 ).getOrThrow()
                 val replay = exportDurableBundle(
                     bundleBuilder = builder,
@@ -61,6 +64,7 @@ class ExportAppUseCaseDurableTest {
                     captureProgress = VerifiedProgress.NONE,
                     captureBoundary = captureBoundary,
                     publicationProgress = VerifiedProgress.NONE,
+                    publicationStart = {},
                 ).getOrThrow()
 
                 assertEquals(AppExportPublicationStatus.PUBLISHED, first.status)
@@ -74,6 +78,60 @@ class ExportAppUseCaseDurableTest {
                 root.deleteRecursively()
             }
         }
+
+    @Test
+    fun `runner persists publishing before durable use case creates any public document`() = runTest {
+        val root = Files.createTempDirectory("publication_boundary_").toFile()
+        try {
+            var stage: com.valhalla.thor.domain.model.DataTaskStage? = null
+            val builder = RecordingBuilder(root)
+            val store = RecordingFileStore {
+                assertEquals(com.valhalla.thor.domain.model.DataTaskStage.PUBLISHING, stage)
+            }
+            val operations = object : com.valhalla.thor.data.backup.job.AppExportTaskOperations {
+                override suspend fun awaitLaunchSweep() = true
+                override suspend fun loadApp(packageName: String) = appInfo("Foo", "1.0")
+                override suspend fun isTreeWritable(treeUri: String) = true
+                override suspend fun reconcilePublication(target: ExportTargetChoice, identity: AppExportPublicationIdentity) =
+                    store.reconcilePublicExport(target, identity)
+                override suspend fun exportInto(
+                    appInfo: AppInfo, format: BundleFormat, session: ExportSession,
+                    publicationIdentity: AppExportPublicationIdentity?, execution: PrivilegeExecutionContext,
+                    captureProgress: VerifiedProgress, captureBoundary: VerifiedOperationBoundary,
+                    publicationProgress: VerifiedProgress,
+                    publicationStart: suspend () -> Unit,
+                ) = exportDurableBundle(builder, store, appInfo, format, session, requireNotNull(publicationIdentity),
+                    execution, captureProgress, captureBoundary, publicationProgress, publicationStart)
+            }
+            val id = java.util.UUID.fromString("11111111-1111-1111-1111-111111111111")
+            val request = com.valhalla.thor.data.backup.job.DataTaskExecutionRequest(
+                taskId = id,
+                payload = com.valhalla.thor.data.backup.job.DataTaskExecutionPayload.AppExport(
+                    com.valhalla.thor.domain.model.AppExportRequest("com.example.app", BundleFormat.APK, "Foo", "content://provider/tree/root"),
+                    com.valhalla.thor.domain.model.DataTaskPublicationPolicy.PUBLIC_DOCUMENT),
+                item = com.valhalla.thor.data.backup.job.DataTaskExecutionItem(0, "com.example.app", "Foo", "item-$id-0", 1),
+                taskAttemptCount = 1, resumedFrom = null,
+            )
+            val publicationRequested = CompletableDeferred<Unit>()
+            val commitPublication = CompletableDeferred<Unit>()
+            val running = async {
+                com.valhalla.thor.data.backup.job.AppExportTaskRunner(operations, kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+                    .run(request, com.valhalla.thor.data.backup.job.DataTaskCheckpointSink {
+                        if (it.stage == com.valhalla.thor.domain.model.DataTaskStage.PUBLISHING) {
+                            publicationRequested.complete(Unit)
+                            commitPublication.await()
+                        }
+                        stage = it.stage; com.valhalla.thor.data.backup.job.DataTaskSinkWrite.APPLIED
+                    })
+            }
+            publicationRequested.await()
+            assertEquals(1, builder.buildCount)
+            assertEquals(0, store.publishCount)
+            commitPublication.complete(Unit)
+            running.await()
+            assertEquals(1, store.publishCount)
+        } finally { root.deleteRecursively() }
+    }
 
     private fun appInfo(label: String, version: String) = AppInfo(
         packageName = "com.example.app",
@@ -111,7 +169,7 @@ class ExportAppUseCaseDurableTest {
         }
     }
 
-    private class RecordingFileStore : AppBundleFileStore {
+    private class RecordingFileStore(val beforePublish: () -> Unit = {}) : AppBundleFileStore {
         var publishedIdentity: AppExportPublicationIdentity? = null
         var publishCount = 0
         val reconciledIdentities = mutableListOf<AppExportPublicationIdentity>()
@@ -142,6 +200,7 @@ class ExportAppUseCaseDurableTest {
         ): AppExportPublication {
             assertEquals(identity.fileName, file.name)
             assertTrue(identity.fileName != "Foo_1.0.apk")
+            beforePublish()
             publishCount++
             publishedIdentity = identity
             return AppExportPublication(

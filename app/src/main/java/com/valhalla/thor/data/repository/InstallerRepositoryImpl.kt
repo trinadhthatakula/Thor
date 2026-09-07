@@ -138,6 +138,7 @@ class InstallerRepositoryImpl(
         grantAllPermissions: Boolean?,
         execution: PrivilegeExecutionContext,
         onInvocationStarted: () -> Unit,
+        onInstallSucceeded: () -> Unit,
     ) =
         withContext(ioDispatcher) {
             onInvocationStarted()
@@ -164,14 +165,14 @@ class InstallerRepositoryImpl(
                 when (mode) {
                     InstallMode.ROOT -> {
                         installWithRoot(
-                            staged, canDowngrade, grantAllPermissions, execution,
+                            staged, canDowngrade, grantAllPermissions, execution, onInstallSucceeded,
                         )
                     }
 
                     InstallMode.SHIZUKU -> {
                         // 1. Try Shell command first
                         val shellSuccess = try {
-                            installWithShizuku(staged, canDowngrade, grantAllPermissions)
+                            installWithShizuku(staged, canDowngrade, grantAllPermissions, onInstallSucceeded)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
                             // A refusal is a verdict about the archive, not a failure of this rung.
@@ -229,7 +230,7 @@ class InstallerRepositoryImpl(
                     InstallMode.DHIZUKU -> {
                         // 1. Try Shell command first
                         val shellSuccess = try {
-                            installWithDhizuku(staged, canDowngrade, grantAllPermissions)
+                            installWithDhizuku(staged, canDowngrade, grantAllPermissions, onInstallSucceeded)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
                             if (e is InstallRefusedException) throw e
@@ -610,6 +611,7 @@ class InstallerRepositoryImpl(
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
         execution: PrivilegeExecutionContext,
+        onInstallSucceeded: () -> Unit,
     ) {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -645,6 +647,7 @@ class InstallerRepositoryImpl(
 
             val terminalState = rootInstallState(result)
             if (terminalState == InstallState.Success) {
+                onInstallSucceeded()
                 eventBus.emit(InstallState.Installing(1.0f))
             }
             eventBus.emit(terminalState)
@@ -660,6 +663,7 @@ class InstallerRepositoryImpl(
         staged: StagedPackage,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        onInstallSucceeded: () -> Unit,
     ): Boolean {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -742,6 +746,7 @@ class InstallerRepositoryImpl(
             val result = ShizukuHelper.execute(integrityGuardedInstall(digests, command))
 
             if (result.first == 0) {
+                onInstallSucceeded()
                 eventBus.emit(InstallState.Installing(1.0f))
                 eventBus.emit(InstallState.Success)
                 true
@@ -762,6 +767,7 @@ class InstallerRepositoryImpl(
         staged: StagedPackage,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        onInstallSucceeded: () -> Unit,
     ): Boolean {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -820,6 +826,7 @@ class InstallerRepositoryImpl(
             val result = DhizukuHelper.execute(integrityGuardedInstall(digests, command))
 
             if (result.first == 0) {
+                onInstallSucceeded()
                 eventBus.emit(InstallState.Installing(1.0f))
                 eventBus.emit(InstallState.Success)
                 true

@@ -5,7 +5,21 @@ package com.valhalla.thor.data.freezer
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import android.content.pm.InstallSourceInfo
+import android.os.Build
+import androidx.annotation.RequiresApi
+import com.valhalla.thor.data.gateway.AndroidReinstallStateReader
+import com.valhalla.thor.data.gateway.ReinstallFinalState
+import com.valhalla.thor.data.gateway.ReinstallPostconditionVerifier
+import com.valhalla.thor.data.gateway.ReinstallStateReader
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.data.gateway.root.DefaultRootLaneStatusSource
+import com.valhalla.thor.data.repository.installerPackageNameOf
+import com.valhalla.thor.data.source.local.thorUserId
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
+import org.robolectric.shadows.ShadowApplicationPackageManager
 import com.valhalla.thor.data.repository.RoomPrivilegeSweepStore
 import com.valhalla.thor.data.service.*
 import com.valhalla.thor.data.source.local.room.AppDatabase
@@ -215,6 +229,79 @@ class RoomPrivilegeSweepDrainRuntimeTest {
         }
     }
 
+    @Test fun `throwing reinstall reader blocks interrupted target without replay through real adapter`() = runBlocking {
+        assertUnavailableReinstallRetained(ReinstallStateReader { _, _ -> error("inspection unavailable") })
+    }
+
+    @Test
+    @Config(shadows = [UnavailableInstallerSource::class])
+    fun `installer source lookup failure remains unknown without changing best effort consumers`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.packageManager).installPackage(android.content.pm.PackageInfo().apply {
+            packageName = REINSTALL_PACKAGE
+            applicationInfo = android.content.pm.ApplicationInfo().apply {
+                packageName = REINSTALL_PACKAGE
+                flags = android.content.pm.ApplicationInfo.FLAG_INSTALLED
+            }
+        })
+        assertNull(context.packageManager.installerPackageNameOf(REINSTALL_PACKAGE))
+        assertUnavailableReinstallRetained(AndroidReinstallStateReader(context))
+    }
+
+    @Test fun `real reinstall adapter preserves observed positive and negative recovery`() = runBlocking {
+        for (satisfied in listOf(true, false)) {
+            executed.clear()
+            val id = interruptedReinstall()
+            val adapter = DefaultPrivilegeSweepReinstallPostconditionVerifier(
+                ReinstallPostconditionVerifier(ReinstallStateReader { _, _ ->
+                    ReinstallFinalState(true, if (satisfied) "com.android.vending" else null)
+                })
+            )
+            assertEquals(
+                if (satisfied) ReinstallPostcondition.SATISFIED else ReinstallPostcondition.NOT_SATISFIED,
+                adapter.verify(REINSTALL_PACKAGE, thorUserId, newPrivilegeServiceExecutionId(), id),
+            )
+            drain(runtime(verifier = adapter))
+            assertEquals(StoredSweepTerminal.SUCCEEDED, store.load(id)?.terminalState)
+            assertEquals(if (satisfied) emptyList<String>() else listOf(REINSTALL_PACKAGE), executed)
+        }
+    }
+
+    private suspend fun assertUnavailableReinstallRetained(reader: ReinstallStateReader) {
+        val id = interruptedReinstall()
+        val adapter = DefaultPrivilegeSweepReinstallPostconditionVerifier(ReinstallPostconditionVerifier(reader))
+        val observed = adapter.verify(REINSTALL_PACKAGE, thorUserId, newPrivilegeServiceExecutionId(), id)
+        drain(runtime(verifier = adapter))
+        val row = requireNotNull(store.load(id))
+        assertEquals("unavailable inspection must not execute another reinstall", emptyList<String>(), executed)
+        assertEquals(ReinstallPostcondition.UNKNOWN, observed)
+        assertEquals(PrivilegeSweepRequestState.BLOCKED, row.requestState)
+        assertEquals(PrivilegeSweepTargetState.UNKNOWN, row.targetSnapshots.single().state)
+        assertNull(store.claimOldestRunnableRequest("probe-session", "probe-claim", 20_000L, 30_000L))
+    }
+
+    private suspend fun interruptedReinstall(): UUID {
+        val id = UUID.randomUUID()
+        store.createOrFindEquivalent(NewPrivilegeSweepSnapshot(id, newPrivilegeServiceExecutionId(), PrivilegeSweepOperation.REINSTALL, null, thorUserId, PrivilegeSweepSource.MAIN, 1, listOf(REINSTALL_PACKAGE)))
+        assertEquals(id, store.claimOldestRunnableRequest("dead-session", "dead-request", 1_000L, 2_000L)?.requestId)
+        assertNotNull(store.claimNextPendingTarget(id, "dead-request", "dead-target", 1_001L, 2_000L))
+        return id
+    }
+
+    @Implements(className = "android.app.ApplicationPackageManager")
+    class UnavailableInstallerSource : ShadowApplicationPackageManager() {
+        @RequiresApi(Build.VERSION_CODES.R)
+        @Implementation(minSdk = Build.VERSION_CODES.R)
+        public override fun getInstallSourceInfo(packageName: String): InstallSourceInfo {
+            if (packageName == REINSTALL_PACKAGE) error("installer source unavailable")
+            return super.getInstallSourceInfo(packageName) as InstallSourceInfo
+        }
+    }
+
+    private companion object {
+        const val REINSTALL_PACKAGE = "com.example.reinstall.recovery"
+    }
+
     private suspend fun create(suffix: String = "default", legacy: Boolean = false): UUID {
         val id = UUID.randomUUID()
         store.createOrFindEquivalent(NewPrivilegeSweepSnapshot(id, if (legacy) UUID.randomUUID() else newPrivilegeServiceExecutionId(), PrivilegeSweepOperation.CLEAR_CACHE, null, 0, PrivilegeSweepSource.MAIN, 1, listOf("com.$suffix.a", "com.$suffix.b")))
@@ -228,13 +315,14 @@ class RoomPrivilegeSweepDrainRuntimeTest {
 
     private fun runtime(
         port: PrivilegeSweepStore = store,
+        verifier: PrivilegeSweepReinstallPostconditionVerifier = PrivilegeSweepReinstallPostconditionVerifier { _, _, _, _ -> ReinstallPostcondition.UNKNOWN },
         execute: suspend (StoredPrivilegeSweep, String) -> PrivilegeSweepItemExecutionResult = { _, pkg ->
             executed += pkg
             itemResult(SweepAttemptOutcome.SUCCEEDED)
         },
     ): RoomPrivilegeSweepDrainRuntime {
         val cutover = PrivilegeSweepWorkManagerCutover(LegacyPrivilegeSweepExecutionFence(), SweepQueueWorkManager {}, port, clock, gate)
-        return RoomPrivilegeSweepDrainRuntime(ApplicationProvider.getApplicationContext(), cutover, PrivilegeSweepReconciler(port, clock, gate), PrivilegeSweepReinstallPostconditionVerifier { _, _, _, _ -> ReinstallPostcondition.UNKNOWN }, port,
+        return RoomPrivilegeSweepDrainRuntime(ApplicationProvider.getApplicationContext(), cutover, PrivilegeSweepReconciler(port, clock, gate, packageOperationCoordinator = DefaultPackageOperationCoordinator()), verifier, port,
             object : PrivilegeStateProvider { override val state = privilege }, PrivilegeSweepItemExecutor(execute), clock, Dispatchers.IO,
             wakeLockFactory = { ForegroundTaskWakeLock(ForegroundTaskOwner.PRIVILEGE_SWEEP, ForegroundWakeLockFactory { _, _ -> wake }) })
     }

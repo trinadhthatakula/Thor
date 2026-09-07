@@ -260,8 +260,14 @@ abstract class DataTaskDao {
         expectedState: DataTaskState,
         expectedInterruption: DataTaskInterruption,
         nowMs: Long,
+        confirmedDestructiveReview: Boolean = false,
+        expectedCancellationAtMs: Long? = null,
     ): Boolean {
         requireCanonicalUuid(taskId, "taskId")
+        if (confirmedDestructiveReview &&
+            (expectedState != DataTaskState.INTERRUPTED_REVIEW ||
+                expectedInterruption != DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW)
+        ) return false
         val newState = when (expectedState) {
             DataTaskState.WAITING_FOR_AUTH -> {
                 require(expectedInterruption == DataTaskInterruption.AUTHENTICATION_REQUIRED)
@@ -275,10 +281,13 @@ abstract class DataTaskDao {
 
             DataTaskState.INTERRUPTED_REVIEW -> {
                 require(expectedInterruption == DataTaskInterruption.DESTRUCTIVE_RESTORE_REVIEW)
+                if (!confirmedDestructiveReview) return false
                 DataTaskState.QUEUED
             }
 
-            DataTaskState.START_BLOCKED -> DataTaskState.QUEUED
+            DataTaskState.START_BLOCKED,
+            DataTaskState.START_BLOCKED_NOTIFICATION,
+                -> DataTaskState.QUEUED
             else -> throw IllegalArgumentException("state does not accept a user resume")
         }
         if (resumeFromUserActionRow(
@@ -287,6 +296,8 @@ abstract class DataTaskDao {
                 expectedInterruption = expectedInterruption.name,
                 newState = newState.name,
                 nowMs = nowMs,
+                confirmedDestructiveReview = confirmedDestructiveReview,
+                expectedCancellationAtMs = expectedCancellationAtMs,
             ) != 1
         ) {
             return false
@@ -1456,6 +1467,7 @@ abstract class DataTaskDao {
         SET state = :newState,
             interruption = 'NONE',
             result_code = NULL,
+            cancel_requested_at_epoch_ms = NULL,
             service_session_token = NULL,
             claim_token = NULL,
             claim_lease_expires_at_epoch_ms = NULL,
@@ -1464,7 +1476,14 @@ abstract class DataTaskDao {
           AND state = :expectedState
           AND interruption = :expectedInterruption
           AND terminal_at_epoch_ms IS NULL
-          AND cancel_requested_at_epoch_ms IS NULL
+          AND (
+            (:confirmedDestructiveReview = 0 AND cancel_requested_at_epoch_ms IS NULL)
+            OR (:confirmedDestructiveReview = 1
+                AND kind = 'ARCHIVE_RESTORE'
+                AND state = 'INTERRUPTED_REVIEW'
+                AND interruption = 'DESTRUCTIVE_RESTORE_REVIEW'
+                AND cancel_requested_at_epoch_ms IS :expectedCancellationAtMs)
+          )
           AND service_session_token IS NULL
           AND claim_token IS NULL
           AND claim_lease_expires_at_epoch_ms IS NULL
@@ -1476,6 +1495,8 @@ abstract class DataTaskDao {
         expectedInterruption: String,
         newState: String,
         nowMs: Long,
+        confirmedDestructiveReview: Boolean,
+        expectedCancellationAtMs: Long?,
     ): Int
 
     @Query(

@@ -792,6 +792,11 @@ internal class RoomDataSyncCoordinatorRuntime(
             override suspend fun isTreeWritable(treeUri: String): Boolean =
                 fileStore.isTreeWritable(treeUri)
 
+            override suspend fun reconcilePublication(
+                target: com.valhalla.thor.domain.model.ExportTargetChoice,
+                identity: AppExportPublicationIdentity,
+            ) = fileStore.reconcilePublicExport(target, identity)
+
             override suspend fun exportInto(
                 appInfo: AppInfo,
                 format: BundleFormat,
@@ -801,6 +806,7 @@ internal class RoomDataSyncCoordinatorRuntime(
                 captureProgress: VerifiedProgress,
                 captureBoundary: VerifiedOperationBoundary,
                 publicationProgress: VerifiedProgress,
+                publicationStart: suspend () -> Unit,
             ): Result<AppExportPublication> = requireNotNull(publicationIdentity).let { identity ->
                 exportApp.exportDurableInto(
                     appInfo = appInfo,
@@ -811,6 +817,7 @@ internal class RoomDataSyncCoordinatorRuntime(
                     captureProgress = captureProgress,
                     captureBoundary = captureBoundary,
                     publicationProgress = publicationProgress,
+                    publicationStart = publicationStart,
                 )
             }
         },

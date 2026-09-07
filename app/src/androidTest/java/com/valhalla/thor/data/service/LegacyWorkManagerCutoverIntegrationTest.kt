@@ -42,6 +42,7 @@ import com.valhalla.thor.data.freezer.PrivilegeSweepClock
 import com.valhalla.thor.data.freezer.PrivilegeSweepProcessGate
 import com.valhalla.thor.data.freezer.PrivilegeSweepReconciler
 import com.valhalla.thor.data.freezer.PrivilegeSweepWorker
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.data.repository.RoomPrivilegeSweepStore
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.domain.model.BACKUP_BUNDLE_KEY
@@ -413,6 +414,7 @@ class LegacyWorkManagerCutoverIntegrationTest {
                     return successfulOutcome()
                 }
             },
+            packages = DefaultPackageOperationCoordinator(),
             checkpoints = { DataTaskSinkWrite.APPLIED },
             results = LegacyWorkerResultSink(DataTaskKind.APP_EXPORT),
         )

@@ -169,6 +169,7 @@ class DataTaskAcceptance internal constructor(
     suspend fun acceptBackup(
         request: ArchiveBackupRequest,
         passphrase: CharArray,
+        onDurablyAccepted: (UUID) -> Unit = {},
     ): UUID {
         val taskId = dependencies.newTaskId()
         val key = deriveKey(passphrase, request.salt, KDF_ITERATIONS)
@@ -176,6 +177,7 @@ class DataTaskAcceptance internal constructor(
         return acceptPersistedTask(
             taskId = taskId,
             onDefiniteInsertFailure = { keyVault.drop(taskId) },
+            onDurablyAccepted = { onDurablyAccepted(taskId) },
         ) {
             store.insertBackup(taskId, request, dependencies.nowMs())
         }
@@ -186,6 +188,7 @@ class DataTaskAcceptance internal constructor(
         passphrase: CharArray,
         salt: ByteArray,
         iterations: Int,
+        onDurablyAccepted: (UUID) -> Unit = {},
     ): UUID {
         val taskId = dependencies.newTaskId()
         val key = deriveKey(passphrase, salt, iterations)
@@ -202,6 +205,7 @@ class DataTaskAcceptance internal constructor(
                 keyVault.drop(taskId)
                 restoreSourceVault.drop(taskId)
             },
+            onDurablyAccepted = { onDurablyAccepted(taskId) },
         ) {
             store.insertRestore(taskId, request, dependencies.nowMs())
         }

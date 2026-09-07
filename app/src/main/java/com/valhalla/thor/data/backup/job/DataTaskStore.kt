@@ -395,11 +395,15 @@ internal class DataTaskStore(
         expectedState: DataTaskState,
         expectedInterruption: DataTaskInterruption,
         nowMs: Long,
+        confirmedDestructiveReview: Boolean = false,
+        expectedCancellationAtMs: Long? = null,
     ): Boolean = dao.resumeFromUserAction(
         taskId = taskId.toString(),
         expectedState = expectedState,
         expectedInterruption = expectedInterruption,
         nowMs = nowMs,
+        confirmedDestructiveReview = confirmedDestructiveReview,
+        expectedCancellationAtMs = expectedCancellationAtMs,
     )
 
     suspend fun hasRunnableTasks(): Boolean = dao.hasRunnableTasks()

@@ -137,11 +137,12 @@ class DataSyncService : Service(), KoinComponent {
 
     override fun onTimeout(startId: Int, foregroundServiceType: Int) {
         if (generationFence.onTimeoutStarted(startId)) {
+            val timeoutCoordinator = coordinator
             val application = applicationContext as ThorApplication
             application.launchInApplicationScope(ioDispatcher) {
                 boundedDataSyncTimeoutUnwind(
                     timeoutMillis = TIMEOUT_UNWIND_MILLIS,
-                    settle = coordinator::stopClaimsAndInterrupt,
+                    settle = timeoutCoordinator::stopClaimsAndInterrupt,
                     finish = {
                         serializeDataSyncServiceLifecycle(mainDispatcher) {
                             val stopped = finishGeneration(startId)
@@ -249,6 +250,7 @@ internal class DataSyncServiceGenerationFence {
     private var latestStartId = 0
     private var activeStartId: Int? = null
     private var timeoutStartId: Int? = null
+    private var timeoutOwnerStartId: Int? = null
     private var retired = false
     private var finishIssuedThrough = 0
     private val blockedPersistence = mutableSetOf<Int>()
@@ -274,7 +276,12 @@ internal class DataSyncServiceGenerationFence {
     }
 
     fun onTimeoutStarted(startId: Int): Boolean = synchronized(lock) {
-        if (timeoutStartId != null || activeStartId != startId) return@synchronized false
+        if (timeoutStartId != null || retired || activeStartId == null || latestStartId != startId) {
+            return@synchronized false
+        }
+        // Android times out its latest delivered start, which may have failed promotion. Retire
+        // the accepted coordinator owner separately rather than stranding that older generation.
+        timeoutOwnerStartId = activeStartId
         timeoutStartId = startId
         retired = true
         true
@@ -307,7 +314,8 @@ internal class DataSyncServiceGenerationFence {
     fun onTimeoutFinished(startId: Int): Int? = synchronized(lock) {
         if (timeoutStartId != startId) return@synchronized null
         timeoutStartId = null
-        if (activeStartId == startId) activeStartId = null
+        if (activeStartId == timeoutOwnerStartId) activeStartId = null
+        timeoutOwnerStartId = null
         stopCandidateLocked()
     }
 

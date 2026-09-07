@@ -61,11 +61,13 @@ user, relevant freezer mode and source/profile associations before execution. Eq
 sweep submissions can coalesce.
 
 The order is **persist, then request a service wake**. Data admission explicitly protects the
-insertion/wake handoff from a submitting caller's cancellation. Sweep surface launchers use
-process-owned execution; the sweep controller itself serializes admission but does not provide that
+insertion/wake handoff from a submitting caller's cancellation. Sweep surface launchers, including profile
+resolution and submission through `ProfileSubmissionCoordinator`, use process-owned execution;
+the sweep controller itself serializes admission but does not provide that
 same cancellation-shielded handoff. Dismissing a screen does not withdraw accepted work. A rejected
 start retains actionable durable work, such as `START_BLOCKED` or `START_BLOCKED_NOTIFICATION`; it is
-not the old enqueue-failure rollback model.
+not the old enqueue-failure rollback model. Archive admission returns the acknowledged durable UUID
+even if a later wake-settlement step fails; a generated UUID alone is not proof of insertion.
 
 Queue sequence is assigned durably within each queue. Claims use sequence with a stable UUID
 tie-breaker; nested items/targets use their own stable ordinals. Only runnable work participates in
@@ -103,7 +105,14 @@ Notification capability is typed, not a single permission Boolean:
 3. Missing/invalid notification infrastructure or failed initial foreground promotion is a start
    failure. Never continue execution as an unforegrounded service.
 
-Active-task content and cancel PendingIntents are immutable and task-specific. Active-task content
+Opening notification settings is passive: it does not retry a blocked task. Explicit Retry rechecks
+that queue's notification capability, and privilege capability where required, before a guarded
+same-UUID wake. It does not manufacture consent or treat notification permission denial as a channel
+block.
+
+Active-task content and cancel PendingIntents are immutable and task-specific. Their data-URI identity
+contains the full UUID, queue lane and action rather than relying on a truncated request-code hash.
+Active-task content
 opens that UUID's Queue detail; cancel persists cancellation before signalling the owner. Initial
 preparing notifications instead show Starting with a generic Home destination. Ready-share content
 opens `ShareHandoffActivity` for foreground validation and handoff, not Queue detail. Terminal
@@ -136,11 +145,39 @@ merely because its lease appears old. Important recovery distinctions include:
   persisted key or an automatic unauthenticated retry.
 - A restore source that cannot be recovered requires `WAITING_FOR_SOURCE`. Interruption after a
   destructive restore mutation requires `INTERRUPTED_REVIEW`, including relevant cancellation paths.
+  Explicitly confirmed Resume can consume the observed cancellation only under matching state,
+  interruption and ownership guards; ordinary recovery cannot clear it.
 - Export/share can resume eligible unfinished items while retaining completed results. Ready-share
-  output loss is explicitly reconciled rather than treated as successful delivery.
-- Sweep recovery can check freeze/unfreeze state and reinstall postconditions. Ambiguous cache-clear
+  output loss is explicitly reconciled rather than treated as successful delivery. Public SAF export
+  has the stricter publication fence described below.
+- Sweep recovery can check freeze/unfreeze state and reinstall postconditions. Unavailable reinstall
+  inspection remains unknown/blocked, not evidence that reinstall must run again. Ambiguous cache-clear
   effects remain `UNKNOWN`; `UNKNOWN` and `LEGACY_UNKNOWN` are not runnable work until reconciled or
   explicitly authorized for retry.
+
+Cancelled archive installation is not permission to uninstall whatever appears afterward. Rollback
+requires both operation-local confirmed install success and the exact newly installed receipt; an
+uncertain/asynchronous outcome retains the installation. Reauthentication derives archive keys on an
+injected background dispatcher, while passphrase arrays remain caller-owned.
+
+### Public SAF export publication
+
+Durable SAF export persists `PUBLISHING` before creating a public document. It validates the provider's
+actual partial name before opening the output, completes copy/flush/close before rename, and checks
+the returned final identity. It never removes a foreign final document to make room. Legacy SAF writes
+retain their compatibility behavior.
+
+An interrupted `PUBLISHING` item reconciles before package lookup or rebuilding. An exact completed
+output may be reused under the strict write ordering and ordinary provider semantics. Missing,
+normalized or ambiguous output yields `APP_EXPORT_PUBLICATION_UNCERTAIN` without automatic republish.
+A fresh request cannot adopt a pre-existing final as its own success. Unknown partials/outputs remain
+untouched; cleanup uses positively identified owned documents only and can itself fail.
+
+A positive size is an empty-output rejection guard, not standalone proof of completion or ownership.
+Recovery assumes truthful, stable provider metadata, fresh-empty creation and ordinary close/rename
+semantics. It does not establish safety against provider lies, concurrent external replacement, or
+remote/power-loss durability. After an uncertain result, inspect the destination before explicitly
+starting a new export; do not assume either that no file exists or that a leftover file is complete.
 
 Ordinary persisted failures use bounded typed codes and sanitized arguments. Passphrases, derived
 keys, raw command output and stack traces do not become Room/Intent/notification payloads.
@@ -179,7 +216,14 @@ instance. Background, Back and outside dismissal dismiss presentation—not acce
 A same-queue submission need not replace the currently displayed task; acceptance can acknowledge
 that another task was queued. Dismissing a provisional detail must not cause late acceptance to reopen
 it. `STARTING` and `OBSERVER_FAILURE` are presentation states, not persisted execution states. Observer
-failure means that the result cannot currently be established, not that the operation failed.
+failure means that the result cannot currently be established, not that the operation failed. A Queue
+observation error shows the localized unavailable explanation instead of stale actionable rows or a
+misleading empty queue; cancellation remains cancellation. Long logs receive only the remaining layout
+height so Background and Share/Cancel footer actions stay accessible.
+
+While Quick Settings is listening, a relevant sweep terminal transition refreshes the freezer candidate
+count. Progress ticks, count emissions and repeated terminal metadata do not cause refresh loops;
+stopped-listening generations cannot publish a late candidate read.
 
 The repository supports an optional progress overlay, but the current production binding is
 `EmptyTaskProgressOverlaySource`. Do not claim a wired high-frequency Queue overlay. Compatibility
@@ -229,8 +273,10 @@ they are not silent global serialization.
 
 `DefaultPackageOperationCoordinator` provides same-package exclusion independently of root transport.
 Archive work, supported sweep items and coordinated direct mutations acquire package leases. Durable
-export/share additionally use `PackageReadDataTaskRunner` with `PackageOperationOwner.BUNDLE_READ`;
-delegate cleanup finishes before that lease is released. Different packages are not globally locked.
+export/share and the retained legacy-export adapter use `PackageReadDataTaskRunner` with
+`PackageOperationOwner.BUNDLE_READ`; admission precedes package lookup and delegate cleanup finishes
+before that lease is released. Different packages are not globally locked. The legacy data drain gate
+alone is not this exclusion: it does not hold the independent privilege queue.
 
 Root availability probes are serialized by `ActiveGatewayResolver.rootProbeMutex` above command-lane
 admission. This avoids competing startup probes without weakening fail-fast admission for real

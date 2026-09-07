@@ -122,7 +122,7 @@ object TaskActionPolicy {
         TaskLifecyclePhase.START_BLOCKED -> setOf(TaskAction.RETRY)
         TaskLifecyclePhase.START_BLOCKED_NOTIFICATION -> when (requirement) {
             is TaskActionRequirement.NotificationSettings ->
-                setOf(TaskAction.OPEN_NOTIFICATION_SETTINGS)
+                setOf(TaskAction.OPEN_NOTIFICATION_SETTINGS, TaskAction.RETRY)
 
             else -> emptySet()
         }
