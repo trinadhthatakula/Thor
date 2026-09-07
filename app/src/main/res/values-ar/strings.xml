@@ -935,7 +935,38 @@
     <string name="task_dialog_sweep_retry_confirm">إعادة محاولة هذا الهدف</string>
     <string name="task_dialog_share_expired_message">بلغت ملفات المشاركة الخاصة هذه حد 24 ساعة وأُزيلت.</string>
 
-    <string name="task_log_queued">قُبلت المهمة ووُضعت في قائمة الانتظار.</string>
+    <plurals name="task_log_pending_queued">
+        <item quantity="zero">عدد المهام المقبولة في قائمة الانتظار: %1$d</item>
+        <item quantity="one">قُبلت مهمة واحدة ووُضعت في قائمة الانتظار (%1$d)</item>
+        <item quantity="two">قُبلت مهمتان ووُضعتا في قائمة الانتظار (%1$d)</item>
+        <item quantity="few">قُبلت %1$d مهام ووُضعت في قائمة الانتظار</item>
+        <item quantity="many">قُبلت %1$d مهمة ووُضعت في قائمة الانتظار</item>
+        <item quantity="other">عدد المهام المقبولة في قائمة الانتظار: %1$d</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="zero">عدد المهام المعلّقة: %1$d</item>
+        <item quantity="one">مهمة واحدة معلّقة (%1$d)</item>
+        <item quantity="two">مهمتان معلّقتان (%1$d)</item>
+        <item quantity="few">%1$d مهام معلّقة</item>
+        <item quantity="many">%1$d مهمة معلّقة</item>
+        <item quantity="other">عدد المهام المعلّقة: %1$d</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="zero">عدد المهام التي لم تُعالج: %1$d</item>
+        <item quantity="one">مهمة واحدة لم تُعالج (%1$d)</item>
+        <item quantity="two">مهمتان لم تُعالجا (%1$d)</item>
+        <item quantity="few">%1$d مهام لم تُعالج</item>
+        <item quantity="many">%1$d مهمة لم تُعالج</item>
+        <item quantity="other">عدد المهام التي لم تُعالج: %1$d</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="zero">عدد النتائج السابقة المحذوفة من العرض: %1$d</item>
+        <item quantity="one">حُذفت نتيجة سابقة واحدة من العرض (%1$d)</item>
+        <item quantity="two">حُذفت نتيجتان سابقتان من العرض (%1$d)</item>
+        <item quantity="few">حُذفت %1$d نتائج سابقة من العرض</item>
+        <item quantity="many">حُذفت %1$d نتيجة سابقة من العرض</item>
+        <item quantity="other">عدد النتائج السابقة المحذوفة من العرض: %1$d</item>
+    </plurals>
     <string name="task_log_stage_preparing">جارٍ تحضير المهمة.</string>
     <string name="task_log_stage_staging_source">جارٍ نسخ المصدر المحدد إلى التخزين المرحلي الخاص.</string>
     <string name="task_log_stage_measuring">جارٍ قياس بيانات التطبيق.</string>

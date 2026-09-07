@@ -135,7 +135,6 @@ class LocalePolicyTest {
         "task_dialog_sweep_retry_message",
         "task_dialog_sweep_retry_confirm",
         "task_dialog_share_expired_message",
-        "task_log_queued",
         "task_log_stage_preparing",
         "task_log_stage_staging_source",
         "task_log_stage_measuring",
@@ -154,6 +153,10 @@ class LocalePolicyTest {
     )
 
     private val taskQueuePluralKeys = setOf(
+        "task_log_pending_queued",
+        "task_log_pending_neutral",
+        "task_log_pending_unprocessed",
+        "task_log_results_omitted",
         "task_reason_ready",
         "task_reason_ready_partial",
         "task_queue_notification_ready_text",

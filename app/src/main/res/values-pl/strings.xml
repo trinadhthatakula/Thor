@@ -955,7 +955,30 @@
     <string name="task_dialog_sweep_retry_confirm">Ponów dla tego celu</string>
     <string name="task_dialog_share_expired_message">Te prywatne pliki do udostępnienia osiągnęły limit 24 godzin i zostały usunięte.</string>
 
-    <string name="task_log_queued">Zadanie przyjęte i dodane do kolejki.</string>
+    <plurals name="task_log_pending_queued">
+        <item quantity="one">%1$d zadanie przyjęte i dodane do kolejki</item>
+        <item quantity="few">%1$d zadania przyjęte i dodane do kolejki</item>
+        <item quantity="many">%1$d zadań przyjętych i dodanych do kolejki</item>
+        <item quantity="other">%1$d zadania przyjętego i dodanego do kolejki</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="one">%1$d zadanie oczekujące</item>
+        <item quantity="few">%1$d zadania oczekujące</item>
+        <item quantity="many">%1$d zadań oczekujących</item>
+        <item quantity="other">%1$d zadania oczekującego</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="one">%1$d zadanie nieprzetworzone</item>
+        <item quantity="few">%1$d zadania nieprzetworzone</item>
+        <item quantity="many">%1$d zadań nieprzetworzonych</item>
+        <item quantity="other">%1$d zadania nieprzetworzonego</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="one">Pominięto %1$d wcześniejszy wynik</item>
+        <item quantity="few">Pominięto %1$d wcześniejsze wyniki</item>
+        <item quantity="many">Pominięto %1$d wcześniejszych wyników</item>
+        <item quantity="other">Pominięto %1$d wcześniejszego wyniku</item>
+    </plurals>
     <string name="task_log_stage_preparing">Przygotowywanie zadania.</string>
     <string name="task_log_stage_staging_source">Kopiowanie wybranego źródła do prywatnego obszaru tymczasowego.</string>
     <string name="task_log_stage_measuring">Mierzenie danych aplikacji.</string>

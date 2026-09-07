@@ -5,11 +5,14 @@ package com.valhalla.thor.presentation.queue
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -127,44 +130,60 @@ internal fun TaskDetailContent(
                     null
                 },
             ) {
-                val terminal = TaskAction.ACKNOWLEDGE in state.actions
-                if (!terminal) {
-                    OutlinedButton(
-                        onClick = onBackground,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .testTag(TASK_DETAIL_BACKGROUND_TAG),
-                    ) {
-                        Text(stringResource(R.string.task_queue_background))
-                    }
-                }
+                TaskDetailFooter(state, onBackground, onAction)
+            }
+        }
+    }
+}
 
-                if (state.phase == TaskLifecyclePhase.STOPPING) {
-                    OutlinedButton(
-                        onClick = {},
-                        enabled = false,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .testTag(TASK_DETAIL_STOPPING_TAG),
-                    ) {
-                        Text(stringResource(R.string.task_state_stopping))
-                    }
-                }
+@Composable
+internal fun TaskDetailFooter(
+    state: TaskDetailUiState,
+    onBackground: () -> Unit,
+    onAction: (TaskAction) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 6.dp, top = 16.dp, end = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val terminal = TaskAction.ACKNOWLEDGE in state.actions
+        if (!terminal) {
+            OutlinedButton(
+                onClick = onBackground,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag(TASK_DETAIL_BACKGROUND_TAG),
+            ) {
+                Text(stringResource(R.string.task_queue_background))
+            }
+        }
 
-                TaskAction.entries.forEach { action ->
-                    if (action in state.actions) {
-                        Button(
-                            onClick = { onAction(action) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .testTag(taskDetailActionTag(action)),
-                        ) {
-                            Text(stringResource(action.labelRes()))
-                        }
-                    }
+        if (state.phase == TaskLifecyclePhase.STOPPING) {
+            OutlinedButton(
+                onClick = {},
+                enabled = false,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag(TASK_DETAIL_STOPPING_TAG),
+            ) {
+                Text(stringResource(R.string.task_state_stopping))
+            }
+        }
+
+        TaskAction.entries.forEach { action ->
+            if (action in state.actions) {
+                Button(
+                    onClick = { onAction(action) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag(taskDetailActionTag(action)),
+                ) {
+                    Text(stringResource(action.labelRes()))
                 }
             }
         }
@@ -187,8 +206,7 @@ internal fun TaskDetailUiState.loggerStatus(): TermLoggerStatus = when (phase) {
     else -> TermLoggerStatus.NEUTRAL
 }
 
-@Composable
-private fun TaskDetailUiState.loggerLines(): List<UiText> {
+internal fun TaskDetailUiState.loggerLines(): List<UiText> {
     val summary = summary ?: return listOf(
         UiText.StringResource(
             when (phase) {
@@ -207,8 +225,35 @@ private fun TaskDetailUiState.loggerLines(): List<UiText> {
         summary.progress.total,
     )
     summary.progress.stageLabel?.stageText()?.let(result::add)
+    var pendingCount = 0L
     for (line in lines.sortedBy(TaskLogLine::order)) {
-        line.displayText()?.let(result::add)
+        when (line.messageCode) {
+            "TASK_ITEM_PENDING", "SWEEP_TARGET_PENDING" -> pendingCount++
+            "TASK_PENDING_COUNT" -> pendingCount += line.positiveCount() ?: 0
+            else -> line.displayText()?.let(result::add)
+        }
+    }
+    if (pendingCount > 0) {
+        result += UiText.PluralsResource(
+            when (summary.phase) {
+                TaskLifecyclePhase.STARTING,
+                TaskLifecyclePhase.QUEUED,
+                TaskLifecyclePhase.RUNNING,
+                    -> R.plurals.task_log_pending_queued
+
+                TaskLifecyclePhase.READY,
+                TaskLifecyclePhase.READY_PARTIAL,
+                TaskLifecyclePhase.SUCCEEDED,
+                TaskLifecyclePhase.PARTIAL,
+                TaskLifecyclePhase.FAILED,
+                TaskLifecyclePhase.CANCELLED,
+                TaskLifecyclePhase.EXPIRED,
+                    -> R.plurals.task_log_pending_unprocessed
+
+                else -> R.plurals.task_log_pending_neutral
+            },
+            pendingCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+        )
     }
     summary.reason()?.let(result::add)
     if (summary.rootLaneDegraded) {
@@ -230,12 +275,15 @@ private fun String.stageText(): UiText? = when (this) {
     else -> null
 }
 
+private fun TaskLogLine.positiveCount(): Int? =
+    arguments.singleOrNull()?.toIntOrNull()?.takeIf { it > 0 }
+
 private fun TaskLogLine.displayText(): UiText? {
     val target = arguments.firstOrNull()
     return when (messageCode) {
-        "TASK_ITEM_PENDING",
-        "SWEEP_TARGET_PENDING",
-            -> UiText.StringResource(R.string.task_log_queued)
+        "TASK_RESULTS_OMITTED" -> positiveCount()?.let {
+            UiText.PluralsResource(R.plurals.task_log_results_omitted, it)
+        }
 
         "TASK_ITEM_RUNNING",
         "SWEEP_TARGET_RUNNING",

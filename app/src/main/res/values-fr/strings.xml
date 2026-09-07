@@ -863,7 +863,22 @@
     <string name="task_dialog_sweep_retry_confirm">Réessayer sur cette cible</string>
     <string name="task_dialog_share_expired_message">Ces fichiers de partage privés ont atteint leur limite de 24 heures et ont été supprimés.</string>
 
-    <string name="task_log_queued">Tâche acceptée et mise en attente.</string>
+    <plurals name="task_log_pending_queued">
+        <item quantity="one">%1$d tâche acceptée et mise en file</item>
+        <item quantity="other">%1$d tâches acceptées et mises en file</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="one">%1$d tâche en attente</item>
+        <item quantity="other">%1$d tâches en attente</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="one">%1$d tâche non traitée</item>
+        <item quantity="other">%1$d tâches non traitées</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="one">%1$d résultat antérieur omis</item>
+        <item quantity="other">%1$d résultats antérieurs omis</item>
+    </plurals>
     <string name="task_log_stage_preparing">Préparation de la tâche.</string>
     <string name="task_log_stage_staging_source">Copie de la source sélectionnée vers le stockage temporaire privé.</string>
     <string name="task_log_stage_measuring">Mesure des données de l’application.</string>

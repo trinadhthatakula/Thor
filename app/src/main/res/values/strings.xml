@@ -928,7 +928,22 @@
     <string name="task_dialog_sweep_retry_confirm">Retry this target</string>
     <string name="task_dialog_share_expired_message">These private share files reached their 24-hour limit and were removed.</string>
 
-    <string name="task_log_queued">Task accepted and queued.</string>
+    <plurals name="task_log_pending_queued">
+        <item quantity="one">%1$d task accepted and queued</item>
+        <item quantity="other">%1$d tasks accepted and queued</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="one">%1$d task pending</item>
+        <item quantity="other">%1$d tasks pending</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="one">%1$d task not processed</item>
+        <item quantity="other">%1$d tasks not processed</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="one">%1$d earlier result omitted</item>
+        <item quantity="other">%1$d earlier results omitted</item>
+    </plurals>
     <string name="task_log_stage_preparing">Preparing task.</string>
     <string name="task_log_stage_staging_source">Copying the selected source to private staging.</string>
     <string name="task_log_stage_measuring">Measuring app data.</string>

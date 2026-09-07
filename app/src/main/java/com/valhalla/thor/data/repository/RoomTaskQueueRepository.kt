@@ -174,9 +174,9 @@ internal fun StoredPrivilegeSweep.toQueuedSummary(): QueuedTaskSummary {
 
 internal fun DataTaskSnapshot.toQueuedDetail(): QueuedTaskDetail = QueuedTaskDetail(
     summary = toQueuedSummary(),
-    lines = items.take(MAX_PROJECTED_LINES).mapIndexed { index, item ->
+    lines = items.filter { it.state != DataTaskItemState.PENDING }.map { item ->
         TaskLogLine(
-            order = index.toLong(),
+            order = item.ordinal.toLong(),
             messageCode = "TASK_ITEM_${item.state.name}",
             arguments = listOf(item.packageName),
             level = when (item.state) {
@@ -188,7 +188,7 @@ internal fun DataTaskSnapshot.toQueuedDetail(): QueuedTaskDetail = QueuedTaskDet
                     -> TaskLogLevel.INFO
             },
         )
-    },
+    }.boundedSnapshotLines(pendingCount = items.count { it.state == DataTaskItemState.PENDING }),
     resultCode = resultCode?.value,
     warningCodes = warnings.asSequence()
         .filter(STABLE_CODE::matches)
@@ -199,9 +199,9 @@ internal fun DataTaskSnapshot.toQueuedDetail(): QueuedTaskDetail = QueuedTaskDet
 
 internal fun StoredPrivilegeSweep.toQueuedDetail(): QueuedTaskDetail = QueuedTaskDetail(
     summary = toQueuedSummary(),
-    lines = targetSnapshots.take(MAX_PROJECTED_LINES).mapIndexed { index, target ->
+    lines = targetSnapshots.filter { it.state != PrivilegeSweepTargetState.PENDING }.map { target ->
         TaskLogLine(
-            order = index.toLong(),
+            order = target.ordinal.toLong(),
             messageCode = "SWEEP_TARGET_${target.state.name}",
             arguments = listOf(target.packageName),
             level = when (target.state) {
@@ -218,10 +218,38 @@ internal fun StoredPrivilegeSweep.toQueuedDetail(): QueuedTaskDetail = QueuedTas
                     -> TaskLogLevel.INFO
             },
         )
-    },
+    }.boundedSnapshotLines(
+        pendingCount = targetSnapshots.count { it.state == PrivilegeSweepTargetState.PENDING },
+    ),
     resultCode = terminalState?.name,
     warningCodes = emptyList(),
 )
+
+/** A bounded snapshot window, not an event journal. Pending children consume only one row. */
+private fun List<TaskLogLine>.boundedSnapshotLines(pendingCount: Int): List<TaskLogLine> {
+    val budget = MAX_PROJECTED_LINES - if (pendingCount > 0) 1 else 0
+    val sorted = sortedBy(TaskLogLine::order)
+    val visible = if (size <= budget) {
+        sorted
+    } else {
+        // A resumed low-ordinal target must not disappear behind later, already-finished targets.
+        val (running, outcomes) = sorted.partition {
+            it.messageCode == "TASK_ITEM_RUNNING" || it.messageCode == "SWEEP_TARGET_RUNNING"
+        }
+        val active = running.takeLast(budget - 1)
+        (active + outcomes.takeLast(budget - 1 - active.size)).sortedBy(TaskLogLine::order)
+    }
+    val omitted = size - visible.size
+    return buildList {
+        if (omitted > 0) {
+            add(TaskLogLine(0, "TASK_RESULTS_OMITTED", listOf(omitted.toString())))
+        }
+        addAll(visible)
+        if (pendingCount > 0) {
+            add(TaskLogLine(0, "TASK_PENDING_COUNT", listOf(pendingCount.toString())))
+        }
+    }.mapIndexed { index, line -> line.copy(order = index.toLong()) }
+}
 
 private fun DataTaskSnapshot.actionRequirement(): TaskActionRequirement? = when (state) {
     DataTaskState.WAITING_FOR_AUTH -> archivePackageName()?.let {

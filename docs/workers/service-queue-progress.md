@@ -2,7 +2,7 @@
 
 **Updated:** 7 September 2026. Times below are UTC.
 
-**22 agreed milestones: 20 complete, 2 pending/blocked. No runtime task remains in progress.**
+**22 agreed milestones: 20 complete, T19 and T22 pending/blocked on remaining runtime acceptance.** The bounded physical-device logger correction is implemented, locally validated and narrowly reviewed; its updated APK needs device confirmation. No new milestone has been added.
 
 **Branch:** `feat/worker-shell-lanes` · **PR:** [#453](https://github.com/trinadhthatakula/Thor/pull/453), open, unmerged, targeting `dev` · **Version:** 1952.
 
@@ -13,9 +13,32 @@
 | Milestone | Status | What remains | Evidence required to close |
 |---|---|---|---|
 | **T19 — Shizuku emulator acceptance and latency** | **Pending — blocked** | Establish authorized Shizuku/fixture prerequisites; test real operations, cancellation, reopening, recovery and package conflicts; collect at least 20 warm exports and 20 warm sweeps; remove temporary latency hooks and rebuild. | Genuine Manager consent, scenario postconditions and raw distributions; honest baseline comparison; final APK without hooks. |
-| **T22 — Startup and jank check** | **Pending — partially validated, fixture blocked** | Startup: 20 cold + 20 warm samples accepted. Three navigation-only Queue passes accepted. Remaining: scrolling/populated-detail and operation-loaded coverage, matched-baseline comparison; fix only demonstrated regressions. | Suitable authorized fixture and comparable measurements. Existing debug observations are not full-route or shipping-release acceptance. |
+| **T22 — Startup and jank check** | **Pending — runtime confirmation** | Retest the corrected logger/count/footer APK. Prior startup/navigation measurements remain accepted. Scrolling/populated-detail and operation-loaded acceptance plus matched-baseline comparison remain outstanding. | Logger host regressions and narrow review pass; device confirmation and the remaining runtime matrix are still required. The reported physical-device test is not blanket acceptance. |
 
-**Host builds and bounded runtime runs are finished; ownership is released.** No task is silently continuing for days. Reviews, fixture maintenance and validation attempts are not new milestones. No milestone closes merely because a subagent reports completion.
+**Logger implementation, local builds and narrow reviews are finished.** Publication uses the existing PR; consult its live checks for CI on the logger commit rather than applying earlier CI results to new code. No assistant device operation was performed for this follow-up. Reviews, fixture maintenance and validation attempts are not new milestones. No runtime milestone closes merely because host tests pass.
+
+### Physical-device feedback follow-up
+
+The user reports that a bulk Fix Store request for approximately 63 apps produces approximately 64 repeated “task accepted and queued” lines, and that the footer buttons need more spacing. Tracing found one identical presentation placeholder per pending child and an existing 64-line detail cap; it did **not** prove an extra submitted task or parent acceptance line. The correction counts all pending children before applying the display cap, places one live summary after individual results, and keeps the running app separate. The count decreases when an app leaves the pending state; running is not mislabeled as queued. For oversized batches, the bounded projection must retain the current running app and recent outcomes and explicitly disclose omitted older results. Footer spacing is 16dp above the group, 8dp between controls, and an additional 6dp side inset, preserving at least 48dp controls and the non-scrolling footer. Queue execution and durable storage are outside this correction's scope. Implementation and local validation are complete; the older full-suite/CI results below remain historical checkpoints, not tests of this follow-up.
+
+**Regression reproduction:** saved JUnit XML independently confirms an initial RED run of 14 tests / 7 failures and an expanded RED run of 24 tests / 18 failures, both with zero errors/skips. The failures expose repeated pending rows, the pre-aggregation 64-line cutoff, missing overflow disclosure and missing footer spacing. These overlapping suites are not additive totals.
+
+**Final follow-up host gates:**
+
+| Gate | Verified result |
+|---|---|
+| Full Foss JVM suite | **2,660 tests / 221 suites**, zero failures/errors/skips; fresh XML, 54/54 tasks executed |
+| Full Store JVM suite | **2,660 tests / 221 suites**, zero failures/errors/skips; fresh XML, 54/54 tasks executed |
+| Foss debug lint | **Zero errors**, 66 `SyntheticAccessor` warnings / 12 hints; fresh XML, 70/70 tasks executed |
+| Store release lint | **Zero errors**, 53 `SyntheticAccessor` warnings / 12 hints; fresh XML, 51/51 tasks executed |
+| Foss debug APK / production and Android-test compilation | **Passed**, 75/75 tasks executed; test sources compiled, not device-executed |
+| Narrow review | Count/state and presentation reviews **PASS**; controller separately verified lint-maintenance delta and final 14-file patch identities |
+
+The focused GREEN suite passes 39 tests. Production-footer fixtures measure 360×480dp and 360×400dp, including 1.3 font scale, two/three controls, 16dp top/total side inset, 8dp control gaps and at least 48dp controls. This is Robolectric evidence, not physical font/rendering confirmation. Same-length update coverage establishes final-row/footer reachability, not manually scrolled-position preservation. No shared scrolling change was made.
+
+The first GREEN attempt exposed a real omitted-count calculation bug caused by the `buildList` receiver; the calculation was moved outside the builder without weakening assertions. The first Foss lint run found reflective resource lookup in the new test and the obsolete old queued string. Static resource IDs and removal of the obsolete key across all locales fixed those errors; `LocalePolicyTest` now requires all four replacement plurals. Both full unit suites and both lint gates were rerun after this maintenance. Initial targeted IDE compilation returned success; a later IDE wrapper timed out, while the matching Gradle daemon recorded its underlying build successful and idle before final native gates. Local launcher/daemon use the explicit **Corretto21.0.12.1 exception**, not Zulu validation.
+
+**Corrected test APK:** `app/build/outputs/apk/foss/debug/app-foss-debug.apk`, package `com.valhalla.thor.debug`, version **1952**, **28,395,700 bytes**, SHA-256 `c5e2ad012b6c6d052d60ee88ef4911e3de91f602c18b783932fb1462998987ed`. Its verified signing certificate matches the earlier debug test APK; all four new plurals are present in packaged resources and the obsolete string is absent. Built from base `25ffb74e` plus verified implementation patch `570ec0bb8b48fb52cba16a62aa99968dabab59f9c26a0cb90ca6842a686065eb` before commit. The older APK is not the corrected build. No release APK, new device run, or new hosted-CI result is implied.
 
 ## Completed T21 review and validation
 
@@ -44,7 +67,7 @@ The targeted IDE tool timed out, but the matching Gradle daemon and IDE logs ind
 
 The five-file lint delta is maintenance of this correction set, not five new production defects. All other 45 correction paths remain unchanged. No lint suppression, policy/configuration/dependency change, visibility widening or new production behavior was authorized.
 
-## Current validation evidence
+## Prior T21 validation evidence
 
 Final-source fingerprint: `c10facb4a2f0c74aa2577123dee96991226f3ba01bd7f5840d6c25f35cc4d712`, covering **814 source/build inputs**, with an explicit **50-path correction inventory**. Exactly the authorized five paths differ from the preceding host snapshot.
 

@@ -926,7 +926,22 @@
     <string name="task_dialog_sweep_retry_confirm">Tentar novamente neste alvo</string>
     <string name="task_dialog_share_expired_message">Estes ficheiros privados para partilha atingiram o limite de 24 horas e foram removidos.</string>
 
-    <string name="task_log_queued">Tarefa aceite e colocada em fila.</string>
+    <plurals name="task_log_pending_queued">
+        <item quantity="one">%1$d tarefa aceite e colocada em fila</item>
+        <item quantity="other">%1$d tarefas aceites e colocadas em fila</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="one">%1$d tarefa pendente</item>
+        <item quantity="other">%1$d tarefas pendentes</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="one">%1$d tarefa não processada</item>
+        <item quantity="other">%1$d tarefas não processadas</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="one">%1$d resultado anterior omitido</item>
+        <item quantity="other">%1$d resultados anteriores omitidos</item>
+    </plurals>
     <string name="task_log_stage_preparing">A preparar a tarefa.</string>
     <string name="task_log_stage_staging_source">A copiar a origem selecionada para a área privada temporária.</string>
     <string name="task_log_stage_measuring">A medir os dados da aplicação.</string>

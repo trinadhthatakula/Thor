@@ -846,7 +846,18 @@
     <string name="task_dialog_sweep_retry_confirm">重试此目标</string>
     <string name="task_dialog_share_expired_message">这些私人分享文件已达到 24 小时期限并被移除。</string>
 
-    <string name="task_log_queued">任务已接受并加入队列。</string>
+    <plurals name="task_log_pending_queued">
+        <item quantity="other">%1$d 项任务已接受并加入队列</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="other">%1$d 项任务待处理</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="other">%1$d 项任务未处理</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="other">已省略 %1$d 项较早的结果</item>
+    </plurals>
     <string name="task_log_stage_preparing">正在准备任务。</string>
     <string name="task_log_stage_staging_source">正在将所选源文件复制到私人暂存区。</string>
     <string name="task_log_stage_measuring">正在测量应用数据。</string>

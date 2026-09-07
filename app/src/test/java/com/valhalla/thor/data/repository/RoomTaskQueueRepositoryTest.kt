@@ -163,6 +163,107 @@ class RoomTaskQueueRepositoryTest {
         assertFalse(projected.contains("shell output"))
     }
 
+    @Test
+    fun `both queues compact every pending child before the display cap`() {
+        for (count in listOf(1, 63, 64, 65, 80)) {
+            val details = listOf(
+                dataTask(items = List(count) { item(it, DataTaskItemState.PENDING) }).toQueuedDetail(),
+                sweep(targets = List(count) { target(it, PrivilegeSweepTargetState.PENDING) }).toQueuedDetail(),
+            )
+            details.forEach { detail ->
+                assertEquals("pending count $count for ${detail.summary.queueKind}", 1, detail.lines.size)
+                assertEquals("TASK_PENDING_COUNT", detail.lines.single().messageCode)
+                assertEquals(listOf(count.toString()), detail.lines.single().arguments)
+            }
+        }
+    }
+
+    @Test
+    fun `claim removes pending count and success keeps result without accumulating snapshots`() {
+        val data = dataTask(items = List(80) { item(it, DataTaskItemState.PENDING) })
+        val privilege = sweep(targets = List(80) { target(it, PrivilegeSweepTargetState.PENDING) })
+        repeat(3) {
+            assertEquals(1, data.toQueuedDetail().lines.size)
+            assertEquals(1, privilege.toQueuedDetail().lines.size)
+            assertEquals(listOf("80"), data.toQueuedDetail().lines.single().arguments)
+            assertEquals(listOf("80"), privilege.toQueuedDetail().lines.single().arguments)
+            for (state in listOf(DataTaskItemState.RUNNING, DataTaskItemState.SUCCEEDED)) {
+                val detail = data.copy(items = data.items.map {
+                    if (it.ordinal == 79) it.copy(state = state) else it
+                }).toQueuedDetail()
+                assertEquals(listOf("TASK_ITEM_${state.name}", "TASK_PENDING_COUNT"), detail.lines.map { it.messageCode })
+                assertEquals(listOf("app.item79"), detail.lines.first().arguments)
+                assertEquals(listOf("79"), detail.lines.last().arguments)
+            }
+            for (state in listOf(PrivilegeSweepTargetState.RUNNING, PrivilegeSweepTargetState.SUCCEEDED)) {
+                val detail = privilege.copy(targetSnapshots = privilege.targetSnapshots.map {
+                    if (it.ordinal == 79) it.copy(state = state) else it
+                }).toQueuedDetail()
+                assertEquals(listOf("SWEEP_TARGET_${state.name}", "TASK_PENDING_COUNT"), detail.lines.map { it.messageCode })
+                assertEquals(listOf("app.sweep79"), detail.lines.first().arguments)
+                assertEquals(listOf("79"), detail.lines.last().arguments)
+            }
+        }
+    }
+
+    @Test
+    fun `mixed snapshots retain failures cancellation busy and unknown severity`() {
+        val states = PrivilegeSweepTargetState.entries.filter { it != PrivilegeSweepTargetState.PENDING }
+        val detail = sweep(targets = List(80) { index ->
+            target(index, states.getOrNull(index - 70) ?: PrivilegeSweepTargetState.PENDING)
+        }).toQueuedDetail()
+        assertEquals(states.map { "SWEEP_TARGET_${it.name}" } + "TASK_PENDING_COUNT", detail.lines.map { it.messageCode })
+        assertEquals(listOf((80 - states.size).toString()), detail.lines.last().arguments)
+        states.forEachIndexed { index, state ->
+            val expected = when (state) {
+                PrivilegeSweepTargetState.SUCCEEDED -> com.valhalla.thor.domain.model.TaskLogLevel.SUCCESS
+                PrivilegeSweepTargetState.FAILED -> com.valhalla.thor.domain.model.TaskLogLevel.ERROR
+                PrivilegeSweepTargetState.RUNNING -> com.valhalla.thor.domain.model.TaskLogLevel.INFO
+                else -> com.valhalla.thor.domain.model.TaskLogLevel.WARNING
+            }
+            assertEquals(expected, detail.lines[index].level)
+        }
+    }
+
+    @Test
+    fun `overflow retains latest ordinal results and states how many were omitted`() {
+        val data = dataTask(items = List(80) { item(it, DataTaskItemState.FAILED) }.reversed()).toQueuedDetail()
+        val privilege = sweep(targets = List(80) { target(it, PrivilegeSweepTargetState.SUCCEEDED) }.reversed()).toQueuedDetail()
+        for ((detail, prefix) in listOf(data to "app.item", privilege to "app.sweep")) {
+            assertEquals(64, detail.lines.size)
+            assertEquals("TASK_RESULTS_OMITTED", detail.lines.first().messageCode)
+            assertEquals(listOf("17"), detail.lines.first().arguments)
+            assertEquals((17..79).map { listOf("$prefix$it") }, detail.lines.drop(1).map { it.arguments })
+            assertFalse(detail.lines.any { it.messageCode == "TASK_PENDING_COUNT" })
+        }
+    }
+
+    @Test
+    fun `overflow reserves running result omission and pending slots in both queues`() {
+        for (runningOrdinal in listOf(0, 78)) {
+            val data = dataTask(items = List(80) { ordinal -> item(ordinal, when (ordinal) {
+                runningOrdinal -> DataTaskItemState.RUNNING
+                79 -> DataTaskItemState.PENDING
+                else -> DataTaskItemState.SUCCEEDED
+            }) }).toQueuedDetail()
+            val privilege = sweep(targets = List(80) { ordinal -> target(ordinal, when (ordinal) {
+                runningOrdinal -> PrivilegeSweepTargetState.RUNNING
+                79 -> PrivilegeSweepTargetState.PENDING
+                else -> PrivilegeSweepTargetState.SUCCEEDED
+            }) }).toQueuedDetail()
+            for ((detail, prefix) in listOf(data to "app.item", privilege to "app.sweep")) {
+                assertEquals(64, detail.lines.size)
+                assertEquals("TASK_RESULTS_OMITTED", detail.lines.first().messageCode)
+                assertEquals(listOf("17"), detail.lines.first().arguments)
+                assertEquals(listOf("$prefix$runningOrdinal"), detail.lines.single { it.messageCode.endsWith("_RUNNING") }.arguments)
+                assertEquals(listOf("1"), detail.lines.last().arguments)
+                assertEquals("TASK_PENDING_COUNT", detail.lines.last().messageCode)
+                val latestResults = if (runningOrdinal == 0) (18..78) else (17..77)
+                assertEquals(latestResults.map { listOf("$prefix$it") }, detail.lines.filter { it.messageCode.endsWith("_SUCCEEDED") }.map { it.arguments })
+            }
+        }
+    }
+
     private fun repository(
         data: List<DataTaskSnapshot> = emptyList(),
         sweeps: List<StoredPrivilegeSweep> = emptyList(),
