@@ -103,6 +103,78 @@ class NoNewWorkRequestArchitectureTest {
         )
     }
 
+    @Test
+    fun `long closed literals mask text but preserve forbidden code`() {
+        forbiddenMaskingReferences.forEach { reference ->
+            val source = "\"${"a".repeat(131_072)}$reference\"\n$reference()"
+
+            val code = source.withoutComments()
+
+            assertEquals("\"\"\n$reference()", code)
+            assertTrue("real $reference must remain detectable", code.contains(reference))
+        }
+    }
+
+    @Test
+    fun `long escaped literals mask text but preserve forbidden code`() {
+        forbiddenMaskingReferences.forEach { reference ->
+            val source = "\"${"\\\"".repeat(65_536)}$reference\"\n$reference()"
+
+            val code = source.withoutComments()
+
+            assertEquals("\"\"\n$reference()", code)
+            assertTrue("real $reference must remain detectable", code.contains(reference))
+        }
+    }
+
+    @Test
+    fun `long unterminated literals retain their existing output`() {
+        forbiddenMaskingReferences.forEach { reference ->
+            val source = "\"${"a".repeat(131_072)}\n$reference()"
+
+            val code = source.withoutComments()
+
+            assertEquals(source, code)
+            assertTrue("unmasked $reference must remain detectable", code.contains(reference))
+        }
+    }
+
+    @Test
+    fun `masking fixtures ignore comments and literals but detect all forbidden code`() {
+        forbiddenMaskingReferences.forEach { reference ->
+            val fixtures = listOf(
+                Triple("line comment", "// $reference\n", "\n"),
+                Triple("block comment", "/* $reference */", ""),
+                Triple("multiline comment", "/* before\n$reference\n*/", ""),
+                Triple("string", "\"$reference\"", "\"\""),
+                Triple("escaped string", "\"before \\\"$reference\\\" after\"", "\"\""),
+                Triple("raw string", "\"\"\"\n$reference\n\"\"\"", "\"\"\"\"\"\""),
+            )
+            fixtures.forEach { (label, source, expected) ->
+                val masked = source.withoutComments()
+                assertEquals("$reference in $label", expected, masked)
+                assertFalse("$reference in $label must be masked", masked.contains(reference))
+
+                val withRealCode = "$source\n$reference()".withoutComments()
+                assertEquals("real code after $label", "$expected\n$reference()", withRealCode)
+                assertTrue(
+                    "real $reference after $label must remain detectable",
+                    withRealCode.contains(reference),
+                )
+            }
+            assertEquals("$reference()", "$reference()".withoutComments())
+        }
+    }
+
+    private val forbiddenMaskingReferences = listOf(
+        "OneTimeWorkRequestBuilder",
+        "PeriodicWorkRequestBuilder",
+        "beginUniqueWork",
+        "enqueueUniqueWork",
+        "PrivilegeSweepWorker",
+        "THOR_SWEEP_CHAIN",
+    )
+
     private fun productionSources(): List<ProductionSource> {
         val root = projectFile("app/src/main/java")
         return root.walkTopDown()
@@ -129,7 +201,7 @@ class NoNewWorkRequestArchitectureTest {
     private fun String.withoutComments(): String =
         replace(Regex("""/\*[\s\S]*?\*/"""), "")
             .replace(Regex("""//[^\r\n]*"""), "")
-            .replace(Regex("\"(?:\\\\.|[^\"\\\\])*\""), "\"\"")
+            .replace(Regex("\"(?:\\\\.|[^\"\\\\])*+\""), "\"\"")
 
     private data class ProductionSource(
         val file: File,
