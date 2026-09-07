@@ -210,15 +210,8 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Accordez Root / Shizuku / Dhizuku d\'abord</string>
     <string name="tile_no_apps_toast">Aucune application dans le Congélateur</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">%1$d application gelée</item>
-        <item quantity="other">%1$d applications gelées</item>
-    </plurals>
-    <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
-    <string name="tile_freeze_incomplete">%1$d/%2$d applications gelées (%3$d inachevées)</string>
     <string name="tile_checking">Vérification…</string>
     <string name="tile_freezing">Gel en cours…</string>
-    <string name="channel_bulk_result_name">Résultats des actions groupées</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Paramètres du congélateur</string>
@@ -263,12 +256,6 @@
     <!-- UiText Messages -->    <string name="frozen_success">%1$s gelé</string>
     <string name="unfrozen_success">%1$s dégelé</string>
     <string name="added_to_freezer_success">Ajouté au congélateur</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">%1$d application dégelée</item>
-        <item quantity="other">%1$d applications dégelées</item>
-    </plurals>
-    <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
-    <string name="tile_unfreeze_incomplete">%1$d/%2$d applications dégelées (%3$d inachevées)</string>
     <string name="error_format">Erreur : %1$s</string>
     <string name="failed_to_load_apps">Échec du chargement des applications</string>
     <plurals name="removed_from_freezer_success">
@@ -394,18 +381,13 @@
     <string name="log_scanning_apps">Analyse des applications…</string>
     <string name="log_no_apps_to_fix">Aucune application à réparer trouvée.</string>
     <string name="log_found_apps_to_fix">%1$d applications à réparer trouvées.</string>
-    <string name="log_reinstalling_batch">Réinstallation des applications</string>
     <string name="log_freezing_batch">Gel des applications</string>
     <string name="log_unfreezing_batch">Dégel des applications</string>
     <string name="log_killing_batch">Arrêt des applications</string>
-    <string name="log_clearing_cache_batch">Nettoyage des caches</string>
     <string name="log_uninstalling_batch">Désinstallation des applications</string>
     <string name="log_suspending_batch">Suspension des applications</string>
     <string name="log_unsuspending_batch">Rétablissement des applications</string>
-    <string name="log_sharing_batch">Partage des applications</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] Préparation de %3$s…</string>
-    <string name="log_ready"> -> Prêt</string>
     <string name="log_success"> -> Succès</string>
     <string name="log_failed"> -> Échec : %1$s</string>
 
@@ -420,7 +402,6 @@
     <string name="no_matching_apps_freezer">Aucune application correspondante</string>
     <string name="add_to_freezer_hint">Appuyez sur + pour ajouter des applications</string>
     <string name="filter_all">Tout</string>
-    <string name="error_debuggable_app">L\'application est débogable (probablement une incompatibilité de signature)</string>
     <string name="error_unsafe_skipped">Ignoré : L\'application système est DANGEREUSE / échec de la vérification de sécurité</string>
     <string name="error_self_skipped">Ignoré : Thor ne peut pas se l\'appliquer à lui-même</string>
     <string name="error_parse_package">Échec de l\'analyse du paquet.</string>
@@ -552,8 +533,8 @@
     <string name="usage_access_needed_title">Accès aux données d\'utilisation requis</string>
     <string name="usage_access_prompt_body">Thor a besoin de l\'accès aux données d\'utilisation pour lire la taille des applications. Activez-le pour Thor, puis choisissez de nouveau \"Taille\". Vous pouvez également gérer cela dans Paramètres → Autorisations.</string>
     <string name="notification_access">Notifications</string>
-    <string name="notification_access_granted_subtitle">Les résultats du gel groupé sont affichés en notifications</string>
-    <string name="notification_access_needed_subtitle">Autorisez les notifications pour voir les résultats du gel groupé</string>
+    <string name="notification_access_granted_subtitle">Les actions d\'applications en arrière-plan affichent leur progression dans les notifications</string>
+    <string name="notification_access_needed_subtitle">Autorisez les notifications dans les paramètres système pour exécuter les actions d\'applications en arrière-plan et suivre leur progression</string>
     <string name="open_settings">Ouvrir les paramètres</string>
     <string name="installed_apps_permission_title">La liste des applications peut être incomplète</string>
     <string name="installed_apps_permission_desc">Votre appareil limite les applications que Thor peut voir lorsqu\'il est en arrière-plan. Accordez l\'accès complet à la liste des applications installées pour qu\'elle reste complète.</string>
@@ -619,7 +600,6 @@
     <string name="profile_delete_desc">Seul le profil est supprimé. Les applications qu\'il contient restent telles quelles — ce qui est congelé le reste.</string>
     <string name="profile_saved">Profil enregistré</string>
     <string name="profile_deleted">Profil supprimé</string>
-    <string name="profile_nothing_to_do">Rien à faire pour ce profil</string>
     <string name="bulk_run_failed">L\'opération n\'est pas allée au bout — vérifiez les applis avant de vous y fier</string>
     <string name="error_profile_name_taken">Ce nom de profil est déjà pris</string>
     <string name="error_profile_delete_failed">Impossible de supprimer ce profil</string>
@@ -758,5 +738,163 @@
     <string name="component_disclaimer_confirm">Le désactiver</string>
     <string name="component_disclaimer_dont_ask_session">Ne plus demander pendant cette session</string>
     <string name="component_disabled_unrecorded">Thor n\'a pas pu enregistrer la désactivation de %1$s : Tout rétablir ne la proposera pas</string>
+    <string name="sweep_notification_title">Exécution des actions sur les applications</string>
+    <string name="sweep_queued">Actions mises en file d’attente</string>
+    <string name="sweep_running">Traitement de %1$d sur %2$d</string>
+    <string name="sweep_succeeded">Terminé : %1$d sur %2$d</string>
+    <string name="sweep_partial">Les actions se sont terminées avec des problèmes</string>
+    <string name="sweep_cancelled">La file d’actions a été annulée</string>
+    <string name="sweep_failed">Échec des actions</string>
+    <string name="sweep_observer_failure">Progression indisponible</string>
+    <string name="sweep_root_lane_degraded">Le canal root d’archivage/balayage fonctionne en mode dégradé</string>
+    <string name="sweep_result_summary">Actions sur les applications — réussites : %1$d · échecs : %2$d · occupées : %3$d · non résolues : %4$d</string>
+
+    <!-- Files durables des services au premier plan -->
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">File d’attente des tâches</string>
+    <string name="task_queue_providers">Fournisseurs de privilèges</string>
+    <string name="task_queue_section_running">En cours</string>
+    <string name="task_queue_section_queued">En attente / action requise</string>
+    <string name="task_queue_section_recent">Récentes</string>
+    <string name="task_queue_empty">Aucune tâche pour le moment</string>
+    <string name="task_queue_empty_running">Aucune tâche en cours</string>
+    <string name="task_queue_empty_queued">Aucune tâche en attente ni action requise</string>
+    <string name="task_queue_empty_recent">Aucune tâche récente</string>
+    <string name="task_queue_kind_data">Opérations sur les données</string>
+    <string name="task_queue_kind_privilege">Actions privilégiées sur les applications</string>
+    <string name="task_queue_background">Arrière-plan</string>
+    <string name="task_queue_cancel">Annuler</string>
+    <string name="task_queue_close">Fermer</string>
+    <string name="task_queue_progress">%1$d sur %2$d</string>
+
+    <string name="task_action_authenticate_archive">Authentifier l’archive</string>
+    <string name="task_action_provide_source">Fournir la source</string>
+    <string name="task_action_review_restore">Examiner la restauration</string>
+    <string name="task_action_authorize_privilege">Autoriser le privilège</string>
+    <string name="task_action_authorize_retry">Autoriser la nouvelle tentative</string>
+    <string name="task_action_retry">Réessayer</string>
+    <string name="task_action_resume">Reprendre</string>
+    <string name="task_action_share">Partager</string>
+    <string name="task_action_open_notification_settings">Ouvrir les paramètres de notification</string>
+
+    <string name="task_operation_archive_backup">Sauvegarde d’archive</string>
+    <string name="task_operation_archive_restore">Restauration d’archive</string>
+    <string name="task_operation_app_export">Exportation d’applications</string>
+    <string name="task_operation_share_prepare">Préparation du partage</string>
+    <string name="task_operation_freeze">Geler les applications</string>
+    <string name="task_operation_unfreeze">Dégeler les applications</string>
+    <string name="task_operation_clear_cache">Vider les caches des applications</string>
+    <string name="task_operation_reinstall">Corriger la boutique</string>
+
+    <string name="task_state_starting">Démarrage</string>
+    <string name="task_state_queued">En attente</string>
+    <string name="task_state_running">En cours</string>
+    <string name="task_state_stopping">Arrêt</string>
+    <string name="task_state_waiting_for_auth">Authentification requise</string>
+    <string name="task_state_waiting_for_source">Source requise</string>
+    <string name="task_state_waiting_for_privilege">Privilège requis</string>
+    <string name="task_state_interrupted_review">Examen requis</string>
+    <string name="task_state_ready">Prêt à partager</string>
+    <string name="task_state_ready_partial">Partiellement prêt à partager</string>
+    <string name="task_state_start_blocked">Démarrage bloqué</string>
+    <string name="task_state_start_blocked_notification">Notifications bloquées</string>
+    <string name="task_state_succeeded">Réussie</string>
+    <string name="task_state_partial">Terminée avec des problèmes</string>
+    <string name="task_state_failed">Échec</string>
+    <string name="task_state_cancelled">Annulée</string>
+    <string name="task_state_expired">Expirée</string>
+    <string name="task_state_observer_failure">État indisponible</string>
+
+    <string name="task_reason_queued">En attente des travaux précédents dans cette file.</string>
+    <string name="task_reason_stopping">Finalisation sécurisée de l’annulation.</string>
+    <string name="task_reason_waiting_for_auth">Saisissez la phrase secrète de l’archive de %1$s pour continuer.</string>
+    <string name="task_reason_waiting_for_source">Choisissez l’archive de %1$s pour continuer.</string>
+    <string name="task_reason_waiting_for_privilege">Configurez Root, Shizuku ou Dhizuku, puis revenez dans Thor.</string>
+    <string name="task_reason_interrupted_restore">La restauration de %1$s a été interrompue après le début des modifications. Examinez-la avant de reprendre.</string>
+    <string name="task_reason_interrupted_sweep">Thor n’a pas pu vérifier %1$s après %2$s. Réessayez uniquement après avoir examiné l’application.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="one">%1$d fichier préparé est prêt à être partagé.</item>
+        <item quantity="other">%1$d fichiers préparés sont prêts à être partagés.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="one">%1$d fichier sur %2$d est prêt à être partagé ; les autres n’ont pas pu être préparés.</item>
+        <item quantity="other">%1$d fichiers sur %2$d sont prêts à être partagés ; les autres n’ont pas pu être préparés.</item>
+    </plurals>
+    <string name="task_reason_start_blocked">Android a empêché le démarrage de cette tâche. Réessayez pendant que Thor est ouvert.</string>
+    <string name="task_reason_start_blocked_notification">Ce canal de notification est bloqué. Activez-le avant de réessayer.</string>
+    <string name="task_reason_failed">La tâche ne s’est pas terminée. Examinez les détails avant de réessayer.</string>
+    <string name="task_reason_expired">Les fichiers préparés ont expiré et ont été supprimés.</string>
+    <string name="task_reason_observer_failure">Thor ne peut pas charger l’état actuel de la tâche. La tâche enregistrée n’a pas été modifiée.</string>
+    <string name="task_reason_root_lane_degraded">Le canal root dédié est indisponible. Les travaux root en arrière-plan utilisent le canal de secours partagé.</string>
+
+    <string name="data_queue_notification_channel_name">Opérations sur les données</string>
+    <string name="data_queue_notification_channel_description">Progression de l’archivage, de la restauration, de l’exportation et de la préparation du partage</string>
+    <string name="privilege_queue_notification_channel_name">Actions privilégiées sur les applications</string>
+    <string name="privilege_queue_notification_channel_description">Progression des actions en attente : gel, dégel, vidage du cache et correction de la boutique</string>
+    <string name="data_queue_notification_title">Opération sur les données en cours</string>
+    <string name="privilege_queue_notification_title">Action sur une application en cours</string>
+    <string name="task_queue_notification_status">%1$s · %2$d sur %3$d</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="one">%1$d tâche de plus en attente</item>
+        <item quantity="other">%1$d tâches de plus en attente</item>
+    </plurals>
+    <string name="task_queue_notification_cancel">Annuler</string>
+    <string name="task_queue_notification_ready_title">Prêt à partager</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="one">%1$d fichier préparé est prêt.</item>
+        <item quantity="other">%1$d fichiers préparés sont prêts.</item>
+    </plurals>
+    <string name="task_queue_notification_ready_partial_title">Certains fichiers sont prêts à être partagés</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="one">%1$d fichier sur %2$d est prêt.</item>
+        <item quantity="other">%1$d fichiers sur %2$d sont prêts.</item>
+    </plurals>
+
+    <string name="task_dialog_archive_auth_title">Authentifier l’archive</string>
+    <string name="task_dialog_archive_auth_message">Saisissez la phrase secrète de l’archive de %1$s. Elle est utilisée uniquement pour cette tentative et n’est pas enregistrée.</string>
+    <string name="task_dialog_archive_passphrase_label">Phrase secrète</string>
+    <string name="task_dialog_archive_auth_submit">Continuer</string>
+    <string name="task_dialog_restore_source_title">Fournir la source de restauration</string>
+    <string name="task_dialog_restore_source_message">Choisissez l’archive de %1$s. Thor n’enregistre pas l’adresse de la source.</string>
+    <string name="task_dialog_restore_source_select">Choisir une archive</string>
+    <string name="task_dialog_restore_review_title">Examiner la restauration interrompue</string>
+    <string name="task_dialog_restore_review_message">La restauration de %1$s s’est arrêtée après le début des modifications des données. Vérifiez l’application avant de choisir Reprendre.</string>
+    <string name="task_dialog_restore_review_resume">Reprendre la restauration</string>
+    <string name="task_dialog_sweep_retry_title">Autoriser la nouvelle tentative sur la cible</string>
+    <string name="task_dialog_sweep_retry_message">Thor n’a pas pu vérifier %1$s après %2$s. Réessayez sur cette cible uniquement si répéter l’action est sûr.</string>
+    <string name="task_dialog_sweep_retry_confirm">Réessayer sur cette cible</string>
+    <string name="task_dialog_share_expired_message">Ces fichiers de partage privés ont atteint leur limite de 24 heures et ont été supprimés.</string>
+
+    <plurals name="task_log_pending_queued">
+        <item quantity="one">%1$d tâche acceptée et mise en file</item>
+        <item quantity="other">%1$d tâches acceptées et mises en file</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="one">%1$d tâche en attente</item>
+        <item quantity="other">%1$d tâches en attente</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="one">%1$d tâche non traitée</item>
+        <item quantity="other">%1$d tâches non traitées</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="one">%1$d résultat antérieur omis</item>
+        <item quantity="other">%1$d résultats antérieurs omis</item>
+    </plurals>
+    <string name="task_log_stage_preparing">Préparation de la tâche.</string>
+    <string name="task_log_stage_staging_source">Copie de la source sélectionnée vers le stockage temporaire privé.</string>
+    <string name="task_log_stage_measuring">Mesure des données de l’application.</string>
+    <string name="task_log_stage_capturing">Capture des données de l’application.</string>
+    <string name="task_log_stage_writing">Écriture de la sortie.</string>
+    <string name="task_log_stage_installing">Installation du paquet de l’application.</string>
+    <string name="task_log_stage_restoring">Restauration des données de l’application.</string>
+    <string name="task_log_stage_publishing">Publication de la sortie.</string>
+    <string name="task_log_stage_finishing">Finalisation de la tâche.</string>
+    <string name="task_log_item_running">Traitement de %1$s.</string>
+    <string name="task_log_item_succeeded">%1$s terminé.</string>
+    <string name="task_log_item_failed">Échec de %1$s.</string>
+    <string name="task_log_item_cancelled">%1$s annulé.</string>
+    <string name="task_log_item_busy">%1$s ignoré, car une autre opération l’utilise.</string>
+    <string name="task_log_item_unknown">L’état final de %1$s n’a pas pu être vérifié.</string>
 
 </resources>

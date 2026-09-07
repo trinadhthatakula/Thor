@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.repository
 
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -20,7 +21,11 @@ import com.valhalla.thor.domain.model.resolveExportTarget
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.ArchiveDestination
+import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
+import com.valhalla.thor.domain.repository.ArchivePublication
+import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.PublishedArchive
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.io.FileOutputStream
@@ -118,12 +123,28 @@ internal fun nonCollidingArchiveName(fileName: String, taken: (String) -> Boolea
  */
 internal fun isSweepableOrphanName(name: String): Boolean =
     name.isNotBlank() &&
-        !name.contains('/') &&
-        !name.contains('\\') &&
-        name != "." &&
-        name != ".." &&
-        name.contains(PARTIAL_SUFFIX) &&
-        !name.endsWith(".$THORBAK_EXTENSION")
+            !name.contains('/') &&
+            !name.contains('\\') &&
+            name != "." &&
+            name != ".." &&
+            name.contains(PARTIAL_SUFFIX) &&
+            !name.endsWith(".$THORBAK_EXTENSION")
+
+private sealed interface PublishedLocation {
+    val displayName: String
+    val byteSize: Long
+
+    data class Content(
+        val uri: Uri,
+        override val displayName: String,
+        override val byteSize: Long,
+    ) : PublishedLocation
+
+    data class Local(val file: File) : PublishedLocation {
+        override val displayName: String = file.name
+        override val byteSize: Long = file.length()
+    }
+}
 
 @Single(binds = [AppArchiveStore::class])
 class AppArchiveStoreImpl(
@@ -131,6 +152,7 @@ class AppArchiveStoreImpl(
     private val preferenceRepository: PreferenceRepository,
     private val fileStore: AppBundleFileStore,
     private val ledger: PartialArchiveLedger,
+    private val archiveSourceFactory: ArchiveSourceFactory,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : AppArchiveStore {
 
@@ -166,6 +188,55 @@ class AppArchiveStoreImpl(
             }
         }
 
+    override suspend fun openPublishedArchive(fileName: String): PublishedArchive? {
+        if (!isExactArchiveName(fileName)) return null
+        val location = try {
+            withContext(ioDispatcher) {
+                val savedUri = preferenceRepository.userPreferences.first().exportDirUri
+                when (
+                    val choice = resolveExportTarget(
+                        savedUri,
+                        fileStore.isTreeWritable(savedUri),
+                    ).choice
+                ) {
+                    is ExportTargetChoice.Custom -> findInTree(choice.treeUri, fileName)
+                    ExportTargetChoice.Downloads ->
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            findInMediaStore(fileName)
+                        } else {
+                            findInLegacyDownloads(fileName)
+                        }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, "could not locate the published archive", e)
+            null
+        } ?: return null
+
+        return openOrRelease(
+            build = {
+                val source = when (location) {
+                    is PublishedLocation.Content -> {
+                        val opened = archiveSourceFactory.open(location.uri.toString())
+                        (opened as? ArchiveOpenOutcome.Opened)?.source
+                    }
+
+                    is PublishedLocation.Local -> runCatching {
+                        ZipArchiveSource(location.file, location.displayName)
+                    }.getOrNull()
+                } ?: return@openOrRelease null
+                PublishedArchive(
+                    source = source,
+                    displayName = location.displayName,
+                    byteSize = location.byteSize,
+                )
+            },
+            release = { published -> published?.source?.close() },
+        )
+    }
+
     /**
      * §10's half of the sweep that only this class can perform: the containers live at the *export*
      * destination, which is the user's folder and not Thor's.
@@ -175,24 +246,25 @@ class AppArchiveStoreImpl(
      * unwritable; forgetting the user's chosen folder because a boot-time probe failed is a worse
      * outcome than leaving one `.part` for the next launch.
      */
-    override suspend fun discardOrphans(names: Set<String>): Set<String> = withContext(ioDispatcher) {
-        if (names.isEmpty()) return@withContext emptySet()
-        val savedUri = preferenceRepository.userPreferences.first().exportDirUri
-        val choice = resolveExportTarget(savedUri, fileStore.isTreeWritable(savedUri)).choice
-        names.filterTo(mutableSetOf()) { name ->
-            try {
-                isSweepableOrphanName(name) && deleteByName(choice, name)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // False, not a throw: one unreachable name must not abandon the rest, and a name that
-                // could not be deleted stays in the ledger rather than being forgotten with the file
-                // still on disk.
-                Logger.e(TAG, "could not delete the orphan $name", e)
-                false
+    override suspend fun discardOrphans(names: Set<String>): Set<String> =
+        withContext(ioDispatcher) {
+            if (names.isEmpty()) return@withContext emptySet()
+            val savedUri = preferenceRepository.userPreferences.first().exportDirUri
+            val choice = resolveExportTarget(savedUri, fileStore.isTreeWritable(savedUri)).choice
+            names.filterTo(mutableSetOf()) { name ->
+                try {
+                    isSweepableOrphanName(name) && deleteByName(choice, name)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // False, not a throw: one unreachable name must not abandon the rest, and a name that
+                    // could not be deleted stays in the ledger rather than being forgotten with the file
+                    // still on disk.
+                    Logger.e(TAG, "could not delete the orphan $name", e)
+                    false
+                }
             }
         }
-    }
 
     /**
      * @return true only when the file is **gone**. A destination Thor cannot reach yet is not an
@@ -205,7 +277,9 @@ class AppArchiveStoreImpl(
         // PARTIAL_SUFFIX name, so there is nothing here to match; matching on the *published* name
         // instead would delete the user's finished backup.
         ExportTargetChoice.Downloads ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) false else deleteInLegacyDownloads(name)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) false else deleteInLegacyDownloads(
+                name
+            )
     }
 
     /**
@@ -229,12 +303,14 @@ class AppArchiveStoreImpl(
             null,
             null,
         )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val idColumn =
+                cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             val nameColumn =
                 cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             while (cursor.moveToNext()) {
                 if (cursor.getString(nameColumn) != name) continue
-                val docUri = DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(idColumn))
+                val docUri =
+                    DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(idColumn))
                 return DocumentsContract.deleteDocument(resolver, docUri)
             }
         }
@@ -245,6 +321,96 @@ class AppArchiveStoreImpl(
         val file = File(legacyArchiveDir(), name)
         return file.isFile && file.delete()
     }
+
+    private fun findInTree(treeUri: String, fileName: String): PublishedLocation.Content? {
+        val resolver = context.contentResolver
+        val tree = treeUri.toUri()
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(
+            tree,
+            DocumentsContract.getTreeDocumentId(tree),
+        )
+        resolver.query(
+            children,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_SIZE,
+            ),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val idColumn =
+                cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameColumn =
+                cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val sizeColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_SIZE)
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameColumn) != fileName) continue
+                val uri =
+                    DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(idColumn))
+                val byteSize = cursor.nonnegativeLong(sizeColumn) ?: contentLength(resolver, uri)
+                ?: return null
+                return PublishedLocation.Content(uri, fileName, byteSize)
+            }
+        }
+        return null
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun findInMediaStore(fileName: String): PublishedLocation.Content? {
+        val resolver = context.contentResolver
+        resolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            arrayOf(
+                MediaStore.Downloads._ID,
+                MediaStore.Downloads.DISPLAY_NAME,
+                MediaStore.Downloads.SIZE,
+            ),
+            "${MediaStore.Downloads.DISPLAY_NAME} = ? AND " +
+                    "${MediaStore.Downloads.RELATIVE_PATH} = ? AND " +
+                    "${MediaStore.Downloads.IS_PENDING} = 0",
+            arrayOf(fileName, "${Environment.DIRECTORY_DOWNLOADS}/$THOR_DOWNLOADS_SUBDIR/"),
+            null,
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
+            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE)
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameColumn) != fileName) continue
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    cursor.getLong(idColumn),
+                )
+                val byteSize = cursor.nonnegativeLong(sizeColumn) ?: contentLength(resolver, uri)
+                ?: return null
+                return PublishedLocation.Content(uri, fileName, byteSize)
+            }
+        }
+        return null
+    }
+
+    private fun findInLegacyDownloads(fileName: String): PublishedLocation.Local? {
+        val file = File(legacyArchiveDir(), fileName)
+        return file.takeIf(File::isFile)?.let(PublishedLocation::Local)
+    }
+
+    private fun android.database.Cursor.nonnegativeLong(column: Int): Long? =
+        if (isNull(column)) null else getLong(column).takeIf { it >= 0L }
+
+    private fun contentLength(resolver: ContentResolver, uri: Uri): Long? = runCatching {
+        resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+            descriptor.statSize.takeIf { it >= 0L }
+        }
+    }.getOrNull()
+
+    private fun isExactArchiveName(fileName: String): Boolean =
+        fileName.isNotBlank() &&
+                !fileName.contains('/') &&
+                !fileName.contains('\\') &&
+                fileName != "." &&
+                fileName != ".." &&
+                fileName.endsWith(".$THORBAK_EXTENSION")
 
     /**
      * `Downloads/Thor` as a plain `File`, for the two below-API-29 backends.
@@ -318,12 +484,16 @@ class AppArchiveStoreImpl(
             return null
         }
         return object : BaseDestination(stream, onSettled = {}) {
-            override fun onPublish(): Boolean {
+            override fun onPublish(): ArchivePublication? {
                 val values = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
                 // `update` returns the number of rows changed. Zero means the row went away — a user
                 // who deleted the pending entry from a file manager mid-backup — and reporting that as
                 // a success would tell them a backup exists when nothing does.
-                return resolver.update(uri, values, null, null) > 0
+                if (resolver.update(uri, values, null, null) <= 0) return null
+                return ArchivePublication(
+                    displayName = displayNameOf(resolver, uri) ?: fileName,
+                    byteSize = writtenBytes,
+                )
             }
 
             override fun onDiscard() {
@@ -368,8 +538,14 @@ class AppArchiveStoreImpl(
         val recorded = displayNameOf(resolver, docUri) ?: requestedName
         val forget = rememberPartial(recorded)
         return object : BaseDestination(stream, onSettled = forget) {
-            override fun onPublish(): Boolean =
-                DocumentsContract.renameDocument(resolver, docUri, fileName) != null
+            override fun onPublish(): ArchivePublication? {
+                val publishedUri = DocumentsContract.renameDocument(resolver, docUri, fileName)
+                    ?: return null
+                return ArchivePublication(
+                    displayName = displayNameOf(resolver, publishedUri) ?: fileName,
+                    byteSize = writtenBytes,
+                )
+            }
 
             override fun onDiscard() {
                 DocumentsContract.deleteDocument(resolver, docUri)
@@ -418,12 +594,18 @@ class AppArchiveStoreImpl(
         if (!dir.isDirectory && !dir.mkdirs()) return null
         // Chosen before the partial is created, so the partial is named after the name this archive
         // will actually publish under and the two cannot drift apart.
-        val fileName = nonCollidingArchiveName(requestedName) { File(dir, it).exists() } ?: return null
+        val fileName =
+            nonCollidingArchiveName(requestedName) { File(dir, it).exists() } ?: return null
         val partial = File(dir, partialName(fileName))
         val stream = FileOutputStream(partial)
         val forget = rememberPartial(partial.name)
         return object : BaseDestination(stream, onSettled = forget) {
-            override fun onPublish(): Boolean = partial.renameTo(File(dir, fileName))
+            override fun onPublish(): ArchivePublication? =
+                if (partial.renameTo(File(dir, fileName))) {
+                    ArchivePublication(fileName, writtenBytes)
+                } else {
+                    null
+                }
 
             override fun onDiscard() {
                 partial.delete()
@@ -448,8 +630,27 @@ class AppArchiveStoreImpl(
  * [onSettled] on *both* settle paths — are reachable from a JVM test. Nothing outside this file
  * constructs one; the three backends are all anonymous subclasses in [AppArchiveStoreImpl].
  */
+private class CountingOutputStream(private val delegate: OutputStream) : OutputStream() {
+    var byteCount: Long = 0L
+        private set
+
+    override fun write(value: Int) {
+        delegate.write(value)
+        byteCount++
+    }
+
+    override fun write(bytes: ByteArray, offset: Int, length: Int) {
+        delegate.write(bytes, offset, length)
+        byteCount += length
+    }
+
+    override fun flush() = delegate.flush()
+
+    override fun close() = delegate.close()
+}
+
 internal abstract class BaseDestination(
-    override val output: OutputStream,
+    rawOutput: OutputStream,
     /**
      * Runs once, on **both** settle paths.
      *
@@ -461,35 +662,45 @@ internal abstract class BaseDestination(
     private val onSettled: suspend () -> Unit,
 ) : ArchiveDestination {
 
+    private val countingOutput = CountingOutputStream(rawOutput)
+    override val output: OutputStream = countingOutput
+    protected val writtenBytes: Long get() = countingOutput.byteCount
+
     private var settled = false
 
-    protected abstract fun onPublish(): Boolean
+    protected abstract fun onPublish(): ArchivePublication?
 
     protected abstract fun onDiscard()
 
-    override suspend fun publish(): Boolean {
-        if (settled) return false
+    override suspend fun publish(): ArchivePublication? {
+        if (settled) return null
         settled = true
         output.close()
-        // Assigned inside the `try` so a throw leaves it false: a rename that threw published nothing,
-        // exactly like a rename that returned false.
-        var published = false
+        // Assigned inside the `try` so a throw leaves it null: a rename that threw published nothing,
+        // exactly like a rename that returned null.
+        var publication: ArchivePublication? = null
         try {
-            published = onPublish()
+            publication = onPublish()
         } finally {
             // A publish that did not happen leaves the partial on disk under the partial name, and the
             // ledger entry that names it is about to be forgotten a line below — so it has to go here
             // or nothing will ever name it again. `settled` is already true, so the caller's trailing
             // `discard()` will not do this; and the sizes involved are whole app data trees.
-            if (!published) {
+            if (publication == null) {
                 runCatching { onDiscard() }
-                    .onFailure { Logger.e(TAG, "could not delete the partial a failed publish left", it) }
+                    .onFailure {
+                        Logger.e(
+                            TAG,
+                            "could not delete the partial a failed publish left",
+                            it
+                        )
+                    }
             }
             // Still unconditional: after the discard above, the partial is settled either way, and the
             // failure is reported by the caller rather than by a name the sweep chases forever.
             onSettled()
         }
-        return published
+        return publication
     }
 
     /**

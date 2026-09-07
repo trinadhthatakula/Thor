@@ -28,6 +28,7 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
@@ -54,6 +55,20 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+
+internal fun rootInstallState(result: Result<Unit>): InstallState = result.fold(
+    onSuccess = { InstallState.Success },
+    onFailure = { failure ->
+        failure.rethrowIfPrivilegeExecutionFailure()
+        InstallState.Error(UiText.DynamicString(failure.message ?: "Root install failed"))
+    },
+)
+
+/** Keep an authenticated archive restore on the exact APK set that was verified. */
+internal fun resolveStagedInstallSet(
+    staged: StagedPackage,
+    fallback: (File, String?) -> List<String>?,
+): List<String>? = staged.installSet ?: fallback(staged.file, staged.displayName)
 
 @Single(binds = [InstallerRepository::class])
 class InstallerRepositoryImpl(
@@ -121,8 +136,12 @@ class InstallerRepositoryImpl(
         mode: InstallMode,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
+        onInvocationStarted: () -> Unit,
+        onInstallSucceeded: () -> Unit,
     ) =
         withContext(ioDispatcher) {
+            onInvocationStarted()
             try {
                 // Refuse before installing, not after. An archive whose game data cannot be placed
                 // would otherwise leave an installed game that starts and immediately fails — the
@@ -145,13 +164,15 @@ class InstallerRepositoryImpl(
 
                 when (mode) {
                     InstallMode.ROOT -> {
-                        installWithRoot(staged, canDowngrade, grantAllPermissions)
+                        installWithRoot(
+                            staged, canDowngrade, grantAllPermissions, execution, onInstallSucceeded,
+                        )
                     }
 
                     InstallMode.SHIZUKU -> {
                         // 1. Try Shell command first
                         val shellSuccess = try {
-                            installWithShizuku(staged, canDowngrade, grantAllPermissions)
+                            installWithShizuku(staged, canDowngrade, grantAllPermissions, onInstallSucceeded)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
                             // A refusal is a verdict about the archive, not a failure of this rung.
@@ -209,7 +230,7 @@ class InstallerRepositoryImpl(
                     InstallMode.DHIZUKU -> {
                         // 1. Try Shell command first
                         val shellSuccess = try {
-                            installWithDhizuku(staged, canDowngrade, grantAllPermissions)
+                            installWithDhizuku(staged, canDowngrade, grantAllPermissions, onInstallSucceeded)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
                             if (e is InstallRefusedException) throw e
@@ -323,6 +344,7 @@ class InstallerRepositoryImpl(
                     }
                 }
             } catch (e: Throwable) {
+                e.rethrowIfPrivilegeExecutionFailure()
                 // Throwable, matching the per-mode catches above: a bounded read still leaves
                 // OutOfMemoryError reachable through the platform parser, and an Error escaping
                 // to viewModelScope kills the process instead of failing the install.
@@ -514,7 +536,7 @@ class InstallerRepositoryImpl(
         return try {
             tempDir.mkdirs()
             val bundleFile = staged.file
-            val installSet = resolveInstallSetFromFile(bundleFile, staged.displayName)
+            val installSet = resolveStagedInstallSet(staged, ::resolveInstallSetFromFile)
             if (installSet == null) {
                 // Monolithic APK: copy the staged file as-is (named base.apk). A copy, not a
                 // rename: the staged file has to survive for a retry, and on the Shizuku/Dhizuku
@@ -543,7 +565,7 @@ class InstallerRepositoryImpl(
                 // "partially fine", it is unreachable. Reading emptiness as a staging failure was
                 // what turned a truncated set into the caller's generic error and, on the
                 // privileged ladders, into the next rung.
-                val wanted = installSet.mapTo(HashSet()) { it.substringAfterLast('/') }
+                val wanted = installSet.map { it.substringAfterLast('/') }
                 BundleZip.extractEntries(bundleFile, wanted, tempDir)
             }
         } catch (e: InstallRefusedException) {
@@ -588,6 +610,8 @@ class InstallerRepositoryImpl(
         staged: StagedPackage,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
+        onInstallSucceeded: () -> Unit,
     ) {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -612,21 +636,23 @@ class InstallerRepositoryImpl(
             // The gateway resolves a null against the saved setting; this rung has no reason to
             // resolve it first, and doing so would put a second copy of that rule in the app.
             val result = if (apkPaths.size == 1) {
-                rootGateway.installApp(apkPaths[0], canDowngrade, grantAllPermissions)
+                rootGateway.installApp(
+                    apkPaths[0], canDowngrade, grantAllPermissions, execution,
+                )
             } else {
-                rootGateway.installMultipleApks(apkPaths, canDowngrade, grantAllPermissions)
-            }
-
-            if (result.isSuccess) {
-                eventBus.emit(InstallState.Installing(1.0f))
-                eventBus.emit(InstallState.Success)
-            } else {
-                eventBus.emit(
-                    InstallState.Error(UiText.DynamicString(result.exceptionOrNull()?.message ?: "Root install failed"))
+                rootGateway.installMultipleApks(
+                    apkPaths, canDowngrade, grantAllPermissions, execution,
                 )
             }
+
+            val terminalState = rootInstallState(result)
+            if (terminalState == InstallState.Success) {
+                onInstallSucceeded()
+                eventBus.emit(InstallState.Installing(1.0f))
+            }
+            eventBus.emit(terminalState)
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
+            e.rethrowIfPrivilegeExecutionFailure()
             eventBus.emit(InstallState.Error(UiText.DynamicString("Root install error: ${e.message}")))
         } finally {
             tempDir.deleteRecursively()
@@ -637,6 +663,7 @@ class InstallerRepositoryImpl(
         staged: StagedPackage,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        onInstallSucceeded: () -> Unit,
     ): Boolean {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -719,6 +746,7 @@ class InstallerRepositoryImpl(
             val result = ShizukuHelper.execute(integrityGuardedInstall(digests, command))
 
             if (result.first == 0) {
+                onInstallSucceeded()
                 eventBus.emit(InstallState.Installing(1.0f))
                 eventBus.emit(InstallState.Success)
                 true
@@ -739,6 +767,7 @@ class InstallerRepositoryImpl(
         staged: StagedPackage,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        onInstallSucceeded: () -> Unit,
     ): Boolean {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -797,6 +826,7 @@ class InstallerRepositoryImpl(
             val result = DhizukuHelper.execute(integrityGuardedInstall(digests, command))
 
             if (result.first == 0) {
+                onInstallSucceeded()
                 eventBus.emit(InstallState.Installing(1.0f))
                 eventBus.emit(InstallState.Success)
                 true
@@ -952,7 +982,7 @@ class InstallerRepositoryImpl(
                 try {
                     // Genuine bundle: write each resolved split into the session, read via
                     // ZipFile so STORED-with-data-descriptor entries stream correctly.
-                    val installSet = resolveInstallSetFromFile(bundleFile, staged.displayName)
+                    val installSet = resolveStagedInstallSet(staged, ::resolveInstallSetFromFile)
                     if (installSet != null) {
                         val wanted =
                             installSet.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }

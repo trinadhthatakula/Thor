@@ -14,6 +14,9 @@ import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.ServiceQueueEvent
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
 import kotlinx.coroutines.CancellationException
 
 private const val TAG = "ThorJobWorker"
@@ -120,6 +123,12 @@ abstract class ThorJobWorker(
             if (runsForeground) {
                 try {
                     setForeground(getForegroundInfo())
+                    if (kind == ThorJobKind.APP_EXPORT) {
+                        ServiceQueueLatencyProbe.mark(
+                            ServiceQueueOperation.EXPORT,
+                            ServiceQueueEvent.EXECUTION_ADMITTED,
+                        )
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -131,6 +140,12 @@ abstract class ThorJobWorker(
                 // contract a subclass can forget; setForeground gives foreground jobs this for free
                 // and a non-foreground one should not be worse off for a reason nobody can see.
                 publish(ThorJobProgress(ThorJobStage.PREPARING, initialLabel))
+                if (kind == ThorJobKind.PRIVILEGE_SWEEP) {
+                    ServiceQueueLatencyProbe.mark(
+                        ServiceQueueOperation.PRIVILEGE_SWEEP,
+                        ServiceQueueEvent.EXECUTION_ADMITTED,
+                    )
+                }
             }
 
             runJob()

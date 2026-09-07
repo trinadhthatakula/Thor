@@ -5,16 +5,17 @@ package com.valhalla.thor.presentation.appList
 
 import androidx.lifecycle.ViewModel
 import com.valhalla.thor.data.backup.job.JobRegistry
-import com.valhalla.thor.domain.model.AppExportRequest
 import com.valhalla.thor.domain.model.BundleFormat
-import com.valhalla.thor.domain.model.ExportTargetChoice
+import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.repository.ExportJobLauncher
-import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.presentation.common.JobFinish
 import com.valhalla.thor.presentation.common.JobPhase
 import com.valhalla.thor.presentation.common.reduce
 import com.valhalla.thor.presentation.launchGuarded
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import java.util.UUID
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,24 +34,29 @@ import org.koin.core.annotation.KoinViewModel
  * moving them here would have made this commit a rewrite of the sheet rather than a change of what
  * the Export button does.
  *
- * The destination, though, is resolved **here and now** rather than in the worker, and that is the one
- * piece of ordering worth stating: [ExportAppUseCase.openSession] clears the saved-folder preference
- * when the folder has gone, and that write belongs to the tap the user just made. A worker re-run
- * tomorrow calling `openSession` would reset today's setting on the strength of yesterday's grant.
- * So the session is opened on this side, the resolved target travels in the request, and
- * `AppExportWorker` reads no preference at all.
+ * [ExportBottomSheet] resolves the destination while the sheet is open and passes the exact URI selected
+ * at tap time here. The process-owned [ExportSubmissionCoordinator] owns durable submission and navigation
+ * so they survive this sheet's short-lived view model. Session resolution may clear a saved-folder
+ * preference whose grant has gone; that write belongs to the visible export interaction, not to a worker
+ * re-run tomorrow. The resolved target travels in the request, and `AppExportWorker` reads no preference.
  */
 @KoinViewModel
 class ExportViewModel(
-    private val exportUseCase: ExportAppUseCase,
+    private val submissionCoordinator: ExportSubmissionCoordinator,
     private val launcher: ExportJobLauncher,
     private val registry: JobRegistry,
+    private val taskNavigationTargets: TaskNavigationTargets,
 ) : ViewModel() {
 
     private val _phase = MutableStateFlow(JobPhase())
     val phase: StateFlow<JobPhase> = _phase.asStateFlow()
 
+    private val _canSubmit = MutableStateFlow(false)
+    val canSubmit: StateFlow<Boolean> = _canSubmit.asStateFlow()
+
     private var watching: Job? = null
+    private var runningJobCollector: Job? = null
+    private var submissionObserver: Job? = null
     private var attachedTo: String? = null
 
     /**
@@ -66,9 +72,20 @@ class ExportViewModel(
      */
     fun attach(packageName: String) {
         if (attachedTo == packageName) return
+        if (attachedTo != null) {
+            runningJobCollector?.cancel()
+            runningJobCollector = null
+            submissionObserver?.cancel()
+            submissionObserver = null
+            stopWatching()
+            _phase.value = JobPhase()
+        }
+        _canSubmit.value = false
         attachedTo = packageName
-        launchGuarded {
+        runningJobCollector = launchGuarded {
             launcher.runningJobFor(ThorJobKind.APP_EXPORT, packageName).collect { id ->
+                if (attachedTo != packageName) return@collect
+                _canSubmit.value = id == null
                 // Guarded rather than unconditional: this flow re-emits the same id, and re-watching
                 // would restart the collector — and with it the `finished = null` clear in [watch] —
                 // over a job that has already reported its outcome.
@@ -89,31 +106,37 @@ class ExportViewModel(
      * @param label the app's label as it reads right now. Display-only, and resolved on this side
      *   because the worker reads it on the `setForeground` deadline path.
      */
-    fun start(packageName: String, label: String, format: BundleFormat) {
+    fun start(
+        packageName: String,
+        label: String,
+        format: BundleFormat,
+        treeUri: String?,
+    ) {
         // A second tap in the frame before the button leaves the composition. The chain would accept
         // it — `APPEND_OR_REPLACE` appends rather than refusing — so nothing below would catch it.
-        if (_phase.value.running) return
+        if (_phase.value.running || attachedTo != packageName || !_canSubmit.compareAndSet(true, false)) {
+            return
+        }
+        val taskId = UUID.randomUUID()
+        taskNavigationTargets.requestOpenProvisional(
+            taskId = taskId,
+            identity = ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.DATA,
+                operationId = DataTaskKind.APP_EXPORT.name,
+            ),
+        )
         // Cleared synchronously, before the coroutine. Nothing is watching yet, so for that whole
         // window this is the only thing that can take the previous run's banner down.
         _phase.value = JobPhase(running = true)
 
-        launchGuarded(
-            // `openSession` touches DataStore and the SAF provider, and an uncaught throw out of
-            // `viewModelScope` kills the process. Everything in the block below happens before an id
-            // exists, so `workerRan = false` is not a guess.
-            onFailure = { notStarted() }
-        ) {
-            val session = exportUseCase.openSession(ExportAppUseCase.SINGLE_STAGING_DIR)
-            val request = AppExportRequest(
-                packageName = packageName,
-                format = format,
-                label = label,
-                // Absence, not null — `workDataOf` throws on a null value. `AppExportRequest.toMap`
-                // omits the key, and `target` rebuilds Downloads from its absence.
-                treeUri = (session.target as? ExportTargetChoice.Custom)?.treeUri,
-            )
-            val id = launcher.startExport(request)
-            if (id == null) notStarted() else watch(id)
+        val submission = submissionCoordinator.submit(taskId, packageName, label, format, treeUri)
+        submissionObserver = launchGuarded(onFailure = { notStarted() }) {
+            val acceptedTaskId = submission.await()
+            if (acceptedTaskId == null) {
+                notStarted()
+            } else {
+                watch(acceptedTaskId)
+            }
         }
     }
 
@@ -172,6 +195,7 @@ class ExportViewModel(
      * produced a sentence.
      */
     private fun notStarted() {
+        _canSubmit.value = attachedTo != null
         _phase.value = JobPhase(
             finished = JobFinish.Failed(reason = null, workerRan = false),
             settled = true,

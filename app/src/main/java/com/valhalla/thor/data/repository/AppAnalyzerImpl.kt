@@ -12,7 +12,6 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
-import android.os.Build
 import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.AppMetadata
@@ -325,19 +324,11 @@ class AppAnalyzerImpl(
     }
 
     /** Parse an on-disk APK via getPackageArchiveInfo across API levels. */
-    private fun parseArchive(tempFile: File): PackageInfo? {
-        val pm = context.packageManager
-        val flags = PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageArchiveInfo(
-                tempFile.absolutePath,
-                PackageManager.PackageInfoFlags.of(flags.toLong())
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
-        }
-    }
+    private fun parseArchive(tempFile: File): PackageInfo? =
+        context.packageManager.readArchivePackageInfo(
+            tempFile,
+            PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS,
+        )
 
     /**
      * Build [AppMetadata] purely from bundle sidecar JSON when no bundled APK could

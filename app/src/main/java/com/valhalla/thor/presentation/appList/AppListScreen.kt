@@ -68,6 +68,7 @@ import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.presentation.queue.QueueNavigationButton
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
@@ -91,7 +92,8 @@ fun AppListScreen(
     onNavigateToAppInfo: ((packageName: String, appName: String) -> Unit)? = null,
     // These actions bubble up to MainScreen/HomeViewModel for execution
     onAppAction: (AppClickAction) -> Unit = {},
-    onMultiAppAction: (MultiAppAction) -> Unit = {}
+    onMultiAppAction: (MultiAppAction) -> Unit = {},
+    onNavigateToQueue: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -218,24 +220,30 @@ fun AppListScreen(
                         color = MaterialTheme.colorScheme.primary,
                         letterSpacing = (-1).sp,
                         maxLines = 1,
-                        modifier = Modifier.weight(1f).basicMarquee()
+                        modifier = Modifier
+                            .weight(1f)
+                            .basicMarquee()
                     )
                 }
 
-                // RIGHT: Connected button group to switch between App List Types
-                ConnectedButtonGroup(
-                    items = AppListType.entries.map { type ->
-                        ConnectedButtonGroupItem.Icon(
-                            icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                            contentDescription = stringResource(
-                                if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    QueueNavigationButton(onClick = onNavigateToQueue)
+
+                    // RIGHT: Connected button group to switch between App List Types
+                    ConnectedButtonGroup(
+                        items = AppListType.entries.map { type ->
+                            ConnectedButtonGroupItem.Icon(
+                                icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
+                                contentDescription = stringResource(
+                                    if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                                )
                             )
-                        )
-                    },
-                    selectedIndex = AppListType.entries.indexOf(state.appListType),
-                    onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
-                    modifier = Modifier.width(IntrinsicSize.Max)
-                )
+                        },
+                        selectedIndex = AppListType.entries.indexOf(state.appListType),
+                        onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
+                        modifier = Modifier.width(IntrinsicSize.Max)
+                    )
+                }
             }
 
             // 2. Package-visibility banner, above the search bar AppList draws below.
@@ -362,7 +370,12 @@ fun AppListScreen(
                         // Freeze from the sheet goes through the local VM so it surfaces the
                         // "Frozen — Add to Freezer?" prompt instead of silently just disabling.
                         action is AppClickAction.Freeze ->
-                            viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, true)
+                            viewModel.freezeApp(
+                                action.appInfo.packageName,
+                                action.appInfo.appName,
+                                true
+                            )
+
                         else -> onAppAction(action)
                     }
                     // Deliberately no `selectedPackageForSheet = null` here. AppInfoSheet owns its
@@ -398,7 +411,11 @@ fun AppListScreen(
                     }) { Text(stringResource(R.string.open_settings)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.dismissUsageAccessPrompt() }) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = { viewModel.dismissUsageAccessPrompt() }) {
+                        Text(
+                            stringResource(R.string.cancel)
+                        )
+                    }
                 }
             )
         }

@@ -6,17 +6,20 @@ package com.valhalla.thor.di
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.room.Room
-import com.valhalla.superuser.ktx.RealShellRepository
-import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
 import com.valhalla.thor.data.backup.PartialArchiveLedger
+import com.valhalla.thor.data.gateway.root.OdinRootShellSessionFactory
+import com.valhalla.thor.data.gateway.root.OwnedRootShellExecutor
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.ComponentOverrideDao
+import com.valhalla.thor.data.source.local.room.DataTaskDao
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
+import com.valhalla.thor.data.source.local.room.PrivilegeSweepDao
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import kotlinx.coroutines.CoroutineDispatcher
@@ -62,7 +65,7 @@ class AppModule {
     @Single
     fun appDatabase(context: Context): AppDatabase {
         val builder = Room.databaseBuilder(context, AppDatabase::class.java, "thor_database")
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_8_9)
 
         if (BuildConfig.DEBUG) {
             builder.fallbackToDestructiveMigration(dropAllTables = true)
@@ -87,10 +90,38 @@ class AppModule {
     fun componentOverrideDao(appDatabase: AppDatabase): ComponentOverrideDao =
         appDatabase.componentOverrideDao()
 
-    // RealShellRepository comes from the Odin library (com.valhalla.superuser.ktx), outside the
-    // scan scope — the component scan only sees com.valhalla.thor.
     @Single
-    fun shellRepository(): ShellRepository = RealShellRepository()
+    fun privilegeSweepDao(appDatabase: AppDatabase): PrivilegeSweepDao =
+        appDatabase.privilegeSweepDao()
+
+    @Single
+    fun dataTaskDao(appDatabase: AppDatabase): DataTaskDao = appDatabase.dataTaskDao()
+
+    @Single
+    @Named("archive")
+    internal fun archiveRootShellExecutor(
+        @Named("io") ioDispatcher: CoroutineDispatcher,
+    ): OwnedRootShellExecutor = OwnedRootShellExecutor(
+        lane = PrivilegeExecutionLane.ARCHIVE,
+        sessionFactory = OdinRootShellSessionFactory(
+            ioDispatcher = ioDispatcher,
+            lane = PrivilegeExecutionLane.ARCHIVE,
+        ),
+        ioDispatcher = ioDispatcher,
+    )
+
+    @Single
+    @Named("sweep")
+    internal fun sweepRootShellExecutor(
+        @Named("io") ioDispatcher: CoroutineDispatcher,
+    ): OwnedRootShellExecutor = OwnedRootShellExecutor(
+        lane = PrivilegeExecutionLane.SWEEP,
+        sessionFactory = OdinRootShellSessionFactory(
+            ioDispatcher = ioDispatcher,
+            lane = PrivilegeExecutionLane.SWEEP,
+        ),
+        ioDispatcher = ioDispatcher,
+    )
 
     // Bound here rather than annotated on the class: FileArchiveBreadcrumbStore takes a File so it
     // stays JVM-testable, and there is no File in the graph for the scan to inject. With
@@ -118,5 +149,11 @@ class AppModule {
         breadcrumbs: ArchiveBreadcrumbStore,
         context: Context,
     ): ArchiveOrphanSweeper =
-        ArchiveOrphanSweeper(ledger, archiveStore, breadcrumbs, context.cacheDir, context.externalCacheDir)
+        ArchiveOrphanSweeper(
+            ledger,
+            archiveStore,
+            breadcrumbs,
+            context.cacheDir,
+            context.externalCacheDir
+        )
 }

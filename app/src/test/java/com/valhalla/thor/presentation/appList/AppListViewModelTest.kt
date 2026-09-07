@@ -4,14 +4,18 @@
 package com.valhalla.thor.presentation.appList
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AnimationIntensity
-import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.SortBy
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.ExportAppListUseCase
@@ -30,14 +34,18 @@ import com.valhalla.thor.presentation.FakeInstallerLabelResolver
 import com.valhalla.thor.presentation.FakePermissionRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
+import com.valhalla.thor.presentation.FakePrivilegeSweepController
 import com.valhalla.thor.presentation.FakeStorageStatsProvider
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.presentation.navigation.TaskNavigationRequest
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
+import com.valhalla.thor.presentation.privilegeSweepResolver
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
-import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -53,6 +61,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.util.UUID
 
 /**
  * Behaviour tests for [AppListViewModel]'s **temporal** contract — the three rules from PR #278 that
@@ -139,12 +148,16 @@ class AppListViewModelTest {
         installedApps: FakeInstalledAppsPermissionGate = FakeInstalledAppsPermissionGate(),
         // Overridable so one test can inject a dispatcher that is *not* the main one and check that
         // a Room write reached it. Defaults to the main one, as every other test wants.
-        ioDispatcher: CoroutineDispatcher = mainDispatcherRule.dispatcher
+        ioDispatcher: CoroutineDispatcher = mainDispatcherRule.dispatcher,
+        sweepController: FakePrivilegeSweepController = FakePrivilegeSweepController(),
+        taskNavigationTargets: TaskNavigationTargets = TaskNavigationTargets(
+            ProvisionalTaskIdentityRegistry()
+        ),
     ): AppListViewModel {
         val prefs = FakePreferenceRepository(
             UserPreferences(animationIntensity = intensity, appFilterType = filterType)
         )
-        val manageAppUseCase = ManageAppUseCase(system)
+        val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         val exportAppUseCase = ExportAppUseCase(
             FakeAppBundleBuilder(),
             prefs,
@@ -171,6 +184,12 @@ class AppListViewModelTest {
                 fileStore,
                 mainDispatcherRule.dispatcher
             ),
+            sweepResolver = privilegeSweepResolver(
+                freezerRepository = freezer,
+                preferenceRepository = prefs,
+            ),
+            sweepController = sweepController,
+            taskNavigationTargets = taskNavigationTargets,
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = ioDispatcher
         )
@@ -186,7 +205,11 @@ class AppListViewModelTest {
         // path paid any part of it, the scan below could not have started at t = 0.
         val vm = viewModel(AnimationIntensity.HIGH)
         runCurrent()
-        assertEquals("the entry load must still be waiting out its settle delay", 0, scanCollectors())
+        assertEquals(
+            "the entry load must still be waiting out its settle delay",
+            0,
+            scanCollectors()
+        )
 
         vm.loadApps()
         runCurrent()
@@ -245,7 +268,10 @@ class AppListViewModelTest {
 
         vm.loadApps()
         runCurrent()
-        assertTrue("the flag is raised by the call, not by the timer", vm.uiState.value.isManualRefreshing)
+        assertTrue(
+            "the flag is raised by the call, not by the timer",
+            vm.uiState.value.isManualRefreshing
+        )
 
         advanceTimeBy(599)
         runCurrent()
@@ -253,7 +279,10 @@ class AppListViewModelTest {
 
         advanceTimeBy(1)
         runCurrent()
-        assertFalse("the indicator must clear once the window is paid", vm.uiState.value.isManualRefreshing)
+        assertFalse(
+            "the indicator must clear once the window is paid",
+            vm.uiState.value.isManualRefreshing
+        )
     }
 
     @Test
@@ -339,7 +368,10 @@ class AppListViewModelTest {
             "an empty index with no apps yet is 'not there yet', not 'not there at all'",
             vm.uiState.value.isLoadingPermissions
         )
-        assertFalse("nothing was attempted, so nothing failed", vm.uiState.value.permissionIndexFailed)
+        assertFalse(
+            "nothing was attempted, so nothing failed",
+            vm.uiState.value.permissionIndexFailed
+        )
         assertEquals("there is nothing to index yet", 0, permissions.indexBuilds)
     }
 
@@ -366,13 +398,21 @@ class AppListViewModelTest {
         vm.updateSort(SortBy.NAME)
         vm.updateSortOrder(SortOrder.DESCENDING)
         runCurrent()
-        assertEquals("neither the query nor the sort changes what any app declares", 1, permissions.indexBuilds)
+        assertEquals(
+            "neither the query nor the sort changes what any app declares",
+            1,
+            permissions.indexBuilds
+        )
 
         // The same package, updated. The key is `packageName@lastUpdateTime` precisely so this
         // counts and a freeze or a size arriving does not.
         appRepository.apps.value = listOf(userApp("a", lastUpdateTime = 1))
         runCurrent()
-        assertEquals("an update can add or drop a permission, so it invalidates", 2, permissions.indexBuilds)
+        assertEquals(
+            "an update can add or drop a permission, so it invalidates",
+            2,
+            permissions.indexBuilds
+        )
     }
 
     /**
@@ -487,99 +527,154 @@ class AppListViewModelTest {
         )
     }
 
-    // --- Bulk unfreeze ----------------------------------------------------------------------
+    // --- Durable selection sweeps -------------------------------------------------------------
 
-    /**
-     * The bulk direction had two independent ways to report a thaw that never happened, and fixing
-     * one of them made the other one worse.
-     *
-     * It used to discard every result, mark the whole selection enabled and send an unconditional
-     * success plural. Counting properly fixed the arithmetic and left the deeper problem: with
-     * `setAppDisabled` it counted an enable that succeeded on an app that was *suspended*, so the
-     * report became precisely accurate about a call that did not unfreeze anything. Both halves have
-     * to hold at once — the right call, and only the apps it worked for.
-     */
     @Test
-    fun `a bulk unfreeze clears both freeze dimensions for every app`() = runTest {
-        val vm = viewModel(AnimationIntensity.LOW)
-        runCurrent()
-        appRepository.apps.value = listOf(
-            userApp("a", enabled = false),
-            userApp("b", enabled = true, isSuspended = true),
+    fun `selection opens provisional task before accepting the exact candidate`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            targets.requests.collect(requests::add)
+        }
+        val vm = viewModel(
+            AnimationIntensity.LOW,
+            sweepController = controller,
+            taskNavigationTargets = targets,
         )
         runCurrent()
-        system.calls.clear()
 
         vm.performMultiAction(
-            MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false), userApp("b", isSuspended = true)))
+            MultiAppAction.Freeze(
+                listOf(userApp("z"), userApp("a"), userApp("z"))
+            )
         )
         runCurrent()
 
-        // Asked for unconditionally rather than planned from the flags: `isSuspended` is patched on
-        // exactly one path in this view model and never on a bulk one, so a snapshot is the wrong
-        // thing to plan from. `b` needs the unsuspend and `a` does not; both are asked anyway.
+        assertEquals(2, requests.size)
+        val opened = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(TaskQueueKind.PRIVILEGE, opened.identity.queueKind)
+        assertEquals(PrivilegeSweepOperation.FREEZE.name, opened.identity.operationId)
+        assertEquals(listOf(opened.taskId), controller.launchedRequestIds)
         assertEquals(
-            listOf(
-                "setAppSuspended:a:false", "setAppDisabled:a:false",
-                "setAppSuspended:b:false", "setAppDisabled:b:false",
-            ),
-            system.calls
+            TaskNavigationRequest.Accepted(opened.taskId, opened.taskId),
+            requests[1],
         )
+        assertEquals(listOf("a", "z"), controller.launched.single().packageNames)
+        assertEquals(PrivilegeSweepOperation.FREEZE, controller.launched.single().operation)
+        assertEquals(PrivilegeSweepSource.APP_LIST, controller.launched.single().source)
+        assertTrue(system.calls.none { it.startsWith("setAppDisabled") })
     }
 
     @Test
-    fun `a bulk unfreeze stops the rows reading as suspended, not just as disabled`() = runTest {
-        val vm = viewModel(AnimationIntensity.LOW)
+    fun `cache clear and reinstall selections launch durable sweeps`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
         runCurrent()
+
+        vm.performMultiAction(MultiAppAction.ClearCache(listOf(userApp("cache"))))
+        runCurrent()
+        vm.performMultiAction(MultiAppAction.ReInstall(listOf(userApp("reinstall"))))
+        runCurrent()
+
+        assertEquals(
+            listOf(PrivilegeSweepOperation.CLEAR_CACHE, PrivilegeSweepOperation.REINSTALL),
+            controller.launched.map { it.operation },
+        )
+        assertEquals(listOf("cache"), controller.launched[0].packageNames)
+        assertEquals(listOf("reinstall"), controller.launched[1].packageNames)
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
+    fun `launch rejection rejects the provisional task`() = runTest {
+        val controller = FakePrivilegeSweepController().apply {
+            nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(
+                PrivilegeSweepLaunchRejection.NotificationsRequired
+            )
+        }
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            targets.requests.collect(requests::add)
+        }
+        val vm = viewModel(
+            AnimationIntensity.LOW,
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.Freeze(listOf(userApp("a"))))
+        runCurrent()
+
+        assertEquals(2, requests.size)
+        val opened = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(listOf(opened.taskId), controller.launchedRequestIds)
+        assertEquals(TaskNavigationRequest.Rejected(opened.taskId), requests[1])
+    }
+
+    @Test
+    fun `launch exception rejects the exact provisional task`() = runTest {
+        val controller = FakePrivilegeSweepController().apply {
+            launchFailure = IllegalStateException("acceptance failed")
+        }
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            targets.requests.collect(requests::add)
+        }
+        val vm = viewModel(
+            AnimationIntensity.LOW,
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.Freeze(listOf(userApp("a"))))
+        runCurrent()
+
+        assertEquals(2, requests.size)
+        val opened = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(TaskNavigationRequest.Rejected(opened.taskId), requests[1])
+    }
+
+    @Test
+    fun `coalesced launch resolves to canonical task without optimistic row patching`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val canonicalRequestId = UUID(0L, 73L)
+        controller.nextLaunchResult = PrivilegeSweepLaunchResult.Accepted(
+            canonicalRequestId,
+            UUID(1L, 73L),
+            coalesced = true,
+        )
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            targets.requests.collect(requests::add)
+        }
         appRepository.apps.value = listOf(userApp("a", enabled = false, isSuspended = true))
-        runCurrent()
-
-        vm.performMultiAction(MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false, isSuspended = true))))
-        runCurrent()
-
-        // Patching only `enabled` would leave a thawed app drawn as suspended until the next rescan —
-        // and would leave the *next* unfreeze reading that stale flag, which is the trap this whole
-        // section exists for.
-        val app = vm.uiState.value.allUserApps.first { it.packageName == "a" }
-        assertTrue("enabled again", app.enabled)
-        assertFalse("and not suspended", app.isSuspended)
-    }
-
-    @Test
-    fun `a bulk unfreeze counts only the apps that came back and leaves the rest frozen`() = runTest {
-        val vm = viewModel(AnimationIntensity.LOW)
-        val events = mutableListOf<AppListEvent>()
-        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
-        runCurrent()
-        appRepository.apps.value = listOf(
-            userApp("a", enabled = false),
-            userApp("b", enabled = false),
-        )
-        runCurrent()
-        events.clear()
-        // The enable is the second half of forceUnfreeze, so failing it fails the whole restore for
-        // that app while the other one succeeds — the mixed outcome the report has to survive.
-        system.failWith("setAppDisabled:b:false", IllegalStateException("no privilege"))
-
-        vm.performMultiAction(
-            MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false), userApp("b", enabled = false)))
+        val vm = viewModel(
+            AnimationIntensity.LOW,
+            sweepController = controller,
+            taskNavigationTargets = targets,
         )
         runCurrent()
 
+        vm.performMultiAction(MultiAppAction.UnFreeze(listOf(userApp("a", enabled = false))))
+        runCurrent()
+
+        assertEquals(2, requests.size)
+        val opened = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(PrivilegeSweepOperation.UNFREEZE.name, opened.identity.operationId)
+        assertEquals(listOf(opened.taskId), controller.launchedRequestIds)
         assertEquals(
-            listOf(
-                AppListEvent.ShowMessage(
-                    bulkResultMessage(
-                        BulkResult(op = BulkOp.UNFREEZE, total = 2, succeeded = 1, failed = 1)
-                    )
-                )
-            ),
-            events
+            TaskNavigationRequest.Accepted(opened.taskId, canonicalRequestId),
+            requests[1],
         )
-        // And the row for the app that stayed frozen must still say so, or the only affordance for
-        // retrying it is gone.
-        assertFalse(vm.uiState.value.allUserApps.first { it.packageName == "b" }.enabled)
-        assertTrue(vm.uiState.value.allUserApps.first { it.packageName == "a" }.enabled)
+        val row = vm.uiState.value.allUserApps.single { it.packageName == "a" }
+        assertFalse(row.enabled)
+        assertTrue(row.isSuspended)
     }
 
     // --- GET_INSTALLED_APPS banner ---------------------------------------------------------
@@ -900,37 +995,48 @@ class AppListViewModelTest {
      * surfaces are reachable from the same app row and must not describe one outcome two ways.
      */
     @Test
-    fun `a delete that raises after the restore reports the unfreeze and then the failure`() = runTest {
-        // A distinct appName, not the default null: `unfrozenLabel` is `app?.appName ?: packageName`,
-        // so with the default the two branches of that elvis both produce "a" and collapsing it to
-        // bare `packageName` would ship green — putting com.google.android.gm in the toast where
-        // Gmail belongs.
-        appRepository.apps.value = listOf(userApp("a", enabled = false, appName = "App A"))
-        freezer.add("a")
-        freezer.failRemoveWith("a", IllegalStateException("disk is full"))
-        // LOW, so the settle delay is ZERO and the scan lands under `runCurrent` — the app has to be
-        // resolvable in `_rawState` for this test to be about the patch rather than about the
-        // unresolvable-package fallback.
-        val vm = viewModel(AnimationIntensity.LOW)
-        runCurrent()
-        val seen = freezerEvents(vm)
+    fun `a delete that raises after the restore reports the unfreeze and then the failure`() =
+        runTest {
+            // A distinct appName, not the default null: `unfrozenLabel` is `app?.appName ?: packageName`,
+            // so with the default the two branches of that elvis both produce "a" and collapsing it to
+            // bare `packageName` would ship green — putting com.google.android.gm in the toast where
+            // Gmail belongs.
+            appRepository.apps.value = listOf(userApp("a", enabled = false, appName = "App A"))
+            freezer.add("a")
+            freezer.failRemoveWith("a", IllegalStateException("disk is full"))
+            // LOW, so the settle delay is ZERO and the scan lands under `runCurrent` — the app has to be
+            // resolvable in `_rawState` for this test to be about the patch rather than about the
+            // unresolvable-package fallback.
+            val vm = viewModel(AnimationIntensity.LOW)
+            runCurrent()
+            val seen = freezerEvents(vm)
 
-        vm.toggleFreezerMembership("a")
-        runCurrent()
+            vm.toggleFreezerMembership("a")
+            runCurrent()
 
-        assertEquals(
-            listOf(
-                AppListEvent.ShowMessage(UiText.StringResource(R.string.unfrozen_success, "App A")),
-                AppListEvent.ShowMessage(UiText.StringResource(R.string.error_format, "disk is full"))
-            ),
-            seen
-        )
-        assertTrue("the row is still there for the next tap to retry", freezer.contains("a"))
-        assertTrue(
-            "and the list agrees with the toast rather than still drawing the app as frozen",
-            vm.uiState.value.allUserApps.single { it.packageName == "a" }.enabled
-        )
-    }
+            assertEquals(
+                listOf(
+                    AppListEvent.ShowMessage(
+                        UiText.StringResource(
+                            R.string.unfrozen_success,
+                            "App A"
+                        )
+                    ),
+                    AppListEvent.ShowMessage(
+                        UiText.StringResource(
+                            R.string.error_format,
+                            "disk is full"
+                        )
+                    )
+                ),
+                seen
+            )
+            assertTrue("the row is still there for the next tap to retry", freezer.contains("a"))
+            assertTrue(
+                "and the list agrees with the toast rather than still drawing the app as frozen",
+                vm.uiState.value.allUserApps.single { it.packageName == "a" }.enabled
+            )
+        }
 
     /**
      * The ordering the two steps after the restore have to keep, which no per-fake list can show.
@@ -959,7 +1065,7 @@ class AppListViewModelTest {
         assertTrue(
             "the restore comes first — the row is the handle it would be retried from: $trace",
             trace.indexOfFirst { it.startsWith("setAppDisabled") } <
-                trace.indexOf("shortcut.disable:a")
+                    trace.indexOf("shortcut.disable:a")
         )
         assertTrue(
             "and the shortcut goes before the row, not after it: $trace",

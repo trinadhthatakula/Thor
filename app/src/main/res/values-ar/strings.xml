@@ -216,19 +216,8 @@
     <string name="tile_grant_privilege_toast">امنح صلاحية Root / Shizuku / Dhizuku أولاً</string>
     <string name="tile_no_apps_toast">لا توجد تطبيقات في المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
-    <plurals name="tile_freeze_success">
-        <item quantity="zero">لم يتم تجميد أي تطبيق</item>
-        <item quantity="one">تم تجميد تطبيق واحد</item>
-        <item quantity="two">تم تجميد تطبيقين</item>
-        <item quantity="few">تم تجميد %1$d تطبيقات</item>
-        <item quantity="many">تم تجميد %1$d تطبيقًا</item>
-        <item quantity="other">تم تجميد %1$d تطبيق</item>
-    </plurals>
-    <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
-    <string name="tile_freeze_incomplete">تم تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
     <string name="tile_checking">جارٍ التحقق…</string>
     <string name="tile_freezing">جارٍ التجميد…</string>
-    <string name="channel_bulk_result_name">نتائج الإجراءات المجمّعة</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>
@@ -284,16 +273,6 @@
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
-    <plurals name="unfrozen_count_success">
-        <item quantity="zero">لم يتم إلغاء تجميد أي تطبيق</item>
-        <item quantity="one">تم إلغاء تجميد تطبيق واحد</item>
-        <item quantity="two">تم إلغاء تجميد تطبيقين</item>
-        <item quantity="few">تم إلغاء تجميد %1$d تطبيقات</item>
-        <item quantity="many">تم إلغاء تجميد %1$d تطبيقًا</item>
-        <item quantity="other">تم إلغاء تجميد %1$d تطبيق</item>
-    </plurals>
-    <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
-    <string name="tile_unfreeze_incomplete">تم إلغاء تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
     <string name="error_format">خطأ: %1$s</string>
     <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
@@ -428,18 +407,13 @@
     <string name="log_scanning_apps">جارٍ فحص التطبيقات…</string>
     <string name="log_no_apps_to_fix">لم يتم العثور على تطبيقات تحتاج إلى إصلاح.</string>
     <string name="log_found_apps_to_fix">تم العثور على %1$d تطبيقات للإصلاح.</string>
-    <string name="log_reinstalling_batch">جارٍ إعادة تثبيت التطبيقات</string>
     <string name="log_freezing_batch">جارٍ تجميد التطبيقات</string>
     <string name="log_unfreezing_batch">جارٍ إلغاء تجميد التطبيقات</string>
     <string name="log_killing_batch">جارٍ إنهاء التطبيقات</string>
-    <string name="log_clearing_cache_batch">جارٍ مسح الذاكرة المؤقتة</string>
     <string name="log_uninstalling_batch">جارٍ إلغاء تثبيت التطبيقات</string>
     <string name="log_suspending_batch">جارٍ تعليق التطبيقات</string>
     <string name="log_unsuspending_batch">جارٍ إلغاء تعليق التطبيقات</string>
-    <string name="log_sharing_batch">جارٍ مشاركة التطبيقات</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] جارٍ تجهيز %3$s…</string>
-    <string name="log_ready"> -> جاهز</string>
     <string name="log_success"> -> نجاح</string>
     <string name="log_failed"> -> فشل: %1$s</string>
 
@@ -454,7 +428,6 @@
     <string name="no_matching_apps_freezer">لا توجد تطبيقات مطابقة</string>
     <string name="add_to_freezer_hint">اضغط + لإضافة تطبيقات</string>
     <string name="filter_all">الكل</string>
-    <string name="error_debuggable_app">التطبيق قابل للتصحيح (من المحتمل عدم تطابق التوقيع)</string>
     <string name="error_unsafe_skipped">تم التخطي: تطبيق النظام غير آمن / فشل فحص الأمان</string>
     <string name="error_self_skipped">تم التخطي: لا يمكن لـ Thor تنفيذ ذلك على نفسه</string>
     <string name="error_parse_package">فشل في تحليل الحزمة.</string>
@@ -590,8 +563,8 @@
     <string name="usage_access_needed_title">الوصول إلى بيانات الاستخدام مطلوب</string>
     <string name="usage_access_prompt_body">يحتاج Thor إلى إذن الوصول إلى بيانات الاستخدام لقراءة أحجام التطبيقات. يرجى تفعيله لـ Thor، ثم اختر \"الحجم\" مجددًا. يمكنك أيضًا إدارة هذا تحت الإعدادات ← الأذونات.</string>
     <string name="notification_access">الإشعارات</string>
-    <string name="notification_access_granted_subtitle">تظهر نتائج التجميد الجماعي كإشعارات</string>
-    <string name="notification_access_needed_subtitle">اسمح بالإشعارات لرؤية نتائج التجميد الجماعي</string>
+    <string name="notification_access_granted_subtitle">تُظهر إجراءات التطبيقات في الخلفية تقدّمها في الإشعارات</string>
+    <string name="notification_access_needed_subtitle">اسمح بالإشعارات في إعدادات النظام لتشغيل إجراءات التطبيقات في الخلفية ومتابعة تقدّمها</string>
     <string name="open_settings">فتح الإعدادات</string>
     <string name="installed_apps_permission_title">قد تكون قائمة التطبيقات غير مكتملة</string>
     <string name="installed_apps_permission_desc">يقيّد جهازك التطبيقات التي يمكن لـ Thor رؤيتها أثناء عمله في الخلفية. امنح وصولاً كاملاً إلى قائمة التطبيقات المثبّتة للحفاظ على اكتمالها.</string>
@@ -662,7 +635,6 @@
     <string name="profile_delete_desc">يُحذف الملف فقط. تبقى التطبيقات التي بداخله كما هي — وما كان مجمدًا يظل مجمدًا.</string>
     <string name="profile_saved">تم حفظ الملف</string>
     <string name="profile_deleted">تم حذف الملف</string>
-    <string name="profile_nothing_to_do">لا يوجد ما يمكن فعله لهذا الملف</string>
     <string name="bulk_run_failed">لم تكتمل هذه العملية — تحقّق من التطبيقات قبل الاعتماد عليها</string>
     <string name="error_profile_name_taken">اسم الملف هذا مستخدم بالفعل</string>
     <string name="error_profile_delete_failed">تعذر حذف هذا الملف</string>
@@ -818,5 +790,199 @@
     <string name="component_disclaimer_confirm">تعطيله</string>
     <string name="component_disclaimer_dont_ask_session">لا تسأل مرة أخرى في هذه الجلسة</string>
     <string name="component_disabled_unrecorded">تم تعطيل %1$s، لكن Thor لم يتمكن من تسجيل هذا التعطيل، لذا لن تشمله ميزة استعادة الكل</string>
+    <string name="sweep_notification_title">جارٍ تنفيذ إجراءات التطبيقات</string>
+    <string name="sweep_queued">إجراءات التطبيقات في قائمة الانتظار</string>
+    <string name="sweep_running">جارٍ تنفيذ %1$d من %2$d</string>
+    <string name="sweep_succeeded">اكتمل %1$d من %2$d</string>
+    <string name="sweep_partial">انتهت إجراءات التطبيقات مع وجود مشكلات</string>
+    <string name="sweep_cancelled">أُلغيت قائمة انتظار الإجراءات</string>
+    <string name="sweep_failed">فشلت إجراءات التطبيقات</string>
+    <string name="sweep_observer_failure">التقدّم غير متاح</string>
+    <string name="sweep_root_lane_degraded">مسار Root للأرشفة/المعالجة يعمل في وضع احتياطي</string>
+    <string name="sweep_result_summary">إجراءات التطبيقات — نجحت: %1$d · فشلت: %2$d · مشغولة: %3$d · غير محسومة: %4$d</string>
+
+    <!-- قوائم انتظار دائمة لخدمات الواجهة الأمامية -->
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">قائمة انتظار المهام</string>
+    <string name="task_queue_providers">مزوّدو الامتيازات</string>
+    <string name="task_queue_section_running">قيد التنفيذ</string>
+    <string name="task_queue_section_queued">في قائمة الانتظار / يلزم إجراء</string>
+    <string name="task_queue_section_recent">الأخيرة</string>
+    <string name="task_queue_empty">لا توجد مهام بعد</string>
+    <string name="task_queue_empty_running">لا توجد مهام قيد التنفيذ</string>
+    <string name="task_queue_empty_queued">لا توجد مهام في قائمة الانتظار أو إجراءات مطلوبة</string>
+    <string name="task_queue_empty_recent">لا توجد مهام حديثة</string>
+    <string name="task_queue_kind_data">عمليات البيانات</string>
+    <string name="task_queue_kind_privilege">إجراءات التطبيقات ذات الامتيازات</string>
+    <string name="task_queue_background">الخلفية</string>
+    <string name="task_queue_cancel">إلغاء</string>
+    <string name="task_queue_close">إغلاق</string>
+    <string name="task_queue_progress">%1$d من %2$d</string>
+
+    <string name="task_action_authenticate_archive">مصادقة الأرشيف</string>
+    <string name="task_action_provide_source">توفير المصدر</string>
+    <string name="task_action_review_restore">مراجعة الاستعادة</string>
+    <string name="task_action_authorize_privilege">منح الامتياز</string>
+    <string name="task_action_authorize_retry">السماح بإعادة المحاولة</string>
+    <string name="task_action_retry">إعادة المحاولة</string>
+    <string name="task_action_resume">استئناف</string>
+    <string name="task_action_share">مشاركة</string>
+    <string name="task_action_open_notification_settings">فتح إعدادات الإشعارات</string>
+
+    <string name="task_operation_archive_backup">نسخ احتياطي للأرشيف</string>
+    <string name="task_operation_archive_restore">استعادة الأرشيف</string>
+    <string name="task_operation_app_export">تصدير التطبيقات</string>
+    <string name="task_operation_share_prepare">التحضير للمشاركة</string>
+    <string name="task_operation_freeze">تجميد التطبيقات</string>
+    <string name="task_operation_unfreeze">إلغاء تجميد التطبيقات</string>
+    <string name="task_operation_clear_cache">مسح ذاكرة التخزين المؤقت للتطبيقات</string>
+    <string name="task_operation_reinstall">إصلاح المتجر</string>
+
+    <string name="task_state_starting">جارٍ البدء</string>
+    <string name="task_state_queued">في قائمة الانتظار</string>
+    <string name="task_state_running">قيد التنفيذ</string>
+    <string name="task_state_stopping">جارٍ الإيقاف</string>
+    <string name="task_state_waiting_for_auth">المصادقة مطلوبة</string>
+    <string name="task_state_waiting_for_source">المصدر مطلوب</string>
+    <string name="task_state_waiting_for_privilege">الامتياز مطلوب</string>
+    <string name="task_state_interrupted_review">المراجعة مطلوبة</string>
+    <string name="task_state_ready">جاهز للمشاركة</string>
+    <string name="task_state_ready_partial">جاهز جزئيًا للمشاركة</string>
+    <string name="task_state_start_blocked">البدء محظور</string>
+    <string name="task_state_start_blocked_notification">الإشعارات محظورة</string>
+    <string name="task_state_succeeded">نجحت</string>
+    <string name="task_state_partial">اكتملت مع وجود مشكلات</string>
+    <string name="task_state_failed">فشلت</string>
+    <string name="task_state_cancelled">أُلغيت</string>
+    <string name="task_state_expired">انتهت صلاحيتها</string>
+    <string name="task_state_observer_failure">الحالة غير متاحة</string>
+
+    <string name="task_reason_queued">في انتظار انتهاء العمل السابق في قائمة الانتظار هذه.</string>
+    <string name="task_reason_stopping">جارٍ إكمال الإلغاء بأمان.</string>
+    <string name="task_reason_waiting_for_auth">أدخل عبارة مرور أرشيف %1$s للمتابعة.</string>
+    <string name="task_reason_waiting_for_source">اختر أرشيف %1$s للمتابعة.</string>
+    <string name="task_reason_waiting_for_privilege">أعِدّ Root أو Shizuku أو Dhizuku، ثم ارجع إلى Thor.</string>
+    <string name="task_reason_interrupted_restore">توقفت استعادة %1$s بعد بدء تغييرات بيانات التطبيق. راجعها قبل الاستئناف.</string>
+    <string name="task_reason_interrupted_sweep">تعذّر على Thor التحقق من %1$s بعد %2$s. أعد المحاولة فقط بعد مراجعة التطبيق.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="zero">لا توجد ملفات مجهزة وجاهزة للمشاركة (%1$d).</item>
+        <item quantity="one">هناك ملف واحد مجهز وجاهز للمشاركة (%1$d).</item>
+        <item quantity="two">هناك ملفان مجهزان وجاهزان للمشاركة (%1$d).</item>
+        <item quantity="few">هناك %1$d ملفات مجهزة وجاهزة للمشاركة.</item>
+        <item quantity="many">هناك %1$d ملفًا مجهزًا وجاهزًا للمشاركة.</item>
+        <item quantity="other">هناك %1$d ملف مجهز وجاهز للمشاركة.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="zero">لا توجد ملفات جاهزة للمشاركة (%1$d من إجمالي %2$d)؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="one">هناك ملف واحد جاهز للمشاركة (%1$d من إجمالي %2$d)؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="two">هناك ملفان جاهزان للمشاركة (%1$d من إجمالي %2$d)؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="few">هناك %1$d ملفات جاهزة للمشاركة من إجمالي %2$d؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="many">هناك %1$d ملفًا جاهزًا للمشاركة من إجمالي %2$d؛ تعذّر تجهيز الباقي.</item>
+        <item quantity="other">هناك %1$d ملف جاهز للمشاركة من إجمالي %2$d؛ تعذّر تجهيز الباقي.</item>
+    </plurals>
+    <string name="task_reason_start_blocked">منع Android بدء هذه المهمة. أعد المحاولة بينما يكون Thor مفتوحًا.</string>
+    <string name="task_reason_start_blocked_notification">قناة الإشعارات هذه محظورة. فعّلها قبل إعادة المحاولة.</string>
+    <string name="task_reason_failed">لم تكتمل المهمة. راجع التفاصيل قبل إعادة المحاولة.</string>
+    <string name="task_reason_expired">انتهت صلاحية الملفات المجهزة وأُزيلت.</string>
+    <string name="task_reason_observer_failure">لا يستطيع Thor تحميل حالة المهمة الحالية. لم تتغير المهمة المخزنة.</string>
+    <string name="task_reason_root_lane_degraded">مسار Root المخصص غير متاح. يستخدم عمل Root في الخلفية المسار الاحتياطي المشترك.</string>
+
+    <string name="data_queue_notification_channel_name">عمليات البيانات</string>
+    <string name="data_queue_notification_channel_description">تقدّم الأرشفة والاستعادة والتصدير والتحضير للمشاركة</string>
+    <string name="privilege_queue_notification_channel_name">إجراءات التطبيقات ذات الامتيازات</string>
+    <string name="privilege_queue_notification_channel_description">تقدّم إجراءات التجميد وإلغاء التجميد ومسح الذاكرة المؤقتة وإصلاح المتجر الموضوعة في الانتظار</string>
+    <string name="data_queue_notification_title">عملية بيانات قيد التنفيذ</string>
+    <string name="privilege_queue_notification_title">إجراء تطبيق قيد التنفيذ</string>
+    <string name="task_queue_notification_status">%1$s · %2$d من %3$d</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="zero">لا توجد مهام أخرى في قائمة الانتظار (%1$d)</item>
+        <item quantity="one">مهمة أخرى في قائمة الانتظار (%1$d)</item>
+        <item quantity="two">مهمتان أخريان في قائمة الانتظار (%1$d)</item>
+        <item quantity="few">%1$d مهام أخرى في قائمة الانتظار</item>
+        <item quantity="many">%1$d مهمة أخرى في قائمة الانتظار</item>
+        <item quantity="other">%1$d مهمة أخرى في قائمة الانتظار</item>
+    </plurals>
+    <string name="task_queue_notification_cancel">إلغاء</string>
+    <string name="task_queue_notification_ready_title">جاهز للمشاركة</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="zero">لا توجد ملفات مجهزة وجاهزة (%1$d).</item>
+        <item quantity="one">هناك ملف واحد مجهز وجاهز (%1$d).</item>
+        <item quantity="two">هناك ملفان مجهزان وجاهزان (%1$d).</item>
+        <item quantity="few">هناك %1$d ملفات مجهزة وجاهزة.</item>
+        <item quantity="many">هناك %1$d ملفًا مجهزًا وجاهزًا.</item>
+        <item quantity="other">هناك %1$d ملف مجهز وجاهز.</item>
+    </plurals>
+    <string name="task_queue_notification_ready_partial_title">بعض الملفات جاهزة للمشاركة</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="zero">لا توجد ملفات جاهزة (%1$d من إجمالي %2$d).</item>
+        <item quantity="one">هناك ملف واحد جاهز (%1$d من إجمالي %2$d).</item>
+        <item quantity="two">هناك ملفان جاهزان (%1$d من إجمالي %2$d).</item>
+        <item quantity="few">هناك %1$d ملفات جاهزة من إجمالي %2$d.</item>
+        <item quantity="many">هناك %1$d ملفًا جاهزًا من إجمالي %2$d.</item>
+        <item quantity="other">هناك %1$d ملف جاهز من إجمالي %2$d.</item>
+    </plurals>
+
+    <string name="task_dialog_archive_auth_title">مصادقة الأرشيف</string>
+    <string name="task_dialog_archive_auth_message">أدخل عبارة مرور أرشيف %1$s. تُستخدم لهذه المحاولة فقط ولا يتم حفظها.</string>
+    <string name="task_dialog_archive_passphrase_label">عبارة المرور</string>
+    <string name="task_dialog_archive_auth_submit">متابعة</string>
+    <string name="task_dialog_restore_source_title">توفير مصدر الاستعادة</string>
+    <string name="task_dialog_restore_source_message">اختر أرشيف %1$s. لا يخزّن Thor عنوان المصدر.</string>
+    <string name="task_dialog_restore_source_select">اختيار أرشيف</string>
+    <string name="task_dialog_restore_review_title">مراجعة الاستعادة المتوقفة</string>
+    <string name="task_dialog_restore_review_message">توقفت استعادة %1$s بعد بدء تغييرات بيانات التطبيق. افحص التطبيق قبل اختيار استئناف.</string>
+    <string name="task_dialog_restore_review_resume">استئناف الاستعادة</string>
+    <string name="task_dialog_sweep_retry_title">السماح بإعادة محاولة الهدف</string>
+    <string name="task_dialog_sweep_retry_message">تعذّر على Thor التحقق من %1$s بعد %2$s. أعد محاولة هذا الهدف فقط إذا كان تكرار الإجراء آمنًا.</string>
+    <string name="task_dialog_sweep_retry_confirm">إعادة محاولة هذا الهدف</string>
+    <string name="task_dialog_share_expired_message">بلغت ملفات المشاركة الخاصة هذه حد 24 ساعة وأُزيلت.</string>
+
+    <plurals name="task_log_pending_queued">
+        <item quantity="zero">عدد المهام المقبولة في قائمة الانتظار: %1$d</item>
+        <item quantity="one">قُبلت مهمة واحدة ووُضعت في قائمة الانتظار (%1$d)</item>
+        <item quantity="two">قُبلت مهمتان ووُضعتا في قائمة الانتظار (%1$d)</item>
+        <item quantity="few">قُبلت %1$d مهام ووُضعت في قائمة الانتظار</item>
+        <item quantity="many">قُبلت %1$d مهمة ووُضعت في قائمة الانتظار</item>
+        <item quantity="other">عدد المهام المقبولة في قائمة الانتظار: %1$d</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="zero">عدد المهام المعلّقة: %1$d</item>
+        <item quantity="one">مهمة واحدة معلّقة (%1$d)</item>
+        <item quantity="two">مهمتان معلّقتان (%1$d)</item>
+        <item quantity="few">%1$d مهام معلّقة</item>
+        <item quantity="many">%1$d مهمة معلّقة</item>
+        <item quantity="other">عدد المهام المعلّقة: %1$d</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="zero">عدد المهام التي لم تُعالج: %1$d</item>
+        <item quantity="one">مهمة واحدة لم تُعالج (%1$d)</item>
+        <item quantity="two">مهمتان لم تُعالجا (%1$d)</item>
+        <item quantity="few">%1$d مهام لم تُعالج</item>
+        <item quantity="many">%1$d مهمة لم تُعالج</item>
+        <item quantity="other">عدد المهام التي لم تُعالج: %1$d</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="zero">عدد النتائج السابقة المحذوفة من العرض: %1$d</item>
+        <item quantity="one">حُذفت نتيجة سابقة واحدة من العرض (%1$d)</item>
+        <item quantity="two">حُذفت نتيجتان سابقتان من العرض (%1$d)</item>
+        <item quantity="few">حُذفت %1$d نتائج سابقة من العرض</item>
+        <item quantity="many">حُذفت %1$d نتيجة سابقة من العرض</item>
+        <item quantity="other">عدد النتائج السابقة المحذوفة من العرض: %1$d</item>
+    </plurals>
+    <string name="task_log_stage_preparing">جارٍ تحضير المهمة.</string>
+    <string name="task_log_stage_staging_source">جارٍ نسخ المصدر المحدد إلى التخزين المرحلي الخاص.</string>
+    <string name="task_log_stage_measuring">جارٍ قياس بيانات التطبيق.</string>
+    <string name="task_log_stage_capturing">جارٍ التقاط بيانات التطبيق.</string>
+    <string name="task_log_stage_writing">جارٍ كتابة الناتج.</string>
+    <string name="task_log_stage_installing">جارٍ تثبيت حزمة التطبيق.</string>
+    <string name="task_log_stage_restoring">جارٍ استعادة بيانات التطبيق.</string>
+    <string name="task_log_stage_publishing">جارٍ نشر الناتج.</string>
+    <string name="task_log_stage_finishing">جارٍ إنهاء المهمة.</string>
+    <string name="task_log_item_running">جارٍ معالجة %1$s.</string>
+    <string name="task_log_item_succeeded">اكتملت معالجة %1$s.</string>
+    <string name="task_log_item_failed">فشلت معالجة %1$s.</string>
+    <string name="task_log_item_cancelled">أُلغيت معالجة %1$s.</string>
+    <string name="task_log_item_busy">تم تخطي %1$s لأن عملية أخرى تستخدمه.</string>
+    <string name="task_log_item_unknown">تعذّر التحقق من الحالة النهائية لـ %1$s.</string>
 
 </resources>

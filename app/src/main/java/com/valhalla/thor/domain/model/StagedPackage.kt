@@ -26,7 +26,9 @@ import java.io.File
  */
 data class StagedPackage(
     val file: File,
-    val displayName: String?
+    val displayName: String?,
+    /** Pre-resolved APK entries for authenticated archive restores; null for ordinary installs. */
+    val installSet: List<String>? = null,
 )
 
 /**

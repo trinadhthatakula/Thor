@@ -10,6 +10,10 @@ import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.model.AppDataArchiveStagingDir
 import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.applyEntryVerification
 import com.valhalla.thor.domain.model.chownFileCommand
@@ -29,6 +33,7 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.security.MessageDigest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -36,6 +41,69 @@ import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 private const val TAG = "AppDataArchiveGateway"
+
+internal enum class ArchiveCommandPhase(val commandClass: PrivilegeCommandClass) {
+    FORCE_STOP(PrivilegeCommandClass("archive.force_stop")),
+    LIST(PrivilegeCommandClass("archive.list")),
+    VERIFY(PrivilegeCommandClass("archive.verify")),
+    TAR(PrivilegeCommandClass("archive.tar")),
+    STAGE_CHOWN(PrivilegeCommandClass("archive.stage_chown")),
+    EXTRACT(PrivilegeCommandClass("archive.extract")),
+    SWAP(PrivilegeCommandClass("archive.swap")),
+    CHOWN(PrivilegeCommandClass("archive.chown")),
+    RESTORECON(PrivilegeCommandClass("archive.restorecon")),
+}
+
+internal fun archiveExecutionContext(
+    packageName: String,
+    phase: ArchiveCommandPhase,
+): PrivilegeExecutionContext = PrivilegeExecutionContext(
+    lane = PrivilegeExecutionLane.ARCHIVE,
+    commandClass = phase.commandClass,
+    packageName = packageName,
+)
+
+internal suspend fun SystemRepository.executeArchiveCommand(
+    command: String,
+    packageName: String,
+    phase: ArchiveCommandPhase,
+): Result<Pair<Int, String?>> {
+    val execution = archiveExecutionContext(packageName, phase)
+    Logger.d(
+        TAG,
+        "archive command started class=${execution.commandClass.value} package=$packageName",
+    )
+    return executeShellCommand(command, execution).also { result ->
+        val exitCode = result.getOrNull()?.first
+        if (result.isFailure || exitCode != 0) {
+            Logger.e(
+                TAG,
+                "archive command failed class=${execution.commandClass.value} " +
+                    "package=$packageName exitCode=$exitCode",
+            )
+        }
+    }
+}
+
+internal suspend fun SystemRepository.forceStopForArchive(packageName: String): Result<Unit> {
+    val execution = archiveExecutionContext(packageName, ArchiveCommandPhase.FORCE_STOP)
+    Logger.d(
+        TAG,
+        "archive command started class=${execution.commandClass.value} package=$packageName",
+    )
+    return forceStopApp(packageName, execution).also { result ->
+        if (result.isFailure) {
+            Logger.e(
+                TAG,
+                "archive command failed class=${execution.commandClass.value} package=$packageName",
+            )
+        }
+    }
+}
+
+private fun Throwable.rethrowIfStructuredExecutionFailure() {
+    if (this is CancellationException || this is PrivilegeExecutionException) throw this
+}
 
 /**
  * True when [name] is safe as a per-class staging filename.
@@ -127,6 +195,14 @@ internal class AppDataArchiveGatewayImpl(
         File(stagingRoot(), name)
     }
 
+    override suspend fun privateStagingFile(name: String): File = withContext(ioDispatcher) {
+        require(isSafeStagingName(name)) {
+            "privateStagingFile requires a plain filename with no path components, got: $name"
+        }
+        val root = File(context.cacheDir, AppDataArchiveStagingDir.NAME).also { it.mkdirs() }
+        File(root, name)
+    }
+
     override suspend fun forceStop(packageName: String) {
         // Delegated to `forceStopApp` rather than hand-rolled. Hand-rolling has three defects:
         //   1. No package-name validation — the raw string reaches a root shell directly.
@@ -135,8 +211,9 @@ internal class AppDataArchiveGatewayImpl(
         // `forceStopApp` already routes through the active gateway and includes user scoping.
         // A failure is logged, not fatal: an app that was not running produces one, and refusing the
         // backup over it would refuse most backups.
-        systemRepository.forceStopApp(packageName)
-            .onFailure { Logger.e(TAG, "force-stop of $packageName failed", it) }
+        systemRepository.forceStopForArchive(packageName)
+            .exceptionOrNull()
+            ?.rethrowIfStructuredExecutionFailure()
     }
 
     /**
@@ -155,8 +232,12 @@ internal class AppDataArchiveGatewayImpl(
         val command = listClassEntriesCommand(root)
             ?: return ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
 
-        val (exitCode, output) = systemRepository.executeShellCommand(command).getOrElse {
-            Logger.e(TAG, "listing ${dataClass.id} for $packageName failed", it)
+        val (exitCode, output) = systemRepository.executeArchiveCommand(
+            command = command,
+            packageName = packageName,
+            phase = ArchiveCommandPhase.LIST,
+        ).getOrElse { failure ->
+            failure.rethrowIfStructuredExecutionFailure()
             return ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
         }
         if (exitCode != 0 || output == null) {
@@ -167,7 +248,7 @@ internal class AppDataArchiveGatewayImpl(
             return ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
         }
         val listing = filterBackupEntries(dataClass, output)
-        return verifyListing(root, dataClass, listing)
+        return verifyListing(packageName, root, dataClass, listing)
     }
 
     /**
@@ -183,13 +264,18 @@ internal class AppDataArchiveGatewayImpl(
      * untouched. A backup must not be emptied by a refinement step.
      */
     private suspend fun verifyListing(
+        packageName: String,
         root: String,
         dataClass: DataClass,
         listing: ClassEntries,
     ): ClassEntries {
         val command = verifyEntriesCommand(root, listing.kept) ?: return listing
-        val (exitCode, output) = systemRepository.executeShellCommand(command).getOrElse {
-            Logger.e(TAG, "verifying ${dataClass.id} entries for the archive failed", it)
+        val (exitCode, output) = systemRepository.executeArchiveCommand(
+            command = command,
+            packageName = packageName,
+            phase = ArchiveCommandPhase.VERIFY,
+        ).getOrElse { failure ->
+            failure.rethrowIfStructuredExecutionFailure()
             return listing
         }
         return applyEntryVerification(dataClass, listing, exitCode, output)
@@ -230,11 +316,16 @@ internal class AppDataArchiveGatewayImpl(
         // `finally` block so plaintext app data never outlives the operation that created it.
         var committed = false
         try {
-            val (exitCode, _) = systemRepository.executeShellCommand(command).getOrElse {
+            val (exitCode, _) = systemRepository.executeArchiveCommand(
+                command = command,
+                packageName = packageName,
+                phase = ArchiveCommandPhase.TAR,
+            ).getOrElse { failure ->
                 // Tar did not complete cleanly — the gateway threw. `out` may have been partially written,
                 // so delete it to avoid leaving plaintext app data on disk.
                 withContext(ioDispatcher) { out.delete() }
-                return TarOutcome.Failed("tar could not be run: ${it.message}")
+                failure.rethrowIfStructuredExecutionFailure()
+                return TarOutcome.Failed("tar could not be run")
             }
 
             // Read the length *after* tar exits, and on the IO dispatcher — this is a stat call.
@@ -250,7 +341,12 @@ internal class AppDataArchiveGatewayImpl(
             // The shell created the file as its own uid. Attempt chown to Thor's uid if possible.
             val chown = chownFileCommand(out.absolutePath, android.os.Process.myUid())
             if (chown != null) {
-                systemRepository.executeShellCommand(chown)
+                systemRepository.executeArchiveCommand(
+                    command = chown,
+                    packageName = packageName,
+                    phase = ArchiveCommandPhase.STAGE_CHOWN,
+                ).exceptionOrNull()
+                    ?.rethrowIfStructuredExecutionFailure()
             }
 
             return if (withContext(ioDispatcher) { out.canRead() }) {
@@ -296,7 +392,7 @@ internal class AppDataArchiveGatewayImpl(
                 ?: return@runCatching null
             MessageDigest.getInstance("SHA-256")
                 .digest(first.toByteArray())
-                .joinToString(separator = "") { byte -> "%02X".format(byte) }
+                .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xFF) }
         }.getOrElse {
             Logger.e(TAG, "reading the signer of $packageName failed", it)
             null
@@ -308,18 +404,24 @@ internal class AppDataArchiveGatewayImpl(
         dataClass: DataClass,
         tar: File,
         compressed: Boolean,
-    ): Boolean = runClassCommand(packageName, dataClass, "extract") { root ->
+    ): Boolean = runClassCommand(packageName, dataClass, ArchiveCommandPhase.EXTRACT) { root ->
         extractCommand(root, tar.absolutePath, compressed)
     }
 
     override suspend fun swapStaged(packageName: String, dataClass: DataClass): Boolean =
-        runClassCommand(packageName, dataClass, "swap") { root -> swapStagedEntriesCommand(root) }
+        runClassCommand(packageName, dataClass, ArchiveCommandPhase.SWAP) { root ->
+            swapStagedEntriesCommand(root)
+        }
 
     override suspend fun chownClass(packageName: String, dataClass: DataClass, uid: Int): Boolean =
-        runClassCommand(packageName, dataClass, "chown") { root -> chownRecursiveCommand(root, uid) }
+        runClassCommand(packageName, dataClass, ArchiveCommandPhase.CHOWN) { root ->
+            chownRecursiveCommand(root, uid)
+        }
 
     override suspend fun relabelClass(packageName: String, dataClass: DataClass): Boolean =
-        runClassCommand(packageName, dataClass, "restorecon") { root -> restoreconCommand(root) }
+        runClassCommand(packageName, dataClass, ArchiveCommandPhase.RESTORECON) { root ->
+            restoreconCommand(root)
+        }
 
     /**
      * Resolve the class root, build the command, run it, and report whether it exited 0.
@@ -331,27 +433,30 @@ internal class AppDataArchiveGatewayImpl(
     private suspend fun runClassCommand(
         packageName: String,
         dataClass: DataClass,
-        what: String,
+        phase: ArchiveCommandPhase,
         build: (String) -> String?,
     ): Boolean = withContext(ioDispatcher) {
         val root = classRootOf(packageName, dataClass) ?: run {
-            Logger.e(TAG, "$what failed: could not resolve class root for ${dataClass.id} of $packageName")
-            return@withContext false
-        }
-        val command = build(root) ?: run {
-            Logger.e(TAG, "$what refused for ${dataClass.id} of $packageName (root=$root)")
-            return@withContext false
-        }
-        Logger.d(TAG, "Executing $what command for ${dataClass.id}: $command")
-        val result = systemRepository.executeShellCommand(command).getOrNull()
-        if (result == null || result.first != 0) {
             Logger.e(
                 TAG,
-                "$what of ${dataClass.id} for $packageName failed. Exit code: ${result?.first}, output: '${result?.second}', command: $command"
+                "archive command refused class=${phase.commandClass.value} package=$packageName " +
+                    "dataClass=${dataClass.id} reason=unresolved_root",
             )
             return@withContext false
         }
-        Logger.d(TAG, "$what of ${dataClass.id} for $packageName succeeded with exit 0")
-        true
+        val command = build(root) ?: run {
+            Logger.e(
+                TAG,
+                "archive command refused class=${phase.commandClass.value} package=$packageName " +
+                    "dataClass=${dataClass.id} reason=unsafe_input",
+            )
+            return@withContext false
+        }
+        val result = systemRepository.executeArchiveCommand(command, packageName, phase)
+            .getOrElse { failure ->
+                failure.rethrowIfStructuredExecutionFailure()
+                return@withContext false
+            }
+        result.first == 0
     }
 }

@@ -187,6 +187,7 @@
       was typed. Says what to do instead of guessing at a cause it does not know.
     -->
     <string name="restore_error_unlock_check_failed">Thor nie mógł sprawdzić tego hasła. Spróbuj ponownie.</string>
+    <string name="restore_error_authentication_failed">Nie udało się uwierzytelnić tej kopii zapasowej, więc nie została przywrócona.</string>
     <string name="restore_failed_passphrase_lost">Thor nie ma już hasła do tej kopii zapasowej — odblokuj ją ponownie</string>
     <string name="restore_failed_salt_unreadable">nie udało się odczytać wartości salt tego archiwum</string>
     <!--

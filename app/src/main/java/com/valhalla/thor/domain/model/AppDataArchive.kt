@@ -3,11 +3,13 @@
 
 package com.valhalla.thor.domain.model
 
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** Schema version of `thorbak.json`. Bumped only for a change a v1 reader could misread. */
-const val ARCHIVE_SCHEMA_VERSION = 1
+/** Schema version of `thorbak.json`. Version 2 authenticates every restore-relevant field. */
+const val ARCHIVE_SCHEMA_VERSION = 2
 
 const val THORBAK_EXTENSION = "thorbak"
 const val THORBAK_MIME = "application/octet-stream"
@@ -21,6 +23,20 @@ const val THORBAK_BUNDLE_ENTRY = "app.xapk"
 /** `<pkg>-<versionCode>.thorbak`. */
 fun thorbakFileName(packageName: String, versionCode: Long): String =
     "$packageName-$versionCode.$THORBAK_EXTENSION"
+
+/**
+ * Stable final name for a durable backup whose publication may need to be reconciled after death.
+ *
+ * The stored item identity is hashed rather than copied into a public filename. The first 128 bits are
+ * enough to make two task-owned publications distinct while keeping provider filename limits practical.
+ */
+fun recoverableThorbakFileName(packageName: String, deterministicIdentity: String): String {
+    val token = MessageDigest.getInstance("SHA-256")
+        .digest(deterministicIdentity.toByteArray(StandardCharsets.UTF_8))
+        .take(16)
+        .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    return "$packageName-$token.$THORBAK_EXTENSION"
+}
 
 /**
  * The four storage classes an app owns.
@@ -142,6 +158,8 @@ data class ArchiveHeader(
     val kdf: ArchiveKdf,
     /** `HMAC-SHA256(key, "thor-data-archive-v1")` truncated to 16 bytes, Base64. */
     val verifier: String,
+    /** Mandatory for schema v2; nullable only so legacy or malformed headers can be decoded and refused. */
+    val authentication: ArchiveAuthentication? = null,
     val members: List<ArchiveMember> = emptyList(),
     val skippedEntries: List<ArchiveSkip> = emptyList(),
     /** Non-fatal notes — a `tar` exit of 1, an `externalCacheDir` fallback. */
@@ -177,8 +195,17 @@ data class ArchiveHeader(
 data class ArchiveBundleInfo(
     val fileName: String = THORBAK_BUNDLE_ENTRY,
     val bytes: Long,
+    /** SHA-256 of the exact raw bytes stored in the outer [THORBAK_BUNDLE_ENTRY]. */
+    val sha256: String? = null,
     val obbCapture: String,
     val obbCount: Int,
+)
+
+@Serializable
+data class ArchiveAuthentication(
+    val algorithm: String,
+    /** Base64 HMAC bytes. Nullable only so an incomplete v2 header can be decoded and refused. */
+    val mac: String? = null,
 )
 
 @Serializable
@@ -213,6 +240,8 @@ data class ArchiveMember(
     /** Base64, 8 bytes. The IV is this nonce followed by a 4-byte big-endian chunk index. */
     val nonce: String,
     val plainBytes: Long,
+    /** Exact encrypted entry size, including frame prefixes and GCM tags. Mandatory in schema v2. */
+    val cipherBytes: Long? = null,
     /** How many chunks the reader must see. A stream that ends early is refused. */
     val chunkCount: Int,
     val compression: String,

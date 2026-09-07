@@ -6,6 +6,7 @@ package com.valhalla.thor.domain.usecase
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BackupIndex
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.presentation.FakePreferenceRepository
@@ -584,6 +585,7 @@ private class FakeBundleBuilder(
         cacheSubDir: String,
         format: BundleFormat,
         fileName: String?,
+        execution: PrivilegeExecutionContext,
     ): Result<File> {
         builds += appInfo.packageName
         scopes += cacheSubDir

@@ -29,6 +29,7 @@ import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import kotlinx.coroutines.CancellationException
@@ -47,16 +48,25 @@ import java.io.File
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 
 @Single
-class ShizukuSystemGateway(
+class ShizukuSystemGateway internal constructor(
     // Present for one reason: the system-app freeze's refusal message is read by the user, so it
     // has to come out of resources. RootSystemGateway takes its Context the same way.
     private val context: Context,
     private val reflector: ShizukuReflector,
     private val preferenceRepository: PreferenceRepository,
-    @Named("io") private val ioDispatcher: CoroutineDispatcher
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    private val reinstallPostconditionVerifier: ReinstallPostconditionVerifier =
+        ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
 ) : SystemGateway {
 
-    override suspend fun isRootAvailable() = false
+    internal var reinstallUserIdProvider: () -> Int = { thorUserId }
+    internal var reinstallCommandExecutor: (String) -> Pair<Int, String?> = { command ->
+        ShizukuHelper.execute(command)
+    }
+
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ) = false
 
     // Shizuku.checkSelfPermission()/pingBinder() are blocking binder IPC; confine them to IO
     // at the gateway boundary so this probe is main-safe regardless of the caller's dispatcher.
@@ -70,9 +80,18 @@ class ShizukuSystemGateway(
 
     override suspend fun isDhizukuAvailable(): Boolean = false
 
-    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
+    override suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Pair<Int, String?>> {
         // Runs through Shizuku's privileged process (shell uid), same path as in-app actions.
-        return runCatching { ShizukuHelper.execute(command) }
+        return try {
+            Result.success(ShizukuHelper.execute(command))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        }
     }
 
     // --- Per-component control -------------------------------------------------------------
@@ -95,6 +114,7 @@ class ShizukuSystemGateway(
         className: String,
         state: ComponentEnabledState,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = runComponentCommand(packageName, className) { spec ->
         setComponentStateCommand(spec, userId, state.asComponentState())
     }
@@ -103,6 +123,7 @@ class ShizukuSystemGateway(
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = runComponentCommand(packageName, className) { spec ->
         startActivityCommand(spec, userId)
     }
@@ -111,6 +132,7 @@ class ShizukuSystemGateway(
         packageName: String,
         className: String,
         userId: Int,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = runComponentCommand(
         packageName,
         className,
@@ -164,11 +186,17 @@ class ShizukuSystemGateway(
         }
     }
 
-    override suspend fun forceStopApp(packageName: String): Result<Unit> {
+    override suspend fun forceStopApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return runAction { reflector.forceStop(packageName) }
     }
 
-    override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+    override suspend fun clearAllCaches(
+        targetFreeBytes: Long?,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         // No sweep fallback, unlike Root: shell uid 2000 cannot delete another package's cache
         // directory, so without a target there is nothing left to try.
         //
@@ -195,11 +223,18 @@ class ShizukuSystemGateway(
         else Result.failure(Exception("Shizuku: `pm trim-caches` failed."))
     }
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> {
+    override suspend fun clearAppData(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return runAction { reflector.clearData(packageName) }
     }
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
+    override suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         // FLAG_SYSTEM alone, never OR'd with FLAG_UPDATED_SYSTEM_APP — ShizukuReflector.isSystemApp
         // is written that way, matching AppInfoMapper, AppFreezeStateReader.candidateOf and
         // RootSystemGateway.setAppDisabled. The destructive-fallback gate below is keyed on this
@@ -467,22 +502,33 @@ class ShizukuSystemGateway(
         reflector.getApplicationInfoOrNull(packageName)
             ?.let { !(it.enabled && (it.flags and ApplicationInfo.FLAG_INSTALLED) != 0) } ?: true
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
+    override suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return runAction { reflector.setAppSuspended(packageName, isSuspended) }
     }
 
     override suspend fun setAppRestricted(
         packageName: String,
-        isRestricted: Boolean
+        isRestricted: Boolean,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         return runAction { reflector.setAppRestricted(packageName, isRestricted) }
     }
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> {
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return Result.failure(Exception("Reboot requires Root. Shizuku cannot perform this action."))
     }
 
-    override suspend fun uninstallApp(packageName: String): Result<Unit> {
+    override suspend fun uninstallApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         return if (reflector.uninstallApp(packageName)) {
             Result.success(Unit)
         } else {
@@ -504,6 +550,7 @@ class ShizukuSystemGateway(
         apkPath: String,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
 
@@ -532,7 +579,10 @@ class ShizukuSystemGateway(
         }
     }
 
-    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
+    override suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         if (packageName == BuildConfig.APPLICATION_ID)
             return Result.failure(Exception("Cannot reinstall Thor"))
 
@@ -547,10 +597,20 @@ class ShizukuSystemGateway(
             // name. What differed was visibility — a work-profile-only app answered nothing and
             // stopped here with "Could not find APK path", and an app installed for user 0 but not
             // for Thor's user was reinstalled off a record this user does not hold.
-            val currentUser = thorUserId
+            val currentUser = reinstallUserIdProvider()
 
             // 2. Get the APK path(s) as that user sees them
-            val pathResult = ShizukuHelper.execute(pmPathCommand(escapedPackageName, currentUser))
+            val pathResult = reinstallCommandExecutor(
+                pmPathCommand(escapedPackageName, currentUser)
+            )
+            if (pathResult.first != 0) {
+                return Result.failure(
+                    Exception(
+                        "Shizuku package path lookup failed with exit code ${pathResult.first}: " +
+                            (pathResult.second ?: "no output")
+                    )
+                )
+            }
             val paths = pathResult.second?.lines()
                 ?.filter { it.isNotBlank() }
                 ?.map { it.removePrefix("package:").trim() } ?: emptyList()
@@ -564,9 +624,14 @@ class ShizukuSystemGateway(
             // 3. Execute the reinstallation command
             val command =
                 "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
-            val result = ShizukuHelper.execute(command)
-            if (result.first == 0) Result.success(Unit)
-            else Result.failure(Exception("Shizuku reinstall failed: ${result.second}"))
+            val result = reinstallCommandExecutor(command)
+            if (result.first == 0) {
+                reinstallPostconditionVerifier.verify(packageName, currentUser)
+            } else {
+                Result.failure(Exception("Shizuku reinstall failed: ${result.second}"))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Logger.e("ShizukuSystemGateway", "Reinstall with Google failed for $packageName", e)
             Result.failure(e)
@@ -575,7 +640,8 @@ class ShizukuSystemGateway(
 
     override suspend fun grantPermission(
         packageName: String,
-        permissionName: String
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
@@ -622,7 +688,8 @@ class ShizukuSystemGateway(
 
     override suspend fun revokePermission(
         packageName: String,
-        permissionName: String
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))

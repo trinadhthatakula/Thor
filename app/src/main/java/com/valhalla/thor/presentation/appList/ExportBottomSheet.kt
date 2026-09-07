@@ -60,7 +60,9 @@ import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
@@ -69,6 +71,9 @@ import com.valhalla.thor.presentation.common.JobRunningFrame
 import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -76,6 +81,16 @@ import org.koin.compose.koinInject
 
 /** How long a finished export stays on screen before the sheet closes itself. */
 private const val SUCCESS_LINGER_MS = 3_000L
+
+internal const val PRESENTATION_OBB_FAILURE_REASON = "game data could not be checked"
+
+internal suspend fun probeObbForPresentation(probe: suspend () -> ObbProbe): ObbProbe = try {
+    probe()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: PrivilegeExecutionException) {
+    ObbProbe.Undetermined(PRESENTATION_OBB_FAILURE_REASON)
+}
 
 /**
  * Destination picker + explainer for exporting an installed app's bundle. Self-contained
@@ -105,6 +120,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
         viewModelStoreOwner = rememberViewModelStoreOwner()
     )
     val phase by viewModel.phase.collectAsStateWithLifecycle()
+    val canSubmit by viewModel.canSubmit.collectAsStateWithLifecycle()
 
     // Two options, never three. The native container for this app — .apk for a monolithic app,
     // .apks for a split one — plus .xapk, which is meaningful either way because it is the format
@@ -122,16 +138,25 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
     val defaultDestLabel = stringResource(R.string.export_dest_downloads)
 
     var targetLabel by remember { mutableStateOf(defaultDestLabel) }
+    var targetTreeUri by remember { mutableStateOf<String?>(null) }
+    var targetResolved by remember { mutableStateOf(false) }
     // Defaults to autoFor(), i.e. the format the builder has always picked on its own, so an
     // export where nobody touches the row is byte-for-byte what shipped before the selector existed.
     var format by remember(appInfo.packageName) { mutableStateOf(formatOptions.first()) }
     // null while the probe is in flight — distinct from ObbProbe.None, which is an answer.
     var obbProbe by remember(appInfo.packageName) { mutableStateOf<ObbProbe?>(null) }
 
-    LaunchedEffect(Unit) { targetLabel = exportUseCase.currentTargetLabel() }
+    LaunchedEffect(Unit) {
+        val target = exportUseCase.openSession(ExportAppUseCase.SINGLE_STAGING_DIR).target
+        targetTreeUri = (target as? ExportTargetChoice.Custom)?.treeUri
+        targetLabel = exportUseCase.targetLabel(target)
+        targetResolved = true
+    }
 
     LaunchedEffect(appInfo.packageName) {
-        obbProbe = systemRepository.probeObb(appInfo.packageName)
+        obbProbe = probeObbForPresentation {
+            systemRepository.probeObb(appInfo.packageName)
+        }
     }
 
     // Pick up an export of this app that is already running — the user backgrounded the sheet and came
@@ -158,6 +183,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
             packageName = appInfo.packageName,
             label = appInfo.appName ?: appInfo.packageName,
             format = format,
+            treeUri = targetTreeUri,
         )
     }
 
@@ -172,6 +198,9 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
+            val selectedTreeUri = uri.toString()
+            targetTreeUri = selectedTreeUri
+            targetResolved = true
             // runCatching because the persist can be refused: the grant table is capped (128 entries
             // per app on most builds) and some providers hand back a tree they will not persist at
             // all. Unguarded, that SecurityException propagates out of the picker callback and takes
@@ -186,8 +215,8 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 )
             }.onFailure { Logger.w("Export", "could not persist $uri: $it") }
             scope.launch {
-                preferenceRepository.setExportDirUri(uri.toString())
-                targetLabel = exportUseCase.currentTargetLabel()
+                preferenceRepository.setExportDirUri(selectedTreeUri)
+                targetLabel = exportUseCase.targetLabel(ExportTargetChoice.Custom(selectedTreeUri))
             }
         }
     }
@@ -288,6 +317,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                     backgroundLabel = stringResource(R.string.export_job_background),
                     backgroundDescription = stringResource(R.string.export_job_background_desc),
                     onBackground = onDismiss,
+                    modifier = Modifier,
                 )
 
                 finished is JobFinish.Succeeded -> {
@@ -448,6 +478,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                         }
                         Button(
                             onClick = {
+                                ServiceQueueLatencyProbe.begin(ServiceQueueOperation.EXPORT)
                                 // A custom SAF folder writes via DocumentFile and needs no
                                 // WRITE_EXTERNAL_STORAGE — only the legacy Downloads path (API <= 28)
                                 // does.
@@ -464,7 +495,8 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                                     runExport()
                                 }
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            enabled = canSubmit && targetResolved,
                         ) {
                             // No spinner and no "Exporting…" label. The button does not stay on
                             // screen long enough to need either — `phase.running` swaps this whole

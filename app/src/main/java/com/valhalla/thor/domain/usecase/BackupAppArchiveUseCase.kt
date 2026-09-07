@@ -5,7 +5,10 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.backup.MANIFEST_AUTH_ALGORITHM
+import com.valhalla.thor.data.backup.MANIFEST_MAC_BYTES
 import com.valhalla.thor.domain.model.ARCHIVE_SPACE_MARGIN_BYTES
+import com.valhalla.thor.domain.model.ArchiveAuthentication
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleInfo
@@ -17,6 +20,11 @@ import com.valhalla.thor.domain.model.ArchiveSkip
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.KDF_ITERATIONS
+import com.valhalla.thor.domain.model.PackageLeaseResult
+import com.valhalla.thor.domain.model.PackageOperationBusy
+import com.valhalla.thor.domain.model.PackageOperationOwner
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
@@ -26,9 +34,11 @@ import com.valhalla.thor.domain.model.thorbakFileName
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppDataProbe
+import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.zip.CRC32
 import java.util.zip.Deflater
@@ -41,6 +51,8 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Factory
 
 private const val TAG = "BackupAppArchive"
+
+private data class CopiedBundle(val bytes: Long, val sha256: String)
 
 /**
  * §7.2, as one function.
@@ -64,6 +76,8 @@ internal class BackupAppArchiveUseCase(
     private val cipher: AppArchiveCipher,
     /** §7.4 only: the pre-flight space check needs a size before it stages a class. */
     private val probe: AppDataProbe,
+    private val packageOperationCoordinator: PackageOperationCoordinator,
+    private val archiveReader: OpenArchiveUseCase,
 ) {
 
     /**
@@ -96,17 +110,91 @@ internal class BackupAppArchiveUseCase(
         bundleObbCount: Int = 0,
         versionCode: Long = 0L,
         versionName: String? = null,
+        publicationFileName: String? = null,
         usableStagingBytes: Long = 0L,
         appLabel: String = request.packageName,
         onProgress: (ThorJobProgress) -> Unit = {},
+    ): ArchiveBackupOutcome = when (
+        val lease = packageOperationCoordinator.withPackageLease(
+            packageName = request.packageName,
+            owner = PackageOperationOwner.ARCHIVE_BACKUP,
+            admissionTimeout = PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+        ) {
+            runBackup(
+                request = request,
+                key = key,
+                bundle = bundle,
+                bundleObbCapture = bundleObbCapture,
+                bundleObbCount = bundleObbCount,
+                versionCode = versionCode,
+                versionName = versionName,
+                publicationFileName = publicationFileName,
+                usableStagingBytes = usableStagingBytes,
+                appLabel = appLabel,
+                onProgress = onProgress,
+            )
+        }
+    ) {
+        is PackageLeaseResult.Acquired -> lease.value
+        is PackageLeaseResult.Busy -> ArchiveBackupOutcome.Failed(
+            PackageOperationBusy(lease.owner).message ?: "Package operation busy: ${lease.owner}",
+        )
+    }
+
+    /**
+     * Reconcile the exact final name owned by a durable task after an interrupted attempt.
+     *
+     * A matching name is not enough: only a container authenticated by the task's in-memory key and
+     * naming the expected package is accepted as the previous successful publication.
+     */
+    suspend fun reconcilePublished(
+        fileName: String,
+        expectedPackageName: String,
+        key: SecretKey,
+    ): ArchiveBackupOutcome.Completed? {
+        return try {
+            val published = archiveStore.openPublishedArchive(fileName) ?: return null
+            published.source.use { source ->
+                val authenticated = archiveReader.authenticate(source, key)
+                        as? ArchiveAuthenticationOutcome.Authenticated
+                    ?: return@use null
+                if (authenticated.header.packageName != expectedPackageName) return@use null
+                ArchiveBackupOutcome.Completed(
+                    fileName = published.displayName,
+                    header = authenticated.header,
+                    destinationLabel = archiveStore.currentTargetLabel(),
+                    byteSize = published.byteSize,
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, "published archive reconciliation failed", e)
+            null
+        }
+    }
+
+    private suspend fun runBackup(
+        request: ArchiveBackupRequest,
+        key: SecretKey,
+        bundle: File?,
+        bundleObbCapture: String,
+        bundleObbCount: Int,
+        versionCode: Long,
+        versionName: String?,
+        publicationFileName: String?,
+        usableStagingBytes: Long,
+        appLabel: String,
+        onProgress: (ThorJobProgress) -> Unit,
     ): ArchiveBackupOutcome {
-        val fileName = thorbakFileName(request.packageName, versionCode)
-        val destination = archiveStore.openArchive(fileName) ?: return ArchiveBackupOutcome.NoDestination
+        val fileName = publicationFileName ?: thorbakFileName(request.packageName, versionCode)
+        val destination =
+            archiveStore.openArchive(fileName) ?: return ArchiveBackupOutcome.NoDestination
 
         // Read before anything is written. Without a signer the archive cannot carry the check that
         // stops a restore into a same-named, differently-signed package, and an archive missing that
         // field is one a later Thor would have to either refuse or trust.
-        val signer = gateway.signerSha256(request.packageName)
+        val signer = gateway.signerSha256(request.packageName)?.lowercase()
         if (signer == null) {
             withContext(NonCancellable) { destination.discard() }
             return ArchiveBackupOutcome.Failed("the app's signing certificate could not be read")
@@ -115,7 +203,8 @@ internal class BackupAppArchiveUseCase(
         val members = mutableListOf<ArchiveMember>()
         val skipped = mutableListOf<ArchiveSkip>()
         val warnings = mutableListOf<String>()
-        var published = false
+        var copiedBundle: CopiedBundle? = null
+        var publication: com.valhalla.thor.domain.repository.ArchivePublication? = null
 
         // Level 0 for the streamed entries: the members are ciphertext and the bundle is already
         // compressed, so deflate would spend CPU to occasionally grow the file. STORED is not an
@@ -140,8 +229,24 @@ internal class BackupAppArchiveUseCase(
                 // and a user watching their game back up should not read a generated `.xapk` file name.
                 onProgress(ThorJobProgress(ThorJobStage.CAPTURING, appLabel))
                 zip.putNextEntry(ZipEntry(THORBAK_BUNDLE_ENTRY))
-                bundle.inputStream().use { it.copyTo(zip) }
+                val digest = MessageDigest.getInstance("SHA-256")
+                var copied = 0L
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                bundle.inputStream().use { input ->
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        zip.write(buffer, 0, read)
+                        digest.update(buffer, 0, read)
+                        copied += read
+                    }
+                }
                 zip.closeEntry()
+                copiedBundle = CopiedBundle(
+                    bytes = copied,
+                    sha256 = digest.digest()
+                        .joinToString("") { "%02x".format(it.toInt() and 0xFF) },
+                )
             }
 
             // Iterated in DataClass order, not the request's set order, so two runs over the same
@@ -208,7 +313,7 @@ internal class BackupAppArchiveUseCase(
             }
 
             onProgress(ThorJobProgress(ThorJobStage.FINISHING, appLabel))
-            val header = ArchiveHeader(
+            val unsignedHeader = ArchiveHeader(
                 createdAt = System.currentTimeMillis(),
                 thorVersionCode = BuildConfig.VERSION_CODE,
                 packageName = request.packageName,
@@ -216,9 +321,10 @@ internal class BackupAppArchiveUseCase(
                 versionName = versionName,
                 userId = gateway.thorUserId(),
                 signerSha256 = signer,
-                appBundle = bundle?.let {
+                appBundle = copiedBundle?.let {
                     ArchiveBundleInfo(
-                        bytes = it.length(),
+                        bytes = it.bytes,
+                        sha256 = it.sha256,
                         obbCapture = bundleObbCapture,
                         obbCount = bundleObbCount,
                     )
@@ -228,9 +334,19 @@ internal class BackupAppArchiveUseCase(
                     salt = Base64.getEncoder().encodeToString(request.salt),
                 ),
                 verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
+                authentication = ArchiveAuthentication(
+                    algorithm = MANIFEST_AUTH_ALGORITHM,
+                    mac = Base64.getEncoder().encodeToString(ByteArray(MANIFEST_MAC_BYTES)),
+                ),
                 members = members,
                 skippedEntries = skipped,
                 warnings = warnings,
+            )
+            val header = unsignedHeader.copy(
+                authentication = unsignedHeader.authentication!!.copy(
+                    mac = Base64.getEncoder()
+                        .encodeToString(cipher.manifestMac(key, unsignedHeader))
+                )
             )
 
             // The header is the **last** entry, because it names every member's nonce and chunk count
@@ -255,12 +371,13 @@ internal class BackupAppArchiveUseCase(
             // `close()` in the `finally`, which also runs on the paths that discard.
             zip.finish()
 
-            published = destination.publish()
-            return if (published) {
+            publication = destination.publish()
+            return if (publication != null) {
                 ArchiveBackupOutcome.Completed(
-                    fileName = fileName,
+                    fileName = publication.displayName,
                     header = header,
                     destinationLabel = archiveStore.currentTargetLabel(),
+                    byteSize = publication.byteSize,
                 )
             } else {
                 ArchiveBackupOutcome.Failed("the archive could not be moved to its final name")
@@ -269,9 +386,13 @@ internal class BackupAppArchiveUseCase(
             // Rethrow so the coroutine machinery sees the cancellation. The finally below discards
             // the partial destination before the coroutine unwinds further.
             throw e
-        } catch (e: Exception) {
-            Logger.e(TAG, "backup of ${request.packageName} failed", e)
-            return ArchiveBackupOutcome.Failed(e.message ?: "the backup failed")
+        } catch (e: PrivilegeExecutionException) {
+            // Root-lane failures are typed at the execution boundary. Preserve the exact instance so
+            // the worker can map it without losing the lane or command classification.
+            throw e
+        } catch (_: Exception) {
+            Logger.e(TAG, "archive backup failed package=${request.packageName}")
+            return ArchiveBackupOutcome.Failed("the backup failed")
         } finally {
             // Ends the `Deflater`'s native buffers on every path, including the cancelled and the
             // already-finished one (`ZipOutputStream.finish` is idempotent, and `close()` reaches
@@ -283,7 +404,7 @@ internal class BackupAppArchiveUseCase(
             // Precedent: the `finally` in `AppDataArchiveGatewayImpl.tarClass`. A partial `.thorbak`
             // that looks like a real archive is worse than no archive — this cleanup must complete
             // regardless.
-            if (!published) withContext(NonCancellable) { destination.discard() }
+            if (publication == null) withContext(NonCancellable) { destination.discard() }
         }
     }
 
@@ -305,12 +426,19 @@ internal class BackupAppArchiveUseCase(
         val staged = gateway.stagingFile("${request.packageName}-${dataClass.id}.tar")
         try {
             var compressed = true
-            var outcome = gateway.tarClass(request.packageName, dataClass, entries, staged, compress = true)
+            var outcome =
+                gateway.tarClass(request.packageName, dataClass, entries, staged, compress = true)
             if (outcome is TarOutcome.Failed) {
                 // §7.2 step 7c: some toybox builds have no gzip. Retry without it and record which one
                 // worked, so the reader does not try to gunzip a plain tar.
                 compressed = false
-                outcome = gateway.tarClass(request.packageName, dataClass, entries, staged, compress = false)
+                outcome = gateway.tarClass(
+                    request.packageName,
+                    dataClass,
+                    entries,
+                    staged,
+                    compress = false
+                )
             }
             when (outcome) {
                 is TarOutcome.Failed -> {
@@ -326,7 +454,7 @@ internal class BackupAppArchiveUseCase(
             val nonce = cipher.newNonce()
             zip.putNextEntry(ZipEntry(memberName))
             val stats = staged.inputStream().use { input ->
-                cipher.encryptMember(memberName, input, zip, key, nonce)
+                cipher.encryptMember(dataClass.id, memberName, input, zip, key, nonce)
             }
             zip.closeEntry()
 
@@ -335,6 +463,7 @@ internal class BackupAppArchiveUseCase(
                 fileName = memberName,
                 nonce = Base64.getEncoder().encodeToString(nonce),
                 plainBytes = stats.plainBytes,
+                cipherBytes = stats.cipherBytes,
                 chunkCount = stats.chunkCount,
                 compression = if (compressed) ArchiveCompression.GZIP.id else ArchiveCompression.NONE.id,
             )
@@ -374,7 +503,7 @@ internal class BackupAppArchiveUseCase(
         val required = size.bytes + ARCHIVE_SPACE_MARGIN_BYTES
         return if (usableStagingBytes < required) {
             "needs about ${required / (1024 * 1024)} MB free to stage and only " +
-                "${usableStagingBytes / (1024 * 1024)} MB is available"
+                    "${usableStagingBytes / (1024 * 1024)} MB is available"
         } else {
             null
         }

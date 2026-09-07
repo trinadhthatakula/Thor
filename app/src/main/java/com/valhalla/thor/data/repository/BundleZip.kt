@@ -111,6 +111,26 @@ internal fun isSafeEntryFileName(name: String): Boolean =
         !name.contains('/') &&
         !name.contains('\\')
 
+/** Reject entry-name ambiguity before any bundle consumer selects or writes bytes. */
+internal fun validateBundleEntryNames(entryNames: List<String>) {
+    if (entryNames.size != entryNames.toSet().size) {
+        throw InstallRefusedException("this archive contains duplicate entries.")
+    }
+    val apkLeaves = HashSet<String>()
+    val metadataNames = HashSet<String>()
+    entryNames.forEach { name ->
+        val leaf = name.substringAfterLast('/')
+        if (leaf.endsWith(".apk", ignoreCase = true) && !apkLeaves.add(leaf.lowercase())) {
+            throw InstallRefusedException("this archive contains ambiguous APK entries.")
+        }
+        if (!name.contains('/') && leaf.lowercase() in setOf("manifest.json", "info.json") &&
+            !metadataNames.add(leaf.lowercase())
+        ) {
+            throw InstallRefusedException("this archive contains duplicate bundle metadata.")
+        }
+    }
+}
+
 /**
  * Read at most [limit] bytes, or null if the stream holds more.
  *
@@ -234,6 +254,7 @@ object BundleZip {
                 }
             }
         }
+        validateBundleEntryNames(names)
         return BundleContents(names, bytes)
     }
 
@@ -244,6 +265,7 @@ object BundleZip {
                 .filter { !it.isDirectory }
                 .map { it.name }
                 .toList()
+                .also(::validateBundleEntryNames)
         }
 
     /**
@@ -257,9 +279,10 @@ object BundleZip {
         maxEntryBytes: Long = MAX_METADATA_ENTRY_BYTES
     ): ByteArray? =
         ZipFile(zip).use { zf ->
-            val entry = zf.entries().asSequence().firstOrNull {
-                !it.isDirectory &&
-                    it.name.substringAfterLast('/').equals(baseName, ignoreCase = true)
+            val entries = zf.entries().asSequence().filter { !it.isDirectory }.toList()
+            validateBundleEntryNames(entries.map { it.name })
+            val entry = entries.firstOrNull {
+                it.name.substringAfterLast('/').equals(baseName, ignoreCase = true)
             } ?: return null
             if (entry.size > maxEntryBytes) return null
             zf.getInputStream(entry).use { it.readAtMost(maxEntryBytes) }
@@ -291,9 +314,10 @@ object BundleZip {
     ): Boolean {
         if (!isSafeEntryFileName(baseName)) return false
         return ZipFile(zip).use { zf ->
-            val entry = zf.entries().asSequence().firstOrNull {
-                !it.isDirectory &&
-                    it.name.substringAfterLast('/').equals(baseName, ignoreCase = true)
+            val entries = zf.entries().asSequence().filter { !it.isDirectory }.toList()
+            validateBundleEntryNames(entries.map { it.name })
+            val entry = entries.firstOrNull {
+                it.name.substringAfterLast('/').equals(baseName, ignoreCase = true)
             } ?: return false
             val copied = zf.getInputStream(entry).use { input ->
                 dest.outputStream().use { output -> input.copyAtMostTo(output, maxBytes) }
@@ -309,8 +333,8 @@ object BundleZip {
     /**
      * Extract every entry whose base name is in [wantedBaseNames] (compared
      * case-insensitively) into [outDir], one file per entry named by its base name.
-     * The first match wins if two entries share a base name. Returns the extracted
-     * files (archive order).
+     * Archive-wide validation refuses shared APK base names before selection. Returns the
+     * extracted files in archive order.
      *
      * [maxTotalBytes] is a budget for the whole extraction, not per entry: a bundle is a set
      * of splits that get installed together, so what matters is what the set expands to.
@@ -334,12 +358,16 @@ object BundleZip {
      */
     internal fun extractEntries(
         zip: File,
-        wantedBaseNames: Set<String>,
+        wantedBaseNames: Collection<String>,
         outDir: File,
         maxTotalBytes: Long = MAX_EXTRACTED_TOTAL_BYTES
     ): List<ExtractedApk> {
+        val wanted = wantedBaseNames.map { it.lowercase() }
+        if (wanted.size != wanted.toSet().size) {
+            throw InstallRefusedException("the selected install set contains duplicate APK entries.")
+        }
         outDir.mkdirs()
-        val wanted = wantedBaseNames.mapTo(HashSet()) { it.lowercase() }
+        val wantedKeys = wanted.toHashSet()
         val seen = HashSet<String>()
         val out = mutableListOf<ExtractedApk>()
         var remaining = maxTotalBytes
@@ -348,15 +376,16 @@ object BundleZip {
             throw InstallRefusedException(message)
         }
         ZipFile(zip).use { zf ->
-            for (entry in zf.entries()) {
-                if (entry.isDirectory) continue
+            val entries = zf.entries().asSequence().filter { !it.isDirectory }.toList()
+            validateBundleEntryNames(entries.map { it.name })
+            for (entry in entries) {
                 val base = entry.name.substringAfterLast('/')
                 val key = base.lowercase()
                 // Wantedness first, so an unsafe name nobody asked for is skipped in silence
                 // (archives carry all sorts of junk) while an unsafe name that IS in the install
                 // set is a refusal — that one cannot be dropped, because the identity was drawn
                 // from the same list.
-                if (key !in wanted) continue
+                if (key !in wantedKeys) continue
                 if (!isSafeEntryFileName(base)) {
                     refuse("\"$base\" is not a usable file name; refusing to install this archive.")
                 }
@@ -382,9 +411,9 @@ object BundleZip {
         // Compared against the lowercased set, not [wantedBaseNames]: two wanted names differing
         // only in case are one file here, and counting the caller's set would refuse a set that
         // was in fact extracted whole.
-        if (seen.size != wanted.size) {
+        if (seen.size != wantedKeys.size) {
             refuse(
-                "this archive does not contain ${(wanted - seen).sorted().joinToString(", ")}; " +
+                "this archive does not contain ${(wantedKeys - seen).sorted().joinToString(", ")}; " +
                     "refusing to install a partial set."
             )
         }
@@ -457,6 +486,8 @@ internal fun extractExpansions(
     // case-insensitive: two leaves differing only in case are one file on disk.
     val seenLeaves = mutableSetOf<String>()
     ZipFile(zip).use { archive ->
+        val entryNames = archive.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toList()
+        validateBundleEntryNames(entryNames)
         expansions.forEach { expansion ->
             if (!isSafeObbLeafName(expansion.leafName)) {
                 refuse("this archive names a game data file Thor will not create.")

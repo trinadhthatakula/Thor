@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.repository
 
 import android.net.Uri
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.StagedPackage
 
 enum class InstallMode {
@@ -35,6 +36,13 @@ interface InstallerRepository {
      *   setting on. The portable installer passes a concrete value because it shows the user a
      *   checkbox, seeded from the setting, that they may flip for one install without the setting
      *   changing underneath them. Reaches only the shell rungs; see `installViaSessionCommand`.
+     * @param onInvocationStarted called after the repository has entered its install dispatcher and
+     *   immediately before install work begins. It does not imply success; it lets cancellation-aware
+     *   callers distinguish a call cancelled at dispatcher entry from one whose install path started.
+     * @param onInstallSucceeded operation-local proof, called only after this invocation's synchronous
+     *   installer reports success, before publishing progress or placing OBB data. Invocation entry,
+     *   global events and package presence are not proof. Session/external rungs do not call it: their
+     *   asynchronous completion is not correlated here, so cancellation ownership stays unknown.
      */
     suspend fun installPackage(
         staged: StagedPackage,
@@ -42,5 +50,8 @@ interface InstallerRepository {
         mode: InstallMode,
         canDowngrade: Boolean = false,
         grantAllPermissions: Boolean? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+        onInvocationStarted: () -> Unit = {},
+        onInstallSucceeded: () -> Unit = {},
     )
 }

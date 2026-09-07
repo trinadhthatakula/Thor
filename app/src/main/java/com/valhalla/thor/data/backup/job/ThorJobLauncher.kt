@@ -6,20 +6,23 @@ package com.valhalla.thor.data.backup.job
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import androidx.work.workDataOf
 import com.google.common.util.concurrent.ListenableFuture
-import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.ThorApplication
+import com.valhalla.thor.data.source.local.room.DataTaskDao
+import com.valhalla.thor.data.source.local.room.DataTaskSnapshot
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
+import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.domain.model.JOB_ERROR_KEY
 import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
 import com.valhalla.thor.domain.model.THOR_JOB_CHAIN
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.jobTag
+import com.valhalla.thor.domain.model.toUserFacingJobMessage
 import com.valhalla.thor.domain.repository.ArchiveJobLauncher
 import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.domain.repository.ThorJobWatcher
@@ -32,6 +35,8 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -56,9 +61,14 @@ private const val TAG = "ThorJobLauncher"
 class ThorJobLauncher(
     private val context: Context,
     private val keys: ArchiveKeyHolder,
-    private val cipher: AppArchiveCipher,
+    private val acceptance: DataTaskAcceptance,
+    private val cancellation: DataTaskCancellationCoordinator,
+    dataTaskDao: DataTaskDao,
     @Named("default") private val defaultDispatcher: CoroutineDispatcher,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ArchiveJobLauncher {
+
+    private val dataTasks = DataTaskStore(dataTaskDao)
 
     /**
      * @param passphrase **not cleared here.** The caller owns it — the backup sheet may still need it
@@ -71,22 +81,18 @@ class ThorJobLauncher(
         passphrase: CharArray,
     ): UUID? {
         // On `default`, not `io`: PBKDF2 is CPU-bound, and `io`'s pool exists for threads that block.
-        val key = withContext(defaultDispatcher) {
-            runCatching { cipher.deriveKey(passphrase, request.salt) }.getOrNull()
-        } ?: run {
-            Logger.e(TAG, "key derivation failed for ${request.packageName}")
-            return null
+        var acceptedTaskId: UUID? = null
+        val taskId = try {
+            withContext(defaultDispatcher) {
+                acceptance.acceptBackup(request, passphrase) { acceptedTaskId = it }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Logger.e(TAG, "backup acceptance failed for ${request.packageName}", failure)
+            return acceptedTaskId
         }
-
-        val work = OneTimeWorkRequestBuilder<ArchiveBackupWorker>()
-            .setInputData(workDataOf(*request.toMap().toList().toTypedArray()))
-            .addTag(jobTag(ThorJobKind.ARCHIVE_BACKUP, request.packageName))
-            .build()
-
-        // Before enqueue, not after: the worker can start the instant enqueue returns, and a worker
-        // that starts before its key is in the holder fails for the one reason it must never fail for.
-        keys.put(work.id.toString(), key)
-        return enqueueUniqueJob(context, THOR_JOB_CHAIN, work, ::abandonKey)
+        return taskId
     }
 
     /**
@@ -110,20 +116,18 @@ class ThorJobLauncher(
         salt: ByteArray,
         iterations: Int,
     ): UUID? {
-        val key = withContext(defaultDispatcher) {
-            runCatching { cipher.deriveKey(passphrase, salt, iterations) }.getOrNull()
-        } ?: run {
-            Logger.e(TAG, "key derivation failed for ${request.packageName}")
-            return null
+        var acceptedTaskId: UUID? = null
+        val taskId = try {
+            withContext(defaultDispatcher) {
+                acceptance.acceptRestore(request, passphrase, salt, iterations) { acceptedTaskId = it }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Logger.e(TAG, "restore acceptance failed for ${request.packageName}", failure)
+            return acceptedTaskId
         }
-
-        val work = OneTimeWorkRequestBuilder<ArchiveRestoreWorker>()
-            .setInputData(workDataOf(*request.toMap().toList().toTypedArray()))
-            .addTag(jobTag(ThorJobKind.ARCHIVE_RESTORE, request.packageName))
-            .build()
-
-        keys.put(work.id.toString(), key)
-        return enqueueUniqueJob(context, THOR_JOB_CHAIN, work, ::abandonKey)
+        return taskId
     }
 
     /**
@@ -132,85 +136,100 @@ class ThorJobLauncher(
      * `getWorkInfoByIdFlow` emits null for an id WorkManager no longer has — it prunes finished work
      * — so [ThorJobStatus.Gone] is the ordinary answer for an old id, not an error.
      */
-    override fun status(jobId: UUID): Flow<ThorJobStatus> =
-        WorkManager.getInstance(context).getWorkInfoByIdFlow(jobId).map { info ->
-            when (info?.state) {
-                null -> ThorJobStatus.Gone
-                WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> ThorJobStatus.Pending
-                WorkInfo.State.RUNNING -> ThorJobStatus.Running
-                // `getStringArray` is null when the worker returned a bare `Result.success()` —
-                // every backup does — and an absent array is an empty warning list, not a missing one.
-                WorkInfo.State.SUCCEEDED -> ThorJobStatus.Succeeded(
-                    info.outputData.getStringArray(JOB_WARNINGS_KEY)?.toList().orEmpty()
-                )
-                WorkInfo.State.CANCELLED -> ThorJobStatus.Cancelled
-                // `outputData` is where the worker's own sentence is; `getString` gives null when the
-                // failure came from WorkManager rather than from `fail(...)`, which Failed allows.
-                WorkInfo.State.FAILED -> ThorJobStatus.Failed(info.outputData.getString(JOB_ERROR_KEY))
-            }
-        }
+    override fun status(jobId: UUID): Flow<ThorJobStatus> = combine(
+        dataTasks.observeTask(jobId),
+        WorkManager.getInstance(context).getWorkInfoByIdFlow(jobId),
+    ) { task, legacy -> task?.toThorJobStatus() ?: legacy.toThorJobStatus() }
 
     /**
      * The unfinished job for this kind and target, if there is one.
      *
-     * By tag, not by chain name: every job shares [THOR_JOB_CHAIN], so the chain cannot tell one
-     * package's backup from another's. [jobTag] can, which is what it exists for.
+     * Active Room work is selected by its durable kind and target key. The legacy side still uses
+     * [jobTag] while released [THOR_JOB_CHAIN] work drains.
      */
-    override fun runningJobFor(kind: ThorJobKind, target: String): Flow<UUID?> =
-        WorkManager.getInstance(context)
+    override fun runningJobFor(kind: ThorJobKind, target: String): Flow<UUID?> {
+        val dataKind = kind.toDataTaskKind()
+        val durable = if (dataKind == null) {
+            flowOf(null)
+        } else {
+            dataTasks.observeActiveTaskId(dataKind, target)
+        }
+        val legacy = WorkManager.getInstance(context)
             .getWorkInfosByTagFlow(jobTag(kind, target))
             .map { infos -> infos.firstOrNull { !it.state.isFinished }?.id }
+        return combine(durable, legacy) { durableId, legacyId -> durableId ?: legacyId }
+    }
 
     /**
-     * Cancel a job this launcher started, dropping its key **first**.
-     *
-     * **No Kotlin call sites, and deliberately not on [ArchiveJobLauncher] — but not the only route
-     * to a cancelled job.** Every ongoing progress notification carries the `PendingIntent`
-     * `WorkManager.createCancelPendingIntent` builds (see [ThorJobNotifications]), so a user can
-     * cancel a *running* backup or restore from the shade without any of this class being involved.
-     * The comment that used to sit here said the opposite, and said three pieces of copy rested on
-     * it; they do not. Both watchers split their cancelled arm on whether they saw the job RUNNING
-     * — `RestoreFinish.Cancelled.workerRan`, `BackupFinish.Cancelled.workerRan` — and the arm that
-     * ran renders the damage sentence rather than "nothing was changed". §8.5's breadcrumb is the
-     * second, independent report: nothing on the cancellation path clears it, so a cancel that lands
-     * mid-swap is still announced at the next launch.
-     *
-     * This is kept because it is the only place that gets the key-drop-before-cancel order right, and
-     * a future caller writing its own would get it wrong.
-     *
-     * The order is the whole point. `ThorJobWorker`'s `finally` drops the key on every path its
-     * `doWork` can reach, but a job cancelled between [ArchiveKeyHolder.put] and WorkManager actually
-     * *starting* `doWork` never reaches it — `doWork` is never called, so no `finally` runs, and the
-     * derived key would stay in the process's memory until Thor is killed. That window is exactly the
-     * branch the base worker's own comment defers to this class.
-     *
-     * Dropping first also makes the ordering safe the other way round: if the worker is already
-     * running, it has already `take`n the key and this drop is a no-op on an absent entry.
-     *
-     * **This covers only an explicit cancel.** A job can also be cancelled with nobody calling this:
-     * `beginUniqueWork(…, APPEND_OR_REPLACE, …)` appends to a live chain as a *dependent*, and
-     * WorkManager cancels the dependents of a prerequisite that returns `Result.failure()` — so a
-     * failed backup cancels the restore queued behind it, `doWork` never runs, and nothing here
-     * observes it. That branch is closed by [ArchiveKeyHolder]'s own expiry rather than by an observer
-     * here: the policy came from the plan and is not this class's to change, and an expiry can be
-     * pinned by a JVM test where a `WorkInfo` observer cannot.
+     * Cancels a Room task through its task-scoped coordinator, or falls back to WorkManager for a
+     * persisted legacy id. The Room lookup, rather than process-local registration, keeps routing
+     * correct after process recreation.
      */
     fun cancel(jobId: UUID) {
-        keys.drop(jobId.toString())
-        runCatching { WorkManager.getInstance(context).cancelWorkById(jobId) }
-            .onFailure { Logger.e(TAG, "could not cancel $jobId", it) }
+        val application = context.applicationContext as ThorApplication
+        application.launchInApplicationScope(ioDispatcher) {
+            if (dataTasks.loadTask(jobId) != null) {
+                cancellation.cancel(jobId)
+            } else {
+                keys.drop(jobId.toString())
+                runCatching { WorkManager.getInstance(context).cancelWorkById(jobId) }
+                    .onFailure { Logger.e(TAG, "could not cancel $jobId", it) }
+            }
+        }
     }
+}
 
-    /**
-     * The cleanup [enqueueUniqueJob] performs when a request never made it into the database.
-     *
-     * Key material must not sit in memory for a job that will never run. A sweep launcher passes
-     * something else here, or nothing at all — which is why the generic function takes it as a
-     * parameter rather than knowing about keys.
-     */
-    private fun abandonKey(id: UUID) {
-        keys.drop(id.toString())
-    }
+internal fun DataTaskSnapshot.toThorJobStatus(): ThorJobStatus = when (state) {
+    DataTaskState.QUEUED, DataTaskState.STAGING_SOURCE -> ThorJobStatus.Pending
+    DataTaskState.RUNNING, DataTaskState.CANCEL_REQUESTED -> ThorJobStatus.Running
+    DataTaskState.READY, DataTaskState.SUCCEEDED -> ThorJobStatus.Succeeded(warnings)
+    DataTaskState.READY_PARTIAL, DataTaskState.PARTIAL ->
+        ThorJobStatus.Succeeded(warnings)
+
+    DataTaskState.CANCELLED -> ThorJobStatus.Cancelled
+    DataTaskState.WAITING_FOR_AUTH,
+    DataTaskState.WAITING_FOR_SOURCE,
+    DataTaskState.INTERRUPTED_REVIEW,
+    DataTaskState.START_BLOCKED,
+    DataTaskState.START_BLOCKED_NOTIFICATION,
+    DataTaskState.FAILED,
+    DataTaskState.EXPIRED,
+        -> ThorJobStatus.Failed(failureReason ?: userFacingFallback())
+}
+
+private fun DataTaskSnapshot.userFacingFallback(): String = when (state) {
+    DataTaskState.WAITING_FOR_AUTH ->
+        "this archive's key is no longer in memory — start it again"
+
+    DataTaskState.WAITING_FOR_SOURCE -> "Thor could not read that backup file"
+    DataTaskState.INTERRUPTED_REVIEW ->
+        "this restore stopped after it began changing the app; review it before trying again"
+
+    DataTaskState.START_BLOCKED_NOTIFICATION ->
+        "allow Thor notifications, then try the operation again"
+
+    DataTaskState.START_BLOCKED -> "Android would not allow Thor to start the operation"
+    DataTaskState.EXPIRED -> "this job expired before it could be completed"
+    else -> resultCode?.toUserFacingJobMessage() ?: "the archive job could not be completed"
+}
+
+private fun WorkInfo?.toThorJobStatus(): ThorJobStatus = when (this?.state) {
+    null -> ThorJobStatus.Gone
+    WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> ThorJobStatus.Pending
+    WorkInfo.State.RUNNING -> ThorJobStatus.Running
+    WorkInfo.State.SUCCEEDED -> ThorJobStatus.Succeeded(
+        outputData.getStringArray(JOB_WARNINGS_KEY)?.toList().orEmpty()
+    )
+
+    WorkInfo.State.CANCELLED -> ThorJobStatus.Cancelled
+    WorkInfo.State.FAILED -> ThorJobStatus.Failed(outputData.getString(JOB_ERROR_KEY))
+}
+
+private fun ThorJobKind.toDataTaskKind(): DataTaskKind? = when (this) {
+    ThorJobKind.ARCHIVE_BACKUP -> DataTaskKind.ARCHIVE_BACKUP
+    ThorJobKind.ARCHIVE_RESTORE -> DataTaskKind.ARCHIVE_RESTORE
+    ThorJobKind.APP_EXPORT -> DataTaskKind.APP_EXPORT
+    ThorJobKind.PRIVILEGE_SWEEP -> null
 }
 
 /**
@@ -247,6 +266,22 @@ internal suspend fun enqueueUniqueJob(
     chainName: String,
     work: OneTimeWorkRequest,
     onAbandoned: (UUID) -> Unit = {},
+): UUID? = enqueueUniqueJob(chainName, work, onAbandoned) {
+    WorkManager.getInstance(context)
+        .beginUniqueWork(chainName, ExistingWorkPolicy.APPEND_OR_REPLACE, work)
+        .enqueue()
+}
+
+/**
+ * Testable operation-producing half of [enqueueUniqueJob]. A sweep supplies its WorkManager adapter
+ * here so its Room-to-WorkManager handoff can hold the shared process gate until this exact
+ * [Operation] settles.
+ */
+internal suspend fun enqueueUniqueJob(
+    chainName: String,
+    work: OneTimeWorkRequest,
+    onAbandoned: (UUID) -> Unit = {},
+    enqueue: () -> Operation,
 ): UUID? {
     val id = work.id
     fun abandon(what: String, cause: Throwable): UUID? {
@@ -256,9 +291,7 @@ internal suspend fun enqueueUniqueJob(
     }
 
     val operation = try {
-        WorkManager.getInstance(context)
-            .beginUniqueWork(chainName, ExistingWorkPolicy.APPEND_OR_REPLACE, work)
-            .enqueue()
+        enqueue()
     } catch (e: Exception) {
         return abandon("enqueue was refused", e)
     }

@@ -4,26 +4,44 @@
 package com.valhalla.thor.presentation.freezer
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepSpec
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import com.valhalla.thor.domain.model.TaskQueueKind
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
-import com.valhalla.thor.presentation.FakeBulkFreezeController
 import com.valhalla.thor.presentation.FakeFreezeProfileRepository
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
+import com.valhalla.thor.presentation.FakePrivilegeSweepController
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.presentation.navigation.TaskNavigationRequest
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.privilegeSweepResolver
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -36,6 +54,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.util.UUID
 
 /**
  * The Freezer screen's half of the watchlist-removal contract: **removing always restores, and a
@@ -73,13 +92,15 @@ class FreezerViewModelTest {
     private lateinit var shortcuts: FakeAppShortcutController
     private lateinit var privilege: FakePrivilegeStateProvider
     private lateinit var profiles: FakeFreezeProfileRepository
+    private lateinit var prefs: FakePreferenceRepository
+    private lateinit var taskNavigationTargets: TaskNavigationTargets
 
     /**
      * Held as a field, not built inline, so a test can set the outcome a run answers with before
      * the view model asks. The runner is the one collaborator here whose *result* the view model
      * has to interpret rather than merely record.
      */
-    private lateinit var bulkFreeze: FakeBulkFreezeController
+    private lateinit var sweepController: FakePrivilegeSweepController
 
     /**
      * The three fakes' calls in one list.
@@ -100,20 +121,35 @@ class FreezerViewModelTest {
         shortcuts = FakeAppShortcutController(trace = trace)
         privilege = FakePrivilegeStateProvider()
         profiles = FakeFreezeProfileRepository()
-        bulkFreeze = FakeBulkFreezeController()
+        prefs = FakePreferenceRepository()
+        sweepController = FakePrivilegeSweepController()
+        taskNavigationTargets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
     }
 
-    private fun viewModel(): FreezerViewModel {
-        val manageAppUseCase = ManageAppUseCase(system)
+    private fun viewModel(
+        controller: PrivilegeSweepController = sweepController,
+    ): FreezerViewModel {
+        val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         return FreezerViewModel(
             freezerRepository = freezer,
             freezeProfileRepository = profiles,
-            bulkFreeze = bulkFreeze,
+            profileSubmission = ProfileSubmissionCoordinator(
+                privilegeSweepResolver(
+                    freezerRepository = freezer,
+                    freezeProfileRepository = profiles,
+                    preferenceRepository = prefs,
+                ),
+                controller,
+                taskNavigationTargets,
+                mainDispatcherRule.dispatcher,
+            ),
+            sweepController = controller,
+            taskNavigationTargets = taskNavigationTargets,
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             manageAppUseCase = manageAppUseCase,
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
             privilege = privilege,
-            preferenceRepository = FakePreferenceRepository(),
+            preferenceRepository = prefs,
             appShortcuts = shortcuts,
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = mainDispatcherRule.dispatcher
@@ -694,49 +730,165 @@ class FreezerViewModelTest {
             )
         }
 
-    /**
-     * A profile run that could not start for want of privilege must not report the profile.
-     *
-     * `NothingToDo` used to be a bare object, so this surface picked "Nothing to do for this
-     * profile" — a sentence about the profile's contents — for a run that never looked at them.
-     * With a full profile and a dead Shizuku binder that is both false and misdirecting: it sends
-     * the user to edit a profile that is fine, and says nothing about the one thing they can fix.
-     */
     @Test
-    fun `a profile run blocked by privilege names the privilege, not the profile`() = runTest {
+    fun `profile resolves current members and configured freezer mode before enqueue`() = runTest {
+        profiles.create("Morning", listOf("z", "a"))
+        prefs.setFreezerMode(FreezerMode.SUSPEND)
         val vm = viewModel()
-        val seen = events(vm)
 
-        bulkFreeze.outcome = BulkOutcome.NothingToDo(NoOpReason.NO_PRIVILEGE)
         vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
         runCurrent()
 
+        assertEquals(1, sweepController.launched.size)
+        assertEquals(listOf("a", "z"), sweepController.launched.single().packageNames)
+        assertEquals(FreezerMode.SUSPEND, sweepController.launched.single().freezerMode)
+        assertEquals(PrivilegeSweepSource.PROFILE, sweepController.launched.single().source)
+    }
+
+    @Test
+    fun `profile opens provisional detail before acceptance completes`() = runTest {
+        profiles.create("Morning", listOf("a", "b"))
+        val launchStarted = CompletableDeferred<Unit>()
+        val releaseLaunch = CompletableDeferred<Unit>()
+        val blockingController = object : PrivilegeSweepController by sweepController {
+            override suspend fun launch(
+                requestId: UUID,
+                spec: PrivilegeSweepSpec,
+            ): PrivilegeSweepLaunchResult {
+                launchStarted.complete(Unit)
+                releaseLaunch.await()
+                return sweepController.launch(requestId, spec)
+            }
+        }
+        val vm = viewModel(blockingController)
+        val firstRequest = async { taskNavigationTargets.requests.first() }
+
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        assertTrue("the acceptance call reached its suspension point", launchStarted.isCompleted)
+        val provisional = firstRequest.await() as TaskNavigationRequest.OpenProvisional
         assertEquals(
-            listOf(
-                FreezerEvent.ShowToast(
-                    UiText.StringResource(R.string.tile_grant_privilege_toast)
-                )
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.FREEZE.name,
             ),
-            seen
+            provisional.identity,
+        )
+        assertTrue("durable acceptance is still suspended", sweepController.launched.isEmpty())
+
+        releaseLaunch.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf(provisional.taskId), sweepController.launchedRequestIds)
+    }
+
+    @Test
+    fun `profile launch passes candidate id and maps canonical acceptance in order`() = runTest {
+        profiles.create("Morning", listOf("a"))
+        val canonicalTaskId = UUID(0L, 73L)
+        sweepController.nextLaunchResult = PrivilegeSweepLaunchResult.Accepted(
+            requestId = canonicalTaskId,
+            workId = UUID(1L, 73L),
+            coalesced = true,
+        )
+        val vm = viewModel()
+        val requests = async { taskNavigationTargets.requests.take(2).toList() }
+
+        vm.runProfile(profileId = 1L, op = BulkOp.UNFREEZE)
+        runCurrent()
+
+        val navigation = requests.await()
+        val provisional = navigation.first() as TaskNavigationRequest.OpenProvisional
+        assertEquals(
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.UNFREEZE.name,
+            ),
+            provisional.identity,
+        )
+        assertEquals(listOf(provisional.taskId), sweepController.launchedRequestIds)
+        assertEquals(
+            TaskNavigationRequest.Accepted(provisional.taskId, canonicalTaskId),
+            navigation[1],
         )
     }
 
-    /** And the other half: an empty target list is still a statement about the profile. */
     @Test
-    fun `a profile run with nothing left to act on still names the profile`() = runTest {
+    fun `profile launch rejection rejects the same provisional detail`() = runTest {
+        profiles.create("Morning", listOf("a"))
+        sweepController.nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(
+            PrivilegeSweepLaunchRejection.NoPrivilege
+        )
         val vm = viewModel()
         val seen = events(vm)
+        val requests = async { taskNavigationTargets.requests.take(2).toList() }
 
-        bulkFreeze.outcome = BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
         vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
         runCurrent()
 
-        assertEquals(
-            listOf(
-                FreezerEvent.ShowToast(UiText.StringResource(R.string.profile_nothing_to_do))
-            ),
-            seen
+        val navigation = requests.await()
+        val provisional = navigation.first() as TaskNavigationRequest.OpenProvisional
+        assertEquals(listOf(provisional.taskId), sweepController.launchedRequestIds)
+        assertEquals(TaskNavigationRequest.Rejected(provisional.taskId), navigation[1])
+        assertTrue("the task detail owns the launch failure", seen.isEmpty())
+    }
+
+    @Test
+    fun `profile launch exception rejects the exact provisional task`() = runTest {
+        profiles.create("Morning", listOf("a"))
+        sweepController.launchFailure = IllegalStateException("acceptance failed")
+        val requests = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            taskNavigationTargets.requests.collect(requests::add)
+        }
+        val vm = viewModel()
+
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        assertEquals(2, requests.size)
+        val provisional = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(TaskNavigationRequest.Rejected(provisional.taskId), requests[1])
+    }
+
+    @Test
+    fun `active requests publish all retained profile and unrelated work in order`() = runTest {
+        fun retained(
+            requestNumber: Long,
+            source: PrivilegeSweepSource,
+            phase: PrivilegeSweepPhase,
+        ) = PrivilegeSweepStatus(
+            requestId = UUID(0L, requestNumber),
+            workId = UUID(1L, requestNumber),
+            operation = PrivilegeSweepOperation.FREEZE,
+            source = source,
+            phase = phase,
+            total = 3,
+            succeeded = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
+            failed = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
+            busy = 0,
+            unresolved = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 3,
+            rootLaneDegraded = false,
+            profileIds = if (source == PrivilegeSweepSource.PROFILE) setOf(1L) else emptySet(),
         )
+        val profileRequest = retained(
+            requestNumber = 92L,
+            source = PrivilegeSweepSource.PROFILE,
+            phase = PrivilegeSweepPhase.QUEUED,
+        )
+        val mainRequest = retained(
+            requestNumber = 91L,
+            source = PrivilegeSweepSource.MAIN,
+            phase = PrivilegeSweepPhase.PARTIAL,
+        )
+        val vm = viewModel()
+
+        sweepController.emit(profileRequest)
+        sweepController.emit(mainRequest)
+        runCurrent()
+
+        assertEquals(listOf(profileRequest, mainRequest), vm.uiState.value.runningRequests)
     }
 
     // --- The watchlist writes that were still unguarded (fix/freezer-bookkeeping-crashes) ---

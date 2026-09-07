@@ -5,6 +5,29 @@ package com.valhalla.thor.domain.repository
 
 import java.io.OutputStream
 
+/** Public, non-secret metadata for a final archive at the user's chosen destination. */
+data class ArchivePublication(
+    val displayName: String,
+    val byteSize: Long,
+) {
+    init {
+        require(displayName.isNotBlank())
+        require(byteSize >= 0L)
+    }
+}
+
+/** A previously published archive opened by its task-owned deterministic final name. */
+data class PublishedArchive(
+    val source: ArchiveSource,
+    val displayName: String,
+    val byteSize: Long,
+) {
+    init {
+        require(displayName.isNotBlank())
+        require(byteSize >= 0L)
+    }
+}
+
 /**
  * One archive being written, at its destination.
  *
@@ -18,14 +41,13 @@ interface ArchiveDestination {
     val output: OutputStream
 
     /**
-     * Make the archive visible under its final name. False when it could not be promoted.
+     * Make the archive visible under its final name and return its actual public metadata.
      *
-     * Deliberately **not** returning the published `Uri`. Nothing downstream needs one — the
-     * completion message names the destination label, not a path — and a port returning `Uri` cannot
-     * be faked in a JVM test, because `android.net.Uri` throws "not mocked". That would leave the
-     * backup use case's whole success path untestable in exchange for a value no caller reads.
+     * The backend may assign a different display name. A URI is deliberately not exposed: queue
+     * history needs only the display name and byte count, and neither is private capability material.
+     * Null means the partial could not be promoted.
      */
-    suspend fun publish(): Boolean
+    suspend fun publish(): ArchivePublication?
 
     /** Delete the partial archive. Safe to call after [publish]; then it does nothing. */
     suspend fun discard()
@@ -46,6 +68,13 @@ interface AppArchiveStore {
      *   Downloads. Callers surface that as "choose a folder", never as a failed backup.
      */
     suspend fun openArchive(fileName: String): ArchiveDestination?
+
+    /**
+     * Open the exact final archive named by a durable task, or null when it is absent or unreadable.
+     * The returned source belongs to the caller. Implementations must never broaden this into a prefix
+     * or wildcard search inside a user-selected folder.
+     */
+    suspend fun openPublishedArchive(fileName: String): PublishedArchive? = null
 
     /** Human-readable destination, for the confirm sheet. Mirrors `AppBundleFileStore`'s. */
     suspend fun currentTargetLabel(): String

@@ -4,12 +4,14 @@
 package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
@@ -34,81 +36,134 @@ private const val PKG = "com.some.system.app"
  */
 private class RecordingSystemRepository : SystemRepository {
     val calls = mutableListOf<String>()
+    val executions = mutableListOf<PrivilegeExecutionContext>()
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
+    override suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         calls += "setAppDisabled($packageName, $isDisabled)"
+        executions += execution
         return Result.success(Unit)
     }
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
+    override suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         calls += "setAppSuspended($packageName, $isSuspended)"
+        executions += execution
         return Result.success(Unit)
     }
 
     // Nothing else belongs on a freeze path. These throw rather than record so a stray call is a
     // loud failure instead of a line in `calls` that no assertion happens to look at.
-    override suspend fun isRootAvailable(): Boolean = error("off the freeze path")
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ): Boolean = error("off the freeze path")
+
     override suspend fun isShizukuAvailable(): Boolean = error("off the freeze path")
     override suspend fun isDhizukuAvailable(): Boolean = error("off the freeze path")
-    override suspend fun forceStopApp(packageName: String): Result<Unit> =
+    override suspend fun forceStopApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         error("off the freeze path")
 
-    override suspend fun clearCache(packageName: String): Result<Long?> =
+    override suspend fun clearCache(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Long?> =
         error("off the freeze path")
 
-    override suspend fun clearAllCaches(): Result<Long?> = error("off the freeze path")
+    override suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> = error("off the freeze path")
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> =
+    override suspend fun clearAppData(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         error("off the freeze path")
 
     override suspend fun setAppRestricted(
         packageName: String,
         isRestricted: Boolean,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = error("off the freeze path")
 
-    override suspend fun uninstallApp(packageName: String): Result<Unit> =
+    override suspend fun uninstallApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         error("off the freeze path")
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> = error("off the freeze path")
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = error("off the freeze path")
 
-    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> =
+    override suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         error("off the freeze path")
 
     override suspend fun copyFileWithRoot(
         sourcePath: String,
         destinationPath: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = error("off the freeze path")
 
-    override suspend fun getAppPaths(packageName: String): Result<List<String>> =
+    override suspend fun getAppPaths(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<List<String>> =
         error("off the freeze path")
 
     override suspend fun grantPermission(
         packageName: String,
         permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = error("off the freeze path")
 
     override suspend fun revokePermission(
         packageName: String,
         permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = error("off the freeze path")
 
-    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> =
+    override suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Pair<Int, String?>> =
         error("off the freeze path")
 
-    override suspend fun probeObb(packageName: String): ObbProbe = error("off the freeze path")
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe = error("off the freeze path")
 
     override suspend fun setComponentEnabled(
         packageName: String,
         className: String,
         state: ComponentEnabledState,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = error("off the freeze path")
 
     override suspend fun forceLaunchActivity(
         packageName: String,
         className: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = error("off the freeze path")
 
-    override suspend fun stopService(packageName: String, className: String): Result<Unit> =
+    override suspend fun stopService(
+        packageName: String,
+        className: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         error("off the freeze path")
 }
 
@@ -160,7 +215,7 @@ private class FakeAppRepository(private val details: (String) -> AppInfo?) : App
 class FreezeAppUseCaseTest {
 
     private val system = RecordingSystemRepository()
-    private val manage = ManageAppUseCase(system)
+    private val manage = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
     private var details: (String) -> AppInfo? = { error("this test set no tier") }
     private val repository = FakeAppRepository { details(it) }
     private val gate = FreezeAppUseCase(repository, manage)
@@ -391,7 +446,7 @@ class FreezeAppUseCaseTest {
     fun `the freeze primitive stays ungated so a batch skip is reported once`() = runTest {
         // It freezes whatever it is handed and never resolves a tier (`lookups` stays empty).
         // Deliberate, and the reason the gate is a separate use case rather than a check inside
-        // ManageAppUseCase. BulkFreezeRunner, MainViewModel.performCountedFreeze and
+        // ManageAppUseCase. the privilege sweep worker, MainViewModel.performCountedFreeze and
         // AppListViewModel.performMultiAction classify their whole target list against one
         // shared snapshot (freezableCandidates / freezeTier), count the blocked ones as skipped,
         // and then call this primitive per survivor. If it refused as well, a blocked app would

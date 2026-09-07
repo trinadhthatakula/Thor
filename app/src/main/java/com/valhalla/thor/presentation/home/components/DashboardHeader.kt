@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.presentation.queue.QueueNavigationButton
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
@@ -61,6 +62,7 @@ fun DashboardHeader(
     onTypeChanged: (AppListType) -> Unit,
     onPrivilegeChanged: (PrivilegeMode) -> Unit,
     onRestrictedStatusClick: () -> Unit,
+    onNavigateToQueue: () -> Unit,
     modifier: Modifier = Modifier,
     extensionsUnlocked: Boolean = false,
     onCrack: () -> Unit = {},
@@ -96,6 +98,8 @@ fun DashboardHeader(
                 onModeSelected = onPrivilegeChanged,
                 onClick = onRestrictedStatusClick
             )
+
+            QueueNavigationButton(onClick = onNavigateToQueue)
 
             // App Type Switcher
             ConnectedButtonGroup(
@@ -307,4 +311,3 @@ private fun StatusIcon(
         )
     }
 }
-

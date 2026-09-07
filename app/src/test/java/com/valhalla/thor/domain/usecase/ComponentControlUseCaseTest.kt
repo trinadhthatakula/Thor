@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.ComponentDetail
 import com.valhalla.thor.domain.model.ComponentOverride
 import com.valhalla.thor.domain.model.ComponentType
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.ComponentOverrideRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.flow.Flow
@@ -516,80 +517,135 @@ private class FakeSystem(
 ) : SystemRepository {
 
     val calls = mutableListOf<String>()
+    val executions = mutableListOf<PrivilegeExecutionContext>()
 
     override suspend fun setComponentEnabled(
         packageName: String,
         className: String,
         state: ComponentEnabledState,
-    ): Result<Unit> = record("setComponentEnabled:$packageName:$className:$state")
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = record("setComponentEnabled:$packageName:$className:$state", execution)
 
     override suspend fun forceLaunchActivity(
         packageName: String,
         className: String,
-    ): Result<Unit> = record("forceLaunchActivity:$packageName:$className")
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = record("forceLaunchActivity:$packageName:$className", execution)
 
-    override suspend fun stopService(packageName: String, className: String): Result<Unit> =
-        record("stopService:$packageName:$className")
+    override suspend fun stopService(
+        packageName: String,
+        className: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = record("stopService:$packageName:$className", execution)
 
-    private fun record(call: String): Result<Unit> {
+    private fun record(
+        call: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
         calls += call
+        executions += execution
         return respond(call)
     }
 
-    override suspend fun isRootAvailable(): Boolean = unreachable("isRootAvailable")
+    override suspend fun isRootAvailable(
+        execution: PrivilegeExecutionContext,
+    ): Boolean = unreachable("isRootAvailable")
+
     override suspend fun isShizukuAvailable(): Boolean = unreachable("isShizukuAvailable")
     override suspend fun isDhizukuAvailable(): Boolean = unreachable("isDhizukuAvailable")
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> =
+    override suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         unreachable("setAppDisabled")
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> =
+    override suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         unreachable("setAppSuspended")
 
-    override suspend fun forceStopApp(packageName: String): Result<Unit> =
+    override suspend fun forceStopApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         unreachable("forceStopApp")
 
-    override suspend fun clearCache(packageName: String): Result<Long?> = unreachable("clearCache")
-    override suspend fun clearAllCaches(): Result<Long?> = unreachable("clearAllCaches")
+    override suspend fun clearCache(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Long?> = unreachable("clearCache")
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> =
+    override suspend fun clearAllCaches(
+        execution: PrivilegeExecutionContext,
+    ): Result<Long?> = unreachable("clearAllCaches")
+
+    override suspend fun clearAppData(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         unreachable("clearAppData")
 
     override suspend fun setAppRestricted(
         packageName: String,
         isRestricted: Boolean,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = unreachable("setAppRestricted")
 
-    override suspend fun uninstallApp(packageName: String): Result<Unit> =
+    override suspend fun uninstallApp(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         unreachable("uninstallApp")
 
-    override suspend fun rebootDevice(reason: String): Result<Unit> = unreachable("rebootDevice")
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = unreachable("rebootDevice")
 
-    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> =
+    override suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Unit> =
         unreachable("reinstallAppWithGoogle")
 
     override suspend fun copyFileWithRoot(
         sourcePath: String,
         destinationPath: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = unreachable("copyFileWithRoot")
 
-    override suspend fun getAppPaths(packageName: String): Result<List<String>> =
+    override suspend fun getAppPaths(
+        packageName: String,
+        execution: PrivilegeExecutionContext
+    ): Result<List<String>> =
         unreachable("getAppPaths")
 
     override suspend fun grantPermission(
         packageName: String,
         permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = unreachable("grantPermission")
 
     override suspend fun revokePermission(
         packageName: String,
         permissionName: String,
+        execution: PrivilegeExecutionContext,
     ): Result<Unit> = unreachable("revokePermission")
 
-    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> =
+    override suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext
+    ): Result<Pair<Int, String?>> =
         unreachable("executeShellCommand")
 
-    override suspend fun probeObb(packageName: String): ObbProbe = unreachable("probeObb")
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe = unreachable("probeObb")
 
     private fun unreachable(name: String): Nothing =
         throw UnsupportedOperationException("$name is off the component-control path")

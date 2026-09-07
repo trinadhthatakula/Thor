@@ -10,13 +10,22 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.data.backup.job.JobSheetTarget
 import com.valhalla.thor.data.backup.job.JobSheetTargets
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppShareRequest
+import com.valhalla.thor.domain.model.AppShareTarget
+import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.presentation.share.ShareSubmissionCoordinator
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.FreezeTier
-import com.valhalla.thor.domain.model.Installers
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.isActive
@@ -29,10 +38,15 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.presentation.home.AppDestinations
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.ServiceQueueLatencyProbe
+import com.valhalla.thor.util.ServiceQueueOperation
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
 import com.valhalla.thor.util.asUiText
@@ -49,6 +63,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import java.util.UUID
 
 /**
  * Side Effects: One-time events that the UI must handle (Navigation, Intents).
@@ -58,7 +73,6 @@ sealed interface MainSideEffect {
     data class OpenAppSettings(val packageName: String) : MainSideEffect
     /** [mime] describes the container that was actually built, not the app it came from. */
     data class ShareApp(val uri: android.net.Uri, val mime: String) : MainSideEffect
-    data class ShareApps(val uris: List<android.net.Uri>) : MainSideEffect
     data class NormalUninstall(val packageName: String) : MainSideEffect
 
     /** Transient user feedback (Toast). Consumed once by the screen, never re-shown on recomposition. */
@@ -88,25 +102,10 @@ data class LoggerState(
 )
 
 /**
- * Compact count-only progress for bulk freeze / unfreeze. Unlike [LoggerState] it
- * never lists app names — just a live `processed / total` count — and auto-dismisses
- * shortly after a fully-successful run.
- */
-data class FreezeLoggerState(
-    val isVisible: Boolean = false,
-    val isFreeze: Boolean = true,
-    val total: Int = 0,
-    val processed: Int = 0,
-    val failed: Int = 0,
-    val isComplete: Boolean = false
-)
-
-/**
  * Live view of the multi-app export owned by [BackupRunner]; null when nothing is exporting.
  *
- * It looks like [FreezeLoggerState] but is not its sibling: that one describes work this ViewModel
- * is doing, so it has an `isComplete` flag and a dismiss call. This one only *watches* a run that
- * outlives the ViewModel — the run ending is the dismissal, and the outcome arrives separately as
+ * This is only a process-local view of a run that outlives the ViewModel — the run ending is the
+ * dismissal, and the outcome arrives separately as
  * a [MainSideEffect.Message], so there is nothing here to complete or dismiss.
  */
 data class ExportProgressState(
@@ -208,7 +207,6 @@ data class BackupSheetState(val packageName: String, val appLabel: String)
 data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val fixStoreSelection: FixStoreSelection? = null, // Fix Store picker, null when closed
-    val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
     val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
     val cacheClear: CacheClearState? = null, // Whole-device cache clear, null when idle
     val restoreSheet: RestoreSheetState? = null, // Archive restore sheet, null when closed
@@ -235,6 +233,10 @@ class MainViewModel(
     // Where a tap on a running job's notification arrives. A plain in-memory holder, so it costs
     // nothing to observe and stays on the JVM test classpath.
     private val jobSheetTargets: JobSheetTargets,
+    private val sweepResolver: PrivilegeSweepTargetResolver,
+    private val sweepController: PrivilegeSweepController,
+    private val taskNavigationTargets: TaskNavigationTargets,
+    private val shareSubmissionCoordinator: ShareSubmissionCoordinator,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -837,25 +839,26 @@ class MainViewModel(
     // --- Multi App Action Handler ---
 
     fun onMultiAppAction(action: MultiAppAction) {
+        if (action is MultiAppAction.Share) {
+            if (action.appList.isEmpty()) return
+            val request = AppShareRequest(action.appList.map { AppShareTarget(it.packageName, it.appName) })
+            val taskId = UUID.randomUUID()
+            taskNavigationTargets.requestOpenProvisional(
+                taskId,
+                ProvisionalTaskIdentity(TaskQueueKind.DATA, DataTaskKind.SHARE_PREPARE.name),
+            )
+            shareSubmissionCoordinator.submit(taskId, request)
+            return
+        }
+        if (action is MultiAppAction.ReInstall || action is MultiAppAction.ClearCache) {
+            ServiceQueueLatencyProbe.begin(ServiceQueueOperation.PRIVILEGE_SWEEP)
+        }
         viewModelScope.launch {
             when (action) {
-                is MultiAppAction.ReInstall -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_reinstalling_batch),
-                    action.appList
-                ) { appInfo ->
-                    val result = manageAppUseCase.reinstallAppWithGoogle(appInfo.packageName)
-                    if (result.isSuccess) {
-                        result
-                    } else {
-                        // appInfo.isDebuggable is already resolved on the domain model (from the
-                        // installed-app scan), so no PackageManager lookup is needed here.
-                        if (appInfo.isDebuggable) {
-                            Result.failure(UiTextException(UiText.StringResource(R.string.error_debuggable_app)))
-                        } else {
-                            result
-                        }
-                    }
-                }
+                is MultiAppAction.ReInstall -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.REINSTALL,
+                    apps = action.appList,
+                )
 
                 is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true, useSuspend = action.useSuspend)
 
@@ -880,17 +883,10 @@ class MainViewModel(
                     }
                 }
 
-                // Root-only, like every per-package clear. The freed byte counts are discarded here
-                // on purpose: this path reports through the batch logger, which speaks in
-                // per-app success/failure lines, and a running total interleaved with them would be
-                // the one number on screen that nothing else agrees with. The whole-device clear is
-                // where a total belongs.
-                is MultiAppAction.ClearCache -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_clearing_cache_batch),
-                    action.appList
-                ) {
-                    manageAppUseCase.clearCache(it.packageName).map { }
-                }
+                is MultiAppAction.ClearCache -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.CLEAR_CACHE,
+                    apps = action.appList,
+                )
 
                 is MultiAppAction.Uninstall -> {
                     // The uninstalls this batch could not write down. Collected and reported once at
@@ -977,61 +973,8 @@ class MainViewModel(
                     manageAppUseCase.setAppSuspended(it.packageName, false)
                 }
 
-                is MultiAppAction.Share -> {
-                    viewModelScope.launch {
-                        // `canStop` and the break below are what every other batch has had since
-                        // `performLoggedMultiAction` grew them. This loop is hand-rolled — it
-                        // collects Uris rather than counting successes, which is why it never went
-                        // through the shared helper — and the Stop button was simply never wired
-                        // to it. Preparing 50 installer bundles is the slowest batch Thor has, so
-                        // it was the one batch most likely to be stopped and the only one that
-                        // could not be.
-                        startLogger(
-                            UiText.StringResource(R.string.log_sharing_batch),
-                            canStop = action.appList.size > 1
-                        )
-                        val uris = mutableListOf<android.net.Uri>()
-                        var processed = 0
-
-                        withContext(ioDispatcher) {
-                            for ((index, app) in action.appList.withIndex()) {
-                                // Between apps, never during one — same contract as
-                                // `performLoggedMultiAction`. Whatever is already staged is still
-                                // shared; stopping declines to prepare the rest, it does not
-                                // discard the work already done.
-                                if (stopRequested) break
-                                addLog(UiText.StringResource(R.string.log_batch_preparing, index + 1, action.appList.size, app.appName ?: ""))
-                                val result = shareAppUseCase(app)
-                                processed++
-                                if (result.isSuccess) {
-                                    uris.add(result.getOrThrow())
-                                    addLog(UiText.StringResource(R.string.log_ready))
-                                } else {
-                                    val exception = result.exceptionOrNull()
-                                    val errorLog = if (exception is UiTextException) {
-                                        UiText.StringResource(R.string.log_failed, exception.uiText)
-                                    } else {
-                                        UiText.StringResource(R.string.log_failed, exception?.message ?: "")
-                                    }
-                                    addLog(errorLog)
-                                }
-                            }
-                        }
-
-                        // `processed <`, not `stopRequested` alone — see the same gate at the end of
-                        // [performLoggedMultiAction] for why. A Stop tapped while the last
-                        // `shareAppUseCase` runs would otherwise report "Stopped: 20 of 20".
-                        if (processed < action.appList.size) {
-                            addLog(UiText.StringResource(R.string.log_stopped, processed, action.appList.size))
-                        }
-                        if (uris.isNotEmpty()) {
-                            dismissLogger()
-                            _effect.send(MainSideEffect.ShareApps(uris))
-                        } else {
-                            finishLogger()
-                        }
-                    }
-                }
+                // Admission was handed to the process-owned coordinator before this coroutine.
+                is MultiAppAction.Share -> Unit
 
                 // Deliberately not run here. Exporting 200 apps takes minutes and has to survive
                 // the toolbox, this ViewModel and usually the Activity behind it, so the work
@@ -1044,78 +987,67 @@ class MainViewModel(
         }
     }
 
-    /**
-     * Bulk freeze / unfreeze with compact count-only progress ([FreezeLoggerState]).
-     * Unsafe / UAD-failed system apps are excluded from the freeze set up-front (so the
-     * total reflects only what we actually attempt), then each app is toggled
-     * sequentially with a live `processed / total` count.
-     */
-    private suspend fun performCountedFreeze(apps: List<AppInfo>, isFreeze: Boolean, useSuspend: Boolean = false) {
+    /** Snapshots a selection and opens its durable task detail while it is accepted. */
+    private suspend fun performCountedFreeze(
+        apps: List<AppInfo>,
+        isFreeze: Boolean,
+        useSuspend: Boolean = false,
+    ) {
         val targets = if (isFreeze) {
-            // Only freeze ACTIVE apps: skip unsafe/UAD system apps AND anything already frozen
-            // (disabled or suspended) so we never stack disable+suspend into a mixed state.
             apps.filter { it.isActive && it.freezeTier != FreezeTier.BLOCKED }
         } else {
             apps
         }
-
-        _uiState.update {
-            it.copy(
-                freezeLoggerState = FreezeLoggerState(
-                    isVisible = true,
-                    isFreeze = isFreeze,
-                    total = targets.size
-                )
-            )
-        }
-
-        var processed = 0
-        var failed = 0
-        withContext(ioDispatcher) {
-            targets.forEach { app ->
-                val result = if (isFreeze) {
-                    if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
-                    else manageAppUseCase.setAppDisabled(app.packageName, true)
-                } else {
-                    // `forceUnfreeze`, not the state-aware `restoreApp(_, app.enabled,
-                    // app.isSuspended)` this used to call. Both clear suspend AND disable; the
-                    // difference is that `restoreApp` decides which halves to attempt from the flags,
-                    // and on this path the flags are stale by construction.
-                    //
-                    // Nothing patches `isSuspended` on an app list after a bulk freeze — not this
-                    // function (it updates only the logger counters and never refreshes the lists on
-                    // completion), not `AppListViewModel`'s bulk branch, not the QS tile. So the
-                    // freeze-then-unfreeze round trip that is the *primary* way suspend mode gets
-                    // used — `useSuspend = true` above, then Unfreeze over the same selection —
-                    // hands `restorePlanFor` a snapshot that still calls every app active. It plans
-                    // nothing, returns `Result.success`, and this loop counts a success for each app
-                    // while all of them are still suspended: "Unfroze 12" over 12 paused apps.
-                    //
-                    // FreezerViewModel already documents this trap twice and answers it the same way.
-                    // The cost is one redundant unsuspend per already-active app, which root and
-                    // Shizuku answer from the flag alone.
-                    manageAppUseCase.forceUnfreeze(app.packageName)
-                }
-                processed++
-                if (result.isFailure) failed++
-                val p = processed
-                val f = failed
-                _uiState.update {
-                    it.copy(freezeLoggerState = it.freezeLoggerState.copy(processed = p, failed = f))
-                }
-            }
-        }
-
-        _uiState.update {
-            it.copy(freezeLoggerState = it.freezeLoggerState.copy(isComplete = true))
-        }
-        if (processed - failed > 0) {
-            triggerSupportPromptIfNeeded()
-        }
+        launchSelectionSweep(
+            operation = if (isFreeze) {
+                PrivilegeSweepOperation.FREEZE
+            } else {
+                PrivilegeSweepOperation.UNFREEZE
+            },
+            apps = targets,
+            freezerMode = if (isFreeze) {
+                if (useSuspend) FreezerMode.SUSPEND else FreezerMode.FREEZE
+            } else {
+                null
+            },
+        )
     }
 
-    fun dismissFreezeLogger() {
-        _uiState.update { it.copy(freezeLoggerState = FreezeLoggerState()) }
+    private suspend fun launchSelectionSweep(
+        operation: PrivilegeSweepOperation,
+        apps: List<AppInfo>,
+        freezerMode: FreezerMode? = null,
+    ) {
+        val candidateId = UUID.randomUUID()
+        taskNavigationTargets.requestOpenProvisional(
+            candidateId,
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = operation.name,
+            ),
+        )
+        try {
+            val spec = sweepResolver.resolveSelection(
+                operation = operation,
+                packageNames = apps.map(AppInfo::packageName),
+                source = PrivilegeSweepSource.MAIN,
+                freezerMode = freezerMode,
+            )
+            when (val launch = sweepController.launch(candidateId, spec)) {
+                is PrivilegeSweepLaunchResult.Accepted -> taskNavigationTargets.requestAccepted(
+                    candidateId,
+                    launch.requestId,
+                )
+
+                is PrivilegeSweepLaunchResult.Rejected ->
+                    taskNavigationTargets.requestRejected(candidateId)
+            }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            Logger.e("MainViewModel", "selection sweep launch failed", exception)
+            taskNavigationTargets.requestRejected(candidateId)
+        }
     }
 
     /** Stop the export in flight. Whatever it already wrote stays written. */

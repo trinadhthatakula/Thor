@@ -5,6 +5,7 @@ package com.valhalla.thor.data.backup
 
 import android.content.Context
 import android.os.storage.StorageManager
+import com.valhalla.thor.data.backup.job.DataTaskSinkWrite
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
 import com.valhalla.thor.domain.usecase.BackupProgress
@@ -34,12 +35,34 @@ import java.io.File
 import java.io.IOException
 
 /**
+ * Drain only items the durable store still considers runnable.
+ *
+ * The next claim is not requested until [runAndPersist] has returned, so a completed item is durable
+ * before another item starts. Terminal items never enter this loop: the claim source filters them,
+ * which preserves already exported/prepared outputs across service or process restarts.
+ *
+ * [DataTaskSinkWrite.OWNERSHIP_LOST] stops the drain immediately. Continuing would let a stale service
+ * generation claim more work after it has already lost the task it was settling.
+ */
+internal suspend fun <T> drainPendingDataTaskItems(
+    claimNext: suspend () -> T?,
+    runAndPersist: suspend (T) -> DataTaskSinkWrite,
+): Int {
+    var completed = 0
+    while (true) {
+        val item = claimNext() ?: return completed
+        if (runAndPersist(item) == DataTaskSinkWrite.OWNERSHIP_LOST) return completed
+        completed++
+    }
+}
+
+/**
  * Owner of a multi-app export run.
  *
  * The point of the @Single is the scope: exporting 200 apps outlives the sheet that started it,
  * the ViewModel behind that sheet and often the Activity behind *that*. A process-lifetime
  * [SupervisorJob] scope survives all three **without a foreground service**, which is the same shape
- * `BulkFreezeRunner` already uses for exactly this problem.
+ * `the legacy bulk executor` already uses for exactly this problem.
  *
  * The reason given here used to be that Thor declares no `FOREGROUND_SERVICE` permission. **That is
  * false, and was false when it was written.** The merged manifest carries the base permission from
@@ -71,7 +94,7 @@ class BackupRunner(
     // Two, not five: each permit is a full staged copy of an app, and every worker is streaming
     // to the same volume the staging lives on. More permits multiply the cache peak for very
     // little overlap.
-    private val gate = StagingGate(MAX_CONCURRENT)
+    private val gate = StagingGate(MAX_STAGED_APPS)
 
     private val _progress = MutableStateFlow<BackupProgress?>(null)
 
@@ -119,7 +142,7 @@ class BackupRunner(
     /**
      * Start a run, cancelling and replacing any run already in flight.
      *
-     * Cancel-and-replace rather than the same-op coalescing `BulkFreezeRunner` does: two backup
+     * Cancel-and-replace rather than the same-op coalescing `the legacy bulk executor` does: two backup
      * requests are not interchangeable — the second carries a different selection — so returning
      * the first would export the wrong apps.
      *
@@ -143,7 +166,8 @@ class BackupRunner(
 
         // Published before the coroutine starts so a UI that opens immediately after the tap sees
         // "0 of N" rather than an idle null while the replaced run is still unwinding.
-        _progress.value = BackupProgress(completed = 0, saved = 0, total = apps.size, current = null)
+        _progress.value =
+            BackupProgress(completed = 0, saved = 0, total = apps.size, current = null)
 
         val run = Run()
         run.job = scope.async {
@@ -268,6 +292,6 @@ class BackupRunner(
 
     private companion object {
         const val TAG = "BackupRunner"
-        const val MAX_CONCURRENT = 2
+        const val MAX_STAGED_APPS = 2
     }
 }

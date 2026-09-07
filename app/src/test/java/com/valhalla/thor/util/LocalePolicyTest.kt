@@ -9,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.time.format.DateTimeFormatter
 import java.time.format.DecimalStyle
 import java.util.Locale
@@ -31,6 +32,150 @@ import java.util.Locale
  * behaviour and need an instrumented test or a device.
  */
 class LocalePolicyTest {
+
+    private val sweepLifecycleKeys = setOf(
+        "notification_access_granted_subtitle",
+        "notification_access_needed_subtitle",
+        "sweep_notification_title",
+        "sweep_queued",
+        "sweep_running",
+        "sweep_succeeded",
+        "sweep_partial",
+        "sweep_cancelled",
+        "sweep_failed",
+        "sweep_observer_failure",
+        "sweep_root_lane_degraded",
+        "sweep_result_summary",
+    )
+
+    private val taskQueueKeys = setOf(
+        "task_queue_title",
+        "task_queue_subtitle",
+        "task_queue_providers",
+        "task_queue_section_running",
+        "task_queue_section_queued",
+        "task_queue_section_recent",
+        "task_queue_empty",
+        "task_queue_empty_running",
+        "task_queue_empty_queued",
+        "task_queue_empty_recent",
+        "task_queue_kind_data",
+        "task_queue_kind_privilege",
+        "task_queue_background",
+        "task_queue_cancel",
+        "task_queue_close",
+        "task_queue_progress",
+        "task_action_authenticate_archive",
+        "task_action_provide_source",
+        "task_action_review_restore",
+        "task_action_authorize_privilege",
+        "task_action_authorize_retry",
+        "task_action_retry",
+        "task_action_resume",
+        "task_action_share",
+        "task_action_open_notification_settings",
+        "task_operation_archive_backup",
+        "task_operation_archive_restore",
+        "task_operation_app_export",
+        "task_operation_share_prepare",
+        "task_operation_freeze",
+        "task_operation_unfreeze",
+        "task_operation_clear_cache",
+        "task_operation_reinstall",
+        "task_state_starting",
+        "task_state_queued",
+        "task_state_running",
+        "task_state_stopping",
+        "task_state_waiting_for_auth",
+        "task_state_waiting_for_source",
+        "task_state_waiting_for_privilege",
+        "task_state_interrupted_review",
+        "task_state_ready",
+        "task_state_ready_partial",
+        "task_state_start_blocked",
+        "task_state_start_blocked_notification",
+        "task_state_succeeded",
+        "task_state_partial",
+        "task_state_failed",
+        "task_state_cancelled",
+        "task_state_expired",
+        "task_state_observer_failure",
+        "task_reason_queued",
+        "task_reason_stopping",
+        "task_reason_waiting_for_auth",
+        "task_reason_waiting_for_source",
+        "task_reason_waiting_for_privilege",
+        "task_reason_interrupted_restore",
+        "task_reason_interrupted_sweep",
+        "task_reason_start_blocked",
+        "task_reason_start_blocked_notification",
+        "task_reason_failed",
+        "task_reason_expired",
+        "task_reason_observer_failure",
+        "task_reason_root_lane_degraded",
+        "data_queue_notification_channel_name",
+        "data_queue_notification_channel_description",
+        "privilege_queue_notification_channel_name",
+        "privilege_queue_notification_channel_description",
+        "data_queue_notification_title",
+        "privilege_queue_notification_title",
+        "task_queue_notification_status",
+        "task_queue_notification_cancel",
+        "task_queue_notification_ready_title",
+        "task_queue_notification_ready_partial_title",
+        "task_dialog_archive_auth_title",
+        "task_dialog_archive_auth_message",
+        "task_dialog_archive_passphrase_label",
+        "task_dialog_archive_auth_submit",
+        "task_dialog_restore_source_title",
+        "task_dialog_restore_source_message",
+        "task_dialog_restore_source_select",
+        "task_dialog_restore_review_title",
+        "task_dialog_restore_review_message",
+        "task_dialog_restore_review_resume",
+        "task_dialog_sweep_retry_title",
+        "task_dialog_sweep_retry_message",
+        "task_dialog_sweep_retry_confirm",
+        "task_dialog_share_expired_message",
+        "task_log_stage_preparing",
+        "task_log_stage_staging_source",
+        "task_log_stage_measuring",
+        "task_log_stage_capturing",
+        "task_log_stage_writing",
+        "task_log_stage_installing",
+        "task_log_stage_restoring",
+        "task_log_stage_publishing",
+        "task_log_stage_finishing",
+        "task_log_item_running",
+        "task_log_item_succeeded",
+        "task_log_item_failed",
+        "task_log_item_cancelled",
+        "task_log_item_busy",
+        "task_log_item_unknown",
+    )
+
+    private val taskQueuePluralKeys = setOf(
+        "task_log_pending_queued",
+        "task_log_pending_neutral",
+        "task_log_pending_unprocessed",
+        "task_log_results_omitted",
+        "task_reason_ready",
+        "task_reason_ready_partial",
+        "task_queue_notification_ready_text",
+        "task_queue_notification_ready_partial_text",
+        "task_queue_notification_later_count",
+    )
+
+    private val shippedResourceDirectories = listOf(
+        "values",
+        "values-ar",
+        "values-es",
+        "values-fr",
+        "values-pl",
+        "values-pt",
+        "values-pt-rBR",
+        "values-zh-rCN",
+    )
 
     /**
      * The finding, as an assertion.
@@ -610,5 +755,150 @@ class LocalePolicyTest {
         } finally {
             Locale.setDefault(previous)
         }
+    }
+
+    @Test
+    fun everyShippedLocaleDefinesTheSweepLifecycleCopy() {
+        val missing = buildList {
+            for (directory in shippedResourceDirectories) {
+                val resources = stringResources(directory)
+                for (key in sweepLifecycleKeys) {
+                    if (key !in resources) add("$directory/$key")
+                }
+            }
+        }
+
+        assertTrue(
+            "Missing sweep lifecycle resources: ${missing.joinToString()}",
+            missing.isEmpty()
+        )
+    }
+
+    @Test
+    fun sweepLifecyclePlaceholdersMatchEnglishInEveryLocale() {
+        val english = stringResources("values")
+        val mismatches = buildList {
+            for (directory in shippedResourceDirectories.drop(1)) {
+                val localized = stringResources(directory)
+                for (key in sweepLifecycleKeys) {
+                    val expected = english[key]?.let(::placeholderSignature) ?: continue
+                    val actual = localized[key]?.let(::placeholderSignature)
+                    if (actual != expected) add("$directory/$key: expected $expected, found $actual")
+                }
+            }
+        }
+
+        assertTrue(
+            "Sweep lifecycle placeholder mismatches: ${mismatches.joinToString()}",
+            mismatches.isEmpty()
+        )
+    }
+
+    @Test
+    fun everyShippedLocaleDefinesTheTaskQueueCopy() {
+        val missing = buildList {
+            for (directory in shippedResourceDirectories) {
+                val resources = stringResources(directory)
+                for (key in taskQueueKeys) {
+                    if (key !in resources) add("$directory/$key")
+                }
+            }
+        }
+
+        assertTrue(
+            "Missing task queue resources: ${missing.joinToString()}",
+            missing.isEmpty()
+        )
+    }
+
+    @Test
+    fun taskQueuePlaceholdersMatchEnglishInEveryLocale() {
+        val english = stringResources("values")
+        val mismatches = buildList {
+            for (directory in shippedResourceDirectories.drop(1)) {
+                val localized = stringResources(directory)
+                for (key in taskQueueKeys) {
+                    val expected = english[key]?.let(::placeholderSignature) ?: continue
+                    val actual = localized[key]?.let(::placeholderSignature)
+                    if (actual != expected) add("$directory/$key: expected $expected, found $actual")
+                }
+            }
+        }
+
+        assertTrue(
+            "Task queue placeholder mismatches: ${mismatches.joinToString()}",
+            mismatches.isEmpty()
+        )
+    }
+
+    @Test
+    fun taskQueuePluralsCoverLocaleCategoriesAndPreserveEveryArgument() {
+        val english = pluralResources("values")
+        for (directory in shippedResourceDirectories) {
+            val expectedCategories = when (directory) {
+                "values-ar" -> setOf("zero", "one", "two", "few", "many", "other")
+                "values-pl" -> setOf("one", "few", "many", "other")
+                "values-zh-rCN" -> setOf("other")
+                else -> setOf("one", "other")
+            }
+            val localized = pluralResources(directory)
+            for (key in taskQueuePluralKeys) {
+                val forms = localized[key]
+                assertEquals("$directory/$key categories", expectedCategories, forms?.keys)
+                val expected = placeholderSignature(english.getValue(key).getValue("other"))
+                for ((quantity, text) in requireNotNull(forms)) {
+                    assertEquals("$directory/$key/$quantity arguments", expected, placeholderSignature(text))
+                    assertTrue("$directory/$key/$quantity is blank", text.isNotBlank())
+                }
+                if (expectedCategories.size > 1) {
+                    assertTrue("$directory/$key must adapt grammatical number", forms.values.toSet().size > 1)
+                }
+                assertFalse("$directory/$key still has an obsolete string", key in stringResources(directory))
+            }
+        }
+    }
+
+    private fun pluralResources(directory: String): Map<String, Map<String, String>> {
+        val document = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+            .newDocumentBuilder().parse(File(resourceRoot(), "$directory/strings.xml"))
+        val plurals = document.getElementsByTagName("plurals")
+        return (0 until plurals.length).associate { index ->
+            val plural = plurals.item(index) as org.w3c.dom.Element
+            val items = plural.getElementsByTagName("item")
+            plural.getAttribute("name") to (0 until items.length).associate { itemIndex ->
+                val item = items.item(itemIndex) as org.w3c.dom.Element
+                item.getAttribute("quantity") to item.textContent
+            }
+        }
+    }
+
+    private fun stringResources(directory: String): Map<String, String> {
+        val file = File(resourceRoot(), "$directory/strings.xml")
+        check(file.isFile) { "Missing resource file: $file" }
+        return RESOURCE_PATTERN.findAll(file.readText()).associate { match ->
+            match.groupValues[1] to match.groupValues[2]
+        }
+    }
+
+    private fun resourceRoot(): File = generateSequence(
+        File(checkNotNull(System.getProperty("user.dir")))
+    ) {
+        it.parentFile
+    }.map { File(it, "app/src/main/res") }
+        .firstOrNull { File(it, "values/strings.xml").isFile }
+        ?: error("Could not locate app/src/main/res from ${System.getProperty("user.dir")}")
+
+    private fun placeholderSignature(value: String): List<String> = POSITIONAL_PLACEHOLDER
+        .findAll(value)
+        .map { it.value }
+        .sorted()
+        .toList()
+
+    private companion object {
+        val RESOURCE_PATTERN = Regex(
+            """<string\s+[^>]*\bname="([^"]+)"[^>]*>(.*?)</string>""",
+            setOf(RegexOption.DOT_MATCHES_ALL),
+        )
+        val POSITIONAL_PLACEHOLDER = Regex("%(\\d+)\\$([a-zA-Z])")
     }
 }

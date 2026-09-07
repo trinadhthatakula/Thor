@@ -191,6 +191,7 @@
       was typed. Says what to do instead of guessing at a cause it does not know.
     -->
     <string name="restore_error_unlock_check_failed">Thor n\'a pas pu vérifier cette phrase secrète. Réessayez.</string>
+    <string name="restore_error_authentication_failed">Cette sauvegarde n’a pas pu être authentifiée et n’a pas été restaurée.</string>
     <string name="restore_failed_passphrase_lost">Thor n\'a plus la phrase secrète de cette sauvegarde — déverrouillez-la de nouveau</string>
     <string name="restore_failed_salt_unreadable">le sel de cette archive n\'a pas pu être lu</string>
     <!--

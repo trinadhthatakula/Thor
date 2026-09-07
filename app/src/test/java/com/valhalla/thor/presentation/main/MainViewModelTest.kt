@@ -3,17 +3,23 @@
 
 package com.valhalla.thor.presentation.main
 
-import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.data.backup.job.JobSheetTarget
 import com.valhalla.thor.data.backup.job.JobSheetTargets
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AppClickAction
-import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -25,10 +31,16 @@ import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeContext
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
+import com.valhalla.thor.presentation.FakePrivilegeSweepController
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.blockedSystemApp
+import com.valhalla.thor.presentation.navigation.TaskNavigationRequest
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.privilegeSweepResolver
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
 import com.valhalla.thor.presentation.systemApp
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
@@ -111,6 +123,7 @@ class MainViewModelTest {
     private fun TestScope.viewModel(
         preferenceRepository: FakePreferenceRepository = prefs,
         runner: BackupRunner = backupRunner(preferenceRepository),
+        systemRepository: SystemRepository = system,
         // Granted by default because that is the case every other test in this file is indifferent
         // to: with the op held, an unmeasured clear is described without mentioning permissions. The
         // one test that cares about the ungranted branch passes false.
@@ -119,12 +132,15 @@ class MainViewModelTest {
         // on it, so a test can drive a notification tap by calling `requestOpen` on the same instance
         // the view model is watching. Defaulted so the tests that predate it read unchanged.
         sheetTargets: JobSheetTargets = JobSheetTargets(),
-        // Only the two stop-reporting tests pass one: they need to act from *inside* the share loop,
-        // which is the one moment a test body cannot otherwise reach. See FakeAppBundleBuilder.onBuild.
         bundleBuilder: FakeAppBundleBuilder = FakeAppBundleBuilder(),
+        shareLauncher: com.valhalla.thor.domain.repository.ShareTaskLauncher =
+            com.valhalla.thor.domain.repository.ShareTaskLauncher { id, _ -> id },
+        sweepController: FakePrivilegeSweepController = FakePrivilegeSweepController(),
+        taskNavigationTargets: TaskNavigationTargets =
+            TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
     ): MainViewModel {
         val vm = MainViewModel(
-            manageAppUseCase = ManageAppUseCase(system),
+            manageAppUseCase = ManageAppUseCase(systemRepository, DefaultPackageOperationCoordinator()),
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             shareAppUseCase = ShareAppUseCase(
                 bundleBuilder,
@@ -136,6 +152,15 @@ class MainViewModelTest {
             backupRunner = runner,
             usageAccessGate = FakeUsageAccessGate(usageAccess),
             jobSheetTargets = sheetTargets,
+            sweepResolver = privilegeSweepResolver(
+                freezerRepository = freezer,
+                preferenceRepository = preferenceRepository,
+            ),
+            sweepController = sweepController,
+            taskNavigationTargets = taskNavigationTargets,
+            shareSubmissionCoordinator = com.valhalla.thor.presentation.share.ShareSubmissionCoordinator(
+                shareLauncher, taskNavigationTargets, mainDispatcherRule.dispatcher,
+            ),
             ioDispatcher = mainDispatcherRule.dispatcher
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
@@ -182,175 +207,171 @@ class MainViewModelTest {
         return received
     }
 
-    // --- Bulk freeze: the tier filter ------------------------------------------------------
-
-    @Test
-    fun `a blocked system app is never disabled by a bulk freeze`() = runTest {
-        val vm = viewModel()
-
-        vm.onMultiAppAction(
-            MultiAppAction.Freeze(listOf(blockedSystemApp("com.blocked"), userApp("com.ok")))
-        )
-        advanceUntilIdle()
-
-        // Not "the result was a failure" — the package must never appear in a command at all. A
-        // leaked call disables a package UAD says the device needs, or removes it for this user
-        // where disabling is not available; neither is recoverable by retrying with the right
-        // answer, and the first can cost the boot.
-        assertEquals(listOf("setAppDisabled:com.ok:true"), system.calls)
-    }
-
-    @Test
-    fun `the freeze counter counts only the apps the run will attempt`() = runTest {
-        val vm = viewModel()
-
-        vm.onMultiAppAction(
-            MultiAppAction.Freeze(
-                listOf(
-                    blockedSystemApp("com.blocked"),
-                    userApp("com.already.frozen", enabled = false),
-                    userApp("com.a"),
-                    userApp("com.b")
-                )
-            )
-        )
-        advanceUntilIdle()
-
-        // The user watches `processed / total`. If `total` counted the whole selection, a run that
-        // did everything it could would stop at 2/4 and read as a hang or a half-failure.
-        val state = vm.uiState.value.freezeLoggerState
-        assertEquals(2, state.total)
-        assertEquals(2, state.processed)
-        assertEquals(0, state.failed)
-        assertTrue(state.isComplete)
-    }
-
-    @Test
-    fun `an already frozen app is left out of a freeze run`() = runTest {
-        val vm = viewModel()
-
-        vm.onMultiAppAction(
-            MultiAppAction.Freeze(
-                listOf(
-                    userApp("com.disabled", enabled = false),
-                    userApp("com.suspended", isSuspended = true),
-                    userApp("com.active")
-                )
-            )
-        )
-        advanceUntilIdle()
-
-        // Freezing an app that is already suspended would stack `disable` on top of `suspend` and
-        // leave a mixed state that only the two-step restore can undo.
-        assertEquals(listOf("setAppDisabled:com.active:true"), system.calls)
-    }
-
-    @Test
-    fun `suspend mode is not a way past the blocked tier`() = runTest {
-        val vm = viewModel()
-
-        vm.onMultiAppAction(
-            MultiAppAction.Freeze(
-                listOf(blockedSystemApp("com.blocked"), userApp("com.ok")),
-                useSuspend = true
-            )
-        )
-        advanceUntilIdle()
-
-        // The tier filter runs before the mode is consulted, so flipping the Freezer to SUSPEND
-        // cannot be used to reach an app that FREEZE refuses.
-        assertEquals(listOf("setAppSuspended:com.ok:true"), system.calls)
-    }
-
-    @Test
-    fun `a bulk unfreeze restores a blocked app instead of skipping it`() = runTest {
-        val vm = viewModel()
-
-        vm.onMultiAppAction(MultiAppAction.UnFreeze(listOf(blockedSystemApp("com.blocked", enabled = false))))
-        advanceUntilIdle()
-
-        // Reusing the freeze filter for unfreeze is the tempting simplification, and it would strand
-        // every blocked app that is already frozen — the exact state a user needs a way out of.
-        //
-        // Both dimensions, unconditionally: this app is only *disabled*, so the unsuspend is redundant
-        // and asked for anyway. See the round-trip test below for what reading the flags instead costs.
-        assertEquals(
-            listOf("setAppSuspended:com.blocked:false", "setAppDisabled:com.blocked:false"),
-            system.calls
-        )
-        assertEquals(1, vm.uiState.value.freezeLoggerState.total)
-    }
-
-    @Test
-    fun `apps suspended by a bulk freeze are actually unsuspended by the bulk unfreeze after it`() =
-        runTest {
-            val vm = viewModel()
-            // One selection, held across both actions — which is what the UI does, and the whole
-            // point: nothing patches `isSuspended` on these objects when the freeze suspends them, so
-            // by the second action the flags are stale and still read "active".
-            val selection = listOf(userApp("com.a"), userApp("com.b"))
-
-            vm.onMultiAppAction(MultiAppAction.Freeze(selection, useSuspend = true))
-            advanceUntilIdle()
-            assertEquals(
-                listOf("setAppSuspended:com.a:true", "setAppSuspended:com.b:true"),
-                system.calls
-            )
-            system.calls.clear()
-
-            vm.onMultiAppAction(MultiAppAction.UnFreeze(selection))
-            advanceUntilIdle()
-
-            // The regression: reading the stale flags made `restoreApp` plan nothing, return success
-            // for both apps, and report "Unfroze 2" over two apps still showing the system's "app
-            // paused" dialog. The suspend-then-unsuspend round trip is the primary way suspend mode
-            // gets used, so the failure was reachable in two taps.
-            assertEquals(
-                "the unsuspend has to be asked for, not inferred from a snapshot the freeze never patched",
-                listOf(
-                    "setAppSuspended:com.a:false", "setAppDisabled:com.a:false",
-                    "setAppSuspended:com.b:false", "setAppDisabled:com.b:false",
-                ),
-                system.calls
-            )
-            val state = vm.uiState.value.freezeLoggerState
-            assertEquals(2, state.processed)
-            assertEquals(0, state.failed)
+    private fun TestScope.navigationRequestsOf(
+        targets: TaskNavigationTargets,
+    ): List<TaskNavigationRequest> {
+        val received = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            targets.requests.collect { received += it }
         }
+        return received
+    }
+
+    // --- Durable selection sweeps -------------------------------------------------------------
 
     @Test
-    fun `the freeze counter reports every failure and still finishes the run`() = runTest {
-        system.failWith("setAppDisabled:com.b:true", RuntimeException("denied"))
-        val vm = viewModel()
+    fun `freeze selection opens its caller owned task before accepting the durable sweep`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
+        val vm = viewModel(
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
 
         vm.onMultiAppAction(
-            MultiAppAction.Freeze(listOf(userApp("com.a"), userApp("com.b"), userApp("com.c")))
+            MultiAppAction.Freeze(
+                listOf(
+                    blockedSystemApp("blocked"),
+                    userApp("already", enabled = false),
+                    userApp("z"),
+                    userApp("a"),
+                ),
+                useSuspend = true,
+            )
         )
         advanceUntilIdle()
 
-        // One refusal must not abort the batch: the apps after it still get their turn.
+        assertEquals(1, controller.launched.size)
+        assertEquals(PrivilegeSweepOperation.FREEZE, controller.launched.single().operation)
+        assertEquals(listOf("a", "z"), controller.launched.single().packageNames)
+        assertEquals(FreezerMode.SUSPEND, controller.launched.single().freezerMode)
+        assertEquals(PrivilegeSweepSource.MAIN, controller.launched.single().source)
+        assertTrue(system.calls.isEmpty())
+
+        assertEquals(2, requests.size)
+        val open = requests[0] as TaskNavigationRequest.OpenProvisional
         assertEquals(
-            listOf("setAppDisabled:com.a:true", "setAppDisabled:com.b:true", "setAppDisabled:com.c:true"),
-            system.calls
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.FREEZE.name,
+            ),
+            open.identity,
         )
-        val state = vm.uiState.value.freezeLoggerState
-        assertEquals(3, state.processed)
-        assertEquals(1, state.failed)
-        assertTrue(state.isComplete)
+        assertEquals(open.taskId, controller.launchedRequestIds.single())
+        assertEquals(
+            TaskNavigationRequest.Accepted(open.taskId, open.taskId),
+            requests[1],
+        )
     }
 
     @Test
-    fun `a freeze run where every app failed does not ask the user for support`() = runTest {
-        system.failWith("setAppDisabled:com.a:true", RuntimeException("denied"))
-        system.failWith("setAppDisabled:com.b:true", RuntimeException("denied"))
-        val vm = viewModel()
+    fun `unfreeze selection launches one durable sweep`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
 
-        vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("com.a"), userApp("com.b"))))
+        vm.onMultiAppAction(
+            MultiAppAction.UnFreeze(
+                listOf(blockedSystemApp("blocked", enabled = false), userApp("active"))
+            )
+        )
         advanceUntilIdle()
 
-        // "processed - failed > 0" is the condition, and it has to be a strict inequality: asking
-        // for a donation immediately after nothing worked is the worst possible moment to ask.
-        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
+        assertEquals(1, controller.launched.size)
+        assertEquals(PrivilegeSweepOperation.UNFREEZE, controller.launched.single().operation)
+        assertEquals(listOf("active", "blocked"), controller.launched.single().packageNames)
+        assertEquals(null, controller.launched.single().freezerMode)
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
+    fun `rejected sweep keeps the provisional detail visible with rejected state`() = runTest {
+        val controller = FakePrivilegeSweepController().apply {
+            nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(
+                PrivilegeSweepLaunchRejection.NotificationsRequired
+            )
+        }
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
+        val vm = viewModel(
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
+
+        vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("a"))))
+        advanceUntilIdle()
+
+        assertEquals(2, requests.size)
+        val open = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(open.taskId, controller.launchedRequestIds.single())
+        assertEquals(TaskNavigationRequest.Rejected(open.taskId), requests[1])
+    }
+
+    @Test
+    fun `sweep launch exception rejects the exact provisional task`() = runTest {
+        val controller = FakePrivilegeSweepController().apply {
+            launchFailure = IllegalStateException("acceptance failed")
+        }
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
+        val vm = viewModel(
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
+
+        vm.onMultiAppAction(MultiAppAction.Freeze(listOf(userApp("a"))))
+        advanceUntilIdle()
+
+        assertEquals(2, requests.size)
+        val open = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(TaskNavigationRequest.Rejected(open.taskId), requests[1])
+    }
+
+    @Test
+    fun `coalesced sweep replaces the caller owned candidate with the canonical request`() = runTest {
+        val canonicalId = UUID(0L, 41L)
+        val controller = FakePrivilegeSweepController().apply {
+            nextLaunchResult = PrivilegeSweepLaunchResult.Accepted(
+                requestId = canonicalId,
+                workId = UUID(1L, 41L),
+                coalesced = true,
+            )
+        }
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
+        val vm = viewModel(
+            sweepController = controller,
+            taskNavigationTargets = targets,
+        )
+
+        vm.onMultiAppAction(MultiAppAction.ClearCache(listOf(userApp("a"))))
+        advanceUntilIdle()
+
+        assertEquals(2, requests.size)
+        val open = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(open.taskId, controller.launchedRequestIds.single())
+        assertEquals(
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.CLEAR_CACHE.name,
+            ),
+            open.identity,
+        )
+        assertEquals(
+            TaskNavigationRequest.Accepted(open.taskId, canonicalId),
+            requests[1],
+        )
+    }
+
+    @Test
+    fun `explicit suspend and unsuspend remain direct`() = runTest {
+        val vm = viewModel()
+
+        vm.onMultiAppAction(MultiAppAction.Suspend(listOf(userApp("a"))))
+        vm.onMultiAppAction(MultiAppAction.UnSuspend(listOf(userApp("b"))))
+        advanceUntilIdle()
+
+        assertEquals(listOf("setAppSuspended:a:true", "setAppSuspended:b:false"), system.calls)
     }
 
     // --- Bulk uninstall: the tier gate and the watchlist -----------------------------------
@@ -482,30 +503,22 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `a debuggable app that fails to reinstall is reported as debuggable, not as a raw error`() = runTest {
-        system.failWith("reinstallAppWithGoogle:com.debuggable", RuntimeException("INSTALL_FAILED"))
-        system.failWith("reinstallAppWithGoogle:com.normal", RuntimeException("INSTALL_FAILED"))
-        val vm = viewModel()
+    fun `reinstall selection launches one durable sweep`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
 
         vm.onMultiAppAction(
             MultiAppAction.ReInstall(
-                listOf(userApp("com.debuggable", isDebuggable = true), userApp("com.normal"))
+                listOf(userApp("com.z"), userApp("com.a"))
             )
         )
         advanceUntilIdle()
 
-        // Fix Store cannot work on a debuggable build, and "INSTALL_FAILED" tells the user nothing
-        // actionable. Same underlying failure, two different lines.
-        val logs = vm.uiState.value.loggerState.logs
-        assertTrue(
-            logs.contains(
-                UiText.StringResource(
-                    R.string.log_failed,
-                    UiText.StringResource(R.string.error_debuggable_app)
-                )
-            )
-        )
-        assertTrue(logs.contains(UiText.StringResource(R.string.log_failed, "INSTALL_FAILED")))
+        assertEquals(1, controller.launched.size)
+        assertEquals(PrivilegeSweepOperation.REINSTALL, controller.launched.single().operation)
+        assertEquals(listOf("com.a", "com.z"), controller.launched.single().packageNames)
+        assertEquals(PrivilegeSweepSource.MAIN, controller.launched.single().source)
+        assertTrue(system.calls.isEmpty())
     }
 
     // --- Bulk export -------------------------------------------------------------------------
@@ -525,7 +538,6 @@ class MainViewModelTest {
         // run completes, so reusing it here would pin the user to a screen for the length of a run
         // that is explicitly designed to outlive that screen.
         assertFalse(vm.uiState.value.loggerState.isVisible)
-        assertFalse(vm.uiState.value.freezeLoggerState.isVisible)
         // Exactly one, whatever the outcome was: the completions collector is the only reporter.
         // Awaiting the Deferred `start` returns as well — the obvious way to "make sure" the result
         // is seen — toasts the same run twice.
@@ -943,12 +955,13 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `fix store reinstalls only what is still ticked`() = runTest {
+    fun `fix store sweeps only what is still ticked`() = runTest {
         appRepository.apps.value = listOf(
             userApp("com.keep", installerPackageName = null),
             userApp("com.fix", installerPackageName = null)
         )
-        val vm = viewModel()
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
 
         vm.onAppAction(AppClickAction.ReinstallAll)
         advanceUntilIdle()
@@ -956,7 +969,9 @@ class MainViewModelTest {
         vm.confirmFixStore()
         advanceUntilIdle()
 
-        assertEquals(listOf("reinstallAppWithGoogle:com.fix"), system.calls)
+        assertEquals(PrivilegeSweepOperation.REINSTALL, controller.launched.single().operation)
+        assertEquals(listOf("com.fix"), controller.launched.single().packageNames)
+        assertTrue(system.calls.isEmpty())
         assertNull(vm.uiState.value.fixStoreSelection)
     }
 
@@ -1119,29 +1134,85 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `a stop during the last shared app does not report a stopped batch either`() = runTest {
-        // The share branch keeps its own copy of the batch loop, so it needs its own pin. Driven from
-        // the bundle builder rather than the system fake because sharing never reaches the privilege
-        // layer — it stages files.
-        // Assigned after construction because the builder is a constructor argument of the thing it
-        // has to call back into.
-        var stopper: MainViewModel? = null
-        val builder = FakeAppBundleBuilder { app ->
-            if (app.packageName == "com.b") stopper?.requestStopBatch()
+    fun `bulk share opens exact provisional detail before asynchronous preparation`() = runTest {
+        var localBuilds = 0
+        val builder = FakeAppBundleBuilder { localBuilds++ }
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            targets.requests.collect { requests += it }
         }
-        val vm = viewModel(bundleBuilder = builder)
-        stopper = vm
+        val admission = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val vm = viewModel(
+            bundleBuilder = builder,
+            taskNavigationTargets = targets,
+            shareLauncher = com.valhalla.thor.domain.repository.ShareTaskLauncher { id, _ ->
+                admission.await()
+                id
+            },
+        )
 
         vm.onMultiAppAction(MultiAppAction.Share(listOf(userApp("com.a"), userApp("com.b"))))
+
+        assertEquals(1, requests.size)
+        val provisional = requests.single() as TaskNavigationRequest.OpenProvisional
+        assertEquals(TaskQueueKind.DATA, provisional.identity.queueKind)
+        assertEquals("SHARE_PREPARE", provisional.identity.operationId)
+        admission.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(TaskNavigationRequest.Accepted(provisional.taskId, provisional.taskId), requests.last())
+        assertEquals(0, localBuilds)
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+    }
+
+    @Test
+    fun `bulk share keeps the selection snapshot and backgrounding does not cancel admission`() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<UUID?>()
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        val submitted = mutableListOf<Pair<UUID, com.valhalla.thor.domain.model.AppShareRequest>>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            targets.requests.collect { requests += it }
+        }
+        val vm = viewModel(
+            taskNavigationTargets = targets,
+            shareLauncher = com.valhalla.thor.domain.repository.ShareTaskLauncher { id, request ->
+                submitted += id to request
+                gate.await()
+            },
+        )
+        val selection = mutableListOf(userApp("com.a"), userApp("com.b"))
+        vm.onMultiAppAction(MultiAppAction.Share(selection))
+        val provisional = requests.single() as TaskNavigationRequest.OpenProvisional
+        selection.clear()
+        vm.dismissLogger()
         advanceUntilIdle()
 
-        // Both bundles fail here (no device), so the logger stays up to be read instead of being
-        // dismissed for a share sheet — which is what makes this assertion possible at all.
-        assertFalse(
-            vm.uiState.value.loggerState.logs.any {
-                it is UiText.StringResource && it.resId == R.string.log_stopped
-            }
+        assertEquals(provisional.taskId, submitted.single().first)
+        assertEquals(listOf("com.a", "com.b"), submitted.single().second.targets.map { it.packageName })
+        assertEquals(com.valhalla.thor.domain.model.SharePrepareFormat.AUTO, submitted.single().second.format)
+        gate.complete(provisional.taskId)
+        advanceUntilIdle()
+        assertEquals(TaskNavigationRequest.Accepted(provisional.taskId, provisional.taskId), requests.last())
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+    }
+
+    @Test
+    fun `empty bulk share creates no provisional request or preparation`() = runTest {
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = mutableListOf<TaskNavigationRequest>()
+        var submissions = 0
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            targets.requests.collect { requests += it }
+        }
+        val vm = viewModel(
+            taskNavigationTargets = targets,
+            shareLauncher = com.valhalla.thor.domain.repository.ShareTaskLauncher { id, _ -> submissions++; id },
         )
+        vm.onMultiAppAction(MultiAppAction.Share(emptyList()))
+        advanceUntilIdle()
+        assertTrue(requests.isEmpty())
+        assertEquals(0, submissions)
     }
 
     // --- Job sheets ---------------------------------------------------------------------------

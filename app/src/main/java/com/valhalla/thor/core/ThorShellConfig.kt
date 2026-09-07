@@ -4,8 +4,6 @@
 package com.valhalla.thor.core
 
 import com.valhalla.superuser.Shell
-import com.valhalla.thor.BuildConfig
-import com.valhalla.thor.core.ThorShellConfig.init
 
 /**
  * Centralized configuration for the Root Shell.
@@ -14,22 +12,16 @@ import com.valhalla.thor.core.ThorShellConfig.init
 object ThorShellConfig {
 
     fun init() {
-        // Set logging based on build type
-        Shell.enableVerboseLogging = BuildConfig.DEBUG
+        // Odin's verbose mode logs raw commands and collected output process-wide. Keep it disabled
+        // for every build because interactive and owned background shells can execute concurrently.
+        Shell.enableVerboseLogging = false
 
-        // Do NOT set FLAG_MOUNT_MASTER — but not for the reason it is tempting to write down. The
-        // flag cannot "block root acquisition" on its own: Odin's BuilderImpl.start() wraps the
-        // `su --mount-master` attempt in `catch (_: NoShellException)` and falls through to plain
-        // `su`, then to `sh`, so an su that rejects the argument is recoverable by construction.
-        //
-        // What the fallback is not is free, and that is the part that bit KernelSU/APatch users.
-        // An su that rejects --mount-master by *exiting* is cheap — ShellImpl's shell check calls
-        // process.exitValue() first, sees a dead process and throws immediately. An su that instead
-        // sits there is not: nothing gives up until the shell check times out, and only then does
-        // the plain-`su` attempt start, from zero, with its own superuser prompt. Which of the two
-        // KernelSU and APatch actually do has not been confirmed here — the field symptom (root
-        // never acquired within any reasonable wait) fits the second. Thor never needs the global
-        // mount namespace, so there is nothing on the other side of that bet worth holding.
+        // Keep only the process-wide interactive MainShell plain. Odin's BuilderImpl falls back from
+        // `su --mount-master` to plain `su`, but a Root manager that leaves the first attempt hanging
+        // consumes the full shell-check timeout before that fallback starts. Interactive actions do
+        // not need the global mount namespace, so they should not pay that acquisition delay.
+        // Archive-owned shells configure FLAG_MOUNT_MASTER independently because reading another
+        // package's private data does require the global namespace; sweep-owned shells stay plain.
         //
         // setTimeout aligns the builder's shell-check budget with Odin's own root probe, which gives
         // up at RealShellRepository.SHELL_INIT_TIMEOUT_MS = 10s; the 20s BuilderImpl default would
