@@ -4,17 +4,19 @@
 
 **Branch:** `feat/worker-shell-lanes` · **Validated app-source checkpoint:** `cc67ad66` · **Build-tool checkpoint:** `c8da3fb3`
 
-**PR:** [#453](https://github.com/trinadhthatakula/Thor/pull/453), open, unmerged, targeting `dev`. No push during this continuation.
+**PR:** [#453](https://github.com/trinadhthatakula/Thor/pull/453), open, unmerged, targeting `dev`. Implementation and documentation pushed through `92e7d476`; remote/local/PR-head equality verified after publication.
 
 ## The actual position
 
-**22 agreed milestones: 18 complete, 1 in progress, 3 pending. Four milestones remain.**
+**22 agreed milestones: 19 complete, 1 in progress, 2 pending. Three milestones remain.**
 
 **T18 is complete locally.** The lint/notification corrections are committed as `cc67ad66`. Final full suites passed **2,566 Foss tests and 2,566 Store tests**, with zero failures/errors/skips and no stale XML. Both required lint variants passed with **zero errors**; **63 Foss / 52 Store `SyntheticAccessor` warnings and 9 hints each remain**. Four final APK identities were independently verified. Scoped review found one missing Stopping notification state; genuine regressions reproduced it, the minimal correction passed, and narrow specification/quality re-review returned PASS/PASS with no findings.
 
 **T19 remains prerequisite-blocked:** read-only checks found no installed Shizuku Manager or running Shizuku server on the approved emulator, and no established disposable test fixture. Current Shizuku authorization/mode remain unestablished. No setup, grants or app mutations were made to bypass that blocker.
 
-**T20 is in progress:** finalize and fact-check the worker documentation and update the existing PR. The PR will prominently disclose blocked Shizuku acceptance and remain open/unmerged; publishing the verified host work does not complete or waive T19.
+**T20 is complete:** fact-checked documentation is committed and pushed; #453's title/body now describe the typed service migration, retained archive hardening, actual host evidence and outstanding runtime gates. Blocked Shizuku acceptance is prominent. Publishing the verified host work does not complete or waive T19.
+
+**T21 is in progress:** review the complete feature diff against `dev`, independently verify findings and fix real defects. Current-head CI and external review comments are part of this gate; no whole-branch approval is claimed yet.
 
 Counts are milestones, not effort percentages or an ETA. Corrections stay inside their existing milestone.
 
@@ -23,8 +25,7 @@ Counts are milestones, not effort percentages or an ETA. Corrections stay inside
 | Milestone | Status | Work remaining | Evidence required to close |
 |---|---|---|---|
 | **T19 — Shizuku emulator acceptance and latency** | **Pending — blocked** | Establish authorized Shizuku/fixture prerequisites; exercise real operations, cancellation, reopening, recovery and package conflicts; measure at least 20 warm exports and 20 warm sweeps; remove temporary latency hooks and rebuild. | Genuine Manager consent, scenario postconditions/raw distributions, honest baseline comparability and final APK without hooks. Handoff/DAO tests are not Shizuku-operation evidence. |
-| **T20 — Update and push the existing PR** | **In progress** | Finish documentation review, commit intended docs, update #453 title/body with migration details and exact evidence, then push with blocked device acceptance prominently disclosed. The inspected Studio/AGP changes are committed separately as `c8da3fb3`. | Remote/local SHAs match; base `dev`; PR open/unmerged; accurate documentation and no unsupported acceptance claim. |
-| **T21 — Final whole-branch review** | Pending | Review the complete feature diff against `dev`, independently verify findings, fix real defects, revalidate, check required CI and push corrections. | No verified blocking finding unresolved; required CI green; PR still open. Distinct from completed scoped reviews. |
+| **T21 — Final whole-branch review** | **In progress** | Review the complete feature diff against `dev`, independently verify findings, fix real defects, revalidate, check required CI and push corrections. | No verified blocking finding unresolved; required CI green; PR still open. Distinct from completed scoped reviews. |
 | **T22 — Startup and jank check** | Pending | Measure cold/warm startup and visible jank; fix only demonstrated regressions; validate/review/push changes. | Before/after measurements for corrections; final remote state verified; PR left for the user's merge. |
 
 **Not part of this work:** releasing a version, bumping to 1953, merging #453, expanding the feature set, or claiming physical-device verification.
@@ -51,6 +52,7 @@ Counts are milestones, not effort percentages or an ETA. Corrections stay inside
 | T16 | Wired durable task navigation/foreground actions (`1fe31820`). |
 | T17 | Completed durable share preparation, guarded cancellation/recovery cleanup, scoped review and 45/45 focused emulator acceptance (`8efa11a7`, `ba9f8281`). |
 | **T18** | **Completed full host validation, lint corrections, localized progress/queued-count/Stopping notifications and scoped review (`cc67ad66`).** |
+| **T20** | **Fact-checked architecture/progress/design/plan documentation committed (`92e7d476`), PR title/body updated, feature commits pushed; remote/local/head equality, base `dev`, open/unmerged state and body match verified.** |
 
 These are implementation/validation milestones, not a claim that Shizuku acceptance or final whole-branch review has passed. The worker README explicitly identifies remaining direct producers rather than claiming every operation is durable.
 
@@ -77,7 +79,7 @@ These are implementation/validation milestones, not a claim that Shizuku accepta
 | T17 corrected emulator run | **45/45 passed; zero failures/errors/skips** | 13 handoff + 32 DAO; 90 raw frames, 45 unique matched tests, no unmatched/crash markers. API 36 emulator, before T18 changes. |
 | Web dependency validation | **304 tests / 17 files passed; typecheck/build passed** | 55 typed files without diagnostics; a11y checked 11 pages with contrast excluded. Advisory remains open below. |
 | Actual Shizuku operation/latency acceptance | **Not executed for T19** | No new instrumented execution after T18 edits; JVM/fake/handoff tests are not real Shizuku evidence. |
-| PR | **Open, unmerged, base `dev`** | Remote `591c96ec` when last checked; local T18 checkpoint not pushed. Older CI results do not validate the new local head. |
+| PR | **Updated and pushed; open, unmerged, base `dev`** | Remote/local/PR-head `92e7d476` matched after publication; title/body match verified. Current-head CI remains part of T21, not inferred from older checks. |
 
 Final reviewed/committed 27-file source fingerprint: `5289a966b7d0a957fb66a6c0191b39032c4e817b66d255ddc776cf7d6c584811`. Version **1952** and Room schema **9** remain unchanged. Validation used the intended AGP alpha04 change, now retained separately with the inspected Studio update in `c8da3fb3`.
 
