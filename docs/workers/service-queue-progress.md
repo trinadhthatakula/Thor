@@ -2,23 +2,22 @@
 
 **Updated:** 7 September 2026. Times below are UTC.
 
-**22 agreed milestones: 19 complete, 1 in progress, 2 pending. Three milestones remain.**
+**22 agreed milestones: 20 complete, 2 pending/blocked. No runtime task remains in progress.**
 
 **Branch:** `feat/worker-shell-lanes` · **PR:** [#453](https://github.com/trinadhthatakula/Thor/pull/453), open, unmerged, targeting `dev` · **Version:** 1952.
 
-Earlier hosted checkpoint: `98be2f6c`, whose required Zulu CI passed. **The correction checkpoint below has passed local host validation and narrow reviews; fresh hosted CI is still required.** The older CI does not cover these corrections. No release, version bump, merge or physical-device acceptance is part of this work.
+**Correction checkpoint `fd8b97c9` is committed and pushed, with local host validation, narrow reviews and required Zulu CI independently accepted. T21 is complete.** Hosted CI built synthetic PR merge `79eb9171` from that head into `deaf370a`, not a detached head checkout. No release, version bump, merge or physical-device acceptance is part of this work.
 
 ## Definite remaining list
 
 | Milestone | Status | What remains | Evidence required to close |
 |---|---|---|---|
 | **T19 — Shizuku emulator acceptance and latency** | **Pending — blocked** | Establish authorized Shizuku/fixture prerequisites; test real operations, cancellation, reopening, recovery and package conflicts; collect at least 20 warm exports and 20 warm sweeps; remove temporary latency hooks and rebuild. | Genuine Manager consent, scenario postconditions and raw distributions; honest baseline comparison; final APK without hooks. |
-| **T21 — Final whole-branch review** | **In progress** | Publish the reviewed, locally validated correction checkpoint and verify current-head CI. All final host gates and narrow reviews passed. | No unresolved verified blocking finding, complete final-source host validation and required CI green; PR stays open. |
-| **T22 — Startup and jank check** | **Pending — after T21** | Measure startup and visible jank in a safe existing emulator state; fix only demonstrated regressions; validate/review/push any changes. | Actual measurements with environment limitations; before/after evidence for any correction; final remote state verified. |
+| **T22 — Startup and jank check** | **Pending — partially validated, fixture blocked** | Startup: 20 cold + 20 warm samples accepted. Three navigation-only Queue passes accepted. Remaining: scrolling/populated-detail and operation-loaded coverage, matched-baseline comparison; fix only demonstrated regressions. | Suitable authorized fixture and comparable measurements. Existing debug observations are not full-route or shipping-release acceptance. |
 
-**Host builds are complete; build ownership is released.** Publication and CI verification remain inside T21. Reviews, fixture maintenance and validation attempts are not new milestones. No milestone closes merely because a subagent reports completion.
+**Host builds and bounded runtime runs are finished; ownership is released.** No task is silently continuing for days. Reviews, fixture maintenance and validation attempts are not new milestones. No milestone closes merely because a subagent reports completion.
 
-## Current T21 position
+## Completed T21 review and validation
 
 Whole-branch primary review and finite security-boundary follow-ups are complete. **Fifteen confirmed candidate IDs resolve to fourteen distinct production defects**, all implemented, focused-tested and narrowly accepted. A missed instrumentation-fixture argument was subsequently corrected and reviewed PASS/PASS without changing assertions or production APIs.
 
@@ -59,7 +58,7 @@ Final-source fingerprint: `c10facb4a2f0c74aa2577123dee96991226f3ba01bd7f5840d6c2
 | Five-file lint delta review | **PASS/PASS; no blocking findings** | All five files / 15 hunks reviewed; no whole-branch re-review. |
 | G6 instrumentation fixture maintenance | Compilation and targeted IDE passed; review PASS/PASS | Real package coordinator supplied, existing assertions unchanged. Compilation is not instrumented execution. |
 | Web dependency correction | **304 tests / 17 files passed; audit zero vulnerabilities; typecheck/build passed** | Narrow `fast-uri` 3.1.7 lockfile update. Structural accessibility checked 11 pages; contrast excluded. |
-| Current-head hosted CI | Pending publication | Required Zulu 21 CI passed on `98be2f6c` (run `34075194730`), before the uncommitted corrections. No remote XML count is claimed. |
+| Correction-head hosted CI | **Required build-and-test passed** | [Run `34096882892`, job `101662471420`](https://github.com/trinadhthatakula/Thor/actions/runs/34096882892/job/101662471420), completed 08:00:49; independent live recheck 08:10:56. Actual Zulu21.0.12+8, Foss test/Android-test compilation, Store lint and both R8 tasks; missing-rules existence gate passed. Synthetic PR merge checkout; cached tasks disclosed. No hosted XML counts, instrumented execution or APK-signature claim. |
 | Shizuku runtime acceptance | **Not executed for T19** | Handoff/DAO/JVM/fake tests do not establish real Shizuku operation delivery. |
 
 ### Focused review evidence
@@ -100,6 +99,7 @@ Review coverage comprises **60 primary reports, six security cross-checks and 12
 | T17 | Completed durable share preparation, guarded cancellation/recovery cleanup, scoped review and 45/45 focused emulator acceptance (`8efa11a7`, `ba9f8281`). |
 | T18 | Completed full host validation, lint corrections, localized progress/count/Stopping notifications and scoped review (`cc67ad66`). |
 | T20 | Fact-checked architecture/progress/design/plan documentation committed (`92e7d476`); PR title/body updated, feature commits pushed; branch/base/open/unmerged state verified. |
+| T21 | Whole-branch review and fourteen corrections accepted; exactly 50 source/test paths plus two worker docs committed/pushed in `fd8b97c9`. All seven final local gates and required correction-head Zulu CI independently verified. |
 
 These completed milestones do not imply T19 or T22 runtime acceptance. Single-app export and bulk share preparation are durable; multi-app “Backup”/export and single-app quick share remain intentional direct paths, as the [worker README](README.md) records.
 
@@ -120,11 +120,42 @@ These completed milestones do not imply T19 or T22 runtime acceptance. Single-ap
 - Final host IDE compilation exposed the missing G6 fixture argument; the initial compiler failure remains preserved. The later lint-fix IDE tool timeout is retained separately from the proven successful underlying build.
 - Final Foss lint initially failed with **10 errors: NewApi 1, RestrictedApi 3, UseKtx 6**, plus 66 warnings/nine hints. The five-file correction removes those errors without suppressing checks; fresh final-source Foss lint now passes.
 
+## Current T22 runtime position
+
+The bounded startup/jank brief was released only after independent T21 CI acceptance. It permits fresh approved-AVD/idleness checks, compatible replacement of the debug APK, ordinary launches/navigation and profiling—not permission/security changes or package-operation fixtures.
+
+At 07:56:46, a stable read-only capture independently established schema9 Thor queues/items/targets and schema24 WorkManager work were all empty, with integrity checks passing and zero foreign-key violations. The initial immutable device query could not expose retained WAL-backed schema; it was not treated as evidence of empty queues or database failure. Separate WAL-aware **host copies** established the counts without device recovery/checkpointing. Private snapshots remain ignored and unpublished.
+
+This is point-in-time idleness, not permission or a future guarantee. Fresh process/service/file-hash checks precede device writes; any change requires another consistent read-only snapshot. No accepted work is canceled/deleted to make a benchmark.
+
+**Current-only FossDebug/API36 startup evidence is independently accepted.** The exact final debug APK was installed with ordinary `install -r`, preserving data and permissions. Twenty valid samples per condition exclude warmups and tooling failures:
+
+| Platform metric (milliseconds) | Samples | Min | p50 | p90 | p95 | Max |
+|---|---:|---:|---:|---:|---:|---:|
+| Process-cold TotalTime | 20 | 1009 | 1027 | 1039 | 1041 | 1045 |
+| Process-cold WaitTime | 20 | 1010 | 1028 | 1041 | 1042 | 1046 |
+| Process-warm Activity recreation TotalTime | 20 | 78 | 99 | 126 | 129 | 140 |
+| Process-warm Activity recreation WaitTime | 20 | 80 | 100 | 127 | 129 | 140 |
+
+Percentiles use nearest rank. Cold means process absent, not storage-cold. Warm uses `NEW_TASK|CLEAR_TASK`, a surviving PID and a different resumed Activity—not delivery to an existing Activity. Platform timings are not fully-usable/Home-ready timings. The controller independently checked all 40 raw launch/PID/Activity records, recalculated distributions, verified 1,988 command-stream and 126 snapshot hashes, and queried 42 WAL-aware host database copies: integrity passed and accepted-work counts were zero.
+
+The first frame pass stopped at Apps because the current hierarchy exposed no scrollable region. **Zero original full scroll/Queue passes completed.** The partial Home-to-Apps capture at approximately 60Hz contains 22 frames, native janky 4/22 and legacy janky 16/22; those counters are distinct, and the repeated window summary is not another 22 frames. This small debug-only capture, read after an idle gap, is not a regression finding. The separate navigation-only addendum then completed three **Home → Apps → Home → Queue** passes, without changing filters, settings, fixtures or accepted work:
+
+| Navigation-only pass | Frames | Native janky | Legacy janky | Native histogram p95 |
+|---|---:|---:|---:|---:|
+| 1 | 13 | 6 | 10 | 46ms |
+| 2 | 12 | 5 | 5 | 32ms |
+| 3 | 12 | 4 | 5 | 32ms |
+
+Each pass has explicit reset/read boundaries at approximately 60Hz; pre-reset counters were excluded. The controller verified all seven addendum-file hashes and independently parsed the saved counter outputs. Navigation/empty-Queue observations are retained as extracted UI nodes, not full new Queue XML. Empty bounded crash-buffer reads do not prove warning-free operation. These small samples, separated by UI hierarchy checks, must not be pooled with the earlier partial route or used to claim release performance.
+
+**T22 remains partially validated, not complete:** scrolling and populated task-detail profiling are unavailable; operation-loaded and matched-baseline acceptance remain blocked. No service-queue-related regression/root cause was established, so no speculative source fix was made. Janky frames are disclosed above; this is not a claim that the UI is jank-free. Device work stopped after the three permitted passes.
+
 ## Blockers and qualifications
 
 1. **Shizuku prerequisites:** the 06:18 read-only check uniquely identified approved `Thor_Root_API36` (then `emulator-5554`), API36, boot complete, SELinux Enforcing. No installed Shizuku Manager/server or established disposable fixture was found. Current authorization/mode and app-accessible Root are unestablished. No broker self-grant, permission/security workaround or physical-device testing occurred.
-2. **Local JDK exception:** local evidence uses explicitly pinned Corretto21 because Zulu21 is unavailable. Only the cited hosted run establishes Zulu validation, and it predates current corrections.
-3. **Baseline comparability:** original operation baseline API37 differs from approved API36; a matched retained baseline APK is unproven. Current-only distributions cannot establish a speedup. Startup/jank sampling has not begun.
+2. **Local JDK exception:** local evidence uses explicitly pinned Corretto21 because Zulu21 is unavailable. Required hosted run `34096882892` independently establishes Zulu21.0.12+8 validation for the correction head's synthetic PR merge; it does not relabel local results as Zulu.
+3. **Baseline comparability:** original operation baseline API37 differs from approved API36; a matched retained baseline APK is unproven. T22 is limited to current-only debug observations, not matched speedup, shipping-release performance or Shizuku-operation-loaded acceptance.
 4. **Safe performance fixture:** queues must already be idle; never cancel/delete work or clear data to manufacture a benchmark. Warm startup needs a surviving process and genuinely recreated Activity, not an intent delivered to an existing Activity. No sampling during heavy host builds.
 5. **Remaining diagnostics:** current Foss lint retains 66 SyntheticAccessor warnings/nine hints; Store release lint retains 53 SyntheticAccessor warnings/nine hints. No warning-free, post-R8 size or performance-improvement claim. Plural adaptations are automatically checked, not native-speaker reviewed.
 6. **Preserved configuration:** AGP9.5.0-alpha04, Studio's intentional Kotlin-option update, Room schema9 and version1952 remain. Baseline-profile module remains excluded. API28/29 archive package-parser runtime verification is still outstanding.
@@ -154,7 +185,10 @@ The old tracker showed 38 in-progress and 72 pending labels, mostly stale or dup
 - [Architecture](README.md), [implementation plan](../superpowers/plans/2026-09-03-typed-foreground-service-queues.md), [binding design](../superpowers/specs/2026-09-03-privilege-action-service-design.md), [latency baseline](service-queue-latency-baseline.md).
 - Ignored execution workspace: `.superpowers/sdd/2026-09-03-typed-foreground-service-queues/`; its `progress.md` holds detailed handoffs and rulings.
 - Current five-file maintenance: `task-21-final-lint-correction-evidence.json`, exact review diff, and preserved `task-21-final-host/09-final-foss-unit/` / `10-final-foss-lint/` reports.
-- `task-21-final-host-evidence.json` records the completed seven-gate result; `task-21-final-host-controller-acceptance.json` records independent verification. Earlier failures remain preserved separately; local acceptance does not close hosted CI or device gates.
+- `task-21-final-host-evidence.json` records the completed seven-gate result; `task-21-final-host-controller-acceptance.json` records independent verification. Earlier failures remain preserved separately.
+- `task-21-current-head-ci-evidence.json` and `task-21-current-head-ci-controller-acceptance.json` establish hosted CI separately: ten stdout and ten stderr hashes verified, actual log task/JDK/checkout provenance and fresh required-check readback. The first bounded watcher timeout and earlier canceled runs remain historical, not failures of the final required job.
+- `task-22-idle-snapshot-evidence.json` and `task-22-idle-snapshot-controller-verification.json` establish capture-time idleness; `task-22-runtime-brief.md` restricts the runtime scope. No DB contents are published.
+- `task-22-runtime-evidence.json` / `task-22-startup-controller-verification.json` record accepted startup and initial partial-frame evidence. `task-22-navigation-addendum.json` / `task-22-controller-disposition.json` record the three navigation-only passes and remaining blocked coverage. Raw logs, images and snapshots remain private/ignored.
 - Historical T18: `task-18-host-validation/stopping-correction-evidence.json`; prior lint/resumed-host manifests remain preserved.
 - Historical T17: `/tmp/thor-task17-install-9e1ac9bc/{results.json,instrumentation-events.json,instrumentation.log}`; earlier RED/transport-blocked attempts remain separately preserved.
 - Native reports under `app/build/` may be regenerated; saved reports and source fingerprints identify each historical gate.
