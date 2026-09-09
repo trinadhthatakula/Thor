@@ -37,6 +37,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -112,13 +113,15 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
     val systemRepository = koinInject<SystemRepository>()
     val scope = rememberCoroutineScope()
 
-    // Scoped to this composition, as `AppBackupSheet` scopes its own: an export sheet opened for a
-    // second app must not inherit the first one's phase. Dismissing the sheet clears the view model
-    // with the composition, so reopening asks WorkManager again from scratch — which is exactly what
-    // `attach` below is for.
-    val viewModel = koinViewModel<ExportViewModel>(
-        viewModelStoreOwner = rememberViewModelStoreOwner()
-    )
+    // Nav3 can destroy the scene lifecycle while retaining its back-stack ViewModelStore. In that
+    // case rememberViewModelStoreOwner keeps this store too, including a completed export's banner.
+    // The watcher belongs to this sheet, not the retained route: clear it on every disposal, including
+    // configuration changes. Submission lives in the process coordinator; attach rediscovers live work.
+    val viewModelStoreOwner = rememberViewModelStoreOwner()
+    DisposableEffect(viewModelStoreOwner) {
+        onDispose { viewModelStoreOwner.viewModelStore.clear() }
+    }
+    val viewModel = koinViewModel<ExportViewModel>(viewModelStoreOwner = viewModelStoreOwner)
     val phase by viewModel.phase.collectAsStateWithLifecycle()
     val canSubmit by viewModel.canSubmit.collectAsStateWithLifecycle()
 
