@@ -114,7 +114,7 @@ matrix. The device-installation and Store-policy checklist below remains open.
 
 ### API-36 package-manager smoke test
 
-A disposable, headless, read-only instance of `Thor_Root_API36` was used with snapshots disabled
+A disposable, headless instance of `Thor_Root_API36` was used with snapshots disabled
 for the initial implementation on 2026-09-09. This platform-only evidence was not repeated for the
 subsequent setting/prompt revision.
 Fingerprint: `google/sdk_gphone64_arm64/emu64a:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys`.
@@ -131,7 +131,7 @@ For both verified shell UID 2000 and root UID 0, the streamed session sequence
 
 Root identity was established with emulator `adb root`, not an Odin integration run. This verifies
 the platform flag and streaming-session mechanism, **not** Thor's full UI/Odin/Shizuku integration
-or a production OEM build. The fixture was uninstalled and the read-only emulator shut down without
+or a production OEM build. The fixture was uninstalled and the disposable emulator shut down without
 saving its state. No app was installed on the connected physical phone.
 
 ## Device acceptance still required
