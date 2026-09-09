@@ -91,7 +91,7 @@ class OdinRootShellSessionTest {
     }
 
     @Test
-    fun `sweep factory keeps its shell plain with the same bounded shell check`() = runTest {
+    fun `sweep factory requests mount master for package cache visibility with a bounded shell check`() = runTest {
         val builder = RecordingBuilder(FakeOdinShell(status = Shell.ROOT_SHELL))
         val factory = OdinRootShellSessionFactory(
             ioDispatcher = testDispatcher(),
@@ -101,7 +101,7 @@ class OdinRootShellSessionTest {
 
         factory.open().close()
 
-        assertEquals(0, builder.flags)
+        assertEquals(Shell.FLAG_MOUNT_MASTER, builder.flags)
         assertEquals(10L, builder.timeoutSeconds)
     }
 
