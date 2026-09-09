@@ -21,7 +21,9 @@ lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 composeBom = "2026.08.00"
 lottieCompose = "6.7.1"
-material3 = "1.5.0-alpha27"
+# Asgard 2.0.0 calls ToggleButtonDefaults.toggleButtonColors, removed in alpha27.
+# Upgrade only with a compatible Asgard release and passing connected-button UI tests.
+material3 = "1.5.0-alpha26"
 kotlinxSerializationJson = "1.11.0"
 splashscreen = "1.2.0"
 shizuku = "13.1.5"

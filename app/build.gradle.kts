@@ -397,7 +397,11 @@ dependencies {
     implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
+    implementation(libs.androidx.material3) {
+        // Do not let a BOM/transitive update silently replace Asgard's compatible runtime ABI.
+        version { strictly(libs.versions.material3.get()) }
+        because("Asgard 2.0.0 calls ToggleButtonDefaults.toggleButtonColors, removed in alpha27")
+    }
     implementation(libs.androidx.material.icons.extended)
     testImplementation(libs.junit)
     testImplementation(libs.androidx.junit)
