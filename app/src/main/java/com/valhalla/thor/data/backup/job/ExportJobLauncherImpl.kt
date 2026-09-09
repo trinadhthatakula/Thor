@@ -7,9 +7,6 @@ import com.valhalla.thor.domain.model.AppExportRequest
 import com.valhalla.thor.domain.repository.ExportJobLauncher
 import com.valhalla.thor.domain.repository.ThorJobWatcher
 import com.valhalla.thor.util.Logger
-import com.valhalla.thor.util.ServiceQueueEvent
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import org.koin.core.annotation.Single
@@ -45,10 +42,6 @@ class ExportJobLauncherImpl(
         val acceptedTaskId = try {
             acceptance.acceptExport(taskId, request) {
                 durablyAccepted = true
-                ServiceQueueLatencyProbe.mark(
-                    ServiceQueueOperation.EXPORT,
-                    ServiceQueueEvent.DURABLE_ACCEPTED,
-                )
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

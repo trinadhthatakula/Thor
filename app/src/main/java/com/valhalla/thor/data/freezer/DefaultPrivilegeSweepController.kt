@@ -24,9 +24,6 @@ import com.valhalla.thor.domain.repository.PrivilegeSweepStore
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.StoredSweepTerminal
 import com.valhalla.thor.domain.repository.SweepCreateResult
-import com.valhalla.thor.util.ServiceQueueEvent
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -92,10 +89,6 @@ class DefaultPrivilegeSweepController internal constructor(
                     store.load(created.snapshot.requestId) ?: created.snapshot
                 }
             }
-            ServiceQueueLatencyProbe.mark(
-                ServiceQueueOperation.PRIVILEGE_SWEEP,
-                ServiceQueueEvent.DURABLE_ACCEPTED,
-            )
             val start = wakeSignal.wake(snapshot.requestId)
             if (start is ServiceStartResult.Rejected) {
                 store.markUnclaimedStartBlocked(

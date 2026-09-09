@@ -46,13 +46,6 @@ class PrivilegeSweepWorkerTombstoneTest {
         }
     }
 
-    @Test
-    fun `legacy worker no longer owns the privilege first operation marker`() {
-        assertFalse(
-            workerSource().contains("ServiceQueueEvent.FIRST_OPERATION"),
-        )
-    }
-
     private fun workerBody(): String = workerSource().substringAfter(
         "internal class PrivilegeSweepWorker(",
         missingDelimiterValue = "",

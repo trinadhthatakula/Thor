@@ -18,10 +18,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -29,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.DataTaskKind
 import com.valhalla.thor.domain.model.DataTaskStage
@@ -44,12 +41,8 @@ import com.valhalla.thor.presentation.navigation.ThorRoute
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.TermLoggerContent
 import com.valhalla.thor.presentation.widgets.TermLoggerStatus
-import com.valhalla.thor.util.ServiceQueueEvent
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import com.valhalla.thor.util.UiText
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -75,24 +68,7 @@ internal fun TaskDetailContent(
     state: TaskDetailUiState,
     onBackground: () -> Unit,
     onAction: (TaskAction) -> Unit,
-    onLoggerVisible: (ServiceQueueOperation) -> Unit = { operation ->
-        ServiceQueueLatencyProbe.mark(operation, ServiceQueueEvent.LOGGER_VISIBLE)
-    },
 ) {
-    val active = state.phase in ACTIVE_LOGGER_PHASES
-    val latencyOperation = state.loggerLatencyOperation()
-    val loggerVisibleMarked = remember(latencyOperation) { AtomicBoolean() }
-    val markerModifier = if (BuildConfig.DEBUG && active && latencyOperation != null) {
-        Modifier.drawWithContent {
-            drawContent()
-            if (loggerVisibleMarked.compareAndSet(false, true)) {
-                onLoggerVisible(latencyOperation)
-            }
-        }
-    } else {
-        Modifier
-    }
-
     Dialog(
         onDismissRequest = onBackground,
         properties = DialogProperties(
@@ -119,7 +95,7 @@ internal fun TaskDetailContent(
                 title = state.title(),
                 logs = state.loggerLines(),
                 status = state.loggerStatus(),
-                modifier = markerModifier
+                modifier = Modifier
                     .testTag(TASK_DETAIL_LOGGER_TAG)
                     .pointerInput(Unit) {
                         detectTapGestures { }
@@ -446,35 +422,6 @@ private fun PrivilegeSweepOperation.labelRes(): Int = when (this) {
     PrivilegeSweepOperation.CLEAR_CACHE -> R.string.task_operation_clear_cache
     PrivilegeSweepOperation.REINSTALL -> R.string.task_operation_reinstall
 }
-
-private fun QueuedTaskSummary.latencyOperation(): ServiceQueueOperation? =
-    latencyOperation(queueKind, operationId)
-
-private fun ProvisionalTaskIdentity.latencyOperation(): ServiceQueueOperation? =
-    latencyOperation(queueKind, operationId)
-
-private fun latencyOperation(
-    queueKind: TaskQueueKind,
-    operationId: String,
-): ServiceQueueOperation? = when {
-    queueKind == TaskQueueKind.PRIVILEGE -> ServiceQueueOperation.PRIVILEGE_SWEEP
-    operationId == DataTaskKind.APP_EXPORT.name -> ServiceQueueOperation.EXPORT
-    else -> null
-}
-
-internal fun TaskDetailUiState.loggerLatencyOperation(): ServiceQueueOperation? =
-    if (phase in ACTIVE_LOGGER_PHASES) {
-        summary?.latencyOperation() ?: provisionalIdentity?.latencyOperation()
-    } else {
-        null
-    }
-
-private val ACTIVE_LOGGER_PHASES = setOf(
-    TaskLifecyclePhase.STARTING,
-    TaskLifecyclePhase.QUEUED,
-    TaskLifecyclePhase.RUNNING,
-    TaskLifecyclePhase.STOPPING,
-)
 
 internal fun taskDetailRouteTag(taskId: UUID): String = "task-detail-route-$taskId"
 

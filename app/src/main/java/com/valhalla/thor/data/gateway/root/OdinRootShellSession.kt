@@ -24,7 +24,8 @@ internal class OdinRootShellSessionFactory(
 ) : RootShellSessionFactory {
     private val shellFlags = when (lane) {
         PrivilegeExecutionLane.ARCHIVE -> Shell.FLAG_MOUNT_MASTER
-        PrivilegeExecutionLane.SWEEP -> 0
+        // Cache clearing must see other packages, not Thor's app-data-isolated mounts.
+        PrivilegeExecutionLane.SWEEP -> Shell.FLAG_MOUNT_MASTER
         PrivilegeExecutionLane.INTERACTIVE ->
             error("Odin MainShell owns the interactive lane")
     }

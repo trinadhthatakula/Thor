@@ -52,9 +52,6 @@ import com.valhalla.thor.domain.usecase.ExportSession
 import com.valhalla.thor.domain.usecase.OpenArchiveUseCase
 import com.valhalla.thor.domain.usecase.ReadInstalledAppFactsUseCase
 import com.valhalla.thor.domain.usecase.RestoreAppArchiveUseCase
-import com.valhalla.thor.util.ServiceQueueEvent
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -401,12 +398,6 @@ internal class RoomDataSyncCoordinatorRuntime(
             val prepared = prepare(claim, renewingCheckpoints)
             if (prepared is PreparedTask.Refused) return@withClaimedExecution prepared.outcome
             prepared as PreparedTask.Ready
-            if (prepared.request.kind == DataTaskKind.APP_EXPORT) {
-                ServiceQueueLatencyProbe.mark(
-                    ServiceQueueOperation.EXPORT,
-                    ServiceQueueEvent.EXECUTION_ADMITTED,
-                )
-            }
             prepared.runner.run(prepared.request, renewingCheckpoints)
         }
     }

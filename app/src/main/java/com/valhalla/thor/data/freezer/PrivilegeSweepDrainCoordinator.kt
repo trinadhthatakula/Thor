@@ -19,9 +19,6 @@ import com.valhalla.thor.domain.repository.PrivilegeSweepStore
 import com.valhalla.thor.domain.repository.PrivilegeSweepTargetResult
 import com.valhalla.thor.domain.repository.PrivilegeSweepTargetTerminalState
 import com.valhalla.thor.domain.repository.SweepAttemptOutcome
-import com.valhalla.thor.util.ServiceQueueEvent
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
@@ -140,7 +137,6 @@ internal class RoomPrivilegeSweepDrainRuntime(
         onTargetClaimed: (String) -> Unit,
     ) {
         val snapshot = requireNotNull(store.load(claim.requestId))
-        var firstOperation = true
         while (true) {
             currentCoroutineContext().ensureActive()
             // Authorization is checked only between targets, never used to reinterpret a result.
@@ -156,15 +152,6 @@ internal class RoomPrivilegeSweepDrainRuntime(
                 currentCoroutineContext().ensureActive()
                 onTargetClaimed(target.packageName)
                 currentCoroutineContext().ensureActive()
-                ServiceQueueLatencyProbe.mark(
-                    ServiceQueueOperation.PRIVILEGE_SWEEP, ServiceQueueEvent.EXECUTION_ADMITTED,
-                )
-                if (firstOperation) {
-                    ServiceQueueLatencyProbe.mark(
-                        ServiceQueueOperation.PRIVILEGE_SWEEP, ServiceQueueEvent.FIRST_OPERATION,
-                    )
-                    firstOperation = false
-                }
                 val outcome = executor.execute(snapshot, target.packageName)
                 withContext(NonCancellable + ioDispatcher) {
                     check(store.completeClaimedTarget(
