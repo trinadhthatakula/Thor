@@ -21,11 +21,13 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.espresso.Espresso.pressBack
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.action.ViewActions.pressBack
+import androidx.test.espresso.matcher.RootMatchers.isDialog
+import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.DataTaskKind
 import com.valhalla.thor.domain.model.DataTaskStage
-import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.QueuedTaskDetail
 import com.valhalla.thor.domain.model.QueuedTaskSummary
 import com.valhalla.thor.domain.model.TaskAction
@@ -37,7 +39,6 @@ import com.valhalla.thor.domain.model.TaskProgress
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.presentation.widgets.TermLoggerStatus
 import com.valhalla.thor.presentation.widgets.termLoggerLineTag
-import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -230,89 +231,6 @@ class TaskDetailScreenTest {
     }
 
     @Test
-    fun provisionalStartingExportMarksLoggerVisibleOnFirstDraw() {
-        val markers = mutableListOf<ServiceQueueOperation>()
-        setContent(
-            TaskDetailUiState(
-                taskId = TASK_ID,
-                phase = TaskLifecyclePhase.STARTING,
-                provisionalIdentity = ProvisionalTaskIdentity(
-                    TaskQueueKind.DATA,
-                    DataTaskKind.APP_EXPORT.name,
-                ),
-            ),
-            onLoggerVisible = markers::add,
-        )
-
-        rule.waitForIdle()
-
-        rule.runOnIdle { assertEquals(listOf(ServiceQueueOperation.EXPORT), markers) }
-    }
-
-    @Test
-    fun activeExportMarksLoggerVisibleOnceAfterDraw() {
-        val markers = mutableListOf<ServiceQueueOperation>()
-        setContent(
-            state(TaskLifecyclePhase.RUNNING),
-            onLoggerVisible = markers::add,
-        )
-
-        rule.waitForIdle()
-        rule.runOnUiThread { rule.activity.window.decorView.invalidate() }
-        rule.waitForIdle()
-
-        rule.runOnIdle { assertEquals(listOf(ServiceQueueOperation.EXPORT), markers) }
-    }
-
-    @Test
-    fun activePrivilegeLoggerUsesPrivilegeSweepMarker() {
-        val markers = mutableListOf<ServiceQueueOperation>()
-        setContent(
-            state(
-                phase = TaskLifecyclePhase.RUNNING,
-                queueKind = TaskQueueKind.PRIVILEGE,
-                operationId = PrivilegeSweepOperation.FREEZE.name,
-            ),
-            onLoggerVisible = markers::add,
-        )
-
-        rule.waitForIdle()
-
-        rule.runOnIdle {
-            assertEquals(listOf(ServiceQueueOperation.PRIVILEGE_SWEEP), markers)
-        }
-    }
-
-    @Test
-    fun markerSelectionRejectsInactiveAndUnsupportedTasks() {
-        assertEquals(
-            null,
-            state(TaskLifecyclePhase.SUCCEEDED).loggerLatencyOperation(),
-        )
-        assertEquals(
-            null,
-            state(
-                phase = TaskLifecyclePhase.RUNNING,
-                operationId = DataTaskKind.ARCHIVE_BACKUP.name,
-            ).loggerLatencyOperation(),
-        )
-        assertEquals(
-            null,
-            state(
-                phase = TaskLifecyclePhase.RUNNING,
-                operationId = DataTaskKind.SHARE_PREPARE.name,
-            ).loggerLatencyOperation(),
-        )
-        assertEquals(
-            null,
-            TaskDetailUiState(
-                taskId = TASK_ID,
-                phase = TaskLifecyclePhase.OBSERVER_FAILURE,
-            ).loggerLatencyOperation(),
-        )
-    }
-
-    @Test
     fun onlySuccessfulTerminalStateUsesSuccessPresentation() {
         assertEquals(TermLoggerStatus.SUCCESS, state(TaskLifecyclePhase.SUCCEEDED).loggerStatus())
         assertEquals(TermLoggerStatus.NEUTRAL, state(TaskLifecyclePhase.FAILED).loggerStatus())
@@ -364,7 +282,8 @@ class TaskDetailScreenTest {
             onAction = actions::add,
         )
 
-        pressBack()
+        // The Activity loses focus when the dialog opens; wait for the dialog root itself.
+        onView(isRoot()).inRoot(isDialog()).perform(pressBack())
 
         rule.runOnIdle {
             assertEquals(1, backgroundCount)
@@ -396,7 +315,6 @@ class TaskDetailScreenTest {
         state: TaskDetailUiState,
         onBackground: () -> Unit = {},
         onAction: (TaskAction) -> Unit = {},
-        onLoggerVisible: (ServiceQueueOperation) -> Unit = {},
     ) {
         rule.setContent {
             MaterialTheme {
@@ -404,7 +322,6 @@ class TaskDetailScreenTest {
                     state = state,
                     onBackground = onBackground,
                     onAction = onAction,
-                    onLoggerVisible = onLoggerVisible,
                 )
             }
         }

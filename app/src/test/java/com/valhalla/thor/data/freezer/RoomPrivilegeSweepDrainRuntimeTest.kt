@@ -25,8 +25,6 @@ import com.valhalla.thor.data.service.*
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.domain.model.*
 import com.valhalla.thor.domain.repository.*
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -37,7 +35,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.shadows.ShadowLog
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], application = Application::class)
@@ -104,8 +101,6 @@ class RoomPrivilegeSweepDrainRuntimeTest {
                     return target
                 }
             }
-            ServiceQueueLatencyProbe.begin(ServiceQueueOperation.PRIVILEGE_SWEEP)
-            ShadowLog.clear()
             drain(runtime(faulty))
             val row = requireNotNull(store.load(request))
             assertEquals(ordinal, executed.size)
@@ -113,7 +108,6 @@ class RoomPrivilegeSweepDrainRuntimeTest {
             assertNotNull(row.terminalState)
             assertEquals(PrivilegeSweepTargetState.CANCELLED, row.targetSnapshots[ordinal].state)
             if (ordinal == 1) assertEquals(PrivilegeSweepTargetState.SUCCEEDED, row.targetSnapshots[0].state)
-            assertEquals(ordinal, ShadowLog.getLogsForTag("ServiceQueueLatencyProbe").count { it.msg.contains("event=first_operation") })
         }
     }
 

@@ -72,8 +72,6 @@ import com.valhalla.thor.presentation.common.JobRunningFrame
 import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.util.Logger
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -481,7 +479,6 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                         }
                         Button(
                             onClick = {
-                                ServiceQueueLatencyProbe.begin(ServiceQueueOperation.EXPORT)
                                 // A custom SAF folder writes via DocumentFile and needs no
                                 // WRITE_EXTERNAL_STORAGE — only the legacy Downloads path (API <= 28)
                                 // does.

@@ -45,8 +45,6 @@ import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
 import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
 import com.valhalla.thor.util.asUiText
@@ -849,9 +847,6 @@ class MainViewModel(
             )
             shareSubmissionCoordinator.submit(taskId, request)
             return
-        }
-        if (action is MultiAppAction.ReInstall || action is MultiAppAction.ClearCache) {
-            ServiceQueueLatencyProbe.begin(ServiceQueueOperation.PRIVILEGE_SWEEP)
         }
         viewModelScope.launch {
             when (action) {

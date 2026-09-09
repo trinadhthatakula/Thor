@@ -26,9 +26,6 @@ import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
-import com.valhalla.thor.util.ServiceQueueEvent
-import com.valhalla.thor.util.ServiceQueueLatencyProbe
-import com.valhalla.thor.util.ServiceQueueOperation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
@@ -555,7 +552,6 @@ internal suspend fun executeRootCopyWithVerifiedBoundary(
 
 /**
  * `File.copyTo` in chunks, reporting each chunk only after its destination write succeeds.
- * The latency marker remains on the first direct staged-byte write boundary.
  */
 internal suspend fun copyFileWithVerifiedProgress(
     source: File,
@@ -569,10 +565,6 @@ internal suspend fun copyFileWithVerifiedProgress(
                 currentCoroutineContext().ensureActive()
                 val read = input.read(buffer)
                 if (read == -1) break
-                ServiceQueueLatencyProbe.mark(
-                    ServiceQueueOperation.EXPORT,
-                    ServiceQueueEvent.FIRST_OPERATION,
-                )
                 output.write(buffer, 0, read)
                 progress.onBytesWritten(read.toLong())
             }
