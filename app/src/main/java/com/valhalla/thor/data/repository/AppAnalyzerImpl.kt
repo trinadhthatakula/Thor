@@ -414,7 +414,11 @@ class AppAnalyzerImpl(
             version = archiveInfo.versionName ?: "Unknown",
             versionCode = archiveInfo.longVersionCode,
             iconPath = persistIcon(iconBitmap, archiveInfo.packageName, archiveInfo.longVersionCode),
-            permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
+            permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList(),
+            // [archiveInfo] was parsed from bundleFile itself for a monolithic APK, or from the
+            // selected identity candidate extracted from that same staged bundle. Never source
+            // this security-sensitive policy input from manifest.json/info.json sidecars.
+            targetSdk = parsedArchiveTargetSdk(archiveInfo),
         )
     }
 
@@ -474,6 +478,15 @@ class AppAnalyzerImpl(
         return bitmap
     }
 }
+
+/**
+ * Reads the target SDK only from Android's parsed APK representation.
+ *
+ * Kept separate from sidecar parsing so policy callers cannot accidentally substitute an archive
+ * manifest's JSON declaration for the APK that the installer will receive.
+ */
+internal fun parsedArchiveTargetSdk(archiveInfo: PackageInfo): Int? =
+    archiveInfo.applicationInfo?.targetSdkVersion
 
 /** How long a staged input may sit unclaimed before the next analysis reclaims its disk. */
 internal const val STAGED_PACKAGE_TTL_MILLIS = 60L * 60L * 1000L

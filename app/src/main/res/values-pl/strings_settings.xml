@@ -11,6 +11,10 @@
     <string name="settings_category_security">Bezpieczeństwo</string>
     <string name="settings_category_about">Informacje i wsparcie</string>
 
+    <string name="allow_legacy_apk_install">Zezwalaj na instalowanie starszych plików APK bez pytania</string>
+    <string name="allow_legacy_apk_install_desc">W instalatorze Thora automatycznie zezwalaj na instalację plików APK przeznaczonych dla starszych wersji Androida. Tylko Root lub Shizuku. Omija blokadę bezpieczeństwa Androida; starsze aplikacje mogą narazić urządzenie i dane na ryzyko. Gdy opcja jest wyłączona, pytaj przed każdą instalacją starszej aplikacji.</string>
+    <string name="legacy_install_allowed_by_setting">Zezwolono przez ustawienie instalatora. Dodatkowe potwierdzenie jest wyłączone.</string>
+
     <!-- ── Index chrome ──────────────────────────────────────────────────────────────────── -->
     <string name="settings_search_hint">Szukaj w ustawieniach…</string>
     <string name="settings_search_no_results">Nic w Ustawieniach nie pasuje do „%1$s”.</string>

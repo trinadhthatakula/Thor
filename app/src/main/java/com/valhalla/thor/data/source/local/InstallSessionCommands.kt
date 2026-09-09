@@ -100,6 +100,8 @@ internal const val SESSION_COMMIT_FAILED_EXIT_CODE = 103
  * @param installerArg the attribution flag, e.g. `" -i com.android.vending"`, with or without its
  *   leading space. Re-spaced here so it cannot fuse onto the flag before it — which used to be a
  *   constant `-g` and is now `-g` or `-r`, so the hazard did not go away with the constant.
+ * @param bypassLowTargetSdkBlock adds the shell-only Android 14+ low-target install bypass to
+ *   `install-create`. Callers must authorize it for the current execution mode before passing it.
  * @return a script whose exit code is 0 on success, or one of
  *   [SESSION_CREATE_FAILED_EXIT_CODE] / [SESSION_WRITE_FAILED_EXIT_CODE] /
  *   [SESSION_COMMIT_FAILED_EXIT_CODE], with the `pm` output on stderr.
@@ -110,18 +112,21 @@ internal fun installViaSessionCommand(
     canDowngrade: Boolean = false,
     grantAllPermissions: Boolean,
     installerArg: String = "",
+    bypassLowTargetSdkBlock: Boolean = false,
 ): String {
     require(apks.isNotEmpty()) { "installViaSessionCommand needs at least one APK" }
 
     val downgrade = if (canDowngrade) " -d" else ""
     val grant = if (grantAllPermissions) " -g" else ""
     val installer = installerArg.trim().let { if (it.isEmpty()) "" else " $it" }
+    val bypassLowTargetSdk = if (bypassLowTargetSdkBlock) " --bypass-low-target-sdk-block" else ""
 
     val sb = StringBuilder()
     sb.append("(\n")
     sb.append("set -o pipefail\n")
     sb.append("CREATE_OUT=\$(pm install-create -r").append(grant).append(installer)
-        .append(" --user ").append(userId).append(downgrade).append(" 2>&1)\n")
+        .append(bypassLowTargetSdk).append(" --user ").append(userId).append(downgrade)
+        .append(" 2>&1)\n")
     // install-create prints "Success: created install session [<id>]".
     sb.append("SID=\$(printf '%s\\n' \"\$CREATE_OUT\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
     sb.append("if [ -z \"\$SID\" ]; then echo \"pm install-create failed: \$CREATE_OUT\" 1>&2; exit ")

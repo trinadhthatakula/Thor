@@ -28,7 +28,7 @@
     <string name="dynamic_colors">ألوان ديناميكية</string>
     <string name="dynamic_colors_desc">تكامل Material You</string>
     <string name="biometric_lock">قفل القياسات الحيوية</string>
-    <string name="biometric_lock_desc">يتطلب المصادقة عند التشغيل</string>
+    <string name="biometric_lock_desc">يتطلب المصادقة عند التشغيل. عند تفعيل القفل، تُحظر لقطات الشاشة وتسجيل الشاشة في Thor وتُخفى معاينته في التطبيقات الأخيرة.</string>
     <string name="biometric_not_available">المقاييس الحيوية غير مسجلة أو غير متوفرة</string>
     <string name="active_engine">المحرك النشط</string>
     <string name="active_engine_desc">التبديل بين الموفرين المتاحين</string>
@@ -360,6 +360,11 @@
     <string name="exit">خروج</string>
     <string name="title_thor_installer">مثبت Thor</string>
     <string name="install_analyzing">جارٍ تحليل الحزمة…</string>
+    <string name="legacy_install_description">يستهدف %1$s إصدار SDK %2$d. يحظر هذا الإصدار من Android عادةً عمليات التثبيت الجديدة للتطبيقات التي تستهدف إصدار SDK أقل من %3$d.</string>
+    <string name="legacy_install_confirm_title">السماح بتثبيت تطبيق قديم؟</string>
+    <string name="legacy_install_confirm_message">يستهدف %1$s‏ (%2$s) إصدار SDK %3$d، وهو أقل من الحد الأدنى للتثبيت وهو SDK %4$d. قد يؤدي تجاوز حظر الأمان هذا إلى تعريض جهازك وبياناتك للخطر. قد تحصل التطبيقات القديمة على الأذونات وقت التثبيت وفق نموذج الأذونات القديم الخاص بها. لا تتابع إلا إذا كنت تثق بملف APK هذا. ينطبق هذا على هذا التثبيت فقط؛ وتظل التوقيع وتوافق الجهاز وفحوصات Android الأخرى سارية.</string>
+    <string name="legacy_install_allow_once">ثبّت هذه المرة</string>
+    <string name="legacy_install_unsupported">يتطلب تثبيت التطبيقات القديمة Android 14 أو أحدث وRoot أو Shizuku. لا يمكن للأوضاع العادي وDhizuku والخارجي تطبيق هذا التجاوز.</string>
     <string name="install_downgrade_warning">سيؤدي هذا إلى خفض إصدار التطبيق.</string>
     <string name="install_downgrade_code_explainer">رمز الإصدار %1$s أقل من المثبَّت %2$s. يرتّب Android التحديثات حسب رمز الإصدار لا حسب اسم الإصدار، لذا قد يبدو التطبيق أحدث وهو في الواقع خفض للإصدار.</string>
     <string name="install_update_warning">سيؤدي هذا إلى تحديث التطبيق الحالي.</string>

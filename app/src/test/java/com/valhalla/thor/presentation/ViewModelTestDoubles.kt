@@ -764,6 +764,13 @@ class FakePreferenceRepository(
     override suspend fun shouldGrantAllPermissionsOnInstall(): Boolean =
         prefs.value.grantAllPermissionsOnInstall
 
+    override suspend fun setAllowLegacyApkInstall(enabled: Boolean) {
+        write { it.copy(allowLegacyApkInstall = enabled) }
+    }
+
+    override suspend fun shouldAllowLegacyApkInstall(): Boolean =
+        prefs.value.allowLegacyApkInstall
+
     override suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>) {
         write { it.copy(appInfoActionsOrder = order) }
     }

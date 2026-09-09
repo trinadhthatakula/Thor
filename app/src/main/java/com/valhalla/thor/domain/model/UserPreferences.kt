@@ -97,6 +97,14 @@ data class UserPreferences(
      */
     val grantAllPermissionsOnInstall: Boolean = false,
 
+    /**
+     * Standing consent to bypass Android's low-target-SDK block in the interactive installer,
+     * without its extra confirmation. Off means ask before each eligible Root/Shizuku install.
+     * Background restore and reinstall paths keep their own explicit consent boundary and must
+     * not infer permission from this saved preference.
+     */
+    val allowLegacyApkInstall: Boolean = false,
+
     // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
     val exportDirUri: String? = null,
 
@@ -116,5 +124,3 @@ data class UserPreferences(
      */
     val settingsLost: Boolean = false
 )
-
-

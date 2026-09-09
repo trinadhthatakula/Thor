@@ -139,6 +139,11 @@ enum class SettingsRowId(
         R.string.grant_all_permissions,
         R.string.grant_all_permissions_desc,
     ),
+    ALLOW_LEGACY_APK_INSTALL(
+        SettingsCategory.INSTALLING,
+        R.string.allow_legacy_apk_install,
+        R.string.allow_legacy_apk_install_desc,
+    ),
     ANY_FILE_OPENER(
         SettingsCategory.INSTALLING,
         R.string.any_file_opener,

@@ -136,6 +136,50 @@ class RootSystemGatewayRoutingTest {
     }
 
     @Test
+    fun `low target bypass reaches the root session for one APK`() = runTest {
+        val apk = File.createTempFile("thor-bypass-one", ".apk").apply { writeText("apk") }
+        try {
+            val executor = RecordingRootCommandExecutor()
+
+            gateway(executor).installMultipleApks(
+                apkPaths = listOf(apk.absolutePath),
+                canDowngrade = false,
+                bypassLowTargetSdkBlock = true,
+            ).getOrThrow()
+
+            val command = executor.commands.single().text
+            assertEquals(1, Regex("--bypass-low-target-sdk-block").findAll(command).count())
+            assertTrue(command.contains("pm install-create"))
+            assertTrue(command.contains("cat '${apk.absolutePath}' | pm install-write"))
+        } finally {
+            apk.delete()
+        }
+    }
+
+    @Test
+    fun `low target bypass reaches the root session for every split`() = runTest {
+        val base = File.createTempFile("thor-bypass-base", ".apk").apply { writeText("base") }
+        val split = File.createTempFile("thor-bypass-split", ".apk").apply { writeText("split") }
+        try {
+            val executor = RecordingRootCommandExecutor()
+
+            gateway(executor).installMultipleApks(
+                apkPaths = listOf(base.absolutePath, split.absolutePath),
+                canDowngrade = false,
+                bypassLowTargetSdkBlock = true,
+            ).getOrThrow()
+
+            val command = executor.commands.single().text
+            assertEquals(1, Regex("--bypass-low-target-sdk-block").findAll(command).count())
+            assertTrue(command.contains("cat '${base.absolutePath}' | pm install-write"))
+            assertTrue(command.contains("cat '${split.absolutePath}' | pm install-write"))
+        } finally {
+            base.delete()
+            split.delete()
+        }
+    }
+
+    @Test
     fun `permission app-op probe preserves context and throws typed routing failure`() = runTest {
         val failure = ShellLaneBusy(PrivilegeExecutionLane.ARCHIVE)
         val executor = RecordingRootCommandExecutor(failure = failure)

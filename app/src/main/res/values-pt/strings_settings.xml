@@ -21,6 +21,10 @@
     <string name="settings_category_security">Segurança</string>
     <string name="settings_category_about">Sobre e apoio</string>
 
+    <string name="allow_legacy_apk_install">Permitir instalações de APK antigas sem perguntar</string>
+    <string name="allow_legacy_apk_install_desc">No instalador do Thor, permitir automaticamente APK destinadas a versões mais antigas do Android. Apenas Root ou Shizuku. Ignora o bloqueio de segurança do Android; as aplicações antigas podem pôr o dispositivo e os dados em risco. Quando desativado, perguntar antes de cada instalação antiga.</string>
+    <string name="legacy_install_allowed_by_setting">Permitido pela definição do instalador. A confirmação adicional está desativada.</string>
+
     <!-- ── Index chrome ──────────────────────────────────────────────────────────────────── -->
     <string name="settings_search_hint">Pesquisar nas definições…</string>
     <string name="settings_search_no_results">Nada nas Definições corresponde a «%1$s».</string>

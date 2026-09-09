@@ -16,5 +16,13 @@ data class AppMetadata(
     val version: String,
     val versionCode: Long?,
     val iconPath: String?,
-    val permissions: List<String> = emptyList()
+    val permissions: List<String> = emptyList(),
+    /**
+     * The APK manifest's target SDK, or null when no APK could be parsed.
+     *
+     * This deliberately has no sidecar equivalent: bundle JSON is untrusted metadata and must not
+     * enable an install-policy exception. A parsed APK may legitimately report 0, which remains a
+     * known value rather than being rewritten to null.
+     */
+    val targetSdk: Int? = null,
 )

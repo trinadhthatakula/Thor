@@ -41,7 +41,7 @@
     <string name="grant_all_permissions_install">Conceder todas as permissões solicitadas</string>
     <string name="default_tab">Aba padrão</string>
     <string name="default_tab_desc">A tela que o Thor abre ao iniciar</string>
-    <string name="biometric_lock_desc">Exigir autenticação ao iniciar</string>
+    <string name="biometric_lock_desc">Exigir autenticação ao iniciar. Quando ativado, o bloqueio impede capturas e gravações da tela do Thor e oculta a prévia nos apps recentes.</string>
     <string name="built_with_precision">CONSTRUÍDO COM PRECISÃO PARA USUÁRIOS AVANÇADOS</string>
 
     <!-- Language picker -->
@@ -288,6 +288,11 @@
     <!-- Freezer entry point / Installer -->
     <string name="manage_freezer">Gerenciar o Congelador</string>
     <string name="install_analyzing">Analisando o pacote…</string>
+    <string name="legacy_install_description">%1$s tem como destino o SDK %2$d. Esta versão do Android normalmente bloqueia novas instalações abaixo do SDK %3$d.</string>
+    <string name="legacy_install_confirm_title">Permitir instalação de aplicativo antigo?</string>
+    <string name="legacy_install_confirm_message">%1$s (%2$s) tem como destino o SDK %3$d, abaixo do mínimo de instalação do SDK %4$d. Ignorar este bloqueio de segurança pode colocar seu dispositivo e seus dados em risco. Aplicativos antigos podem receber permissões no momento da instalação segundo seu modelo de permissões antigo. Continue apenas se confiar neste APK. Isso se aplica somente a esta instalação; a assinatura, a compatibilidade do dispositivo e outras verificações do Android continuam valendo.</string>
+    <string name="legacy_install_allow_once">Instalar desta vez</string>
+    <string name="legacy_install_unsupported">A instalação de aplicativos antigos requer Android 14 ou mais recente e Root ou Shizuku. Os modos normal, Dhizuku e externo não podem aplicar esta substituição.</string>
     <string name="install_downgrade_warning">Isso vai reverter o aplicativo para uma versão anterior.</string>
     <string name="install_downgrade_code_explainer">O código de versão %1$s é inferior ao %2$s instalado. O Android ordena as atualizações pelo código de versão, não pelo nome da versão — um aplicativo pode parecer mais recente e ainda assim ser uma reversão.</string>
     <string name="install_update_warning">Isso vai atualizar o aplicativo existente.</string>

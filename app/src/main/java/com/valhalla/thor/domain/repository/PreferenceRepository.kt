@@ -161,6 +161,15 @@ interface PreferenceRepository {
      */
     suspend fun shouldGrantAllPermissionsOnInstall(): Boolean
 
+    /** Persists the interactive installer's default for low-target-SDK bypass consent. */
+    suspend fun setAllowLegacyApkInstall(enabled: Boolean)
+
+    /**
+     * One-shot, fail-closed read of [UserPreferences.allowLegacyApkInstall] for the interactive
+     * installer only. Background installers must keep their explicit default of `false`.
+     */
+    suspend fun shouldAllowLegacyApkInstall(): Boolean
+
     // --- Customization ---
     suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>)
     suspend fun setAppInfoActionVisibility(actionId: AppInfoActionId, isVisible: Boolean)

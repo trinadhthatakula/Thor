@@ -64,7 +64,15 @@ class InstallSessionCommandsTest {
         canDowngrade: Boolean = false,
         grantAllPermissions: Boolean = false,
         installerArg: String = "",
-    ) = installViaSessionCommand(apks, userId, canDowngrade, grantAllPermissions, installerArg)
+        bypassLowTargetSdkBlock: Boolean = false,
+    ) = installViaSessionCommand(
+        apks,
+        userId,
+        canDowngrade,
+        grantAllPermissions,
+        installerArg,
+        bypassLowTargetSdkBlock,
+    )
 
     // --- the defect itself: no path may reach pm ---
 
@@ -172,6 +180,30 @@ class InstallSessionCommandsTest {
             10,
             Regex("--user (\\d+)").find(command(userId = 10))?.groupValues?.get(1)?.toIntOrNull()
         )
+    }
+
+    @Test
+    fun `low target SDK bypass is opt-in and belongs only to session creation`() {
+        val normal = command()
+        assertFalse(normal.contains("--bypass-low-target-sdk-block"))
+
+        val bypassed = command(bypassLowTargetSdkBlock = true)
+        assertEquals(1, Regex("--bypass-low-target-sdk-block").findAll(bypassed).count())
+        val createLine = bypassed.lineSequence().first { it.startsWith("CREATE_OUT=") }
+        assertTrue(createLine.contains("--bypass-low-target-sdk-block"))
+        assertFalse(
+            bypassed.lineSequence().filter { it.contains("pm install-write") || it.contains("pm install-commit") }
+                .any { it.contains("--bypass-low-target-sdk-block") }
+        )
+    }
+
+    @Test
+    fun `low target SDK bypass keeps every split in the session`() {
+        val script = command(listOf(base, split), bypassLowTargetSdkBlock = true)
+
+        assertTrue(script.contains("cat '${base.path}' | pm install-write"))
+        assertTrue(script.contains("cat '${split.path}' | pm install-write"))
+        assertEquals(2, Regex("\\| pm install-write -S").findAll(script).count())
     }
 
     /**

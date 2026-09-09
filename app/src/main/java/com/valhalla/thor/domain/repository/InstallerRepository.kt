@@ -43,6 +43,9 @@ interface InstallerRepository {
      *   installer reports success, before publishing progress or placing OBB data. Invocation entry,
      *   global events and package presence are not proof. Session/external rungs do not call it: their
      *   asynchronous completion is not correlated here, so cancellation ownership stays unknown.
+     * @param bypassLowTargetSdkBlock requests Android's low-target SDK install bypass. It is valid
+     *   only for the Root and shell-backed Shizuku paths on Android 14 and later; unsupported modes
+     *   are rejected before the install starts.
      */
     suspend fun installPackage(
         staged: StagedPackage,
@@ -53,5 +56,6 @@ interface InstallerRepository {
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
         onInvocationStarted: () -> Unit = {},
         onInstallSucceeded: () -> Unit = {},
+        bypassLowTargetSdkBlock: Boolean = false,
     )
 }
