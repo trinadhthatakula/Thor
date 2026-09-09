@@ -186,6 +186,16 @@ renumber breaks those silently with nothing to catch it.
 
 ---
 
+## Current implementation — 2026-09-10
+
+This targeted update does not re-sweep the historical ranking below.
+
+| Item | Tier | Status |
+|---|---|---|
+| [TG-001: Legacy target-SDK installation](legacy-target-sdk-installation.md) | 0/1 | Implemented locally on `feat/legacy-apk-install`, including a default-off saved setting and per-install confirmation. Updated test/lint gates pass; an earlier API-36 shell/root package-manager smoke test passed. Not merged/released; full Thor/Shizuku/Samsung device acceptance and Store-policy review remain open. |
+| [RD-001: Explain screenshot protection](../analysis/community-feature-request-assessment-2026-09.md#reddit-ui-findings) | 0/1 | Implemented locally on the same feature branch in all eight locales. Biometric-lock copy explains screenshots, recording and Recents protection; authentication and `FLAG_SECURE` behavior are unchanged. Full unit tests, both lint gates and debug APK assembly pass. Maintainer confirmed physical-device settings acceptance on 2026-09-10; this is not screenshot/recording/Recents security testing. Not merged/released. |
+| [RD-004: Readable Freezer descriptions](../analysis/community-feature-request-assessment-2026-09.md#reddit-ui-findings) | 0/1 | Implemented locally: four Freezer switches and biometric lock use fully wrapping titles/descriptions while retaining one switch target. Native-layout checks pass across eight locales at 320dp/2x and 600dp/1.5x, including RTL and touch/disabled semantics. Full test/lint gates pass. Maintainer confirmed physical-device settings acceptance on 2026-09-10. Not merged/released. |
+
 ## Do next — every open item, ranked
 
 Ranked by **impact × ease**: what buys the most for the least. This is the answer to *"what should I
