@@ -840,7 +840,7 @@
     <string name="data_queue_notification_channel_name">Opérations sur les données</string>
     <string name="data_queue_notification_channel_description">Progression de l’archivage, de la restauration, de l’exportation et de la préparation du partage</string>
     <string name="privilege_queue_notification_channel_name">Actions privilégiées sur les applications</string>
-    <string name="privilege_queue_notification_channel_description">Progression des actions en attente : gel, dégel, vidage du cache et correction de la boutique</string>
+    <string name="privilege_queue_notification_channel_description">Progression des actions en attente : gel, dégel, suspension, rétablissement, vidage du cache et correction de la boutique</string>
     <string name="data_queue_notification_title">Opération sur les données en cours</string>
     <string name="privilege_queue_notification_title">Action sur une application en cours</string>
     <string name="task_queue_notification_status">%1$s · %2$d sur %3$d</string>

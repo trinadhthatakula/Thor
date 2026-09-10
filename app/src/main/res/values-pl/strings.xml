@@ -928,7 +928,7 @@
     <string name="data_queue_notification_channel_name">Operacje na danych</string>
     <string name="data_queue_notification_channel_description">Postęp archiwizacji, przywracania, eksportu i przygotowania do udostępnienia</string>
     <string name="privilege_queue_notification_channel_name">Uprzywilejowane działania na aplikacjach</string>
-    <string name="privilege_queue_notification_channel_description">Postęp działań w kolejce: zamrażania, odmrażania, czyszczenia pamięci podręcznej i naprawy Sklepu</string>
+    <string name="privilege_queue_notification_channel_description">Postęp działań w kolejce: zamrażania, odmrażania, zawieszania, wznawiania, czyszczenia pamięci podręcznej i naprawy Sklepu</string>
     <string name="data_queue_notification_title">Trwa operacja na danych</string>
     <string name="privilege_queue_notification_title">Trwa działanie na aplikacji</string>
     <string name="task_queue_notification_status">%1$s · %2$d z %3$d</string>

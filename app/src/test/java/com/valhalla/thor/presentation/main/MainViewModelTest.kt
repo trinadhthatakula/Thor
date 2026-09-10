@@ -419,12 +419,94 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `a failed system uninstall does not put the app on the watchlist`() = runTest {
+    fun `batch fallback waits for each dialog and continues after cancellation`() = runTest {
+        system.failWith("uninstallApp:com.a", RuntimeException("denied"))
+        system.failWith("uninstallApp:com.b", RuntimeException("denied"))
+        val vm = viewModel()
+        val requests = mutableListOf<MainSideEffect.BatchUninstall>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) { vm.effect.collect { if (it is MainSideEffect.BatchUninstall) requests += it } }
+
+        vm.onMultiAppAction(MultiAppAction.Uninstall(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+        assertEquals(listOf("com.a"), requests.map { it.packageName })
+        assertEquals(listOf("uninstallApp:com.a"), system.calls)
+        assertFalse(vm.uiState.value.loggerState.logs.contains(UiText.StringResource(R.string.log_success)))
+
+        vm.onBatchUninstallResult(requests[0].requestId, Result.failure(
+            UiTextException(UiText.StringResource(R.string.task_state_cancelled))
+        ))
+        advanceUntilIdle()
+        assertEquals(listOf("com.a", "com.b"), requests.map { it.packageName })
+        vm.onBatchUninstallResult(requests[1].requestId, Result.success(Unit))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.loggerState.logs.contains(UiText.StringResource(R.string.log_success)))
+        assertTrue(vm.uiState.value.loggerState.logs.contains(UiText.StringResource(
+            R.string.log_failed, UiText.StringResource(R.string.task_state_cancelled)
+        )))
+        assertTrue(freezer.added.isEmpty())
+    }
+
+    @Test
+    fun `busy packages do not launch a system uninstall dialog`() = runTest {
+        system.failWith("uninstallApp:com.busy", com.valhalla.thor.domain.model.PackageOperationBusy(
+            com.valhalla.thor.domain.model.PackageOperationOwner.UNINSTALL
+        ))
+        val vm = viewModel()
+        val requests = mutableListOf<MainSideEffect.BatchUninstall>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) { vm.effect.collect { if (it is MainSideEffect.BatchUninstall) requests += it } }
+        vm.onMultiAppAction(MultiAppAction.Uninstall(listOf(userApp("com.busy"))))
+        advanceUntilIdle()
+        assertTrue(requests.isEmpty())
+        assertTrue(vm.uiState.value.loggerState.isComplete)
+    }
+
+    @Test
+    fun `dialog launch failure is logged and the next app is still attempted`() = runTest {
+        system.failWith("uninstallApp:com.a", RuntimeException("denied"))
+        val vm = viewModel()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            vm.effect.collect { if (it is MainSideEffect.BatchUninstall) {
+                vm.onBatchUninstallResult(it.requestId, Result.failure(IllegalStateException("No handler")))
+            } }
+        }
+        vm.onMultiAppAction(MultiAppAction.Uninstall(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+        assertEquals(listOf("uninstallApp:com.a", "uninstallApp:com.b"), system.calls)
+        assertTrue(vm.uiState.value.loggerState.isComplete)
+        assertTrue(vm.uiState.value.loggerState.logs.contains(UiText.StringResource(R.string.log_failed, "No handler")))
+    }
+
+    @Test
+    fun `stopping during fallback leaves remaining apps untouched`() = runTest {
+        system.failWith("uninstallApp:com.a", RuntimeException("denied"))
+        val vm = viewModel()
+        val requests = mutableListOf<MainSideEffect.BatchUninstall>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) { vm.effect.collect { if (it is MainSideEffect.BatchUninstall) requests += it } }
+        vm.onMultiAppAction(MultiAppAction.Uninstall(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+        vm.requestStopBatch()
+        vm.onBatchUninstallResult(requests.single().requestId, Result.success(Unit))
+        advanceUntilIdle()
+        assertEquals(listOf("uninstallApp:com.a"), system.calls)
+        assertTrue(vm.uiState.value.loggerState.logs.contains(UiText.StringResource(R.string.log_stopped, 1, 2)))
+    }
+
+    @Test
+    fun `a system dialog fallback does not put the app on the watchlist`() = runTest {
         system.failWith("uninstallApp:com.sys", RuntimeException("denied"))
         val vm = viewModel()
 
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            vm.effect.collect { effect ->
+                if (effect is MainSideEffect.BatchUninstall) {
+                    // Android may only remove system-app updates: never mark that as frozen.
+                    vm.onBatchUninstallResult(effect.requestId, Result.success(Unit))
+                }
+            }
+        }
         vm.onMultiAppAction(MultiAppAction.Uninstall(listOf(systemApp("com.sys"))))
         advanceUntilIdle()
+        assertTrue(vm.uiState.value.loggerState.isComplete)
 
         // A row for an app that is still installed shows it in the Freezer as frozen when it is not.
         assertTrue(freezer.added.isEmpty())

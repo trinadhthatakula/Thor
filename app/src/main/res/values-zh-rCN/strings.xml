@@ -825,7 +825,7 @@
     <string name="data_queue_notification_channel_name">数据操作</string>
     <string name="data_queue_notification_channel_description">显示归档、恢复、导出和分享准备的进度</string>
     <string name="privilege_queue_notification_channel_name">特权应用操作</string>
-    <string name="privilege_queue_notification_channel_description">显示排队的冻结、解冻、缓存清理和修复应用商店来源操作的进度</string>
+    <string name="privilege_queue_notification_channel_description">显示排队的冻结、解冻、暂停、取消暂停、缓存清理和修复应用商店来源操作的进度</string>
     <string name="data_queue_notification_title">正在执行数据操作</string>
     <string name="privilege_queue_notification_title">正在执行应用操作</string>
     <string name="task_queue_notification_status">%1$s · %2$d / %3$d</string>

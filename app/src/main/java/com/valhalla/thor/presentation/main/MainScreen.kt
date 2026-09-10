@@ -3,10 +3,13 @@
 
 package com.valhalla.thor.presentation.main
 
+import android.app.Activity
 import android.content.Intent
 import android.provider.Settings
 import android.text.format.Formatter
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +74,8 @@ import androidx.navigation3.runtime.rememberDecoratedNavEntries
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.scene.DialogSceneStrategy
+import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.DefaultTab
@@ -480,6 +485,25 @@ fun MainScreen(
     val canNotLaunchApp = stringResource(R.string.cannot_launch_app)
     val shareApp = stringResource(R.string.share_app)
 
+    // The request identity survives activity recreation; the pending continuation lives in the VM.
+    var uninstallRequestId by rememberSaveable { mutableStateOf<String?>(null) }
+    val uninstallLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val completedRequestId = uninstallRequestId
+        uninstallRequestId = null
+        completedRequestId?.let { requestId ->
+            val outcome = if (result.resultCode == Activity.RESULT_OK) Result.success(Unit)
+            else Result.failure(UiTextException(
+                UiText.StringResource(
+                    if (result.resultCode == Activity.RESULT_CANCELED) R.string.task_state_cancelled
+                    else R.string.unknown_error_occurred
+                )
+            ))
+            mainViewModel.onBatchUninstallResult(requestId, outcome)
+        }
+    }
+
     // 4. Handle Side Effects
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
@@ -507,6 +531,21 @@ fun MainScreen(
                             context.startActivity(Intent.createChooser(intent, shareApp))
                         } else {
                             Toast.makeText(context, R.string.task_dialog_share_expired_message, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
+                    is MainSideEffect.BatchUninstall -> {
+                        uninstallRequestId = effect.requestId
+                        try {
+                            @Suppress("DEPRECATION")
+                            val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
+                                data = "package:${effect.packageName}".toUri()
+                                putExtra(Intent.EXTRA_RETURN_RESULT, true)
+                            }
+                            uninstallLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            uninstallRequestId = null
+                            mainViewModel.onBatchUninstallResult(effect.requestId, Result.failure(e))
                         }
                     }
 

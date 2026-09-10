@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.main
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.domain.model.PackageOperationBusy
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.data.backup.job.JobSheetTarget
@@ -57,6 +58,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
@@ -72,6 +77,7 @@ sealed interface MainSideEffect {
     /** [mime] describes the container that was actually built, not the app it came from. */
     data class ShareApp(val uri: android.net.Uri, val mime: String) : MainSideEffect
     data class NormalUninstall(val packageName: String) : MainSideEffect
+    data class BatchUninstall(val packageName: String, val requestId: String) : MainSideEffect
 
     /** Transient user feedback (Toast). Consumed once by the screen, never re-shown on recomposition. */
     data class Message(val text: UiText) : MainSideEffect
@@ -261,6 +267,28 @@ class MainViewModel(
     // `viewModelScope`, i.e. on the main thread, with no handler.
     private val _effect = Channel<MainSideEffect>()
     val effect = _effect.receiveAsFlow()
+
+    private val uninstallDialogMutex = Mutex()
+    private var pendingUninstall: Pair<String, CompletableDeferred<Result<Unit>>>? = null
+
+    fun onBatchUninstallResult(requestId: String, result: Result<Unit>) {
+        pendingUninstall?.takeIf { it.first == requestId }?.second?.complete(result)
+    }
+
+    private suspend fun requestBatchUninstall(packageName: String): Result<Unit> =
+        withContext(Dispatchers.Main.immediate) {
+            uninstallDialogMutex.withLock {
+                val requestId = UUID.randomUUID().toString()
+                val completion = CompletableDeferred<Result<Unit>>()
+                pendingUninstall = requestId to completion
+                try {
+                    _effect.send(MainSideEffect.BatchUninstall(packageName, requestId))
+                    completion.await()
+                } finally {
+                    pendingUninstall = null
+                }
+            }
+        }
 
     init {
         observePreferences()
@@ -901,6 +929,12 @@ class MainViewModel(
                             Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                         } else {
                             val result = manageAppUseCase.uninstallApp(appInfo.packageName)
+                            if (result.isFailure && result.exceptionOrNull() !is PackageOperationBusy) {
+                                addLog(UiText.StringResource(R.string.log_attempting_system_uninstall))
+                                // Await each Android dialog before advancing the batch. A system
+                                // dialog may only remove updates, so it must not add a freezer row.
+                                return@performLoggedMultiAction requestBatchUninstall(appInfo.packageName)
+                            }
                             if (result.isSuccess && appInfo.isSystem) {
                                 // Guarded here rather than around `block(app)` in
                                 // [performLoggedMultiAction], even though a throw out of `block` is
