@@ -55,6 +55,7 @@ class RoomPrivilegeSweepStore(
             workId = snapshot.executionId.toString(),
             operation = snapshot.operation.name,
             freezerMode = snapshot.freezerMode?.name,
+            addToFreezer = snapshot.addToFreezer,
             userId = snapshot.userId,
             sourceSurface = snapshot.source.name,
             createdAtEpochMs = snapshot.createdAtEpochMs,
@@ -283,6 +284,7 @@ class RoomPrivilegeSweepStore(
             executionId = UUID.fromString(request.executionId),
             operation = PrivilegeSweepOperation.valueOf(request.operation),
             freezerMode = request.freezerMode?.let(FreezerMode::valueOf),
+            addToFreezer = request.addToFreezer,
             userId = request.userId,
             source = PrivilegeSweepSource.valueOf(request.sourceSurface),
             createdAtEpochMs = request.createdAtEpochMs,
@@ -346,6 +348,7 @@ class RoomPrivilegeSweepStore(
             attemptCount = attemptCount,
             createdAtEpochMs = createdAtEpochMs,
             claimedAtEpochMs = claimedAtEpochMs,
+            addToFreezer = addToFreezer,
         )
 
     private fun ClaimedSweepTarget.toDomain(): ClaimedPrivilegeSweepTarget =
@@ -372,6 +375,7 @@ class RoomPrivilegeSweepStore(
             previousRequestClaimLeaseExpiresAtEpochMs = previousRequestClaimLeaseExpiresAtEpochMs,
             activeTargetClaimToken = activeTargetClaimToken,
             activeTargetClaimLeaseExpiresAtEpochMs = activeTargetClaimLeaseExpiresAtEpochMs,
+            addToFreezer = addToFreezer,
         )
 
     private fun PrivilegeSweepRecoveryCandidate.toRoom(): SweepRequestRecoveryCandidate =
@@ -387,6 +391,7 @@ class RoomPrivilegeSweepStore(
             previousRequestClaimLeaseExpiresAtEpochMs = previousRequestClaimLeaseExpiresAtEpochMs,
             activeTargetClaimToken = activeTargetClaimToken,
             activeTargetClaimLeaseExpiresAtEpochMs = activeTargetClaimLeaseExpiresAtEpochMs,
+            addToFreezer = addToFreezer,
         )
 
     private fun PrivilegeSweepTargetResult.toRoom(): StoredSweepTargetResult =

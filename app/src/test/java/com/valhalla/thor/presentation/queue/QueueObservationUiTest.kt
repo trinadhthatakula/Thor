@@ -22,6 +22,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -121,6 +122,59 @@ class QueueObservationUiTest {
         checkRecentTaskWithoutClose(TaskQueueKind.PRIVILEGE)
     }
 
+    @Test
+    @Config(qualifiers = "w480dp-h800dp")
+    fun newerPrivilegeTaskPrecedesOlderDataTaskAndRestorationPreservesCallbackTargets() {
+        val olderData = task(TaskQueueKind.DATA, TaskLifecyclePhase.SUCCEEDED, setOf(TaskAction.ACKNOWLEDGE))
+            .copy(taskId = UUID(0, 101), titleArguments = listOf("Older data task"),
+                terminalAtEpochMs = 1_000, retainUntilEpochMs = 10_000)
+        val newerPrivilege = task(TaskQueueKind.PRIVILEGE, TaskLifecyclePhase.PARTIAL, setOf(TaskAction.ACKNOWLEDGE))
+            .copy(taskId = UUID(0, 102), titleArguments = listOf("Newer privilege task"),
+                terminalAtEpochMs = 2_000, retainUntilEpochMs = 10_000)
+        // Feed the projection the opposite order: both projection and rendering must respect
+        // completion chronology, without regrouping recent tasks into DATA then PRIVILEGE lanes.
+        val state = buildQueueUiState(listOf(olderData, newerPrivilege), nowEpochMs = 3_000)
+        val selected = mutableListOf<UUID>()
+        val performed = mutableListOf<Pair<UUID, TaskAction>>()
+        val restorationTester = StateRestorationTester(rule)
+        restorationTester.setContent {
+            MaterialTheme {
+                QueueContent(
+                    state = state,
+                    onBack = {},
+                    onTaskSelected = selected::add,
+                    onAction = { id, action -> performed.add(id to action) },
+                )
+            }
+        }
+
+        assertRecentRowOrder(newerPrivilege.taskId, olderData.taskId)
+        rule.onNodeWithTag(queueRowTag(newerPrivilege.taskId)).performClick()
+        rule.onNodeWithTag(queueRowTag(olderData.taskId)).performClick()
+        rule.runOnIdle {
+            assertEquals(listOf(newerPrivilege.taskId, olderData.taskId), selected)
+            assertTrue(performed.isEmpty())
+        }
+
+        restorationTester.emulateSavedInstanceStateRestore()
+
+        assertRecentRowOrder(newerPrivilege.taskId, olderData.taskId)
+        rule.runOnIdle {
+            // Recreating an observed queue does not replay navigation or task actions.
+            assertEquals(listOf(newerPrivilege.taskId, olderData.taskId), selected)
+            assertTrue(performed.isEmpty())
+        }
+        rule.onNodeWithTag(queueRowTag(olderData.taskId)).performClick()
+        rule.onNodeWithTag(queueRowTag(newerPrivilege.taskId)).performClick()
+        rule.runOnIdle {
+            assertEquals(
+                listOf(newerPrivilege.taskId, olderData.taskId, olderData.taskId, newerPrivilege.taskId),
+                selected,
+            )
+            assertTrue(performed.isEmpty())
+        }
+    }
+
     @Test fun actionableQueueButtonStillDispatchesWithoutOpeningDetails() {
         val task = task(TaskQueueKind.DATA, TaskLifecyclePhase.WAITING_FOR_SOURCE,
             setOf(TaskAction.PROVIDE_SOURCE))
@@ -147,10 +201,7 @@ class QueueObservationUiTest {
 
     private fun checkRecentTaskWithoutClose(queueKind: TaskQueueKind) {
         val task = task(queueKind, TaskLifecyclePhase.SUCCEEDED, setOf(TaskAction.ACKNOWLEDGE))
-        val recent = when (queueKind) {
-            TaskQueueKind.DATA -> QueueLaneSectionUiState(data = listOf(task))
-            TaskQueueKind.PRIVILEGE -> QueueLaneSectionUiState(privilege = listOf(task))
-        }
+        val recent = listOf(task)
         val selected = mutableListOf<UUID>()
         val performed = mutableListOf<Pair<UUID, TaskAction>>()
         rule.setContent {
@@ -172,6 +223,18 @@ class QueueObservationUiTest {
             assertEquals(listOf(task.taskId), selected)
             assertTrue(performed.isEmpty())
         }
+    }
+
+    private fun assertRecentRowOrder(newerTaskId: UUID, olderTaskId: UUID) {
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag(queueRowTag(olderTaskId)))
+        val newerBounds = rule.onNodeWithTag(queueRowTag(newerTaskId)).assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+        val olderBounds = rule.onNodeWithTag(queueRowTag(olderTaskId)).assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+        assertTrue(
+            "Newer privilege task must precede older data task: $newerBounds / $olderBounds",
+            newerBounds.bottom < olderBounds.top,
+        )
     }
 
     private fun task(

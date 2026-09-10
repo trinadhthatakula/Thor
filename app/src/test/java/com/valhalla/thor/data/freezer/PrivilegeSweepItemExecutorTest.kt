@@ -16,6 +16,7 @@ import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
 import java.util.UUID
 import java.util.concurrent.CancellationException
@@ -157,6 +158,128 @@ class PrivilegeSweepItemExecutorTest {
             assertFalse(outcome.rootLaneDegraded)
             assertTrue(repository.calls.isEmpty())
         }
+    }
+
+    @Test
+    fun `tracked freeze adds membership only after successful freeze including already frozen`() = runTest {
+        val trace = mutableListOf<String>()
+        val freezer = FakeFreezerRepository(trace = trace)
+        val repository = FakeSystemRepository(trace)
+
+        val active = executor(
+            repository,
+            FakeStateReader(FreezeState.ACTIVE, trace),
+            freezerRepository = freezer,
+        )
+            .execute(stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE, addToFreezer = true), PACKAGE)
+        val alreadyFrozen = executor(
+            FakeSystemRepository(trace),
+            FakeStateReader(FreezeState.FROZEN, trace),
+            freezerRepository = freezer,
+        ).execute(stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE, addToFreezer = true), "com.example.frozen")
+
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, active.outcome)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, alreadyFrozen.outcome)
+        assertEquals(listOf(PACKAGE, "com.example.frozen"), freezer.added)
+        assertTrue(trace.indexOf("setAppDisabled:$PACKAGE:true") < trace.indexOf("freezer.add:$PACKAGE"))
+    }
+
+    @Test
+    fun `unchecked busy absent and failed freezes never add membership`() = runTest {
+        val freezer = FakeFreezerRepository()
+        val untracked = executor(FakeSystemRepository(), freezerRepository = freezer).execute(
+            stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE), PACKAGE,
+        )
+        val absent = executor(
+            FakeSystemRepository(),
+            FakeStateReader(FreezeState.ABSENT),
+            freezerRepository = freezer,
+        ).execute(stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE, addToFreezer = true), PACKAGE)
+        val busy = executor(
+            FakeSystemRepository(),
+            coordinator = TestPackageOperationCoordinator(PackageOperationOwner.ARCHIVE_BACKUP),
+            freezerRepository = freezer,
+        ).execute(stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE, addToFreezer = true), PACKAGE)
+        val failedRepository = FakeSystemRepository().apply {
+            failWith("setAppDisabled:$PACKAGE:true", IllegalStateException("pm failed"))
+        }
+        val failed = executor(failedRepository, freezerRepository = freezer).execute(
+            stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE, addToFreezer = true), PACKAGE,
+        )
+
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, untracked.outcome)
+        assertEquals(SweepAttemptOutcome.FAILED, absent.outcome)
+        assertEquals(SweepAttemptOutcome.BUSY, busy.outcome)
+        assertEquals(SweepAttemptOutcome.FAILED, failed.outcome)
+        assertTrue(freezer.added.isEmpty())
+    }
+
+    @Test
+    fun `unchecked freeze preserves pre-existing freezer membership`() = runTest {
+        val freezer = FakeFreezerRepository(setOf(PACKAGE))
+
+        val outcome = executor(FakeSystemRepository(), freezerRepository = freezer).execute(
+            stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE),
+            PACKAGE,
+        )
+
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
+        assertTrue(freezer.contains(PACKAGE))
+        assertTrue(freezer.added.isEmpty())
+        assertTrue(freezer.removed.isEmpty())
+    }
+
+    @Test
+    fun `membership write failure makes an otherwise frozen target fail`() = runTest {
+        val freezer = FakeFreezerRepository().apply {
+            failAddWith(PACKAGE, IllegalStateException("disk full"))
+        }
+
+        val outcome = executor(FakeSystemRepository(), freezerRepository = freezer).execute(
+            stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE, addToFreezer = true), PACKAGE,
+        )
+
+        assertEquals(SweepAttemptOutcome.FAILED, outcome.outcome)
+        assertTrue(freezer.added.isEmpty())
+    }
+
+    @Test
+    fun `membership cancellation is rethrown rather than recorded as a failed target`() = runTest {
+        val cancelled = CancellationException("cancel membership")
+        val freezer = FakeFreezerRepository().apply { failAddWith(PACKAGE, cancelled) }
+
+        val thrown = runCatching {
+            executor(FakeSystemRepository(), freezerRepository = freezer).execute(
+                stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE, addToFreezer = true),
+                PACKAGE,
+            )
+        }.exceptionOrNull()
+
+        assertSame(cancelled, thrown)
+    }
+
+    @Test
+    fun `suspend operations use exact suspended readback rather than frozen aggregate`() = runTest {
+        val suspendRepository = FakeSystemRepository()
+        val suspend = executor(
+            suspendRepository,
+            FakeStateReader(FreezeState.FROZEN, suspended = false),
+        ).execute(stored(PrivilegeSweepOperation.SUSPEND), PACKAGE)
+        val unsuspendRepository = FakeSystemRepository()
+        val unsuspend = executor(
+            unsuspendRepository,
+            FakeStateReader(FreezeState.FROZEN, suspended = false),
+        ).execute(stored(PrivilegeSweepOperation.UNSUSPEND), PACKAGE)
+        val unknown = executor(
+            FakeSystemRepository(),
+            FakeStateReader(FreezeState.ACTIVE, suspended = null),
+        ).execute(stored(PrivilegeSweepOperation.SUSPEND), PACKAGE)
+
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, suspend.outcome)
+        assertEquals(listOf("setAppSuspended:$PACKAGE:true"), suspendRepository.calls)
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, unsuspend.outcome)
+        assertTrue(unsuspendRepository.calls.isEmpty())
+        assertEquals(SweepAttemptOutcome.FAILED, unknown.outcome)
     }
 
     @Test
@@ -330,9 +453,11 @@ class PrivilegeSweepItemExecutorTest {
         repository: FakeSystemRepository,
         stateReader: PrivilegeSweepPackageStateReader = FakeStateReader(FreezeState.ACTIVE),
         coordinator: PackageOperationCoordinator = TestPackageOperationCoordinator(),
+        freezerRepository: FakeFreezerRepository = FakeFreezerRepository(),
     ) = DefaultPrivilegeSweepItemExecutor(
         manageApp = ManageAppUseCase(repository, coordinator),
         stateReader = stateReader,
+        freezerRepository = freezerRepository,
     )
 
     private fun assertSweepExecution(
@@ -354,6 +479,7 @@ class PrivilegeSweepItemExecutorTest {
     private fun stored(
         operation: PrivilegeSweepOperation,
         freezerMode: FreezerMode? = null,
+        addToFreezer: Boolean = false,
     ) = StoredPrivilegeSweep(
         requestId = UUID.randomUUID(),
         workId = UUID.randomUUID(),
@@ -370,16 +496,20 @@ class PrivilegeSweepItemExecutorTest {
         unresolved = 0,
         terminalAtEpochMs = null,
         retainUntilEpochMs = null,
+        addToFreezer = addToFreezer,
     )
 
     private class FakeStateReader(
         private val state: FreezeState,
         private val trace: MutableList<String>? = null,
+        private val suspended: Boolean? = false,
     ) : PrivilegeSweepPackageStateReader {
         override fun stateOf(packageName: String): FreezeState {
             trace?.add("state:$packageName")
             return state
         }
+
+        override fun isSuspended(packageName: String): Boolean? = suspended
     }
 
     private class TestPackageOperationCoordinator(

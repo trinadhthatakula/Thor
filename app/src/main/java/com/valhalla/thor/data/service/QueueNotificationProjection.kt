@@ -79,6 +79,8 @@ internal fun Context.queueNotificationStatus(snapshot: QueueNotificationSnapshot
         "SHARE_PREPARE" -> R.string.task_operation_share_prepare
         "FREEZE" -> R.string.task_operation_freeze
         "UNFREEZE" -> R.string.task_operation_unfreeze
+        "SUSPEND" -> R.string.task_operation_suspend
+        "UNSUSPEND" -> R.string.task_operation_unsuspend
         "CLEAR_CACHE" -> R.string.task_operation_clear_cache
         "REINSTALL" -> R.string.task_operation_reinstall
         else -> R.string.task_queue_title

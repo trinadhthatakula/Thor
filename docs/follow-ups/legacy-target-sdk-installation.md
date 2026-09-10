@@ -1,7 +1,9 @@
 # Legacy target-SDK installation (TG-001)
 
-Status: implemented locally on `feat/legacy-apk-install`; not merged or released. End-to-end device
-acceptance and Store-policy review remain open.
+Status: merged into `dev` via [PR #464](https://github.com/trinadhthatakula/Thor/pull/464)
+(`50dd13c3`, 2026-09-10). The maintainer confirmed successful legacy APK installation on a physical
+device through Root. The remaining device matrix and Store-policy review stay open; this record
+does not establish a release.
 Baseline: `dev` at `504e3418`, 2026-09-09.
 
 ## Request and boundaries
@@ -108,9 +110,23 @@ findings; existing warning totals remain 66 for FOSS Debug and 53 for Store Rele
 supersede the earlier 2,727-test checkpoint. Gradle reused unchanged task outputs/cache entries.
 
 The maintainer confirmed that all settings changes in the debug APK display and behave correctly on
-a physical device. That confirms the settings UI, not end-to-end legacy APK installation through
-Thor/Root/Shizuku, screenshot/recording/Recents security testing, or an exhaustive device/locale/font
-matrix. The device-installation and Store-policy checklist below remains open.
+a physical device. That confirmation covers the settings UI, not screenshot/recording/Recents
+security testing or an exhaustive device/locale/font matrix. It preceded the separate physical Root
+installation confirmation below.
+
+### Merge and physical Root acceptance — 2026-09-10
+
+[PR #464](https://github.com/trinadhthatakula/Thor/pull/464) merged into `dev` at
+`50dd13c3173bd65f4050c30078a17fc4d4e2eb70` on 2026-09-10. GitHub merge status was verified.
+The maintainer reported physical-device proof of successfully installing a legacy APK through Root.
+This establishes a successful physical Root installation in addition to the earlier platform-only
+emulator smoke test; it is maintainer-reported acceptance, not an agent-run device test.
+
+The device/ROM, Android version, APK target/package, fresh-install versus update state, and exact
+consent-setting path were not supplied with that confirmation. Do not infer coverage of the full
+matrix below, Shizuku, the reporter's Samsung, unsupported-mode safeguards, or Store-policy approval.
+The separate bulk Freeze/Suspend changes are not covered by this installation proof; their
+acceptance is recorded in [QA-001](app-list-bulk-freeze-and-suspend.md).
 
 ### API-36 package-manager smoke test
 
@@ -134,7 +150,10 @@ the platform flag and streaming-session mechanism, **not** Thor's full UI/Odin/S
 or a production OEM build. The fixture was uninstalled and the disposable emulator shut down without
 saving its state. No app was installed on the connected physical phone.
 
-## Device acceptance still required
+## Device acceptance and remaining release checks
+
+- [x] Physical-device legacy APK installation through Root: confirmed by the maintainer on
+  2026-09-10 for PR #464. This is one successful path, not completion of the matrix below.
 
 Use only known-safe, purpose-built APKs, and record device/ROM, build, privilege UID/mode, package,
 target SDK, version code, exact error, and outcome. Use a clean test profile/package for fresh-install
@@ -157,4 +176,4 @@ checks: updates to an already-installed legacy app can have different platform b
 - [ ] Verify signing mismatch, ABI mismatch, and unrelated OEM refusal remain failures; check that
   permission grants are governed by Android's permission model and the separate grant option.
 - [ ] Review Store-distribution policy and localized warning wording before release. No policy
-  approval or physical-device acceptance is implied by the implementation or local tests.
+  approval or additional physical-device acceptance is implied by the implementation or local tests.

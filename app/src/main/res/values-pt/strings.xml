@@ -384,6 +384,11 @@
     <string name="privilege_required_warning">É necessário privilégio (Root, Shizuku ou Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Descongelar todas as aplicações?</string>
     <string name="unfreeze_all_confirmation_desc">Isto vai descongelar (ativar) todas as aplicações que estão na lista do Congelador. Tem a certeza de que quer continuar?</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="one">Congelar %1$d aplicação selecionada? As aplicações que o Thor bloquear por segurança serão ignoradas.</item>
+        <item quantity="other">Congelar %1$d aplicações selecionadas? As aplicações que o Thor bloquear por segurança serão ignoradas.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">Mantenha estas aplicações na lista do Congelador depois de as congelar. Desmarcar esta opção não remove aplicações que já estão no Congelador.</string>
     <string name="import_disabled_apps_title">Importar aplicações desativadas</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="one">Há %1$d aplicação desativada que não está no seu Congelador. Quer adicioná-la ao Congelador?</item>
@@ -616,8 +621,6 @@
     <string name="log_unfreezing_batch">A descongelar aplicações</string>
     <string name="log_killing_batch">A terminar aplicações</string>
     <string name="log_uninstalling_batch">A desinstalar aplicações</string>
-    <string name="log_suspending_batch">A suspender aplicações</string>
-    <string name="log_unsuspending_batch">A anular a suspensão das aplicações</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_success"> -> Sucesso</string>
     <string name="log_failed"> -> Falhou: %1$s</string>
@@ -851,6 +854,8 @@
     <string name="task_operation_share_prepare">Preparação para partilhar</string>
     <string name="task_operation_freeze">Congelar aplicações</string>
     <string name="task_operation_unfreeze">Descongelar aplicações</string>
+    <string name="task_operation_suspend">Suspender aplicações</string>
+    <string name="task_operation_unsuspend">Anular a suspensão das aplicações</string>
     <string name="task_operation_clear_cache">Limpar caches das aplicações</string>
     <string name="task_operation_reinstall">Corrigir Loja</string>
 

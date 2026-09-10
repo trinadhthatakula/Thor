@@ -387,6 +387,13 @@
     <string name="privilege_required_warning">Wymagane uprawnienia (Root, Shizuku lub Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Odmrozić wszystkie aplikacje?</string>
     <string name="unfreeze_all_confirmation_desc">Spowoduje to odmrożenie (włączenie) wszystkich aplikacji, które są teraz na liście Zamrażarki. Na pewno chcesz kontynuować?</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="one">Zamrozić %1$d wybraną aplikację? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
+        <item quantity="few">Zamrozić %1$d wybrane aplikacje? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
+        <item quantity="many">Zamrozić %1$d wybranych aplikacji? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
+        <item quantity="other">Zamrozić %1$d wybranej aplikacji? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">Pozostaw te aplikacje na liście Zamrażarki po ich zamrożeniu. Odznaczenie tej opcji nie usuwa aplikacji, które już są w Zamrażarce.</string>
     <string name="import_disabled_apps_title">Zaimportuj wyłączone aplikacje</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="one">Jest %1$d wyłączona aplikacja, której nie ma w Zamrażarce. Dodać ją do Zamrażarki?</item>
@@ -627,8 +634,6 @@
     <string name="log_unfreezing_batch">Odmrażanie aplikacji</string>
     <string name="log_killing_batch">Zatrzymywanie aplikacji</string>
     <string name="log_uninstalling_batch">Odinstalowywanie aplikacji</string>
-    <string name="log_suspending_batch">Zawieszanie aplikacji</string>
-    <string name="log_unsuspending_batch">Wznawianie aplikacji</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_success"> -> Sukces</string>
     <string name="log_failed"> -> Niepowodzenie: %1$s</string>
@@ -870,6 +875,8 @@
     <string name="task_operation_share_prepare">Przygotowanie do udostępnienia</string>
     <string name="task_operation_freeze">Zamrażanie aplikacji</string>
     <string name="task_operation_unfreeze">Odmrażanie aplikacji</string>
+    <string name="task_operation_suspend">Zawieszanie aplikacji</string>
+    <string name="task_operation_unsuspend">Wznawianie aplikacji</string>
     <string name="task_operation_clear_cache">Czyszczenie pamięci podręcznej</string>
     <string name="task_operation_reinstall">Naprawa Sklepu</string>
 

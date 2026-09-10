@@ -838,6 +838,8 @@ internal fun CoroutineScope.launchTaskAction(
 private fun PrivilegeSweepOperation.labelRes(): Int = when (this) {
     PrivilegeSweepOperation.FREEZE -> R.string.task_operation_freeze
     PrivilegeSweepOperation.UNFREEZE -> R.string.task_operation_unfreeze
+    PrivilegeSweepOperation.SUSPEND -> R.string.task_operation_suspend
+    PrivilegeSweepOperation.UNSUSPEND -> R.string.task_operation_unsuspend
     PrivilegeSweepOperation.CLEAR_CACHE -> R.string.task_operation_clear_cache
     PrivilegeSweepOperation.REINSTALL -> R.string.task_operation_reinstall
 }

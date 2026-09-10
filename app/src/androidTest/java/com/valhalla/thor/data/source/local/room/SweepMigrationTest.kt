@@ -198,19 +198,64 @@ class SweepMigrationTest {
     }
 
     @Test
-    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema9() {
-        (1..8).forEach { startVersion ->
+    fun migrate9To10_defaultsExistingSweepMembershipIntentToFalse() {
+        helper.createDatabase(TEST_DATABASE, 9).apply {
+            seedVersion9Sweep(requestId = "request-legacy-membership")
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            10,
+            true,
+            AppDatabase.MIGRATION_9_10,
+        )
+
+        assertEquals(0, migrated.intValue("sweep_requests", "add_to_freezer"))
+        migrated.execSQL(
+            "UPDATE sweep_requests SET add_to_freezer = 1 WHERE request_id = ?",
+            arrayOf<Any?>("request-legacy-membership"),
+        )
+        assertEquals(1, migrated.intValue("sweep_requests", "add_to_freezer"))
+        migrated.close()
+    }
+
+    @Test
+    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema10() {
+        (1..9).forEach { startVersion ->
             val databaseName = "$TEST_DATABASE-chain-$startVersion"
             helper.createDatabase(databaseName, startVersion).close()
 
             helper.runMigrationsAndValidate(
                 databaseName,
-                9,
+                10,
                 true,
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.MIGRATION_8_9,
+                AppDatabase.MIGRATION_9_10,
             ).close()
         }
+    }
+
+    private fun SupportSQLiteDatabase.seedVersion9Sweep(requestId: String) {
+        execSQL(
+            """
+            INSERT INTO sweep_requests (
+                request_id, work_id, operation, freezer_mode, user_id, source_surface,
+                created_at_epoch_ms, terminal_state, succeeded, failed, busy, unresolved,
+                terminal_at_epoch_ms, retain_until_epoch_ms, payload_schema_version,
+                queue_sequence, state, execution_id, service_session_token, claim_token,
+                claim_lease_expires_at_epoch_ms, claimed_at_epoch_ms, started_at_epoch_ms,
+                updated_at_epoch_ms, attempt_count, cancel_requested_at_epoch_ms,
+                block_reason, acknowledged_at_epoch_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf<Any?>(
+                requestId, "work-legacy-membership", "FREEZE", "FREEZE", 0, "APP_LIST",
+                1L, null, 0, 0, 0, 1, null, null, 1, 1L, "QUEUED",
+                "work-legacy-membership", null, null, null, null, null, 1L, 0, null, null, null,
+            ),
+        )
     }
 
     private fun SupportSQLiteDatabase.seedVersion8Sweep(

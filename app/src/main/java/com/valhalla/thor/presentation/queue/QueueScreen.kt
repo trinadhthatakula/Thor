@@ -183,11 +183,13 @@ private fun QueueList(
             onTaskSelected = onTaskSelected,
             onAction = onAction,
         )
-        queueSection(
+        queueSectionHeader(
             titleRes = R.string.task_queue_section_recent,
             emptyRes = R.string.task_queue_empty_recent,
-            data = state.recent.data,
-            privilege = state.recent.privilege,
+            isEmpty = state.recent.isEmpty(),
+        )
+        queueTasks(
+            tasks = state.recent,
             onTaskSelected = onTaskSelected,
             onAction = onAction,
         )
@@ -202,28 +204,7 @@ private fun LazyListScope.queueSection(
     onTaskSelected: (UUID) -> Unit,
     onAction: (UUID, TaskAction) -> Unit,
 ) {
-    item(key = "section-$titleRes") {
-        Text(
-            text = stringResource(titleRes),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .padding(top = 10.dp)
-                .semantics { heading() },
-        )
-    }
-
-    if (data.isEmpty() && privilege.isEmpty()) {
-        item(key = "empty-$titleRes") {
-            Text(
-                text = stringResource(emptyRes),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        return
-    }
-
+    queueSectionHeader(titleRes, emptyRes, isEmpty = data.isEmpty() && privilege.isEmpty())
     queueLane(
         sectionKey = titleRes,
         queueKind = TaskQueueKind.DATA,
@@ -238,6 +219,33 @@ private fun LazyListScope.queueSection(
         onTaskSelected = onTaskSelected,
         onAction = onAction,
     )
+}
+
+private fun LazyListScope.queueSectionHeader(
+    @StringRes titleRes: Int,
+    @StringRes emptyRes: Int,
+    isEmpty: Boolean,
+) {
+    item(key = "section-$titleRes") {
+        Text(
+            text = stringResource(titleRes),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .padding(top = 10.dp)
+                .semantics { heading() },
+        )
+    }
+
+    if (isEmpty) {
+        item(key = "empty-$titleRes") {
+            Text(
+                text = stringResource(emptyRes),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 private fun LazyListScope.queueLane(
@@ -257,6 +265,14 @@ private fun LazyListScope.queueLane(
             modifier = Modifier.padding(top = 2.dp),
         )
     }
+    queueTasks(tasks, onTaskSelected, onAction)
+}
+
+private fun LazyListScope.queueTasks(
+    tasks: List<QueuedTaskSummary>,
+    onTaskSelected: (UUID) -> Unit,
+    onAction: (UUID, TaskAction) -> Unit,
+) {
     items(
         items = tasks,
         key = { task -> "${task.queueKind}:${task.taskId}" },
@@ -270,7 +286,7 @@ private fun LazyListScope.queueLane(
 }
 
 @Composable
-private fun QueueTaskRow(
+internal fun QueueTaskRow(
     task: QueuedTaskSummary,
     onSelected: () -> Unit,
     onAction: (TaskAction) -> Unit,
@@ -301,12 +317,13 @@ private fun QueueTaskRow(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = stringResource(task.phase.labelRes()),
+                    modifier = Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -316,11 +333,13 @@ private fun QueueTaskRow(
                         task.progress.completed,
                         task.progress.total,
                     ),
+                    modifier = Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = stringResource(task.queueKind.labelRes()),
+                    modifier = Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -374,6 +393,8 @@ private fun QueuedTaskSummary.operationLabelRes(): Int = when (operationId) {
     "SHARE_PREPARE" -> R.string.task_operation_share_prepare
     "FREEZE" -> R.string.task_operation_freeze
     "UNFREEZE" -> R.string.task_operation_unfreeze
+    "SUSPEND" -> R.string.task_operation_suspend
+    "UNSUSPEND" -> R.string.task_operation_unsuspend
     "CLEAR_CACHE" -> R.string.task_operation_clear_cache
     "REINSTALL" -> R.string.task_operation_reinstall
     else -> queueKind.labelRes()

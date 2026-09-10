@@ -5,11 +5,16 @@ package com.valhalla.thor.presentation.queue
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -20,6 +25,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.pressBack
@@ -37,8 +43,14 @@ import com.valhalla.thor.domain.model.TaskLifecyclePhase
 import com.valhalla.thor.domain.model.TaskLogLine
 import com.valhalla.thor.domain.model.TaskProgress
 import com.valhalla.thor.domain.model.TaskQueueKind
+import com.valhalla.thor.presentation.navigation.ThorRoute
 import com.valhalla.thor.presentation.widgets.TermLoggerStatus
 import com.valhalla.thor.presentation.widgets.termLoggerLineTag
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.scene.DialogSceneStrategy
+import androidx.navigation3.ui.NavDisplay
 import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -50,6 +62,38 @@ class TaskDetailScreenTest {
 
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun navigationDialogKeepsOriginVisibleAndBackgroundReturnsToIt() {
+        setNavigationDialogContent()
+
+        rule.onNodeWithTag("task-detail-origin").assertIsDisplayed()
+        rule.onNodeWithTag(TASK_DETAIL_BACKGROUND_TAG).performClick()
+        rule.onNodeWithTag(TASK_DETAIL_BACKGROUND_TAG).assertDoesNotExist()
+        rule.onNodeWithTag("task-detail-origin").assertIsDisplayed()
+    }
+
+    @Test
+    fun navigationDialogSystemBackKeepsOriginVisible() {
+        setNavigationDialogContent()
+
+        rule.onNodeWithTag("task-detail-origin").assertIsDisplayed()
+        onView(isRoot()).inRoot(isDialog()).perform(pressBack())
+        rule.onNodeWithTag(TASK_DETAIL_BACKGROUND_TAG).assertDoesNotExist()
+        rule.onNodeWithTag("task-detail-origin").assertIsDisplayed()
+    }
+
+    @Test
+    fun navigationDialogScrimDismissalKeepsOriginVisible() {
+        setNavigationDialogContent()
+
+        rule.onNodeWithTag("task-detail-origin").assertIsDisplayed()
+        rule.onNodeWithTag(TASK_DETAIL_SCRIM_TAG).performTouchInput {
+            click(Offset(center.x, 1f))
+        }
+        rule.onNodeWithTag(TASK_DETAIL_BACKGROUND_TAG).assertDoesNotExist()
+        rule.onNodeWithTag("task-detail-origin").assertIsDisplayed()
+    }
 
     @Test
     fun activeLoggerShowsBackgroundAndOnlyAdvertisedExactTaskAction() {
@@ -322,6 +366,37 @@ class TaskDetailScreenTest {
                     state = state,
                     onBackground = onBackground,
                     onAction = onAction,
+                )
+            }
+        }
+    }
+
+    private fun setNavigationDialogContent() {
+        rule.setContent {
+            val backStack = rememberNavBackStack(ThorRoute.Home, ThorRoute.TaskDetail(TASK_ID.toString()))
+            val dialogStrategy = remember { DialogSceneStrategy<NavKey>() }
+            MaterialTheme {
+                NavDisplay(
+                    backStack = backStack,
+                    onBack = { backStack.removeLastOrNull() },
+                    sceneStrategies = listOf(dialogStrategy),
+                    entryProvider = entryProvider {
+                        entry<ThorRoute.Home> {
+                            Text("origin", Modifier.testTag("task-detail-origin"))
+                        }
+                        entry<ThorRoute.TaskDetail>(
+                            metadata = DialogSceneStrategy.dialog(
+                                DialogProperties(usePlatformDefaultWidth = false),
+                            ),
+                        ) {
+                            TaskDetailContent(
+                                state = state(TaskLifecyclePhase.RUNNING),
+                                onBackground = { backStack.removeLastOrNull() },
+                                onAction = {},
+                                showAsDialog = false,
+                            )
+                        }
+                    },
                 )
             }
         }

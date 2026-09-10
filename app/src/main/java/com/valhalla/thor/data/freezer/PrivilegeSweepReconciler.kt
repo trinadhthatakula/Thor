@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.PackageLeaseResult
 import com.valhalla.thor.domain.model.PackageOperationOwner
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.domain.repository.PrivilegeSweepRecovery
 import com.valhalla.thor.domain.repository.PrivilegeSweepResultCode
@@ -62,6 +63,7 @@ internal class PrivilegeSweepReconciler(
     private val gate: PrivilegeSweepProcessGate,
     private val stateReader: PrivilegeSweepPackageStateReader? = null,
     private val packageOperationCoordinator: PackageOperationCoordinator? = null,
+    private val freezerRepository: FreezerRepository? = null,
 ) {
     /** Startup only prunes. Cutover owns every nonterminal legacy row, including cancelled WorkInfo. */
     suspend fun pruneRetained() {
@@ -153,9 +155,23 @@ internal class PrivilegeSweepReconciler(
                     when (snapshot.operation) {
                         PrivilegeSweepOperation.FREEZE,
                         PrivilegeSweepOperation.UNFREEZE,
-                            -> recoveryFromFreezeState(
+                            -> {
+                            val state = requireNotNull(stateReader).stateOf(packageName)
+                            if (snapshot.addToFreezer && state == FreezeState.FROZEN &&
+                                !requireNotNull(freezerRepository).contains(packageName)
+                            ) {
+                                // A process may die between freezing and persisting membership.
+                                // Retry the idempotent tracking step instead of losing that intent.
+                                requeue(RECOVERY_RETRY_FREEZER_TRACKING, nowMs)
+                            } else {
+                                recoveryFromFreezeState(snapshot.operation, state, nowMs)
+                            }
+                        }
+
+                        PrivilegeSweepOperation.SUSPEND,
+                        PrivilegeSweepOperation.UNSUSPEND -> recoveryFromSuspensionState(
                             operation = snapshot.operation,
-                            state = requireNotNull(stateReader).stateOf(packageName),
+                            suspended = requireNotNull(stateReader).isSuspended(packageName),
                             nowMs = nowMs,
                         )
 
@@ -223,7 +239,27 @@ internal class PrivilegeSweepReconciler(
 
         PrivilegeSweepOperation.CLEAR_CACHE,
         PrivilegeSweepOperation.REINSTALL,
+        PrivilegeSweepOperation.SUSPEND,
+        PrivilegeSweepOperation.UNSUSPEND,
             -> error("Freeze-state recovery requires a freeze operation")
+    }
+
+    private fun recoveryFromSuspensionState(
+        operation: PrivilegeSweepOperation,
+        suspended: Boolean?,
+        nowMs: Long,
+    ): PrivilegeSweepRecovery {
+        if (suspended == null) return unknown(RECOVERY_INSPECTION_UNAVAILABLE, nowMs)
+        val desired = operation == PrivilegeSweepOperation.SUSPEND
+        return if (suspended == desired) {
+            completed(
+                PrivilegeSweepTargetTerminalState.SUCCEEDED,
+                if (desired) "RECOVERED_ALREADY_SUSPENDED" else "RECOVERED_ALREADY_UNSUSPENDED",
+                nowMs,
+            )
+        } else {
+            requeue(if (desired) "RECOVERY_RETRY_SUSPEND" else "RECOVERY_RETRY_UNSUSPEND", nowMs)
+        }
     }
 
     private fun recoveryFromReinstallPostcondition(
@@ -267,6 +303,8 @@ internal class PrivilegeSweepReconciler(
     private fun PrivilegeSweepOperation.unknownRecoveryCode(): String = when (this) {
         PrivilegeSweepOperation.FREEZE,
         PrivilegeSweepOperation.UNFREEZE,
+        PrivilegeSweepOperation.SUSPEND,
+        PrivilegeSweepOperation.UNSUSPEND,
             -> RECOVERY_INSPECTION_UNAVAILABLE
 
         PrivilegeSweepOperation.REINSTALL -> REINSTALL_POSTCONDITION_UNKNOWN
@@ -274,8 +312,8 @@ internal class PrivilegeSweepReconciler(
     }
 
     private fun PrivilegeSweepOperation.owner(): PackageOperationOwner = when (this) {
-        PrivilegeSweepOperation.FREEZE -> PackageOperationOwner.FREEZE
-        PrivilegeSweepOperation.UNFREEZE -> PackageOperationOwner.UNFREEZE
+        PrivilegeSweepOperation.FREEZE, PrivilegeSweepOperation.SUSPEND -> PackageOperationOwner.FREEZE
+        PrivilegeSweepOperation.UNFREEZE, PrivilegeSweepOperation.UNSUSPEND -> PackageOperationOwner.UNFREEZE
         PrivilegeSweepOperation.CLEAR_CACHE -> PackageOperationOwner.CLEAR_CACHE
         PrivilegeSweepOperation.REINSTALL -> PackageOperationOwner.REINSTALL
     }
@@ -285,6 +323,7 @@ internal class PrivilegeSweepReconciler(
         const val RECOVERED_ALREADY_ACTIVE = "RECOVERED_ALREADY_ACTIVE"
         const val RECOVERY_RETRY_FREEZE = "RECOVERY_RETRY_FREEZE"
         const val RECOVERY_RETRY_UNFREEZE = "RECOVERY_RETRY_UNFREEZE"
+        const val RECOVERY_RETRY_FREEZER_TRACKING = "RECOVERY_RETRY_FREEZER_TRACKING"
         const val PACKAGE_ABSENT = "PACKAGE_ABSENT"
         const val RECOVERY_INSPECTION_UNAVAILABLE = "RECOVERY_INSPECTION_UNAVAILABLE"
         const val REINSTALL_POSTCONDITION_VERIFIED = "REINSTALL_POSTCONDITION_VERIFIED"

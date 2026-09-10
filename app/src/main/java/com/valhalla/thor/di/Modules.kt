@@ -65,7 +65,11 @@ class AppModule {
     @Single
     fun appDatabase(context: Context): AppDatabase {
         val builder = Room.databaseBuilder(context, AppDatabase::class.java, "thor_database")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_8_9)
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_8_9,
+                AppDatabase.MIGRATION_9_10,
+            )
 
         if (BuildConfig.DEBUG) {
             builder.fallbackToDestructiveMigration(dropAllTables = true)

@@ -352,6 +352,26 @@ class RoomPrivilegeSweepStoreTest {
     }
 
     @Test
+    fun `different freezer membership intent is not coalesced and survives a claim`() = runTest {
+        val tracked = newSnapshot(
+            targets = listOf("com.example.membership"),
+            addToFreezer = true,
+        )
+        val untracked = tracked.copy(
+            requestId = UUID.randomUUID(),
+            workId = UUID.randomUUID(),
+            addToFreezer = false,
+        )
+
+        assertTrue(store.createOrFindEquivalent(tracked) is SweepCreateResult.Created)
+        assertTrue(store.createOrFindEquivalent(untracked) is SweepCreateResult.Created)
+
+        val claimed = checkNotNull(store.claimOldestRunnableRequest("session", "owner", 2L, 3L))
+        assertTrue(claimed.addToFreezer)
+        assertTrue(checkNotNull(store.load(tracked.requestId)).addToFreezer)
+    }
+
+    @Test
     fun `claim recovery maps frozen ownership and supports both recovery CAS forms`() = runTest {
         val request = newSnapshot(targets = listOf("com.example.recover"))
         store.createOrFindEquivalent(request)
@@ -528,6 +548,7 @@ class RoomPrivilegeSweepStoreTest {
         assertEquals(1, actual.attemptCount)
         assertEquals(expected.createdAtEpochMs, actual.createdAtEpochMs)
         assertEquals(2_000L, actual.claimedAtEpochMs)
+        assertEquals(expected.addToFreezer, actual.addToFreezer)
     }
 
     private fun targetResult(
@@ -547,6 +568,7 @@ class RoomPrivilegeSweepStoreTest {
         operation: PrivilegeSweepOperation = PrivilegeSweepOperation.FREEZE,
         freezerMode: FreezerMode? = FreezerMode.FREEZE,
         createdAtEpochMs: Long = 1L,
+        addToFreezer: Boolean = false,
     ) = NewPrivilegeSweepSnapshot(
         requestId = UUID.randomUUID(),
         workId = UUID.randomUUID(),
@@ -557,5 +579,6 @@ class RoomPrivilegeSweepStoreTest {
         createdAtEpochMs = createdAtEpochMs,
         targets = targets,
         sourceAssociations = setOf(PrivilegeSweepSource.MAIN.name, "PROFILE:test"),
+        addToFreezer = addToFreezer,
     )
 }

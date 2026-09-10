@@ -7,7 +7,14 @@ import java.util.UUID
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 
-enum class PrivilegeSweepOperation { FREEZE, UNFREEZE, CLEAR_CACHE, REINSTALL }
+enum class PrivilegeSweepOperation {
+    FREEZE,
+    UNFREEZE,
+    SUSPEND,
+    UNSUSPEND,
+    CLEAR_CACHE,
+    REINSTALL,
+}
 
 enum class PrivilegeSweepSource {
     MAIN,
@@ -54,6 +61,11 @@ data class PrivilegeSweepSpec(
     val userId: Int,
     val source: PrivilegeSweepSource,
     val profileId: Long? = null,
+    /**
+     * Explicit-selection-only request to record successfully frozen packages in the watchlist.
+     * This is persisted with the sweep rather than read from UI state when work eventually runs.
+     */
+    val addToFreezer: Boolean = false,
 ) {
     init {
         require(packageNames == normalizeSweepTargets(packageNames)) {
@@ -61,6 +73,9 @@ data class PrivilegeSweepSpec(
         }
         require((operation == PrivilegeSweepOperation.FREEZE) == (freezerMode != null)) {
             "Only FREEZE requires a resolved freezer mode"
+        }
+        require(!addToFreezer || operation == PrivilegeSweepOperation.FREEZE) {
+            "Only FREEZE may add packages to the freezer"
         }
         require((source == PrivilegeSweepSource.PROFILE) == (profileId != null)) {
             "PROFILE sweeps require exactly one resolved profile id"

@@ -217,6 +217,11 @@
     <string name="shortcut_no_longer_frozen">Não está mais congelado</string>
     <string name="unfreeze_all_confirmation_title">Descongelar todos os aplicativos?</string>
     <string name="unfreeze_all_confirmation_desc">Isso vai descongelar (ativar) todos os aplicativos que estão na lista do Congelador. Tem certeza de que quer continuar?</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="one">Congelar %1$d aplicativo selecionado? Os aplicativos que o Thor bloquear por segurança serão ignorados.</item>
+        <item quantity="other">Congelar %1$d aplicativos selecionados? Os aplicativos que o Thor bloquear por segurança serão ignorados.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">Mantenha estes aplicativos na lista do Congelador depois de congelá-los. Desmarcar esta opção não remove aplicativos que já estão no Congelador.</string>
     <string name="import_disabled_apps_title">Importar aplicativos desativados</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="one">Há %1$d aplicativo desativado que não está no seu Congelador. Quer adicioná-lo ao Congelador?</item>
@@ -315,8 +320,6 @@
     <string name="log_unfreezing_batch">Descongelando aplicativos</string>
     <string name="log_killing_batch">Encerrando aplicativos</string>
     <string name="log_uninstalling_batch">Desinstalando aplicativos</string>
-    <string name="log_suspending_batch">Suspendendo aplicativos</string>
-    <string name="log_unsuspending_batch">Removendo a suspensão dos aplicativos</string>
 
     <!-- Warnings &amp; UI components -->
     <string name="warning_unsafe_uninstall">Este aplicativo do sistema está classificado como UNSAFE. Removê-lo tem um risco extremamente alto de deixar o dispositivo em bootloop, por isso a desinstalação está bloqueada.</string>
@@ -649,6 +652,8 @@
     <string name="task_operation_share_prepare">Preparação para compartilhar</string>
     <string name="task_operation_freeze">Congelar aplicativos</string>
     <string name="task_operation_unfreeze">Descongelar aplicativos</string>
+    <string name="task_operation_suspend">Suspender aplicativos</string>
+    <string name="task_operation_unsuspend">Remover a suspensão dos aplicativos</string>
     <string name="task_operation_clear_cache">Limpar caches dos aplicativos</string>
     <string name="task_operation_reinstall">Corrigir Loja</string>
 

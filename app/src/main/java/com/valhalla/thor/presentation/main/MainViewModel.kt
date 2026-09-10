@@ -954,19 +954,15 @@ class MainViewModel(
                     }
                 }
 
-                is MultiAppAction.Suspend -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_suspending_batch),
-                    action.appList
-                ) {
-                    manageAppUseCase.setAppSuspended(it.packageName, true)
-                }
+                is MultiAppAction.Suspend -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.SUSPEND,
+                    apps = action.appList,
+                )
 
-                is MultiAppAction.UnSuspend -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_unsuspending_batch),
-                    action.appList
-                ) {
-                    manageAppUseCase.setAppSuspended(it.packageName, false)
-                }
+                is MultiAppAction.UnSuspend -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.UNSUSPEND,
+                    apps = action.appList,
+                )
 
                 // Admission was handed to the process-owned coordinator before this coroutine.
                 is MultiAppAction.Share -> Unit
