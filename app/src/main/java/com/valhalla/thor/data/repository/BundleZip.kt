@@ -80,8 +80,7 @@ internal const val MAX_EXPANSION_ENTRIES = 32
 internal class InstallRefusedException(message: String) : IOException(message)
 
 /** Lowercase hex, the shape `sha256sum` prints and the shell integrity guard compares against. */
-internal fun ByteArray.toLowercaseHex(): String =
-    joinToString("") { byte -> "%02x".format(byte.toInt() and 0xFF) }
+internal fun ByteArray.toLowercaseHex(): String = toHexString()
 
 /**
  * One file [BundleZip.extractEntries] wrote, paired with the SHA-256 of the bytes it wrote.

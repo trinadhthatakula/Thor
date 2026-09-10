@@ -263,6 +263,19 @@ class BundleZipTest {
     }
 
     @Test
+    fun toLowercaseHex_emptyInputIsEmpty() {
+        assertEquals("", byteArrayOf().toLowercaseHex())
+    }
+
+    @Test
+    fun toLowercaseHex_preservesLeadingZeroesAndUnsignedByteValues() {
+        assertEquals(
+            "00010f107f80ff",
+            byteArrayOf(0x00, 0x01, 0x0F, 0x10, 0x7F, 0x80.toByte(), 0xFF.toByte()).toLowercaseHex(),
+        )
+    }
+
+    @Test
     fun bundleZip_extractEntries_digestsTheBytesItWroteNotTheFileItLeftBehind() {
         // The property the privileged rungs' integrity guard rests on. Those stage into
         // externalCacheDir, which any app holding WRITE_EXTERNAL_STORAGE can rewrite on API 28-29

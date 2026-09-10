@@ -33,13 +33,12 @@ object TrustedExtensionSigners {
  * SHA-256 of these bytes as uppercase hex with no separators.
  *
  * For a signer certificate's DER bytes this equals the digest printed by
- * `keytool -list -v` and by apksigner. Bytes are masked to 0..255 so negative [Byte]
- * values (e.g. 0xFF) are not sign-extended in the output.
+ * `keytool -list -v` and by apksigner.
  */
 fun ByteArray.toCertSha256Hex(): String =
     MessageDigest.getInstance("SHA-256")
         .digest(this)
-        .joinToString(separator = "") { byte -> "%02X".format(byte.toInt() and 0xFF) }
+        .toHexString(HexFormat.UpperCase)
 
 /**
  * True iff [sha256Hex] is present in [pins], compared case-insensitively. Defaults to the

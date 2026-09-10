@@ -138,6 +138,42 @@ class TaskDetailViewModelTest {
     }
 
     @Test
+    fun `ordered log lines preserve the durable detail instance`() = runTest {
+        val first = TaskLogLine(1, "TASK_ITEM_RUNNING", listOf("app.first"))
+        val tied = TaskLogLine(1, "TASK_ITEM_SUCCEEDED", listOf("app.first"))
+        val last = TaskLogLine(2, "TASK_ITEM_RUNNING", listOf("app.second"))
+
+        listOf(emptyList(), listOf(first), listOf(first, last), listOf(first, tied, last))
+            .forEach { lines ->
+                val original = detail(TaskLifecyclePhase.RUNNING).copy(lines = lines)
+                val viewModel = viewModel(FakeTaskQueueRepository(flowOf(original)))
+                runCurrent()
+
+                assertSame("Already ordered lines: $lines", original, viewModel.uiState.value.detail)
+            }
+    }
+
+    @Test
+    fun `unordered log lines are sorted stably without mutating the durable detail`() = runTest {
+        val first = TaskLogLine(1, "TASK_ITEM_RUNNING", listOf("app.first"))
+        val tied = TaskLogLine(1, "TASK_ITEM_SUCCEEDED", listOf("app.first"))
+        val last = TaskLogLine(2, "TASK_ITEM_RUNNING", listOf("app.second"))
+
+        listOf(
+            listOf(last, first) to listOf(first, last),
+            listOf(last, tied, first) to listOf(tied, first, last),
+            listOf(first, last, tied) to listOf(first, tied, last),
+        ).forEach { (lines, expected) ->
+            val original = detail(TaskLifecyclePhase.RUNNING).copy(lines = lines.toMutableList())
+            val viewModel = viewModel(FakeTaskQueueRepository(flowOf(original)))
+            runCurrent()
+
+            assertEquals(original.copy(lines = expected), viewModel.uiState.value.detail)
+            assertEquals(lines, original.lines)
+        }
+    }
+
+    @Test
     fun `cancel targets the selected task and shows stopping until Room settles`() = runTest {
         val observed = MutableStateFlow(detail(TaskLifecyclePhase.RUNNING))
         val controller = FakeTaskActionController()
