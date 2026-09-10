@@ -142,7 +142,7 @@ class QueueViewModelTest {
 
         assertEquals(phases, viewModel.uiState.value.queued.data.map { it.phase })
         assertNull(viewModel.uiState.value.running.data)
-        assertEquals(emptyList<QueuedTaskSummary>(), viewModel.uiState.value.recent.data)
+        assertEquals(emptyList<QueuedTaskSummary>(), viewModel.uiState.value.recent)
     }
 
     @Test
@@ -168,7 +168,66 @@ class QueueViewModelTest {
         val viewModel = QueueViewModel(repository, controller, clock)
         runCurrent()
 
-        assertEquals(phases, viewModel.uiState.value.recent.data.map { it.phase })
+        assertEquals(phases.reversed(), viewModel.uiState.value.recent.map { it.phase })
+    }
+
+    @Test
+    fun `recent orders by completion rather than queue sequence`() = runTest {
+        val completedLast = terminal(
+            taskId = uuid(250),
+            retainUntilEpochMs = NOW + 1,
+            terminalAtEpochMs = NOW - 1,
+        ).copy(sequence = 1)
+        val queuedLaterButCompletedEarlier = terminal(
+            taskId = uuid(251),
+            retainUntilEpochMs = NOW + 1,
+            terminalAtEpochMs = NOW - 2,
+        ).copy(sequence = 2)
+        tasks.value = listOf(queuedLaterButCompletedEarlier, completedLast)
+
+        val viewModel = QueueViewModel(repository, controller, clock)
+        runCurrent()
+
+        assertEquals(listOf(uuid(250), uuid(251)), viewModel.uiState.value.recent.map { it.taskId })
+    }
+
+    @Test
+    fun `recent interleaves terminal tasks from both lanes by completion time`() = runTest {
+        tasks.value = listOf(
+            terminal(uuid(260), NOW + 1, terminalAtEpochMs = NOW - 3),
+            terminal(uuid(261), NOW + 1, terminalAtEpochMs = NOW - 1).copy(
+                queueKind = TaskQueueKind.PRIVILEGE,
+            ),
+            terminal(uuid(262), NOW + 1, terminalAtEpochMs = NOW - 2),
+            terminal(uuid(263), NOW + 1, terminalAtEpochMs = NOW - 4).copy(
+                queueKind = TaskQueueKind.PRIVILEGE,
+            ),
+        )
+
+        val viewModel = QueueViewModel(repository, controller, clock)
+        runCurrent()
+
+        assertEquals(
+            listOf(uuid(261), uuid(262), uuid(260), uuid(263)),
+            viewModel.uiState.value.recent.map { it.taskId },
+        )
+    }
+
+    @Test
+    fun `recent completion ties use descending sequence then task id`() = runTest {
+        tasks.value = listOf(
+            terminal(uuid(273), NOW + 1, terminalAtEpochMs = NOW - 1).copy(sequence = 4),
+            terminal(uuid(271), NOW + 1, terminalAtEpochMs = NOW - 1).copy(sequence = 5),
+            terminal(uuid(272), NOW + 1, terminalAtEpochMs = NOW - 1).copy(sequence = 5),
+        )
+
+        val viewModel = QueueViewModel(repository, controller, clock)
+        runCurrent()
+
+        assertEquals(
+            listOf(uuid(271), uuid(272), uuid(273)),
+            viewModel.uiState.value.recent.map { it.taskId },
+        )
     }
 
     @Test
@@ -184,7 +243,7 @@ class QueueViewModelTest {
         val viewModel = QueueViewModel(repository, controller, clock)
         runCurrent()
 
-        assertEquals(listOf(uuid(301)), viewModel.uiState.value.recent.data.map { it.taskId })
+        assertEquals(listOf(uuid(301)), viewModel.uiState.value.recent.map { it.taskId })
     }
 
     @Test
@@ -194,14 +253,14 @@ class QueueViewModelTest {
         val viewModel = QueueViewModel(repository, controller, tickingClock)
         runCurrent()
 
-        assertEquals(listOf(uuid(306)), viewModel.uiState.value.recent.data.map { it.taskId })
+        assertEquals(listOf(uuid(306)), viewModel.uiState.value.recent.map { it.taskId })
 
         advanceTimeBy(999.milliseconds)
-        assertEquals(listOf(uuid(306)), viewModel.uiState.value.recent.data.map { it.taskId })
+        assertEquals(listOf(uuid(306)), viewModel.uiState.value.recent.map { it.taskId })
 
         advanceTimeBy(1.milliseconds)
         runCurrent()
-        assertEquals(emptyList<QueuedTaskSummary>(), viewModel.uiState.value.recent.data)
+        assertEquals(emptyList<QueuedTaskSummary>(), viewModel.uiState.value.recent)
     }
 
     @Test
@@ -230,6 +289,19 @@ class QueueViewModelTest {
 
         assertEquals(emptyList<QueuedTaskSummary>(), viewModel.uiState.value.queued.data)
         assertEquals(PRIVILEGE_1, viewModel.uiState.value.running.privilege?.taskId)
+    }
+
+    @Test
+    fun `repository refresh replaces retained recent history`() = runTest {
+        tasks.value = listOf(terminal(uuid(307), retainUntilEpochMs = NOW + 1))
+        val viewModel = QueueViewModel(repository, controller, clock)
+        runCurrent()
+        assertEquals(listOf(uuid(307)), viewModel.uiState.value.recent.map { it.taskId })
+
+        tasks.value = listOf(terminal(uuid(308), retainUntilEpochMs = NOW + 1))
+        runCurrent()
+
+        assertEquals(listOf(uuid(308)), viewModel.uiState.value.recent.map { it.taskId })
     }
 
     @Test

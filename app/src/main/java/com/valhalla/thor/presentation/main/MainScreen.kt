@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
@@ -69,6 +70,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberDecoratedNavEntries
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.scene.DialogSceneStrategy
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.DefaultTab
@@ -402,6 +404,7 @@ fun MainScreen(
     val hasDetailPane = paneDirective.maxHorizontalPartitions > 1
 
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = paneDirective)
+    val dialogStrategy = remember { DialogSceneStrategy<NavKey>() }
 
     val isWideScreen =
         adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
@@ -781,7 +784,15 @@ fun MainScreen(
                         )
                     }
 
-                    entry<ThorRoute.TaskDetail> { route ->
+                    entry<ThorRoute.TaskDetail>(
+                        metadata = DialogSceneStrategy.dialog(
+                            DialogProperties(
+                                dismissOnBackPress = true,
+                                dismissOnClickOutside = true,
+                                usePlatformDefaultWidth = false,
+                            ),
+                        ),
+                    ) { route ->
                         TaskDetailScreen(
                             route = route,
                             onBackground = {
@@ -799,6 +810,7 @@ fun MainScreen(
                                     onRoute = taskActionRouteState::activate,
                                 )
                             },
+                            showAsDialog = false,
                         )
                     }
 
@@ -1026,11 +1038,17 @@ fun MainScreen(
                     NavDisplay(
                         entries = entries,
                         onBack = {
+                            (currentBackStack.lastOrNull() as? ThorRoute.TaskDetail)
+                                ?.taskId
+                                ?.let { taskId ->
+                                    runCatching { java.util.UUID.fromString(taskId) }.getOrNull()
+                                }
+                                ?.let(taskNavigationCoordinator::onDetailDismissed)
                             if (currentBackStack.size > 1) {
                                 currentBackStack.removeLastOrNull()
                             }
                         },
-                        sceneStrategies = listOf(listDetailStrategy),
+                        sceneStrategies = listOf(dialogStrategy, listDetailStrategy),
                         transitionSpec = {
                             (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
                                 initialOffsetX = { it },

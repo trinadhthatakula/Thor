@@ -52,6 +52,7 @@ fun TaskDetailScreen(
     onBackground: () -> Unit,
     onActionDispatch: (TaskDetailActionResult) -> Unit = {},
     viewModel: TaskDetailViewModel = koinViewModel { parametersOf(route) },
+    showAsDialog: Boolean = true,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ObserveAsEvents(viewModel.actionResults, onEvent = onActionDispatch)
@@ -60,6 +61,7 @@ fun TaskDetailScreen(
         state = state,
         onBackground = onBackground,
         onAction = viewModel::perform,
+        showAsDialog = showAsDialog,
     )
 }
 
@@ -68,15 +70,9 @@ internal fun TaskDetailContent(
     state: TaskDetailUiState,
     onBackground: () -> Unit,
     onAction: (TaskAction) -> Unit,
+    showAsDialog: Boolean = true,
 ) {
-    Dialog(
-        onDismissRequest = onBackground,
-        properties = DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
-            usePlatformDefaultWidth = false,
-        ),
-    ) {
+    val content: @Composable () -> Unit = {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -109,6 +105,19 @@ internal fun TaskDetailContent(
                 TaskDetailFooter(state, onBackground, onAction)
             }
         }
+    }
+    if (showAsDialog) {
+        Dialog(
+            onDismissRequest = onBackground,
+            properties = DialogProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                usePlatformDefaultWidth = false,
+            ),
+            content = content,
+        )
+    } else {
+        content()
     }
 }
 
@@ -367,6 +376,8 @@ private fun operationTitle(queueKind: TaskQueueKind, operationId: String): UiTex
             DataTaskKind.SHARE_PREPARE.name -> R.string.task_operation_share_prepare
             PrivilegeSweepOperation.FREEZE.name -> R.string.task_operation_freeze
             PrivilegeSweepOperation.UNFREEZE.name -> R.string.task_operation_unfreeze
+            PrivilegeSweepOperation.SUSPEND.name -> R.string.task_operation_suspend
+            PrivilegeSweepOperation.UNSUSPEND.name -> R.string.task_operation_unsuspend
             PrivilegeSweepOperation.CLEAR_CACHE.name -> R.string.task_operation_clear_cache
             PrivilegeSweepOperation.REINSTALL.name -> R.string.task_operation_reinstall
             else -> when (queueKind) {
@@ -419,6 +430,8 @@ private fun TaskAction.labelRes(): Int = when (this) {
 private fun PrivilegeSweepOperation.labelRes(): Int = when (this) {
     PrivilegeSweepOperation.FREEZE -> R.string.task_operation_freeze
     PrivilegeSweepOperation.UNFREEZE -> R.string.task_operation_unfreeze
+    PrivilegeSweepOperation.SUSPEND -> R.string.task_operation_suspend
+    PrivilegeSweepOperation.UNSUSPEND -> R.string.task_operation_unsuspend
     PrivilegeSweepOperation.CLEAR_CACHE -> R.string.task_operation_clear_cache
     PrivilegeSweepOperation.REINSTALL -> R.string.task_operation_reinstall
 }

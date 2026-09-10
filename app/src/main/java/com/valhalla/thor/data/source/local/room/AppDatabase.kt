@@ -27,7 +27,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DataTaskItemEntity::class,
         DataTaskOutputEntity::class,
     ],
-    version = 9,
+    version = 10,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
@@ -65,6 +65,15 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 createDataTaskTables(db)
                 migrateSweepTables(db)
+            }
+        }
+
+        /** Old requests predate explicit-selection watchlist membership, so they retain false. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE sweep_requests ADD COLUMN add_to_freezer INTEGER NOT NULL DEFAULT 0",
+                )
             }
         }
 

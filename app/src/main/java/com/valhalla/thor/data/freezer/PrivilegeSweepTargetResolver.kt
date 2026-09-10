@@ -93,6 +93,7 @@ class PrivilegeSweepTargetResolver(
         source: PrivilegeSweepSource,
         freezerMode: FreezerMode? = null,
         profileId: Long? = null,
+        addToFreezer: Boolean = false,
     ): PrivilegeSweepSpec {
         val resolvedMode = if (operation == PrivilegeSweepOperation.FREEZE) {
             freezerMode ?: preferenceRepository.userPreferences.first().freezerMode
@@ -103,6 +104,7 @@ class PrivilegeSweepTargetResolver(
             operation = operation,
             packageNames = normalizeSweepTargets(packageNames),
             freezerMode = resolvedMode,
+            addToFreezer = addToFreezer,
             userId = runtime.userId,
             source = source,
             profileId = profileId,

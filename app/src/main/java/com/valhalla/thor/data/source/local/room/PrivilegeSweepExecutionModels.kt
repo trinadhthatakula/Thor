@@ -69,6 +69,7 @@ data class ClaimedSweepRequest(
     val attemptCount: Int,
     val createdAtEpochMs: Long,
     val claimedAtEpochMs: Long,
+    val addToFreezer: Boolean,
 )
 
 data class ClaimedSweepTarget(
@@ -93,6 +94,7 @@ data class SweepRequestRecoveryCandidate(
     val previousRequestClaimLeaseExpiresAtEpochMs: Long,
     val activeTargetClaimToken: String,
     val activeTargetClaimLeaseExpiresAtEpochMs: Long,
+    val addToFreezer: Boolean,
 )
 
 data class StoredSweepTargetResult(

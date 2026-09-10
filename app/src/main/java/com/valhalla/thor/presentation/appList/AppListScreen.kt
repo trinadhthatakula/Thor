@@ -117,6 +117,9 @@ fun AppListScreen(
     // One-off freezer prompt is driven by a transient event; the screen holds its own visibility
     // state so it isn't replayed on recomposition/config change.
     var freezerPrompt by remember { mutableStateOf<FreezerPrompt?>(null) }
+    var pendingBulkFreeze by rememberSaveable(stateSaver = BulkFreezeConfirmationRequest.Saver) {
+        mutableStateOf<BulkFreezeConfirmationRequest?>(null)
+    }
 
     // Resolved in composition: the event handler runs outside it and cannot call stringResource.
     val shareListTitle = stringResource(R.string.export_list_share)
@@ -335,10 +338,14 @@ fun AppListScreen(
                     },
                     onListTypeChanged = { viewModel.updateListType(it) },
                     onMultiAppAction = { action ->
-                        if (action is MultiAppAction.Freeze || action is MultiAppAction.UnFreeze) {
-                            viewModel.performMultiAction(action)
-                        } else {
-                            onMultiAppAction(action)
+                        when (action) {
+                            is MultiAppAction.Freeze -> {
+                                if (action.appList.isNotEmpty()) {
+                                    pendingBulkFreeze = BulkFreezeConfirmationRequest.from(action)
+                                }
+                            }
+                            is MultiAppAction.UnFreeze -> viewModel.performMultiAction(action)
+                            else -> onMultiAppAction(action)
                         }
                     }
                 )
@@ -356,6 +363,21 @@ fun AppListScreen(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 16.dp)
         )
+
+        pendingBulkFreeze?.let { request ->
+            BulkFreezeConfirmationDialog(
+                appCount = request.action.appList.size,
+                requestKey = request.id,
+                onConfirm = { addToFreezer ->
+                    // Consume consent before launching: a second tap cannot replay the request.
+                    if (pendingBulkFreeze?.id == request.id) {
+                        pendingBulkFreeze = null
+                        viewModel.performMultiAction(request.action, addToFreezer = addToFreezer)
+                    }
+                },
+                onDismiss = { pendingBulkFreeze = null },
+            )
+        }
 
         selectedAppForSheet?.let { app ->
             AppInfoSheet(

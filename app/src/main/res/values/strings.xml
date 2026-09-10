@@ -377,6 +377,11 @@
     <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
     <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="one">Freeze %1$d selected app? Apps that Thor blocks for safety will be skipped.</item>
+        <item quantity="other">Freeze %1$d selected apps? Apps that Thor blocks for safety will be skipped.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">Keep these apps in the Freezer list after freezing. Unchecking this does not remove apps already in the Freezer.</string>
     <string name="import_disabled_apps_title">Import Disabled Apps</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="one">There is %1$d disabled app that is not in your Freezer. Would you like to add it to the Freezer?</item>
@@ -671,8 +676,6 @@
     <string name="log_unfreezing_batch">Unfreezing Apps</string>
     <string name="log_killing_batch">Killing Apps</string>
     <string name="log_uninstalling_batch">Uninstalling Apps</string>
-    <string name="log_suspending_batch">Suspending Apps</string>
-    <string name="log_unsuspending_batch">Unsuspending Apps</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_success"> -> Success</string>
     <string name="log_failed"> -> Failed: %1$s</string>
@@ -856,6 +859,8 @@
     <string name="task_operation_share_prepare">Prepare to share</string>
     <string name="task_operation_freeze">Freeze apps</string>
     <string name="task_operation_unfreeze">Unfreeze apps</string>
+    <string name="task_operation_suspend">Suspend apps</string>
+    <string name="task_operation_unsuspend">Unsuspend apps</string>
     <string name="task_operation_clear_cache">Clear app caches</string>
     <string name="task_operation_reinstall">Fix Store</string>
 

@@ -229,6 +229,15 @@
     <string name="privilege_required_warning">الصلاحية مطلوبة (Root أو Shizuku أو Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
     <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="zero">تجميد %1$d من التطبيقات المحددة؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
+        <item quantity="one">تجميد التطبيق المحدد (%1$d)؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
+        <item quantity="two">تجميد التطبيقين المحددين (%1$d)؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
+        <item quantity="few">تجميد %1$d تطبيقات محددة؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
+        <item quantity="many">تجميد %1$d تطبيقًا محددًا؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
+        <item quantity="other">تجميد %1$d تطبيق محدد؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">احتفظ بهذه التطبيقات في قائمة المجمد بعد تجميدها. لا تؤدي إزالة تحديد هذا الخيار إلى إزالة التطبيقات الموجودة بالفعل في المجمد.</string>
     <string name="import_disabled_apps_title">استيراد التطبيقات المعطلة</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <plurals name="import_disabled_apps_desc">
@@ -416,8 +425,6 @@
     <string name="log_unfreezing_batch">جارٍ إلغاء تجميد التطبيقات</string>
     <string name="log_killing_batch">جارٍ إنهاء التطبيقات</string>
     <string name="log_uninstalling_batch">جارٍ إلغاء تثبيت التطبيقات</string>
-    <string name="log_suspending_batch">جارٍ تعليق التطبيقات</string>
-    <string name="log_unsuspending_batch">جارٍ إلغاء تعليق التطبيقات</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_success"> -> نجاح</string>
     <string name="log_failed"> -> فشل: %1$s</string>
@@ -840,6 +847,8 @@
     <string name="task_operation_share_prepare">التحضير للمشاركة</string>
     <string name="task_operation_freeze">تجميد التطبيقات</string>
     <string name="task_operation_unfreeze">إلغاء تجميد التطبيقات</string>
+    <string name="task_operation_suspend">تعليق التطبيقات</string>
+    <string name="task_operation_unsuspend">إلغاء تعليق التطبيقات</string>
     <string name="task_operation_clear_cache">مسح ذاكرة التخزين المؤقت للتطبيقات</string>
     <string name="task_operation_reinstall">إصلاح المتجر</string>
 

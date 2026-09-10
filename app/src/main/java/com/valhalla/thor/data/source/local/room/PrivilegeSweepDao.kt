@@ -58,12 +58,14 @@ abstract class PrivilegeSweepDao {
           AND operation = :operation
           AND user_id = :userId
           AND ((freezer_mode IS NULL AND :freezerMode IS NULL) OR freezer_mode = :freezerMode)
+          AND add_to_freezer = :addToFreezer
         ORDER BY created_at_epoch_ms ASC, request_id ASC
         """
     )
     abstract suspend fun findEquivalentCandidates(
         operation: String,
         freezerMode: String?,
+        addToFreezer: Boolean,
         userId: Int,
     ): List<SweepRequestWithTargets>
 
@@ -79,6 +81,7 @@ abstract class PrivilegeSweepDao {
         val equivalent = findEquivalentCandidates(
             operation = request.operation,
             freezerMode = request.freezerMode,
+            addToFreezer = request.addToFreezer,
             userId = request.userId,
         ).firstOrNull { candidate ->
             candidate.targets
@@ -2644,6 +2647,9 @@ abstract class PrivilegeSweepDao {
         require((operation == PrivilegeSweepOperation.FREEZE) == (freezerMode != null)) {
             "Only FREEZE requests may carry a freezer mode"
         }
+        require(!request.addToFreezer || operation == PrivilegeSweepOperation.FREEZE) {
+            "Only FREEZE requests may add packages to the freezer"
+        }
         return ClaimedSweepRequest(
             requestId = request.requestId,
             queueSequence = request.queueSequence,
@@ -2665,6 +2671,7 @@ abstract class PrivilegeSweepDao {
             attemptCount = request.attemptCount,
             createdAtEpochMs = request.createdAtEpochMs,
             claimedAtEpochMs = claimedAtMs,
+            addToFreezer = request.addToFreezer,
         )
     }
 
@@ -2703,6 +2710,9 @@ abstract class PrivilegeSweepDao {
         ) {
             "Only FREEZE requests may carry a freezer mode"
         }
+        require(!addToFreezer || storedOperation == PrivilegeSweepOperation.FREEZE) {
+            "Only FREEZE requests may add packages to the freezer"
+        }
         return SweepRequestRecoveryCandidate(
             requestId = requestId,
             operation = storedOperation,
@@ -2715,6 +2725,7 @@ abstract class PrivilegeSweepDao {
             previousRequestClaimLeaseExpiresAtEpochMs = previousRequestClaimLease,
             activeTargetClaimToken = activeTargetClaimToken,
             activeTargetClaimLeaseExpiresAtEpochMs = activeTargetClaimLease,
+            addToFreezer = addToFreezer,
         )
     }
 

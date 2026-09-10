@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweepTarget
 import com.valhalla.thor.domain.repository.StoredSweepTerminal
 import com.valhalla.thor.domain.repository.SweepCreateResult
+import com.valhalla.thor.presentation.FakeFreezerRepository
 import java.util.UUID
 import kotlin.time.Duration
 import kotlinx.coroutines.flow.Flow
@@ -203,6 +204,107 @@ class PrivilegeSweepReconcilerTest {
             )
             assertEquals(0, verifierCalls)
         }
+
+    @Test
+    fun `interrupted tracked freeze requeues membership gap only after frozen postcondition`() = runTest {
+        val snapshot = stored(
+            operation = PrivilegeSweepOperation.FREEZE,
+            addToFreezer = true,
+        )
+        val store = FakeStore(snapshot, listOf(candidate(snapshot)))
+        val freezer = FakeFreezerRepository()
+
+        reconciler(
+            store = store,
+            stateReader = RecordingStateReader(FreezeState.FROZEN),
+            freezerRepository = freezer,
+        ).reconcileInterruptedClaims(
+            "current-session",
+            { _, _ -> false },
+            reinstallVerifier = verifier(),
+        )
+
+        assertEquals(listOf(requeue("RECOVERY_RETRY_FREEZER_TRACKING")), store.candidateRecoveries)
+    }
+
+    @Test
+    fun `interrupted tracked freeze is completed when membership is already durable`() = runTest {
+        val snapshot = stored(
+            operation = PrivilegeSweepOperation.FREEZE,
+            addToFreezer = true,
+        )
+        val store = FakeStore(snapshot, listOf(candidate(snapshot)))
+
+        reconciler(
+            store = store,
+            stateReader = RecordingStateReader(FreezeState.FROZEN),
+            freezerRepository = FakeFreezerRepository(setOf(PACKAGE)),
+        ).reconcileInterruptedClaims(
+            "current-session",
+            { _, _ -> false },
+            reinstallVerifier = verifier(),
+        )
+
+        assertEquals(
+            listOf(completed(PrivilegeSweepTargetTerminalState.SUCCEEDED, "RECOVERED_ALREADY_FROZEN")),
+            store.candidateRecoveries,
+        )
+    }
+
+    @Test
+    fun `tracked freeze membership read failure is unknown rather than assumed absent`() = runTest {
+        val snapshot = stored(
+            operation = PrivilegeSweepOperation.FREEZE,
+            addToFreezer = true,
+        )
+        val freezer = FakeFreezerRepository().apply {
+            failContainsWith(PACKAGE, IllegalStateException("disk read error"))
+        }
+        val store = FakeStore(snapshot, listOf(candidate(snapshot)))
+
+        reconciler(
+            store = store,
+            stateReader = RecordingStateReader(FreezeState.FROZEN),
+            freezerRepository = freezer,
+        ).reconcileInterruptedClaims(
+            "current-session",
+            { _, _ -> false },
+            reinstallVerifier = verifier(),
+        )
+
+        assertEquals(listOf(unknown("RECOVERY_INSPECTION_UNAVAILABLE")), store.candidateRecoveries)
+    }
+
+    @Test
+    fun `suspend recovery uses precise suspended readback not frozen aggregate`() = runTest {
+        val suspend = stored(operation = PrivilegeSweepOperation.SUSPEND)
+        val unsuspend = stored(operation = PrivilegeSweepOperation.UNSUSPEND)
+        val suspendStore = FakeStore(suspend, listOf(candidate(suspend)))
+        val unsuspendStore = FakeStore(unsuspend, listOf(candidate(unsuspend)))
+
+        reconciler(
+            suspendStore,
+            RecordingStateReader(FreezeState.FROZEN, suspended = false),
+        ).reconcileInterruptedClaims(
+            "current-session",
+            { _, _ -> false },
+            reinstallVerifier = verifier(),
+        )
+        reconciler(
+            unsuspendStore,
+            RecordingStateReader(FreezeState.FROZEN, suspended = false),
+        ).reconcileInterruptedClaims(
+            "current-session",
+            { _, _ -> false },
+            reinstallVerifier = verifier(),
+        )
+
+        assertEquals(listOf(requeue("RECOVERY_RETRY_SUSPEND")), suspendStore.candidateRecoveries)
+        assertEquals(
+            listOf(completed(PrivilegeSweepTargetTerminalState.SUCCEEDED, "RECOVERED_ALREADY_UNSUSPENDED")),
+            unsuspendStore.candidateRecoveries,
+        )
+    }
 
     @Test
     fun `known live owner is protected before inspection`() = runTest {
@@ -399,12 +501,14 @@ class PrivilegeSweepReconcilerTest {
         store: FakeStore,
         stateReader: PrivilegeSweepPackageStateReader = RecordingStateReader(FreezeState.ACTIVE),
         coordinator: PackageOperationCoordinator = RecordingCoordinator(),
+        freezerRepository: FakeFreezerRepository? = null,
     ) = PrivilegeSweepReconciler(
         store = store,
         clock = FixedClock(),
         gate = PrivilegeSweepProcessGate(),
         stateReader = stateReader,
         packageOperationCoordinator = coordinator,
+        freezerRepository = freezerRepository,
     )
 
     private fun verifier() = PrivilegeSweepReinstallPostconditionVerifier { _, _, _, _ ->
@@ -453,6 +557,7 @@ class PrivilegeSweepReconcilerTest {
         targetState: PrivilegeSweepTargetState = PrivilegeSweepTargetState.RUNNING,
         targetResultCode: String? = null,
         terminal: StoredSweepTerminal? = null,
+        addToFreezer: Boolean = false,
     ): StoredPrivilegeSweep {
         val requestId = UUID.randomUUID()
         return StoredPrivilegeSweep(
@@ -471,6 +576,7 @@ class PrivilegeSweepReconcilerTest {
             unresolved = if (targetState in TERMINAL_TARGET_STATES) 0 else 1,
             terminalAtEpochMs = if (terminal == null) null else NOW_MS,
             retainUntilEpochMs = null,
+            addToFreezer = addToFreezer,
             targetSnapshots = listOf(
                 StoredPrivilegeSweepTarget(
                     requestId = requestId,
@@ -492,8 +598,8 @@ class PrivilegeSweepReconcilerTest {
     }
 
     private fun PrivilegeSweepOperation.owner(): PackageOperationOwner = when (this) {
-        PrivilegeSweepOperation.FREEZE -> PackageOperationOwner.FREEZE
-        PrivilegeSweepOperation.UNFREEZE -> PackageOperationOwner.UNFREEZE
+        PrivilegeSweepOperation.FREEZE, PrivilegeSweepOperation.SUSPEND -> PackageOperationOwner.FREEZE
+        PrivilegeSweepOperation.UNFREEZE, PrivilegeSweepOperation.UNSUSPEND -> PackageOperationOwner.UNFREEZE
         PrivilegeSweepOperation.CLEAR_CACHE -> PackageOperationOwner.CLEAR_CACHE
         PrivilegeSweepOperation.REINSTALL -> PackageOperationOwner.REINSTALL
     }
@@ -512,6 +618,7 @@ class PrivilegeSweepReconcilerTest {
         private val state: FreezeState? = null,
         private val trace: MutableList<String>? = null,
         private val failure: Exception? = null,
+        private val suspended: Boolean? = false,
     ) : PrivilegeSweepPackageStateReader {
         var calls = 0
             private set
@@ -522,6 +629,8 @@ class PrivilegeSweepReconcilerTest {
             failure?.let { throw it }
             return checkNotNull(state)
         }
+
+        override fun isSuspended(packageName: String): Boolean? = suspended
     }
 
     private class RecordingCoordinator(

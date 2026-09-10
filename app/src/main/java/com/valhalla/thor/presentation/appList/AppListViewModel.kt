@@ -810,6 +810,7 @@ class AppListViewModel(
         operation: PrivilegeSweepOperation,
         apps: List<AppInfo>,
         freezerMode: FreezerMode? = null,
+        addToFreezer: Boolean = false,
     ) {
         val provisionalTaskId = UUID.randomUUID()
         taskNavigationTargets.requestOpenProvisional(
@@ -825,6 +826,7 @@ class AppListViewModel(
                 packageNames = apps.map(AppInfo::packageName),
                 source = PrivilegeSweepSource.APP_LIST,
                 freezerMode = freezerMode,
+                addToFreezer = addToFreezer,
             )
             when (val launch = sweepController.launch(provisionalTaskId, spec)) {
                 is PrivilegeSweepLaunchResult.Accepted -> taskNavigationTargets.requestAccepted(
@@ -844,17 +846,28 @@ class AppListViewModel(
         }
     }
 
-    fun performMultiAction(action: MultiAppAction) {
+    fun performMultiAction(action: MultiAppAction, addToFreezer: Boolean = false) {
         viewModelScope.launch(ioDispatcher) {
             when (action) {
                 is MultiAppAction.Freeze -> launchSelectionSweep(
                     operation = PrivilegeSweepOperation.FREEZE,
                     apps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED },
                     freezerMode = if (action.useSuspend) FreezerMode.SUSPEND else FreezerMode.FREEZE,
+                    addToFreezer = addToFreezer,
                 )
 
                 is MultiAppAction.UnFreeze -> launchSelectionSweep(
                     operation = PrivilegeSweepOperation.UNFREEZE,
+                    apps = action.appList,
+                )
+
+                is MultiAppAction.Suspend -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.SUSPEND,
+                    apps = action.appList,
+                )
+
+                is MultiAppAction.UnSuspend -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.UNSUSPEND,
                     apps = action.appList,
                 )
 

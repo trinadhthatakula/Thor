@@ -100,6 +100,30 @@ class PrivilegeSweepTest {
     }
 
     @Test
+    fun `only freeze may request durable freezer membership`() {
+        val freeze = PrivilegeSweepSpec(
+            operation = PrivilegeSweepOperation.FREEZE,
+            packageNames = listOf("a.pkg"),
+            freezerMode = FreezerMode.FREEZE,
+            userId = 0,
+            source = PrivilegeSweepSource.APP_LIST,
+            addToFreezer = true,
+        )
+
+        assertTrue(freeze.addToFreezer)
+        assertThrows(IllegalArgumentException::class.java) {
+            PrivilegeSweepSpec(
+                operation = PrivilegeSweepOperation.SUSPEND,
+                packageNames = listOf("a.pkg"),
+                freezerMode = null,
+                userId = 0,
+                source = PrivilegeSweepSource.APP_LIST,
+                addToFreezer = true,
+            )
+        }
+    }
+
+    @Test
     fun `a spec refuses targets that are not already canonical`() {
         assertThrows(IllegalArgumentException::class.java) {
             PrivilegeSweepSpec(
@@ -127,7 +151,7 @@ class PrivilegeSweepTest {
         // replay-safe (a killed process can restart; an uninstall can commit before Thor
         // checkpoints it). Widening this enum is a product decision, not a refactor.
         assertEquals(
-            listOf("FREEZE", "UNFREEZE", "CLEAR_CACHE", "REINSTALL"),
+            listOf("FREEZE", "UNFREEZE", "SUSPEND", "UNSUSPEND", "CLEAR_CACHE", "REINSTALL"),
             PrivilegeSweepOperation.entries.map { it.name },
         )
         listOf("FORCE_STOP", "KILL", "UNINSTALL").forEach { name ->

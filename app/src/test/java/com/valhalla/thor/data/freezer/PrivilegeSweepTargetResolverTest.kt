@@ -141,6 +141,23 @@ class PrivilegeSweepTargetResolverTest {
         assertEquals(PrivilegeSweepSource.APP_LIST, spec.source)
     }
 
+    @Test
+    fun `explicit selection snapshots freezer membership intent without changing scoped defaults`() = runTest {
+        val resolver = resolver()
+
+        val selection = resolver.resolveSelection(
+            operation = PrivilegeSweepOperation.FREEZE,
+            packageNames = listOf("selected.package"),
+            freezerMode = FreezerMode.FREEZE,
+            source = PrivilegeSweepSource.APP_LIST,
+            addToFreezer = true,
+        )
+        val watchlist = resolver.resolve(BulkRequest(BulkOp.FREEZE), PrivilegeSweepSource.FREEZER)
+
+        assertEquals(true, selection.addToFreezer)
+        assertEquals(false, watchlist.addToFreezer)
+    }
+
     private fun resolver(
         freezer: FakeFreezerRepository = FakeFreezerRepository(setOf("default.package")),
         profiles: FakeFreezeProfileRepository = FakeFreezeProfileRepository(),

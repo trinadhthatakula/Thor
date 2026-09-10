@@ -223,6 +223,11 @@
     <string name="privilege_required_warning">Privilège requis (Root, Shizuku ou Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Dégeler toutes les applications ?</string>
     <string name="unfreeze_all_confirmation_desc">Cela va dégeler (activer) toutes les applications actuellement dans le congélateur. Voulez-vous vraiment continuer ?</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="one">Geler %1$d application sélectionnée ? Les applications que Thor bloque pour des raisons de sécurité seront ignorées.</item>
+        <item quantity="other">Geler %1$d applications sélectionnées ? Les applications que Thor bloque pour des raisons de sécurité seront ignorées.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">Conservez ces applications dans la liste du congélateur après les avoir gelées. Décocher cette option ne retire pas les applications déjà dans le congélateur.</string>
     <string name="import_disabled_apps_title">Importer les applications désactivées</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="one">Il y a %1$d application désactivée qui n\'est pas dans votre Congélateur. Souhaitez-vous l\'ajouter au Congélateur ?</item>
@@ -390,8 +395,6 @@
     <string name="log_unfreezing_batch">Dégel des applications</string>
     <string name="log_killing_batch">Arrêt des applications</string>
     <string name="log_uninstalling_batch">Désinstallation des applications</string>
-    <string name="log_suspending_batch">Suspension des applications</string>
-    <string name="log_unsuspending_batch">Rétablissement des applications</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
     <string name="log_success"> -> Succès</string>
     <string name="log_failed"> -> Échec : %1$s</string>
@@ -788,6 +791,8 @@
     <string name="task_operation_share_prepare">Préparation du partage</string>
     <string name="task_operation_freeze">Geler les applications</string>
     <string name="task_operation_unfreeze">Dégeler les applications</string>
+    <string name="task_operation_suspend">Suspendre les applications</string>
+    <string name="task_operation_unsuspend">Rétablir les applications</string>
     <string name="task_operation_clear_cache">Vider les caches des applications</string>
     <string name="task_operation_reinstall">Corriger la boutique</string>
 

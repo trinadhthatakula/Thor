@@ -38,15 +38,14 @@ data class QueueUiState(
     val observationUnavailable: Boolean = false,
     val running: RunningSectionUiState = RunningSectionUiState(),
     val queued: QueueLaneSectionUiState = QueueLaneSectionUiState(),
-    val recent: QueueLaneSectionUiState = QueueLaneSectionUiState(),
+    val recent: List<QueuedTaskSummary> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() = running.data == null &&
                 running.privilege == null &&
                 queued.data.isEmpty() &&
                 queued.privilege.isEmpty() &&
-                recent.data.isEmpty() &&
-                recent.privilege.isEmpty()
+                recent.isEmpty()
 }
 
 @Immutable
@@ -138,10 +137,11 @@ internal fun buildQueueUiState(
             data = data.filter { it.phase in QUEUED_PHASES },
             privilege = privilege.filter { it.phase in QUEUED_PHASES },
         ),
-        recent = QueueLaneSectionUiState(
-            data = data.filter { it.isRetainedTerminal(nowEpochMs) },
-            privilege = privilege.filter { it.isRetainedTerminal(nowEpochMs) },
-        ),
+        recent = tasks
+            .asSequence()
+            .filter { it.isRetainedTerminal(nowEpochMs) }
+            .sortedWith(RECENT_ORDER)
+            .toList(),
     )
 }
 
@@ -154,6 +154,16 @@ private val QUEUE_ORDER = compareBy(
     QueuedTaskSummary::sequence,
     QueuedTaskSummary::taskId,
 )
+
+/**
+ * A completed time is the only cross-lane chronology. Sequence breaks same-millisecond ties in
+ * favor of the newer task; UUID makes independently assigned same-sequence tasks reproducible.
+ */
+private val RECENT_ORDER = compareByDescending<QueuedTaskSummary> {
+    requireNotNull(it.terminalAtEpochMs)
+}
+    .thenByDescending { it.sequence }
+    .thenBy { it.taskId }
 
 private val RUNNING_PHASES = setOf(
     TaskLifecyclePhase.RUNNING,

@@ -6,13 +6,15 @@
   [PR #463](https://github.com/trinadhthatakula/Thor/pull/463). These synchronizations alone do not
   revalidate every historical assessment below.
 - **First selected implementation:** TG-001, on `feat/legacy-apk-install` from `dev` at `504e3418`.
-  Implemented locally with passing test/lint gates and an API-36 package-manager smoke test.
-  End-to-end device acceptance and Store-policy review remain open; nothing is claimed released.
-- **Next selected implementations:** RD-001 and RD-004, locally on the same feature branch.
+  Merged into `dev` via [PR #464](https://github.com/trinadhthatakula/Thor/pull/464) (`50dd13c3`)
+  on 2026-09-10, with passing test/lint gates and an earlier API-36 package-manager smoke test.
+  The maintainer confirmed physical-device Root legacy APK installation. Remaining device-matrix
+  checks and Store-policy review remain open; nothing is claimed released.
+- **Next selected implementations:** RD-001 and RD-004, also merged into `dev` via PR #464.
   Screenshot-protection copy and fully expanded Freezer/security switch explanations are implemented;
   native-layout tests, full unit tests, both lint gates, and debug APK assembly pass.
   App-lock/screenshot-protection behavior is unchanged. The maintainer confirmed all settings changes
-  in the tested debug APK on a physical device on 2026-09-10; these changes remain unmerged/unreleased.
+  in the tested debug APK on a physical device on 2026-09-10; release is not established by this record.
 - **Sources loaded so far:** live GitHub issues, `docs/follow-ups/`, `docs/feature-request-roadmap.md`, `README.md`, current source and release history, Thor-Extensions branch state, and the public FAQ.
 - **Manual intake so far:** the maintainer's 2026-09-09 Telegram and Reddit excerpts below; more
   messages can be appended without changing the evidence rules.
@@ -187,7 +189,7 @@ change the demand signal.
   and all three gateway implementations).  A request for arbitrary Android App Ops is broader and
   must be recorded as a new scope if it arises.
 
-## Manual Telegram and Reddit intake
+## Manual Telegram, Reddit, and tester intake
 
 Paste each message verbatim into the task conversation.  This document will preserve a normalized
 row and retain enough source context to distinguish repeated demand from duplicate implementation
@@ -195,20 +197,22 @@ work.
 
 | ID | Channel / date | Verbatim source retained externally | Normalized request | Related canonical opportunity | Demand signal | Current capability / gap | Status | Questions before ranking |
 |---|---|---|---|---|---|---|---|---|
-| TG-001 | Telegram / 2026-09-09 | Task conversation | Let a Shizuku user install an APK rejected on Android 16 for its old SDK level (reported target/SDK 23 on Galaxy S24 Ultra). | Low-target-SDK installation override | 1 report | This is a `targetSdkVersion` block, not `minSdkVersion`: Android 16 reports `INSTALL_FAILED_DEPRECATED_SDK_VERSION` below target API 24. Root and Shizuku shell can use the bypass; Dhizuku, normal, and external modes cannot. | `validation-bound`: implemented locally, not merged/released | Follow [implementation and acceptance record](../follow-ups/legacy-target-sdk-installation.md); end-to-end device acceptance and Store-policy review remain open. |
+| QA-001 | Testers via maintainer / 2026-09-10 | Task conversation | Confirm app-list bulk Freeze with a default-checked Add to Freezer option; run bulk Suspend in the background; keep the source screen visible behind progress; show newest recent tasks first with separate status/count lines. | Bulk-action consent and progress consistency | 1 consolidated tester report | Implemented with durable tracking intent, service-backed Suspend/Unsuspend, and Navigation 3 dialog scenes. Existing watchlist/profile defaults and single-app actions remain unchanged. The maintainer confirmed the basic bulk-action flows, dialogs, and newest-first Recents with separate status/count lines on a physical device on 2026-09-10. Local checks pass: 2,763 tests per variant, both lint gates and debug assembly. The earlier bulk checkpoint passed 23 emulator tests. | `basic flows and queue polish device-confirmed; ready for integration` | Follow the [implementation and acceptance record](../follow-ups/app-list-bulk-freeze-and-suspend.md) for remaining mode/edge-case checks. This does not implement RD-005's separate app-name list request. |
+| TG-001 | Telegram / 2026-09-09 | Task conversation | Let a Shizuku user install an APK rejected on Android 16 for its old SDK level (reported target/SDK 23 on Galaxy S24 Ultra). | Low-target-SDK installation override | 1 report | This is a `targetSdkVersion` block, not `minSdkVersion`: Android 16 reports `INSTALL_FAILED_DEPRECATED_SDK_VERSION` below target API 24. Root and Shizuku shell can use the bypass; Dhizuku, normal, and external modes cannot. | `merged into dev via #464; physical Root install confirmed` | Follow [implementation and acceptance record](../follow-ups/legacy-target-sdk-installation.md); maintainer confirmed Root installation on 2026-09-10. Remaining Shizuku/Samsung, consent/package matrix and Store-policy checks stay open; release not established. |
 | TG-002 | Telegram / 2026-09-09 | Task conversation | Fix a mobile-responsiveness problem on thor.trinadhthatakula.com in Android Brave. | Website mobile layout | 1 report | No URL, screenshot, viewport, or affected section supplied. `/follow-ups-report.html` is a plausible narrow-screen risk: its sticky header does not reflow and its search input has a 260px minimum width. | `needs reproduction` | Which page/section, Brave version, viewport/font scale, and expected versus actual layout? |
-| RD-001 | Reddit: onlytanmoy / imported 2026-09-09 | Task conversation | Explain why Thor blocks screenshots. | Biometric-lock discoverability | 1 report | Biometric-lock copy now explains launch authentication, screenshot/recording protection and the hidden Recents preview in all eight locales; its row expands fully. `FLAG_SECURE` behavior is unchanged, including after authentication. | `implemented locally; automated and physical-device settings checks passed` | Maintainer confirmed the settings changes in the debug APK on a physical device on 2026-09-10. Not merged/released; screenshot/recording/Recents security testing is not implied. If screenshots remain blocked with app lock disabled, collect a separate reproduction. |
+| RD-001 | Reddit: onlytanmoy / imported 2026-09-09 | Task conversation | Explain why Thor blocks screenshots. | Biometric-lock discoverability | 1 report | Biometric-lock copy now explains launch authentication, screenshot/recording protection and the hidden Recents preview in all eight locales; its row expands fully. `FLAG_SECURE` behavior is unchanged, including after authentication. | `merged into dev via #464; automated and physical-device settings checks passed` | Maintainer confirmed the settings changes in the debug APK on a physical device on 2026-09-10. Release and screenshot/recording/Recents security testing are not implied. If screenshots remain blocked with app lock disabled, collect a separate reproduction. |
 | RD-002 | Reddit: onlytanmoy / imported 2026-09-09 | Task conversation | Explain the first top-right Home control that appears to do nothing. | Privilege-mode control discoverability | 1 report | The status icon cycles available privilege modes when more than one is ready; otherwise it opens the privilege check. The action has weak visual affordance. | `discoverability` | Which modes were available, and did its icon/change state update? Is a label, tooltip, or mode picker clearer than silent cycling? |
 | RD-003 | Reddit: onlytanmoy / imported 2026-09-09 | Task conversation | Make App Distribution “Other” useful when tapped. | Installer-distribution drill-down | 1 report | “Other” intentionally groups several/null installer identities, while current filtering accepts exactly one installer id; it therefore has no click handler. | `UX / scope decision` | Should it open a multi-source filter, an explanatory sheet, or remain noninteractive with clearer affordance? |
-| RD-004 | Reddit: onlytanmoy / imported 2026-09-09 | Task conversation | Prevent Settings → Freezer descriptions from truncating; user suggests three lines or a detailed explanation before toggling. | Settings readability / accessibility | 1 report | All four Freezer switches now use fully wrapping titles and descriptions. A shared expanded row preserves one switch target and lets the scrolling category grow at larger text sizes. Other settings retain their compact defaults. | `implemented locally; automated and physical-device settings checks passed` | Native text-layout checks pass in all eight locales at narrow/large-text sizes, including enabled/disabled and touch semantics. Maintainer confirmed the settings changes in the debug APK on a physical device on 2026-09-10. Not merged/released. No extra tap or bottom sheet is needed to read the explanation. |
+| RD-004 | Reddit: onlytanmoy / imported 2026-09-09 | Task conversation | Prevent Settings → Freezer descriptions from truncating; user suggests three lines or a detailed explanation before toggling. | Settings readability / accessibility | 1 report | All four Freezer switches now use fully wrapping titles and descriptions. A shared expanded row preserves one switch target and lets the scrolling category grow at larger text sizes. Other settings retain their compact defaults. | `merged into dev via #464; automated and physical-device settings checks passed` | Native text-layout checks pass in all eight locales at narrow/large-text sizes, including enabled/disabled and touch semantics. Maintainer confirmed the settings changes in the debug APK on a physical device on 2026-09-10. Release not established. No extra tap or bottom sheet is needed to read the explanation. |
 | RD-005 | Reddit / imported 2026-09-09 | Task conversation | Name the active apps in the “N of N apps are active; freeze them?” confirmation. | Bulk-freeze confirmation detail | 1 report | The dialog counts enabled apps but does not render their labels. | `implementation gap`, likely small | How many names should be shown before truncation, and should the full selectable list be visible in a sheet? |
 
 ### Triage notes for the newly imported requests
 
 #### TG-001 — legacy target-SDK installation
 
-**Selected by the maintainer as the first implementation on 2026-09-09.** Work is isolated in Doctor
-on `feat/legacy-apk-install`. The [implementation and acceptance record](../follow-ups/legacy-target-sdk-installation.md)
+**Selected by the maintainer as the first implementation on 2026-09-09.** Implemented in Doctor on
+`feat/legacy-apk-install`, then merged into `dev` via PR #464 on 2026-09-10.
+The [implementation and acceptance record](../follow-ups/legacy-target-sdk-installation.md)
 tracks the actual verification separately from this intake snapshot.
 
 Android 15 raised the install floor to target API 24; Android 16 inherits it.  A target-23 APK can
@@ -231,7 +235,9 @@ is tapped for an eligible old-target APK. **Settings → Installing → Allow le
 without asking** is off by default; deliberately enabling it skips that confirmation for eligible
 Root/Shizuku installs while retaining the inline warning. One-time approval never enables the
 setting, and background restore/reinstall behavior is unchanged. It must never silently retry a
-failed ordinary install. Test on the reporter's
+failed ordinary install. The maintainer confirmed a physical Root legacy APK installation on
+2026-09-10; the device/ROM, APK target and consent-setting path were not supplied. This does not
+complete the remaining matrix: test on the reporter's
 Android 16 device with a known-safe target-23 APK, split and monolithic packages, update/fresh install,
 and all privilege modes.  Official reference: [Android 15 minimum target API level](https://developer.android.com/about/versions/15/behavior-changes-all#minimum-target-api-level).
 
@@ -285,9 +291,12 @@ the page zoom/font-size setting.
   changes in the tested debug APK display and behave correctly on a physical device, including the
   screenshot-protection explanation and expanded Freezer descriptions. Device model, OS, font scale
   and locale were not supplied; this is not an exhaustive device/font/locale matrix.
-- This confirmation does not establish screenshot/recording/Recents security behavior or TG-001's
-  end-to-end legacy APK installation acceptance. These settings changes are prepared for PR review on
-  `feat/legacy-apk-install` and are not yet merged or released; the existing app-lock behavior was not changed.
+- The settings confirmation does not establish screenshot/recording/Recents security behavior.
+  Separately, the maintainer confirmed TG-001 physical-device Root legacy APK installation on
+  2026-09-10; remaining installation-matrix and policy checks stay open. These settings changes
+  merged into `dev` via PR #464 (`50dd13c3`); release is not established, and existing app-lock
+  behavior was not changed. The separate QA-001 bulk-action changes have their own acceptance record
+  and are ready for integration.
 
 ## Rules for the final consolidated ranking
 
@@ -300,7 +309,8 @@ the page zoom/font-size setting.
 
 ## Immediate next actions
 
-1. Complete TG-001's end-to-end device acceptance and release-policy review before calling it delivered.
+1. Complete TG-001's remaining device matrix (including Shizuku/Samsung) and release-policy review;
+   physical Root installation is confirmed, and the implementation is merged into `dev`.
 2. Append the next Telegram and Reddit messages to the intake table and merge duplicates into canonical opportunities.
 3. Re-check any older documentation claim that conflicts with current `dev` before assigning an implementation status.
 4. Produce a cross-source priority order only after the manual imports are complete.

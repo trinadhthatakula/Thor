@@ -66,6 +66,7 @@ data class NewPrivilegeSweepSnapshot(
     val createdAtEpochMs: Long,
     val targets: List<String>,
     val sourceAssociations: Set<String> = setOf(source.name),
+    val addToFreezer: Boolean = false,
 ) {
     @Suppress("DEPRECATION")
     val executionId: UUID
@@ -77,6 +78,9 @@ data class NewPrivilegeSweepSnapshot(
         }
         require((operation == PrivilegeSweepOperation.FREEZE) == (freezerMode != null)) {
             "Only FREEZE requires a resolved freezer mode"
+        }
+        require(!addToFreezer || operation == PrivilegeSweepOperation.FREEZE) {
+            "Only FREEZE requests may add packages to the freezer"
         }
         require(source.name in sourceAssociations) {
             "Sweep source associations must preserve the ordinary source token"
@@ -127,6 +131,7 @@ data class StoredPrivilegeSweep(
     val serviceSessionToken: String? = null,
     val claimToken: String? = null,
     val claimLeaseExpiresAtEpochMs: Long? = null,
+    val addToFreezer: Boolean = false,
 )
 
 data class ClaimedPrivilegeSweepRequest(
@@ -150,6 +155,7 @@ data class ClaimedPrivilegeSweepRequest(
     val attemptCount: Int,
     val createdAtEpochMs: Long,
     val claimedAtEpochMs: Long,
+    val addToFreezer: Boolean = false,
 )
 
 data class ClaimedPrivilegeSweepTarget(
@@ -174,6 +180,7 @@ data class PrivilegeSweepRecoveryCandidate(
     val previousRequestClaimLeaseExpiresAtEpochMs: Long,
     val activeTargetClaimToken: String,
     val activeTargetClaimLeaseExpiresAtEpochMs: Long,
+    val addToFreezer: Boolean = false,
 )
 
 data class PrivilegeSweepTargetResult(

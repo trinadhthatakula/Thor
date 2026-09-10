@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -21,6 +22,9 @@ import org.koin.core.annotation.Single
 
 internal fun interface PrivilegeSweepPackageStateReader {
     fun stateOf(packageName: String): FreezeState
+
+    /** Null means unavailable, never an assertion that an app is not suspended. */
+    fun isSuspended(packageName: String): Boolean? = null
 }
 
 @Single(binds = [PrivilegeSweepPackageStateReader::class])
@@ -28,6 +32,7 @@ internal class DefaultPrivilegeSweepPackageStateReader(
     private val reader: AppFreezeStateReader,
 ) : PrivilegeSweepPackageStateReader {
     override fun stateOf(packageName: String): FreezeState = reader.stateOf(packageName)
+    override fun isSuspended(packageName: String): Boolean? = reader.isSuspended(packageName)
 }
 
 internal data class PrivilegeSweepItemExecutionResult(
@@ -46,6 +51,7 @@ internal fun interface PrivilegeSweepItemExecutor {
 internal class DefaultPrivilegeSweepItemExecutor(
     private val manageApp: ManageAppUseCase,
     private val stateReader: PrivilegeSweepPackageStateReader,
+    private val freezerRepository: FreezerRepository,
 ) : PrivilegeSweepItemExecutor {
 
     override suspend fun execute(
@@ -68,7 +74,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
                     execution = execution,
                 ) {
                     val state = stateReader.stateOf(packageName)
-                    when (snapshot.operation) {
+                    val result = when (snapshot.operation) {
                         PrivilegeSweepOperation.FREEZE -> when (state) {
                             FreezeState.FROZEN -> SweepAttemptOutcome.SUCCEEDED
                             FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
@@ -93,6 +99,19 @@ internal class DefaultPrivilegeSweepItemExecutor(
                                 .toAttemptOutcome()
                         }
 
+                        PrivilegeSweepOperation.SUSPEND,
+                        PrivilegeSweepOperation.UNSUSPEND -> {
+                            val suspended = stateReader.isSuspended(packageName)
+                            val desired = snapshot.operation == PrivilegeSweepOperation.SUSPEND
+                            when {
+                                suspended == null -> SweepAttemptOutcome.FAILED
+                                suspended == desired -> SweepAttemptOutcome.SUCCEEDED
+                                else -> manageApp
+                                    .setAppSuspendedUncoordinated(packageName, desired, execution)
+                                    .toAttemptOutcome()
+                            }
+                        }
+
                         PrivilegeSweepOperation.CLEAR_CACHE -> when (state) {
                             FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
                             FreezeState.ACTIVE, FreezeState.FROZEN -> manageApp
@@ -104,6 +123,13 @@ internal class DefaultPrivilegeSweepItemExecutor(
                             .reinstallAppWithGoogleUncoordinated(packageName, execution)
                             .toAttemptOutcome()
                     }
+                    // Tracking is part of the durable request, after a successful/idempotent
+                    // freeze and inside its package lease. An unchecked request never removes
+                    // pre-existing membership. Failed/busy/absent targets must not be added.
+                    if (snapshot.addToFreezer && result == SweepAttemptOutcome.SUCCEEDED) {
+                        freezerRepository.add(packageName)
+                    }
+                    result
                 }
             ) {
                 is PackageLeaseResult.Acquired -> lease.value
@@ -132,8 +158,8 @@ internal class DefaultPrivilegeSweepItemExecutor(
     }
 
     private fun PrivilegeSweepOperation.owner(): PackageOperationOwner = when (this) {
-        PrivilegeSweepOperation.FREEZE -> PackageOperationOwner.FREEZE
-        PrivilegeSweepOperation.UNFREEZE -> PackageOperationOwner.UNFREEZE
+        PrivilegeSweepOperation.FREEZE, PrivilegeSweepOperation.SUSPEND -> PackageOperationOwner.FREEZE
+        PrivilegeSweepOperation.UNFREEZE, PrivilegeSweepOperation.UNSUSPEND -> PackageOperationOwner.UNFREEZE
         PrivilegeSweepOperation.CLEAR_CACHE -> PackageOperationOwner.CLEAR_CACHE
         PrivilegeSweepOperation.REINSTALL -> PackageOperationOwner.REINSTALL
     }
@@ -143,6 +169,8 @@ internal class DefaultPrivilegeSweepItemExecutor(
             when (this) {
                 PrivilegeSweepOperation.FREEZE -> "sweep.freeze"
                 PrivilegeSweepOperation.UNFREEZE -> "sweep.unfreeze"
+                PrivilegeSweepOperation.SUSPEND -> "sweep.suspend"
+                PrivilegeSweepOperation.UNSUSPEND -> "sweep.unsuspend"
                 PrivilegeSweepOperation.CLEAR_CACHE -> "sweep.clear_cache"
                 PrivilegeSweepOperation.REINSTALL -> "sweep.reinstall"
             }

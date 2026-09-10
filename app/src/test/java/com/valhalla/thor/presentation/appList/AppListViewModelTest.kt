@@ -39,6 +39,7 @@ import com.valhalla.thor.presentation.FakeStorageStatsProvider
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.presentation.blockedSystemApp
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.presentation.navigation.TaskNavigationRequest
 import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
@@ -530,6 +531,45 @@ class AppListViewModelTest {
     // --- Durable selection sweeps -------------------------------------------------------------
 
     @Test
+    fun `confirmed freezer tracking choice is persisted without eagerly adding selected packages`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        runCurrent()
+
+        val action = MultiAppAction.Freeze(listOf(userApp("a"), blockedSystemApp("blocked")))
+        vm.performMultiAction(action, addToFreezer = true)
+        runCurrent()
+        vm.performMultiAction(action, addToFreezer = false)
+        runCurrent()
+
+        assertEquals(listOf(true, false), controller.launched.map { it.addToFreezer })
+        assertTrue(controller.launched.all { it.packageNames == listOf("a") })
+        assertTrue(freezer.added.isEmpty())
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
+    fun `suspend and unsuspend selections have distinct durable operations without tracking`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.Suspend(listOf(userApp("a"))))
+        runCurrent()
+        vm.performMultiAction(MultiAppAction.UnSuspend(listOf(userApp("a"))))
+        runCurrent()
+
+        assertEquals(
+            listOf(PrivilegeSweepOperation.SUSPEND, PrivilegeSweepOperation.UNSUSPEND),
+            controller.launched.map { it.operation },
+        )
+        assertTrue(controller.launched.all { it.source == PrivilegeSweepSource.APP_LIST })
+        assertTrue(controller.launched.all { it.freezerMode == null && !it.addToFreezer })
+        assertTrue(freezer.added.isEmpty())
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
     fun `selection opens provisional task before accepting the exact candidate`() = runTest {
         val controller = FakePrivilegeSweepController()
         val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
@@ -563,6 +603,7 @@ class AppListViewModelTest {
         assertEquals(listOf("a", "z"), controller.launched.single().packageNames)
         assertEquals(PrivilegeSweepOperation.FREEZE, controller.launched.single().operation)
         assertEquals(PrivilegeSweepSource.APP_LIST, controller.launched.single().source)
+        assertFalse(controller.launched.single().addToFreezer)
         assertTrue(system.calls.none { it.startsWith("setAppDisabled") })
     }
 

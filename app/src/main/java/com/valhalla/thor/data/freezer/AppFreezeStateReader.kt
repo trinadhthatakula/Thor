@@ -33,6 +33,20 @@ class AppFreezeStateReader(
     fun stateOf(packageName: String): FreezeState =
         candidateOf(packageName, UadSnapshot.UNFILTERED).state
 
+    /** Exact suspension state: disabled is not suspended, and an unreadable/absent app is unknown. */
+    fun isSuspended(packageName: String): Boolean? = try {
+        val info = packageManager.getApplicationInfo(packageName, MATCH_FLAGS)
+        if ((info.flags and ApplicationInfo.FLAG_INSTALLED) == 0) null
+        else (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
+    } catch (exception: CancellationException) {
+        throw exception
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    } catch (exception: Exception) {
+        Logger.e("AppFreezeStateReader", "could not read suspension state for $packageName", exception)
+        null
+    }
+
     /**
      * Live freeze state *and* the freeze-policy verdict, from one [ApplicationInfo] read.
      *

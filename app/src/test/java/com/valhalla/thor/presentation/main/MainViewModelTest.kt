@@ -364,14 +364,27 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `explicit suspend and unsuspend remain direct`() = runTest {
-        val vm = viewModel()
+    fun `explicit suspend and unsuspend launch background capable durable tasks`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
+        val requests = navigationRequestsOf(targets)
+        val vm = viewModel(sweepController = controller, taskNavigationTargets = targets)
 
         vm.onMultiAppAction(MultiAppAction.Suspend(listOf(userApp("a"))))
         vm.onMultiAppAction(MultiAppAction.UnSuspend(listOf(userApp("b"))))
         advanceUntilIdle()
 
-        assertEquals(listOf("setAppSuspended:a:true", "setAppSuspended:b:false"), system.calls)
+        assertEquals(
+            listOf(PrivilegeSweepOperation.SUSPEND, PrivilegeSweepOperation.UNSUSPEND),
+            controller.launched.map { it.operation },
+        )
+        assertEquals(listOf(listOf("a"), listOf("b")), controller.launched.map { it.packageNames })
+        assertTrue(controller.launched.all { it.freezerMode == null && !it.addToFreezer })
+        assertEquals(2, requests.filterIsInstance<TaskNavigationRequest.OpenProvisional>().size)
+        assertEquals(2, requests.filterIsInstance<TaskNavigationRequest.Accepted>().size)
+        assertTrue(system.calls.isEmpty())
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertTrue(freezer.added.isEmpty())
     }
 
     // --- Bulk uninstall: the tier gate and the watchlist -----------------------------------

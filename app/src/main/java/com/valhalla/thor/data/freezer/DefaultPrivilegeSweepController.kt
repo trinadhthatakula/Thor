@@ -68,6 +68,7 @@ class DefaultPrivilegeSweepController internal constructor(
                     workId = newPrivilegeServiceExecutionId(),
                     operation = spec.operation,
                     freezerMode = spec.freezerMode,
+                    addToFreezer = spec.addToFreezer,
                     userId = spec.userId,
                     source = spec.source,
                     createdAtEpochMs = nowMs,
