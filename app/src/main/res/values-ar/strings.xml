@@ -904,7 +904,7 @@
     <string name="data_queue_notification_channel_name">عمليات البيانات</string>
     <string name="data_queue_notification_channel_description">تقدّم الأرشفة والاستعادة والتصدير والتحضير للمشاركة</string>
     <string name="privilege_queue_notification_channel_name">إجراءات التطبيقات ذات الامتيازات</string>
-    <string name="privilege_queue_notification_channel_description">تقدّم إجراءات التجميد وإلغاء التجميد ومسح الذاكرة المؤقتة وإصلاح المتجر الموضوعة في الانتظار</string>
+    <string name="privilege_queue_notification_channel_description">تقدّم إجراءات التجميد وإلغاء التجميد والتعليق وإلغاء التعليق ومسح الذاكرة المؤقتة وإصلاح المتجر الموضوعة في الانتظار</string>
     <string name="data_queue_notification_title">عملية بيانات قيد التنفيذ</string>
     <string name="privilege_queue_notification_title">إجراء تطبيق قيد التنفيذ</string>
     <string name="task_queue_notification_status">%1$s · %2$d من %3$d</string>

@@ -840,7 +840,7 @@
     <string name="data_queue_notification_channel_name">Operaciones de datos</string>
     <string name="data_queue_notification_channel_description">Progreso de archivo, restauración, exportación y preparación para compartir</string>
     <string name="privilege_queue_notification_channel_name">Acciones con privilegios</string>
-    <string name="privilege_queue_notification_channel_description">Progreso de las acciones en cola para congelar, descongelar, borrar caché y corregir la tienda</string>
+    <string name="privilege_queue_notification_channel_description">Progreso de las acciones en cola para congelar, descongelar, suspender, reanudar, borrar caché y corregir la tienda</string>
     <string name="data_queue_notification_title">Operación de datos en curso</string>
     <string name="privilege_queue_notification_title">Acción en una aplicación en curso</string>
     <string name="task_queue_notification_status">%1$s · %2$d de %3$d</string>

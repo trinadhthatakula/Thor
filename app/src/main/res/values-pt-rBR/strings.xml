@@ -701,7 +701,7 @@
     <string name="data_queue_notification_channel_name">Operações de dados</string>
     <string name="data_queue_notification_channel_description">Progresso de arquivo, restauração, exportação e preparação para compartilhar</string>
     <string name="privilege_queue_notification_channel_name">Ações privilegiadas em aplicativos</string>
-    <string name="privilege_queue_notification_channel_description">Progresso das ações na fila para congelar, descongelar, limpar cache e corrigir a Loja</string>
+    <string name="privilege_queue_notification_channel_description">Progresso das ações na fila para congelar, descongelar, suspender, remover a suspensão, limpar cache e corrigir a Loja</string>
     <string name="data_queue_notification_title">Operação de dados em andamento</string>
     <string name="privilege_queue_notification_title">Ação em aplicativo em andamento</string>
     <string name="task_queue_notification_status">%1$s · %2$d de %3$d</string>

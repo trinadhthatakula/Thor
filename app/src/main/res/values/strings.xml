@@ -908,7 +908,7 @@
     <string name="data_queue_notification_channel_name">Data operations</string>
     <string name="data_queue_notification_channel_description">Progress for archive, restore, export, and share preparation</string>
     <string name="privilege_queue_notification_channel_name">Privileged app actions</string>
-    <string name="privilege_queue_notification_channel_description">Progress for queued freeze, unfreeze, cache clearing, and Fix Store actions</string>
+    <string name="privilege_queue_notification_channel_description">Progress for queued freeze, unfreeze, suspend, unsuspend, cache clearing, and Fix Store actions</string>
     <string name="data_queue_notification_title">Data operation in progress</string>
     <string name="privilege_queue_notification_title">App action in progress</string>
     <string name="task_queue_notification_status">%1$s · %2$d of %3$d</string>
