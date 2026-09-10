@@ -16,12 +16,12 @@ import org.koin.core.annotation.Single
  */
 @Single
 class InstallerEventBus {
-    private val _events = MutableSharedFlow<InstallState>(
-        replay = 1,
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    val events: SharedFlow<InstallState> = _events
+    val events: SharedFlow<InstallState>
+        field = MutableSharedFlow<InstallState>(
+            replay = 1,
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
+        )
 
     /**
      * The most recently emitted state, or null before the first emission.
@@ -31,10 +31,10 @@ class InstallerEventBus {
      * collecting would mean racing a collector against the thing being polled; reading the replay
      * cache asks the same question once, cheaply.
      */
-    val latest: InstallState? get() = _events.replayCache.lastOrNull()
+    val latest: InstallState? get() = events.replayCache.lastOrNull()
 
     suspend fun emit(state: InstallState) {
-        _events.emit(state)
+        events.emit(state)
     }
 
     /**
@@ -44,6 +44,6 @@ class InstallerEventBus {
      * already cancelled.
      */
     fun reset() {
-        _events.tryEmit(InstallState.Idle)
+        events.tryEmit(InstallState.Idle)
     }
 }
