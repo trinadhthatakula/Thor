@@ -1,11 +1,13 @@
 # Thor v1.95.4 Release Notes
 
 Changes since [v1.95.2-dev-60](https://github.com/trinadhthatakula/Thor/releases/tag/v1.95.2-dev-60),
-the latest release tag including prereleases, through commit `a629b0ae`.
+the latest release tag including prereleases, including the release preparation and batch uninstall fallback fix.
 This development release brings background task tracking, safer bulk actions, stronger restore
 validation, and explicit consent for legacy APK installation and permission grants.
 
 ## ✨ Highlights
+
+- 🗑️ **Batch uninstall without privileges.** Android now asks for confirmation for each app when privileged removal fails. Cancelling one dialog continues to the next app; Stop leaves the remaining apps untouched.
 
 - ⏳ **A Queue screen for background work.** Follow accepted backup/restore, single-app export,
   bulk-share preparation, and supported bulk app actions; reopen their progress and retained results.
