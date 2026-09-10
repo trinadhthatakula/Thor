@@ -42,7 +42,7 @@
     <string name="dynamic_colors">Kolory dynamiczne</string>
     <string name="dynamic_colors_desc">Integracja z Material You</string>
     <string name="biometric_lock">Blokada biometryczna</string>
-    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia po uruchomieniu</string>
+    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia przy uruchomieniu. Włączona blokada uniemożliwia robienie zrzutów i nagrywanie ekranu aplikacji Thor oraz ukrywa jej podgląd na liście ostatnich aplikacji.</string>
     <string name="biometric_not_available">Biometria niedostępna lub bez zapisanych danych</string>
     <string name="active_engine">Aktywny silnik</string>
     <string name="active_engine_desc">Przełączaj między dostępnymi dostawcami</string>
@@ -567,6 +567,11 @@
     <string name="exit">Wyjdź</string>
     <string name="title_thor_installer">Instalator Thor</string>
     <string name="install_analyzing">Analizowanie pakietu…</string>
+    <string name="legacy_install_description">%1$s jest przeznaczona dla SDK %2$d. Ta wersja Androida zwykle blokuje nowe instalacje aplikacji poniżej SDK %3$d.</string>
+    <string name="legacy_install_confirm_title">Zezwolić na instalację starszej aplikacji?</string>
+    <string name="legacy_install_confirm_message">%1$s (%2$s) jest przeznaczona dla SDK %3$d, poniżej minimalnego SDK %4$d wymaganego do instalacji. Ominięcie tej blokady bezpieczeństwa może narazić urządzenie i dane na ryzyko. Starsze aplikacje mogą otrzymać uprawnienia podczas instalacji zgodnie ze swoim starszym modelem uprawnień. Kontynuuj tylko, jeśli ufasz temu plikowi APK. Dotyczy to tylko tej instalacji; podpis, zgodność urządzenia i inne kontrole Androida nadal obowiązują.</string>
+    <string name="legacy_install_allow_once">Zainstaluj tym razem</string>
+    <string name="legacy_install_unsupported">Instalacja starszych aplikacji wymaga Androida 14 lub nowszego oraz Roota albo Shizuku. Tryby zwykły, Dhizuku i zewnętrzny nie mogą zastosować tego obejścia.</string>
     <string name="install_downgrade_warning">Spowoduje to instalację starszej wersji aplikacji.</string>
     <!-- %1$s and %2$s are version codes. They are deliberately %s, not %d: %d is localised by
          java.util.Formatter (Arabic-Indic digits under ar-EG, for example), and these same two

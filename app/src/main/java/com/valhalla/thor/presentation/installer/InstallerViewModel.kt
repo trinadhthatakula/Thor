@@ -5,14 +5,18 @@ package com.valhalla.thor.presentation.installer
 
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.AnalyzedPackage
+import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.isVersionDowngrade
+import com.valhalla.thor.domain.model.requiresLowTargetSdkBypass
+import com.valhalla.thor.domain.model.supportsLowTargetSdkBypass
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
@@ -28,11 +32,15 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+
+/** A warning is tied to one request, so an old dialog callback cannot approve another APK. */
+internal data class LegacyInstallConfirmation(val id: Long, val meta: AppMetadata)
 
 internal suspend fun runInstallerPresentationBoundary(
     eventBus: InstallerEventBus,
@@ -73,6 +81,29 @@ class InstallerViewModel(
     // touched it tracks Settings live rather than showing whatever the setting happened to say when
     // this screen opened.
     private val _grantAllOverride = MutableStateFlow<Boolean?>(null)
+
+    private val _legacyInstallConfirmation = MutableStateFlow<LegacyInstallConfirmation?>(null)
+    internal val legacyInstallConfirmation = _legacyInstallConfirmation.asStateFlow()
+
+    // Display only. The install decision reads the repository directly, never this potentially
+    // unsubscribed StateFlow's initial value or an old snapshot from when the sheet opened.
+    val allowLegacyApkInstall: StateFlow<Boolean> = preferenceRepository.userPreferences
+        .map { it.allowLegacyApkInstall }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private data class InstallRequest(
+        val revision: Long,
+        val analysis: AnalyzedPackage,
+        val uri: Uri,
+        val mode: InstallMode,
+        val canDowngrade: Boolean,
+        val grantAllPermissions: Boolean?,
+    )
+
+    private var selectionRevision = 0L
+    private var nextConfirmationId = 0L
+    private var pendingLegacyRequest: InstallRequest? = null
+    private var installationJob: Job? = null
 
     /**
      * Whether this install will grant every runtime permission the package declares — the state of
@@ -129,6 +160,7 @@ class InstallerViewModel(
     private var ownsInstall = false
 
     fun resetState() {
+        invalidateLegacyConfirmation()
         viewModelScope.launch { eventBus.emit(InstallState.Idle) }
     }
 
@@ -156,6 +188,7 @@ class InstallerViewModel(
         // one instance repeatedly), so that is the ordinary path, not an edge case. Back to null
         // rather than false: the saved setting is what an unanswered install follows.
         _grantAllOverride.value = null
+        invalidateLegacyConfirmation()
         // A second pick replaces the first; the first's copy has no further use. Two things can
         // hold that copy, and both have to be released here.
         //
@@ -240,22 +273,63 @@ class InstallerViewModel(
     }
 
     fun setInstallMode(mode: InstallMode) {
+        if (mode != _installMode.value) invalidateLegacyConfirmation()
         _installMode.value = mode
+    }
+
+    private fun invalidateLegacyConfirmation() {
+        selectionRevision++
+        pendingLegacyRequest = null
+        _legacyInstallConfirmation.value = null
+    }
+
+    fun dismissLegacyInstallConfirmation(confirmationId: Long) {
+        if (_legacyInstallConfirmation.value?.id != confirmationId) return
+        pendingLegacyRequest = null
+        _legacyInstallConfirmation.value = null
+    }
+
+    /** Consumes this warning once, without ever changing the saved preference. */
+    fun confirmLegacyInstallation(confirmationId: Long) {
+        if (_legacyInstallConfirmation.value?.id != confirmationId) return
+        val request = pendingLegacyRequest ?: return
+        dismissLegacyInstallConfirmation(confirmationId)
+        if (!requestIsCurrent(request)) return
+        installationJob = viewModelScope.launch {
+            if (requestIsCurrent(request)) install(request, bypassLowTargetSdkBlock = true)
+        }
+    }
+
+    private fun requestIsCurrent(request: InstallRequest): Boolean =
+        request.revision == selectionRevision && request.analysis === analyzed &&
+            request.uri == pendingUri && request.mode == _installMode.value
+
+    private suspend fun install(request: InstallRequest, bypassLowTargetSdkBlock: Boolean) {
+        runInstallerPresentationBoundary(eventBus) {
+            repository.installPackage(
+                request.analysis.staged, request.uri, request.mode,
+                request.canDowngrade, request.grantAllPermissions,
+                bypassLowTargetSdkBlock = bypassLowTargetSdkBlock,
+            )
+        }
     }
 
     /**
      * Records the user's answer for this install only. Does not touch the saved setting.
      */
     fun setGrantAllPermissions(enabled: Boolean) {
+        if (enabled != _grantAllOverride.value) invalidateLegacyConfirmation()
         _grantAllOverride.value = enabled
     }
 
     fun startInstallation() {
+        // Repeated taps must not queue installs while the preference read or an install is active.
+        if (installationJob?.isActive == true || pendingLegacyRequest != null) return
         val uri = pendingUri ?: return
         // No staged copy means no analysis succeeded, and installing would mean reading the URI
         // a second time — the very thing the staging exists to prevent. There is nothing to
         // install here: the sheet only offers Install from ReadyToInstall.
-        val staged = analyzed?.staged ?: return
+        val analysis = analyzed ?: return
         ownsInstall = true
         val mode = _installMode.value
 
@@ -283,10 +357,32 @@ class InstallerViewModel(
         // setting that said yes. Passing null hands that resolution to the repository, which reads
         // the setting itself.
         val grantAll = _grantAllOverride.value
+        val request = InstallRequest(selectionRevision, analysis, uri, mode, allowDowngrade, grantAll)
+        val legacyInstall = supportsLowTargetSdkBypass(mode, Build.VERSION.SDK_INT) &&
+            requiresLowTargetSdkBypass(analysis.metadata.targetSdk, Build.VERSION.SDK_INT)
 
-        viewModelScope.launch {
-            runInstallerPresentationBoundary(eventBus) {
-                repository.installPackage(staged, uri, mode, allowDowngrade, grantAll)
+        installationJob = viewModelScope.launch {
+            val automaticallyAllowed = if (legacyInstall) {
+                try {
+                    withContext(ioDispatcher) { preferenceRepository.shouldAllowLegacyApkInstall() }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // An unreadable setting is not standing consent. The ordinary warning remains
+                    // available even if a repository implementation fails outside its read guard.
+                    false
+                }
+            } else false
+            // The read may suspend while a new APK, mode, permission answer or dismissal supersedes
+            // this request. Never publish an old warning or install the old staged copy afterwards.
+            if (!requestIsCurrent(request)) return@launch
+            if (legacyInstall && !automaticallyAllowed) {
+                pendingLegacyRequest = request
+                _legacyInstallConfirmation.value = LegacyInstallConfirmation(
+                    ++nextConfirmationId, analysis.metadata,
+                )
+            } else {
+                install(request, bypassLowTargetSdkBlock = legacyInstall)
             }
         }
     }

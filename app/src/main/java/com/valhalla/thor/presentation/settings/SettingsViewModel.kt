@@ -248,6 +248,10 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setGrantAllPermissionsOnInstall(enabled) }
     }
 
+    fun setAllowLegacyApkInstall(enabled: Boolean) {
+        viewModelScope.launch { preferenceRepository.setAllowLegacyApkInstall(enabled) }
+    }
+
     /**
      * Applying the locale is conditional on the write, because these two steps disagree about how
      * long they last: `applyLocale` changes the running process now, the preference is what brings

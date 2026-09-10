@@ -1297,8 +1297,15 @@ class RootSystemGateway internal constructor(
         canDowngrade: Boolean,
         grantAllPermissions: Boolean? = null,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+        bypassLowTargetSdkBlock: Boolean = false,
     ): Result<Unit> {
-        return installViaSession(apkPaths, canDowngrade, grantAllPermissions, execution)
+        return installViaSession(
+            apkPaths,
+            canDowngrade,
+            grantAllPermissions,
+            execution,
+            bypassLowTargetSdkBlock,
+        )
     }
 
     /**
@@ -1325,6 +1332,7 @@ class RootSystemGateway internal constructor(
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
         execution: PrivilegeExecutionContext,
+        bypassLowTargetSdkBlock: Boolean = false,
     ): Result<Unit> {
         if (apkPaths.isEmpty()) {
             return Result.failure(Exception("No APK paths provided for install"))
@@ -1350,6 +1358,7 @@ class RootSystemGateway internal constructor(
                 grantAllPermissions = grantAllPermissions
                     ?: preferenceRepository.shouldGrantAllPermissionsOnInstall(),
                 installerArg = preferenceRepository.getInstallerArg(),
+                bypassLowTargetSdkBlock = bypassLowTargetSdkBlock,
             ),
             execution,
             INSTALL_SESSION,

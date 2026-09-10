@@ -42,7 +42,7 @@
     <string name="dynamic_colors">Cores dinâmicas</string>
     <string name="dynamic_colors_desc">Integração com o Material You</string>
     <string name="biometric_lock">Bloqueio biométrico</string>
-    <string name="biometric_lock_desc">Exigir autenticação ao arrancar</string>
+    <string name="biometric_lock_desc">Exigir autenticação ao iniciar. Quando ativo, o bloqueio impede capturas e gravações do ecrã do Thor e oculta a pré-visualização nas aplicações recentes.</string>
     <string name="biometric_not_available">Biometria não configurada ou indisponível</string>
     <string name="active_engine">Motor ativo</string>
     <string name="active_engine_desc">Alternar entre os fornecedores disponíveis</string>
@@ -558,6 +558,11 @@
     <string name="exit">Sair</string>
     <string name="title_thor_installer">Instalador do Thor</string>
     <string name="install_analyzing">A analisar o pacote…</string>
+    <string name="legacy_install_description">%1$s destina-se ao SDK %2$d. Esta versão do Android normalmente bloqueia novas instalações abaixo do SDK %3$d.</string>
+    <string name="legacy_install_confirm_title">Permitir instalação antiga?</string>
+    <string name="legacy_install_confirm_message">%1$s (%2$s) destina-se ao SDK %3$d, abaixo do mínimo de instalação do SDK %4$d. Contornar este bloqueio de segurança pode colocar o seu dispositivo e os seus dados em risco. As aplicações antigas podem receber permissões durante a instalação segundo o respetivo modelo de permissões antigo. Continue apenas se confiar neste APK. Isto aplica-se apenas a esta instalação; a assinatura, a compatibilidade do dispositivo e outras verificações do Android continuam a aplicar-se.</string>
+    <string name="legacy_install_allow_once">Instalar desta vez</string>
+    <string name="legacy_install_unsupported">A instalação antiga requer Android 14 ou mais recente e Root ou Shizuku. Os modos normal, Dhizuku e externo não podem aplicar esta exceção.</string>
     <string name="install_downgrade_warning">Isto vai reverter a aplicação para uma versão anterior.</string>
     <!-- %1$s and %2$s are version codes. They are deliberately %s, not %d: %d is localised by
          java.util.Formatter (Arabic-Indic digits under ar-EG, for example), and these same two

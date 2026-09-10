@@ -30,6 +30,7 @@ import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.StagedPackage
+import com.valhalla.thor.domain.model.supportsLowTargetSdkBypass
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.util.UiText
@@ -83,7 +84,7 @@ class InstallerRepositoryImpl(
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
     // Only installWithExternal() uses this: handing the URI to the system's installer chooser is a
     // UI hand-off, so it stays on main. Note this is plain Main, not Main.immediate.
-    @Named("main") private val mainDispatcher: CoroutineDispatcher
+    @Named("main") private val mainDispatcher: CoroutineDispatcher,
 ) : InstallerRepository {
 
     // The in-process installer. Its sessions are created by Thor's own uid, so the platform's
@@ -91,6 +92,11 @@ class InstallerRepositoryImpl(
     // for by name rather than arrived at by leaving an argument off.
     private val defaultInstaller =
         InstallerHandle.unprivileged(context.packageManager.packageInstaller)
+
+    /** Narrow test seam for the shell result; production retains [ShizukuHelper.execute]. */
+    internal var executeShizukuShell: (String) -> Pair<Int, String?> = { command ->
+        ShizukuHelper.execute(command)
+    }
 
     /**
      * Given an on-disk copy of the installer input, return the ordered list of APK
@@ -139,8 +145,18 @@ class InstallerRepositoryImpl(
         execution: PrivilegeExecutionContext,
         onInvocationStarted: () -> Unit,
         onInstallSucceeded: () -> Unit,
+        bypassLowTargetSdkBlock: Boolean,
     ) =
         withContext(ioDispatcher) {
+            if (
+                bypassLowTargetSdkBlock &&
+                !supportsLowTargetSdkBypass(mode, Build.VERSION.SDK_INT)
+            ) {
+                eventBus.emit(
+                    InstallState.Error(UiText.StringResource(R.string.legacy_install_unsupported))
+                )
+                return@withContext
+            }
             onInvocationStarted()
             try {
                 // Refuse before installing, not after. An archive whose game data cannot be placed
@@ -165,14 +181,25 @@ class InstallerRepositoryImpl(
                 when (mode) {
                     InstallMode.ROOT -> {
                         installWithRoot(
-                            staged, canDowngrade, grantAllPermissions, execution, onInstallSucceeded,
+                            staged,
+                            canDowngrade,
+                            grantAllPermissions,
+                            execution,
+                            onInstallSucceeded,
+                            bypassLowTargetSdkBlock,
                         )
                     }
 
                     InstallMode.SHIZUKU -> {
                         // 1. Try Shell command first
-                        val shellSuccess = try {
-                            installWithShizuku(staged, canDowngrade, grantAllPermissions, onInstallSucceeded)
+                        val shellAttempt = try {
+                            installWithShizuku(
+                                staged,
+                                canDowngrade,
+                                grantAllPermissions,
+                                onInstallSucceeded,
+                                bypassLowTargetSdkBlock,
+                            )
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
                             // A refusal is a verdict about the archive, not a failure of this rung.
@@ -182,11 +209,23 @@ class InstallerRepositoryImpl(
                             // that make up the two ladders all do this; ROOT and NORMAL have no
                             // fallback and already propagate.
                             if (e is InstallRefusedException) throw e
-                            Logger.e("InstallerRepo", "Shizuku shell install failed with exception, trying reflection", e)
-                            false
+                            Logger.e("InstallerRepo", "Shizuku shell install failed with exception", e)
+                            ShizukuInstallAttempt(false, e.message)
                         }
 
-                        if (!shellSuccess) {
+                        if (!shellAttempt.succeeded) {
+                            if (bypassLowTargetSdkBlock) {
+                                eventBus.emit(
+                                    InstallState.Error(
+                                        UiText.DynamicString(
+                                            shellAttempt.failureReason
+                                                ?.takeIf { it.isNotBlank() }
+                                                ?: "Shizuku install failed"
+                                        )
+                                    )
+                                )
+                                return@withContext
+                            }
                             Logger.d("InstallerRepo", "Shizuku shell install failed. Trying reflection fallback...")
                             // 2. Try Reflection
                             val privilegedInstaller = try {
@@ -612,6 +651,7 @@ class InstallerRepositoryImpl(
         grantAllPermissions: Boolean?,
         execution: PrivilegeExecutionContext,
         onInstallSucceeded: () -> Unit,
+        bypassLowTargetSdkBlock: Boolean,
     ) {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -635,13 +675,17 @@ class InstallerRepositoryImpl(
             val apkPaths = tempFiles.map { it.file.absolutePath }
             // The gateway resolves a null against the saved setting; this rung has no reason to
             // resolve it first, and doing so would put a second copy of that rule in the app.
-            val result = if (apkPaths.size == 1) {
+            val result = if (apkPaths.size == 1 && !bypassLowTargetSdkBlock) {
                 rootGateway.installApp(
                     apkPaths[0], canDowngrade, grantAllPermissions, execution,
                 )
             } else {
                 rootGateway.installMultipleApks(
-                    apkPaths, canDowngrade, grantAllPermissions, execution,
+                    apkPaths,
+                    canDowngrade,
+                    grantAllPermissions,
+                    execution,
+                    bypassLowTargetSdkBlock,
                 )
             }
 
@@ -659,12 +703,18 @@ class InstallerRepositoryImpl(
         }
     }
 
+    private data class ShizukuInstallAttempt(
+        val succeeded: Boolean,
+        val failureReason: String? = null,
+    )
+
     private suspend fun installWithShizuku(
         staged: StagedPackage,
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
         onInstallSucceeded: () -> Unit,
-    ): Boolean {
+        bypassLowTargetSdkBlock: Boolean,
+    ): ShizukuInstallAttempt {
         eventBus.emit(InstallState.Installing(0f))
 
         // Shared storage, because the *shell* has to be able to read these files: uid 2000 cannot
@@ -687,7 +737,7 @@ class InstallerRepositoryImpl(
 
         if (tempFiles.isNullOrEmpty()) {
             tempDir.deleteRecursively()
-            return false
+            return ShizukuInstallAttempt(false, "Failed to extract or copy installation files")
         }
 
         eventBus.emit(InstallState.Installing(0.5f))
@@ -742,22 +792,23 @@ class InstallerRepositoryImpl(
                 canDowngrade = canDowngrade,
                 grantAllPermissions = grantAll,
                 installerArg = installerArg,
+                bypassLowTargetSdkBlock = bypassLowTargetSdkBlock,
             )
-            val result = ShizukuHelper.execute(integrityGuardedInstall(digests, command))
+            val result = executeShizukuShell(integrityGuardedInstall(digests, command))
 
             if (result.first == 0) {
                 onInstallSucceeded()
                 eventBus.emit(InstallState.Installing(1.0f))
                 eventBus.emit(InstallState.Success)
-                true
+                ShizukuInstallAttempt(true)
             } else {
                 Logger.e("InstallerRepo", "Shizuku shell install failed: ${result.second}")
-                false
+                ShizukuInstallAttempt(false, result.second)
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Logger.e("InstallerRepo", "Shizuku shell install failed with exception: ${e.message}", e)
-            false
+            ShizukuInstallAttempt(false, e.message)
         } finally {
             tempDir.deleteRecursively()
         }

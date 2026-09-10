@@ -9,6 +9,13 @@ updates:
       maven:
         patterns:
           - "*"
+    ignore:
+      # alpha27 removed the ToggleButtonDefaults method used by Asgard 2.0.0 and
+      # reintroduced a startup crash after the earlier alpha26 compatibility pin.
+      # Keep this exact-version exclusion until Asgard is compatible; other updates
+      # remain eligible and must pass the connected-button UI regression tests.
+      - dependency-name: "androidx.compose.material3:material3"
+        versions: [ "1.5.0-alpha27" ]
 
   # Keep GitHub Actions versions current/patched (esp. actions used in the
   # keystore-bearing release workflows). Grouped into one weekly PR.

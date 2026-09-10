@@ -28,7 +28,7 @@
     <string name="dynamic_colors">Couleurs dynamiques</string>
     <string name="dynamic_colors_desc">Intégration Material You</string>
     <string name="biometric_lock">Verrouillage biométrique</string>
-    <string name="biometric_lock_desc">Exiger une authentification au lancement</string>
+    <string name="biometric_lock_desc">Exiger une authentification au lancement. Une fois activé, le verrouillage bloque les captures et enregistrements d’écran de Thor et masque son aperçu dans les applications récentes.</string>
     <string name="biometric_not_available">Biométrie non enregistrée ou indisponible</string>
     <string name="active_engine">Moteur actif</string>
     <string name="active_engine_desc">Passer d\'un fournisseur à l\'autre</string>
@@ -338,6 +338,11 @@
     <string name="exit">Quitter</string>
     <string name="title_thor_installer">Installateur Thor</string>
     <string name="install_analyzing">Analyse du paquet…</string>
+    <string name="legacy_install_description">%1$s cible le SDK %2$d. Cette version d\'Android bloque normalement les nouvelles installations sous le SDK %3$d.</string>
+    <string name="legacy_install_confirm_title">Autoriser l\'installation héritée ?</string>
+    <string name="legacy_install_confirm_message">%1$s (%2$s) cible le SDK %3$d, inférieur au minimum d\'installation du SDK %4$d. Contourner ce blocage de sécurité peut mettre votre appareil et vos données en danger. Les anciennes applications peuvent recevoir des autorisations lors de l\'installation selon leur ancien modèle d\'autorisations. Ne continuez que si vous faites confiance à cet APK. Cela s\'applique uniquement à cette installation ; la signature, la compatibilité de l\'appareil et les autres vérifications Android restent applicables.</string>
+    <string name="legacy_install_allow_once">Installer cette fois-ci</string>
+    <string name="legacy_install_unsupported">L\'installation héritée nécessite Android 14 ou version ultérieure, ainsi que Root ou Shizuku. Les modes normal, Dhizuku et externe ne peuvent pas appliquer cette exception.</string>
     <string name="install_downgrade_warning">Cela va rétrograder l\'application.</string>
     <string name="install_downgrade_code_explainer">Le code de version %1$s est inférieur au %2$s installé. Android ordonne les mises à jour par code de version, et non par nom de version : une application peut sembler plus récente tout en étant une rétrogradation.</string>
     <string name="install_update_warning">Cela va mettre à jour l\'application existante.</string>

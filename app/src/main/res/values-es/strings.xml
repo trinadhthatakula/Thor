@@ -28,7 +28,7 @@
     <string name="dynamic_colors">Colores dinámicos</string>
     <string name="dynamic_colors_desc">Integración con Material You</string>
     <string name="biometric_lock">Bloqueo biométrico</string>
-    <string name="biometric_lock_desc">Requerir autenticación al iniciar</string>
+    <string name="biometric_lock_desc">Exigir autenticación al iniciar. Al activarlo, se bloquean las capturas y grabaciones de pantalla de Thor y se oculta su vista previa en las aplicaciones recientes.</string>
     <string name="biometric_not_available">Biometría no registrada o disponible</string>
     <string name="active_engine">Motor activo</string>
     <string name="active_engine_desc">Cambiar entre proveedores disponibles</string>
@@ -338,6 +338,11 @@
     <string name="exit">Salir</string>
     <string name="title_thor_installer">Instalador Thor</string>
     <string name="install_analyzing">Analizando paquete…</string>
+    <string name="legacy_install_description">%1$s está dirigido al SDK %2$d. Esta versión de Android normalmente bloquea las nuevas instalaciones por debajo del SDK %3$d.</string>
+    <string name="legacy_install_confirm_title">¿Permitir instalación heredada?</string>
+    <string name="legacy_install_confirm_message">%1$s (%2$s) está dirigido al SDK %3$d, por debajo del mínimo de instalación del SDK %4$d. Omitir este bloqueo de seguridad puede poner en riesgo tu dispositivo y tus datos. Las aplicaciones antiguas pueden recibir permisos durante la instalación conforme a su modelo de permisos heredado. Continúa solo si confías en este APK. Esto se aplica únicamente a esta instalación; la firma, la compatibilidad del dispositivo y otras comprobaciones de Android siguen aplicándose.</string>
+    <string name="legacy_install_allow_once">Instalar esta vez</string>
+    <string name="legacy_install_unsupported">La instalación heredada requiere Android 14 o una versión posterior, y Root o Shizuku. Los modos normal, Dhizuku y externo no pueden aplicar esta excepción.</string>
     <string name="install_downgrade_warning">Esto degradará la aplicación.</string>
     <string name="install_downgrade_code_explainer">El código de versión %1$s es inferior al instalado %2$s. Android ordena las actualizaciones por código de versión, no por nombre de versión: una aplicación puede parecer más reciente y aun así ser una degradación.</string>
     <string name="install_update_warning">Esto actualizará la aplicación existente.</string>

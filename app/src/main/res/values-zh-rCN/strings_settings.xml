@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="allow_legacy_apk_install">允许无需询问即可安装旧版 APK</string>
+    <string name="allow_legacy_apk_install_desc">在 Thor 的安装器中，自动允许安装面向较旧 Android 版本的 APK。仅限 Root 或 Shizuku。此操作会绕过 Android 的安全拦截；旧版应用可能会使你的设备和数据面临风险。关闭后，每次安装旧版应用前都会询问。</string>
+    <string name="legacy_install_allowed_by_setting">已由你的安装器设置允许。额外确认已关闭。</string>
+</resources>

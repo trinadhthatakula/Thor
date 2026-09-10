@@ -110,6 +110,16 @@ class ToUserPreferencesTest {
         assertEquals(DefaultTab.HOME, prefs.defaultTab)
         assertFalse(prefs.hasShownDisabledAppsPrompt)
         assertFalse(prefs.biometricLockEnabled)
+        assertFalse(prefs.allowLegacyApkInstall)
+    }
+
+    @Test
+    fun `legacy APK install consent is restored from settings and defaults closed`() {
+        assertFalse(emptyPreferences().toUserPreferences().allowLegacyApkInstall)
+
+        val settings = preferencesOf(Keys.ALLOW_LEGACY_APK_INSTALL to true)
+
+        assertTrue(settings.toUserPreferences().allowLegacyApkInstall)
     }
 
     /** Every entry round-trips, so a rename of one is caught here rather than on a user's device. */

@@ -208,6 +208,7 @@ class PreferenceRepositoryImpl(
         // Installing
         val GRANT_ALL_PERMISSIONS_ON_INSTALL =
             booleanPreferencesKey("grant_all_permissions_on_install")
+        val ALLOW_LEGACY_APK_INSTALL = booleanPreferencesKey("allow_legacy_apk_install")
 
         // Customization
         val APP_INFO_ACTIONS_ORDER = stringPreferencesKey("app_info_actions_order")
@@ -433,6 +434,15 @@ class PreferenceRepositoryImpl(
 
     override suspend fun shouldGrantAllPermissionsOnInstall(): Boolean =
         userPreferences.first().grantAllPermissionsOnInstall
+
+    override suspend fun setAllowLegacyApkInstall(enabled: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.ALLOW_LEGACY_APK_INSTALL] = enabled
+        }
+    }
+
+    override suspend fun shouldAllowLegacyApkInstall(): Boolean =
+        userPreferences.first().allowLegacyApkInstall
 
     // --- Customization ---
 
@@ -675,6 +685,7 @@ internal fun Preferences.toUserPreferences(
         extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
         autoReinstallEnabled = prefs[Keys.AUTO_REINSTALL_ENABLED] ?: false,
         grantAllPermissionsOnInstall = prefs[Keys.GRANT_ALL_PERMISSIONS_ON_INSTALL] ?: false,
+        allowLegacyApkInstall = prefs[Keys.ALLOW_LEGACY_APK_INSTALL] ?: false,
         exportDirUri = prefs[Keys.EXPORT_DIR_URI],
         appInfoActionsOrder = AppInfoActionId.fromSavedNamesOrDefault(
             prefs[Keys.APP_INFO_ACTIONS_ORDER]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }

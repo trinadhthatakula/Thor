@@ -10,6 +10,7 @@ import android.content.pm.PackageInfo
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.valhalla.thor.R
 import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
@@ -18,6 +19,7 @@ import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
+import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
@@ -271,6 +273,109 @@ class PrivilegeExecutionProductionPathTest {
     }
 
     @Test
+    fun `unsupported low target bypass is refused before installer invocation`() = runTest {
+        for (mode in listOf(InstallMode.NORMAL, InstallMode.DHIZUKU, InstallMode.EXTERNAL)) {
+            val fixture = installerRepository(IllegalStateException("root must not run"))
+            var invocationStarted = false
+
+            fixture.repository.installPackage(
+                staged = fixture.staged,
+                uri = Uri.fromFile(fixture.staged.file),
+                mode = mode,
+                bypassLowTargetSdkBlock = true,
+                onInvocationStarted = { invocationStarted = true },
+            )
+
+            assertFalse("$mode must not begin an install", invocationStarted)
+            assertEquals(0, fixture.executor.installCalls)
+            assertEquals(
+                InstallState.Error(UiText.StringResource(R.string.legacy_install_unsupported)),
+                fixture.bus.latest,
+            )
+        }
+    }
+
+    @Test
+    @Config(sdk = [33])
+    fun `pre Android 14 low target bypass is refused before root side effects`() = runTest {
+        val fixture = installerRepository(IllegalStateException("root must not run"))
+        var invocationStarted = false
+
+        fixture.repository.installPackage(
+            staged = fixture.staged,
+            uri = Uri.fromFile(fixture.staged.file),
+            mode = InstallMode.ROOT,
+            bypassLowTargetSdkBlock = true,
+            onInvocationStarted = { invocationStarted = true },
+        )
+
+        assertFalse(invocationStarted)
+        assertEquals(0, fixture.executor.installCalls)
+        assertEquals(
+            InstallState.Error(UiText.StringResource(R.string.legacy_install_unsupported)),
+            fixture.bus.latest,
+        )
+    }
+
+    @Test
+    fun `opted in Shizuku shell failure is terminal and keeps raw pm reason`() = runTest {
+        val rawPmReason = "Failure [INSTALL_FAILED_DEPRECATED_SDK_VERSION: App package must target at least SDK 23]"
+        var shellCalls = 0
+        val fixture = installerRepository(
+            failure = IllegalStateException("root must not run"),
+            executeShizukuShell = {
+                shellCalls++
+                1 to rawPmReason
+            },
+        )
+
+        fixture.repository.installPackage(
+            staged = fixture.staged,
+            uri = Uri.fromFile(fixture.staged.file),
+            mode = InstallMode.SHIZUKU,
+            bypassLowTargetSdkBlock = true,
+        )
+
+        assertEquals(1, shellCalls)
+        assertEquals(0, fixture.executor.installCalls)
+        assertEquals(InstallState.Error(UiText.DynamicString(rawPmReason)), fixture.bus.latest)
+    }
+
+    @Test
+    fun `opted in root single APK uses the bypass-capable session route`() = runTest {
+        val preferences = FakePreferenceRepository()
+        val executor = SuccessfulRecordingExecutor()
+        val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined).also {
+            it.userIdProvider = { 0 }
+        }
+        val repository = InstallerRepositoryImpl(
+            context = context,
+            eventBus = InstallerEventBus(),
+            rootGateway = root,
+            shizukuReflector = ShizukuReflector(context),
+            preferenceRepository = preferences,
+            obbInstaller = ObbInstaller(context, FakeSystemRepository(), Dispatchers.Unconfined),
+            ioDispatcher = Dispatchers.Unconfined,
+            mainDispatcher = Dispatchers.Unconfined,
+        )
+        val staged = StagedPackage(
+            temporaryFolder.newFile("root-bypass.apk").apply { writeText("apk") },
+            "base.apk",
+        )
+
+        repository.installPackage(
+            staged = staged,
+            uri = Uri.fromFile(staged.file),
+            mode = InstallMode.ROOT,
+            bypassLowTargetSdkBlock = true,
+        )
+
+        val command = executor.commands.single().text
+        assertEquals(1, Regex("--bypass-low-target-sdk-block").findAll(command).count())
+        assertTrue(command.contains("pm install-create"))
+    }
+
+    @Test
     fun `AppArchiveInstallerImpl keeps every execution failure identity`() = runTest {
         allExecutionFailures().forEach { failure ->
             val fixture = archiveInstaller(failure)
@@ -359,6 +464,7 @@ class PrivilegeExecutionProductionPathTest {
                 execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
                 onInvocationStarted: () -> Unit,
                 onInstallSucceeded: () -> Unit,
+                bypassLowTargetSdkBlock: Boolean,
             ) {
                 onInvocationStarted()
                 entered.complete(Unit)
@@ -527,7 +633,12 @@ class PrivilegeExecutionProductionPathTest {
         sourceDir = File(temporaryFolder.root, "missing-${System.nanoTime()}.apk").absolutePath,
     )
 
-    private fun installerRepository(failure: Throwable): InstallerFixture {
+    private fun installerRepository(
+        failure: Throwable,
+        executeShizukuShell: (String) -> Pair<Int, String?> = { command ->
+            ShizukuHelper.execute(command)
+        },
+    ): InstallerFixture {
         val preferences = FakePreferenceRepository()
         val executor = AlwaysFailExecutor(failure)
         val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined).also {
@@ -545,6 +656,7 @@ class PrivilegeExecutionProductionPathTest {
             ioDispatcher = Dispatchers.Unconfined,
             mainDispatcher = Dispatchers.Unconfined,
         )
+        repository.executeShizukuShell = executeShizukuShell
         val staged = StagedPackage(
             temporaryFolder.newFile("install-${System.nanoTime()}.apk").apply { writeText("apk") },
             "sample.apk",
@@ -613,6 +725,15 @@ class PrivilegeExecutionProductionPathTest {
         }
     }
 
+    private class SuccessfulRecordingExecutor : RootCommandExecutor {
+        val commands = mutableListOf<RootCommand>()
+
+        override suspend fun execute(command: RootCommand): RootCommandResult {
+            commands += command
+            return RootCommandResult(0, emptyList(), emptyList())
+        }
+    }
+
     private class QueuedDispatcher : CoroutineDispatcher() {
         private val pending = ArrayDeque<Runnable>()
 
@@ -640,6 +761,7 @@ class PrivilegeExecutionProductionPathTest {
             execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
+            bypassLowTargetSdkBlock: Boolean,
         ) {
             calls++
             withContext(entryDispatcher) {
@@ -663,6 +785,7 @@ class PrivilegeExecutionProductionPathTest {
             execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
+            bypassLowTargetSdkBlock: Boolean,
         ) {
             onInvocationStarted()
             invocationEntered = true
@@ -687,6 +810,7 @@ class PrivilegeExecutionProductionPathTest {
             execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
+            bypassLowTargetSdkBlock: Boolean,
         ) {
             onInvocationStarted()
             calls++

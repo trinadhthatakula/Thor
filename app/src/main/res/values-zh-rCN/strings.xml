@@ -27,7 +27,7 @@
     <string name="dynamic_colors">动态色彩</string>
     <string name="dynamic_colors_desc">Material You 集成</string>
     <string name="biometric_lock">生物识别锁定</string>
-    <string name="biometric_lock_desc">启动时需要验证</string>
+    <string name="biometric_lock_desc">启动时要求身份验证。启用后，将禁止截取或录制 Thor 的屏幕，并隐藏其在最近任务中的预览。</string>
     <string name="biometric_not_available">生物识别未注册或不可用</string>
     <string name="active_engine">活动引擎</string>
     <string name="active_engine_desc">在可用提供者之间切换</string>
@@ -333,6 +333,11 @@
     <string name="exit">退出</string>
     <string name="title_thor_installer">Thor 安装器</string>
     <string name="install_analyzing">正在解析包…</string>
+    <string name="legacy_install_description">%1$s 的目标 SDK 为 %2$d。此 Android 版本通常会阻止目标 SDK 低于 %3$d 的新安装。</string>
+    <string name="legacy_install_confirm_title">允许安装旧版应用吗？</string>
+    <string name="legacy_install_confirm_message">%1$s（%2$s）的目标 SDK 为 %3$d，低于 SDK %4$d 的安装最低要求。绕过此安全限制可能会使你的设备和数据面临风险。旧版应用可能会根据其旧版权限模型在安装时获得权限。仅当你信任此 APK 时才继续。此设置仅适用于本次安装；签名、设备兼容性及其他 Android 检查仍然适用。</string>
+    <string name="legacy_install_allow_once">仅此次安装</string>
+    <string name="legacy_install_unsupported">安装旧版应用需要 Android 14 或更高版本，以及 Root 或 Shizuku。普通、Dhizuku 和外部模式无法应用此覆盖设置。</string>
     <string name="install_downgrade_warning">这将降级该应用。</string>
     <string name="install_downgrade_code_explainer">版本号 %1$s 低于已安装的 %2$s。Android 按版本号（versionCode）而非版本名称排序更新，因此应用看起来较新仍可能是降级。</string>
     <string name="install_update_warning">这将更新现有应用。</string>

@@ -147,6 +147,26 @@ class SettingsViewModelTest {
         assertEquals(TaskNavigationRequest.Rejected(open.taskId), requests[1])
     }
 
+    @Test
+    fun `legacy APK install setting is persisted through preferences`() = runTest {
+        val preferences = FakePreferenceRepository()
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = preferences,
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+        )
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
+        runCurrent()
+        assertEquals(false, vm.uiState.value.prefs.allowLegacyApkInstall)
+
+        vm.setAllowLegacyApkInstall(true)
+        runCurrent()
+
+        assertTrue(vm.uiState.value.prefs.allowLegacyApkInstall)
+    }
+
     private fun viewModel(
         freezer: FakeFreezerRepository,
         preferences: FakePreferenceRepository,
