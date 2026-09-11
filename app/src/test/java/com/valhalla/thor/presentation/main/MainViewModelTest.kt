@@ -3,6 +3,14 @@
 
 package com.valhalla.thor.presentation.main
 
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.presentation.FakePrivilegeStateProvider
+import androidx.lifecycle.SavedStateHandle
+import kotlinx.coroutines.test.runCurrent
+import com.valhalla.thor.domain.repository.LegacyFixStoreInstaller
+import com.valhalla.thor.domain.repository.LegacyFixStoreCancelled
+
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.data.backup.job.JobSheetTarget
@@ -92,6 +100,8 @@ class MainViewModelTest {
     private lateinit var appRepository: FakeAppRepository
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var prefs: FakePreferenceRepository
+    private val privilege = FakePrivilegeStateProvider(PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true))
+    private val legacy = FakeLegacyInstaller()
 
     /** Stands in for `Context.cacheDir`: an export stages bundles and its manifest into it. */
     private lateinit var cache: File
@@ -140,6 +150,9 @@ class MainViewModelTest {
             TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
     ): MainViewModel {
         val vm = MainViewModel(
+            privilege = privilege,
+            legacyInstaller = legacy,
+            savedStateHandle = SavedStateHandle(),
             manageAppUseCase = ManageAppUseCase(systemRepository, DefaultPackageOperationCoordinator()),
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             shareAppUseCase = ShareAppUseCase(
@@ -1023,6 +1036,136 @@ class MainViewModelTest {
     }
 
     // --- Fix Store: the picker ----------------------------------------------------------------
+
+    private class FakeLegacyInstaller : LegacyFixStoreInstaller {
+        override var sdkInt = 37
+        val calls = mutableListOf<String>()
+        override suspend fun reinstall(packageName: String, requestInstall: suspend (String) -> Result<Boolean>): Result<Unit> {
+            calls += packageName
+            return if (requestInstall("content://fixture/$packageName").getOrThrow()) Result.success(Unit)
+            else Result.failure(LegacyFixStoreCancelled())
+        }
+    }
+
+    @Test
+    fun `legacy batch serializes dialogs rejects duplicate taps and stops on cancellation`() = runTest {
+        legacy.sdkInt = 30
+        privilege.emit(PrivilegeState(dhizuku = true, active = PrivilegeMode.DHIZUKU, isReady = true))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+        val action = MultiAppAction.ReInstall(listOf(userApp("first"), userApp("second")))
+        vm.onMultiAppAction(action)
+        vm.onMultiAppAction(action)
+        runCurrent()
+        assertEquals(listOf("first"), legacy.calls)
+        val pending = vm.legacyInstallRequest.value!!
+        vm.onLegacyInstallResult("stale", Result.success(true))
+        runCurrent()
+        assertEquals(listOf("first"), legacy.calls)
+        vm.onLegacyInstallResult(pending.id, Result.success(false))
+        advanceUntilIdle()
+        assertEquals(listOf("first"), legacy.calls)
+        assertTrue(controller.launched.isEmpty())
+        assertTrue(vm.uiState.value.loggerState.isComplete)
+        assertNull(vm.legacyInstallRequest.value)
+        assertFalse(vm.uiState.value.loggerState.isSuccess)
+        assertTrue(vm.uiState.value.loggerState.wrapLogs)
+    }
+
+    @Test
+    fun `no privilege legacy picker discloses manual installation and accepts verified results`() = runTest {
+        legacy.sdkInt = 32
+        privilege.emit(PrivilegeState(active = PrivilegeMode.NONE, isReady = true))
+        appRepository.apps.value = listOf(userApp("single"))
+        val vm = viewModel()
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.fixStoreSelection!!.usesSystemInstaller)
+        vm.confirmFixStore()
+        runCurrent()
+        vm.onLegacyInstallResult(vm.legacyInstallRequest.value!!.id, Result.success(true))
+        advanceUntilIdle()
+        assertEquals(listOf("single"), legacy.calls)
+        assertTrue(vm.uiState.value.loggerState.isSuccess)
+        assertTrue(vm.uiState.value.loggerState.logs.contains(UiText.StringResource(R.string.log_reinstall_success)))
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
+    fun `Dhizuku home fix store explains restriction without opening picker`() = runTest {
+        privilege.emit(PrivilegeState(
+            dhizuku = true, active = PrivilegeMode.DHIZUKU, isReady = true,
+        ))
+        appRepository.apps.value = listOf(userApp("com.sideloaded"))
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
+    fun `Dhizuku single and batch fix store never start work even if root is available`() = runTest {
+        privilege.emit(PrivilegeState(
+            root = true, shizuku = true, dhizuku = true,
+            active = PrivilegeMode.DHIZUKU, isReady = true,
+        ))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+        val app = userApp("com.sideloaded")
+
+        vm.onAppAction(AppClickAction.Reinstall(app))
+        vm.onMultiAppAction(MultiAppAction.ReInstall(listOf(app)))
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertTrue(system.calls.isEmpty())
+        assertTrue(controller.launched.isEmpty())
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+    }
+
+    @Test
+    fun `switching to Dhizuku while picker is open blocks confirmation`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.sideloaded"))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.fixStoreSelection != null)
+        privilege.emit(PrivilegeState(
+            dhizuku = true, active = PrivilegeMode.DHIZUKU, isReady = true,
+        ))
+
+        vm.confirmFixStore()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertTrue(controller.launched.isEmpty())
+    }
+
+    @Test
+    fun `Root and Shizuku fix store stay available with Dhizuku installed`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.sideloaded"))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+        for (mode in listOf(PrivilegeMode.ROOT, PrivilegeMode.SHIZUKU)) {
+            privilege.emit(PrivilegeState(
+                root = true, shizuku = true, dhizuku = true, active = mode, isReady = true,
+            ))
+            vm.onAppAction(AppClickAction.ReinstallAll)
+            advanceUntilIdle()
+            assertFalse(vm.uiState.value.fixStoreUnavailable)
+            assertTrue(vm.uiState.value.fixStoreSelection != null)
+            vm.confirmFixStore()
+            advanceUntilIdle()
+        }
+        assertEquals(2, controller.launched.size)
+    }
 
     @Test
     fun `fix store opens a picker instead of reinstalling everything it found`() = runTest {

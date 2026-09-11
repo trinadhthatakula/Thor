@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.main
 
+import com.valhalla.thor.presentation.widgets.FixStoreUnavailableDialog
+
 import android.app.Activity
 import android.content.Intent
 import android.provider.Settings
@@ -484,6 +486,7 @@ fun MainScreen(
 
     val canNotLaunchApp = stringResource(R.string.cannot_launch_app)
     val shareApp = stringResource(R.string.share_app)
+    LegacyInstallHandler(mainViewModel)
 
     // The request identity survives activity recreation; the pending continuation lives in the VM.
     var uninstallRequestId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1162,6 +1165,12 @@ fun MainScreen(
                         )
                     }
 
+                    if (state.fixStoreUnavailable) {
+                        FixStoreUnavailableDialog(
+                            onDismiss = mainViewModel::dismissFixStoreUnavailable,
+                        )
+                    }
+
                     state.fixStoreSelection?.let { selection ->
                         val labelResolver: InstallerLabelResolver = koinInject()
                         FixStoreSheet(
@@ -1179,6 +1188,8 @@ fun MainScreen(
                             title = state.loggerState.title,
                             logs = state.loggerState.logs,
                             isOperationComplete = state.loggerState.isComplete,
+                            wrapLogs = state.loggerState.wrapLogs,
+                            completedSuccessfully = state.loggerState.isSuccess,
                             isStopping = state.loggerState.isStopping,
                             onStop = if (state.loggerState.canStop) {
                                 { mainViewModel.requestStopBatch() }

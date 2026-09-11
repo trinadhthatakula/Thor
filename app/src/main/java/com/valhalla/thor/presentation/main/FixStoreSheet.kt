@@ -23,6 +23,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -75,6 +76,7 @@ fun FixStoreSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
         tonalElevation = 0.dp,
@@ -88,7 +90,10 @@ fun FixStoreSheet(
             )
 
             Text(
-                text = stringResource(R.string.fix_store_desc),
+                text = stringResource(
+                    if (selection.usesSystemInstaller) R.string.legacy_fix_store_description
+                    else R.string.fix_store_desc
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
@@ -128,7 +133,7 @@ fun FixStoreSheet(
 
             // Bounded so the confirm button below is always on screen. The sheet expands to fit its
             // content otherwise, and a 200-app list would push the only way out past the bottom.
-            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+            LazyColumn(modifier = Modifier.weight(1f, fill = false).heightIn(max = 400.dp)) {
                 items(selection.candidates, key = { it.packageName }) { app ->
                     FixStoreRow(
                         app = app,

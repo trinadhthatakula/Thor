@@ -3,6 +3,17 @@
 
 package com.valhalla.thor.presentation.main
 
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import androidx.lifecycle.SavedStateHandle
+import com.valhalla.thor.domain.model.FixStoreRoute
+import com.valhalla.thor.domain.model.fixStoreRoute
+import com.valhalla.thor.domain.model.PackageLeaseResult
+import com.valhalla.thor.domain.model.PackageOperationOwner
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.repository.LegacyFixStoreInstaller
+import com.valhalla.thor.domain.repository.LegacyFixStoreCancelled
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.BuildConfig
@@ -91,6 +102,8 @@ data class LoggerState(
     val title: UiText = UiText.DynamicString(""),
     val logs: List<UiText> = emptyList(),
     val isComplete: Boolean = false,
+    val wrapLogs: Boolean = false,
+    val isSuccess: Boolean = true,
     /**
      * Whether this run can be stopped part-way. True only for the per-app batches, where stopping
      * leaves a coherent result — some apps done, the rest untouched. A single shell command has no
@@ -144,6 +157,7 @@ data class ExportProgressState(
  * [selected] holds package names rather than [AppInfo]s so a tick survives the list being rebuilt.
  */
 data class FixStoreSelection(
+    val usesSystemInstaller: Boolean = false,
     val candidates: List<AppInfo> = emptyList(),
     val selected: Set<String> = emptySet()
 ) {
@@ -209,6 +223,7 @@ data class RestoreSheetState(val uriString: String? = null)
 data class BackupSheetState(val packageName: String, val appLabel: String)
 
 data class MainUiState(
+    val fixStoreUnavailable: Boolean = false,
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val fixStoreSelection: FixStoreSelection? = null, // Fix Store picker, null when closed
     val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
@@ -223,6 +238,9 @@ data class MainUiState(
 
 @KoinViewModel
 class MainViewModel(
+    private val privilege: PrivilegeStateProvider,
+    private val legacyInstaller: LegacyFixStoreInstaller,
+    savedStateHandle: SavedStateHandle,
     private val manageAppUseCase: ManageAppUseCase,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val shareAppUseCase: ShareAppUseCase,
@@ -252,6 +270,9 @@ class MainViewModel(
     )
 
     private var pendingSupportPrompt = false
+    private val legacyBridge = LegacyInstallBridge(savedStateHandle)
+    val legacyInstallRequest = legacyBridge.request
+    private var legacyFixStoreBusy = false
 
     /** Whether [openRestoreSheetForLaunchUri] has already fired for this ViewModel. See it for why here. */
     private var launchRestoreUriConsumed = false
@@ -473,6 +494,83 @@ class MainViewModel(
 
     // --- Fix Store picker ---
 
+    private fun showFixStoreUnavailable() {
+        _uiState.update { it.copy(fixStoreUnavailable = true, fixStoreSelection = null) }
+    }
+
+    private fun currentFixStoreRoute() = fixStoreRoute(legacyInstaller.sdkInt, privilege.state.value.active)
+
+    fun claimLegacyInstallLaunch(id: String): Boolean = legacyBridge.claimLaunch(id)
+
+    fun onLegacyInstallResult(id: String, result: Result<Boolean>) {
+        if (legacyBridge.complete(id, result)) showLegacyInterrupted()
+    }
+
+    fun onLegacyInstallHostResumed() {
+        if (legacyBridge.recoverOnResume()) showLegacyInterrupted()
+    }
+
+    private fun showLegacyInterrupted() {
+        startLogger(UiText.StringResource(R.string.fix_store))
+        _uiState.update { it.copy(loggerState = it.loggerState.copy(wrapLogs = true, isSuccess = false)) }
+        addLog(UiText.StringResource(R.string.legacy_fix_store_interrupted))
+        finishLogger()
+    }
+
+    private fun startLegacyReinstall(apps: List<AppInfo>) {
+        if (apps.isEmpty() || legacyFixStoreBusy || legacyInstallRequest.value != null) return
+        legacyFixStoreBusy = true
+        viewModelScope.launch {
+            val targets = apps.distinctBy { it.packageName }
+            startLogger(UiText.StringResource(R.string.fix_store), canStop = targets.size > 1)
+            _uiState.update { it.copy(loggerState = it.loggerState.copy(wrapLogs = true, isSuccess = false)) }
+            addLog(UiText.StringResource(R.string.legacy_fix_store_description))
+            var succeeded = true
+            try {
+                for ((index, app) in targets.withIndex()) {
+                    if (stopRequested) break
+                    addLog(UiText.StringResource(R.string.log_batch_step, index + 1, targets.size, app.appName ?: app.packageName))
+                    val result = when (val lease = manageAppUseCase.withPackageOperation(
+                        app.packageName, PackageOperationOwner.REINSTALL, PrivilegeExecutionContext(),
+                    ) {
+                        legacyInstaller.reinstall(app.packageName) { uri ->
+                            withContext(Dispatchers.Main.immediate) { legacyBridge.install(uri) }
+                        }
+                    }) {
+                        is PackageLeaseResult.Acquired -> lease.value
+                        is PackageLeaseResult.Busy -> Result.failure(PackageOperationBusy(lease.owner))
+                    }
+                    if (result.isSuccess) {
+                        addLog(UiText.StringResource(R.string.log_reinstall_success))
+                    } else {
+                        succeeded = false
+                        val failure = result.exceptionOrNull()
+                        if (failure is CancellationException) throw failure
+                        if (failure is LegacyFixStoreCancelled) {
+                            addLog(UiText.StringResource(R.string.task_state_cancelled))
+                            break
+                        }
+                        addLog(failure?.asUiText() ?: UiText.StringResource(R.string.unknown_error_occurred))
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                succeeded = false
+                throw cancelled
+            } catch (failure: Exception) {
+                succeeded = false
+                addLog(failure.asUiText())
+            } finally {
+                legacyFixStoreBusy = false
+                _uiState.update { it.copy(loggerState = it.loggerState.copy(isSuccess = succeeded && !stopRequested)) }
+                finishLogger()
+            }
+        }
+    }
+
+    fun dismissFixStoreUnavailable() {
+        _uiState.update { it.copy(fixStoreUnavailable = false) }
+    }
+
     fun toggleFixStoreTarget(packageName: String) {
         _uiState.update { state ->
             val picker = state.fixStoreSelection ?: return@update state
@@ -640,6 +738,20 @@ class MainViewModel(
 
     fun onAppAction(action: AppClickAction) {
         viewModelScope.launch {
+            if (action == AppClickAction.ReinstallAll || action is AppClickAction.Reinstall) {
+                if (legacyFixStoreBusy || legacyInstallRequest.value != null) return@launch
+                when (currentFixStoreRoute()) {
+                    FixStoreRoute.UNAVAILABLE -> {
+                        showFixStoreUnavailable()
+                        return@launch
+                    }
+                    FixStoreRoute.LEGACY -> if (action is AppClickAction.Reinstall) {
+                        startLegacyReinstall(listOf(action.appInfo))
+                        return@launch
+                    }
+                    FixStoreRoute.PRIVILEGED -> Unit
+                }
+            }
             when (action) {
                 // 1. SMART LAUNCH
                 is AppClickAction.Launch -> {
@@ -710,7 +822,8 @@ class MainViewModel(
                             addLog(UiText.StringResource(R.string.log_reinstall_success))
                             triggerSupportPromptIfNeeded()
                         } else {
-                            addLog(UiText.StringResource(R.string.log_failed_with_msg, result.exceptionOrNull()?.message ?: ""))
+                            addLog(result.exceptionOrNull()?.asUiText()
+                                ?: UiText.StringResource(R.string.log_failed_with_msg, ""))
                         }
                     }
                     finishLogger()
@@ -817,6 +930,7 @@ class MainViewModel(
                         _uiState.update { state ->
                             state.copy(
                                 fixStoreSelection = FixStoreSelection(
+                                    usesSystemInstaller = currentFixStoreRoute() == FixStoreRoute.LEGACY,
                                     candidates = targets.sortedBy { app ->
                                         (app.appName ?: app.packageName).lowercase()
                                     },
@@ -878,10 +992,17 @@ class MainViewModel(
         }
         viewModelScope.launch {
             when (action) {
-                is MultiAppAction.ReInstall -> launchSelectionSweep(
-                    operation = PrivilegeSweepOperation.REINSTALL,
-                    apps = action.appList,
-                )
+                is MultiAppAction.ReInstall -> {
+                    if (legacyFixStoreBusy || legacyInstallRequest.value != null) return@launch
+                    when (currentFixStoreRoute()) {
+                        FixStoreRoute.PRIVILEGED -> launchSelectionSweep(
+                            operation = PrivilegeSweepOperation.REINSTALL,
+                            apps = action.appList,
+                        )
+                        FixStoreRoute.LEGACY -> startLegacyReinstall(action.appList)
+                        FixStoreRoute.UNAVAILABLE -> showFixStoreUnavailable()
+                    }
+                }
 
                 is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true, useSuspend = action.useSuspend)
 
