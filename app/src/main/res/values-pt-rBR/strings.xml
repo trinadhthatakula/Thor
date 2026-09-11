@@ -17,6 +17,14 @@
     divisões (de APK) → splits de APK      "uma shell" → "um shell" (masculine in BR)
 -->
 <resources>
+    <string name="legacy_fix_store_description">Usa o instalador do sistema Android. Confirme cada aplicativo quando solicitado. Aplicativos com APKs divididos são ignorados para preservar seus arquivos. O Thor verifica se o Google Play está registrado como instalador antes de indicar sucesso.</string>
+    <string name="legacy_fix_store_split_unsupported">Ignorado: este aplicativo usa APKs divididos que o instalador do sistema pode remover. Use Root ou Shizuku para corrigir a loja.</string>
+    <string name="legacy_fix_store_app_unsupported">Este aplicativo não pode ser reinstalado com segurança pelo instalador do sistema. Use Root ou Shizuku.</string>
+    <string name="legacy_fix_store_not_verified">A instalação terminou, mas não foi possível verificar o aplicativo ou o registro do Google Play como instalador.</string>
+    <string name="legacy_fix_store_no_installer">Nenhum instalador de sistema compatível está disponível.</string>
+    <string name="legacy_fix_store_interrupted">A instalação manual foi interrompida. Os aplicativos restantes não foram processados. Verifique o instalador registrado antes de tentar novamente.</string>
+    <string name="legacy_fix_store_requires_privilege">Corrigir loja nesta versão do Android requer Root ou Shizuku. A alternativa manual só está disponível no Android 9–12L para aplicativos sem APKs divididos.</string>
+    <string name="fix_store_unsupported_dhizuku">Corrigir loja requer Root ou Shizuku. O Android não permite que o Dhizuku registre o Google Play como instalador de um aplicativo. Nenhum aplicativo foi alterado.</string>
 
     <!-- Navigation -->
     <string name="apps">Lista de aplicativos</string>

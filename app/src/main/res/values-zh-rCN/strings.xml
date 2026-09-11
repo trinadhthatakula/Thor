@@ -1,4 +1,12 @@
 <resources>
+    <string name="legacy_fix_store_description">使用 Android 系统安装器。请按提示逐个确认安装。为保护应用文件，将跳过使用拆分 APK 的应用。Thor 会确认安装来源已设为 Google Play，再报告成功。</string>
+    <string name="legacy_fix_store_split_unsupported">已跳过：此应用使用拆分 APK，系统安装器可能删除其拆分文件。请使用 Root 或 Shizuku 修复商店。</string>
+    <string name="legacy_fix_store_app_unsupported">无法通过系统安装器安全地重新安装此应用。请使用 Root 或 Shizuku。</string>
+    <string name="legacy_fix_store_not_verified">安装已结束，但无法验证应用或其 Google Play 安装来源记录。</string>
+    <string name="legacy_fix_store_no_installer">没有可用的兼容系统安装器。</string>
+    <string name="legacy_fix_store_interrupted">手动安装已中断，未处理剩余应用。请检查应用的安装来源记录后重试。</string>
+    <string name="legacy_fix_store_requires_privilege">在此 Android 版本上修复商店需要 Root 或 Shizuku。手动方式仅适用于 Android 9–12L 上不使用拆分 APK 的应用。</string>
+    <string name="fix_store_unsupported_dhizuku">修复商店需要 Root 或 Shizuku。Android 不允许 Dhizuku 将 Google Play 设为应用的安装来源。未更改任何应用。</string>
     <!-- Navigation -->
     <string name="home">主页</string>
     <string name="home_desc">主页</string>
