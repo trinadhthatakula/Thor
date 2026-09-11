@@ -1,4 +1,12 @@
 <resources>
+    <string name="legacy_fix_store_description">يستخدم مثبّت نظام Android. أكّد تثبيت كل تطبيق عند الطلب. تُتخطّى التطبيقات ذات ملفات APK المجزأة للحفاظ على ملفاتها. يتحقق Thor من تسجيل Google Play كمثبّت قبل إعلان النجاح.</string>
+    <string name="legacy_fix_store_split_unsupported">تم التخطي: يستخدم هذا التطبيق ملفات APK مجزأة وقد يحذفها مثبّت النظام. استخدم Root أو Shizuku لإصلاح المتجر.</string>
+    <string name="legacy_fix_store_app_unsupported">لا يمكن إعادة تثبيت هذا التطبيق بأمان باستخدام مثبّت النظام. استخدم Root أو Shizuku.</string>
+    <string name="legacy_fix_store_not_verified">انتهى التثبيت، لكن تعذّر التحقق من التطبيق أو من تسجيل Google Play كمثبّت له.</string>
+    <string name="legacy_fix_store_no_installer">لا يتوفر مثبّت نظام متوافق.</string>
+    <string name="legacy_fix_store_interrupted">انقطع التثبيت اليدوي. لم تتم معالجة التطبيقات المتبقية. تحقّق من سجل مثبّت التطبيق قبل المحاولة مجددًا.</string>
+    <string name="legacy_fix_store_requires_privilege">يتطلب إصلاح المتجر على إصدار Android هذا Root أو Shizuku. يتوفر البديل اليدوي فقط على Android 9–12L للتطبيقات التي لا تستخدم ملفات APK مجزأة.</string>
+    <string name="fix_store_unsupported_dhizuku">يتطلب إصلاح المتجر Root أو Shizuku. لا يسمح Android لـ Dhizuku بتسجيل Google Play كمثبّت للتطبيق. لم يتم تغيير أي تطبيقات.</string>
 
     <!-- Navigation -->
     <string name="home">الرئيسية</string>
