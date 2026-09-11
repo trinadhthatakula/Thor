@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="legacy_fix_store_description">Usa o instalador do sistema Android. Confirme cada aplicação quando solicitado. As aplicações com APK divididos são ignoradas para preservar os seus ficheiros. O Thor verifica se o Google Play está registado como instalador antes de indicar sucesso.</string>
+    <string name="legacy_fix_store_split_unsupported">Ignorada: esta aplicação usa APK divididos que o instalador do sistema pode remover. Use Root ou Shizuku para reparar a loja.</string>
+    <string name="legacy_fix_store_app_unsupported">Esta aplicação não pode ser reinstalada em segurança com o instalador do sistema. Use Root ou Shizuku.</string>
+    <string name="legacy_fix_store_not_verified">A instalação terminou, mas não foi possível verificar a aplicação ou o registo do Google Play como instalador.</string>
+    <string name="legacy_fix_store_no_installer">Não está disponível nenhum instalador de sistema compatível.</string>
+    <string name="legacy_fix_store_interrupted">A instalação manual foi interrompida. As aplicações restantes não foram processadas. Verifique o instalador registado antes de tentar novamente.</string>
+    <string name="legacy_fix_store_requires_privilege">A reparação da loja nesta versão do Android requer Root ou Shizuku. A alternativa manual só está disponível no Android 9–12L para aplicações sem APK divididos.</string>
+    <string name="fix_store_unsupported_dhizuku">A reparação da loja requer Root ou Shizuku. O Android não permite que o Dhizuku registe o Google Play como instalador de uma aplicação. Nenhuma aplicação foi alterada.</string>
 
     <!-- Navigation -->
     <string name="home">Início</string>
