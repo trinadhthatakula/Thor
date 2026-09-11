@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.widgets
 
+import android.os.Build
+
 import androidx.annotation.StringRes
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -245,7 +247,7 @@ fun AppActionRow(
                     )
                 }
 
-                AppInfoActionId.FIX_STORE -> if (hasPrivilege && !appInfo.isSystem && appInfo.installerPackageName != PLAY_STORE_PACKAGE) {
+                AppInfoActionId.FIX_STORE -> if ((hasPrivilege || Build.VERSION.SDK_INT in 28..32) && !appInfo.isSystem && appInfo.installerPackageName != PLAY_STORE_PACKAGE) {
                     ActionItem(
                         icon = R.drawable.apk_install,
                         label = stringResource(R.string.fix_store),

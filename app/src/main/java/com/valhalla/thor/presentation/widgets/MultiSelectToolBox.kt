@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.widgets
 
+import android.os.Build
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -74,8 +76,7 @@ fun MultiSelectToolBox(
                 onClick = onCancel
             )
 
-            // ReInstall (Root OR Shizuku OR Dhizuku)
-            if (isRoot || isShizuku || isDhizuku) {
+            if (isRoot || isShizuku || isDhizuku || Build.VERSION.SDK_INT in 28..32) {
                 ToolBoxItem(
                     icon = R.drawable.apk_install,
                     label = stringResource(R.string.action_reinstall),

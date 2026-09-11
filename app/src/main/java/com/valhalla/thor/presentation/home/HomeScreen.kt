@@ -106,7 +106,7 @@ fun HomeScreen(
     // run the command in and the device-owner API has no equivalent.
     val canClearCache = state.activePrivilegeMode == PrivilegeMode.ROOT ||
         state.activePrivilegeMode == PrivilegeMode.SHIZUKU
-    val reinstallVisible = state.activePrivilegeMode != null &&
+    val reinstallVisible = (state.activePrivilegeMode != null || android.os.Build.VERSION.SDK_INT in 28..32) &&
         state.unknownInstallerCount > 0 && state.showReinstallCard
     // Both optional tiles hidden with no privilege leaves the bento with nothing to draw, so the
     // spacer that separates it from the summary row goes with it rather than leaving a bare gap.
