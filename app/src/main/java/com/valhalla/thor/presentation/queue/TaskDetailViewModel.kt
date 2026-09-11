@@ -295,7 +295,7 @@ class TaskDetailViewModel(
     }
 
     private fun QueuedTaskDetail.withSortedLines(): QueuedTaskDetail =
-        if (lines.zipWithNext().all { (first, second) -> first.order <= second.order }) this
+        if (lines.isSortedBy(TaskLogLine::order)) this
         else copy(lines = lines.sortedBy(TaskLogLine::order))
 
     private fun canonicalTaskId(raw: String): UUID {
