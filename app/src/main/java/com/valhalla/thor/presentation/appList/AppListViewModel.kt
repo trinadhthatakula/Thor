@@ -135,6 +135,7 @@ data class AppListUiState(
  */
 sealed interface AppListEvent {
     data class ShowMessage(val message: UiText) : AppListEvent
+    data class RequestReinstall(val apps: List<AppInfo>) : AppListEvent
     data class ShowFreezerPrompt(val prompt: FreezerPrompt) : AppListEvent
 
     /** Hand the exported list to another app. [uri] is a `content://` string; the screen chooses. */
@@ -876,10 +877,7 @@ class AppListViewModel(
                     apps = action.appList,
                 )
 
-                is MultiAppAction.ReInstall -> launchSelectionSweep(
-                    operation = PrivilegeSweepOperation.REINSTALL,
-                    apps = action.appList,
-                )
+                is MultiAppAction.ReInstall -> _events.send(AppListEvent.RequestReinstall(action.appList))
 
                 else -> {
                     // Fallback or forward? If we forward, we need a callback. 
