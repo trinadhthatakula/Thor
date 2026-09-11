@@ -1,4 +1,12 @@
 <resources>
+    <string name="legacy_fix_store_description">Utilise l’installateur système Android. Confirmez chaque application lorsque cela est demandé. Les applications à APK fractionnés sont ignorées pour préserver leurs fichiers. Thor vérifie que Google Play est enregistré comme installateur avant de signaler la réussite.</string>
+    <string name="legacy_fix_store_split_unsupported">Ignorée : cette application utilise des APK fractionnés que l’installateur système peut supprimer. Utilisez Root ou Shizuku pour réparer le magasin.</string>
+    <string name="legacy_fix_store_app_unsupported">Cette application ne peut pas être réinstallée en toute sécurité avec l’installateur système. Utilisez Root ou Shizuku.</string>
+    <string name="legacy_fix_store_not_verified">L’installation est terminée, mais l’application ou son attribution à Google Play n’a pas pu être vérifiée.</string>
+    <string name="legacy_fix_store_no_installer">Aucun installateur système compatible n’est disponible.</string>
+    <string name="legacy_fix_store_interrupted">L’installation manuelle a été interrompue. Les applications restantes n’ont pas été traitées. Vérifiez l’installateur enregistré avant de réessayer.</string>
+    <string name="legacy_fix_store_requires_privilege">La réparation du magasin nécessite Root ou Shizuku sur cette version d’Android. L’alternative manuelle est disponible uniquement sur Android 9–12L pour les applications sans APK fractionnés.</string>
+    <string name="fix_store_unsupported_dhizuku">La réparation du magasin nécessite Root ou Shizuku. Android ne permet pas à Dhizuku de définir Google Play comme installateur d\'une application. Aucune application n\'a été modifiée.</string>
 
     <!-- Navigation -->
     <string name="home">Accueil</string>
