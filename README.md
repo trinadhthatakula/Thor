@@ -63,7 +63,7 @@
 - Install/Uninstall/Freeze/Unfreeze Apk files
 - Suspend/Unsuspend apps (shows custom Thor-branded system dialog)
 - Background Restriction (restrict app background activity)
-- Reinstall APKs/Fix Store installer record (available in all privilege modes)
+- Fix Store installer record (Root or Shizuku; Android 9–12L also offers a user-confirmed system-installer fallback without privilege or with Dhizuku, for single-APK apps only. Split apps are skipped to preserve their files, and the resulting installer record is verified.)
 - Share App Apk file
 - Batch Reinstall/Uninstall/Freeze/Unfreeze/Kill/Suspend/Clear Data
 - Split App Indicator
