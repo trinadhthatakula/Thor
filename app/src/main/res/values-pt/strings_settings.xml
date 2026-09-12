@@ -76,10 +76,18 @@
     <string name="settings_summary_restore_interrupted">Um restauro não terminou</string>
     <string name="settings_summary_backup">Restaurar um arquivo ou alterar a frase-passe</string>
     <string name="settings_summary_unprivileged">Necessita de root, Shizuku ou Dhizuku</string>
-    <string name="settings_summary_customization">Ações do painel da app e opções de esquema</string>
+    <string name="settings_summary_customization">Tipos de letra e ações do painel da app</string>
 
     <!-- ── Categoria de personalização e ações ─────────────────────────────────────────── -->
     <string name="settings_category_customization">Personalização</string>
+    <string name="customization_fonts">Tipos de letra</string>
+    <string name="customization_fonts_desc">Escolha os tipos de letra Asgard ou do sistema. As alterações são aplicadas de imediato.</string>
+    <string name="font_preset_asgard">Asgard</string>
+    <string name="font_preset_system">Sistema</string>
+    <string name="font_preview_title">Pré-visualização do tipo de letra</string>
+    <string name="font_preview_heading">Vista geral das aplicações</string>
+    <string name="font_preview_body">Gira as suas aplicações, permissões e armazenamento.</string>
+    <string name="font_preview_numbers">0123456789 · 1,2 GB</string>
     <string name="customization_app_info_actions">Ações do painel da app</string>
     <string name="customization_app_info_actions_desc">Reordenar e alternar ações no painel inferior da app</string>
     <string name="customization_drag_hint">Arraste para reordenar • Alterne para mostrar ou ocultar</string>

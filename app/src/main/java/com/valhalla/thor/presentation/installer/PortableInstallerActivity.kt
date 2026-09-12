@@ -8,13 +8,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.valhalla.thor.domain.model.ThemeMode
-import com.valhalla.thor.domain.model.UserPreferences
+import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.presentation.theme.ThorTheme
+import com.valhalla.thor.presentation.common.asActivityPreferences
 import com.valhalla.thor.util.AppLocale
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -43,6 +41,8 @@ class PortableInstallerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val activityPreferences = preferenceRepository.userPreferences
+            .asActivityPreferences(lifecycleScope)
         // Reached from outside the app and long-lived enough to still be open when the user changes
         // the language in a separate task; recreating keeps its strings in step. No-op above API 32.
         AppLocale.recreateOnChange(this, attachedLocaleTag)
@@ -56,21 +56,8 @@ class PortableInstallerActivity : ComponentActivity() {
             installerViewModel.resetState()
         }
         setContent {
-            val prefs by preferenceRepository.userPreferences
-                .collectAsStateWithLifecycle(initialValue = UserPreferences())
-
-            val systemDark = isSystemInDarkTheme()
-            val darkTheme = when (prefs.themeMode) {
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
-                ThemeMode.SYSTEM -> systemDark
-            }
-
-            ThorTheme(
-                darkTheme = darkTheme,
-                dynamicColor = prefs.useDynamicColor,
-                amoledMode = prefs.useAmoled,
-            ) {
+            val preferenceState by activityPreferences.collectAsStateWithLifecycle()
+            InstallerPreferencesContent(preferences = preferenceState?.preferences) {
                 PortableInstaller(
                     viewModel = installerViewModel,
                     onDismiss = {
@@ -81,4 +68,3 @@ class PortableInstallerActivity : ComponentActivity() {
         }
     }
 }
-

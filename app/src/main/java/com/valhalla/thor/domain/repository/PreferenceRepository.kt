@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
@@ -78,6 +79,7 @@ interface PreferenceRepository {
 
     // --- Theme ---
     suspend fun setThemeMode(themeMode: ThemeMode)
+    suspend fun setFontPreset(fontPreset: FontPreset)
     suspend fun setDynamicColor(enabled: Boolean)
     suspend fun setUseAmoled(enabled: Boolean)
 

@@ -92,8 +92,7 @@ import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.model.freezeNeedsConfirmation
-import com.valhalla.thor.presentation.theme.bodyFontFamily
-import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import com.valhalla.thor.presentation.theme.LocalTechnicalFontFamily
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.util.AppLocale
@@ -613,7 +612,7 @@ private fun AppDetailsHeader(
                 text = appInfo.packageName,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontFamily = firaMonoFontFamily,
+                fontFamily = LocalTechnicalFontFamily.current,
                 modifier = Modifier
                     .minimumInteractiveComponentSize()
                     .clip(RoundedCornerShape(8.dp))
@@ -920,7 +919,7 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                                 text = perm.name,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontFamily = firaMonoFontFamily
+                                fontFamily = LocalTechnicalFontFamily.current
                             )
                             if (perm.protectionLevel.isNotBlank()) {
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -1376,7 +1375,7 @@ private fun ComponentRow(
                 style = MaterialTheme.typography.labelSmall,
                 color = if (component.enabled) MaterialTheme.colorScheme.onSurface
                 else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontFamily = firaMonoFontFamily
+                fontFamily = LocalTechnicalFontFamily.current
             )
             ComponentBadges(
                 component = component,
@@ -1589,7 +1588,7 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
                         Text(
                             text = lib,
                             style = MaterialTheme.typography.labelSmall,
-                            fontFamily = firaMonoFontFamily,
+                            fontFamily = LocalTechnicalFontFamily.current,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
@@ -1624,7 +1623,7 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
                         Text(
                             text = feature,
                             style = MaterialTheme.typography.labelSmall,
-                            fontFamily = firaMonoFontFamily,
+                            fontFamily = LocalTechnicalFontFamily.current,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
@@ -1693,7 +1692,7 @@ private fun InfoCard(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
-            fontFamily = if (monospace) firaMonoFontFamily else bodyFontFamily
+            fontFamily = if (monospace) LocalTechnicalFontFamily.current else null
         )
     }
 }

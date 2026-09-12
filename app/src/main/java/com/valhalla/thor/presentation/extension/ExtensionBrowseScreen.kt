@@ -52,7 +52,7 @@ import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.model.CatalogEntry
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
-import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import com.valhalla.thor.presentation.theme.LocalTechnicalFontFamily
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -377,7 +377,7 @@ private fun StoreEntryCard(
                 text = entry.id,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontFamily = firaMonoFontFamily,
+                fontFamily = LocalTechnicalFontFamily.current,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)

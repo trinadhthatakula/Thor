@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -249,6 +250,9 @@ internal fun SettingsPickerRow(
     onItemSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
+    /** Keep the complete copy and choice labels readable at larger text sizes. */
+    wrapText: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -260,9 +264,9 @@ internal fun SettingsPickerRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             SettingsIconBox(icon)
             Spacer(Modifier.width(16.dp))
-            Column {
-                RowTitle(title)
-                RowSubtitle(subtitle)
+            Column(Modifier.weight(1f)) {
+                RowTitle(title, maxLines = if (wrapText) Int.MAX_VALUE else 1)
+                RowSubtitle(subtitle, maxLines = if (wrapText) Int.MAX_VALUE else 2)
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -270,8 +274,10 @@ internal fun SettingsPickerRow(
             items = items,
             selectedIndex = selectedIndex,
             onItemSelected = onItemSelected,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            labelMaxLines = if (wrapText) Int.MAX_VALUE else 1,
         )
+        content()
     }
 }
 

@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.valhalla.thor.R
-import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import com.valhalla.thor.presentation.theme.LocalTechnicalFontFamily
 import com.valhalla.thor.util.UiText
 
 @Composable
@@ -201,7 +201,7 @@ fun TermLoggerContent(
                         .fillMaxWidth()
                         .testTag(termLoggerLineTag(index)),
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = firaMonoFontFamily,
+                        fontFamily = LocalTechnicalFontFamily.current,
                     ),
                     maxLines = 1,
                     textAlign = TextAlign.Start,

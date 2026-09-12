@@ -20,6 +20,7 @@ import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
@@ -666,6 +667,10 @@ class FakePreferenceRepository(
 
     override suspend fun setThemeMode(themeMode: ThemeMode) {
         write { it.copy(themeMode = themeMode) }
+    }
+
+    override suspend fun setFontPreset(fontPreset: FontPreset) {
+        write { it.copy(fontPreset = fontPreset) }
     }
 
     override suspend fun setDynamicColor(enabled: Boolean) {

@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.settings
 
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezeCandidate
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
@@ -10,6 +11,8 @@ import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.TaskQueueKind
+import com.valhalla.thor.domain.model.ThemeMode
+import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.AnyFileOpenerController
 import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeAuthCapability
@@ -165,6 +168,47 @@ class SettingsViewModelTest {
         runCurrent()
 
         assertTrue(vm.uiState.value.prefs.allowLegacyApkInstall)
+    }
+
+    @Test
+    fun `font selection follows the saved preference and keeps other appearance settings`() = runTest {
+        val initial = UserPreferences(themeMode = ThemeMode.DARK, useAmoled = true)
+        val preferences = FakePreferenceRepository(initial)
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = preferences,
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+        )
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
+        runCurrent()
+
+        vm.setFontPreset(FontPreset.SYSTEM)
+        runCurrent()
+
+        assertEquals(initial.copy(fontPreset = FontPreset.SYSTEM), vm.uiState.value.prefs)
+        assertEquals(FontPreset.SYSTEM, preferences.userPreferences.first().fontPreset)
+    }
+
+    @Test
+    fun `failed font write keeps the saved selection and reports the write failure`() = runTest {
+        val preferences = FakePreferenceRepository(writesFail = true)
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = preferences,
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+        )
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
+        runCurrent()
+
+        vm.setFontPreset(FontPreset.SYSTEM)
+        runCurrent()
+
+        assertEquals(FontPreset.ASGARD, vm.uiState.value.prefs.fontPreset)
+        assertTrue(preferences.writeFailureLatched)
     }
 
     private fun viewModel(

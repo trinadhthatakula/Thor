@@ -21,6 +21,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
@@ -157,6 +158,7 @@ class PreferenceRepositoryImpl(
 
         // Theme
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val FONT_PRESET = stringPreferencesKey("font_preset")
         val USE_DYNAMIC_COLOR = booleanPreferencesKey("use_dynamic_color")
         val USE_AMOLED = booleanPreferencesKey("use_amoled")
 
@@ -274,6 +276,12 @@ class PreferenceRepositoryImpl(
 
     override suspend fun setThemeMode(themeMode: ThemeMode) {
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.THEME_MODE] = themeMode.name }
+    }
+
+    override suspend fun setFontPreset(fontPreset: FontPreset) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.FONT_PRESET] = fontPreset.storageValue
+        }
     }
 
     override suspend fun setDynamicColor(enabled: Boolean) {
@@ -660,6 +668,7 @@ internal fun Preferences.toUserPreferences(
         showInstallerTile = prefs[Keys.SHOW_INSTALLER_TILE] ?: true,
         showExtensionsTile = prefs[Keys.SHOW_EXTENSIONS_TILE] ?: true,
         themeMode = themeMode,
+        fontPreset = FontPreset.fromStorageValue(prefs[Keys.FONT_PRESET]),
         useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
         useAmoled = prefs[Keys.USE_AMOLED] ?: false,
         biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,

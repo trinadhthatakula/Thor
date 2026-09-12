@@ -74,6 +74,7 @@ import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.usecase.ObserveInterruptedRestoreUseCase
 import com.valhalla.thor.presentation.common.rememberNotificationPermissionRequest
 import com.valhalla.thor.presentation.main.toDestination
+import com.valhalla.thor.presentation.settings.customization.FontPresetPickerRow
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLanguage
 import com.valhalla.thor.util.displayedLanguage
@@ -361,6 +362,12 @@ fun SettingsCategoryScreen(
                     )
 
                     // ── Customization ───────────────────────────────────────────────────────────
+                    SettingsRowId.FONTS -> FontPresetPickerRow(
+                        selectedPreset = prefs.fontPreset,
+                        onPresetSelected = viewModel::setFontPreset,
+                        highlighted = lit,
+                    )
+
                     SettingsRowId.APP_INFO_ACTIONS -> SettingsClickRow(
                         icon = R.drawable.dashboard_customize,
                         title = stringResource(R.string.customization_app_info_actions),
