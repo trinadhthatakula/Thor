@@ -85,6 +85,14 @@ class SettingsCatalogTest {
     }
 
     @Test
+    fun fontsAreTheFirstEntryInCustomization() {
+        assertEquals(
+            SettingsRowId.FONTS,
+            SettingsRowId.rowsIn(SettingsCategory.CUSTOMIZATION).first(),
+        )
+    }
+
+    @Test
     fun legacyApkInstallPreferenceIsNextToTheOtherInstallerSecuritySwitch() {
         assertEquals(
             listOf(

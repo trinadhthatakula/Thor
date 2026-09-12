@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.DefaultTab
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -163,6 +164,10 @@ class SettingsViewModel(
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { preferenceRepository.setThemeMode(mode) }
+    }
+
+    fun setFontPreset(preset: FontPreset) {
+        viewModelScope.launch { preferenceRepository.setFontPreset(preset) }
     }
 
     fun setDynamicColor(enabled: Boolean) {

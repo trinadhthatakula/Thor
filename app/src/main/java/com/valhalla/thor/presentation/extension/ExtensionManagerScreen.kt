@@ -65,7 +65,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import com.valhalla.thor.presentation.theme.LocalTechnicalFontFamily
 import kotlinx.coroutines.flow.map
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -594,7 +594,7 @@ private fun ExtensionCard(
                 text = item.packageName,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontFamily = firaMonoFontFamily,
+                fontFamily = LocalTechnicalFontFamily.current,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)

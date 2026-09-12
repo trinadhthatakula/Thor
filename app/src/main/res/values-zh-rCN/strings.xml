@@ -659,9 +659,17 @@
     <string name="settings_summary_restore_interrupted">有一次恢复未完成</string>
     <string name="settings_summary_backup">恢复存档，或更改密码短语</string>
     <string name="settings_summary_unprivileged">需要 Root、Shizuku 或 Dhizuku</string>
-    <string name="settings_summary_customization">应用详情操作栏与布局选项</string>
+    <string name="settings_summary_customization">字体与应用详情操作</string>
 
     <string name="settings_category_customization">自定义</string>
+    <string name="customization_fonts">字体</string>
+    <string name="customization_fonts_desc">选择 Asgard 或系统字体。更改会立即生效。</string>
+    <string name="font_preset_asgard">Asgard</string>
+    <string name="font_preset_system">系统</string>
+    <string name="font_preview_title">字体预览</string>
+    <string name="font_preview_heading">应用概览</string>
+    <string name="font_preview_body">管理应用、权限和存储空间。</string>
+    <string name="font_preview_numbers">0123456789 · 1.2 GB</string>
     <string name="customization_app_info_actions">应用操作栏</string>
     <string name="customization_app_info_actions_desc">调整应用底部操作栏中按钮的排序与显示状态</string>
     <string name="customization_drag_hint">拖拽以重新排序 • 开关以显示或隐藏</string>

@@ -9,6 +9,7 @@ import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
@@ -107,10 +108,39 @@ class ToUserPreferencesTest {
         assertEquals(SortOrder.ASCENDING, prefs.appSortOrder)
         assertEquals(FilterType.Source, prefs.appFilterType)
         assertEquals(ThemeMode.SYSTEM, prefs.themeMode)
+        assertEquals(FontPreset.ASGARD, prefs.fontPreset)
         assertEquals(DefaultTab.HOME, prefs.defaultTab)
         assertFalse(prefs.hasShownDisabledAppsPrompt)
         assertFalse(prefs.biometricLockEnabled)
         assertFalse(prefs.allowLegacyApkInstall)
+    }
+
+    @Test
+    fun `font presets restore from stable tokens in the settings store`() {
+        for ((token, preset) in mapOf("asgard" to FontPreset.ASGARD, "system" to FontPreset.SYSTEM)) {
+            assertEquals(token, preset.storageValue)
+            assertEquals(
+                preset,
+                preferencesOf(Keys.FONT_PRESET to token).toUserPreferences().fontPreset,
+            )
+        }
+        // Appearance is a user setting: a value in the per-install store must not override it.
+        assertEquals(
+            FontPreset.ASGARD,
+            emptyPreferences().toUserPreferences(
+                preferencesOf(Keys.FONT_PRESET to "system"),
+            ).fontPreset,
+        )
+    }
+
+    @Test
+    fun `unknown font preset preserves the existing appearance`() {
+        for (token in listOf("", "future-preset")) {
+            assertEquals(
+                FontPreset.ASGARD,
+                preferencesOf(Keys.FONT_PRESET to token).toUserPreferences().fontPreset,
+            )
+        }
     }
 
     @Test

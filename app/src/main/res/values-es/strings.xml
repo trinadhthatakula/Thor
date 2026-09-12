@@ -670,9 +670,17 @@
     <string name="settings_summary_restore_interrupted">Una restauración no terminó</string>
     <string name="settings_summary_backup">Restaurar un archivo o cambiar la frase de contraseña</string>
     <string name="settings_summary_unprivileged">Requiere Root, Shizuku o Dhizuku</string>
-    <string name="settings_summary_customization">Acciones del panel de la app y opciones de diseño</string>
+    <string name="settings_summary_customization">Fuentes y acciones del panel de la app</string>
 
     <string name="settings_category_customization">Personalización</string>
+    <string name="customization_fonts">Fuentes</string>
+    <string name="customization_fonts_desc">Elige fuentes de Asgard o del sistema. Los cambios se aplican al instante.</string>
+    <string name="font_preset_asgard">Asgard</string>
+    <string name="font_preset_system">Sistema</string>
+    <string name="font_preview_title">Vista previa de la fuente</string>
+    <string name="font_preview_heading">Resumen de aplicaciones</string>
+    <string name="font_preview_body">Gestiona tus aplicaciones, permisos y almacenamiento.</string>
+    <string name="font_preview_numbers">0123456789 · 1,2 GB</string>
     <string name="customization_app_info_actions">Acciones del panel de la app</string>
     <string name="customization_app_info_actions_desc">Reordenar y activar o desactivar acciones en el panel inferior</string>
     <string name="customization_drag_hint">Arrastra para reordenar • Activa o desactiva para mostrar u ocultar</string>

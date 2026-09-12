@@ -8,6 +8,7 @@ import androidx.annotation.StringRes
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.util.AppLanguage
@@ -103,6 +104,11 @@ enum class SettingsRowId(
     ),
 
     // ── Customization ───────────────────────────────────────────────────────────────────────────
+    FONTS(
+        SettingsCategory.CUSTOMIZATION,
+        R.string.customization_fonts,
+        R.string.customization_fonts_desc,
+    ),
     APP_INFO_ACTIONS(
         SettingsCategory.CUSTOMIZATION,
         R.string.customization_app_info_actions,
@@ -218,6 +224,13 @@ internal val ThemeMode.labelRes: Int
         ThemeMode.LIGHT -> R.string.theme_light
         ThemeMode.DARK -> R.string.theme_dark
         ThemeMode.SYSTEM -> R.string.theme_system
+    }
+
+@get:StringRes
+internal val FontPreset.labelRes: Int
+    get() = when (this) {
+        FontPreset.ASGARD -> R.string.font_preset_asgard
+        FontPreset.SYSTEM -> R.string.font_preset_system
     }
 
 @get:StringRes

@@ -717,9 +717,17 @@
     <string name="settings_summary_restore_interrupted">لم تكتمل إحدى عمليات الاستعادة</string>
     <string name="settings_summary_backup">استعادة أرشيف أو تغيير عبارة المرور</string>
     <string name="settings_summary_unprivileged">يتطلب Root أو Shizuku أو Dhizuku</string>
-    <string name="settings_summary_customization">إجراءات لوحة التطبيق وخيارات التنسيق</string>
+    <string name="settings_summary_customization">الخطوط وإجراءات لوحة التطبيق</string>
 
     <string name="settings_category_customization">التخصيص</string>
+    <string name="customization_fonts">الخطوط</string>
+    <string name="customization_fonts_desc">اختر خطوط Asgard أو خطوط النظام. تُطبّق التغييرات فورًا.</string>
+    <string name="font_preset_asgard">Asgard</string>
+    <string name="font_preset_system">النظام</string>
+    <string name="font_preview_title">معاينة الخطوط</string>
+    <string name="font_preview_heading">نظرة عامة على التطبيقات</string>
+    <string name="font_preview_body">أدِر تطبيقاتك وأذوناتها ومساحة التخزين.</string>
+    <string name="font_preview_numbers">٠١٢٣٤٥٦٧٨٩ · ١٫٢ غيغابايت</string>
     <string name="customization_app_info_actions">إجراءات لوحة التطبيق</string>
     <string name="customization_app_info_actions_desc">إعادة ترتيب وتبديل الإجراءات في اللوحة السفلية للتطبيق</string>
     <string name="customization_drag_hint">اسحب لإعادة الترتيب • بدّل للإظهار أو الإخفاء</string>
