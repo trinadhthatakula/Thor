@@ -24,6 +24,7 @@ data class UserPreferences(
 
     // Theme
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val fontPreset: FontPreset = FontPreset.ASGARD,
     val useDynamicColor: Boolean = false,
     val useAmoled: Boolean = false,
 

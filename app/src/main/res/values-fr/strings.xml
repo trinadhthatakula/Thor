@@ -670,9 +670,17 @@
     <string name="settings_summary_restore_interrupted">Une restauration ne s\'est pas terminée</string>
     <string name="settings_summary_backup">Restaurer une archive ou changer la phrase secrète</string>
     <string name="settings_summary_unprivileged">Nécessite Root, Shizuku ou Dhizuku</string>
-    <string name="settings_summary_customization">Actions du volet d\'app et options de disposition</string>
+    <string name="settings_summary_customization">Polices et actions du volet d’app</string>
 
     <string name="settings_category_customization">Personnalisation</string>
+    <string name="customization_fonts">Polices</string>
+    <string name="customization_fonts_desc">Choisissez les polices Asgard ou celles du système. Les changements sont immédiats.</string>
+    <string name="font_preset_asgard">Asgard</string>
+    <string name="font_preset_system">Système</string>
+    <string name="font_preview_title">Aperçu des polices</string>
+    <string name="font_preview_heading">Aperçu des applications</string>
+    <string name="font_preview_body">Gérez vos applications, autorisations et stockage.</string>
+    <string name="font_preview_numbers">0123456789 · 1,2 Go</string>
     <string name="customization_app_info_actions">Actions du volet d\'app</string>
     <string name="customization_app_info_actions_desc">Réorganiser et activer ou désactiver les actions du volet inférieur</string>
     <string name="customization_drag_hint">Glissez pour réorganiser • Basculez pour afficher ou masquer</string>

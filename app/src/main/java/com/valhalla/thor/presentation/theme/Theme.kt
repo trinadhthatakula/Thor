@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.valhalla.thor.domain.model.FontPreset
 
 /**
  * The app's resolved dark-theme flag (from [ThemeMode] + system setting), independent
@@ -101,6 +102,7 @@ fun ThorTheme(
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = false, // Disabled for Asgardian Terminal look
     amoledMode: Boolean = true,
+    fontPreset: FontPreset = FontPreset.ASGARD,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -153,12 +155,14 @@ fun ThorTheme(
     MaterialExpressiveTheme(
         colorScheme = colorScheme,
         motionScheme = MotionScheme.expressive(),
-        typography = AppTypography,
+        typography = typographyFor(fontPreset),
         content = {
-            CompositionLocalProvider(LocalDarkTheme provides darkTheme) {
+            CompositionLocalProvider(
+                LocalDarkTheme provides darkTheme,
+                LocalTechnicalFontFamily provides fontFamiliesFor(fontPreset).technical,
+            ) {
                 content()
             }
         }
     )
 }
-

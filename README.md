@@ -39,6 +39,7 @@
 - High-performance app list loading with Room DB metadata caching
 - Fingerprint Lock
 - Themes (dark, light, system) + AMOLED + Asgardian static theme
+- [Font presets](docs/font-presets.md) in Settings → Customization: Asgard (Outfit/Fira Code) or system fonts, applied across the app and installer
 - **Redesigned App Installer** — install packages with root, shizuku, or normal, featuring detailed UI states and associations for split formats (`.apkm`, `.apks`, and `.xapk`)
 - **Auto Reinstall** — sync and reinstall apps with custom install-time options
 - **Extension Manager** — an in-app catalog of optional add-ons, each signature-verified and SHA-256 checked before install
