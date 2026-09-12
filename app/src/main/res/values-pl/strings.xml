@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="legacy_fix_store_description">Używa instalatora systemowego Androida. Potwierdź każdą aplikację po wyświetleniu monitu. Aplikacje z dzielonymi plikami APK są pomijane, aby zachować ich pliki. Thor sprawdza, czy Google Play jest zapisany jako instalator, zanim zgłosi powodzenie.</string>
-    <string name="legacy_fix_store_split_unsupported">Pominięto: ta aplikacja używa dzielonych plików APK, które instalator systemowy może usunąć. Do naprawy sklepu użyj Root lub Shizuku.</string>
-    <string name="legacy_fix_store_app_unsupported">Nie można bezpiecznie zainstalować ponownie tej aplikacji za pomocą instalatora systemowego. Użyj Root lub Shizuku.</string>
-    <string name="legacy_fix_store_not_verified">Instalacja zakończyła się, ale nie udało się zweryfikować aplikacji lub wpisu Google Play jako instalatora.</string>
-    <string name="legacy_fix_store_no_installer">Brak zgodnego instalatora systemowego.</string>
-    <string name="legacy_fix_store_interrupted">Instalacja ręczna została przerwana. Pozostałe aplikacje nie zostały przetworzone. Przed ponowną próbą sprawdź zapisany instalator aplikacji.</string>
-    <string name="legacy_fix_store_requires_privilege">Naprawa sklepu na tej wersji Androida wymaga Root lub Shizuku. Metoda ręczna jest dostępna tylko na Androidzie 9–12L dla aplikacji bez dzielonych plików APK.</string>
+    <string name="fix_store_requires_privilege">Naprawa sklepu wymaga Root lub Shizuku. Żadna aplikacja nie została zmieniona.</string>
     <string name="fix_store_unsupported_dhizuku">Naprawa sklepu wymaga Root lub Shizuku. Android nie pozwala Dhizuku ustawić Google Play jako instalatora aplikacji. Żadna aplikacja nie została zmieniona.</string>
 
     <!-- Navigation -->

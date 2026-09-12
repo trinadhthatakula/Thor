@@ -3,10 +3,9 @@
 
 package com.valhalla.thor.domain.model
 
-enum class FixStoreRoute { PRIVILEGED, LEGACY, UNAVAILABLE }
+enum class FixStoreRoute { PRIVILEGED, UNAVAILABLE }
 
-fun fixStoreRoute(sdkInt: Int, mode: PrivilegeMode): FixStoreRoute = when (mode) {
+fun fixStoreRoute(mode: PrivilegeMode): FixStoreRoute = when (mode) {
     PrivilegeMode.ROOT, PrivilegeMode.SHIZUKU -> FixStoreRoute.PRIVILEGED
-    PrivilegeMode.NONE, PrivilegeMode.DHIZUKU ->
-        if (sdkInt in 28..32) FixStoreRoute.LEGACY else FixStoreRoute.UNAVAILABLE
+    PrivilegeMode.NONE, PrivilegeMode.DHIZUKU -> FixStoreRoute.UNAVAILABLE
 }

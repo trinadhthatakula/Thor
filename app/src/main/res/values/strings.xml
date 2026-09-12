@@ -1,11 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="legacy_fix_store_description">Uses Android’s system installer. Confirm each app when prompted. Split APK apps are skipped to keep their files intact. Thor checks that Google Play is recorded as the installer before reporting success.</string>
-    <string name="legacy_fix_store_split_unsupported">Skipped: this app uses split APKs. The system installer can remove its splits. Use Root or Shizuku for Fix Store.</string>
-    <string name="legacy_fix_store_app_unsupported">This app cannot be safely reinstalled with the system installer. Use Root or Shizuku.</string>
-    <string name="legacy_fix_store_not_verified">Installation finished, but the app or its Google Play installer record could not be verified.</string>
-    <string name="legacy_fix_store_no_installer">No compatible system installer is available.</string>
-    <string name="legacy_fix_store_interrupted">The manual install was interrupted. Remaining apps were not processed. Check the app’s installer record before trying again.</string>
-    <string name="legacy_fix_store_requires_privilege">Fix Store on this Android version requires Root or Shizuku. The manual fallback is only available on Android 9–12L for apps without split APKs.</string>
+    <string name="fix_store_requires_privilege">Fix Store requires Root or Shizuku. No apps were changed.</string>
     <string name="fix_store_unsupported_dhizuku">Fix Store requires Root or Shizuku. Android does not allow Dhizuku to record Google Play as an app\'s installer. No apps were changed.</string>
 
     <!-- Navigation -->

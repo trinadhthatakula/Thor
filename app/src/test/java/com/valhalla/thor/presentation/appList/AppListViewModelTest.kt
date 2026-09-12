@@ -633,7 +633,7 @@ class AppListViewModelTest {
     }
 
     @Test
-    fun `Dhizuku reinstall reaches shared legacy routing without creating a sweep`() = runTest {
+    fun `Dhizuku reinstall reaches shared routing without creating a sweep`() = runTest {
         privilege.emit(PrivilegeState(
             dhizuku = true, active = PrivilegeMode.DHIZUKU, isReady = true,
         ))

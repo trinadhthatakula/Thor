@@ -46,8 +46,6 @@ fun TermLoggerDialog(
     title: UiText,
     logs: List<UiText>,
     isOperationComplete: Boolean,
-    wrapLogs: Boolean = false,
-    completedSuccessfully: Boolean = true,
     /** A stop has been asked for; the app in flight is still finishing. */
     isStopping: Boolean = false,
     /** Null when the running operation has no coherent halfway point to stop at. */
@@ -75,12 +73,11 @@ fun TermLoggerDialog(
                     title
                 },
                 logs = logs,
-                status = when {
-                    !isOperationComplete -> TermLoggerStatus.ACTIVE
-                    completedSuccessfully -> TermLoggerStatus.SUCCESS
-                    else -> TermLoggerStatus.NEUTRAL
+                status = if (isOperationComplete) {
+                    TermLoggerStatus.SUCCESS
+                } else {
+                    TermLoggerStatus.ACTIVE
                 },
-                wrapLogs = wrapLogs,
                 onClose = onDismiss.takeIf { isOperationComplete },
             ) {
                 if (isOperationComplete) {
@@ -125,7 +122,6 @@ fun TermLoggerContent(
     status: TermLoggerStatus,
     modifier: Modifier = Modifier,
     onClose: (() -> Unit)? = null,
-    wrapLogs: Boolean = false,
     footerContent: @Composable ColumnScope.() -> Unit = {},
 ) {
     Column(
@@ -200,14 +196,14 @@ fun TermLoggerContent(
             itemsIndexed(logs) { index, logText ->
                 Text(
                     text = "> ${logText.asString()}",
-                    softWrap = wrapLogs,
+                    softWrap = false,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag(termLoggerLineTag(index)),
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = firaMonoFontFamily,
                     ),
-                    maxLines = if (wrapLogs) Int.MAX_VALUE else 1,
+                    maxLines = 1,
                     textAlign = TextAlign.Start,
                     color = MaterialTheme.colorScheme.onBackground,
                 )

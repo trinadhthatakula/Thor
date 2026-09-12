@@ -15,7 +15,7 @@ fun FixStoreUnavailableDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.fix_store)) },
-        text = { Text(stringResource(R.string.legacy_fix_store_requires_privilege)) },
+        text = { Text(stringResource(R.string.fix_store_requires_privilege)) },
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.close))
