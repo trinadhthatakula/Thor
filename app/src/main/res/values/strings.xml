@@ -1,4 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="fix_store_requires_privilege">Fix Store requires Root or Shizuku. No apps were changed.</string>
+    <string name="fix_store_unsupported_dhizuku">Fix Store requires Root or Shizuku. Android does not allow Dhizuku to record Google Play as an app\'s installer. No apps were changed.</string>
 
     <!-- Navigation -->
     <string name="home">Home</string>

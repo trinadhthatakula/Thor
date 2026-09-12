@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="fix_store_requires_privilege">A reparação da loja requer Root ou Shizuku. Nenhuma aplicação foi alterada.</string>
+    <string name="fix_store_unsupported_dhizuku">A reparação da loja requer Root ou Shizuku. O Android não permite que o Dhizuku registe o Google Play como instalador de uma aplicação. Nenhuma aplicação foi alterada.</string>
 
     <!-- Navigation -->
     <string name="home">Início</string>

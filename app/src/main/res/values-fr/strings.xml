@@ -1,4 +1,6 @@
 <resources>
+    <string name="fix_store_requires_privilege">La réparation du magasin nécessite Root ou Shizuku. Aucune application n’a été modifiée.</string>
+    <string name="fix_store_unsupported_dhizuku">La réparation du magasin nécessite Root ou Shizuku. Android ne permet pas à Dhizuku de définir Google Play comme installateur d\'une application. Aucune application n\'a été modifiée.</string>
 
     <!-- Navigation -->
     <string name="home">Accueil</string>

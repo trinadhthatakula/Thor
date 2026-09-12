@@ -12,6 +12,8 @@ import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -31,6 +33,7 @@ import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeContext
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
+import com.valhalla.thor.presentation.FakePrivilegeStateProvider
 import com.valhalla.thor.presentation.FakePrivilegeSweepController
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.FakeUsageAccessGate
@@ -92,6 +95,7 @@ class MainViewModelTest {
     private lateinit var appRepository: FakeAppRepository
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var prefs: FakePreferenceRepository
+    private val privilege = FakePrivilegeStateProvider(PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true))
 
     /** Stands in for `Context.cacheDir`: an export stages bundles and its manifest into it. */
     private lateinit var cache: File
@@ -140,6 +144,7 @@ class MainViewModelTest {
             TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
     ): MainViewModel {
         val vm = MainViewModel(
+            privilege = privilege,
             manageAppUseCase = ManageAppUseCase(systemRepository, DefaultPackageOperationCoordinator()),
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             shareAppUseCase = ShareAppUseCase(
@@ -1023,6 +1028,177 @@ class MainViewModelTest {
     }
 
     // --- Fix Store: the picker ----------------------------------------------------------------
+
+    @Test
+    fun `home fix store waits for the first privilege probe before opening picker`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.sideloaded"))
+        for (mode in listOf(PrivilegeMode.ROOT, PrivilegeMode.SHIZUKU)) {
+            privilege.emit(PrivilegeState())
+            val controller = FakePrivilegeSweepController()
+            val vm = viewModel(sweepController = controller)
+
+            vm.onAppAction(AppClickAction.ReinstallAll)
+            advanceUntilIdle()
+
+            assertFalse(vm.uiState.value.fixStoreUnavailable)
+            assertNull(vm.uiState.value.fixStoreSelection)
+            assertFalse(vm.uiState.value.loggerState.isVisible)
+            assertTrue(system.calls.isEmpty())
+            assertTrue(controller.launched.isEmpty())
+
+            privilege.emit(PrivilegeState(
+                root = mode == PrivilegeMode.ROOT,
+                shizuku = mode == PrivilegeMode.SHIZUKU,
+                active = mode,
+                isReady = true,
+            ))
+            advanceUntilIdle()
+
+            assertFalse(vm.uiState.value.fixStoreUnavailable)
+            assertTrue(vm.uiState.value.fixStoreSelection != null)
+            assertTrue(system.calls.isEmpty())
+            assertTrue(controller.launched.isEmpty())
+        }
+    }
+
+    @Test
+    fun `no privilege single and batch fix store refuse without starting work`() = runTest {
+        privilege.emit(PrivilegeState(active = PrivilegeMode.NONE, isReady = true))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+        val app = userApp("com.sideloaded")
+
+        vm.onAppAction(AppClickAction.Reinstall(app))
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertTrue(system.calls.isEmpty())
+        assertTrue(controller.launched.isEmpty())
+
+        vm.dismissFixStoreUnavailable()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.fixStoreUnavailable)
+
+        vm.onMultiAppAction(MultiAppAction.ReInstall(listOf(app, userApp("com.other"))))
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertTrue(system.calls.isEmpty())
+        assertTrue(controller.launched.isEmpty())
+    }
+
+    @Test
+    fun `no privilege home fix store explains restriction without opening picker`() = runTest {
+        privilege.emit(PrivilegeState(active = PrivilegeMode.NONE, isReady = true))
+        appRepository.apps.value = listOf(userApp("com.sideloaded"))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertTrue(system.calls.isEmpty())
+        assertTrue(controller.launched.isEmpty())
+    }
+
+    @Test
+    fun `Dhizuku home fix store explains restriction without opening picker`() = runTest {
+        privilege.emit(PrivilegeState(
+            dhizuku = true, active = PrivilegeMode.DHIZUKU, isReady = true,
+        ))
+        appRepository.apps.value = listOf(userApp("com.sideloaded"))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertTrue(system.calls.isEmpty())
+        assertTrue(controller.launched.isEmpty())
+    }
+
+    @Test
+    fun `Dhizuku single and batch fix store never start work even if root is available`() = runTest {
+        privilege.emit(PrivilegeState(
+            root = true, shizuku = true, dhizuku = true,
+            active = PrivilegeMode.DHIZUKU, isReady = true,
+        ))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+        val app = userApp("com.sideloaded")
+
+        vm.onAppAction(AppClickAction.Reinstall(app))
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertTrue(system.calls.isEmpty())
+        assertTrue(controller.launched.isEmpty())
+
+        vm.dismissFixStoreUnavailable()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.fixStoreUnavailable)
+
+        vm.onMultiAppAction(MultiAppAction.ReInstall(listOf(app)))
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertTrue(system.calls.isEmpty())
+        assertTrue(controller.launched.isEmpty())
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+    }
+
+    @Test
+    fun `switching to Dhizuku while picker is open blocks confirmation`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.sideloaded"))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.fixStoreSelection != null)
+        privilege.emit(PrivilegeState(
+            dhizuku = true, active = PrivilegeMode.DHIZUKU, isReady = true,
+        ))
+
+        vm.confirmFixStore()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.fixStoreUnavailable)
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertTrue(system.calls.isEmpty())
+        assertTrue(controller.launched.isEmpty())
+    }
+
+    @Test
+    fun `Root and Shizuku fix store stay available with Dhizuku installed`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.sideloaded"))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(sweepController = controller)
+        for (mode in listOf(PrivilegeMode.ROOT, PrivilegeMode.SHIZUKU)) {
+            privilege.emit(PrivilegeState(
+                root = true, shizuku = true, dhizuku = true, active = mode, isReady = true,
+            ))
+            vm.onAppAction(AppClickAction.ReinstallAll)
+            advanceUntilIdle()
+            assertFalse(vm.uiState.value.fixStoreUnavailable)
+            assertTrue(vm.uiState.value.fixStoreSelection != null)
+            vm.confirmFixStore()
+            advanceUntilIdle()
+        }
+        assertEquals(2, controller.launched.size)
+    }
 
     @Test
     fun `fix store opens a picker instead of reinstalling everything it found`() = runTest {

@@ -17,6 +17,8 @@
     divisões (de APK) → splits de APK      "uma shell" → "um shell" (masculine in BR)
 -->
 <resources>
+    <string name="fix_store_requires_privilege">Corrigir loja requer Root ou Shizuku. Nenhum aplicativo foi alterado.</string>
+    <string name="fix_store_unsupported_dhizuku">Corrigir loja requer Root ou Shizuku. O Android não permite que o Dhizuku registre o Google Play como instalador de um aplicativo. Nenhum aplicativo foi alterado.</string>
 
     <!-- Navigation -->
     <string name="apps">Lista de aplicativos</string>

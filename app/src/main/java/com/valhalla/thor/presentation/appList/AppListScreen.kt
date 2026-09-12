@@ -172,6 +172,7 @@ fun AppListScreen(
     // Handle one-off feedback (toasts + freezer prompt) delivered exactly once.
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
+            is AppListEvent.RequestReinstall -> onMultiAppAction(MultiAppAction.ReInstall(event.apps))
             is AppListEvent.ShowMessage ->
                 Toast.makeText(context, event.message.asString(context), Toast.LENGTH_SHORT).show()
 

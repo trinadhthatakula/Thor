@@ -3,6 +3,9 @@
 
 package com.valhalla.thor.presentation.appList
 
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
+
 import com.valhalla.thor.R
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AnimationIntensity
@@ -608,9 +611,11 @@ class AppListViewModelTest {
     }
 
     @Test
-    fun `cache clear and reinstall selections launch durable sweeps`() = runTest {
+    fun `cache clear launches sweep and reinstall forwards to shared routing`() = runTest {
         val controller = FakePrivilegeSweepController()
         val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
         runCurrent()
 
         vm.performMultiAction(MultiAppAction.ClearCache(listOf(userApp("cache"))))
@@ -619,11 +624,30 @@ class AppListViewModelTest {
         runCurrent()
 
         assertEquals(
-            listOf(PrivilegeSweepOperation.CLEAR_CACHE, PrivilegeSweepOperation.REINSTALL),
+            listOf(PrivilegeSweepOperation.CLEAR_CACHE),
             controller.launched.map { it.operation },
         )
         assertEquals(listOf("cache"), controller.launched[0].packageNames)
-        assertEquals(listOf("reinstall"), controller.launched[1].packageNames)
+        assertEquals(listOf(AppListEvent.RequestReinstall(listOf(userApp("reinstall")))), events)
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
+    fun `Dhizuku reinstall reaches shared routing without creating a sweep`() = runTest {
+        privilege.emit(PrivilegeState(
+            dhizuku = true, active = PrivilegeMode.DHIZUKU, isReady = true,
+        ))
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(AnimationIntensity.LOW, sweepController = controller)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+
+        vm.performMultiAction(MultiAppAction.ReInstall(listOf(userApp("reinstall"))))
+        runCurrent()
+
+        assertEquals(listOf(AppListEvent.RequestReinstall(listOf(userApp("reinstall")))), events)
+        assertTrue(controller.launched.isEmpty())
         assertTrue(system.calls.isEmpty())
     }
 

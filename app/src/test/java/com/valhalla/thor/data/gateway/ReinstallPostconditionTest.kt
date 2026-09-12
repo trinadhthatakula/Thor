@@ -4,6 +4,9 @@
 package com.valhalla.thor.data.gateway
 
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.R
+import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import com.valhalla.thor.data.gateway.root.RootCommand
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
@@ -145,34 +148,24 @@ class ReinstallPostconditionTest {
     }
 
     @Test
-    fun `Dhizuku path lookup failure does not attempt reinstall`() = runTest {
-        val commands = mutableListOf<String>()
-        val reader = RecordingReinstallStateReader(VERIFIED_STATE)
+    fun `Dhizuku fix store is rejected before any shell command`() = runTest {
         val context = FakeContext(File("."))
         val gateway = DhizukuSystemGateway(
             context = context,
             reflector = DhizukuReflector(context),
             preferenceRepository = FakePreferenceRepository(),
             ioDispatcher = Dispatchers.Unconfined,
-            reinstallPostconditionVerifier = ReinstallPostconditionVerifier(reader),
-        ).also { gateway ->
-            gateway.reinstallUserIdProvider = { USER_ID }
-            gateway.reinstallCommandExecutor = { command ->
-                commands += command
-                -1 to TRANSPORT_FAILURE
-            }
-        }
+        )
 
         val result = gateway.reinstallAppWithGoogle(PACKAGE, PrivilegeExecutionContext())
 
-        assertEquals(1, commands.size)
-        assertTrue(commands.single().startsWith("pm path --user"))
-        assertTrue(commands.none { it.startsWith("pm install") })
+        // No Android services or Dhizuku client are initialized in this JVM test. A refusal
+        // must not need them, including when an old queued task reaches this gateway.
+        assertTrue(result.isFailure)
         assertEquals(
-            "Dhizuku package path lookup failed with exit code -1: $TRANSPORT_FAILURE",
-            result.exceptionOrNull()?.message,
+            UiText.StringResource(R.string.fix_store_unsupported_dhizuku),
+            (result.exceptionOrNull() as? UiTextException)?.uiText,
         )
-        assertTrue(reader.reads.isEmpty())
     }
 
     private fun gateway(

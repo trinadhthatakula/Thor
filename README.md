@@ -63,7 +63,7 @@
 - Install/Uninstall/Freeze/Unfreeze Apk files
 - Suspend/Unsuspend apps (shows custom Thor-branded system dialog)
 - Background Restriction (restrict app background activity)
-- Reinstall APKs/Fix Store installer record (available in all privilege modes)
+- Fix Store installer record (requires Root or Shizuku)
 - Share App Apk file
 - Batch Reinstall/Uninstall/Freeze/Unfreeze/Kill/Suspend/Clear Data
 - Split App Indicator

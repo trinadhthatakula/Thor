@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.main
 
+import com.valhalla.thor.presentation.widgets.FixStoreUnavailableDialog
+
 import android.app.Activity
 import android.content.Intent
 import android.provider.Settings
@@ -1159,6 +1161,12 @@ fun MainScreen(
                                 pendingSingleAction = null
                             },
                             onRejected = { pendingSingleAction = null }
+                        )
+                    }
+
+                    if (state.fixStoreUnavailable) {
+                        FixStoreUnavailableDialog(
+                            onDismiss = mainViewModel::dismissFixStoreUnavailable,
                         )
                     }
 

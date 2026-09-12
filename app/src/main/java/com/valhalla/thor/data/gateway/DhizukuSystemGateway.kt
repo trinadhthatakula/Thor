@@ -15,7 +15,6 @@ import com.valhalla.thor.data.source.local.SessionApk
 import com.valhalla.thor.data.source.local.installViaSessionCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
-import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
@@ -28,6 +27,8 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.first
@@ -44,14 +45,7 @@ class DhizukuSystemGateway internal constructor(
     private val reflector: DhizukuReflector,
     private val preferenceRepository: PreferenceRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
-    private val reinstallPostconditionVerifier: ReinstallPostconditionVerifier =
-        ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
 ) : SystemGateway {
-
-    internal var reinstallUserIdProvider: () -> Int = { thorUserId }
-    internal var reinstallCommandExecutor: (String) -> Pair<Int, String?> = { command ->
-        DhizukuHelper.execute(command)
-    }
 
     override suspend fun isRootAvailable(
         execution: PrivilegeExecutionContext,
@@ -507,55 +501,13 @@ class DhizukuSystemGateway internal constructor(
         if (packageName == com.valhalla.thor.BuildConfig.APPLICATION_ID)
             return Result.failure(Exception("Cannot reinstall Thor"))
 
-        return try {
-            val escapedPackageName = packageName.escapeForShell()
-
-            // 1. The user this whole operation is about — Thor's own, matching every other `--user`
-            // here, and read before the first command rather than between the two. `pm path` used
-            // to run bare, and `PackageManagerShellCommand.runPath` seeds USER_SYSTEM, so the read
-            // half answered for user 0 while the write half below already named Thor's user. The
-            // APK bytes are device-wide, so both commands exit 0 either way and the mismatch is
-            // invisible: what a user id selects here is whether the package is *visible*, which is
-            // how a work-profile-only app came back with no paths at all.
-            val currentUser = reinstallUserIdProvider()
-
-            // 2. Get the APK path(s) as that user sees them
-            val pathResult = reinstallCommandExecutor(
-                pmPathCommand(escapedPackageName, currentUser)
-            )
-            if (pathResult.first != 0) {
-                return Result.failure(
-                    Exception(
-                        "Dhizuku package path lookup failed with exit code ${pathResult.first}: " +
-                            (pathResult.second ?: "no output")
-                    )
-                )
-            }
-            val paths = pathResult.second?.lines()
-                ?.filter { it.isNotBlank() }
-                ?.map { it.removePrefix("package:").trim() } ?: emptyList()
-
-            if (paths.isEmpty()) {
-                return Result.failure(Exception("Dhizuku: Could not find APK path for $packageName"))
-            }
-
-            val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
-
-            // 3. Execute the reinstallation command
-            val command =
-                "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
-            val result = reinstallCommandExecutor(command)
-            if (result.first == 0) {
-                reinstallPostconditionVerifier.verify(packageName, currentUser)
-            } else {
-                Result.failure(Exception("Dhizuku: Reinstall failed: ${result.second}"))
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            Logger.e("DhizukuSystemGateway", "Reinstall with Google failed for $packageName", e)
-            Result.failure(e)
-        }
+        // Device-owner installs are allowed, but attributing them to another UID requires
+        // INSTALL_PACKAGES. Both pm and wrapped PackageInstaller sessions reject Play's name;
+        // set-installer also requires Play's signing certificate. Do not reinstall as Dhizuku
+        // and report that as Fix Store success. Keep this guard for callers outside the UI too.
+        return Result.failure(
+            UiTextException(UiText.StringResource(R.string.fix_store_unsupported_dhizuku))
+        )
     }
 
     override suspend fun setAppSuspended(

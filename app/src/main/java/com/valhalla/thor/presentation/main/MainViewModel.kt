@@ -20,6 +20,7 @@ import com.valhalla.thor.domain.model.DataTaskKind
 import com.valhalla.thor.presentation.share.ShareSubmissionCoordinator
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.FixStoreRoute
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -28,6 +29,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.fixStoreCandidates
+import com.valhalla.thor.domain.model.fixStoreRoute
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
@@ -39,6 +41,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.presentation.home.AppDestinations
@@ -209,6 +212,7 @@ data class RestoreSheetState(val uriString: String? = null)
 data class BackupSheetState(val packageName: String, val appLabel: String)
 
 data class MainUiState(
+    val fixStoreUnavailable: Boolean = false,
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val fixStoreSelection: FixStoreSelection? = null, // Fix Store picker, null when closed
     val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
@@ -223,6 +227,7 @@ data class MainUiState(
 
 @KoinViewModel
 class MainViewModel(
+    private val privilege: PrivilegeStateProvider,
     private val manageAppUseCase: ManageAppUseCase,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val shareAppUseCase: ShareAppUseCase,
@@ -473,6 +478,20 @@ class MainViewModel(
 
     // --- Fix Store picker ---
 
+    private fun showFixStoreUnavailable() {
+        _uiState.update { it.copy(fixStoreUnavailable = true, fixStoreSelection = null) }
+    }
+
+    private suspend fun currentFixStoreRoute(): FixStoreRoute {
+        // Home can show the saved provider before the first probe finishes. Its initial NONE
+        // state does not yet mean the user's configured privilege is unavailable.
+        return fixStoreRoute(privilege.state.first { it.isReady }.active)
+    }
+
+    fun dismissFixStoreUnavailable() {
+        _uiState.update { it.copy(fixStoreUnavailable = false) }
+    }
+
     fun toggleFixStoreTarget(packageName: String) {
         _uiState.update { state ->
             val picker = state.fixStoreSelection ?: return@update state
@@ -640,6 +659,15 @@ class MainViewModel(
 
     fun onAppAction(action: AppClickAction) {
         viewModelScope.launch {
+            if (action == AppClickAction.ReinstallAll || action is AppClickAction.Reinstall) {
+                when (currentFixStoreRoute()) {
+                    FixStoreRoute.UNAVAILABLE -> {
+                        showFixStoreUnavailable()
+                        return@launch
+                    }
+                    FixStoreRoute.PRIVILEGED -> Unit
+                }
+            }
             when (action) {
                 // 1. SMART LAUNCH
                 is AppClickAction.Launch -> {
@@ -710,7 +738,8 @@ class MainViewModel(
                             addLog(UiText.StringResource(R.string.log_reinstall_success))
                             triggerSupportPromptIfNeeded()
                         } else {
-                            addLog(UiText.StringResource(R.string.log_failed_with_msg, result.exceptionOrNull()?.message ?: ""))
+                            addLog(result.exceptionOrNull()?.asUiText()
+                                ?: UiText.StringResource(R.string.log_failed_with_msg, ""))
                         }
                     }
                     finishLogger()
@@ -878,10 +907,15 @@ class MainViewModel(
         }
         viewModelScope.launch {
             when (action) {
-                is MultiAppAction.ReInstall -> launchSelectionSweep(
-                    operation = PrivilegeSweepOperation.REINSTALL,
-                    apps = action.appList,
-                )
+                is MultiAppAction.ReInstall -> {
+                    when (currentFixStoreRoute()) {
+                        FixStoreRoute.PRIVILEGED -> launchSelectionSweep(
+                            operation = PrivilegeSweepOperation.REINSTALL,
+                            apps = action.appList,
+                        )
+                        FixStoreRoute.UNAVAILABLE -> showFixStoreUnavailable()
+                    }
+                }
 
                 is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true, useSuspend = action.useSuspend)
 

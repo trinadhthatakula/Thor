@@ -1,4 +1,6 @@
 <resources>
+    <string name="fix_store_requires_privilege">修复商店需要 Root 或 Shizuku。未更改任何应用。</string>
+    <string name="fix_store_unsupported_dhizuku">修复商店需要 Root 或 Shizuku。Android 不允许 Dhizuku 将 Google Play 设为应用的安装来源。未更改任何应用。</string>
     <!-- Navigation -->
     <string name="home">主页</string>
     <string name="home_desc">主页</string>
