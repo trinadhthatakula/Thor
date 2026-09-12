@@ -213,7 +213,7 @@ private fun DataTaskSnapshot.userFacingFallback(): String = when (state) {
     else -> resultCode?.toUserFacingJobMessage() ?: "the archive job could not be completed"
 }
 
-private fun WorkInfo?.toThorJobStatus(): ThorJobStatus = when (this?.state) {
+internal fun WorkInfo?.toThorJobStatus(): ThorJobStatus = when (this?.state) {
     null -> ThorJobStatus.Gone
     WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> ThorJobStatus.Pending
     WorkInfo.State.RUNNING -> ThorJobStatus.Running
@@ -225,7 +225,7 @@ private fun WorkInfo?.toThorJobStatus(): ThorJobStatus = when (this?.state) {
     WorkInfo.State.FAILED -> ThorJobStatus.Failed(outputData.getString(JOB_ERROR_KEY))
 }
 
-private fun ThorJobKind.toDataTaskKind(): DataTaskKind? = when (this) {
+internal fun ThorJobKind.toDataTaskKind(): DataTaskKind? = when (this) {
     ThorJobKind.ARCHIVE_BACKUP -> DataTaskKind.ARCHIVE_BACKUP
     ThorJobKind.ARCHIVE_RESTORE -> DataTaskKind.ARCHIVE_RESTORE
     ThorJobKind.APP_EXPORT -> DataTaskKind.APP_EXPORT

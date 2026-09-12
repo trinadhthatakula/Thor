@@ -237,7 +237,7 @@ internal class SharePrepareTaskRunner(
     }
 }
 
-private fun deterministicShareOutputId(request: DataTaskExecutionRequest): UUID =
+internal fun deterministicShareOutputId(request: DataTaskExecutionRequest): UUID =
     UUID.nameUUIDFromBytes(
         "share:${request.taskId}:${request.item.ordinal}:${request.item.deterministicStagingIdentity}"
             .toByteArray(StandardCharsets.UTF_8)

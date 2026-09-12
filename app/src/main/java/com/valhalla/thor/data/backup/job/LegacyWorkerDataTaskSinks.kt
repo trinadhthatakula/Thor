@@ -158,7 +158,7 @@ internal class LegacyWorkerResultSink(
     }
 }
 
-private fun DataTaskStage.toLegacyStage(): ThorJobStage = when (this) {
+internal fun DataTaskStage.toLegacyStage(): ThorJobStage = when (this) {
     DataTaskStage.PREPARING,
     DataTaskStage.STAGING_SOURCE,
         -> ThorJobStage.PREPARING

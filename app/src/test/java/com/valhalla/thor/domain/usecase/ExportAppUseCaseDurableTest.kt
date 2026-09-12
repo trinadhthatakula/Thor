@@ -133,7 +133,7 @@ class ExportAppUseCaseDurableTest {
         } finally { root.deleteRecursively() }
     }
 
-    private fun appInfo(label: String, version: String) = AppInfo(
+    internal fun appInfo(label: String, version: String) = AppInfo(
         packageName = "com.example.app",
         appName = label,
         versionName = version,

@@ -357,5 +357,5 @@ interface PrivilegeSweepStore {
     suspend fun deleteExpired(nowMs: Long): Int
 }
 
-private fun claimAwareStoreUnavailable(): Nothing =
+internal fun claimAwareStoreUnavailable(): Nothing =
     throw UnsupportedOperationException("Claim-aware sweep storage is not implemented")

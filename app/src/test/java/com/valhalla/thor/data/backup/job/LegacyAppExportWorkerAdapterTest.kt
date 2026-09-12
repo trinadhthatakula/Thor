@@ -295,7 +295,7 @@ class LegacyAppExportWorkerAdapterTest {
         ): DataTaskRunOutcome = outcome
     }
 
-    private fun successfulItem() = DataTaskRunOutcome.ItemCompleted(
+    internal fun successfulItem() = DataTaskRunOutcome.ItemCompleted(
         DataTaskItemResult(
             terminalState = DataTaskItemTerminalState.SUCCEEDED,
             resultCode = DataTaskResultCode("APP_EXPORT_COMPLETED"),

@@ -240,7 +240,7 @@ class DataSyncService : Service(), KoinComponent {
             Intent(context, DataSyncService::class.java)
                 .putExtra(EXTRA_TASK_ID, taskId.toString())
 
-        private fun Intent?.taskIdOrNull(): UUID? = this?.getStringExtra(EXTRA_TASK_ID)
+        internal fun Intent?.taskIdOrNull(): UUID? = this?.getStringExtra(EXTRA_TASK_ID)
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
     }
 }

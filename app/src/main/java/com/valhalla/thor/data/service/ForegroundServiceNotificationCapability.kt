@@ -163,4 +163,4 @@ private class LambdaForegroundNotificationEnvironment(
         channelImportance.invoke(channelId)
 }
 
-private fun Exception.invalidReason(): String = message ?: javaClass.simpleName
+internal fun Exception.invalidReason(): String = message ?: javaClass.simpleName

@@ -101,7 +101,7 @@ internal suspend fun SystemRepository.forceStopForArchive(packageName: String): 
     }
 }
 
-private fun Throwable.rethrowIfStructuredExecutionFailure() {
+internal fun Throwable.rethrowIfStructuredExecutionFailure() {
     if (this is CancellationException || this is PrivilegeExecutionException) throw this
 }
 

@@ -553,7 +553,7 @@ class ArchiveDestinationTest {
         assertEquals(1, settled)
     }
 
-    private fun publication() = ArchivePublication(
+    internal fun publication() = ArchivePublication(
         displayName = "archive.thorbak",
         byteSize = 42L,
     )

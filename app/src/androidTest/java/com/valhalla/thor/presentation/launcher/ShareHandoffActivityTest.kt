@@ -59,7 +59,7 @@ import org.koin.core.context.GlobalContext
 class ShareHandoffActivityTest {
     private val instrumentation: Instrumentation
         get() = InstrumentationRegistry.getInstrumentation()
-    private val context: Context
+    internal val context: Context
         get() = instrumentation.targetContext
 
     private lateinit var database: AppDatabase

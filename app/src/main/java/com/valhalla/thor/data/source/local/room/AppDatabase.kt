@@ -77,7 +77,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private fun createDataTaskTables(db: SupportSQLiteDatabase) {
+        internal fun createDataTaskTables(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """
                 CREATE TABLE IF NOT EXISTS `data_tasks` (
@@ -209,7 +209,7 @@ abstract class AppDatabase : RoomDatabase() {
             )
         }
 
-        private fun migrateSweepTables(db: SupportSQLiteDatabase) {
+        internal fun migrateSweepTables(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """
                 CREATE TABLE `sweep_requests_new` (

@@ -413,7 +413,7 @@ class LegacyArchiveWorkerAdapterTest {
         resumedFrom = null,
     )
 
-    private fun completed(
+    internal fun completed(
         warnings: List<String> = emptyList(),
     ) = DataTaskRunOutcome.ItemCompleted(
         DataTaskItemResult(
