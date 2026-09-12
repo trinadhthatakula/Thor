@@ -372,7 +372,7 @@ class DataTaskRecoveryPolicyTest {
         resumedFrom = resumedFrom,
     )
 
-    private fun checkpoint(
+    internal fun checkpoint(
         destructiveStarted: Boolean,
         breadcrumb: RestoreMutationBreadcrumb? = null,
     ) = DataTaskCheckpoint(

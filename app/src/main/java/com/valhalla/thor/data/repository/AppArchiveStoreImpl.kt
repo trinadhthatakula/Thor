@@ -563,7 +563,7 @@ class AppArchiveStoreImpl(
      * other guard already spells the pair out. Three of those swallows have already had to be fixed on
      * this branch.
      */
-    private fun displayNameOf(resolver: ContentResolver, docUri: Uri): String? = try {
+    internal fun displayNameOf(resolver: ContentResolver, docUri: Uri): String? = try {
         resolver.query(
             docUri,
             arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),

@@ -233,7 +233,7 @@ class PrivilegeSweepService : Service(), KoinComponent {
             Intent(context, PrivilegeSweepService::class.java)
                 .putExtra(EXTRA_REQUEST_ID, requestId.toString())
 
-        private fun Intent?.requestIdOrNull(): UUID? = this?.getStringExtra(EXTRA_REQUEST_ID)
+        internal fun Intent?.requestIdOrNull(): UUID? = this?.getStringExtra(EXTRA_REQUEST_ID)
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
     }
 }

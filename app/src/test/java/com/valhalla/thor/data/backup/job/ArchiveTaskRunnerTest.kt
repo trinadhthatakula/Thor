@@ -362,7 +362,7 @@ class ArchiveTaskRunnerTest {
 
     private fun appliedCheckpoints() = DataTaskCheckpointSink { DataTaskSinkWrite.APPLIED }
 
-    private fun archiveHeader(packageName: String) = ArchiveHeader(
+    internal fun archiveHeader(packageName: String) = ArchiveHeader(
         createdAt = 1L,
         thorVersionCode = 1952,
         packageName = packageName,

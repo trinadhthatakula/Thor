@@ -86,7 +86,7 @@ class ShareIntentFactory(
         private fun isOwnProviderUri(uri: Uri): Boolean =
             uri.scheme == "content" && uri.authority == "${BuildConfig.APPLICATION_ID}.provider"
 
-        private fun shareIntent(uris: List<Uri>, mimes: List<String>, label: String): Intent =
+        internal fun shareIntent(uris: List<Uri>, mimes: List<String>, label: String): Intent =
             Intent(if (uris.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
                 type = mimes.singleOrNull() ?: "*/*"
                 flags = Intent.FLAG_GRANT_READ_URI_PERMISSION

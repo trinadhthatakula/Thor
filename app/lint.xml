@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Severity overrides for Android Lint. app/build.gradle.kts sets warningsAsErrors, so anything left at
-  WARNING here fails the build — keep this file to the checks that are deliberately, permanently
-  exempt, and fix everything else at the source.
+  Severity overrides for Android Lint. Explicit severities here take precedence over the general
+  warningsAsErrors setting in app/build.gradle.kts. Keep informational exceptions documented and
+  use an explicit error for checks that must fail the build; fix their findings at the source.
 -->
 <lint>
     <!--
@@ -69,28 +69,17 @@
     </issue>
 
     <!--
-      SyntheticAccessor is the one check in this file that is being turned *on*: it ships
-      enabledByDefault = false, so naming a severity here is what enables it, and warningsAsErrors
-      then makes it fatal. :bypass took the equivalent step in its own build.gradle.kts lint block;
-      :app puts it here because that is where this module keeps a rule's reason next to the rule.
+      SyntheticAccessor is disabled by default, so this entry enables it. Declare it as an error:
+      an explicit XML warning stays a warning even when warningsAsErrors is enabled. :bypass
+      enables the same check directly in its lint DSL without an XML severity override.
 
-      Measured on :app:lintStoreRelease before the fixes: 62 findings from 14 declarations. Eight are
-      top-level `private` declarations reached from a class in the same file — the file facade
-      (FooKt) is a separate JVM class, so every such reference costs an access$ bridge — and six are
-      `private` class members reached from a lambda or coroutine body that compiles to its own class.
-      All 14 are now `internal`, which is where the count came from: 33 for dataStore and 8 for
-      SUSPEND_USER_ID alone. Counted for storeRelease, with checkTestSources = true and the store
-      source set in scope; the doc's older "43 main / 51 storeDebug" was measured 2026-08-07 and the
-      module has grown since. Do not quote a SyntheticAccessor count without naming the variant.
+      File-private helpers live in a separate JVM class from their callers, and nested classes,
+      lambdas and coroutine bodies can also need access$ bridges to private members. Keep helpers
+      internal where safe so these calls do not require bridges. Visibility changes must preserve
+      reflection names and kept APIs; widening every private declaration is not a safe substitute.
 
-      What it is worth, measured rather than assumed: the *release* dex holds 21 access$ methods out
-      of 30,682 total, against 3,563 in storeDebug — R8 inlines almost all of them. Only three of the
-      62 findings named a bridge that actually survives to the shipped APK (ThorRootService's
-      clearAppData, dumpPackage and setAppSuspendedAs, kept verbatim because the class is), and the
-      other 18 survivors belong to Odin, which checkDependencies = false puts out of scope anyway. So
-      the follow-up doc's "method count against the 64K limit" framing overstates this by ~20x. It is
-      enabled regardless, for the reason it is enabled everywhere else here: a debug build carries
-      every one of those bridges, and pinning at zero is cheap while re-privatising later is not.
+      Release optimization may remove these bridges. This gate keeps avoidable compiler-generated
+      accessors out of the app and its tests without assuming a measured release performance gain.
     -->
-    <issue id="SyntheticAccessor" severity="warning" />
+    <issue id="SyntheticAccessor" severity="error" />
 </lint>

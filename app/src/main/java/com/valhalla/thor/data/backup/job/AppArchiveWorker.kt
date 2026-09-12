@@ -333,7 +333,7 @@ internal class ArchiveBackupWorker(
     // No `withContext(ioDispatcher)`: the only call site is already inside one, and the probe makes
     // its own hop.
     @Suppress("UsableSpace")
-    private suspend fun usableStagingBytes(): Long =
+    internal suspend fun usableStagingBytes(): Long =
         archiveStagingVolume(applicationContext, dataProbe.probePrivateDataCapability())
             ?.usableSpace ?: 0L
 }

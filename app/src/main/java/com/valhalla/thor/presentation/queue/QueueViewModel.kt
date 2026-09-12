@@ -102,7 +102,7 @@ class QueueViewModel(
     }
 }
 
-private fun queueUiStates(
+internal fun queueUiStates(
     tasks: List<QueuedTaskSummary>,
     clock: QueueClock,
 ): Flow<QueueUiState> = flow {

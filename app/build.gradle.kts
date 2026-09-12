@@ -231,9 +231,8 @@ android {
         // itself; naming it keeps the link visible from here.
         lintConfig = file("lint.xml")
 
-        // :app is at 0 errors / 0 warnings today (the only warnings, VectorPath, are downgraded in
-        // lint.xml). Enforce that rather than let it rot: a warning is a build failure, and release
-        // variants are checked too.
+        // Ordinary warnings fail the build, including release variants. lint.xml documents the
+        // informational exceptions and explicit error checks whose XML severity takes precedence.
         abortOnError = true
         checkReleaseBuilds = true
         warningsAsErrors = true

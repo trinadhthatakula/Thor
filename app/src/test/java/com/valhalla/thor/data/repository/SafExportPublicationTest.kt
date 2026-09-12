@@ -189,7 +189,7 @@ class SafExportPublicationTest {
         assertEquals("normalized.apk", provider.documents["renamed"])
     }
 
-    private fun kill(): Nothing {
+    internal fun kill(): Nothing {
         provider.dead = true
         throw SimulatedProcessDeath()
     }

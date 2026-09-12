@@ -112,7 +112,7 @@ class PrivilegeSweepTargetResolver(
     }
 }
 
-private fun BulkOp.toSweepOperation(): PrivilegeSweepOperation = when (this) {
+internal fun BulkOp.toSweepOperation(): PrivilegeSweepOperation = when (this) {
     BulkOp.FREEZE -> PrivilegeSweepOperation.FREEZE
     BulkOp.UNFREEZE -> PrivilegeSweepOperation.UNFREEZE
 }

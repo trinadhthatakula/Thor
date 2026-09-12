@@ -69,13 +69,13 @@ internal fun requireTaskProgress(completed: Long, total: Long) {
     }
 }
 
-private fun requireOpaqueGrantIdentity(value: String) {
+internal fun requireOpaqueGrantIdentity(value: String) {
     require(TASK_GRANT_IDENTITY.matches(value)) {
         "grantIdentity must be a bounded opaque identifier"
     }
 }
 
-private fun requireTaskRelativePath(value: String) {
+internal fun requireTaskRelativePath(value: String) {
     require(value.isNotEmpty()) { "privateRelativePath must not be empty" }
     require(value.none(Char::isISOControl)) {
         "privateRelativePath must not contain control characters"

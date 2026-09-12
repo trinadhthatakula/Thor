@@ -371,7 +371,7 @@ class AppBundleFileStoreImpl(
     }
 
     /** Unlike DocumentFile.listFiles(), an unreadable listing must not mean an empty folder. */
-    private fun treeEntries(treeUri: Uri): List<ExportPublicationEntry> {
+    internal fun treeEntries(treeUri: Uri): List<ExportPublicationEntry> {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(
             treeUri, DocumentsContract.getTreeDocumentId(treeUri),
         )

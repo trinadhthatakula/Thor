@@ -1575,7 +1575,7 @@ class DataSyncCoordinator internal constructor(
     }
 }
 
-private fun DataTaskState.noLongerNeedsRestoreSource(): Boolean = when (this) {
+internal fun DataTaskState.noLongerNeedsRestoreSource(): Boolean = when (this) {
     DataTaskState.READY,
     DataTaskState.READY_PARTIAL,
     DataTaskState.SUCCEEDED,
@@ -1606,7 +1606,7 @@ internal fun renewingDataSyncCheckpointSink(
     }
 }
 
-private fun DataTaskCheckpoint.toLegacyProgress(): ThorJobProgress = ThorJobProgress(
+internal fun DataTaskCheckpoint.toLegacyProgress(): ThorJobProgress = ThorJobProgress(
     stage = when (stage) {
         com.valhalla.thor.domain.model.DataTaskStage.PREPARING -> ThorJobStage.PREPARING
         com.valhalla.thor.domain.model.DataTaskStage.STAGING_SOURCE -> ThorJobStage.PREPARING

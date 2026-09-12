@@ -121,7 +121,7 @@ internal class DefaultSharePrepareTaskOperations(
 }
 
 /** Refuse symlinks instead of following a path out of the operation's private workspace. */
-private fun deleteOwnedTree(file: File): Boolean {
+internal fun deleteOwnedTree(file: File): Boolean {
     if (Files.notExists(file.toPath(), NOFOLLOW_LINKS)) return true
     if (Files.isSymbolicLink(file.toPath())) return false
     if (file.isDirectory) {
