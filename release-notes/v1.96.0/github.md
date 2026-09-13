@@ -264,6 +264,8 @@ Implementation: `e210768f`, `994853b0`, `1d2d692f`, `a7b6da8d`, `7829c618`, `db4
   [#471](https://github.com/trinadhthatakula/Thor/pull/471),
   [#472](https://github.com/trinadhthatakula/Thor/pull/472)). The commit log includes the earlier
   grouped dependency, workflow, and security maintenance as well.
+- **Release cleanup** — update AGP from 9.5.0-alpha04 to **9.5.0-alpha05** and ignore the local
+  `.omo` directory ([#475](https://github.com/trinadhthatakula/Thor/pull/475)).
 - **Release bookkeeping** — version code **1960** derives to **1.96.0**. Code 1953 was consumed by
   the Play special-use foreground-service access submission, so there is no separate 1.95.3 notes
   set to consolidate. Play/F-Droid notes cover every Fastlane locale. The oldest retained notes,
@@ -273,20 +275,18 @@ Implementation: `e210768f`, `994853b0`, `1d2d692f`, `a7b6da8d`, `7829c618`, `db4
 
 ## 🧪 Verification and remaining acceptance
 
-Release-preparation host gates passed in a clean worktree on **Zulu JDK 21** with the committed
-**AGP 9.5.0-alpha04**, using one worker and no parallel task execution:
+Release-preparation host gates passed on **Zulu JDK 21** with **AGP 9.5.0-alpha05**, using one
+worker and no parallel task execution:
 
 ```sh
-./gradlew test lintFossDebug lintStoreRelease \
-  :bypass:lintDebug :bypass:lintRelease assembleFossDebug \
-  --no-parallel --max-workers=1 --continue
+./gradlew test lintFossDebug lintStoreRelease --no-parallel --max-workers=1 --continue
 ```
 
 - FOSS Debug and Store Debug each passed **2,798 tests**, with **zero failures, errors, or skips**.
 - Both app lint reports contain **zero errors or warnings**, no `MissingTranslation` or
-  `SyntheticAccessor` findings, and twelve Hint findings each. Explicit `:bypass:lintDebug` and
+  `SyntheticAccessor` findings, and nine Hint findings each. Explicit `:bypass:lintDebug` and
   `:bypass:lintRelease` checks also passed with **zero issues**.
-- FOSS debug APK assembly passed in the same clean-worktree invocation.
+- FOSS debug APK assembly is verified separately from the test/lint invocation.
 - Release budgets pass: Play **442/500 characters**, Telegram **971/1024 assembled UTF-16 units**.
   The English Fastlane copy matches the source byte-for-byte, and the Hindi changelog is
   **443 characters**. Every configured store locale has notes for code 1960.
