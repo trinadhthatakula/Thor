@@ -192,7 +192,8 @@ class ThorRootService : RootService() {
      * `FLAG_SUSPENDED` check — an in-process read that answers for Thor's user — judged a copy the
      * write never touched.
      */
-    private fun setAppSuspendedAs(
+    // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
+    internal fun setAppSuspendedAs(
         packageName: String,
         suspended: Boolean,
         suspendingPackage: String?,
@@ -565,7 +566,8 @@ class ThorRootService : RootService() {
      * The command is exec'd as an argv array rather than through `sh -c`, so [targetPackage] is one
      * argument and cannot be quoted out of; no escaping is applied because none would do anything.
      */
-    private fun dumpPackage(targetPackage: String): String? = runCatching {
+    // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
+    internal fun dumpPackage(targetPackage: String): String? = runCatching {
         val process = ProcessBuilder("dumpsys", "package", targetPackage)
             .redirectErrorStream(true)
             .start()
@@ -643,7 +645,8 @@ class ThorRootService : RootService() {
      * `onRemoveCompleted` arrived saying so; a refusal, a timeout and a broken lookup all return
      * `false` and are told apart in the log rather than in the return type.
      */
-    private fun clearAppData(packageName: String, userId: Int): Boolean {
+    // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
+    internal fun clearAppData(packageName: String, userId: Int): Boolean {
         val outcome = runCatching {
             val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
             val serviceManager = Class.forName("android.os.ServiceManager")

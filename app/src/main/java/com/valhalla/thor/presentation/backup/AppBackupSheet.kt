@@ -27,14 +27,17 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -116,7 +119,7 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
     // "Back up in the background" is the point of the worker, and the notification is the only thing
     // that comes back once this sheet is gone — so the permission is asked for when the job is
     // accepted, not when the sheet opens.
-    RequestNotificationsWhenJobStarts(jobActive = state.running || state.queued)
+    RequestNotificationsWhenJobStarts(jobActive = state.jobAccepted)
 
     var passphrase by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
@@ -152,8 +155,25 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
         }
     }
 
+    // `running` is set before key derivation and WorkManager's enqueue Operation finish. During that
+    // handoff this sheet's dedicated ViewModelStoreOwner is the only owner of the coroutine, so hiding
+    // the sheet would cancel the launch before durable work necessarily exists. Once an id is accepted,
+    // only this watcher is sheet-scoped and leaving is safe.
+    val dismissAllowed = rememberUpdatedState(!state.running || state.canRunInBackground)
+    // Stable identity is required: Material3 uses confirmValueChange as a rememberSaveable key.
+    val confirmValueChange = remember<(SheetValue) -> Boolean> {
+        { value -> value != SheetValue.Hidden || dismissAllowed.value }
+    }
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        confirmValueChange = confirmValueChange,
+    )
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        // The callback guard keeps the owner alive; confirmValueChange above also stops the sheet from
+        // settling invisibly to Hidden on a swipe or scrim tap.
+        onDismissRequest = { if (dismissAllowed.value) onDismiss() },
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
@@ -212,7 +232,11 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                 // and its picker, two passphrase fields and a second Back up button used to sit above
                 // the bar with `enabled = false` on each — a form the user can read, cannot use, and
                 // has to scroll past to reach the one thing that is moving.
-                state.running -> BackupRunning(state = state, onBackground = onDismiss)
+                state.running -> BackupRunning(
+                    state = state,
+                    onBackground = onDismiss,
+                    backgroundAvailable = state.canRunInBackground,
+                )
 
                 // The last frame. `Succeeded` is a `data object`, so it is named rather than smart-cast
                 // out of `state.finished` — which is read through a delegated `state` and would not
@@ -411,7 +435,11 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
  * to be dismissed is a control whose result the user would not be watching.
  */
 @Composable
-private fun BackupRunning(state: AppBackupUiState, onBackground: () -> Unit) {
+private fun BackupRunning(
+    state: AppBackupUiState,
+    onBackground: () -> Unit,
+    backgroundAvailable: Boolean,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         val percent = state.progress?.percent
         if (percent == null) {
@@ -441,15 +469,21 @@ private fun BackupRunning(state: AppBackupUiState, onBackground: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        // Above the button rather than below it: it is the sentence that makes the button's one word
-        // mean something, and a caption under a button is read after it has been pressed.
-        Text(
-            text = stringResource(R.string.backup_background_desc),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Button(onClick = onBackground, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.backup_background))
+        if (backgroundAvailable) {
+            // Not shown until WorkManager has accepted the request. Before that boundary this sheet's
+            // view model still owns the launch coroutine, so "Background" would cancel the work it
+            // claims will continue.
+            //
+            // Above the button rather than below it: it is the sentence that makes the button's one
+            // word mean something, and a caption under a button is read after it has been pressed.
+            Text(
+                text = stringResource(R.string.backup_background_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(onClick = onBackground, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.backup_background))
+            }
         }
     }
 }

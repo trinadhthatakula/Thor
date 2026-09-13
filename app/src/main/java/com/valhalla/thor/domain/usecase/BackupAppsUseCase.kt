@@ -241,7 +241,7 @@ class BackupAppsUseCase(
                 // and an undescribed folder is the same lie a success-only index would be.
                 // NonCancellable because every suspension point below would otherwise resume with
                 // cancellation, and deliberately unbounded: this is one small JSON write, not the
-                // multi-gigabyte stream that made BulkFreezeRunner bound its own post-run work.
+                // multi-gigabyte stream that made the legacy bulk executor bound its own post-run work.
                 withContext(NonCancellable) {
                     writeIndex(slots.filterNotNull(), stagingDir, session)
                 }

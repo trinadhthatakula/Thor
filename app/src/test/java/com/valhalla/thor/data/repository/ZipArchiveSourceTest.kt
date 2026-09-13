@@ -37,6 +37,21 @@ class ZipArchiveSourceTest {
         return file
     }
 
+    /** Create an exact duplicate name by rewriting equal-length local and central-directory names. */
+    private fun zipWithDuplicateHeader(): File {
+        val file = zip("thorbak.json" to "one", "thorbak.js0n" to "two")
+        val bytes = file.readBytes()
+        val from = "thorbak.js0n".toByteArray()
+        val to = "thorbak.json".toByteArray()
+        for (offset in 0..bytes.size - from.size) {
+            if (from.indices.all { bytes[offset + it] == from[it] }) {
+                to.copyInto(bytes, offset)
+            }
+        }
+        file.writeBytes(bytes)
+        return file
+    }
+
     /**
      * Write a container that matches the real writer's per-entry method choices:
      * - `thorbak.json` (header) uses [ZipEntry.STORED] — built in memory so size/CRC are known.
@@ -138,6 +153,13 @@ class ZipArchiveSourceTest {
         source.close()
 
         assertEquals(1, closes)
+    }
+
+    @Test
+    fun `duplicate outer entries are refused at construction`() {
+        assertThrows(IOException::class.java) {
+            ZipArchiveSource(zipWithDuplicateHeader(), "duplicate.thorbak")
+        }
     }
 
     @Test

@@ -17,9 +17,10 @@ import org.junit.Test
  * already-held one succeeds while changing nothing. All three cost a round trip through the root
  * shell or the Shizuku binder, on a path that runs while the user is waiting for the app list.
  *
- * The device is asked and no name is hardcoded in the production rule, so the interesting cases here
- * are whole devices rather than single permissions: the same Thor manifest yields one grant on a
- * Pixel, two on HyperOS and none on API 28. Pure for the usual reason — `PackageManager` is abstract
+ * The device classifies ordinary permissions dynamically, so the interesting cases here are whole
+ * devices rather than single permissions: the same Thor manifest yields one grant on a Pixel, two on
+ * HyperOS and none on API 28. Broker authorization permissions are the explicit exception because
+ * they belong to their brokers' consent flows. Pure for the usual reason — `PackageManager` is abstract
  * and `:app` has no mocking library by policy — so "a HyperOS device on Android 13" is nothing more
  * exotic here than a list of [SelfPermission].
  */
@@ -32,6 +33,9 @@ class SelfPermissionsTest {
     private val queryAllPackages = "android.permission.QUERY_ALL_PACKAGES"
     private val packageUsageStats = "android.permission.PACKAGE_USAGE_STATS"
     private val requestInstallPackages = "android.permission.REQUEST_INSTALL_PACKAGES"
+    private val legacyShizukuApi = "shizuku.permission.API_V23"
+    private val shizukuApi = "moe.shizuku.manager.permission.API_V23"
+    private val dhizukuApi = "com.rosan.dhizuku.permission.API"
 
     /** Defined by this OS, `dangerous`, and therefore requestable — the only grantable shape. */
     private fun runtime(name: String, granted: Boolean = false) = SelfPermission(
@@ -129,6 +133,39 @@ class SelfPermissionsTest {
         )
         assertTrue(plan.toGrant.isEmpty())
         assertFalse(plan.hasUnanswered)
+    }
+
+    @Test
+    fun legacyShizukuBrokerAuthorizationIsNotSelfGrantable() {
+        val plan = planSelfGrant(
+            listOf(
+                runtime(legacyShizukuApi),
+                runtime(postNotifications),
+            )
+        )
+        assertEquals(listOf(postNotifications), plan.toGrant)
+    }
+
+    @Test
+    fun shizukuBrokerAuthorizationIsNotSelfGrantable() {
+        val plan = planSelfGrant(
+            listOf(
+                runtime(shizukuApi),
+                runtime(postNotifications),
+            )
+        )
+        assertEquals(listOf(postNotifications), plan.toGrant)
+    }
+
+    @Test
+    fun dhizukuBrokerAuthorizationIsNotSelfGrantable() {
+        val plan = planSelfGrant(
+            listOf(
+                runtime(dhizukuApi),
+                runtime(postNotifications),
+            )
+        )
+        assertEquals(listOf(postNotifications), plan.toGrant)
     }
 
     @Test

@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.repository
 
 import android.net.Uri
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.StagedPackage
 
 enum class InstallMode {
@@ -27,11 +28,34 @@ interface InstallerRepository {
      *   to another installer app rather than installing anything itself (that app does its own
      *   read and shows its own confirmation, so the read-once rule is not ours to enforce there —
      *   and a private staging path is not something another app could open anyway).
+     * @param grantAllPermissions the answer for THIS install to "grant every runtime permission
+     *   the package declares, without asking" — `pm install-create -g`, the GH#445 flag. `null`,
+     *   the default, means "no answer for this install, use the saved setting"; that is what every
+     *   caller with no user in front of it wants, and it is why this is nullable rather than
+     *   defaulting to `false` — a `false` default would silently override a user who had turned the
+     *   setting on. The portable installer passes a concrete value because it shows the user a
+     *   checkbox, seeded from the setting, that they may flip for one install without the setting
+     *   changing underneath them. Reaches only the shell rungs; see `installViaSessionCommand`.
+     * @param onInvocationStarted called after the repository has entered its install dispatcher and
+     *   immediately before install work begins. It does not imply success; it lets cancellation-aware
+     *   callers distinguish a call cancelled at dispatcher entry from one whose install path started.
+     * @param onInstallSucceeded operation-local proof, called only after this invocation's synchronous
+     *   installer reports success, before publishing progress or placing OBB data. Invocation entry,
+     *   global events and package presence are not proof. Session/external rungs do not call it: their
+     *   asynchronous completion is not correlated here, so cancellation ownership stays unknown.
+     * @param bypassLowTargetSdkBlock requests Android's low-target SDK install bypass. It is valid
+     *   only for the Root and shell-backed Shizuku paths on Android 14 and later; unsupported modes
+     *   are rejected before the install starts.
      */
     suspend fun installPackage(
         staged: StagedPackage,
         uri: Uri,
         mode: InstallMode,
-        canDowngrade: Boolean = false
+        canDowngrade: Boolean = false,
+        grantAllPermissions: Boolean? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+        onInvocationStarted: () -> Unit = {},
+        onInstallSucceeded: () -> Unit = {},
+        bypassLowTargetSdkBlock: Boolean = false,
     )
 }

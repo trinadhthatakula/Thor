@@ -4,29 +4,48 @@
 package com.valhalla.thor.presentation.freezer
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepSpec
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import com.valhalla.thor.domain.model.TaskQueueKind
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
-import com.valhalla.thor.presentation.FakeBulkFreezeController
 import com.valhalla.thor.presentation.FakeFreezeProfileRepository
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
+import com.valhalla.thor.presentation.FakePrivilegeSweepController
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.presentation.navigation.TaskNavigationRequest
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.privilegeSweepResolver
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -35,6 +54,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.util.UUID
 
 /**
  * The Freezer screen's half of the watchlist-removal contract: **removing always restores, and a
@@ -72,13 +92,15 @@ class FreezerViewModelTest {
     private lateinit var shortcuts: FakeAppShortcutController
     private lateinit var privilege: FakePrivilegeStateProvider
     private lateinit var profiles: FakeFreezeProfileRepository
+    private lateinit var prefs: FakePreferenceRepository
+    private lateinit var taskNavigationTargets: TaskNavigationTargets
 
     /**
      * Held as a field, not built inline, so a test can set the outcome a run answers with before
      * the view model asks. The runner is the one collaborator here whose *result* the view model
      * has to interpret rather than merely record.
      */
-    private lateinit var bulkFreeze: FakeBulkFreezeController
+    private lateinit var sweepController: FakePrivilegeSweepController
 
     /**
      * The three fakes' calls in one list.
@@ -99,20 +121,35 @@ class FreezerViewModelTest {
         shortcuts = FakeAppShortcutController(trace = trace)
         privilege = FakePrivilegeStateProvider()
         profiles = FakeFreezeProfileRepository()
-        bulkFreeze = FakeBulkFreezeController()
+        prefs = FakePreferenceRepository()
+        sweepController = FakePrivilegeSweepController()
+        taskNavigationTargets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
     }
 
-    private fun viewModel(): FreezerViewModel {
-        val manageAppUseCase = ManageAppUseCase(system)
+    private fun viewModel(
+        controller: PrivilegeSweepController = sweepController,
+    ): FreezerViewModel {
+        val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         return FreezerViewModel(
             freezerRepository = freezer,
             freezeProfileRepository = profiles,
-            bulkFreeze = bulkFreeze,
+            profileSubmission = ProfileSubmissionCoordinator(
+                privilegeSweepResolver(
+                    freezerRepository = freezer,
+                    freezeProfileRepository = profiles,
+                    preferenceRepository = prefs,
+                ),
+                controller,
+                taskNavigationTargets,
+                mainDispatcherRule.dispatcher,
+            ),
+            sweepController = controller,
+            taskNavigationTargets = taskNavigationTargets,
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             manageAppUseCase = manageAppUseCase,
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
             privilege = privilege,
-            preferenceRepository = FakePreferenceRepository(),
+            preferenceRepository = prefs,
             appShortcuts = shortcuts,
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = mainDispatcherRule.dispatcher
@@ -154,12 +191,15 @@ class FreezerViewModelTest {
         assertEquals(listOf("a", "b"), shortcuts.disabled)
         // The ordering itself, which is the whole fix and which the lists above cannot show: the
         // row goes only after the app is back, one package finished before the next is started.
+        // Within a package the shortcut is greyed before the row goes — a pinned shortcut can only
+        // be disabled, never deleted, so the reverse order can leave a live launcher entry for an
+        // app that is no longer in the freezer.
         assertEquals(
             listOf(
                 "setAppSuspended:a:false", "setAppDisabled:a:false",
-                "freezer.remove:a", "shortcut.disable:a",
+                "shortcut.disable:a", "freezer.remove:a",
                 "setAppSuspended:b:false", "setAppDisabled:b:false",
-                "freezer.remove:b", "shortcut.disable:b"
+                "shortcut.disable:b", "freezer.remove:b"
             ),
             trace
         )
@@ -288,7 +328,10 @@ class FreezerViewModelTest {
             runCurrent()
 
             assertEquals("c ran after the throw", listOf("a", "c"), freezer.removed)
-            assertEquals(listOf("a", "c"), shortcuts.disabled)
+            // b's shortcut was greyed before its delete raised, and that is the order on purpose:
+            // a greyed shortcut over a surviving row is a launcher entry the next refresh restores,
+            // where a live shortcut over a deleted row is one the launcher can freeze from.
+            assertEquals(listOf("a", "b", "c"), shortcuts.disabled)
             assertTrue("the row whose delete raised is still there", freezer.contains("b"))
             assertEquals(
                 UiText.StringResource(R.string.error_format, "database is locked"),
@@ -342,15 +385,16 @@ class FreezerViewModelTest {
     }
 
     /**
-     * The launcher step raising, which is the one failure that lands after the row is already gone.
+     * The launcher step raising, which is what the shortcut-before-row ordering is chosen for.
      *
-     * It counts as a failure even so. The alternative — treating the package as removed because the
-     * part that mattered worked — would hide a stale live shortcut, and a live shortcut for an app
-     * no longer in the freezer is a route back into freezing it from the launcher. Reporting is the
-     * cheap side to be wrong on: the app is thawed and the row is gone, so nothing is stranded.
+     * A pinned shortcut can only be greyed, never deleted, so the row is the only end of this pair
+     * the app can still take back. Greying it first means a launcher that refuses stops the delete:
+     * the row and the shortcut are both still live, which is the state the user started in and the
+     * one a retry can act on. The reverse order cannot be retried into consistency — the row is
+     * gone, so nothing lists the app, and the live shortcut is still a route back into freezing it.
      */
     @Test
-    fun `a shortcut that will not be disabled is still reported, though the row has gone`() =
+    fun `a shortcut that will not be disabled keeps the row rather than orphaning it`() =
         runTest {
             freezer.add("a")
             shortcuts.failDisableWith("a", IllegalStateException("shortcut rate limit exceeded"))
@@ -362,11 +406,12 @@ class FreezerViewModelTest {
             runCurrent()
 
             assertEquals(
-                "the restore ran and the row went — the invariant held all the way through",
+                "the restore ran, and it is the launcher step after it that raised",
                 listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
                 system.calls
             )
-            assertEquals(listOf("a"), freezer.removed)
+            assertTrue("the row outlives the shortcut that would not be greyed", freezer.contains("a"))
+            assertTrue("so there is no delete to undo", freezer.removed.isEmpty())
             assertEquals(
                 UiText.StringResource(R.string.error_format, "shortcut rate limit exceeded"),
                 seen.onlyToast()
@@ -433,7 +478,9 @@ class FreezerViewModelTest {
                 system.calls
             )
             assertTrue("the throw left the row in place", freezer.contains("a"))
-            assertTrue(shortcuts.disabled.isEmpty())
+            // Greyed before the delete raised, the same order as the multi-select path — see
+            // `a shortcut that will not be disabled keeps the row rather than orphaning it`.
+            assertEquals(listOf("a"), shortcuts.disabled)
             assertEquals(
                 UiText.StringResource(R.string.error_format, "database is locked"),
                 seen.onlyToast()
@@ -550,7 +597,7 @@ class FreezerViewModelTest {
                 listOf(
                     "setAppSuspended:a:true", "freezer.add:a",
                     "setAppSuspended:a:false", "setAppDisabled:a:false",
-                    "freezer.remove:a", "shortcut.disable:a"
+                    "shortcut.disable:a", "freezer.remove:a"
                 ),
                 trace
             )
@@ -683,48 +730,397 @@ class FreezerViewModelTest {
             )
         }
 
-    /**
-     * A profile run that could not start for want of privilege must not report the profile.
-     *
-     * `NothingToDo` used to be a bare object, so this surface picked "Nothing to do for this
-     * profile" — a sentence about the profile's contents — for a run that never looked at them.
-     * With a full profile and a dead Shizuku binder that is both false and misdirecting: it sends
-     * the user to edit a profile that is fine, and says nothing about the one thing they can fix.
-     */
     @Test
-    fun `a profile run blocked by privilege names the privilege, not the profile`() = runTest {
+    fun `profile resolves current members and configured freezer mode before enqueue`() = runTest {
+        profiles.create("Morning", listOf("z", "a"))
+        prefs.setFreezerMode(FreezerMode.SUSPEND)
         val vm = viewModel()
-        val seen = events(vm)
 
-        bulkFreeze.outcome = BulkOutcome.NothingToDo(NoOpReason.NO_PRIVILEGE)
         vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
         runCurrent()
 
+        assertEquals(1, sweepController.launched.size)
+        assertEquals(listOf("a", "z"), sweepController.launched.single().packageNames)
+        assertEquals(FreezerMode.SUSPEND, sweepController.launched.single().freezerMode)
+        assertEquals(PrivilegeSweepSource.PROFILE, sweepController.launched.single().source)
+    }
+
+    @Test
+    fun `profile opens provisional detail before acceptance completes`() = runTest {
+        profiles.create("Morning", listOf("a", "b"))
+        val launchStarted = CompletableDeferred<Unit>()
+        val releaseLaunch = CompletableDeferred<Unit>()
+        val blockingController = object : PrivilegeSweepController by sweepController {
+            override suspend fun launch(
+                requestId: UUID,
+                spec: PrivilegeSweepSpec,
+            ): PrivilegeSweepLaunchResult {
+                launchStarted.complete(Unit)
+                releaseLaunch.await()
+                return sweepController.launch(requestId, spec)
+            }
+        }
+        val vm = viewModel(blockingController)
+        val firstRequest = async { taskNavigationTargets.requests.first() }
+
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        assertTrue("the acceptance call reached its suspension point", launchStarted.isCompleted)
+        val provisional = firstRequest.await() as TaskNavigationRequest.OpenProvisional
         assertEquals(
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.FREEZE.name,
+            ),
+            provisional.identity,
+        )
+        assertTrue("durable acceptance is still suspended", sweepController.launched.isEmpty())
+
+        releaseLaunch.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf(provisional.taskId), sweepController.launchedRequestIds)
+    }
+
+    @Test
+    fun `profile launch passes candidate id and maps canonical acceptance in order`() = runTest {
+        profiles.create("Morning", listOf("a"))
+        val canonicalTaskId = UUID(0L, 73L)
+        sweepController.nextLaunchResult = PrivilegeSweepLaunchResult.Accepted(
+            requestId = canonicalTaskId,
+            workId = UUID(1L, 73L),
+            coalesced = true,
+        )
+        val vm = viewModel()
+        val requests = async { taskNavigationTargets.requests.take(2).toList() }
+
+        vm.runProfile(profileId = 1L, op = BulkOp.UNFREEZE)
+        runCurrent()
+
+        val navigation = requests.await()
+        val provisional = navigation.first() as TaskNavigationRequest.OpenProvisional
+        assertEquals(
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.UNFREEZE.name,
+            ),
+            provisional.identity,
+        )
+        assertEquals(listOf(provisional.taskId), sweepController.launchedRequestIds)
+        assertEquals(
+            TaskNavigationRequest.Accepted(provisional.taskId, canonicalTaskId),
+            navigation[1],
+        )
+    }
+
+    @Test
+    fun `profile launch rejection rejects the same provisional detail`() = runTest {
+        profiles.create("Morning", listOf("a"))
+        sweepController.nextLaunchResult = PrivilegeSweepLaunchResult.Rejected(
+            PrivilegeSweepLaunchRejection.NoPrivilege
+        )
+        val vm = viewModel()
+        val seen = events(vm)
+        val requests = async { taskNavigationTargets.requests.take(2).toList() }
+
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        val navigation = requests.await()
+        val provisional = navigation.first() as TaskNavigationRequest.OpenProvisional
+        assertEquals(listOf(provisional.taskId), sweepController.launchedRequestIds)
+        assertEquals(TaskNavigationRequest.Rejected(provisional.taskId), navigation[1])
+        assertTrue("the task detail owns the launch failure", seen.isEmpty())
+    }
+
+    @Test
+    fun `profile launch exception rejects the exact provisional task`() = runTest {
+        profiles.create("Morning", listOf("a"))
+        sweepController.launchFailure = IllegalStateException("acceptance failed")
+        val requests = mutableListOf<TaskNavigationRequest>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            taskNavigationTargets.requests.collect(requests::add)
+        }
+        val vm = viewModel()
+
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        assertEquals(2, requests.size)
+        val provisional = requests[0] as TaskNavigationRequest.OpenProvisional
+        assertEquals(TaskNavigationRequest.Rejected(provisional.taskId), requests[1])
+    }
+
+    @Test
+    fun `active requests publish all retained profile and unrelated work in order`() = runTest {
+        fun retained(
+            requestNumber: Long,
+            source: PrivilegeSweepSource,
+            phase: PrivilegeSweepPhase,
+        ) = PrivilegeSweepStatus(
+            requestId = UUID(0L, requestNumber),
+            workId = UUID(1L, requestNumber),
+            operation = PrivilegeSweepOperation.FREEZE,
+            source = source,
+            phase = phase,
+            total = 3,
+            succeeded = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
+            failed = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 0,
+            busy = 0,
+            unresolved = if (phase == PrivilegeSweepPhase.PARTIAL) 1 else 3,
+            rootLaneDegraded = false,
+            profileIds = if (source == PrivilegeSweepSource.PROFILE) setOf(1L) else emptySet(),
+        )
+        val profileRequest = retained(
+            requestNumber = 92L,
+            source = PrivilegeSweepSource.PROFILE,
+            phase = PrivilegeSweepPhase.QUEUED,
+        )
+        val mainRequest = retained(
+            requestNumber = 91L,
+            source = PrivilegeSweepSource.MAIN,
+            phase = PrivilegeSweepPhase.PARTIAL,
+        )
+        val vm = viewModel()
+
+        sweepController.emit(profileRequest)
+        sweepController.emit(mainRequest)
+        runCurrent()
+
+        assertEquals(listOf(profileRequest, mainRequest), vm.uiState.value.runningRequests)
+    }
+
+    // --- The watchlist writes that were still unguarded (fix/freezer-bookkeeping-crashes) ---
+    //
+    // Everything above pins `removeFromFreezer` and `toggleManaged`, which have caught their own Room
+    // throws since GH#310. The two functions below did not, three hundred lines away in the same
+    // file, and `:app` installs no `CoroutineExceptionHandler` — so a full or failing disk turned one
+    // tap into process death. These pin the guard, and each one fails by *crashing the test* rather
+    // than by a wrong assertion if the guard is removed, which is the honest shape for this defect.
+
+    /**
+     * The snackbar's "add it to the Freezer?" confirmation, on a disk that will not take the row.
+     *
+     * The freeze has already happened when this runs — the prompt is only raised after one succeeded
+     * — so the toast must not claim the freeze failed. It reports the throw and nothing else.
+     */
+    @Test
+    fun `an add that raises is reported rather than taking the process with it`() = runTest {
+        freezer.failAddWith("a", IllegalStateException("disk is full"))
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.addToFreezer("a")
+        runCurrent()
+
+        assertFalse("the row never landed", freezer.contains("a"))
+        assertEquals(
+            "and the failure is named, not swallowed and not dressed up as a failed freeze",
+            UiText.StringResource(R.string.error_format, "disk is full"),
+            seen.onlyToast()
+        )
+    }
+
+    /**
+     * The import-already-disabled dialog with one row in the batch refusing.
+     *
+     * Two claims, and the second is the one that was wrong even after the crash was fixed. Per-item
+     * isolation first: the guard sits *inside* the loop, exactly as [removeFromFreezer]'s does, so one
+     * throw cannot cost the user every package behind it in the list.
+     *
+     * Then the counting. A batch that lands 2 of 3 rows used to report the throw alone, which reads as
+     * a total failure over a screen that is about to list both survivors — so the count goes out too.
+     * There is no "Added x/y (z failed)" string to say it in one line and minting one costs eight
+     * locales, so it is two events: what landed, then what threw.
+     */
+    @Test
+    fun `a partial import reports what landed as well as what threw`() = runTest {
+        freezer.failAddWith("b", IllegalStateException("disk is full"))
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.addAppsToFreezer(listOf("a", "b", "c"))
+        runCurrent()
+
+        assertEquals("c ran after the throw", listOf("a", "c"), freezer.added)
+        assertEquals(
+            "both facts, in the order they matter",
             listOf(
                 FreezerEvent.ShowToast(
-                    UiText.StringResource(R.string.tile_grant_privilege_toast)
+                    UiText.PluralsResource(R.plurals.added_to_freezer_count_success, 2)
+                ),
+                FreezerEvent.ShowToast(
+                    UiText.StringResource(R.string.error_format, "disk is full")
                 )
             ),
             seen
         )
     }
 
-    /** And the other half: an empty target list is still a statement about the profile. */
+    /**
+     * What the count is actually counting, which is *not* rows the table gained.
+     *
+     * `FreezerDao.insert` is `OnConflictStrategy.IGNORE`, so re-importing a package that is already
+     * tracked is a write that succeeds and changes nothing. The run tallies writes that did not
+     * throw, so it says two over a selection of two while the table grows by one — and that is the
+     * right answer to give: both apps are on the watchlist when the toast appears, which is the only
+     * thing the user asked for. The number diverges from the selection on failures, not on
+     * duplicates; `a partial import reports what landed as well as what threw` is where that
+     * divergence is pinned.
+     */
     @Test
-    fun `a profile run with nothing left to act on still names the profile`() = runTest {
+    fun `a duplicate in the import still counts, because an ignored insert is not a failure`() =
+        runTest {
+            freezer.add("a")
+            val vm = viewModel()
+            val seen = events(vm)
+
+            vm.addAppsToFreezer(listOf("a", "b"))
+            runCurrent()
+
+            assertEquals(
+                UiText.PluralsResource(R.plurals.added_to_freezer_count_success, 2),
+                seen.onlyToast()
+            )
+            assertEquals(
+                "both writes were made, including the one the DAO ignores",
+                listOf("a", "a", "b"),
+                freezer.added
+            )
+            assertEquals(
+                "but the table only gained one row, so the toast is not counting those",
+                listOf("a", "b"),
+                freezer.getAllPackageNames().sorted()
+            )
+        }
+
+    /**
+     * The import's cancellation rethrow, matching [removeFromFreezer]'s.
+     *
+     * `CancellationException` is an `Exception`, so the per-item catch would swallow it and keep
+     * walking a list for a screen that is gone. It has to be rethrown ahead of the general catch, and
+     * then reach the guard, which rethrows it too rather than toasting it.
+     */
+    @Test
+    fun `a cancelled import stops rather than reporting itself`() = runTest {
+        freezer.failAddWith("b", CancellationException("the screen went away"))
         val vm = viewModel()
         val seen = events(vm)
 
-        bulkFreeze.outcome = BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
-        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        vm.addAppsToFreezer(listOf("a", "b", "c"))
+        runCurrent()
+
+        assertEquals("what landed before the cancellation still counts", listOf("a"), freezer.added)
+        assertTrue("nothing is reported, because there is nobody left to report to", seen.isEmpty())
+    }
+
+    /**
+     * The launcher pins, which are the same defect class as the watchlist writes and were swept with
+     * them: `ShortcutManagerCompat` reports a refused or rate-limited request by throwing, and all
+     * three pin entry points were bare launches.
+     *
+     * Two assertions, and they pull against each other on purpose. The per-app isolation is the first
+     * — "pin every freezer app" losing the rest of the list to one launcher refusal would be a second
+     * bug wearing the fix's clothes. But isolating the failure must not also bury it: `Logger` is
+     * gated on `Logger.isDebug`, which is false in every build a user runs, so catching per app and
+     * only logging meant a run in which the launcher refused every single shortcut said nothing at all.
+     * One line for the run, however many rows refused.
+     *
+     * The `runCurrent()` after `advanceUntilIdle()` is load-bearing, and this is the only test in the
+     * file that needs it: the toast is emitted from the *last* foreground task, and `advanceUntilIdle`
+     * calls it a day once the foreground queue drains, leaving the `backgroundScope` collector's
+     * resumption unrun. Measured, not guessed — `seen` is `[]` on the line after `advanceUntilIdle` and
+     * holds the toast on the line after `runCurrent`. Which also means the assertion this test used to
+     * carry, `assertTrue(seen.isEmpty())`, was true of the harness rather than of the code, and would
+     * have stayed green against the reporting this test now demands.
+     */
+    @Test
+    fun `a pin that raises is reported and does not abandon the rest of the run`() = runTest {
+        appRepository.apps.value = listOf(userApp("a"), userApp("b"), userApp("c"))
+        listOf("a", "b", "c").forEach { freezer.add(it) }
+        shortcuts.failPinWith("b", IllegalStateException("shortcut rate limit exceeded"))
+        val vm = viewModel()
+        val seen = events(vm)
+        runCurrent()
+
+        vm.pinAllToLauncher()
+        advanceUntilIdle() // the loop spaces its pin requests with delay(100)
+        runCurrent() // and the closing toast lands in the last of those tasks — see the KDoc
+
+        assertEquals("c is pinned after b raised", listOf("a", "c"), shortcuts.pinned)
+        assertEquals(
+            "and the refusal is still reported, once, after the run",
+            UiText.StringResource(R.string.error_format, "shortcut rate limit exceeded"),
+            seen.onlyToast()
+        )
+    }
+
+    /** Two refusals, one line: they are the same refusal repeated, and N toasts would bury each other. */
+    @Test
+    fun `a run the launcher refuses outright is reported once, not per app`() = runTest {
+        appRepository.apps.value = listOf(userApp("a"), userApp("b"), userApp("c"))
+        listOf("a", "b", "c").forEach { freezer.add(it) }
+        listOf("a", "b", "c").forEach {
+            shortcuts.failPinWith(it, IllegalStateException("shortcut rate limit exceeded"))
+        }
+        val vm = viewModel()
+        val seen = events(vm)
+        runCurrent()
+
+        vm.pinAllToLauncher()
+        advanceUntilIdle()
+        runCurrent() // as above: the closing toast lands in the last foreground task
+
+        assertTrue("nothing was pinned", shortcuts.pinned.isEmpty())
+        assertEquals(
+            "one line for the run",
+            UiText.StringResource(R.string.error_format, "shortcut rate limit exceeded"),
+            seen.onlyToast()
+        )
+    }
+
+    /**
+     * The single pin, which is the one the fix got wrong first time round.
+     *
+     * `pinAppToLauncher` used to call the fire-and-forget `pinAppShortcut`, whose body runs on
+     * `FreezerShortcutManager`'s own scope — so the `launchPin` guard wrapped around it completed
+     * successfully before the refusal existed, and could not have reported it however well written it
+     * was. It calls `pinAppShortcutSuspend` now, which throws into the guard; the guard is already off
+     * Main, which was the fire-and-forget variant's only purpose.
+     */
+    @Test
+    fun `a single pin the launcher refuses reaches the user`() = runTest {
+        shortcuts.failPinWith("a", IllegalStateException("launcher refused the request"))
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.pinAppToLauncher(userApp("a"))
+        advanceUntilIdle()
+
+        assertEquals(
+            UiText.StringResource(R.string.error_format, "launcher refused the request"),
+            seen.onlyToast()
+        )
+        assertTrue(
+            "and it was not quietly absorbed by the port instead",
+            shortcuts.absorbedFailures.isEmpty()
+        )
+    }
+
+    /** And the single-shortcut path, where the throw has nowhere to go but the guard. */
+    @Test
+    fun `a bulk shortcut pin that raises is reported rather than killing the process`() = runTest {
+        shortcuts.failBulkPinWith(IllegalStateException("launcher refused the request"))
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.pinBulkShortcut(freeze = true)
         runCurrent()
 
         assertEquals(
-            listOf(
-                FreezerEvent.ShowToast(UiText.StringResource(R.string.profile_nothing_to_do))
-            ),
-            seen
+            UiText.StringResource(R.string.error_format, "launcher refused the request"),
+            seen.onlyToast()
         )
     }
 }

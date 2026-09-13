@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="fix_store_requires_privilege">Naprawa sklepu wymaga Root lub Shizuku. Żadna aplikacja nie została zmieniona.</string>
+    <string name="fix_store_unsupported_dhizuku">Naprawa sklepu wymaga Root lub Shizuku. Android nie pozwala Dhizuku ustawić Google Play jako instalatora aplikacji. Żadna aplikacja nie została zmieniona.</string>
 
     <!-- Navigation -->
     <string name="home">Start</string>
@@ -29,6 +31,9 @@
     <string name="show_extensions_tile_desc">Pokaż Rozszerzenia na ekranie głównym</string>
     <string name="auto_reinstall">Automatyczna reinstalacja aplikacji</string>
     <string name="auto_reinstall_desc">Automatycznie zachowuj Google Play Store jako zarejestrowany instalator, aby umożliwić aktualizacje w tle</string>
+    <string name="grant_all_permissions">Przyznaj wszystkie uprawnienia przy instalacji</string>
+    <string name="grant_all_permissions_desc">Nadaj aplikacji wszystkie żądane uprawnienia zaraz po instalacji, bez pytania — tylko przy instalacji przez root, Shizuku lub Dhizuku. Domyślnie wyłączone, a w instalatorze można to zmienić dla pojedynczej instalacji; w obu przypadkach aktualizacje zachowują już przyznane uprawnienia</string>
+    <string name="grant_all_permissions_install">Przyznaj wszystkie żądane uprawnienia</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Domyślna karta</string>
     <string name="default_tab_desc">Ekran otwierany przez aplikację Thor po uruchomieniu</string>
@@ -39,7 +44,7 @@
     <string name="dynamic_colors">Kolory dynamiczne</string>
     <string name="dynamic_colors_desc">Integracja z Material You</string>
     <string name="biometric_lock">Blokada biometryczna</string>
-    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia po uruchomieniu</string>
+    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia przy uruchomieniu. Włączona blokada uniemożliwia robienie zrzutów i nagrywanie ekranu aplikacji Thor oraz ukrywa jej podgląd na liście ostatnich aplikacji.</string>
     <string name="biometric_not_available">Biometria niedostępna lub bez zapisanych danych</string>
     <string name="active_engine">Aktywny silnik</string>
     <string name="active_engine_desc">Przełączaj między dostępnymi dostawcami</string>
@@ -324,8 +329,8 @@
     <string name="usage_access_needed_title">Wymagany dostęp do danych o użyciu</string>
     <string name="usage_access_prompt_body">Thor potrzebuje dostępu do danych o użyciu, aby odczytać rozmiary aplikacji. Włącz go dla aplikacji Thor, a potem wybierz „Rozmiar” ponownie. Możesz też zarządzać tym w Ustawieniach → Uprawnienia.</string>
     <string name="notification_access">Powiadomienia</string>
-    <string name="notification_access_granted_subtitle">Wyniki zbiorczego zamrażania są pokazywane jako powiadomienia</string>
-    <string name="notification_access_needed_subtitle">Zezwól na powiadomienia, aby widzieć wyniki zbiorczego zamrażania</string>
+    <string name="notification_access_granted_subtitle">Postęp działań na aplikacjach w tle jest pokazywany w powiadomieniach</string>
+    <string name="notification_access_needed_subtitle">Zezwól na powiadomienia w ustawieniach systemu, aby uruchamiać działania na aplikacjach w tle i śledzić ich postęp</string>
     <string name="open_settings">Otwórz ustawienia</string>
     <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
          ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
@@ -346,20 +351,11 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Najpierw przyznaj Root / Shizuku / Dhizuku</string>
     <string name="tile_no_apps_toast">Brak aplikacji w Zamrażarce</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">Zamrożono %1$d aplikację</item>
-        <item quantity="few">Zamrożono %1$d aplikacje</item>
-        <item quantity="many">Zamrożono %1$d aplikacji</item>
-        <item quantity="other">Zamrożono %1$d aplikacji</item>
-    </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_freeze_partial_failure">Zamrożono %1$d/%2$d aplikacji (nieudane: %3$d)</string>
     <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
          fired before these packages resolved. -->
-    <string name="tile_freeze_incomplete">Zamrożono %1$d/%2$d aplikacji (nieukończone: %3$d)</string>
     <string name="tile_checking">Sprawdzanie…</string>
     <string name="tile_freezing">Zamrażanie…</string>
-    <string name="channel_bulk_result_name">Wyniki działań zbiorczych</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ustawienia Zamrażarki</string>
@@ -393,6 +389,13 @@
     <string name="privilege_required_warning">Wymagane uprawnienia (Root, Shizuku lub Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Odmrozić wszystkie aplikacje?</string>
     <string name="unfreeze_all_confirmation_desc">Spowoduje to odmrożenie (włączenie) wszystkich aplikacji, które są teraz na liście Zamrażarki. Na pewno chcesz kontynuować?</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="one">Zamrozić %1$d wybraną aplikację? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
+        <item quantity="few">Zamrozić %1$d wybrane aplikacje? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
+        <item quantity="many">Zamrozić %1$d wybranych aplikacji? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
+        <item quantity="other">Zamrozić %1$d wybranej aplikacji? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">Pozostaw te aplikacje na liście Zamrażarki po ich zamrożeniu. Odznaczenie tej opcji nie usuwa aplikacji, które już są w Zamrażarce.</string>
     <string name="import_disabled_apps_title">Zaimportuj wyłączone aplikacje</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="one">Jest %1$d wyłączona aplikacja, której nie ma w Zamrażarce. Dodać ją do Zamrażarki?</item>
@@ -456,22 +459,9 @@
     <string name="extension_install_failed">Weryfikacja nie powiodła się: %1$s</string>
 
 
-    <!-- UiText Messages -->
-    <string name="action_completed_format">Ukończono %1$s: %2$s</string>
-    <string name="frozen_success">Zamrożono aplikację %1$s</string>
+    <!-- UiText Messages -->    <string name="frozen_success">Zamrożono aplikację %1$s</string>
     <string name="unfrozen_success">Odmrożono aplikację %1$s</string>
     <string name="added_to_freezer_success">Dodano do Zamrażarki</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">Odmrożono %1$d aplikację</item>
-        <item quantity="few">Odmrożono %1$d aplikacje</item>
-        <item quantity="many">Odmrożono %1$d aplikacji</item>
-        <item quantity="other">Odmrożono %1$d aplikacji</item>
-    </plurals>
-    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_unfreeze_partial_failure">Odmrożono %1$d/%2$d aplikacji (nieudane: %3$d)</string>
-    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
-         packages resolved, so they are neither confirmed done nor confirmed failed. -->
-    <string name="tile_unfreeze_incomplete">Odmrożono %1$d/%2$d aplikacji (nieukończone: %3$d)</string>
     <string name="error_format">Błąd: %1$s</string>
     <string name="failed_to_load_apps">Nie udało się wczytać aplikacji</string>
     <plurals name="removed_from_freezer_success">
@@ -586,6 +576,11 @@
     <string name="exit">Wyjdź</string>
     <string name="title_thor_installer">Instalator Thor</string>
     <string name="install_analyzing">Analizowanie pakietu…</string>
+    <string name="legacy_install_description">%1$s jest przeznaczona dla SDK %2$d. Ta wersja Androida zwykle blokuje nowe instalacje aplikacji poniżej SDK %3$d.</string>
+    <string name="legacy_install_confirm_title">Zezwolić na instalację starszej aplikacji?</string>
+    <string name="legacy_install_confirm_message">%1$s (%2$s) jest przeznaczona dla SDK %3$d, poniżej minimalnego SDK %4$d wymaganego do instalacji. Ominięcie tej blokady bezpieczeństwa może narazić urządzenie i dane na ryzyko. Starsze aplikacje mogą otrzymać uprawnienia podczas instalacji zgodnie ze swoim starszym modelem uprawnień. Kontynuuj tylko, jeśli ufasz temu plikowi APK. Dotyczy to tylko tej instalacji; podpis, zgodność urządzenia i inne kontrole Androida nadal obowiązują.</string>
+    <string name="legacy_install_allow_once">Zainstaluj tym razem</string>
+    <string name="legacy_install_unsupported">Instalacja starszych aplikacji wymaga Androida 14 lub nowszego oraz Roota albo Shizuku. Tryby zwykły, Dhizuku i zewnętrzny nie mogą zastosować tego obejścia.</string>
     <string name="install_downgrade_warning">Spowoduje to instalację starszej wersji aplikacji.</string>
     <!-- %1$s and %2$s are version codes. They are deliberately %s, not %d: %d is localised by
          java.util.Formatter (Arabic-Indic digits under ar-EG, for example), and these same two
@@ -637,18 +632,11 @@
     <string name="log_no_apps_to_fix">Nie znaleziono aplikacji wymagających naprawy.</string>
     <!-- Developer log line, not grammar-sensitive UI — plural form intentionally not used. -->
     <string name="log_found_apps_to_fix">Znaleziono %1$d aplikacji do naprawy.</string>
-    <string name="log_reinstalling_batch">Ponowna instalacja aplikacji</string>
     <string name="log_freezing_batch">Zamrażanie aplikacji</string>
     <string name="log_unfreezing_batch">Odmrażanie aplikacji</string>
     <string name="log_killing_batch">Zatrzymywanie aplikacji</string>
-    <string name="log_clearing_cache_batch">Czyszczenie pamięci podręcznej</string>
     <string name="log_uninstalling_batch">Odinstalowywanie aplikacji</string>
-    <string name="log_suspending_batch">Zawieszanie aplikacji</string>
-    <string name="log_unsuspending_batch">Wznawianie aplikacji</string>
-    <string name="log_sharing_batch">Udostępnianie aplikacji</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] Przygotowywanie: %3$s…</string>
-    <string name="log_ready"> -> Gotowe</string>
     <string name="log_success"> -> Sukces</string>
     <string name="log_failed"> -> Niepowodzenie: %1$s</string>
 
@@ -663,7 +651,6 @@
     <string name="no_matching_apps_freezer">Brak pasujących aplikacji</string>
     <string name="add_to_freezer_hint">Dotknij +, aby dodać aplikacje</string>
     <string name="filter_all">Wszystkie</string>
-    <string name="error_debuggable_app">Aplikacja jest debugowalna (prawdopodobna niezgodność podpisu)</string>
     <string name="error_unsafe_skipped">Pominięto: aplikacja systemowa jest NIEBEZPIECZNA (UNSAFE) / kontrola bezpieczeństwa nie powiodła się</string>
     <string name="error_self_skipped">Pominięto: Thor nie może zrobić tego sam sobie</string>
     <string name="error_parse_package">Nie udało się przeanalizować pakietu.</string>
@@ -754,7 +741,6 @@
     <string name="profile_delete_desc">Usuwany jest tylko profil. Aplikacje w nim pozostają dokładnie takie, jakie są — co jest zamrożone, zostaje zamrożone.</string>
     <string name="profile_saved">Zapisano profil</string>
     <string name="profile_deleted">Usunięto profil</string>
-    <string name="profile_nothing_to_do">Nic do zrobienia dla tego profilu</string>
     <string name="bulk_run_failed">To uruchomienie nie zostało ukończone — sprawdź aplikacje, zanim zaczniesz na nim polegać</string>
     <string name="error_profile_name_taken">Ta nazwa profilu jest już zajęta</string>
     <string name="error_profile_delete_failed">Nie udało się usunąć tego profilu</string>
@@ -790,5 +776,239 @@
     <string name="export_list_failed">Nie udało się zapisać listy</string>
     <string name="clear_all_caches_requires_usage_access">Shizuku nie może wyczyścić pamięci podręcznej wszystkich aplikacji bez dostępu do danych o użyciu. Androidowi trzeba podać, ile bajtów ma odzyskać, a tylko to uprawnienie pozwala zmierzyć, ile pamięci podręcznej jest. Przyznaj aplikacji Thor dostęp do danych o użyciu w Ustawieniach i spróbuj ponownie.</string>
     <string name="clear_all_caches_unsupported_dhizuku">Dhizuku nie może czyścić pamięci podręcznej. Nie ma powłoki, w której uruchomiłby androidowe czyszczenie pamięci podręcznej, a API Device Owner nie ma odpowiednika. Przełącz się na Root lub Shizuku.</string>
+
+    <!-- Component control (App info → Components).
+         "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
+         guarded by a permission Thor does not hold. It needs root; the platform grants the waiver to
+         uid 0 alone, so a Shizuku running as shell cannot do it either. -->
+    <string name="component_action_open">Otwórz</string>
+    <string name="component_action_force_open">Wymuś otwarcie</string>
+    <string name="component_action_copy">Kopiuj nazwę klasy</string>
+    <string name="component_action_stop_now">Zatrzymaj teraz</string>
+    <string name="component_action_disable">Wyłącz</string>
+    <string name="component_action_enable">Włącz</string>
+    <string name="component_action_reset">Przywróć stan domyślny</string>
+    <string name="component_action_forget">Zapomnij</string>
+    <string name="cd_component_actions">Akcje dla %1$s</string>
+
+    <string name="component_badge_restricted">Ograniczony przez aplikację Thor</string>
+    <string name="component_badge_drift">Zmieniony gdzie indziej</string>
+    <string name="component_badge_disabled">Wyłączony</string>
+    <string name="component_badge_not_exported">Nieeksportowany</string>
+    <string name="component_badge_off_by_default">Domyślnie wyłączony</string>
+
+    <string name="component_blocker_no_privilege">Włącz Root lub Shizuku, aby zmieniać komponenty.</string>
+    <string name="component_blocker_shizuku_not_root">Zmienianie komponentów wymaga Shizuku uruchomionego jako root. Shizuku w trybie powłoki tego nie potrafi.</string>
+    <string name="component_blocker_dhizuku">Dhizuku nie może zmieniać pojedynczych komponentów. Użyj trybu Root lub Shizuku w trybie root.</string>
+    <string name="component_control_requires_root_shizuku">Shizuku działa jako powłoka, a nie jako root. Zmienianie komponentów wymaga dostępu root.</string>
+    <string name="component_control_unsupported_dhizuku">Dhizuku nie może sterować pojedynczymi komponentami.</string>
+
+    <string name="component_launched">Otwarto %1$s</string>
+    <string name="component_service_stopped">Zatrzymano %1$s</string>
+    <string name="component_disabled_success">Wyłączono %1$s</string>
+    <string name="component_enabled_success">Włączono %1$s</string>
+    <string name="component_reset_success">%1$s — przywrócono stan domyślny</string>
+    <string name="component_forgotten">Przestano śledzić %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="one">%1$d komponent ograniczony przez aplikację Thor</item>
+        <item quantity="few">%1$d komponenty ograniczone przez aplikację Thor</item>
+        <item quantity="many">%1$d komponentów ograniczonych przez aplikację Thor</item>
+        <item quantity="other">%1$d komponentu ograniczonego przez aplikację Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="one">Przywrócono %1$d komponent</item>
+        <item quantity="few">Przywrócono %1$d komponenty</item>
+        <item quantity="many">Przywrócono %1$d komponentów</item>
+        <item quantity="other">Przywrócono %1$d komponentu</item>
+    </plurals>
+    <string name="component_restore_all_partial">Przywrócono %1$d z %2$d — spróbuj ponownie, aby przywrócić resztę</string>
+    <string name="component_restore_all_action">Przywróć wszystkie</string>
+    <string name="component_restore_all_title">Przywrócić wszystkie komponenty?</string>
+    <string name="component_restore_all_message">Każdy komponent wyłączony przez aplikację Thor — w tej aplikacji i we wszystkich pozostałych — wróci do stanu, w jakim został dostarczony. Komponenty zmienione przez inne narzędzia zostaną nietknięte.</string>
+
+    <string name="component_disclaimer_title">Wyłączyć komponent?</string>
+    <string name="component_disclaimer_message">%1$s nadal pozostanie częścią aplikacji; przestanie tylko działać. Aplikacje rzadko się tego spodziewają, więc jakaś funkcja może przestać działać bez żadnego błędu albo aplikacja może ulec awarii. Thor zapisuje, co wyłącza, aby można było to później cofnąć.</string>
+    <string name="component_disclaimer_confirm">Wyłącz go</string>
+    <string name="component_disclaimer_dont_ask_session">Nie pytaj ponownie w tej sesji</string>
+    <string name="component_disabled_unrecorded">Wyłączono %1$s, ale Thor nie zdołał tego zapisać — Przywróć wszystkie tego nie obejmie</string>
+    <string name="sweep_notification_title">Wykonywanie działań na aplikacjach</string>
+    <string name="sweep_queued">Umieszczono działania w kolejce</string>
+    <string name="sweep_running">Przetwarzanie: %1$d z %2$d</string>
+    <string name="sweep_succeeded">Ukończono: %1$d z %2$d</string>
+    <string name="sweep_partial">Działania zakończyły się z problemami</string>
+    <string name="sweep_cancelled">Anulowano kolejkę działań</string>
+    <string name="sweep_failed">Nie udało się wykonać działań</string>
+    <string name="sweep_observer_failure">Postęp niedostępny</string>
+    <string name="sweep_root_lane_degraded">Tor root archiwizacji/operacji działa w trybie awaryjnym</string>
+    <string name="sweep_result_summary">Działania na aplikacjach — powodzenie: %1$d · błędy: %2$d · zajęte: %3$d · nierozstrzygnięte: %4$d</string>
+
+    <!-- Trwałe kolejki usług pierwszoplanowych -->
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">Kolejka zadań</string>
+    <string name="task_queue_providers">Dostawcy uprawnień</string>
+    <string name="task_queue_section_running">W toku</string>
+    <string name="task_queue_section_queued">W kolejce / wymagane działanie</string>
+    <string name="task_queue_section_recent">Ostatnie</string>
+    <string name="task_queue_empty">Nie ma jeszcze zadań</string>
+    <string name="task_queue_empty_running">Żadne zadanie nie jest wykonywane</string>
+    <string name="task_queue_empty_queued">Brak zadań w kolejce i wymaganych działań</string>
+    <string name="task_queue_empty_recent">Brak ostatnich zadań</string>
+    <string name="task_queue_kind_data">Operacje na danych</string>
+    <string name="task_queue_kind_privilege">Uprzywilejowane działania na aplikacjach</string>
+    <string name="task_queue_background">W tle</string>
+    <string name="task_queue_cancel">Anuluj</string>
+    <string name="task_queue_close">Zamknij</string>
+    <string name="task_queue_progress">%1$d z %2$d</string>
+
+    <string name="task_action_authenticate_archive">Uwierzytelnij archiwum</string>
+    <string name="task_action_provide_source">Wskaż źródło</string>
+    <string name="task_action_review_restore">Sprawdź przywracanie</string>
+    <string name="task_action_authorize_privilege">Autoryzuj uprawnienie</string>
+    <string name="task_action_authorize_retry">Autoryzuj ponowienie</string>
+    <string name="task_action_retry">Spróbuj ponownie</string>
+    <string name="task_action_resume">Wznów</string>
+    <string name="task_action_share">Udostępnij</string>
+    <string name="task_action_open_notification_settings">Otwórz ustawienia powiadomień</string>
+
+    <string name="task_operation_archive_backup">Kopia zapasowa archiwum</string>
+    <string name="task_operation_archive_restore">Przywracanie archiwum</string>
+    <string name="task_operation_app_export">Eksport aplikacji</string>
+    <string name="task_operation_share_prepare">Przygotowanie do udostępnienia</string>
+    <string name="task_operation_freeze">Zamrażanie aplikacji</string>
+    <string name="task_operation_unfreeze">Odmrażanie aplikacji</string>
+    <string name="task_operation_suspend">Zawieszanie aplikacji</string>
+    <string name="task_operation_unsuspend">Wznawianie aplikacji</string>
+    <string name="task_operation_clear_cache">Czyszczenie pamięci podręcznej</string>
+    <string name="task_operation_reinstall">Naprawa Sklepu</string>
+
+    <string name="task_state_starting">Uruchamianie</string>
+    <string name="task_state_queued">W kolejce</string>
+    <string name="task_state_running">W toku</string>
+    <string name="task_state_stopping">Zatrzymywanie</string>
+    <string name="task_state_waiting_for_auth">Wymagane uwierzytelnienie</string>
+    <string name="task_state_waiting_for_source">Wymagane źródło</string>
+    <string name="task_state_waiting_for_privilege">Wymagane uprawnienie</string>
+    <string name="task_state_interrupted_review">Wymagane sprawdzenie</string>
+    <string name="task_state_ready">Gotowe do udostępnienia</string>
+    <string name="task_state_ready_partial">Częściowo gotowe do udostępnienia</string>
+    <string name="task_state_start_blocked">Uruchomienie zablokowane</string>
+    <string name="task_state_start_blocked_notification">Powiadomienia zablokowane</string>
+    <string name="task_state_succeeded">Powodzenie</string>
+    <string name="task_state_partial">Ukończono z problemami</string>
+    <string name="task_state_failed">Niepowodzenie</string>
+    <string name="task_state_cancelled">Anulowano</string>
+    <string name="task_state_expired">Wygasło</string>
+    <string name="task_state_observer_failure">Stan niedostępny</string>
+
+    <string name="task_reason_queued">Oczekiwanie na wcześniejsze zadania w tej kolejce.</string>
+    <string name="task_reason_stopping">Bezpieczne kończenie anulowania.</string>
+    <string name="task_reason_waiting_for_auth">Wprowadź hasło archiwum dla %1$s, aby kontynuować.</string>
+    <string name="task_reason_waiting_for_source">Wybierz archiwum dla %1$s, aby kontynuować.</string>
+    <string name="task_reason_waiting_for_privilege">Skonfiguruj Root, Shizuku lub Dhizuku, a następnie wróć do aplikacji Thor.</string>
+    <string name="task_reason_interrupted_restore">Przywracanie %1$s przerwano po rozpoczęciu zmian danych. Sprawdź je przed wznowieniem.</string>
+    <string name="task_reason_interrupted_sweep">Thor nie mógł zweryfikować %1$s po działaniu %2$s. Ponów dopiero po sprawdzeniu aplikacji.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="one">Przygotowany plik (%1$d) jest gotowy do udostępnienia.</item>
+        <item quantity="few">Przygotowane pliki (%1$d) są gotowe do udostępnienia.</item>
+        <item quantity="many">Przygotowane pliki (%1$d) są gotowe do udostępnienia.</item>
+        <item quantity="other">Przygotowane pliki (%1$d) są gotowe do udostępnienia.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="one">Gotowy do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</item>
+        <item quantity="few">Gotowe do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</item>
+        <item quantity="many">Gotowe do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</item>
+        <item quantity="other">Gotowe do udostępnienia: %1$d z %2$d plików; pozostałych nie udało się przygotować.</item>
+    </plurals>
+    <string name="task_reason_start_blocked">Android uniemożliwił uruchomienie tego zadania. Spróbuj ponownie przy otwartej aplikacji Thor.</string>
+    <string name="task_reason_start_blocked_notification">Ten kanał powiadomień jest zablokowany. Włącz go przed ponowieniem.</string>
+    <string name="task_reason_failed">Zadanie nie zostało ukończone. Przed ponowieniem sprawdź szczegóły.</string>
+    <string name="task_reason_expired">Przygotowane pliki wygasły i zostały usunięte.</string>
+    <string name="task_reason_observer_failure">Thor nie może wczytać bieżącego stanu zadania. Zapisane zadanie nie zostało zmienione.</string>
+    <string name="task_reason_root_lane_degraded">Dedykowany kanał root jest niedostępny. Operacje root w tle używają wspólnego kanału awaryjnego.</string>
+
+    <string name="data_queue_notification_channel_name">Operacje na danych</string>
+    <string name="data_queue_notification_channel_description">Postęp archiwizacji, przywracania, eksportu i przygotowania do udostępnienia</string>
+    <string name="privilege_queue_notification_channel_name">Uprzywilejowane działania na aplikacjach</string>
+    <string name="privilege_queue_notification_channel_description">Postęp działań w kolejce: zamrażania, odmrażania, zawieszania, wznawiania, czyszczenia pamięci podręcznej i naprawy Sklepu</string>
+    <string name="data_queue_notification_title">Trwa operacja na danych</string>
+    <string name="privilege_queue_notification_title">Trwa działanie na aplikacji</string>
+    <string name="task_queue_notification_status">%1$s · %2$d z %3$d</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="one">Jeszcze %1$d zadanie w kolejce</item>
+        <item quantity="few">Jeszcze %1$d zadania w kolejce</item>
+        <item quantity="many">Jeszcze %1$d zadań w kolejce</item>
+        <item quantity="other">Jeszcze %1$d zadania w kolejce</item>
+    </plurals>
+    <string name="task_queue_notification_cancel">Anuluj</string>
+    <string name="task_queue_notification_ready_title">Gotowe do udostępnienia</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="one">Przygotowany plik (%1$d) jest gotowy.</item>
+        <item quantity="few">Przygotowane pliki (%1$d) są gotowe.</item>
+        <item quantity="many">Przygotowane pliki (%1$d) są gotowe.</item>
+        <item quantity="other">Przygotowane pliki (%1$d) są gotowe.</item>
+    </plurals>
+    <string name="task_queue_notification_ready_partial_title">Niektóre pliki są gotowe do udostępnienia</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="one">Gotowy plik: %1$d z %2$d.</item>
+        <item quantity="few">Gotowe pliki: %1$d z %2$d.</item>
+        <item quantity="many">Gotowe pliki: %1$d z %2$d.</item>
+        <item quantity="other">Gotowe pliki: %1$d z %2$d.</item>
+    </plurals>
+
+    <string name="task_dialog_archive_auth_title">Uwierzytelnij archiwum</string>
+    <string name="task_dialog_archive_auth_message">Wprowadź hasło archiwum dla %1$s. Zostanie użyte tylko w tej próbie i nie będzie zapisane.</string>
+    <string name="task_dialog_archive_passphrase_label">Hasło</string>
+    <string name="task_dialog_archive_auth_submit">Kontynuuj</string>
+    <string name="task_dialog_restore_source_title">Wskaż źródło przywracania</string>
+    <string name="task_dialog_restore_source_message">Wybierz archiwum dla %1$s. Thor nie zapisuje adresu źródła.</string>
+    <string name="task_dialog_restore_source_select">Wybierz archiwum</string>
+    <string name="task_dialog_restore_review_title">Sprawdź przerwane przywracanie</string>
+    <string name="task_dialog_restore_review_message">Przywracanie %1$s zatrzymało się po rozpoczęciu zmian danych aplikacji. Sprawdź aplikację przed wybraniem opcji Wznów.</string>
+    <string name="task_dialog_restore_review_resume">Wznów przywracanie</string>
+    <string name="task_dialog_sweep_retry_title">Autoryzuj ponowienie dla celu</string>
+    <string name="task_dialog_sweep_retry_message">Thor nie mógł zweryfikować %1$s po działaniu %2$s. Ponów dla tego celu tylko wtedy, gdy powtórzenie działania jest bezpieczne.</string>
+    <string name="task_dialog_sweep_retry_confirm">Ponów dla tego celu</string>
+    <string name="task_dialog_share_expired_message">Te prywatne pliki do udostępnienia osiągnęły limit 24 godzin i zostały usunięte.</string>
+
+    <plurals name="task_log_pending_queued">
+        <item quantity="one">%1$d zadanie przyjęte i dodane do kolejki</item>
+        <item quantity="few">%1$d zadania przyjęte i dodane do kolejki</item>
+        <item quantity="many">%1$d zadań przyjętych i dodanych do kolejki</item>
+        <item quantity="other">%1$d zadania przyjętego i dodanego do kolejki</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="one">%1$d zadanie oczekujące</item>
+        <item quantity="few">%1$d zadania oczekujące</item>
+        <item quantity="many">%1$d zadań oczekujących</item>
+        <item quantity="other">%1$d zadania oczekującego</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="one">%1$d zadanie nieprzetworzone</item>
+        <item quantity="few">%1$d zadania nieprzetworzone</item>
+        <item quantity="many">%1$d zadań nieprzetworzonych</item>
+        <item quantity="other">%1$d zadania nieprzetworzonego</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="one">Pominięto %1$d wcześniejszy wynik</item>
+        <item quantity="few">Pominięto %1$d wcześniejsze wyniki</item>
+        <item quantity="many">Pominięto %1$d wcześniejszych wyników</item>
+        <item quantity="other">Pominięto %1$d wcześniejszego wyniku</item>
+    </plurals>
+    <string name="task_log_stage_preparing">Przygotowywanie zadania.</string>
+    <string name="task_log_stage_staging_source">Kopiowanie wybranego źródła do prywatnego obszaru tymczasowego.</string>
+    <string name="task_log_stage_measuring">Mierzenie danych aplikacji.</string>
+    <string name="task_log_stage_capturing">Przechwytywanie danych aplikacji.</string>
+    <string name="task_log_stage_writing">Zapisywanie wyniku.</string>
+    <string name="task_log_stage_installing">Instalowanie pakietu aplikacji.</string>
+    <string name="task_log_stage_restoring">Przywracanie danych aplikacji.</string>
+    <string name="task_log_stage_publishing">Publikowanie wyniku.</string>
+    <string name="task_log_stage_finishing">Kończenie zadania.</string>
+    <string name="task_log_item_running">Przetwarzanie %1$s.</string>
+    <string name="task_log_item_succeeded">Ukończono %1$s.</string>
+    <string name="task_log_item_failed">%1$s — niepowodzenie.</string>
+    <string name="task_log_item_cancelled">Anulowano %1$s.</string>
+    <string name="task_log_item_busy">Pominięto %1$s, ponieważ używa go inna operacja.</string>
+    <string name="task_log_item_unknown">Nie udało się zweryfikować końcowego stanu %1$s.</string>
 
 </resources>

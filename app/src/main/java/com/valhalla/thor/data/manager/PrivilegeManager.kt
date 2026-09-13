@@ -24,9 +24,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
@@ -61,6 +64,7 @@ class PrivilegeManager(
 
     // Bumped to force a re-probe; StateFlow<Int> emits on every distinct value.
     private val refreshTrigger = MutableStateFlow(0)
+    private val completedRefreshGeneration = MutableStateFlow(-1)
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener { refresh() }
     private val permissionResultListener =
@@ -77,7 +81,7 @@ class PrivilegeManager(
             // rather than re-reading _state, which would race a concurrent refresh() emission.
             var firstReadyLogged = false
             combine(availabilityFlow(), preferenceRepository.userPreferences) { avail, prefs ->
-                PrivilegeState(
+                avail.generation to PrivilegeState(
                     root = avail.root,
                     shizuku = avail.shizuku,
                     dhizuku = avail.dhizuku,
@@ -89,8 +93,10 @@ class PrivilegeManager(
                     ),
                     isReady = true
                 )
-            }.collect { newState ->
+            }.collect { (generation, newState) ->
                 _state.value = newState
+                completedRefreshGeneration.value =
+                    maxOf(completedRefreshGeneration.value, generation)
                 // Logged after publishing, because it is the publish that releases the loaders
                 // every isLoading = !priv.isReady consumer is holding.
                 if (BuildConfig.PRIVILEGE_TRACE && !firstReadyLogged && newState.isReady) {
@@ -109,11 +115,23 @@ class PrivilegeManager(
         refreshTrigger.update { it + 1 }
     }
 
-    private data class Availability(val root: Boolean, val shizuku: Boolean, val dhizuku: Boolean)
+    /** Re-probes and waits for that generation even when the resulting StateFlow value is equal. */
+    suspend fun refreshAndAwait(): PrivilegeState {
+        val generation = refreshTrigger.updateAndGet { it + 1 }
+        completedRefreshGeneration.filter { it >= generation }.first()
+        return state.value
+    }
+
+    private data class Availability(
+        val generation: Int,
+        val root: Boolean,
+        val shizuku: Boolean,
+        val dhizuku: Boolean,
+    )
 
     private fun availabilityFlow(): Flow<Availability> =
         refreshTrigger
-            .map {
+            .map { generation ->
                 // Started before the coroutineScope so `total` includes the async dispatch — that
                 // is latency the caller waits for, and hiding it would flatter the measurement.
                 // Null (and compiled out) in release; see PrivilegeProbeTrace.
@@ -137,7 +155,7 @@ class PrivilegeManager(
                             safeProbe { systemRepository.isDhizukuAvailable() }
                         }
                     }
-                    Availability(root.await(), shizuku.await(), dhizuku.await())
+                    Availability(generation, root.await(), shizuku.await(), dhizuku.await())
                         .also { trace?.logRun(it.root, it.shizuku, it.dhizuku) }
                 }
             }

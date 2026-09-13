@@ -27,7 +27,7 @@ import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.domain.usecase.ArchiveHeaderOutcome
-import com.valhalla.thor.domain.usecase.ArchiveUnlockOutcome
+import com.valhalla.thor.domain.usecase.ArchiveAuthenticationOutcome
 import com.valhalla.thor.domain.usecase.OpenArchiveUseCase
 import com.valhalla.thor.domain.usecase.ReadInstalledAppFactsUseCase
 import com.valhalla.thor.presentation.launchGuarded
@@ -184,6 +184,9 @@ enum class ArchiveRestoreReason {
      * something that may be correct.
      */
     UNLOCK_CHECK_FAILED,
+
+    /** The archive's authenticated manifest or bundle bytes could not be verified. */
+    AUTHENTICATION_FAILED,
 
     /** Unlocked earlier, but the passphrase is gone by the time Restore was pressed. */
     PASSPHRASE_LOST,
@@ -348,7 +351,7 @@ internal class ArchiveRestoreViewModel(
     }
 
     /**
-     * Read [uriString]'s header and run the gate against it.
+     * Read [uriString]'s display-only header, authenticate the archive, then run the gate.
      *
      * Idempotent **per file**, not once per view model. `LaunchedEffect(uriString)` and a
      * recomposition can both call this with the URI already open, and re-reading would restart the
@@ -371,6 +374,7 @@ internal class ArchiveRestoreViewModel(
         // the file; `running` and `queued` because the guard above already returned if a job is live,
         // and `queued` is only ever set alongside `running` and cleared with it.
         wipePassphrase()
+        installed = null
         reattach?.cancel()
         reattach = null
         // Cancel-and-replace rather than `if (loading) return`: an early return would silently discard
@@ -466,32 +470,21 @@ internal class ArchiveRestoreViewModel(
                 }
             }
 
-            // Into a local, then the guard, then the field. `installed` is a plain field rather than
-            // state, so [updateForOpen] cannot cover it and a write to it is not undone by bailing
-            // afterwards — which is what an earlier version of this did. A dead read that publishes its
-            // facts leaves the gate comparing the live header against the *previous* archive's app:
-            // [evaluate] reads this field on every selection change, so the next `toggleClass` decides
-            // signer and version against facts belonging to a file the user already replaced.
-            val facts = installedFacts(header.packageName)
-            if (generation != openGeneration) return@launchGuarded
-            installed = facts
+            // The decoded header is display-only until the complete archive authenticates. In
+            // particular, its package name must not select an installed app or feed the restore gate.
             val obbCount = header.appBundle?.obbCount ?: 0
             val held = header.heldClasses()
             val defaultSelected = held.intersect(supportedClasses)
             updateForOpen(generation) { state ->
                 state.copy(
-                    loading = false,
                     fileName = source.displayName,
                     header = header,
-                    // Only classes the archive holds that are supported by the runner are selected by default.
                     selected = defaultSelected.toSet(),
                     obbOffered = obbCount > 0,
                     restoreObb = obbCount > 0,
                 )
             }
-            evaluate()
-            watchForExistingJob(header.packageName)
-            tryRememberedPassphrase(header, generation)
+            tryRememberedPassphrase(generation)
         }
     }
 
@@ -579,72 +572,43 @@ internal class ArchiveRestoreViewModel(
      */
     fun submitPassphrase(typed: CharArray) {
         val state = _uiState.value
-        val header = state.header ?: run {
-            // No header means no archive to test it against, and nothing downstream will ever see
-            // this array. The wipe is the whole of what this branch does.
+        if (state.header == null) {
             typed.fill(' ')
             return
         }
-        // The re-entry guard, and it is the reason `loading` below is not merely cosmetic. A
-        // derivation takes 210,000 PBKDF2 iterations — comfortably over a second on a minSdk-28-era
-        // device — and the screen clears its text field the moment Unlock is pressed. Retyping and
-        // pressing again used to put two derivations in flight whose completion order decided whether
-        // `unlocked` or `passphraseError` won, so the second attempt could overwrite the first
-        // attempt's success with a stale refusal. This array is wiped rather than parked: nothing
-        // downstream will see it.
+        val uri = uriString ?: run {
+            typed.fill(' ')
+            return
+        }
         if (state.loading) {
             typed.fill(' ')
             return
         }
-        // The spinner at the top of the screen is already wired to this flag and was never set here —
-        // `open()` was its only writer, which is why the *automatic* unlock through
-        // `tryRememberedPassphrase` showed progress and the manual one showed nothing at all. Set
-        // synchronously, before the coroutine, so the frame that clears the text field is also the
-        // frame that explains why.
+        val generation = openGeneration
         _uiState.update { it.copy(loading = true) }
         launchGuarded(
-            // `loading` is cleared on every path below, including this one — a throw out of the key
-            // derivation must not leave a spinner that never stops over a field the user cannot use.
-            //
-            // `UNLOCK_CHECK_FAILED`, deliberately not `WRONG_PASSPHRASE`: a throw is not evidence
-            // about what was typed. `unlock` answers `WrongPassphrase` for that and `Unsupported` for
-            // a cipher it does not implement, so anything reaching here is a third thing — and telling
-            // a user their passphrase is wrong when it may well be right sends them to change a
-            // passphrase that was never the problem.
             onFailure = {
                 typed.fill(' ')
-                _uiState.update {
+                updateForOpen(generation) {
                     it.copy(
                         loading = false,
                         unlocked = false,
-                        passphraseNeeded = true,
-                        passphraseError = ArchiveRestoreMessage.Known(
-                            ArchiveRestoreReason.UNLOCK_CHECK_FAILED
+                        passphraseNeeded = false,
+                        error = ArchiveRestoreMessage.Known(
+                            ArchiveRestoreReason.AUTHENTICATION_FAILED
                         ),
                     )
                 }
             }
         ) {
-            when (val outcome = openArchive.unlock(header, typed)) {
-                // The key is discarded: this call is a yes/no answer. `ThorJobLauncher` derives the
-                // real one, so there is one enqueue path rather than two.
-                is ArchiveUnlockOutcome.Unlocked -> {
-                    // The one already held is superseded, so it goes now rather than at `onCleared`.
-                    wipePassphrase()
-                    passphrase = typed
-                    _uiState.update {
-                        it.copy(
-                            loading = false,
-                            unlocked = true,
-                            passphraseNeeded = false,
-                            passphraseError = null,
-                        )
-                    }
+            when (val outcome = authenticateSelectedSource(uri, typed)) {
+                is ArchiveAuthenticationOutcome.Authenticated -> {
+                    acceptAuthenticated(outcome, typed, generation)
                 }
 
-                is ArchiveUnlockOutcome.WrongPassphrase -> {
+                ArchiveAuthenticationOutcome.WrongPassphrase -> {
                     typed.fill(' ')
-                    _uiState.update {
+                    updateForOpen(generation) {
                         it.copy(
                             loading = false,
                             unlocked = false,
@@ -656,20 +620,9 @@ internal class ArchiveRestoreViewModel(
                     }
                 }
 
-                // A property of the archive, not of the passphrase, so it goes to `error` where the
-                // screen shows it instead of blaming what the user typed. `FromBelow`, because the
-                // sentence names the cipher or the KDF the archive asked for and this layer does not
-                // know one from another.
-                is ArchiveUnlockOutcome.Unsupported -> {
+                ArchiveAuthenticationOutcome.AuthenticationFailed -> {
                     typed.fill(' ')
-                    _uiState.update {
-                        it.copy(
-                            loading = false,
-                            unlocked = false,
-                            passphraseNeeded = false,
-                            error = ArchiveRestoreMessage.FromBelow(outcome.reason),
-                        )
-                    }
+                    showAuthenticationFailure(generation)
                 }
             }
         }
@@ -710,9 +663,9 @@ internal class ArchiveRestoreViewModel(
             return
         }
         val salt = header.kdf.saltBytes() ?: run {
-            // Also unreachable while `unlocked` gates this: `OpenArchiveUseCase.unlock` decodes the same
-            // salt first and answers `Unsupported` when it cannot, so an archive whose salt is undecodable
-            // never becomes unlocked. Same reason as above for keeping it — the alternative is `!!` on a
+            // Also unreachable while `unlocked` gates this: `OpenArchiveUseCase.authenticate` decodes
+            // the same salt first and refuses it when invalid, so such an archive never becomes unlocked.
+            // Same reason as above for keeping it — the alternative is `!!` on a
             // nullable header field, on the one screen where a crash mid-tap is least affordable.
             _uiState.update {
                 it.copy(
@@ -728,7 +681,7 @@ internal class ArchiveRestoreViewModel(
         _uiState.update { it.copy(running = true, queued = false, finished = null) }
         launchGuarded(
             onFailure = {
-                Logger.e("ArchiveRestoreVM", "beginRestore failed synchronously", it)
+                Logger.e("ArchiveRestoreVM", "beginRestore failed synchronously")
                 _uiState.update {
                     it.copy(
                         running = false,
@@ -744,7 +697,7 @@ internal class ArchiveRestoreViewModel(
                 classes = state.selected,
                 restoreObb = state.restoreObb,
             )
-            Logger.i("ArchiveRestoreVM", "Starting restore: pkg=${request.packageName}, classes=${request.classes}, restoreObb=${request.restoreObb}, uri=${request.uriString}")
+            Logger.i("ArchiveRestoreVM", "Starting archive restore")
             val id = launcher.startRestore(request, key, salt, header.kdf.iterations)
             Logger.i("ArchiveRestoreVM", "launcher.startRestore returned id=$id")
             if (id == null) {
@@ -763,6 +716,7 @@ internal class ArchiveRestoreViewModel(
 
     /** §8.1 as the screen sees it. Called on open and after every selection change. */
     private fun evaluate() {
+        if (!_uiState.value.unlocked) return
         val header = _uiState.value.header ?: return
         val decision = evaluateArchiveRestoreGate(header, installed, _uiState.value.selected)
         Logger.i("ArchiveRestoreVM", "evaluateArchiveRestoreGate: $decision (installed=$installed, selected=${_uiState.value.selected})")
@@ -785,50 +739,101 @@ internal class ArchiveRestoreViewModel(
     }
 
     /**
-     * @param generation the pick this unlock belongs to, checked before every write. The derivation is
+     * @param generation the pick this authentication belongs to, checked before every write. The derivation is
      *   210,000 PBKDF2 iterations, so this is the longest window on the screen for the user to pick a
      *   different file — and the only one whose stale write would hand a *key* to the wrong archive.
      */
-    private suspend fun tryRememberedPassphrase(header: ArchiveHeader, generation: Int) {
-        // First, and ahead of the vault: this gates the *prompt* as much as the derivation. Asking for
-        // a passphrase beside a refusal suggests the passphrase is what went wrong, and there is no
-        // passphrase that makes a signer mismatch restorable. The refusals that a later selection
-        // change can clear (NOTHING_SELECTED, CLASS_NOT_IN_ARCHIVE) cannot be the answer here — every
-        // class the archive holds is selected at this point.
-        if (_uiState.value.refusal != null) return
-
+    private suspend fun tryRememberedPassphrase(generation: Int) {
+        val uri = uriString ?: return
         val stored = vault.recall()
         if (stored == null) {
-            updateForOpen(generation) { it.copy(passphraseNeeded = true) }
+            updateForOpen(generation) {
+                it.copy(loading = false, passphraseNeeded = true)
+            }
             return
         }
 
-        when (openArchive.unlock(header, stored)) {
-            is ArchiveUnlockOutcome.Unlocked -> {
-                // Generation checked before the key is parked, not just before the flag: `passphrase` is
-                // what `restore()` hands the worker, so a stale write here is the one that would send
-                // archive A's key with archive B's request. Zeroed rather than dropped — this array came
-                // from the vault and nothing else holds it.
-                if (generation != openGeneration) {
-                    stored.fill(' ')
-                    return
-                }
-                wipePassphrase()
-                passphrase = stored
-                updateForOpen(generation) { it.copy(unlocked = true, passphraseNeeded = false) }
-            }
-            // §5.4: the vault is a cache. This archive was made with a different passphrase, which is
-            // an ordinary state and says nothing about the archive's health — so prompt, silently.
-            // `stored` is this class's own array, from `recall()`; nothing else holds it.
-            is ArchiveUnlockOutcome.WrongPassphrase -> {
-                stored.fill(' ')
-                updateForOpen(generation) { it.copy(passphraseNeeded = true) }
+        when (val outcome = authenticateSelectedSource(uri, stored)) {
+            is ArchiveAuthenticationOutcome.Authenticated -> {
+                acceptAuthenticated(outcome, stored, generation)
             }
 
-            is ArchiveUnlockOutcome.Unsupported -> {
+            ArchiveAuthenticationOutcome.WrongPassphrase -> {
                 stored.fill(' ')
-                updateForOpen(generation) { it.copy(passphraseNeeded = true) }
+                updateForOpen(generation) {
+                    it.copy(loading = false, passphraseNeeded = true)
+                }
             }
+
+            ArchiveAuthenticationOutcome.AuthenticationFailed -> {
+                stored.fill(' ')
+                showAuthenticationFailure(generation)
+            }
+        }
+    }
+
+    private suspend fun authenticateSelectedSource(
+        uri: String,
+        candidate: CharArray,
+    ): ArchiveAuthenticationOutcome = try {
+        when (val opened = sources.open(uri)) {
+            is ArchiveOpenOutcome.Opened -> opened.source.use {
+                openArchive.authenticate(it, candidate)
+            }
+            ArchiveOpenOutcome.NotAnArchive,
+            ArchiveOpenOutcome.Unreadable,
+            -> ArchiveAuthenticationOutcome.AuthenticationFailed
+        }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        ArchiveAuthenticationOutcome.AuthenticationFailed
+    }
+
+    private suspend fun acceptAuthenticated(
+        outcome: ArchiveAuthenticationOutcome.Authenticated,
+        acceptedPassphrase: CharArray,
+        generation: Int,
+    ) {
+        val authenticatedHeader = outcome.header
+        val facts = installedFacts(authenticatedHeader.packageName)
+        if (generation != openGeneration) {
+            acceptedPassphrase.fill(' ')
+            return
+        }
+        installed = facts
+        wipePassphrase()
+        passphrase = acceptedPassphrase
+        val held = authenticatedHeader.heldClasses().toSet()
+        updateForOpen(generation) { state ->
+            state.copy(
+                loading = false,
+                header = authenticatedHeader,
+                selected = state.selected.intersect(held),
+                unlocked = true,
+                passphraseNeeded = false,
+                passphraseError = null,
+                error = null,
+            )
+        }
+        evaluate()
+        watchForExistingJob(authenticatedHeader.packageName)
+    }
+
+    private fun showAuthenticationFailure(generation: Int) {
+        updateForOpen(generation) {
+            it.copy(
+                loading = false,
+                unlocked = false,
+                passphraseNeeded = false,
+                passphraseError = null,
+                refusal = null,
+                warnings = emptyList(),
+                installFirst = false,
+                error = ArchiveRestoreMessage.Known(
+                    ArchiveRestoreReason.AUTHENTICATION_FAILED
+                ),
+            )
         }
     }
 

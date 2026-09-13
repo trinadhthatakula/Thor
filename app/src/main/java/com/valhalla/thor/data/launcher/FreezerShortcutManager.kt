@@ -22,29 +22,46 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.valhalla.thor.R
 import com.valhalla.thor.data.freezer.AppFreezeStateReader
-import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
-import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezeState
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+
+internal fun terminalSweepRequestIds(statuses: List<PrivilegeSweepStatus>): Set<java.util.UUID> =
+    statuses.asSequence()
+        .filter {
+            it.operation == PrivilegeSweepOperation.FREEZE ||
+                it.operation == PrivilegeSweepOperation.UNFREEZE
+        }
+        .filter {
+            it.phase == PrivilegeSweepPhase.SUCCEEDED ||
+                it.phase == PrivilegeSweepPhase.PARTIAL ||
+                it.phase == PrivilegeSweepPhase.CANCELLED ||
+                it.phase == PrivilegeSweepPhase.FAILED ||
+                it.phase == PrivilegeSweepPhase.OBSERVER_FAILURE
+        }
+        .mapTo(linkedSetOf()) { it.requestId }
 
 /** Owns all launcher-shortcut plumbing for the Freezer feature. */
 @Single(binds = [AppShortcutController::class])
 class FreezerShortcutManager(
     private val context: Context,
     private val freezerRepository: FreezerRepository,
-    private val bulkFreezeRunner: BulkFreezeRunner,
+    private val sweepController: PrivilegeSweepController,
     private val stateReader: AppFreezeStateReader,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : AppShortcutController {
@@ -60,25 +77,48 @@ class FreezerShortcutManager(
     }
 
     init {
-        // Rebuild pinned icons off the runner's completions rather than off a call site.
-        //
-        // The QS tile calls BulkFreezeRunner.launch directly — correctly: a tile has no reason
-        // to know shortcuts exist — so a rebuild hung off runBulk was reachable from the
-        // launcher Freeze-all shortcut and from nowhere else. Apps froze from the tile and
-        // their pinned icons stayed full colour.
-        //
-        // The dependency direction is forced: this class already holds the runner, so it
-        // subscribes. The runner must not hold this class back (Koin cycle), which also keeps
-        // it free of any launcher concern.
-        //
-        // Startup ordering gets this close: Koin builds this @Single as a constructor argument
-        // of AutoFreezeManager, ThorApplication.onCreate calls autoFreezeManager.startObserving()
-        // synchronously, and Application.onCreate always completes before the framework binds
-        // FreezerTileService. But `scope.launch` only *schedules* the collector, so subscription
-        // itself is not ordered against the first run — which is why `completions` carries
-        // replay = 1. A replayed completion just costs one extra rebuild from live state.
+        // Room-retained terminal request ids survive every surface and process recreation. Distinct
+        // sets ensure phase/count updates rebuild icons exactly once when a freeze/unfreeze settles.
         scope.launch {
-            bulkFreezeRunner.completions.collect { rebuildPinnedIcons() }
+            sweepController.activeRequests
+                .map(::terminalSweepRequestIds)
+                .distinctUntilChanged()
+                .collect { terminalIds ->
+                    if (terminalIds.isNotEmpty()) rebuildPinnedIcons()
+                }
+        }
+    }
+
+    /**
+     * `scope.launch` for the fire-and-forget port methods, with the throw caught where the caller
+     * cannot reach it.
+     *
+     * A view-model-side guard is worthless for these: the method returns the moment
+     * [CoroutineScope.launch] schedules the body, so the caller's `try`/`catch` — or
+     * `launchGuarded`'s — has already completed successfully by the time the body runs. The throw
+     * then surfaces on [scope], which is `SupervisorJob() + ioDispatcher` with **no**
+     * `CoroutineExceptionHandler`: a `SupervisorJob` stops a failing child from cancelling its
+     * siblings, not from being *reported*, so it goes on to Android's default uncaught handler and
+     * ends the process. That is the same reasoning [rebuildPinnedIcons] already carries; this hoists
+     * it so every launch in this class is covered by one rule instead of one of five being right.
+     *
+     * Everything routed through here is a best-effort launcher cosmetic — an icon repaint, a pin
+     * request the platform never confirms anyway — so continuing is the correct answer. It is not a
+     * silent one at the layer that matters: [ShortcutManagerCompat.requestPinShortcut] only ever
+     * reports the *accept*, so there is nothing a caller could have been told about a refusal even
+     * if the throw could reach it. Logged rather than surfaced for that reason, and because a
+     * `Context` is all this class has — no channel, no UI.
+     */
+    private fun launchSafely(what: String, block: suspend () -> Unit) {
+        scope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                // Never swallowed: this only arrives when the process-lifetime scope itself dies.
+                throw e
+            } catch (e: Exception) {
+                Logger.e("FreezerShortcut", "$what failed", e)
+            }
         }
     }
 
@@ -89,7 +129,9 @@ class FreezerShortcutManager(
      *  (grey while frozen, full colour while enabled). Runs off the caller's thread — the icon
      *  decode is heavy — so any surface (dialog, details, freezer) can call this directly. */
     override fun pinAppShortcut(packageName: String, label: String) {
-        scope.launch { pinAppShortcutSuspend(packageName, label) }
+        launchSafely("pinning a shortcut for $packageName") {
+            pinAppShortcutSuspend(packageName, label)
+        }
     }
 
     /** Suspending pin so bulk callers can pin sequentially instead of spawning N concurrent bitmap
@@ -105,7 +147,9 @@ class FreezerShortcutManager(
     /** Update an already-pinned per-app shortcut so its icon reflects the app's current state.
      *  No-op if no such shortcut exists. Call after any freeze/unfreeze of the package. */
     override fun refreshAppShortcut(packageName: String) {
-        scope.launch { updateShortcutIcon(packageName) }
+        launchSafely("repainting the shortcut icon for $packageName") {
+            updateShortcutIcon(packageName)
+        }
     }
 
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut. */
@@ -116,9 +160,13 @@ class FreezerShortcutManager(
     }
 
     /** Publish (or remove) the Freeze-all + Unfreeze-all long-press dynamic shortcuts. */
-    fun syncDynamicShortcuts(enabled: Boolean) {
+    override fun syncDynamicShortcuts(enabled: Boolean) {
         // Binder IPC — called from Main (cold-start + Settings); keep it off the caller's thread.
-        scope.launch {
+        //
+        // Guarded for the same reason as the two above, and this one is the worst of the three to
+        // leave bare: a cold-start caller means a throw here is a crash *on launch*, before the
+        // user has touched anything.
+        launchSafely(if (enabled) "publishing the bulk shortcuts" else "removing the bulk shortcuts") {
             if (enabled) {
                 ShortcutManagerCompat.setDynamicShortcuts(
                     context,
@@ -143,29 +191,9 @@ class FreezerShortcutManager(
     }
 
     /**
-     * Bulk freeze/unfreeze every package in the freezer, off the finishing activity.
-     *
-     * Returns the run so the caller can await its [BulkOutcome] and report it. The icon rebuild
-     * is deliberately *not* part of that Deferred: it hangs off the runner's completions (see
-     * the `init` block), so a caller that finishes early never truncates it, and a caller that
-     * awaits does not wait on shortcut bookkeeping it does not care about.
-     */
-    fun runBulk(disable: Boolean): Deferred<BulkOutcome> =
-        // Delegate so this shares the tile's candidate filter, Semaphore(5), deadline and
-        // result reporting. It previously ran sequentially and discarded every Result.
-        bulkFreezeRunner.launch(if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE)
-
-    // The public `refreshPinnedShortcutIcons()` that used to sit here is gone with its only
-    // caller. It existed "for a caller that runs its own batch instead of going through
-    // BulkFreezeRunner", which described Settings' Unfreeze-all until that was rerouted through
-    // the runner — and leaving it would have advertised the bypass as a supported way to write a
-    // new bulk surface. There is no such way: every bulk run goes through the runner, and the
-    // rebuild hangs off its completions in `init`, which is the whole point of that subscription.
-
-    /**
      * Repaint every pinned per-app shortcut from live freeze state.
      *
-     * No dedupe needed: `BulkFreezeRunner.launch` coalesces same-op taps onto one run, one run
+     * No dedupe needed: `the durable sweep queue.launch` coalesces same-op taps onto one run, one run
      * emits one completion, and the completions buffer collapses a burst into a single trailing
      * rebuild. So impatient re-taps — the expected case, since the bulk shortcut shows nothing
      * for up to two seconds — cost one rebuild, not N concurrent icon decodes over every pinned
@@ -191,6 +219,11 @@ class FreezerShortcutManager(
             // binder-death RuntimeException would otherwise escape to Android's default
             // uncaught handler and kill the process — and would also terminate the collector
             // for the rest of the process lifetime. Log and continue.
+            //
+            // Kept *inside* the collected body rather than folded into [launchSafely], which now
+            // covers the other launches in this class: the guard has to sit inside `collect` for
+            // the collector to survive its own failure. Wrapping the launch instead would stop the
+            // crash and still leave every pinned icon stale until the process restarts.
             Logger.e("FreezerShortcut", "pinned icon rebuild failed", e)
         }
     }

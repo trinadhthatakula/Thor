@@ -21,6 +21,12 @@ sealed interface ThorRoute : NavKey {
     @Serializable
     data object Settings : ThorRoute
 
+    @Serializable
+    data object Queue : ThorRoute
+
+    @Serializable
+    data class TaskDetail(val taskId: String) : ThorRoute
+
     /**
      * One of the eight settings categories, opened from the index.
      *

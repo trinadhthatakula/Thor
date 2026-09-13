@@ -114,7 +114,9 @@ class AndroidKeystoreVaultKeyProvider : VaultKeyProvider {
 // write or bad block can leave the file unreadable, and the default handler would rethrow forever.
 // Replacing with empty preferences means recall() returns null → the user is prompted to type the
 // passphrase, which is exactly the failure mode this cache is designed to degrade to.
-private val Context.passphraseVault by preferencesDataStore(
+//
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal val Context.passphraseVault by preferencesDataStore(
     name = "thor_passphrase_vault",
     corruptionHandler = ReplaceFileCorruptionHandler {
         Logger.e("PassphraseVault", "thor_passphrase_vault was unreadable; replacing with empty", it)

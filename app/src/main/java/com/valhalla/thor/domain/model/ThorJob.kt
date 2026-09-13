@@ -13,16 +13,17 @@ package com.valhalla.thor.domain.model
  * `APPEND_OR_REPLACE` rather than `APPEND` because the chain must not be wedged by a job that failed
  * or was cancelled — replace is the escape hatch that keeps the queue usable.
  *
- * **The argument above is about disk, so it does not reach a privilege sweep.** A freeze, a suspend, a
- * force-stop and an uninstall write no bytes; putting them on this name would queue a five-second
- * sweep behind an hour-long backup for a reason that does not apply to it. They use
+ * **The argument above is about disk, so it does not reach a privilege sweep.** Freezing,
+ * unfreezing, per-app cache clearing, and verified Fix Store write no archive bytes; putting them on
+ * this name would queue a five-second sweep behind an hour-long backup for a reason that does not
+ * apply to it. They use
  * [THOR_SWEEP_CHAIN] instead.
  */
 const val THOR_JOB_CHAIN = "thor.job.chain"
 
 /**
- * The unique work name every **privilege sweep** shares — bulk freeze, unfreeze, force-stop, cache
- * clear, reinstall.
+ * The unique work name every **privilege sweep** shares — freeze, unfreeze, per-app cache clear,
+ * and verified Fix Store.
  *
  * Separate from [THOR_JOB_CHAIN] so a sweep is not queued behind a multi-gigabyte capture, and so a
  * capture is not delayed by a queue of sweeps. Same `APPEND_OR_REPLACE` policy, for the same
@@ -82,6 +83,7 @@ enum class ThorJobKind(val id: String) {
      * re-run of an interrupted worker actually produces the file the user asked for.
      */
     APP_EXPORT("app-export"),
+    PRIVILEGE_SWEEP("privilege-sweep"),
 }
 
 /**
@@ -105,7 +107,8 @@ enum class ThorJobStage {
     RESTORING,
 
     /**
-     * A sweep working through its selection — freezing, clearing, force-stopping.
+     * A sweep working through its selection — freezing, unfreezing, clearing one app's cache, or
+     * running a verified Fix Store reinstall.
      *
      * One stage for the whole loop rather than one per operation, because a sweep's interesting
      * quantity is *which app of how many*, and that is [ThorJobProgress.label] and its counts. The

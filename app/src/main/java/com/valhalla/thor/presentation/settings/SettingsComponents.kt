@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,14 +50,16 @@ import com.valhalla.thor.R
  * does not forward `subtitleMaxLines` to the `AsgardListRow` underneath it, which is the one thing
  * these rows exist to get right.
  *
- * ## Two lines of subtitle, and no marquee
+ * ## Compact by default, and no marquee
  *
- * Every subtitle here is `maxLines = 2`. The previous switch row was `maxLines = 1` with an opt-in
+ * Subtitles default to `maxLines = 2`. [SettingsExpandedSwitchRow] keeps Freezer explanations and
+ * security-sensitive choices fully readable, including at larger font scales and in longer locales.
+ * The previous switch row was `maxLines = 1` with an opt-in
  * `basicMarquee` that started on a tap *on the subtitle text* — a nested clickable inside a row
  * whose whole surface already toggles the switch, so the gesture that revealed the description was
  * a tap that looked exactly like the one that changed the setting. Nine call sites opted in; the
- * other rows just truncated. Two lines fit every description Thor ships, in all five locales, so
- * the scrolling text had nothing left to reveal.
+ * other rows just truncated. Compact defaults are retained for those rows; this is not a blanket
+ * claim that every description fits at every locale, width, or font scale.
  */
 
 /** The tinted circle that carries a row's glyph. */
@@ -152,6 +155,8 @@ internal fun SettingsSwitchRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     highlighted: Boolean = false,
+    titleMaxLines: Int = 1,
+    subtitleMaxLines: Int = 2,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
@@ -178,8 +183,8 @@ internal fun SettingsSwitchRow(
             SettingsIconBox(icon)
             Spacer(Modifier.width(16.dp))
             Column {
-                RowTitle(title)
-                RowSubtitle(subtitle)
+                RowTitle(title, maxLines = titleMaxLines)
+                RowSubtitle(subtitle, maxLines = subtitleMaxLines)
             }
         }
         Spacer(Modifier.width(8.dp))
@@ -194,6 +199,38 @@ internal fun SettingsSwitchRow(
             enabled = enabled
         )
     }
+}
+
+/**
+ * A switch whose explanation must stay readable before the user changes it.
+ *
+ * Let the row grow instead of using a fixed three-line cap: that would still truncate translated
+ * text at larger font scales. The parent category scrolls, and the row remains one switch target;
+ * reading its description never requires a tap that could also change the setting.
+ */
+@Composable
+internal fun SettingsExpandedSwitchRow(
+    @DrawableRes icon: Int,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    highlighted: Boolean = false,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    SettingsSwitchRow(
+        icon = icon,
+        title = title,
+        subtitle = subtitle,
+        checked = checked,
+        modifier = modifier,
+        enabled = enabled,
+        highlighted = highlighted,
+        titleMaxLines = Int.MAX_VALUE,
+        subtitleMaxLines = Int.MAX_VALUE,
+        onCheckedChange = onCheckedChange,
+    )
 }
 
 /**
@@ -213,6 +250,9 @@ internal fun SettingsPickerRow(
     onItemSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
+    /** Keep the complete copy and choice labels readable at larger text sizes. */
+    wrapText: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -224,9 +264,9 @@ internal fun SettingsPickerRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             SettingsIconBox(icon)
             Spacer(Modifier.width(16.dp))
-            Column {
-                RowTitle(title)
-                RowSubtitle(subtitle)
+            Column(Modifier.weight(1f)) {
+                RowTitle(title, maxLines = if (wrapText) Int.MAX_VALUE else 1)
+                RowSubtitle(subtitle, maxLines = if (wrapText) Int.MAX_VALUE else 2)
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -234,31 +274,36 @@ internal fun SettingsPickerRow(
             items = items,
             selectedIndex = selectedIndex,
             onItemSelected = onItemSelected,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            labelMaxLines = if (wrapText) Int.MAX_VALUE else 1,
         )
+        content()
     }
 }
 
-/** One line, always. A wrapped title stops the row scanning as a list. */
+/** Compact by default; consent-affecting settings can keep their complete label visible. */
 @Composable
-private fun RowTitle(title: String) {
+private fun RowTitle(title: String, maxLines: Int = 1) {
     Text(
         title,
+        // Expanded copy uses the whole text column, with consistent rendered/semantic bounds.
+        modifier = if (maxLines == Int.MAX_VALUE) Modifier.fillMaxWidth() else Modifier,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
-        maxLines = 1,
+        maxLines = maxLines,
         overflow = TextOverflow.Ellipsis
     )
 }
 
-/** Two lines. See this file's header for why that number and not one. */
+/** Two lines by default, with an explicit allowance for a complete security description. */
 @Composable
-private fun RowSubtitle(subtitle: String) {
+private fun RowSubtitle(subtitle: String, maxLines: Int = 2) {
     Text(
         subtitle,
+        modifier = if (maxLines == Int.MAX_VALUE) Modifier.fillMaxWidth() else Modifier,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 2,
+        maxLines = maxLines,
         overflow = TextOverflow.Ellipsis
     )
 }

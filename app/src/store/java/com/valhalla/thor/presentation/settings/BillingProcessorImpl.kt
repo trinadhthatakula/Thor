@@ -257,7 +257,8 @@ class BillingProcessorImpl(
      * from that terminal state is [refreshPurchases] — a resume is the signal a fixed 31-second
      * budget cannot see.
      */
-    private fun scheduleReconnect(step: BillingReconnectStep) {
+    // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
+    internal fun scheduleReconnect(step: BillingReconnectStep) {
         if (step is BillingReconnectStep.Exhausted) {
             Logger.w(
                 "BillingProcessor",
@@ -313,7 +314,8 @@ class BillingProcessorImpl(
      * (`onProductDetailsResponse(BillingResult, QueryProductDetailsResult)`), not the pre-8.0
      * `(BillingResult, List<ProductDetails>)`.
      */
-    private fun queryProducts() {
+    // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
+    internal fun queryProducts() {
         val productList = SUPPORT_TIER_PRODUCT_IDS.map { productId ->
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(productId)
@@ -434,7 +436,8 @@ class BillingProcessorImpl(
      * answers `SERVICE_DISCONNECTED` through the `else` below, which is strictly more than never
      * asking.
      */
-    private fun queryActiveSubscriptions() {
+    // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
+    internal fun queryActiveSubscriptions() {
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.SUBS)
             .build()

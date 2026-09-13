@@ -7,7 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.hasAnySibling
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -111,6 +111,7 @@ class HomeActionsBentoTest {
                 reinstallVisible = true,
                 canClearCache = false,
                 hasPrivilege = true,
+                showBackupRestore = false,
                 unknownInstallerCount = 7,
                 selectedTypeName = "user",
                 onReinstall = {},

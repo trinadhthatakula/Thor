@@ -51,17 +51,17 @@ import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkRequest
-import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.killableMembers
 
 /**
  * The freeze-profiles list: named sets of apps the user can freeze or unfreeze in one tap.
  *
  * Profiles are deliberately *not* a view onto the freezer watchlist — see [FreezeProfile] — so
- * this sheet never edits watchlist membership. Running one goes through `BulkFreezeRunner`,
+ * this sheet never edits watchlist membership. Running one goes through `the durable sweep queue`,
  * which is where the tier gate is applied to a list; nothing here freezes anything itself.
  *
  * Four verbs, chosen per tap and never stored on the profile: freeze and unfreeze on the row, and
@@ -70,12 +70,24 @@ import com.valhalla.thor.domain.model.killableMembers
  * names one. [onKill] does not go through the runner at all; it hands the resolved app list to the
  * host, which routes it into the same confirm-and-log flow every other force-stop uses.
  */
+internal fun profileRequestStatus(
+    profileId: Long,
+    statuses: List<PrivilegeSweepStatus>,
+): PrivilegeSweepStatus? = statuses.firstOrNull { profileId in it.profileIds }
+
+internal fun profileRequestIsRunning(
+    profileId: Long,
+    statuses: List<PrivilegeSweepStatus>,
+): Boolean = profileRequestStatus(profileId, statuses)?.phase.let { phase ->
+    phase == PrivilegeSweepPhase.QUEUED || phase == PrivilegeSweepPhase.RUNNING
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FreezeProfilesSheet(
     profiles: List<FreezeProfile>,
     allApps: List<AppInfo>,
-    runningRequests: List<BulkRequest>,
+    runningRequests: List<PrivilegeSweepStatus>,
     hasPrivilege: Boolean,
     onRun: (profileId: Long, op: BulkOp, mode: FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
@@ -154,11 +166,7 @@ fun FreezeProfilesSheet(
                     FreezeProfileRow(
                         profile = profile,
                         allApps = allApps,
-                        // Row-specific, not a global "something is running": two profiles are
-                        // serialized rather than coalesced, so tapping the second must not paint
-                        // the first one's spinner onto it. Both rows do spin while both are in
-                        // flight, which is the truth — the second is queued, not ignored.
-                        isRunning = runningRequests.any { it.scope == BulkScope.Profile(profile.id) },
+                        sweepStatus = profileRequestStatus(profile.id, runningRequests),
                         hasPrivilege = hasPrivilege,
                         onRun = { op, mode -> onRun(profile.id, op, mode) },
                         onKill = onKill,
@@ -204,10 +212,29 @@ fun FreezeProfilesSheet(
 }
 
 @Composable
+private fun profileSweepStatusText(status: PrivilegeSweepStatus): String = when (status.phase) {
+    PrivilegeSweepPhase.QUEUED -> stringResource(R.string.sweep_queued)
+    PrivilegeSweepPhase.RUNNING -> stringResource(
+        R.string.sweep_running,
+        status.succeeded + status.failed + status.busy,
+        status.total,
+    )
+    PrivilegeSweepPhase.SUCCEEDED -> stringResource(
+        R.string.sweep_succeeded,
+        status.succeeded,
+        status.total,
+    )
+    PrivilegeSweepPhase.PARTIAL -> stringResource(R.string.sweep_partial)
+    PrivilegeSweepPhase.CANCELLED -> stringResource(R.string.sweep_cancelled)
+    PrivilegeSweepPhase.FAILED -> stringResource(R.string.sweep_failed)
+    PrivilegeSweepPhase.OBSERVER_FAILURE -> stringResource(R.string.sweep_observer_failure)
+}
+
+@Composable
 private fun FreezeProfileRow(
     profile: FreezeProfile,
     allApps: List<AppInfo>,
-    isRunning: Boolean,
+    sweepStatus: PrivilegeSweepStatus?,
     hasPrivilege: Boolean,
     onRun: (BulkOp, FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
@@ -215,6 +242,8 @@ private fun FreezeProfileRow(
     onDelete: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val isRunning = sweepStatus?.phase == PrivilegeSweepPhase.QUEUED ||
+        sweepStatus?.phase == PrivilegeSweepPhase.RUNNING
 
     // Resolved here rather than in the host so the menu item can be disabled on the real answer.
     // "Force stop 0 apps" over a profile whose members are all frozen or uninstalled is a
@@ -252,6 +281,20 @@ private fun FreezeProfileRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                sweepStatus?.let { status ->
+                    Text(
+                        text = profileSweepStatusText(status),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (status.rootLaneDegraded) {
+                        Text(
+                            text = stringResource(R.string.sweep_root_lane_degraded),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
 
             if (isRunning) {

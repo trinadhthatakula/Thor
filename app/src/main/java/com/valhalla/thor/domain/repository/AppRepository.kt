@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import kotlinx.coroutines.flow.Flow
 
@@ -26,6 +27,17 @@ interface AppRepository {
      * Fetches heavy details (activities, permissions, services, etc.) dynamically.
      */
     suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo?
+
+    /**
+     * Re-reads just the four component lists.
+     *
+     * Exists so that switching one component off does not have to pay for the whole of
+     * [getDetailedAppInfo] to show the result: that call also hashes the signing certificate, walks
+     * the native library directory and makes two binder calls per requested permission, none of
+     * which a component toggle can have changed. Returns `null` on the same terms as
+     * [getDetailedAppInfo] — the package is gone, or `PackageManager` refused.
+     */
+    suspend fun getComponentDetails(packageName: String): ComponentSnapshot?
 
     // Parser for XAPK/APK installation features
     suspend fun getApkDetails(apkPath: String): AppInfo?

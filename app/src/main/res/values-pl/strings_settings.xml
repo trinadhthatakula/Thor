@@ -11,6 +11,10 @@
     <string name="settings_category_security">Bezpieczeństwo</string>
     <string name="settings_category_about">Informacje i wsparcie</string>
 
+    <string name="allow_legacy_apk_install">Zezwalaj na instalowanie starszych plików APK bez pytania</string>
+    <string name="allow_legacy_apk_install_desc">W instalatorze Thora automatycznie zezwalaj na instalację plików APK przeznaczonych dla starszych wersji Androida. Tylko Root lub Shizuku. Omija blokadę bezpieczeństwa Androida; starsze aplikacje mogą narazić urządzenie i dane na ryzyko. Gdy opcja jest wyłączona, pytaj przed każdą instalacją starszej aplikacji.</string>
+    <string name="legacy_install_allowed_by_setting">Zezwolono przez ustawienie instalatora. Dodatkowe potwierdzenie jest wyłączone.</string>
+
     <!-- ── Index chrome ──────────────────────────────────────────────────────────────────── -->
     <string name="settings_search_hint">Szukaj w ustawieniach…</string>
     <string name="settings_search_no_results">Nic w Ustawieniach nie pasuje do „%1$s”.</string>
@@ -62,10 +66,18 @@
     <string name="settings_summary_restore_interrupted">Przywracanie nie zostało ukończone</string>
     <string name="settings_summary_backup">Przywróć archiwum lub zmień hasło</string>
     <string name="settings_summary_unprivileged">Wymaga uprawnień root, Shizuku lub Dhizuku</string>
-    <string name="settings_summary_customization">Akcje panelu aplikacji i opcje układu</string>
+    <string name="settings_summary_customization">Czcionki i akcje panelu aplikacji</string>
 
     <!-- ── Kategoria personalizacji i akcje ───────────────────────────────────────────── -->
     <string name="settings_category_customization">Personalizacja</string>
+    <string name="customization_fonts">Czcionki</string>
+    <string name="customization_fonts_desc">Wybierz czcionki Asgard lub systemowe. Zmiany są stosowane od razu.</string>
+    <string name="font_preset_asgard">Asgard</string>
+    <string name="font_preset_system">Systemowe</string>
+    <string name="font_preview_title">Podgląd czcionek</string>
+    <string name="font_preview_heading">Przegląd aplikacji</string>
+    <string name="font_preview_body">Zarządzaj aplikacjami, uprawnieniami i pamięcią.</string>
+    <string name="font_preview_numbers">0123456789 · 1,2 GB</string>
     <string name="customization_app_info_actions">Akcje panelu aplikacji</string>
     <string name="customization_app_info_actions_desc">Zmień kolejność i widoczność akcji w dolnym panelu aplikacji</string>
     <string name="customization_drag_hint">Przeciągnij, aby zmienić kolejność • Przełącz, aby ukryć lub pokazać</string>

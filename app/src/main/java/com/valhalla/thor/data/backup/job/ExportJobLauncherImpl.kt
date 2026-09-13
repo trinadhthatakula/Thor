@@ -3,43 +3,23 @@
 
 package com.valhalla.thor.data.backup.job
 
-import android.content.Context
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.workDataOf
 import com.valhalla.thor.domain.model.AppExportRequest
-import com.valhalla.thor.domain.model.THOR_JOB_CHAIN
-import com.valhalla.thor.domain.model.ThorJobKind
-import com.valhalla.thor.domain.model.jobTag
 import com.valhalla.thor.domain.repository.ExportJobLauncher
 import com.valhalla.thor.domain.repository.ThorJobWatcher
+import com.valhalla.thor.util.Logger
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import org.koin.core.annotation.Single
 
 /**
- * The one place a Thor export job is started.
+ * Starts a single-app export by accepting it into the Room-backed data queue.
  *
- * Almost nothing, which is the point of it being separate from [ThorJobLauncher]: the whole reason
- * that class is long is key derivation and the ordering rules around [ArchiveKeyHolder], and an
- * export has neither. What is left is the shared [enqueueUniqueJob] — which is `internal` and
- * top-level precisely so this could reuse it rather than grow a second, subtly different, awaited
- * `Operation`.
- *
- * `onAbandoned` is left at its default for the same reason: an export that never reaches the database
- * has nothing held in memory to release. The caller's null return is the entire cleanup.
- *
- * [THOR_JOB_CHAIN], not [com.valhalla.thor.domain.model.THOR_SWEEP_CHAIN]: an export moves bytes, and
- * the chain's argument is about disk. Serialising it behind a running backup is the intended
- * behaviour — the two would otherwise stage a multi-gigabyte bundle each, at once, on the same
- * volume.
- *
- * The watch half is delegated rather than reimplemented. `status` and `runningJobFor` are written
- * against [ThorJobKind] and a job id and contain nothing archive-specific; a second copy here would
- * be a second place for `WorkInfo.State` to be mapped, and the mapping's subtle case — a null
- * `WorkInfo` meaning "pruned", not "failed" — is exactly the kind that gets copied wrong.
+ * The watch half remains delegated to [ThorJobWatcher], which combines active Room tasks with
+ * persisted legacy WorkManager work while the released data chain drains.
  */
 @Single(binds = [ExportJobLauncher::class])
 class ExportJobLauncherImpl(
-    private val context: Context,
+    private val acceptance: DataTaskAcceptance,
     watcher: ThorJobWatcher,
 ) : ExportJobLauncher, ThorJobWatcher by watcher {
 
@@ -48,16 +28,31 @@ class ExportJobLauncherImpl(
      *   the foreground, at tap time. Nothing here re-reads a preference, so a job enqueued now and run
      *   an hour later writes where the user was told it would.
      *
-     * Tagged with [jobTag] so a screen can ask "is this app already exporting?". The chain name cannot
-     * answer that — every job shares it — and without the tag `APPEND_OR_REPLACE` would happily queue
-     * a second identical export behind the first on a double tap.
+     * The task's durable kind and target key let the shared watcher suppress duplicate submissions
+     * even after process recreation.
      */
-    override suspend fun startExport(request: AppExportRequest): UUID? {
-        val work = OneTimeWorkRequestBuilder<AppExportWorker>()
-            .setInputData(workDataOf(*request.toMap().toList().toTypedArray()))
-            .addTag(jobTag(ThorJobKind.APP_EXPORT, request.packageName))
-            .build()
+    override suspend fun startExport(request: AppExportRequest): UUID? =
+        startExport(UUID.randomUUID(), request)
 
-        return enqueueUniqueJob(context, THOR_JOB_CHAIN, work)
+    override suspend fun startExport(
+        taskId: UUID,
+        request: AppExportRequest,
+    ): UUID? {
+        var durablyAccepted = false
+        val acceptedTaskId = try {
+            acceptance.acceptExport(taskId, request) {
+                durablyAccepted = true
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Logger.e(TAG, "export acceptance failed for ${request.packageName}", failure)
+            return if (durablyAccepted) taskId else null
+        }
+        return acceptedTaskId
+    }
+
+    private companion object {
+        const val TAG = "ExportJobLauncher"
     }
 }

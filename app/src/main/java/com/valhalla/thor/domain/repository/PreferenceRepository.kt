@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
@@ -78,6 +79,7 @@ interface PreferenceRepository {
 
     // --- Theme ---
     suspend fun setThemeMode(themeMode: ThemeMode)
+    suspend fun setFontPreset(fontPreset: FontPreset)
     suspend fun setDynamicColor(enabled: Boolean)
     suspend fun setUseAmoled(enabled: Boolean)
 
@@ -139,6 +141,36 @@ interface PreferenceRepository {
     // --- Auto Reinstall ---
     suspend fun setAutoReinstallEnabled(enabled: Boolean)
     suspend fun getInstallerArg(): String
+
+    // --- Installing ---
+    suspend fun setGrantAllPermissionsOnInstall(enabled: Boolean)
+
+    /**
+     * One-shot read of [UserPreferences.grantAllPermissionsOnInstall], for the install path.
+     *
+     * A read rather than a collect, and a separate method rather than `userPreferences.first()` at
+     * each call site, for the same reason [getInstallerArg] is one: the rungs that build an install
+     * command are not composables and must not hold a subscription, and a default that differs
+     * between them is the failure mode this is guarding — `false` here has to mean "the user did not
+     * ask for this", never "this caller forgot to look".
+     *
+     * The five callers each resolve a *nullable* per-install answer against this, and none of them
+     * may shortcut that to `== true`: `null` means nobody was asked (a bulk restore, a background
+     * job), which is not the same as the user declining. The portable installer is the one place
+     * with a real answer — its checkbox, seeded from this value and never written back.
+     * `InstallGrantCallSitesTest` is what keeps that true across all six call sites, one of which is
+     * only reachable from a future caller and would otherwise have gone on defaulting quietly.
+     */
+    suspend fun shouldGrantAllPermissionsOnInstall(): Boolean
+
+    /** Persists the interactive installer's default for low-target-SDK bypass consent. */
+    suspend fun setAllowLegacyApkInstall(enabled: Boolean)
+
+    /**
+     * One-shot, fail-closed read of [UserPreferences.allowLegacyApkInstall] for the interactive
+     * installer only. Background installers must keep their explicit default of `false`.
+     */
+    suspend fun shouldAllowLegacyApkInstall(): Boolean
 
     // --- Customization ---
     suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>)
