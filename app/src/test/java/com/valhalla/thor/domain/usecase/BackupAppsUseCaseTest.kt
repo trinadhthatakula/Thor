@@ -6,6 +6,7 @@ package com.valhalla.thor.domain.usecase
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BackupIndex
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.presentation.FakePreferenceRepository
@@ -553,7 +554,8 @@ private const val MANIFEST = "thor-backup-*.json"
  * overwrite the first one's description; that makes its exact name unassertable, and pinning the
  * shape is what is actually worth pinning.
  */
-private fun stableNames(writes: List<String>): List<String> = writes.map { entry ->
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal fun stableNames(writes: List<String>): List<String> = writes.map { entry ->
     val name = entry.substringBefore(':')
     val isManifest = name.startsWith(BackupIndex.FILE_NAME_PREFIX) &&
             name.endsWith(BackupIndex.FILE_NAME_SUFFIX)
@@ -583,6 +585,7 @@ private class FakeBundleBuilder(
         cacheSubDir: String,
         format: BundleFormat,
         fileName: String?,
+        execution: PrivilegeExecutionContext,
     ): Result<File> {
         builds += appInfo.packageName
         scopes += cacheSubDir

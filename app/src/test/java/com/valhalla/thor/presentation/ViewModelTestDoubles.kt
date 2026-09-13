@@ -4,25 +4,35 @@
 package com.valhalla.thor.presentation
 
 import android.content.ContextWrapper
+import com.valhalla.thor.data.freezer.PrivilegeSweepResolutionRuntime
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
+import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppPermission
-import com.valhalla.thor.domain.model.BulkOutcome
-import com.valhalla.thor.domain.model.BulkRequest
-import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.FreezeCandidate
+import com.valhalla.thor.domain.model.FreezeState
+import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionIndex
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepSpec
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
@@ -32,7 +42,6 @@ import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
-import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
@@ -40,11 +49,11 @@ import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.UsageAccessGate
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,7 +63,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.io.File
+import java.util.UUID
 import java.nio.file.Files
+import kotlin.coroutines.ContinuationInterceptor
 
 // Hand-written fakes, matching the rest of the suite — no mocking library. The point of a
 // privileged-action fake is that the *call it was asked to make* is the assertion, so these record
@@ -86,6 +97,9 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     /** Every call reaching the privilege layer, in order, as `"method:arg[:arg]"`. */
     val calls = mutableListOf<String>()
 
+    /** Context paired with every context-aware privilege call, in call order. */
+    val executions = mutableListOf<Pair<String, PrivilegeExecutionContext>>()
+
     private val failures = mutableMapOf<String, Throwable>()
 
     /**
@@ -110,14 +124,18 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
      * append to [calls] and nothing else, so a test observing the privilege layer through [trace] or
      * steering it through [onCall] could neither see nor intercept them.
      */
-    private fun note(call: String) {
+    private fun note(call: String, execution: PrivilegeExecutionContext? = null) {
         calls += call
+        execution?.let { executions += call to it }
         trace?.add(call)
         onCall?.invoke(call)
     }
 
-    private fun record(call: String): Result<Unit> {
-        note(call)
+    private fun record(
+        call: String,
+        execution: PrivilegeExecutionContext? = null,
+    ): Result<Unit> {
+        note(call, execution)
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -128,53 +146,98 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     var cacheFreedBytes: Long? = null
 
     /** [record] for the two operations that return a byte count; [failWith] still applies. */
-    private fun recordBytes(call: String): Result<Long?> = record(call).map { cacheFreedBytes }
+    private fun recordBytes(
+        call: String,
+        execution: PrivilegeExecutionContext? = null,
+    ): Result<Long?> = record(call, execution).map { cacheFreedBytes }
 
-    override suspend fun isRootAvailable(): Boolean = true
+    override suspend fun isRootAvailable(execution: PrivilegeExecutionContext): Boolean {
+        note("isRootAvailable", execution)
+        return true
+    }
+
     override suspend fun isShizukuAvailable(): Boolean = false
     override suspend fun isDhizukuAvailable(): Boolean = false
 
-    override suspend fun forceStopApp(packageName: String) = record("forceStopApp:$packageName")
+    override suspend fun forceStopApp(packageName: String, execution: PrivilegeExecutionContext) =
+        record("forceStopApp:$packageName", execution)
 
-    override suspend fun clearCache(packageName: String) = recordBytes("clearCache:$packageName")
+    override suspend fun clearCache(packageName: String, execution: PrivilegeExecutionContext) =
+        recordBytes("clearCache:$packageName", execution)
 
-    override suspend fun clearAllCaches() = recordBytes("clearAllCaches")
+    override suspend fun clearAllCaches(execution: PrivilegeExecutionContext) =
+        recordBytes("clearAllCaches", execution)
 
-    override suspend fun clearAppData(packageName: String) = record("clearAppData:$packageName")
+    override suspend fun clearAppData(packageName: String, execution: PrivilegeExecutionContext) =
+        record("clearAppData:$packageName", execution)
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean) =
-        record("setAppDisabled:$packageName:$isDisabled")
+    override suspend fun setAppDisabled(
+        packageName: String,
+        isDisabled: Boolean,
+        execution: PrivilegeExecutionContext,
+    ) = record("setAppDisabled:$packageName:$isDisabled", execution)
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean) =
-        record("setAppSuspended:$packageName:$isSuspended")
+    override suspend fun setAppSuspended(
+        packageName: String,
+        isSuspended: Boolean,
+        execution: PrivilegeExecutionContext,
+    ) = record("setAppSuspended:$packageName:$isSuspended", execution)
 
-    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean) =
-        record("setAppRestricted:$packageName:$isRestricted")
+    override suspend fun setAppRestricted(
+        packageName: String,
+        isRestricted: Boolean,
+        execution: PrivilegeExecutionContext,
+    ) = record("setAppRestricted:$packageName:$isRestricted", execution)
 
-    override suspend fun uninstallApp(packageName: String) = record("uninstallApp:$packageName")
+    override suspend fun uninstallApp(packageName: String, execution: PrivilegeExecutionContext) =
+        record("uninstallApp:$packageName", execution)
 
-    override suspend fun rebootDevice(reason: String) = record("rebootDevice:$reason")
+    override suspend fun rebootDevice(
+        reason: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("rebootDevice:$reason", execution)
 
-    override suspend fun reinstallAppWithGoogle(packageName: String) =
-        record("reinstallAppWithGoogle:$packageName")
+    override suspend fun reinstallAppWithGoogle(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("reinstallAppWithGoogle:$packageName", execution)
 
-    override suspend fun copyFileWithRoot(sourcePath: String, destinationPath: String) =
-        record("copyFileWithRoot:$sourcePath:$destinationPath")
+    override suspend fun copyFileWithRoot(
+        sourcePath: String,
+        destinationPath: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> {
+        val call = "copyFileWithRoot:$sourcePath:$destinationPath"
+        note(call, execution)
+        return rootCopyFailure?.let { Result.failure(it) } ?: Result.success(Unit)
+    }
 
-    override suspend fun grantPermission(packageName: String, permissionName: String) =
-        record("grantPermission:$packageName:$permissionName")
+    override suspend fun grantPermission(
+        packageName: String,
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("grantPermission:$packageName:$permissionName", execution)
 
-    override suspend fun revokePermission(packageName: String, permissionName: String) =
-        record("revokePermission:$packageName:$permissionName")
+    override suspend fun revokePermission(
+        packageName: String,
+        permissionName: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("revokePermission:$packageName:$permissionName", execution)
 
-    override suspend fun getAppPaths(packageName: String): Result<List<String>> {
-        note("getAppPaths:$packageName")
+    override suspend fun getAppPaths(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<List<String>> {
+        note("getAppPaths:$packageName", execution)
         return Result.success(emptyList())
     }
 
-    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
-        note("executeShellCommand:$command")
-        return Result.success(0 to null)
+    override suspend fun executeShellCommand(
+        command: String,
+        execution: PrivilegeExecutionContext,
+    ): Result<Pair<Int, String?>> {
+        note("executeShellCommand:$command", execution)
+        return shellCommandFailure?.let { Result.failure(it) } ?: Result.success(0 to null)
     }
 
     /**
@@ -185,11 +248,43 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
      * says `None` would let a consumer that collapses them pass.
      */
     var obbProbe: ObbProbe = ObbProbe.None
+    var obbProbeFailure: Throwable? = null
 
-    override suspend fun probeObb(packageName: String): ObbProbe {
-        note("probeObb:$packageName")
+    /** Optional barrier used when a test must observe the caller's suspended probe job. */
+    var beforeObbProbeResult: (suspend () -> Unit)? = null
+
+    /** Exact failures returned by the two collapsing export adapters. */
+    var rootCopyFailure: Throwable? = null
+    var shellCommandFailure: Throwable? = null
+
+    override suspend fun probeObb(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+    ): ObbProbe {
+        note("probeObb:$packageName", execution)
+        beforeObbProbeResult?.invoke()
+        obbProbeFailure?.let { throw it }
         return obbProbe
     }
+
+    override suspend fun setComponentEnabled(
+        packageName: String,
+        className: String,
+        state: ComponentEnabledState,
+        execution: PrivilegeExecutionContext,
+    ) = record("setComponentEnabled:$packageName:$className:$state", execution)
+
+    override suspend fun forceLaunchActivity(
+        packageName: String,
+        className: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("forceLaunchActivity:$packageName:$className", execution)
+
+    override suspend fun stopService(
+        packageName: String,
+        className: String,
+        execution: PrivilegeExecutionContext,
+    ) = record("stopService:$packageName:$className", execution)
 }
 
 /** Backed by a [MutableStateFlow] so a test can push a rescan mid-run if it needs one. */
@@ -205,13 +300,44 @@ class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepositor
      */
     val details = mutableMapOf<String, DetailedAppInfo>()
 
+    /**
+     * Component reads, by package.
+     *
+     * Falls back to whatever [details] already holds for the package, so a test that plants a
+     * `DetailedAppInfo` gets a consistent answer from both reads without saying it twice. `null` —
+     * the read failed — stays reachable by planting neither.
+     */
+    val componentSnapshots = mutableMapOf<String, ComponentSnapshot>()
+
     override fun getAllApps(): Flow<List<AppInfo>> = apps
 
     override suspend fun getAppDetails(packageName: String): AppInfo? =
         apps.value.firstOrNull { it.packageName == packageName }
 
-    override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? =
-        details[packageName]
+    private val detailFailures = mutableMapOf<String, Throwable>()
+
+    /**
+     * Make the detail read of [packageName] raise, as the package manager does.
+     *
+     * `getDetailedAppInfo` funnels into `PackageManager`, which reports by throwing — `DeadObjectException`
+     * when `system_server` restarts under it, `NameNotFoundException` when the app is uninstalled
+     * between the tap and the read. It is the seam `AppInfoDetailsViewModel.refreshDetails` cannot
+     * degrade the way it degrades the watchlist read, and so the only remaining collaborator that can
+     * throw *after* a freeze or unfreeze has already been applied — which is the case worth pinning,
+     * because that is where a bare "Error: …" would tell a user their action failed over an app that is
+     * demonstrably frozen.
+     */
+    fun failDetailsWith(packageName: String, error: Throwable) {
+        detailFailures[packageName] = error
+    }
+
+    override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? {
+        detailFailures[packageName]?.let { throw it }
+        return details[packageName]
+    }
+
+    override suspend fun getComponentDetails(packageName: String): ComponentSnapshot? =
+        componentSnapshots[packageName] ?: details[packageName]?.components
 
     override suspend fun getApkDetails(apkPath: String): AppInfo? = null
 
@@ -234,8 +360,22 @@ class FakeFreezerRepository(
     val added = mutableListOf<String>()
     val removed = mutableListOf<String>()
 
+    /**
+     * The dispatcher each write actually ran on, keyed the same way as [trace].
+     *
+     * Recorded because nothing else in the suite can see it. Every view model here is built with one
+     * dispatcher injected everywhere, so a `launchGuarded(context = ioDispatcher)` that silently
+     * lost its context would pass every test — and losing it is not a hypothetical: the production
+     * comments at those call sites all say the same thing, that Room's suspend DAO functions
+     * dispatch internally, so a write left on `Dispatchers.Main.immediate` keeps working and nothing
+     * fails to say so. The only way to catch it is to inject a *distinct* dispatcher and ask the
+     * write which one it woke up on.
+     */
+    val ranOn = mutableMapOf<String, ContinuationInterceptor?>()
+
     private val addFailures = mutableMapOf<String, Throwable>()
     private val removeFailures = mutableMapOf<String, Throwable>()
+    private val containsFailures = mutableMapOf<String, Throwable>()
 
     /**
      * Make the write of [packageName] raise.
@@ -252,11 +392,26 @@ class FakeFreezerRepository(
         removeFailures[packageName] = error
     }
 
+    /**
+     * As [failAddWith], for the membership *read*.
+     *
+     * Worth a seam of its own even though nothing is written: Room raises
+     * `SQLiteDiskIOException`/`SQLiteFullException` out of a `SELECT` as readily as out of an
+     * `INSERT`, and the read is the more dangerous of the two here because it runs on paths that had
+     * not touched the database yet — opening a details sheet, or deciding which way a toggle points.
+     * A caller that treats "the query threw" as "not in the freezer" is making a claim, and only a
+     * throwing read can tell whether it makes the right one.
+     */
+    fun failContainsWith(packageName: String, error: Throwable) {
+        containsFailures[packageName] = error
+    }
+
     override fun getAll(): Flow<List<String>> = packages.map { it.toList() }
 
     override suspend fun getAllPackageNames(): List<String> = packages.value.toList()
 
     override suspend fun add(packageName: String) {
+        ranOn["freezer.add:$packageName"] = currentCoroutineContext()[ContinuationInterceptor]
         addFailures[packageName]?.let { throw it }
         added += packageName
         trace?.add("freezer.add:$packageName")
@@ -264,6 +419,7 @@ class FakeFreezerRepository(
     }
 
     override suspend fun remove(packageName: String) {
+        ranOn["freezer.remove:$packageName"] = currentCoroutineContext()[ContinuationInterceptor]
         // Before the bookkeeping: a delete that raised deleted nothing, so [removed] stays the
         // list of rows that actually went.
         removeFailures[packageName]?.let { throw it }
@@ -281,7 +437,14 @@ class FakeFreezerRepository(
         packages.update { it - packageNames }
     }
 
-    override suspend fun contains(packageName: String): Boolean = packageName in packages.value
+    // Deliberately not traced, unlike [add] and [remove]. Tests call `contains` directly as a
+    // precondition assertion — `FreezerViewModelTest` does it twice inside a test that then asserts
+    // the trace by exact list equality — so recording it here would make the assertion depend on how
+    // many times the *test* happened to look, which is not a property of the code under test.
+    override suspend fun contains(packageName: String): Boolean {
+        containsFailures[packageName]?.let { throw it }
+        return packageName in packages.value
+    }
 }
 
 /**
@@ -336,32 +499,77 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     }
 }
 
-/**
- * A bulk runner that runs nothing.
- *
- * `BulkFreezeRunner` itself cannot be built on a JVM — see [BulkFreezeController], which exists for
- * that reason — and a view model only ever observes what is in flight and awaits what it launched.
- * Recording the request and answering with an already-completed [outcome] covers both members.
- */
-class FakeBulkFreezeController(
-    var outcome: BulkOutcome = BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
-) : BulkFreezeController {
+/** In-memory durable sweep port with controllable retained Room/Work-style status flows. */
+class FakePrivilegeSweepController : PrivilegeSweepController {
+    val launched = mutableListOf<PrivilegeSweepSpec>()
+    val launchedRequestIds = mutableListOf<UUID>()
+    val cancelledRequestIds = mutableListOf<UUID>()
+    var nextLaunchResult: PrivilegeSweepLaunchResult? = null
+    var launchFailure: Exception? = null
+    val cancelCalls: Int
+        get() = cancelledRequestIds.size
 
-    val launched = mutableListOf<BulkRequest>()
+    private var nextId = 1L
+    private val retained = MutableStateFlow<List<PrivilegeSweepStatus>>(emptyList())
+    private val requestFlows = mutableMapOf<UUID, MutableStateFlow<PrivilegeSweepStatus?>>()
 
-    private val _runningRequests = MutableStateFlow<List<BulkRequest>>(emptyList())
-    override val runningRequests: StateFlow<List<BulkRequest>> = _runningRequests
+    override val activeRequests: Flow<List<PrivilegeSweepStatus>> = retained
 
-    /** Publish an in-flight chain, as the runner does while a batch is going. */
-    fun setRunning(requests: List<BulkRequest>) {
-        _runningRequests.value = requests
+    override suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult =
+        launch(UUID(0L, nextId++), spec)
+
+    override suspend fun launch(
+        requestId: UUID,
+        spec: PrivilegeSweepSpec,
+    ): PrivilegeSweepLaunchResult {
+        launchFailure?.let { throw it }
+        launched += spec
+        launchedRequestIds += requestId
+        return nextLaunchResult ?: PrivilegeSweepLaunchResult.Accepted(
+            requestId = requestId,
+            workId = UUID(1L, nextId),
+            coalesced = false,
+        )
     }
 
-    override fun launch(request: BulkRequest): Deferred<BulkOutcome> {
-        launched += request
-        return CompletableDeferred(outcome)
+    override fun observe(requestId: UUID): Flow<PrivilegeSweepStatus?> =
+        requestFlows.getOrPut(requestId) { MutableStateFlow(null) }
+
+    override fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?> =
+        retained.map { statuses -> statuses.lastOrNull { it.source == source } }
+
+    override suspend fun cancel(requestId: UUID) {
+        cancelledRequestIds += requestId
+    }
+
+    fun emit(status: PrivilegeSweepStatus) {
+        requestFlows.getOrPut(status.requestId) { MutableStateFlow(null) }.value = status
+        retained.update { statuses -> statuses.filterNot { it.requestId == status.requestId } + status }
+    }
+
+    fun forget(requestId: UUID) {
+        requestFlows.getOrPut(requestId) { MutableStateFlow(null) }.value = null
+        retained.update { statuses -> statuses.filterNot { it.requestId == requestId } }
     }
 }
+
+fun privilegeSweepResolver(
+    freezerRepository: FreezerRepository = FakeFreezerRepository(),
+    freezeProfileRepository: FreezeProfileRepository = FakeFreezeProfileRepository(),
+    preferenceRepository: PreferenceRepository = FakePreferenceRepository(),
+    candidates: Map<String, FreezeCandidate> = emptyMap(),
+    userId: Int = 0,
+): PrivilegeSweepTargetResolver = PrivilegeSweepTargetResolver(
+    freezerRepository = freezerRepository,
+    freezeProfileRepository = freezeProfileRepository,
+    preferenceRepository = preferenceRepository,
+    runtime = object : PrivilegeSweepResolutionRuntime {
+        override val userId: Int = userId
+        override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate = { packageName ->
+            candidates[packageName] ?: FreezeCandidate(FreezeState.ACTIVE)
+        }
+    },
+)
 
 /**
  * A real (in-memory) preference store rather than a stub: every setter writes the field it names,
@@ -461,6 +669,10 @@ class FakePreferenceRepository(
         write { it.copy(themeMode = themeMode) }
     }
 
+    override suspend fun setFontPreset(fontPreset: FontPreset) {
+        write { it.copy(fontPreset = fontPreset) }
+    }
+
     override suspend fun setDynamicColor(enabled: Boolean) {
         write { it.copy(useDynamicColor = enabled) }
     }
@@ -545,6 +757,25 @@ class FakePreferenceRepository(
 
     override suspend fun getInstallerArg(): String = ""
 
+    override suspend fun setGrantAllPermissionsOnInstall(enabled: Boolean) {
+        write { it.copy(grantAllPermissionsOnInstall = enabled) }
+    }
+
+    // Reads the stored value rather than returning a constant `false`: this is the seam GH#445 ran
+    // through, so a fake that answers "no" whatever was written would let a caller that never
+    // forwards the preference pass every test. Straight off `prefs` rather than through
+    // `userPreferences`, which [firstReadDelayMs] can hold open — that delay models a slow *startup*
+    // read and has nothing to say about a one-shot read on the install path.
+    override suspend fun shouldGrantAllPermissionsOnInstall(): Boolean =
+        prefs.value.grantAllPermissionsOnInstall
+
+    override suspend fun setAllowLegacyApkInstall(enabled: Boolean) {
+        write { it.copy(allowLegacyApkInstall = enabled) }
+    }
+
+    override suspend fun shouldAllowLegacyApkInstall(): Boolean =
+        prefs.value.allowLegacyApkInstall
+
     override suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>) {
         write { it.copy(appInfoActionsOrder = order) }
     }
@@ -589,7 +820,8 @@ class FakeAppBundleBuilder(
         appInfo: AppInfo,
         cacheSubDir: String,
         format: BundleFormat,
-        fileName: String?
+        fileName: String?,
+        execution: PrivilegeExecutionContext,
     ): Result<File> {
         onBuild(appInfo)
         return Result.failure(UnsupportedOperationException("bundle building needs a device"))
@@ -799,8 +1031,20 @@ class FakeAppShortcutController(
     val refreshed = mutableListOf<String>()
     val pinned = mutableListOf<String>()
     val pinnedBulkActions = mutableListOf<String>()
+    val dynamicSyncs = mutableListOf<Boolean>()
+
+    /**
+     * Failures the *port* absorbed instead of handing to its caller — see [pinAppShortcut].
+     *
+     * Recorded rather than dropped so a test can still say "the launcher refused and the caller was
+     * not told", which is a claim about the seam and not merely an absence.
+     */
+    val absorbedFailures = mutableListOf<Throwable>()
 
     private val disableFailures = mutableMapOf<String, Throwable>()
+    private val pinFailures = mutableMapOf<String, Throwable>()
+    private val refreshFailures = mutableMapOf<String, Throwable>()
+    private var bulkPinFailure: Throwable? = null
 
     /**
      * Make disabling [packageName]'s shortcut raise, as `ShortcutManagerCompat` does — it reports a
@@ -810,28 +1054,86 @@ class FakeAppShortcutController(
         disableFailures[packageName] = error
     }
 
+    /**
+     * As [failDisableWith], for a *pin* request.
+     *
+     * The pin path raises for reasons the disable path does not — the launcher declining the request
+     * outright, and the rate limit that `ShortcutManagerCompat` enforces per app per interval — and it
+     * is the one a user reaches by asking for many shortcuts at once, which is exactly the shape where
+     * one refusal must not cost the whole run.
+     *
+     * Keyed on the package, so it covers both pin members — but only [pinAppShortcutSuspend] raises
+     * it at the caller; the fire-and-forget [pinAppShortcut] absorbs it, as in production.
+     */
+    fun failPinWith(packageName: String, error: Throwable) {
+        pinFailures[packageName] = error
+    }
+
+    /** As [failPinWith], for the one bulk tile, which has no package to key on. */
+    fun failBulkPinWith(error: Throwable) {
+        bulkPinFailure = error
+    }
+
+    /**
+     * As [failDisableWith], for the refresh — but note that this failure never reaches the caller.
+     *
+     * `refreshAppShortcut` is fire-and-forget, so setting this asserts the opposite of what the other
+     * hooks do: that a stale launcher icon is *not* reported to whoever asked for the freeze, and is
+     * absorbed by the port instead. See [refreshAppShortcut] for why, and [absorbedFailures] for
+     * where it lands. For a genuine post-success throw in `toggleFreezerState`, use
+     * `FakeFreezerRepository.failContainsWith` — the watchlist read at the same point in that method
+     * does raise into its caller.
+     */
+    fun failRefreshWith(packageName: String, error: Throwable) {
+        refreshFailures[packageName] = error
+    }
+
     override fun disableAppShortcut(packageName: String) {
         disableFailures[packageName]?.let { throw it }
         disabled += packageName
         trace?.add("shortcut.disable:$packageName")
     }
 
+    /**
+     * Absorbs its failure rather than raising it, because that is what the real one does.
+     *
+     * `FreezerShortcutManager.refreshAppShortcut` hands the work to the manager's own
+     * `SupervisorJob` scope and returns the moment it is *scheduled*, so the throw arrives after the
+     * caller's frame — and therefore after any `try`/`catch` or `launchGuarded` around the call —
+     * has already completed successfully. `FreezerShortcutManager.launchSafely` is the only frame
+     * that can see it, which is also the only place that covers the callers that are not view models
+     * at all (`AutoFreezeManager`, `FreezerLaunchActivity`, `ThorApplication`).
+     *
+     * A fake that threw here would make every caller-side guard around this method look
+     * load-bearing while catching nothing in production — the exact mistake the sweep in
+     * `fix/freezer-bookkeeping-crashes` made first time round, green tests and all. [absorbedFailures]
+     * keeps the refusal assertable without lying about who gets told.
+     */
     override fun refreshAppShortcut(packageName: String) {
+        refreshFailures[packageName]?.let { absorbedFailures += it; return }
         refreshed += packageName
     }
 
     override fun isPinSupported(): Boolean = pinSupported
 
+    /** Fire-and-forget, so it absorbs rather than raises — see [refreshAppShortcut]. */
     override fun pinAppShortcut(packageName: String, label: String) {
+        pinFailures[packageName]?.let { absorbedFailures += it; return }
         pinned += packageName
     }
 
     override suspend fun pinAppShortcutSuspend(packageName: String, label: String) {
+        pinFailures[packageName]?.let { throw it }
         pinned += packageName
     }
 
     override fun pinBulkShortcut(action: String) {
+        bulkPinFailure?.let { throw it }
         pinnedBulkActions += action
+    }
+
+    override fun syncDynamicShortcuts(enabled: Boolean) {
+        dynamicSyncs += enabled
     }
 }
 

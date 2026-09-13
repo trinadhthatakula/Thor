@@ -74,6 +74,7 @@ import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.usecase.ObserveInterruptedRestoreUseCase
 import com.valhalla.thor.presentation.common.rememberNotificationPermissionRequest
 import com.valhalla.thor.presentation.main.toDestination
+import com.valhalla.thor.presentation.settings.customization.FontPresetPickerRow
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLanguage
 import com.valhalla.thor.util.displayedLanguage
@@ -361,6 +362,12 @@ fun SettingsCategoryScreen(
                     )
 
                     // ── Customization ───────────────────────────────────────────────────────────
+                    SettingsRowId.FONTS -> FontPresetPickerRow(
+                        selectedPreset = prefs.fontPreset,
+                        onPresetSelected = viewModel::setFontPreset,
+                        highlighted = lit,
+                    )
+
                     SettingsRowId.APP_INFO_ACTIONS -> SettingsClickRow(
                         icon = R.drawable.dashboard_customize,
                         title = stringResource(R.string.customization_app_info_actions),
@@ -371,7 +378,7 @@ fun SettingsCategoryScreen(
                     )
 
                     // ── Freezer ─────────────────────────────────────────────────────────────────
-                    SettingsRowId.AUTO_FREEZE -> SettingsSwitchRow(
+                    SettingsRowId.AUTO_FREEZE -> SettingsExpandedSwitchRow(
                         icon = R.drawable.frozen,
                         title = stringResource(R.string.auto_freeze),
                         subtitle = privilegeAwareSubtitle(hasPrivilege, R.string.auto_freeze_desc),
@@ -381,7 +388,7 @@ fun SettingsCategoryScreen(
                         onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
                     )
 
-                    SettingsRowId.SUSPEND_INSTEAD_OF_FREEZE -> SettingsSwitchRow(
+                    SettingsRowId.SUSPEND_INSTEAD_OF_FREEZE -> SettingsExpandedSwitchRow(
                         icon = R.drawable.frozen,
                         title = stringResource(R.string.suspend_instead_of_freeze),
                         subtitle = privilegeAwareSubtitle(
@@ -398,7 +405,7 @@ fun SettingsCategoryScreen(
                         }
                     )
 
-                    SettingsRowId.SKIP_ROUTINE_FREEZE_CONFIRMATION -> SettingsSwitchRow(
+                    SettingsRowId.SKIP_ROUTINE_FREEZE_CONFIRMATION -> SettingsExpandedSwitchRow(
                         icon = R.drawable.danger,
                         title = stringResource(R.string.skip_routine_freeze_confirmation),
                         subtitle = privilegeAwareSubtitle(
@@ -411,7 +418,7 @@ fun SettingsCategoryScreen(
                         onCheckedChange = { viewModel.setSkipRoutineFreezeConfirmation(it) }
                     )
 
-                    SettingsRowId.ADD_FREEZER_TO_LAUNCHER -> SettingsSwitchRow(
+                    SettingsRowId.ADD_FREEZER_TO_LAUNCHER -> SettingsExpandedSwitchRow(
                         icon = R.drawable.frozen,
                         title = stringResource(R.string.add_freezer_to_launcher),
                         subtitle = privilegeAwareSubtitle(
@@ -450,6 +457,38 @@ fun SettingsCategoryScreen(
                         onCheckedChange = { viewModel.setAutoReinstallEnabled(it) }
                     )
 
+                    // Gated on `hasPrivilege` because there is nothing for it to change without one:
+                    // with no privilege every install goes through the system installer, which asks
+                    // for permissions the ordinary way and has never taken orders from this toggle.
+                    // Left tappable-looking with no privilege it would read as "Thor is granting
+                    // everything and I cannot stop it", which is the opposite of what it does.
+                    SettingsRowId.GRANT_ALL_PERMISSIONS -> SettingsSwitchRow(
+                        icon = R.drawable.danger,
+                        title = stringResource(R.string.grant_all_permissions),
+                        subtitle = privilegeAwareSubtitle(
+                            hasPrivilege,
+                            R.string.grant_all_permissions_desc
+                        ),
+                        checked = prefs.grantAllPermissionsOnInstall,
+                        enabled = hasPrivilege,
+                        highlighted = lit,
+                        onCheckedChange = { viewModel.setGrantAllPermissionsOnInstall(it) }
+                    )
+
+                    // This remains enabled even without an available provider. A provider is
+                    // required to use the bypass, but never to turn a previously enabled setting
+                    // back off.
+                    SettingsRowId.ALLOW_LEGACY_APK_INSTALL -> SettingsSwitchRow(
+                        icon = R.drawable.danger,
+                        title = stringResource(R.string.allow_legacy_apk_install),
+                        subtitle = stringResource(R.string.allow_legacy_apk_install_desc),
+                        checked = prefs.allowLegacyApkInstall,
+                        highlighted = lit,
+                        titleMaxLines = Int.MAX_VALUE,
+                        subtitleMaxLines = Int.MAX_VALUE,
+                        onCheckedChange = { viewModel.setAllowLegacyApkInstall(it) }
+                    )
+
                     // Reads its state from `uiState`, not `prefs`: this switch is backed by
                     // PackageManager component state rather than DataStore. See AnyFileOpenerController.
                     SettingsRowId.ANY_FILE_OPENER -> SettingsSwitchRow(
@@ -469,7 +508,7 @@ fun SettingsCategoryScreen(
                     // responds. Tappable, the refusal in `setBiometricLock` can answer with a toast
                     // that names what is missing. `checked` stays bound to the preference, so a
                     // refused tap settles straight back.
-                    SettingsRowId.BIOMETRIC_LOCK -> SettingsSwitchRow(
+                    SettingsRowId.BIOMETRIC_LOCK -> SettingsExpandedSwitchRow(
                         icon = R.drawable.round_key,
                         title = stringResource(R.string.biometric_lock),
                         subtitle = if (state.canUseBiometric) {

@@ -84,6 +84,27 @@ class SettingsCatalogTest {
         }
     }
 
+    @Test
+    fun fontsAreTheFirstEntryInCustomization() {
+        assertEquals(
+            SettingsRowId.FONTS,
+            SettingsRowId.rowsIn(SettingsCategory.CUSTOMIZATION).first(),
+        )
+    }
+
+    @Test
+    fun legacyApkInstallPreferenceIsNextToTheOtherInstallerSecuritySwitch() {
+        assertEquals(
+            listOf(
+                SettingsRowId.AUTO_REINSTALL,
+                SettingsRowId.GRANT_ALL_PERMISSIONS,
+                SettingsRowId.ALLOW_LEGACY_APK_INSTALL,
+                SettingsRowId.ANY_FILE_OPENER,
+            ),
+            SettingsRowId.rowsIn(SettingsCategory.INSTALLING),
+        )
+    }
+
     /**
      * No two categories answer to the same route id.
      *

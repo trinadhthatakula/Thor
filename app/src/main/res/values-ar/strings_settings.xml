@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="allow_legacy_apk_install">السماح بتثبيت ملفات APK القديمة دون سؤال</string>
+    <string name="allow_legacy_apk_install_desc">في مثبّت Thor، اسمح تلقائيًا بملفات APK التي تستهدف إصدارات Android الأقدم. Root أو Shizuku فقط. يتجاوز حظر أمان Android؛ قد تعرض التطبيقات القديمة جهازك وبياناتك للخطر. عند إيقافه، اسأل قبل كل تثبيت لتطبيق قديم.</string>
+    <string name="legacy_install_allowed_by_setting">مسموح به بواسطة إعداد المثبّت. تم إيقاف التأكيد الإضافي.</string>
+</resources>

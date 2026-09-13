@@ -36,9 +36,14 @@ class AppArchiveCipherTest {
     private fun key(passphrase: String = "correct horse"): SecretKey =
         cipher.deriveKey(passphrase.toCharArray(), ByteArray(KDF_SALT_BYTES) { 7 }, iterations = 1_000)
 
-    private fun encrypt(plain: ByteArray, name: String = member, k: SecretKey = key()): Pair<ByteArray, MemberStats> {
+    private fun encrypt(
+        plain: ByteArray,
+        name: String = member,
+        dataClass: String = "ce",
+        k: SecretKey = key(),
+    ): Pair<ByteArray, MemberStats> {
         val out = ByteArrayOutputStream()
-        val stats = cipher.encryptMember(name, ByteArrayInputStream(plain), out, k, nonce)
+        val stats = cipher.encryptMember(dataClass, name, ByteArrayInputStream(plain), out, k, nonce)
         return out.toByteArray() to stats
     }
 
@@ -46,11 +51,12 @@ class AppArchiveCipherTest {
         bytes: ByteArray,
         chunkCount: Int,
         name: String = member,
+        dataClass: String = "ce",
         k: SecretKey = key(),
         memberNonce: ByteArray = nonce,
     ): ByteArray {
         val out = ByteArrayOutputStream()
-        cipher.decryptMember(name, ByteArrayInputStream(bytes), out, k, memberNonce, chunkCount)
+        cipher.decryptMember(dataClass, name, ByteArrayInputStream(bytes), out, k, memberNonce, chunkCount)
         return out.toByteArray()
     }
 
@@ -87,7 +93,7 @@ class AppArchiveCipherTest {
         assertEquals(bytes.size.toLong(), stats.cipherBytes)
 
         val out = ByteArrayOutputStream()
-        val written = cipher.decryptMember(member, ByteArrayInputStream(bytes), out, key(), nonce, stats.chunkCount)
+        val written = cipher.decryptMember("ce", member, ByteArrayInputStream(bytes), out, key(), nonce, stats.chunkCount)
         assertArrayEquals(plain, out.toByteArray())
         assertEquals(plain.size.toLong(), written)
     }
@@ -220,6 +226,33 @@ class AppArchiveCipherTest {
         // Chunk 0, because the frame that was moved into position 0 is the one presented under the
         // wrong index. Both frames are whole and both declare their real length, so nothing but the
         // AEAD can object — a type-only assertion would not have shown that.
+        assertMessageContains(ex, "chunk 0 failed authentication")
+    }
+
+    @Test
+    fun `a member relabelled as another logical data class is detected`() {
+        val out = ByteArrayOutputStream()
+        val stats = cipher.encryptMember(
+            dataClass = "ce",
+            memberName = member,
+            plaintext = ByteArrayInputStream(ByteArray(128) { 8 }),
+            ciphertext = out,
+            key = key(),
+            nonce = nonce,
+        )
+
+        val ex = assertThrows(ArchiveIntegrityException::class.java) {
+            cipher.decryptMember(
+                dataClass = "ext-media",
+                memberName = member,
+                ciphertext = ByteArrayInputStream(out.toByteArray()),
+                plaintext = ByteArrayOutputStream(),
+                key = key(),
+                nonce = nonce,
+                chunkCount = stats.chunkCount,
+            )
+        }
+
         assertMessageContains(ex, "chunk 0 failed authentication")
     }
 
@@ -366,7 +399,7 @@ class AppArchiveCipherTest {
         }
 
         val ex = assertThrows(ArchiveIntegrityException::class.java) {
-            cipher.decryptMember(member, stuck, ByteArrayOutputStream(), key(), nonce, 1)
+            cipher.decryptMember("ce", member, stuck, ByteArrayOutputStream(), key(), nonce, 1)
         }
 
         assertMessageContains(ex, "ended before chunk 0")
@@ -432,7 +465,8 @@ class AppArchiveCipherTest {
     fun `known-answer vector pins the frame layout and byte order`() {
         // Key: 32 sequential bytes (bypasses PBKDF2 — this is a layout pin, not a KDF test).
         // Nonce: [0..7], plaintext: [0..15], member: "kat", single chunk → isFinal=true.
-        // AAD is "kat|0|1".toByteArray(UTF_8). IV is nonce || big-endian 0x00000000.
+        // AAD is length-prefixed domain, logical class and filename, then index/final marker.
+        // IV is nonce || big-endian 0x00000000.
         //
         // Expected frame = 4-byte big-endian length (0x00000020 = 32) || ciphertext (16) || tag (16).
         // Verified by hand: first four bytes are 0x00 0x00 0x00 0x20 = big-endian 32 ✓,
@@ -441,10 +475,10 @@ class AppArchiveCipherTest {
         val katKey = SecretKeySpec(ByteArray(32) { it.toByte() }, "AES")
         val katNonce = ByteArray(MEMBER_NONCE_BYTES) { it.toByte() }
         val katPlain = ByteArray(16) { it.toByte() }
-        val expectedHex = "000000202905546776064d218ae4f69c629932ea3083733b5321915c935ddb74f04d89fd"
+        val expectedHex = "000000202905546776064d218ae4f69c629932eab2437cbc8b13e710d8ccba8a0f4c2660"
 
         val out = ByteArrayOutputStream()
-        val stats = cipher.encryptMember("kat", ByteArrayInputStream(katPlain), out, katKey, katNonce)
+        val stats = cipher.encryptMember("ce", "kat", ByteArrayInputStream(katPlain), out, katKey, katNonce)
         val frame = out.toByteArray()
 
         assertEquals("frame must be 4 + 16 + 16 = 36 bytes", 36, frame.size)
@@ -459,7 +493,7 @@ class AppArchiveCipherTest {
 
         // Confirm the KAT also decrypts cleanly.
         val decOut = ByteArrayOutputStream()
-        val written = cipher.decryptMember("kat", ByteArrayInputStream(frame), decOut, katKey, katNonce, 1)
+        val written = cipher.decryptMember("ce", "kat", ByteArrayInputStream(frame), decOut, katKey, katNonce, 1)
         assertArrayEquals(katPlain, decOut.toByteArray())
         assertEquals(katPlain.size.toLong(), written)
     }

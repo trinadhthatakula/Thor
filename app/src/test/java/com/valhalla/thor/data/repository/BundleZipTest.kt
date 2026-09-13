@@ -263,6 +263,19 @@ class BundleZipTest {
     }
 
     @Test
+    fun toLowercaseHex_emptyInputIsEmpty() {
+        assertEquals("", byteArrayOf().toLowercaseHex())
+    }
+
+    @Test
+    fun toLowercaseHex_preservesLeadingZeroesAndUnsignedByteValues() {
+        assertEquals(
+            "00010f107f80ff",
+            byteArrayOf(0x00, 0x01, 0x0F, 0x10, 0x7F, 0x80.toByte(), 0xFF.toByte()).toLowercaseHex(),
+        )
+    }
+
+    @Test
     fun bundleZip_extractEntries_digestsTheBytesItWroteNotTheFileItLeftBehind() {
         // The property the privileged rungs' integrity guard rests on. Those stage into
         // externalCacheDir, which any app holding WRITE_EXTERNAL_STORAGE can rewrite on API 28-29
@@ -526,16 +539,55 @@ class BundleZipTest {
     }
 
     @Test
-    fun bundleZip_extractEntries_doesNotCountTwoSpellingsOfOneNameAsTwoFiles() {
-        // The completeness check counts what the archive can actually yield, which is one file per
-        // *lowercased* name. Counting the caller's set instead would refuse a set that came out
-        // whole, because `stageInstallSet` builds its wanted set case-sensitively.
+    fun bundleZip_extractEntries_refusesTwoSpellingsOfOneSelectedName() {
         val zip = writeStoredDataDescriptorZip(listOf("base.apk" to ByteArray(64)))
         val outDir = tempDir()
 
-        val extracted = BundleZip.extractEntries(zip, setOf("base.apk", "BASE.APK"), outDir)
+        assertThrows(InstallRefusedException::class.java) {
+            BundleZip.extractEntries(zip, setOf("base.apk", "BASE.APK"), outDir)
+        }
 
-        assertEquals(listOf("base.apk"), extracted.map { it.file.name })
+        assertEquals(0, outDir.listFiles()!!.size)
+    }
+
+    @Test
+    fun bundleZip_refusesExactDuplicateNestedEntries() {
+        val zip = writeStoredDataDescriptorZip(
+            listOf(
+                "nested/base.apk" to ByteArray(32) { 1 },
+                "nested/base.apk" to ByteArray(32) { 2 },
+            )
+        )
+
+        assertThrows(InstallRefusedException::class.java) { BundleZip.entryNames(zip) }
+    }
+
+    @Test
+    fun bundleZip_refusesCaseInsensitiveDuplicateApkLeaves() {
+        val zip = writeStoredDataDescriptorZip(
+            listOf(
+                "one/base.apk" to ByteArray(32) { 1 },
+                "two/BASE.APK" to ByteArray(32) { 2 },
+            )
+        )
+
+        assertThrows(InstallRefusedException::class.java) {
+            BundleZip.read(zip, setOf("manifest.json"))
+        }
+    }
+
+    @Test
+    fun bundleZip_refusesDuplicateTopLevelMetadata() {
+        val zip = writeStoredDataDescriptorZip(
+            listOf(
+                "manifest.json" to "{}".toByteArray(),
+                "MANIFEST.JSON" to "{}".toByteArray(),
+            )
+        )
+
+        assertThrows(InstallRefusedException::class.java) {
+            BundleZip.readEntry(zip, "manifest.json")
+        }
     }
 
     @Test

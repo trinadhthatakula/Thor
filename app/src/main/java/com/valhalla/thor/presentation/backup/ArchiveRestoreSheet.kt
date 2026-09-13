@@ -96,6 +96,7 @@ private fun reasonLabel(reason: ArchiveRestoreReason): Int = when (reason) {
     ArchiveRestoreReason.NOT_AN_ARCHIVE -> R.string.restore_error_not_an_archive
     ArchiveRestoreReason.WRONG_PASSPHRASE -> R.string.restore_error_wrong_passphrase
     ArchiveRestoreReason.UNLOCK_CHECK_FAILED -> R.string.restore_error_unlock_check_failed
+    ArchiveRestoreReason.AUTHENTICATION_FAILED -> R.string.restore_error_authentication_failed
     // The two that are interpolated into `restore_failed` ("Restore failed: %1$s") rather than drawn
     // on their own, which is why neither is capitalised or stopped.
     ArchiveRestoreReason.PASSPHRASE_LOST -> R.string.restore_failed_passphrase_lost

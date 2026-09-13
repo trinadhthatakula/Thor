@@ -108,7 +108,7 @@ android {
         versionName = resolveVersionName(code)
 
         vectorDrawables.useSupportLibrary = true
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.valhalla.thor.ThorTestRunner"
         ndk {
             debugSymbolLevel = "SYMBOL_TABLE"
         }
@@ -138,6 +138,11 @@ android {
                 logger.warn("⚠️ keystore.properties not found or environment variables not set. Release build will not be signed properly.")
             }
         }
+    }
+
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
+        unitTests.isIncludeAndroidResources = true
     }
 
     dependenciesInfo {
@@ -226,9 +231,8 @@ android {
         // itself; naming it keeps the link visible from here.
         lintConfig = file("lint.xml")
 
-        // :app is at 0 errors / 0 warnings today (the only warnings, VectorPath, are downgraded in
-        // lint.xml). Enforce that rather than let it rot: a warning is a build failure, and release
-        // variants are checked too.
+        // Ordinary warnings fail the build, including release variants. lint.xml documents the
+        // informational exceptions and explicit error checks whose XML severity takes precedence.
         abortOnError = true
         checkReleaseBuilds = true
         warningsAsErrors = true
@@ -392,9 +396,17 @@ dependencies {
     implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
+    implementation(libs.androidx.material3) {
+        // Do not let a BOM/transitive update silently replace Asgard's compatible runtime ABI.
+        version { strictly(libs.versions.material3.get()) }
+        because("Asgard 2.0.0 calls ToggleButtonDefaults.toggleButtonColors, removed in alpha27")
+    }
     implementation(libs.androidx.material.icons.extended)
     testImplementation(libs.junit)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
     // Virtual time (`runTest`, `StandardTestDispatcher`) and Flow-emission assertions — without these
     // every behavioural test of a ViewModel or of BulkFreezeRunner has to sleep in wall-clock, which
     // is why docs/follow-ups/{viewmodel-behavior-tests,bulk-freeze-runner-concurrency-tests}.md were
@@ -402,7 +414,12 @@ dependencies {
     // the handwritten fakes the existing suite already uses.
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    androidTestUtil(libs.androidx.test.orchestrator)
     androidTestImplementation(libs.androidx.junit)
+    // Room's MigrationTestHelper. androidTest only: it opens a real SQLite file at an old schema
+    // version and runs the generated migrations against it, which no JVM stub of SQLite can do.
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)

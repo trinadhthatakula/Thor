@@ -281,6 +281,17 @@ object Shizuku {
 
     val isRoot get() = Shizuku.getUid() == 0
 
+    /**
+     * The uid Shizuku's service runs as, or `null` if it could not be read.
+     *
+     * [isRoot] throws when the binder has gone since the last availability check — `Shizuku.getUid()`
+     * is a live transaction, not a cached field — so a caller that has to *decide* something on the
+     * uid, rather than merely branch inside an already-privileged operation, needs the failure to be
+     * a value it can reason about. Every such caller here reads `null` as "not root", because the
+     * alternative is offering a control that throws a `SecurityException` on every press.
+     */
+    fun uidOrNull(): Int? = runCatching { Shizuku.getUid() }.getOrNull()
+
     private fun asInterface(className: String, original: IBinder): Any {
         val clazz = Class.forName("$className\$Stub")
         return Bypass.invoke(
@@ -1354,8 +1365,39 @@ object Shizuku {
         }
     }
 
-    fun execute(command: String, root: Boolean = isRoot): Pair<Int, String?> = runCatching {
-        val binder = Shizuku.getBinder() ?: return -1 to "Shizuku binder is null"
+    /**
+     * The exit code and whichever stream had something to say — stdout if it did, else stderr.
+     *
+     * That preference is load-bearing for the dozens of callers that parse `pm`/`am` chatter out of
+     * `.second`, and it is also a hazard: a command that writes to **both** streams loses its stderr
+     * here silently. If what you need is the *outcome* of an `am` verb, use [executeCombined] —
+     * `am` writes "Starting: Intent { … }" to stdout and the permission denial to stderr, so this
+     * function returns the echo and drops the reason.
+     */
+    fun execute(command: String, root: Boolean = isRoot): Pair<Int, String?> =
+        executeStreams(command, root).let { (code, out, err) -> code to out.ifBlank { err } }
+
+    /**
+     * The exit code and **both** streams, stdout first, blank ones dropped.
+     *
+     * Exists for the per-component verbs, whose whole verdict lives in stderr while stdout always
+     * carries a content-free echo of the intent. See [execute] for why that one cannot simply be
+     * changed to do this: its stdout-or-stderr contract is what every other caller reads.
+     */
+    fun executeCombined(command: String, root: Boolean = isRoot): Pair<Int, String> =
+        executeStreams(command, root).let { (code, out, err) ->
+            code to sequenceOf(out, err).filter { it.isNotBlank() }.joinToString("\n") { it.trim() }
+        }
+
+    /**
+     * Run [command] in a privileged process and return its exit code with the two streams kept
+     * apart, so that each public entry point above can decide what to do with them.
+     */
+    private fun executeStreams(
+        command: String,
+        root: Boolean,
+    ): Triple<Int, String, String> = runCatching {
+        val binder = Shizuku.getBinder() ?: return Triple(-1, "", "Shizuku binder is null")
         IShizukuService.Stub.asInterface(binder)
             .newProcess(arrayOf(if (root) "su" else "sh"), null, null)
             .run {
@@ -1413,7 +1455,7 @@ object Shizuku {
                         // Give the readers a bounded window to drain, then stop waiting on them.
                         outThread.join(READER_JOIN_TIMEOUT_MS)
                         errThread.join(READER_JOIN_TIMEOUT_MS)
-                        exitCode to output.get().ifBlank { error.get() }
+                        Triple(exitCode, output.get(), error.get())
                     } else {
                         timedOut = true
                         Logger.e(
@@ -1432,9 +1474,19 @@ object Shizuku {
                         errThread.join(READER_JOIN_TIMEOUT_MS)
                         // Readers are already free; now request the (possibly slow) kill.
                         runCatching { destroy() }
-                        -1 to "Command timed out after ${EXECUTE_TIMEOUT_MS}ms".let { msg ->
-                            output.get().ifBlank { error.get() }.ifBlank { msg }
-                        }
+                        val partialOut = output.get()
+                        val partialErr = error.get()
+                        // The timeout sentence only stands in when the child said nothing at all;
+                        // whatever it did manage to write is more useful than "it timed out".
+                        Triple(
+                            -1,
+                            partialOut,
+                            if (partialOut.isBlank() && partialErr.isBlank()) {
+                                "Command timed out after ${EXECUTE_TIMEOUT_MS}ms"
+                            } else {
+                                partialErr
+                            },
+                        )
                     }
                 } finally {
                     // Always tear the process down (idempotent even if already destroyed on timeout).
@@ -1448,7 +1500,7 @@ object Shizuku {
             }
     }.getOrElse { err ->
         Logger.e("Shizuku", "Command execution failed: $command", err)
-        -1 to err.stackTraceToString()
+        Triple(-1, "", err.stackTraceToString())
     }
 
     private val ParcelFileDescriptor.text

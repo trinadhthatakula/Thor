@@ -1,4 +1,6 @@
 <resources>
+    <string name="fix_store_requires_privilege">修复商店需要 Root 或 Shizuku。未更改任何应用。</string>
+    <string name="fix_store_unsupported_dhizuku">修复商店需要 Root 或 Shizuku。Android 不允许 Dhizuku 将 Google Play 设为应用的安装来源。未更改任何应用。</string>
     <!-- Navigation -->
     <string name="home">主页</string>
     <string name="home_desc">主页</string>
@@ -27,7 +29,7 @@
     <string name="dynamic_colors">动态色彩</string>
     <string name="dynamic_colors_desc">Material You 集成</string>
     <string name="biometric_lock">生物识别锁定</string>
-    <string name="biometric_lock_desc">启动时需要验证</string>
+    <string name="biometric_lock_desc">启动时要求身份验证。启用后，将禁止截取或录制 Thor 的屏幕，并隐藏其在最近任务中的预览。</string>
     <string name="biometric_not_available">生物识别未注册或不可用</string>
     <string name="active_engine">活动引擎</string>
     <string name="active_engine_desc">在可用提供者之间切换</string>
@@ -208,14 +210,8 @@
     </plurals>
     <string name="tile_grant_privilege_toast">请先授予 Root / Shizuku / Dhizuku 权限</string>
     <string name="tile_no_apps_toast">应用冻结中无应用</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="other">已冻结 %1$d 个应用</item>
-    </plurals>
-    <string name="tile_freeze_partial_failure">已冻结 %1$d/%2$d 个应用（%3$d 个失败）</string>
-    <string name="tile_freeze_incomplete">已冻结 %1$d/%2$d 个应用（%3$d 个未完成）</string>
     <string name="tile_checking">正在检查…</string>
     <string name="tile_freezing">正在冻结…</string>
-    <string name="channel_bulk_result_name">批量操作结果</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">冻结设置</string>
@@ -227,6 +223,10 @@
     <string name="privilege_required_warning">需要权限（Root、Shizuku 或 Dhizuku）</string>
     <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
     <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="other">冻结所选的 %1$d 个应用？Thor 因安全原因拦截的应用将被跳过。</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">冻结后将这些应用保留在冻结室列表中。取消勾选此项不会移除已在冻结室中的应用。</string>
     <string name="import_disabled_apps_title">导入已禁用的应用</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="other">有 %1$d 个已禁用的应用不在您的冻结列表中。要将它们添加到冻结列表吗？</item>
@@ -252,19 +252,12 @@
     <string name="extension_version_prefix">v%1$s</string>
 
 
-    <!-- UiText Messages -->
-    <string name="action_completed_format">%1$s 已完成：%2$s</string>
-    <string name="frozen_success">已冻结 %1$s</string>
+    <!-- UiText Messages -->    <string name="frozen_success">已冻结 %1$s</string>
     <string name="unfrozen_success">已解冻 %1$s</string>
     <string name="added_to_freezer_success">已添加到冻结列表</string>
     <string name="add_to_freezer">添加至冻结室</string>
     <string name="freezer_add_warning_title">添加后会立即冻结</string>
     <string name="freezer_add_warning_body">应用一加入冻结列表就已处于冻结状态——这是冻结室的设计，并非故障。其中尚未保存的内容会丢失，并且会一直保持冻结，直到你解冻它。</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="other">已解冻 %1$d 个应用</item>
-    </plurals>
-    <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
-    <string name="tile_unfreeze_incomplete">已解冻 %1$d/%2$d 个应用（%3$d 个未完成）</string>
     <string name="error_format">错误：%1$s</string>
     <string name="failed_to_load_apps">加载应用失败</string>
     <plurals name="removed_from_freezer_success">
@@ -346,6 +339,11 @@
     <string name="exit">退出</string>
     <string name="title_thor_installer">Thor 安装器</string>
     <string name="install_analyzing">正在解析包…</string>
+    <string name="legacy_install_description">%1$s 的目标 SDK 为 %2$d。此 Android 版本通常会阻止目标 SDK 低于 %3$d 的新安装。</string>
+    <string name="legacy_install_confirm_title">允许安装旧版应用吗？</string>
+    <string name="legacy_install_confirm_message">%1$s（%2$s）的目标 SDK 为 %3$d，低于 SDK %4$d 的安装最低要求。绕过此安全限制可能会使你的设备和数据面临风险。旧版应用可能会根据其旧版权限模型在安装时获得权限。仅当你信任此 APK 时才继续。此设置仅适用于本次安装；签名、设备兼容性及其他 Android 检查仍然适用。</string>
+    <string name="legacy_install_allow_once">仅此次安装</string>
+    <string name="legacy_install_unsupported">安装旧版应用需要 Android 14 或更高版本，以及 Root 或 Shizuku。普通、Dhizuku 和外部模式无法应用此覆盖设置。</string>
     <string name="install_downgrade_warning">这将降级该应用。</string>
     <string name="install_downgrade_code_explainer">版本号 %1$s 低于已安装的 %2$s。Android 按版本号（versionCode）而非版本名称排序更新，因此应用看起来较新仍可能是降级。</string>
     <string name="install_update_warning">这将更新现有应用。</string>
@@ -388,18 +386,11 @@
     <string name="log_scanning_apps">正在扫描应用…</string>
     <string name="log_no_apps_to_fix">未发现需要修复的应用。</string>
     <string name="log_found_apps_to_fix">发现 %1$d 个需要修复的应用。</string>
-    <string name="log_reinstalling_batch">正在批量重新安装应用</string>
     <string name="log_freezing_batch">正在批量冻结应用</string>
     <string name="log_unfreezing_batch">正在批量解冻应用</string>
     <string name="log_killing_batch">正在批量结束应用</string>
-    <string name="log_clearing_cache_batch">正在批量清除缓存</string>
     <string name="log_uninstalling_batch">正在批量卸载应用</string>
-    <string name="log_suspending_batch">正在批量暂停应用</string>
-    <string name="log_unsuspending_batch">正在批量取消暂停应用</string>
-    <string name="log_sharing_batch">正在批量分享应用</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] 正在准备 %3$s…</string>
-    <string name="log_ready"> -> 就绪</string>
     <string name="log_success"> -> 成功</string>
     <string name="log_failed"> -> 失败：%1$s</string>
 
@@ -414,7 +405,6 @@
     <string name="no_matching_apps_freezer">无匹配应用</string>
     <string name="add_to_freezer_hint">点击 + 添加应用</string>
     <string name="filter_all">全部</string>
-    <string name="error_debuggable_app">应用可调试（签名可能不匹配）</string>
     <string name="error_unsafe_skipped">已跳过：系统应用不安全 / 安全检查失败</string>
     <string name="error_self_skipped">已跳过：Thor 无法对自身执行此操作</string>
     <string name="error_parse_package">解析包失败。</string>
@@ -488,6 +478,9 @@
     <string name="freeze_system_app_disable_failed">无法冻结 %1$s。本设备并未拒绝该请求，所以这更可能是 Thor 的缺陷，而不是系统限制。该应用仍保持安装且未做改动——请反馈此问题。</string>
     <string name="auto_reinstall">自动重新安装应用</string>
     <string name="auto_reinstall_desc">自动保留 Google Play 商店作为主安装程序，以启用后台更新</string>
+    <string name="grant_all_permissions">安装时授予全部权限</string>
+    <string name="grant_all_permissions_desc">应用安装后立即获得其请求的全部权限，不再询问；仅适用于通过 Root、Shizuku 或 Dhizuku 的安装。默认关闭，并且可在安装器中为单次安装临时更改；无论开启与否，更新都会保留你已经授予的权限</string>
+    <string name="grant_all_permissions_install">授予其请求的全部权限</string>
     <string name="legacy_extension_title">检测到旧版扩展</string>
     <string name="legacy_extension_desc">已安装旧版 Stormbringer 扩展（拼写错误为 \"Strombringer\"）。请将其卸载以避免冲突，并安装更新的 Stormbringer 扩展。</string>
     <string name="action_export">导出</string>
@@ -542,8 +535,8 @@
     <string name="usage_access_needed_title">需要使用情况访问权限</string>
     <string name="usage_access_prompt_body">Thor 需要使用情况访问权限才能读取应用大小。请为 Thor 启用该权限，然后再次选择“大小”。您也可以在“设置 → 权限”中进行管理。</string>
     <string name="notification_access">通知</string>
-    <string name="notification_access_granted_subtitle">批量冻结结果将以通知形式显示</string>
-    <string name="notification_access_needed_subtitle">允许通知以查看批量冻结结果</string>
+    <string name="notification_access_granted_subtitle">后台应用操作会在通知中显示进度</string>
+    <string name="notification_access_needed_subtitle">请在系统设置中允许通知，以便运行后台应用操作并查看进度</string>
     <string name="open_settings">打开设置</string>
     <string name="installed_apps_permission_title">应用列表可能不完整</string>
     <string name="installed_apps_permission_desc">您的设备限制了 Thor 在后台运行时可以看到的应用。请授予读取已安装应用列表的完全访问权限，以保持列表完整。</string>
@@ -608,7 +601,6 @@
     <string name="profile_delete_desc">仅删除该配置。其中的应用保持原状 — 已冻结的仍保持冻结。</string>
     <string name="profile_saved">配置已保存</string>
     <string name="profile_deleted">配置已删除</string>
-    <string name="profile_nothing_to_do">此配置无需操作</string>
     <string name="bulk_run_failed">本次操作未完成——请先确认各应用的状态</string>
     <string name="error_profile_name_taken">该配置名称已被占用</string>
     <string name="error_profile_delete_failed">无法删除该配置</string>
@@ -667,9 +659,17 @@
     <string name="settings_summary_restore_interrupted">有一次恢复未完成</string>
     <string name="settings_summary_backup">恢复存档，或更改密码短语</string>
     <string name="settings_summary_unprivileged">需要 Root、Shizuku 或 Dhizuku</string>
-    <string name="settings_summary_customization">应用详情操作栏与布局选项</string>
+    <string name="settings_summary_customization">字体与应用详情操作</string>
 
     <string name="settings_category_customization">自定义</string>
+    <string name="customization_fonts">字体</string>
+    <string name="customization_fonts_desc">选择 Asgard 或系统字体。更改会立即生效。</string>
+    <string name="font_preset_asgard">Asgard</string>
+    <string name="font_preset_system">系统</string>
+    <string name="font_preview_title">字体预览</string>
+    <string name="font_preview_heading">应用概览</string>
+    <string name="font_preview_body">管理应用、权限和存储空间。</string>
+    <string name="font_preview_numbers">0123456789 · 1.2 GB</string>
     <string name="customization_app_info_actions">应用操作栏</string>
     <string name="customization_app_info_actions_desc">调整应用底部操作栏中按钮的排序与显示状态</string>
     <string name="customization_drag_hint">拖拽以重新排序 • 开关以显示或隐藏</string>
@@ -697,5 +697,202 @@
     <string name="all_actions_hidden">所有操作均已隐藏</string>
     <string name="cd_move_up">上移</string>
     <string name="cd_move_down">下移</string>
+
+    <string name="component_action_open">打开</string>
+    <string name="component_action_force_open">强制打开</string>
+    <string name="component_action_copy">复制类名</string>
+    <string name="component_action_stop_now">立即停止</string>
+    <string name="component_action_disable">禁用</string>
+    <string name="component_action_enable">启用</string>
+    <string name="component_action_reset">恢复默认</string>
+    <string name="component_action_forget">不再跟踪</string>
+    <string name="cd_component_actions">%1$s 的操作</string>
+
+    <string name="component_badge_restricted">已被 Thor 限制</string>
+    <string name="component_badge_drift">已在别处更改</string>
+    <string name="component_badge_disabled">已禁用</string>
+    <string name="component_badge_not_exported">未导出</string>
+    <string name="component_badge_off_by_default">默认关闭</string>
+
+    <string name="component_blocker_no_privilege">开启 Root 或 Shizuku 才能更改组件。</string>
+    <string name="component_blocker_shizuku_not_root">更改组件需要以 root 身份启动的 Shizuku。shell 模式的 Shizuku 无法做到。</string>
+    <string name="component_blocker_dhizuku">Dhizuku 无法更改单个组件。请使用 Root 或 root 模式的 Shizuku。</string>
+    <string name="component_control_requires_root_shizuku">Shizuku 正以 shell 身份运行，而非 root。更改组件需要 root 权限。</string>
+    <string name="component_control_unsupported_dhizuku">Dhizuku 无法控制单个组件。</string>
+
+    <string name="component_launched">已打开 %1$s</string>
+    <string name="component_service_stopped">已停止 %1$s</string>
+    <string name="component_disabled_success">已禁用 %1$s</string>
+    <string name="component_enabled_success">已启用 %1$s</string>
+    <string name="component_reset_success">%1$s 已恢复默认</string>
+    <string name="component_forgotten">已停止跟踪 %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="other">Thor 已限制 %1$d 个组件</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="other">已恢复 %1$d 个组件</item>
+    </plurals>
+    <string name="component_restore_all_partial">已恢复 %2$d 个组件中的 %1$d 个 — 请重试以恢复其余组件</string>
+    <string name="component_restore_all_action">全部恢复</string>
+    <string name="component_restore_all_title">恢复所有组件？</string>
+    <string name="component_restore_all_message">Thor 禁用过的每一个组件 — 无论在此应用中还是在其他应用中 — 都会恢复为出厂时的状态。由其他工具更改的组件不会受到影响。</string>
+
+    <string name="component_disclaimer_title">禁用此组件？</string>
+    <string name="component_disclaimer_message">%1$s 仍会保留在应用中，只是不再运行。应用通常不会预料到这种情况，因此某项功能可能会在没有任何错误提示的情况下失效，应用也可能崩溃。Thor 会记录它禁用过的内容，方便你之后撤销。</string>
+    <string name="component_disclaimer_confirm">确认禁用</string>
+    <string name="component_disclaimer_dont_ask_session">本次会话不再询问</string>
+    <string name="component_disabled_unrecorded">已禁用 %1$s，但 Thor 未能记录此次更改——“全部恢复”不会包含它</string>
+    <string name="sweep_notification_title">正在执行应用操作</string>
+    <string name="sweep_queued">应用操作已加入队列</string>
+    <string name="sweep_running">正在执行第 %1$d 项，共 %2$d 项</string>
+    <string name="sweep_succeeded">已完成 %1$d 项，共 %2$d 项</string>
+    <string name="sweep_partial">应用操作完成，但存在问题</string>
+    <string name="sweep_cancelled">操作队列已取消</string>
+    <string name="sweep_failed">应用操作失败</string>
+    <string name="sweep_observer_failure">无法获取进度</string>
+    <string name="sweep_root_lane_degraded">Root 归档/批处理通道已降级</string>
+    <string name="sweep_result_summary">应用操作 — 成功：%1$d · 失败：%2$d · 忙碌：%3$d · 未确定：%4$d</string>
+
+    <!-- 持久前台服务队列 -->
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">任务队列</string>
+    <string name="task_queue_providers">特权提供方</string>
+    <string name="task_queue_section_running">正在运行</string>
+    <string name="task_queue_section_queued">已排队 / 需要操作</string>
+    <string name="task_queue_section_recent">最近任务</string>
+    <string name="task_queue_empty">暂无任务</string>
+    <string name="task_queue_empty_running">没有正在运行的任务</string>
+    <string name="task_queue_empty_queued">没有排队任务或待处理操作</string>
+    <string name="task_queue_empty_recent">没有最近任务</string>
+    <string name="task_queue_kind_data">数据操作</string>
+    <string name="task_queue_kind_privilege">特权应用操作</string>
+    <string name="task_queue_background">转到后台</string>
+    <string name="task_queue_cancel">取消</string>
+    <string name="task_queue_close">关闭</string>
+    <string name="task_queue_progress">%1$d / %2$d</string>
+
+    <string name="task_action_authenticate_archive">验证归档</string>
+    <string name="task_action_provide_source">提供源文件</string>
+    <string name="task_action_review_restore">检查恢复任务</string>
+    <string name="task_action_authorize_privilege">授权特权</string>
+    <string name="task_action_authorize_retry">授权重试</string>
+    <string name="task_action_retry">重试</string>
+    <string name="task_action_resume">继续</string>
+    <string name="task_action_share">分享</string>
+    <string name="task_action_open_notification_settings">打开通知设置</string>
+
+    <string name="task_operation_archive_backup">归档备份</string>
+    <string name="task_operation_archive_restore">归档恢复</string>
+    <string name="task_operation_app_export">应用导出</string>
+    <string name="task_operation_share_prepare">准备分享</string>
+    <string name="task_operation_freeze">冻结应用</string>
+    <string name="task_operation_unfreeze">解冻应用</string>
+    <string name="task_operation_suspend">暂停应用</string>
+    <string name="task_operation_unsuspend">取消暂停应用</string>
+    <string name="task_operation_clear_cache">清除应用缓存</string>
+    <string name="task_operation_reinstall">修复应用商店来源</string>
+
+    <string name="task_state_starting">正在启动</string>
+    <string name="task_state_queued">已排队</string>
+    <string name="task_state_running">正在运行</string>
+    <string name="task_state_stopping">正在停止</string>
+    <string name="task_state_waiting_for_auth">需要验证</string>
+    <string name="task_state_waiting_for_source">需要源文件</string>
+    <string name="task_state_waiting_for_privilege">需要特权</string>
+    <string name="task_state_interrupted_review">需要检查</string>
+    <string name="task_state_ready">可供分享</string>
+    <string name="task_state_ready_partial">部分内容可供分享</string>
+    <string name="task_state_start_blocked">启动受阻</string>
+    <string name="task_state_start_blocked_notification">通知已被阻止</string>
+    <string name="task_state_succeeded">已成功</string>
+    <string name="task_state_partial">已完成，但存在问题</string>
+    <string name="task_state_failed">失败</string>
+    <string name="task_state_cancelled">已取消</string>
+    <string name="task_state_expired">已过期</string>
+    <string name="task_state_observer_failure">状态不可用</string>
+
+    <string name="task_reason_queued">正在等待此队列中较早的任务。</string>
+    <string name="task_reason_stopping">正在安全完成取消操作。</string>
+    <string name="task_reason_waiting_for_auth">请输入 %1$s 的归档密码短语以继续。</string>
+    <string name="task_reason_waiting_for_source">请选择 %1$s 的归档以继续。</string>
+    <string name="task_reason_waiting_for_privilege">请设置 Root、Shizuku 或 Dhizuku，然后返回 Thor。</string>
+    <string name="task_reason_interrupted_restore">%1$s 的恢复在开始更改应用数据后中断。请先检查，再继续。</string>
+    <string name="task_reason_interrupted_sweep">Thor 在执行 %2$s 后无法验证 %1$s。请先检查应用，再重试。</string>
+    <plurals name="task_reason_ready">
+        <item quantity="other">%1$d 个已准备文件可供分享。</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="other">%2$d 个文件中有 %1$d 个可供分享；其余文件无法准备。</item>
+    </plurals>
+    <string name="task_reason_start_blocked">Android 阻止了此任务启动。请在 Thor 打开时重试。</string>
+    <string name="task_reason_start_blocked_notification">此通知渠道已被阻止。请先启用它，再重试。</string>
+    <string name="task_reason_failed">任务未完成。请查看详情后再试。</string>
+    <string name="task_reason_expired">已准备的文件已过期并被移除。</string>
+    <string name="task_reason_observer_failure">Thor 无法加载当前任务状态。存储的任务未被更改。</string>
+    <string name="task_reason_root_lane_degraded">专用 Root 通道不可用。后台 Root 工作正在使用共享备用通道。</string>
+
+    <string name="data_queue_notification_channel_name">数据操作</string>
+    <string name="data_queue_notification_channel_description">显示归档、恢复、导出和分享准备的进度</string>
+    <string name="privilege_queue_notification_channel_name">特权应用操作</string>
+    <string name="privilege_queue_notification_channel_description">显示排队的冻结、解冻、暂停、取消暂停、缓存清理和修复应用商店来源操作的进度</string>
+    <string name="data_queue_notification_title">正在执行数据操作</string>
+    <string name="privilege_queue_notification_title">正在执行应用操作</string>
+    <string name="task_queue_notification_status">%1$s · %2$d / %3$d</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="other">还有 %1$d 项任务已排队</item>
+    </plurals>
+    <string name="task_queue_notification_cancel">取消</string>
+    <string name="task_queue_notification_ready_title">可供分享</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="other">%1$d 个已准备文件可供分享。</item>
+    </plurals>
+    <string name="task_queue_notification_ready_partial_title">部分文件可供分享</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="other">%2$d 个文件中有 %1$d 个已准备好。</item>
+    </plurals>
+
+    <string name="task_dialog_archive_auth_title">验证归档</string>
+    <string name="task_dialog_archive_auth_message">请输入 %1$s 的归档密码短语。它仅用于本次尝试，不会被保存。</string>
+    <string name="task_dialog_archive_passphrase_label">密码短语</string>
+    <string name="task_dialog_archive_auth_submit">继续</string>
+    <string name="task_dialog_restore_source_title">提供恢复源文件</string>
+    <string name="task_dialog_restore_source_message">请选择 %1$s 的归档。Thor 不会存储源地址。</string>
+    <string name="task_dialog_restore_source_select">选择归档</string>
+    <string name="task_dialog_restore_review_title">检查中断的恢复</string>
+    <string name="task_dialog_restore_review_message">%1$s 的恢复在开始更改应用数据后停止。请先检查应用，再选择“继续”。</string>
+    <string name="task_dialog_restore_review_resume">继续恢复</string>
+    <string name="task_dialog_sweep_retry_title">授权重试目标</string>
+    <string name="task_dialog_sweep_retry_message">Thor 在执行 %2$s 后无法验证 %1$s。仅当重复操作安全时，才重试此目标。</string>
+    <string name="task_dialog_sweep_retry_confirm">重试此目标</string>
+    <string name="task_dialog_share_expired_message">这些私人分享文件已达到 24 小时期限并被移除。</string>
+
+    <plurals name="task_log_pending_queued">
+        <item quantity="other">%1$d 项任务已接受并加入队列</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="other">%1$d 项任务待处理</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="other">%1$d 项任务未处理</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="other">已省略 %1$d 项较早的结果</item>
+    </plurals>
+    <string name="task_log_stage_preparing">正在准备任务。</string>
+    <string name="task_log_stage_staging_source">正在将所选源文件复制到私人暂存区。</string>
+    <string name="task_log_stage_measuring">正在测量应用数据。</string>
+    <string name="task_log_stage_capturing">正在捕获应用数据。</string>
+    <string name="task_log_stage_writing">正在写入输出。</string>
+    <string name="task_log_stage_installing">正在安装应用软件包。</string>
+    <string name="task_log_stage_restoring">正在恢复应用数据。</string>
+    <string name="task_log_stage_publishing">正在发布输出。</string>
+    <string name="task_log_stage_finishing">正在完成任务。</string>
+    <string name="task_log_item_running">正在处理 %1$s。</string>
+    <string name="task_log_item_succeeded">已完成 %1$s。</string>
+    <string name="task_log_item_failed">%1$s 失败。</string>
+    <string name="task_log_item_cancelled">已取消 %1$s。</string>
+    <string name="task_log_item_busy">已跳过 %1$s，因为另一个操作正在使用它。</string>
+    <string name="task_log_item_unknown">无法验证 %1$s 的最终状态。</string>
 
 </resources>

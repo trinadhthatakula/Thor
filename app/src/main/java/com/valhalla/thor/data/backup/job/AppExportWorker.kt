@@ -8,16 +8,35 @@ import androidx.annotation.StringRes
 import androidx.work.WorkerParameters
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppExportRequest
+import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.DataTaskItemTerminalState
+import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
+import com.valhalla.thor.domain.model.DataTaskResultCode
+import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.EXPORT_LABEL_KEY
+import com.valhalla.thor.domain.model.EXPORT_TREE_KEY
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
 import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.domain.repository.AppExportPublication
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.AppExportPublicationStatus
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.PackageOperationCoordinator
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.ExportSession
 import com.valhalla.thor.util.Logger
+import java.util.UUID
+import kotlinx.coroutines.CoroutineDispatcher
 import org.koin.android.annotation.KoinWorker
+import kotlin.Result as KotlinResult
+import org.koin.core.annotation.Named
 
 private const val TAG = "AppExportWorker"
 
@@ -61,6 +80,8 @@ internal class AppExportWorker(
     private val appRepository: AppRepository,
     private val fileStore: AppBundleFileStore,
     private val launchSweep: LaunchSweepBarrier,
+    private val packages: PackageOperationCoordinator,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
     sheetTargets: JobSheetTargets,
 ) : ThorJobWorker(appContext, params, notifications, registry, sheetTargets) {
 
@@ -81,82 +102,228 @@ internal class AppExportWorker(
     override val sheetTarget: JobSheetTarget? = null
 
     override suspend fun runJob(): Result {
-        val request = AppExportRequest.fromMap(inputData.keyValueMap)
-            ?: return failNoted(getString(R.string.export_job_unreadable))
+        val decoded = decodeLegacyAppExportRequest(inputData.keyValueMap)
+        var destination: String? = null
+        val runner = AppExportTaskRunner(
+            operations = object : AppExportTaskOperations {
+                override suspend fun awaitLaunchSweep(): Boolean {
+                    val swept = launchSweep.awaitSwept()
+                    if (!swept) {
+                        Logger.e(
+                            TAG,
+                            "launch sweep did not finish; refusing to stage ${decoded?.packageName}",
+                        )
+                    }
+                    return swept
+                }
 
-        publish(ThorJobProgress(ThorJobStage.PREPARING, getString(R.string.export_job_preparing, request.label)))
+                override suspend fun loadApp(packageName: String) =
+                    appRepository.getAppDetails(packageName)
 
-        // Before anything is staged, and unconditionally — see LaunchSweepBarrier for why an export is
-        // the first job on this seam that can lose a race to the launch sweep, and why waiting costs
-        // nothing outside the one process start where the two overlap.
-        if (!launchSweep.awaitSwept()) {
-            Logger.e(TAG, "launch sweep did not finish; refusing to stage ${request.packageName}")
-            return failNoted(getString(R.string.export_job_cleanup_busy))
-        }
+                override suspend fun isTreeWritable(treeUri: String): Boolean =
+                    fileStore.isTreeWritable(treeUri)
 
-        // Re-resolved, never carried: the request holds a package name precisely because
-        // publicSourceDir and splitPublicSourceDirs are snapshots that an update invalidates. Null
-        // here is the app having been uninstalled since the tap, which is a sentence, not an error.
-        val appInfo = appRepository.getAppDetails(request.packageName)
-            ?: return failNoted(getString(R.string.export_job_app_gone, request.label))
+                override suspend fun reconcilePublication(
+                    target: com.valhalla.thor.domain.model.ExportTargetChoice,
+                    identity: AppExportPublicationIdentity,
+                ) = fileStore.reconcilePublicExport(target, identity)
 
-        // Checked up front rather than discovered by the write failing. Packaging a 4 GB game and
-        // *then* finding out the folder's grant was revoked spends ten minutes to produce a failure
-        // that was knowable in a millisecond — and the recovery ("pick the folder again") is the same
-        // either way. Downloads carries no grant and needs no check.
-        request.treeUri?.let { tree ->
-            if (!fileStore.isTreeWritable(tree)) {
-                return failNoted(getString(R.string.export_job_folder_gone))
-            }
-        }
+                override suspend fun exportInto(
+                    appInfo: AppInfo,
+                    format: BundleFormat,
+                    session: ExportSession,
+                    publicationIdentity: AppExportPublicationIdentity?,
+                    execution: PrivilegeExecutionContext,
+                    captureProgress: VerifiedProgress,
+                    captureBoundary: VerifiedOperationBoundary,
+                    publicationProgress: VerifiedProgress,
+                    publicationStart: suspend () -> Unit,
+                ): KotlinResult<AppExportPublication> {
+                    val result = if (publicationIdentity == null) {
+                        exportApp.exportInto(
+                            appInfo = appInfo,
+                            format = format,
+                            session = session,
+                            execution = execution,
+                            captureProgress = captureProgress,
+                            publicationProgress = publicationProgress,
+                        ).map { destination ->
+                            AppExportPublication(
+                                destinationLabel = destination,
+                                status = AppExportPublicationStatus.PUBLISHED,
+                            )
+                        }
+                    } else {
+                        exportApp.exportDurableInto(
+                            appInfo = appInfo,
+                            format = format,
+                            session = session,
+                            publicationIdentity = publicationIdentity,
+                            execution = execution,
+                            captureProgress = captureProgress,
+                            captureBoundary = captureBoundary,
+                            publicationProgress = publicationProgress,
+                            publicationStart = publicationStart,
+                        )
+                    }
+                    return result.onFailure { cause ->
+                        Logger.e(TAG, "export of ${appInfo.packageName} failed", cause)
+                    }
+                }
 
-        publish(
-            ThorJobProgress(
-                ThorJobStage.CAPTURING,
-                getString(R.string.export_job_packaging, request.label, request.format.extension),
-            )
+                override fun onPublished(destinationLabel: String) {
+                    destination = destinationLabel
+                }
+            },
+            ioDispatcher = ioDispatcher,
         )
-
-        // SINGLE_STAGING_DIR, the same scope the foreground path used, because this *is* the
-        // one-app export — a batch takes a scope of its own so the two cannot wipe each other's
-        // half-written copy, and there is no batch on this seam yet.
-        val session = ExportSession(request.target, ExportAppUseCase.SINGLE_STAGING_DIR)
-        val destination = exportApp.exportInto(appInfo, request.format, session)
-            .getOrElse { cause ->
-                Logger.e(TAG, "export of ${request.packageName} failed", cause)
-                // The cause's own words, not a generic sentence. The builder computes and phrases the
-                // one failure a user can act on — "about 1.4 GB more is needed" — and flattening that
-                // to "Export failed" throws away the only part that says what to do next.
-                return failNoted(
-                    getString(
-                        R.string.export_failed,
-                        exportFailureReason(cause) ?: getString(R.string.export_failed_unknown),
-                    )
+        return runLegacyAppExportTask(
+            taskId = id,
+            decodedRequest = decoded,
+            runAttemptCount = runAttemptCount,
+            invalidRequestReason = getString(R.string.export_job_unreadable),
+            runner = runner,
+            packages = packages,
+            checkpoints = LegacyWorkerCheckpointSink { progress ->
+                publish(
+                    decoded?.let { request ->
+                        legacyAppExportProgress(
+                            progress = progress,
+                            preparingLabel = getString(
+                                R.string.export_job_preparing,
+                                request.label,
+                            ),
+                            packagingLabel = getString(
+                                R.string.export_job_packaging,
+                                request.label,
+                                request.format.extension,
+                            ),
+                        )
+                    } ?: progress
                 )
-            }
-
-        // The sentence this whole class exists to be able to say. Noted rather than returned, because
-        // `doWork`'s `finally` is what posts it and the `finally` runs on paths a `Result` does not
-        // survive; the success `Data` would only be read by a screen that is still open.
-        noteResult(getString(R.string.export_job_saved, request.label, destination))
-        return Result.success()
+            },
+            results = LegacyWorkerResultSink(
+                kind = DataTaskKind.APP_EXPORT,
+                onSuccess = {
+                    destination?.let { location ->
+                        val label = decoded?.label ?: initialLabel
+                        noteResult(getString(R.string.export_job_saved, label, location))
+                    }
+                },
+                onFailure = ::noteResult,
+            ),
+            failureReason = { code, detail -> legacyFailureReason(code, detail, decoded) },
+        )
     }
 
-    /**
-     * Fail *and* leave the reason in the shade, which are two different things and both are needed.
-     *
-     * `fail` puts the sentence in the output `Data`, where the export screen reads it — and reads it
-     * only while that screen exists. An export is a background job the user was invited to walk away
-     * from; the notification is the report for the case where they did. Every `return` in [runJob]
-     * that is not the success goes through here, so there is no path that ends the job in silence.
-     */
-    private fun failNoted(reason: String): Result {
-        noteResult(reason)
-        return fail(reason)
+    private fun legacyFailureReason(
+        code: DataTaskResultCode,
+        detail: String?,
+        request: AppExportRequest?,
+    ): String = when (code) {
+        APP_EXPORT_REQUEST_MISMATCH -> getString(R.string.export_job_unreadable)
+        APP_EXPORT_CLEANUP_BUSY -> getString(R.string.export_job_cleanup_busy)
+        APP_EXPORT_APP_NOT_INSTALLED -> getString(
+            R.string.export_job_app_gone,
+            request?.label ?: initialLabel,
+        )
+
+        APP_EXPORT_DESTINATION_UNAVAILABLE -> getString(R.string.export_job_folder_gone)
+        APP_EXPORT_FAILED -> getString(
+            R.string.export_failed,
+            detail ?: getString(R.string.export_failed_unknown),
+        )
+
+        else -> detail ?: getString(R.string.export_failed_unknown)
     }
 
     private fun getString(@StringRes resId: Int, vararg formatArgs: Any): String =
         applicationContext.getString(resId, *formatArgs)
+}
+
+internal fun decodeLegacyAppExportRequest(map: Map<String, Any?>): AppExportRequest? {
+    if (map.containsKey(EXPORT_TREE_KEY)) {
+        val treeUri = map[EXPORT_TREE_KEY] as? String ?: return null
+        if (treeUri.isBlank()) return null
+    }
+    return AppExportRequest.fromMap(map)
+}
+
+internal fun legacyAppExportProgress(
+    progress: ThorJobProgress,
+    preparingLabel: String,
+    packagingLabel: String,
+): ThorJobProgress = progress.copy(
+    label = when (progress.stage) {
+        ThorJobStage.PREPARING -> preparingLabel
+        ThorJobStage.CAPTURING -> packagingLabel
+        else -> progress.label
+    }
+)
+
+/** Strict adapter for WorkSpecs created by released versions; it never creates a Room task. */
+internal suspend fun <R> runLegacyAppExportTask(
+    taskId: UUID,
+    decodedRequest: AppExportRequest?,
+    runAttemptCount: Int,
+    invalidRequestReason: String,
+    runner: DataTaskRunner,
+    packages: PackageOperationCoordinator,
+    checkpoints: DataTaskCheckpointSink,
+    results: DataTaskResultSink<R>,
+    failureReason: (DataTaskResultCode, String?) -> String = { _, detail ->
+        detail ?: "the export could not be completed"
+    },
+): R {
+    val request = decodedRequest ?: return results.persist(
+        exportTaskFailure(
+            DataTaskResultCode("LEGACY_APP_EXPORT_REQUEST_INVALID"),
+            invalidRequestReason,
+        )
+    )
+    require(runner.kind == DataTaskKind.APP_EXPORT) {
+        "runner kind ${runner.kind} does not match request kind ${DataTaskKind.APP_EXPORT}"
+    }
+    val executionRequest = DataTaskExecutionRequest(
+        taskId = taskId,
+        payload = DataTaskExecutionPayload.AppExport(
+            request = request,
+            publicationPolicy = DataTaskPublicationPolicy.PUBLIC_DOCUMENT,
+        ),
+        item = DataTaskExecutionItem(
+            ordinal = 0,
+            packageName = request.packageName,
+            displayLabel = request.label,
+            deterministicStagingIdentity = LEGACY_APP_EXPORT_STAGING_IDENTITY,
+            attemptCount = runAttemptCount,
+        ),
+        taskAttemptCount = runAttemptCount,
+        resumedFrom = null,
+    )
+    // Retained WorkSpecs enter the same package-read admission as durable exports. Wrap only here,
+    // before package resolution and through delegate cleanup, not in the already-wrapped data lane.
+    val outcome = PackageReadDataTaskRunner(runner, packages).run(executionRequest, checkpoints)
+    return results.persist(outcome.toLegacyAppExportOutcome(failureReason))
+}
+
+private fun DataTaskRunOutcome.toLegacyAppExportOutcome(
+    failureReason: (DataTaskResultCode, String?) -> String,
+): DataTaskRunOutcome {
+    val failed = this as? DataTaskRunOutcome.ItemCompleted
+        ?: return if (this is DataTaskRunOutcome.TaskFailed) {
+            exportTaskFailure(
+                resultCode,
+                failureReason(resultCode, arguments.firstOrNull()),
+            )
+        } else {
+            this
+        }
+    if (failed.result.terminalState != DataTaskItemTerminalState.FAILED) return this
+    val detail = failed.result.warnings.firstOrNull()?.arguments?.firstOrNull()
+    return exportTaskFailure(
+        failed.result.resultCode,
+        failureReason(failed.result.resultCode, detail),
+    )
 }
 
 /**

@@ -9,28 +9,37 @@ import android.content.res.Resources
 import android.os.Build
 import android.service.quicksettings.TileService
 import com.valhalla.thor.R
-import com.valhalla.thor.data.freezer.BulkFreezeRunner
+import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
-import com.valhalla.thor.domain.model.ParkedBulkResult
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
-import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import org.koin.core.qualifier.named
 
 /**
  * Quick Settings tile that bulk-freezes the freezer watchlist.
  *
- * The tile owns no work. [BulkFreezeRunner] is an app-scoped @Single that runs the batch and
+ * The tile owns no work. [the durable sweep controller] is an app-scoped @Single that runs the batch and
  * publishes its state, so a QS shade collapse destroying this service cannot truncate a
  * freeze and cannot leave anything retaining the destroyed instance. This service only
  * observes and paints.
@@ -41,13 +50,16 @@ import org.koin.android.ext.android.inject
  */
 class FreezerTileService : TileService() {
 
-    private val runner: BulkFreezeRunner by inject()
+    private val sweepResolver: PrivilegeSweepTargetResolver by inject()
+    private val sweepController: PrivilegeSweepController by inject()
+    private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
     private val privilegeManager: PrivilegeManager by inject()
+    private val mainDispatcher: CoroutineDispatcher by inject(named("main"))
 
     private var scope: CoroutineScope? = null
-
-    /** The result currently displayed in the subtitle; consumed in [onStopListening]. */
-    private var shownResult: ParkedBulkResult? = null
+    private var candidateRefresh: Job? = null
+    private val freezableCount = MutableStateFlow<Int?>(null)
+    private var latestStatus: PrivilegeSweepStatus? = null
 
     /**
      * Applies the chosen locale on API 28–32 to the strings **this service** resolves.
@@ -55,7 +67,7 @@ class FreezerTileService : TileService() {
      * `Service` extends `ContextWrapper` and is attached the same way an Activity is, so the same
      * wrap works here. What it covers is everything [paint] reads: `tile_checking`, `tile_freezing`,
      * `tile_no_privilege`, `tile_no_apps`, the `freezer` content description and
-     * [com.valhalla.thor.util.bulkResultMessage].
+     * the retained sweep summary.
      *
      * **What it does not cover, on any API level:** the tile's *label* and *icon*, declared as
      * `android:label="@string/freezer"` on the `<service>` in the manifest. Those are read by
@@ -104,7 +116,7 @@ class FreezerTileService : TileService() {
         // destroyed instance" claim true by construction, instead of true only as long as that
         // framework detail holds.
         scope?.cancel()
-        val listenScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val listenScope = CoroutineScope(SupervisorJob() + mainDispatcher)
         scope = listenScope
 
         // Phase 1: paint synchronously from whatever is already cached, so the tile is never
@@ -114,12 +126,28 @@ class FreezerTileService : TileService() {
 
         listenScope.launch {
             try {
+                var observedStatus: PrivilegeSweepStatus? = null
+                var hasObservedStatus = false
+                val statuses = sweepController.observeLatest(PrivilegeSweepSource.QS_TILE)
+                    .onEach { status ->
+                        // Only upstream task transitions trigger a read, never our own count or progress.
+                        if (hasObservedStatus && status != null && status.phase in CANDIDATE_TERMINAL_PHASES &&
+                            (status.requestId != observedStatus?.requestId ||
+                                observedStatus?.phase !in CANDIDATE_TERMINAL_PHASES)
+                        ) {
+                            refreshCandidates(listenScope)
+                        }
+                        observedStatus = status
+                        hasObservedStatus = true
+                    }
                 combine(
                     privilegeManager.state,
-                    runner.freezableCount,
-                    runner.runningRequests,
-                    runner.lastResult,
-                ) { _, _, _, _ -> Unit }.collect { paint() }
+                    freezableCount,
+                    statuses,
+                ) { _, _, status -> status }.collect { status ->
+                    latestStatus = status
+                    paint()
+                }
             } catch (e: CancellationException) {
                 // CancellationException is an Exception in Kotlin, so it must be rethrown
                 // ahead of the broad catch or the shade closing looks like a crash.
@@ -129,24 +157,7 @@ class FreezerTileService : TileService() {
             }
         }
 
-        // Phase 2: re-derive from live per-app state. The watchlist alone cannot tell us
-        // whether anything is still freezable, which is why the tile used to stay lit after
-        // freezing everything.
-        listenScope.launch {
-            try {
-                runner.refreshFreezableCount()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // This is the one that matters: the sweep does a Room read plus N
-                // PackageManager.getApplicationInfo calls, and AppFreezeStateReader.stateOf
-                // catches only NameNotFoundException. A SQLiteException or a binder-death
-                // RuntimeException would otherwise reach Android's default uncaught handler —
-                // there is no CoroutineExceptionHandler anywhere in :app — and kill the
-                // process straight from the QS shade.
-                Logger.e("FreezerTile", "candidate sweep failed", e)
-            }
-        }
+        refreshCandidates(listenScope)
     }
 
     override fun onDestroy() {
@@ -158,26 +169,33 @@ class FreezerTileService : TileService() {
     override fun onStopListening() {
         scope?.cancel()
         scope = null
-        // Consume only the result that was actually displayed. Deferred to onStopListening so
-        // the message holds for the full shade-open window and no observer sees the write.
-        shownResult?.let { runner.consumeResult(it) }
-        shownResult = null
     }
 
     override fun onClick() {
-        // Hand off immediately and synchronously. Nothing about the tap may depend on this
-        // service's scope: the privilege state is often unresolved at tap time (PrivilegeManager
-        // probes on IO and the first DataStore emission may not have landed), and awaiting it
-        // here — on a scope onStopListening cancels — meant that on a cold process, tapping and
-        // then collapsing the shade dropped the freeze silently.
-        //
-        // Nothing is lost by not pre-checking. BulkFreezeRunner.run awaits `isReady` itself and
-        // returns null when there is no privilege, precisely so it does not depend on its
-        // caller having awaited anything; and the NO_PRIVILEGE paint the pre-check used to do
-        // is already driven by the collector in onStartListening, which repaints on every
-        // PrivilegeManager emission. tileVisualFor also orders NO_PRIVILEGE ahead of WORKING,
-        // so a run that is about to no-op cannot flash "Freezing…" on an unprivileged tile.
-        runner.launch(BulkOp.FREEZE)
+        sweepLauncher.launch(
+            request = BulkRequest(BulkOp.FREEZE),
+            source = PrivilegeSweepSource.QS_TILE,
+        )
+    }
+
+    private fun refreshCandidates(listenScope: CoroutineScope) {
+        candidateRefresh?.cancel()
+        freezableCount.value = null
+        candidateRefresh = listenScope.launch {
+            try {
+                val count = sweepResolver.resolve(
+                    BulkRequest(BulkOp.FREEZE),
+                    PrivilegeSweepSource.QS_TILE,
+                ).packageNames.size
+                // A late/non-cancellable read cannot overwrite a newer listening/refresh generation.
+                currentCoroutineContext().ensureActive()
+                freezableCount.value = count
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Logger.e("FreezerTile", "candidate sweep failed", failure)
+            }
+        }
     }
 
     /**
@@ -187,39 +205,33 @@ class FreezerTileService : TileService() {
      * cancelled continuation in the collector can never run its body afterwards.
      */
     private fun paint() {
+        if (scope == null) return
         val tile = qsTile ?: return
-        // FREEZE over the watchlist only: an Unfreeze-all shortcut running in the background is
-        // not this tile's work, and painting it as "Freezing…" was a lie about which direction
-        // it was going. A freeze profile run is the same kind of lie in the other axis — right
-        // direction, wrong list — and it would leave the tile claiming to be busy while the
-        // count it displays never moves, because that count is the watchlist's.
-        //
-        // Membership, not equality against the newest launch: a profile run started during a
-        // watchlist freeze is queued *behind* it, and asking only about the newest would paint
-        // this tile idle while the freeze it started is still going.
-        val freezing = BulkRequest(BulkOp.FREEZE) in runner.runningRequests.value
+        val status = latestStatus
         val visual = tileVisualFor(
             privilege = privilegeManager.state.value,
-            freezableCount = runner.freezableCount.value,
-            isRunning = freezing,
+            freezableCount = freezableCount.value,
+            status = status,
         )
-        val count = runner.freezableCount.value ?: 0
+        val count = freezableCount.value ?: 0
 
         tile.state = tileStateFor(visual)
 
-        // A finished run's message wins the subtitle for the whole shade-open window.
-        // Record it in shownResult so onStopListening can consume exactly what was displayed.
-        // Writing to shownResult (a plain field, not a flow) does not re-trigger the collector.
-        // freshResult(), not lastResult.value: the runner lives for the whole process and this
-        // subtitle is the tile's live status line, so an unexpired report is the only kind that
-        // may occupy it. A run from last night must fall back to the READY count below rather
-        // than tell the user their apps were frozen "just now". The check belongs on this read
-        // because paint() runs synchronously at the top of every onStartListening — every moment
-        // the staleness is observable is a moment this line already executes.
-        val parked = runner.freshResult()
-        val subtitle = if (parked != null && !freezing) {
-            shownResult = parked
-            bulkResultMessage(parked.result).asString(this)
+        val terminal = status?.takeIf {
+            it.phase == PrivilegeSweepPhase.SUCCEEDED ||
+                it.phase == PrivilegeSweepPhase.PARTIAL ||
+                it.phase == PrivilegeSweepPhase.CANCELLED ||
+                it.phase == PrivilegeSweepPhase.FAILED ||
+                it.phase == PrivilegeSweepPhase.OBSERVER_FAILURE
+        }
+        val subtitle = if (terminal != null) {
+            getString(
+                R.string.sweep_result_summary,
+                terminal.succeeded,
+                terminal.failed,
+                terminal.busy,
+                terminal.unresolved,
+            )
         } else {
             when (visual) {
                 TileVisual.CHECKING -> getString(R.string.tile_checking)
@@ -250,3 +262,10 @@ class FreezerTileService : TileService() {
         tile.updateTile()
     }
 }
+
+private val CANDIDATE_TERMINAL_PHASES = setOf(
+    PrivilegeSweepPhase.SUCCEEDED,
+    PrivilegeSweepPhase.PARTIAL,
+    PrivilegeSweepPhase.CANCELLED,
+    PrivilegeSweepPhase.FAILED,
+)

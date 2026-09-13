@@ -4,8 +4,10 @@
 package com.valhalla.thor.data.backup.job
 
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -64,6 +66,17 @@ class LaunchSweepBarrierTest {
 
         assertNull(outcome.exceptionOrNull())
         assertEquals(false, outcome.getOrNull())
+    }
+
+    @Test
+    fun `a cancelled service wait does not consume the one-shot barrier`() = runTest {
+        val barrier = LaunchSweepBarrier()
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) { barrier.awaitSwept() }
+
+        waiter.cancel(CancellationException("service stopped"))
+        barrier.markSwept()
+
+        assertTrue(barrier.awaitSwept())
     }
 
     @Test

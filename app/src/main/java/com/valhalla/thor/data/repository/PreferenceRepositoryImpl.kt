@@ -21,6 +21,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
@@ -92,7 +93,8 @@ private val writeFailureLatch = MutableStateFlow(false)
  * user deliberately armed *silently* is precisely what `SecurityViewModel` is written not to do, so
  * the loss is recorded here, carried on [UserPreferences.settingsLost], and said out loud.
  */
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
     name = SETTINGS_STORE,
     corruptionHandler = ReplaceFileCorruptionHandler {
         Logger.e(TAG, "$SETTINGS_STORE was unreadable; replacing it with an empty file", it)
@@ -125,7 +127,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
  * this file holds falls back to "we have not offered yet", which re-offers the recovery prompt
  * rather than withholding anything.
  */
-private val Context.localState: DataStore<Preferences> by preferencesDataStore(
+// internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
+internal val Context.localState: DataStore<Preferences> by preferencesDataStore(
     name = LOCAL_STORE,
     corruptionHandler = ReplaceFileCorruptionHandler {
         Logger.e(TAG, "$LOCAL_STORE was unreadable; replacing it with an empty file", it)
@@ -155,6 +158,7 @@ class PreferenceRepositoryImpl(
 
         // Theme
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val FONT_PRESET = stringPreferencesKey("font_preset")
         val USE_DYNAMIC_COLOR = booleanPreferencesKey("use_dynamic_color")
         val USE_AMOLED = booleanPreferencesKey("use_amoled")
 
@@ -202,6 +206,11 @@ class PreferenceRepositoryImpl(
 
         // Auto Reinstall
         val AUTO_REINSTALL_ENABLED = booleanPreferencesKey("auto_reinstall_enabled")
+
+        // Installing
+        val GRANT_ALL_PERMISSIONS_ON_INSTALL =
+            booleanPreferencesKey("grant_all_permissions_on_install")
+        val ALLOW_LEGACY_APK_INSTALL = booleanPreferencesKey("allow_legacy_apk_install")
 
         // Customization
         val APP_INFO_ACTIONS_ORDER = stringPreferencesKey("app_info_actions_order")
@@ -267,6 +276,12 @@ class PreferenceRepositoryImpl(
 
     override suspend fun setThemeMode(themeMode: ThemeMode) {
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.THEME_MODE] = themeMode.name }
+    }
+
+    override suspend fun setFontPreset(fontPreset: FontPreset) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.FONT_PRESET] = fontPreset.storageValue
+        }
     }
 
     override suspend fun setDynamicColor(enabled: Boolean) {
@@ -418,6 +433,24 @@ class PreferenceRepositoryImpl(
     override suspend fun getInstallerArg(): String {
         return if (userPreferences.first().autoReinstallEnabled) " -i com.android.vending" else ""
     }
+
+    override suspend fun setGrantAllPermissionsOnInstall(enabled: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.GRANT_ALL_PERMISSIONS_ON_INSTALL] = enabled
+        }
+    }
+
+    override suspend fun shouldGrantAllPermissionsOnInstall(): Boolean =
+        userPreferences.first().grantAllPermissionsOnInstall
+
+    override suspend fun setAllowLegacyApkInstall(enabled: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.ALLOW_LEGACY_APK_INSTALL] = enabled
+        }
+    }
+
+    override suspend fun shouldAllowLegacyApkInstall(): Boolean =
+        userPreferences.first().allowLegacyApkInstall
 
     // --- Customization ---
 
@@ -635,6 +668,7 @@ internal fun Preferences.toUserPreferences(
         showInstallerTile = prefs[Keys.SHOW_INSTALLER_TILE] ?: true,
         showExtensionsTile = prefs[Keys.SHOW_EXTENSIONS_TILE] ?: true,
         themeMode = themeMode,
+        fontPreset = FontPreset.fromStorageValue(prefs[Keys.FONT_PRESET]),
         useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
         useAmoled = prefs[Keys.USE_AMOLED] ?: false,
         biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
@@ -659,6 +693,8 @@ internal fun Preferences.toUserPreferences(
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
         extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
         autoReinstallEnabled = prefs[Keys.AUTO_REINSTALL_ENABLED] ?: false,
+        grantAllPermissionsOnInstall = prefs[Keys.GRANT_ALL_PERMISSIONS_ON_INSTALL] ?: false,
+        allowLegacyApkInstall = prefs[Keys.ALLOW_LEGACY_APK_INSTALL] ?: false,
         exportDirUri = prefs[Keys.EXPORT_DIR_URI],
         appInfoActionsOrder = AppInfoActionId.fromSavedNamesOrDefault(
             prefs[Keys.APP_INFO_ACTIONS_ORDER]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }

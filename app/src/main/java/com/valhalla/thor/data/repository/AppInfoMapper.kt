@@ -6,7 +6,6 @@ package com.valhalla.thor.data.repository
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Environment
 import com.valhalla.thor.domain.model.AppInfo
 import java.io.File
@@ -66,7 +65,7 @@ fun mapToAppInfo(
         minSdk = appInfo.minSdkVersion,
         targetSdk = appInfo.targetSdkVersion,
         isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
-        installerPackageName = getInstallerPackageName(packInfo.packageName, pm),
+        installerPackageName = pm.installerPackageNameOf(packInfo.packageName),
         publicSourceDir = appInfo.publicSourceDir,
         splitPublicSourceDirs = appInfo.splitPublicSourceDirs?.toList() ?: emptyList(),
         enabled = appInfo.enabled && (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0,
@@ -83,17 +82,4 @@ fun mapToAppInfo(
         isSuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0,
         isInstalled = (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0
     )
-}
-
-private fun getInstallerPackageName(packageName: String, pm: PackageManager): String? {
-    return try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            pm.getInstallSourceInfo(packageName).installingPackageName
-        } else {
-            @Suppress("DEPRECATION")
-            pm.getInstallerPackageName(packageName)
-        }
-    } catch (_: Exception) {
-        null
-    }
 }

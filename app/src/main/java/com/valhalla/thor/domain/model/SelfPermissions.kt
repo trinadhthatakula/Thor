@@ -3,6 +3,13 @@
 
 package com.valhalla.thor.domain.model
 
+/** Permissions that authorize Thor to use a separate privilege broker's API. */
+private val BROKER_AUTHORIZATION_PERMISSIONS = setOf(
+    "moe.shizuku.manager.permission.API_V23",
+    "shizuku.permission.API_V23",
+    "com.rosan.dhizuku.permission.API",
+)
+
 /**
  * What the running OS says about one permission **Thor's own manifest declares**.
  *
@@ -67,14 +74,15 @@ data class SelfGrantPlan(
 /**
  * Which of Thor's own declared permissions a privileged `pm grant` could actually change.
  *
- * **The device is asked, and no name is hardcoded.** Thor's manifest is the input, so a permission
- * added to it later is covered without a second edit here — the failure mode of a hand-kept list is
- * that the list and the manifest agree on the day they are written and never again. It also means
- * the answer is honest per device rather than per build: on a Pixel this returns
- * `POST_NOTIFICATIONS` alone, on HyperOS it returns that and
+ * The device classifies ordinary manifest declarations, so adding an ordinary runtime permission
+ * later is covered without a second edit here. Broker authorization permissions are the narrow
+ * exception: their names are excluded because they authorize Thor to use another app's API and must
+ * go through that broker's explicit consent flow. The remaining answer is honest per device rather
+ * than per build: on a Pixel this returns `POST_NOTIFICATIONS` alone, on HyperOS it returns that and
  * [GET_INSTALLED_APPS_PERMISSION], and on API 28 it returns neither of them.
  *
- * The three rejections all exist because `pm grant` *fails* on them, and a privileged command issued
+ * The four rejections all exist because `pm grant` is either invalid or semantically wrong for them,
+ * and a privileged command issued
  * once per attempt per permission is not free — it is a round trip through the root shell or the
  * Shizuku binder, on a path that runs while the user is waiting for the app list:
  *
@@ -89,6 +97,9 @@ data class SelfGrantPlan(
  *    app-op the user toggles under "Install unknown apps". Sending either to `pm grant` would be a
  *    guaranteed failure wearing the shape of a real attempt.
  * 3. **Already held.** Re-granting is a no-op that still costs the round trip.
+ * 4. **Broker authorization.** Shizuku and Dhizuku grant access through their own explicit consent
+ *    APIs. A Root fallback can execute Thor's action without either authorization, but must not use
+ *    that unrelated privilege to grant access to another broker silently.
  *
  * A [SelfPermissionDeclaration.Unknown] is not a rejection: it is left out of [toGrant] *and*
  * recorded in [SelfGrantPlan.hasUnanswered], so the run can be repeated.
@@ -112,7 +123,11 @@ fun planSelfGrant(permissions: List<SelfPermission>): SelfGrantPlan {
             SelfPermissionDeclaration.Unknown -> hasUnanswered = true
             SelfPermissionDeclaration.Undefined -> Unit
             is SelfPermissionDeclaration.Declared -> {
-                if (declaration.permission.isDangerous && !permission.isGranted) {
+                if (
+                    declaration.permission.isDangerous &&
+                    !permission.isGranted &&
+                    permission.name !in BROKER_AUTHORIZATION_PERMISSIONS
+                ) {
                     toGrant += permission.name
                 }
             }

@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thor Lane Architecture</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap">
+  <style>
+  :root {
+    --ground: #eef3f6;
+    --surface: #ffffff;
+    --surface-2: #e4ebef;
+    --ink: #17232c;
+    --muted: #526572;
+    --line: #b8c7cf;
+    --line-strong: #8196a2;
+    --interactive: #176985;
+    --interactive-soft: #d8edf4;
+    --archive: #b75b28;
+    --archive-soft: #fae6d9;
+    --sweep: #4e7350;
+    --sweep-soft: #e0eedf;
+    --warning: #8b650e;
+    --warning-soft: #fff1c7;
+    --danger: #a13d43;
+    --danger-soft: #f8dfe1;
+    --success: #2f744f;
+    --shadow: 0 18px 50px rgba(28, 47, 59, .10);
+    --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+    --font-body: "Source Sans 3", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #10181e;
+      --surface: #172229;
+      --surface-2: #213039;
+      --ink: #e8f0f3;
+      --muted: #a8bac4;
+      --line: #344854;
+      --line-strong: #58707d;
+      --interactive: #6dc5e2;
+      --interactive-soft: #173743;
+      --archive: #f29a65;
+      --archive-soft: #482b20;
+      --sweep: #9ac297;
+      --sweep-soft: #263d2b;
+      --warning: #e6bd5c;
+      --warning-soft: #403517;
+      --danger: #ef9299;
+      --danger-soft: #47252a;
+      --success: #81c69e;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #10181e;
+    --surface: #172229;
+    --surface-2: #213039;
+    --ink: #e8f0f3;
+    --muted: #a8bac4;
+    --line: #344854;
+    --line-strong: #58707d;
+    --interactive: #6dc5e2;
+    --interactive-soft: #173743;
+    --archive: #f29a65;
+    --archive-soft: #482b20;
+    --sweep: #9ac297;
+    --sweep-soft: #263d2b;
+    --warning: #e6bd5c;
+    --warning-soft: #403517;
+    --danger: #ef9299;
+    --danger-soft: #47252a;
+    --success: #81c69e;
+    --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    line-height: 1.62;
+  }
+  a { color: inherit; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--interactive); outline-offset: 3px; }
+  code, .mono { font-family: var(--font-mono); font-size: .88em; }
+  code { background: var(--surface-2); padding: .1em .35em; border-radius: .2rem; }
+  .shell { display: grid; grid-template-columns: 17rem minmax(0, 1fr); min-height: 100vh; }
+  .rail {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 2rem 1.35rem;
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+  }
+  .brand { display: grid; gap: .25rem; padding-bottom: 1.4rem; border-bottom: 2px solid var(--ink); }
+  .brand strong { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: -.015em; }
+  .brand span { color: var(--muted); font: 500 .72rem/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+  .rail nav { display: grid; gap: .2rem; margin-top: 1.2rem; }
+  .rail nav a { padding: .42rem .55rem; text-decoration: none; color: var(--muted); border-left: 2px solid transparent; font-size: .9rem; }
+  .rail nav a:hover { color: var(--ink); border-left-color: var(--interactive); background: var(--surface-2); }
+  .rail-note { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .8rem; }
+  main { min-width: 0; }
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(3rem, 7vw, 6.5rem) clamp(1.4rem, 6vw, 5rem) 3.5rem;
+    background:
+      linear-gradient(90deg, color-mix(in srgb, var(--interactive) 8%, transparent) 1px, transparent 1px) 0 0 / 42px 42px,
+      linear-gradient(color-mix(in srgb, var(--interactive) 8%, transparent) 1px, transparent 1px) 0 0 / 42px 42px,
+      var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  .hero-inner { max-width: 74rem; margin: 0 auto; display: grid; gap: 2rem; }
+  .eyebrow { font: 600 .76rem/1.3 var(--font-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--interactive); }
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.08; margin: 0; }
+  h1 { max-width: 14ch; font-size: clamp(3.2rem, 8vw, 7rem); letter-spacing: -.045em; }
+  h2 { font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.025em; }
+  h3 { font-size: 1.35rem; letter-spacing: -.01em; }
+  .lede { max-width: 62ch; font-size: clamp(1.1rem, 2vw, 1.35rem); color: var(--muted); }
+  .meta { display: flex; flex-wrap: wrap; gap: .6rem; }
+  .chip { border: 1px solid var(--line-strong); padding: .32rem .65rem; font: 500 .76rem/1.2 var(--font-mono); background: var(--surface); }
+  .chip.approved { color: var(--success); border-color: var(--success); }
+  .lane-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .lane-strip > div { padding: 1.1rem 1.2rem; background: var(--surface); display: grid; gap: .35rem; }
+  .lane-strip strong { font: 700 1.05rem/1 var(--font-display); text-transform: uppercase; letter-spacing: .05em; }
+  .lane-strip span { color: var(--muted); font-size: .87rem; }
+  .lane-strip .i strong { color: var(--interactive); }
+  .lane-strip .a strong { color: var(--archive); }
+  .lane-strip .s strong { color: var(--sweep); }
+  .content { max-width: 82rem; margin: 0 auto; padding: 4rem clamp(1.4rem, 6vw, 5rem) 7rem; display: grid; gap: 5rem; }
+  section { scroll-margin-top: 2rem; display: grid; gap: 1.5rem; }
+  .section-head { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: 1rem; align-items: start; }
+  .section-no { font: 600 .8rem/1 var(--font-mono); color: var(--muted); padding-top: .55rem; }
+  .section-copy { max-width: 68ch; display: grid; gap: 1rem; }
+  p { margin: 0; }
+  .callout { border-left: 4px solid var(--interactive); background: var(--interactive-soft); padding: 1.2rem 1.35rem; max-width: 72ch; }
+  .callout.warning { border-color: var(--warning); background: var(--warning-soft); }
+  .callout.danger { border-color: var(--danger); background: var(--danger-soft); }
+  .flow {
+    display: grid;
+    gap: .75rem;
+    padding: 1.4rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    overflow-x: auto;
+  }
+  .flow-row { display: grid; grid-template-columns: minmax(11rem, 1fr) 2rem minmax(12rem, 1fr) 2rem minmax(10rem, .85fr); gap: .6rem; align-items: center; min-width: 48rem; }
+  .flow-box { padding: .75rem .85rem; border: 1px solid var(--line); background: var(--ground); font: 500 .78rem/1.45 var(--font-mono); }
+  .arrow { text-align: center; color: var(--muted); }
+  .flow-row.interactive .flow-box:last-child { border-color: var(--interactive); background: var(--interactive-soft); }
+  .flow-row.archive .flow-box:last-child { border-color: var(--archive); background: var(--archive-soft); }
+  .flow-row.sweep .flow-box:last-child { border-color: var(--sweep); background: var(--sweep-soft); }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+  .card { background: var(--surface); border: 1px solid var(--line); padding: 1.25rem; display: grid; align-content: start; gap: .8rem; }
+  .card.i { border-top: 5px solid var(--interactive); }
+  .card.a { border-top: 5px solid var(--archive); }
+  .card.s { border-top: 5px solid var(--sweep); }
+  .card p, .card li { color: var(--muted); }
+  ul, ol { margin: 0; padding-left: 1.2rem; }
+  li + li { margin-top: .38rem; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; min-width: 46rem; }
+  th, td { text-align: left; vertical-align: top; padding: .75rem .85rem; border-bottom: 1px solid var(--line); }
+  th { font: 600 .74rem/1.3 var(--font-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--surface-2); }
+  tr:last-child td { border-bottom: 0; }
+  .yes { color: var(--success); font-weight: 700; }
+  .no { color: var(--danger); font-weight: 700; }
+  .lifecycle { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); background: var(--surface); }
+  .step { position: relative; padding: 1rem; min-height: 8.5rem; border-right: 1px solid var(--line); }
+  .step:last-child { border-right: 0; }
+  .step b { display: block; font: 600 .72rem/1 var(--font-mono); color: var(--interactive); margin-bottom: .65rem; }
+  .step strong { display: block; font-family: var(--font-display); margin-bottom: .35rem; }
+  .step span { color: var(--muted); font-size: .88rem; }
+  .checklist { columns: 2; column-gap: 2rem; padding: 0; list-style: none; }
+  .checklist li { break-inside: avoid; position: relative; padding: .35rem 0 .35rem 1.5rem; }
+  .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--success); font-weight: 700; }
+  .risk-grid { display: grid; grid-template-columns: minmax(12rem, .65fr) minmax(20rem, 1.35fr); border: 1px solid var(--line); }
+  .risk-grid > div { padding: .8rem 1rem; border-bottom: 1px solid var(--line); }
+  .risk-grid > div:nth-child(odd) { font-weight: 600; background: var(--surface-2); border-right: 1px solid var(--line); }
+  .risk-grid > div:nth-last-child(-n+2) { border-bottom: 0; }
+  details { border-top: 1px solid var(--line); padding: 1rem 0; max-width: 76ch; }
+  summary { cursor: pointer; font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; }
+  details > div { padding: 1rem 0 0 1.25rem; color: var(--muted); display: grid; gap: .8rem; }
+  .footer { border-top: 1px solid var(--line); padding-top: 1.4rem; color: var(--muted); font-size: .88rem; }
+  @media (max-width: 920px) {
+    .shell { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 1rem 1.2rem; }
+    .rail nav { display: none; }
+    .rail-note { display: none; }
+    .brand { padding: 0; border: 0; grid-template-columns: auto 1fr; align-items: baseline; }
+    .lane-strip, .grid-3 { grid-template-columns: 1fr; }
+    .lifecycle { grid-template-columns: 1fr 1fr; }
+    .step:nth-child(2) { border-right: 0; }
+    .step:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  }
+  @media (max-width: 620px) {
+    .section-head { grid-template-columns: 1fr; gap: .35rem; }
+    .section-no { padding: 0; }
+    .lifecycle { grid-template-columns: 1fr; }
+    .step { border-right: 0; border-bottom: 1px solid var(--line); min-height: auto; }
+    .step:last-child { border-bottom: 0; }
+    .checklist { columns: 1; }
+    .risk-grid { grid-template-columns: 1fr; }
+    .risk-grid > div:nth-child(odd) { border-right: 0; border-bottom: 0; }
+    .risk-grid > div:nth-last-child(2) { border-bottom: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+  <link rel="icon" href="/favicon.svg">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand"><strong>Thor / Phase 3</strong><span>Execution architecture</span></div>
+    <nav aria-label="Specification sections">
+      <a href="#diagnosis">Diagnosis</a>
+      <a href="#decisions">Decisions</a>
+      <a href="#topology">Topology</a>
+      <a href="#ownership">Shell ownership</a>
+      <a href="#coordination">Package coordination</a>
+      <a href="#requests">Durable requests</a>
+      <a href="#worker">Worker lifecycle</a>
+      <a href="#ui">UI ownership</a>
+      <a href="#testing">Testing gate</a>
+      <a href="#delivery">Delivery sequence</a>
+      <a href="#acceptance">Acceptance</a>
+    </nav>
+    <div class="rail-note">Approved direction<br><strong>Three logical lanes</strong><br>28 Aug 2026</div>
+  </aside>
+  <main>
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="eyebrow">Bulk actions · phase 3</div>
+        <h1>Keep slow work in its own lane.</h1>
+        <p class="lede">A worker split alone cannot unblock Thor. The root cause is Odin’s single cached shell FIFO. This design isolates interactive, archive, and sweep commands while keeping WorkManager’s two durable chains.</p>
+        <div class="meta">
+          <span class="chip approved">Approved in chat</span>
+          <span class="chip">Maintainer review pending</span>
+          <span class="chip">No versionCode change</span>
+        </div>
+        <div class="lane-strip" aria-label="Three execution lanes">
+          <div class="i"><strong>Interactive</strong><span>MainShell · immediate UI actions</span></div>
+          <div class="a"><strong>Archive</strong><span>Owned shell · tar, extract, swap</span></div>
+          <div class="s"><strong>Sweep</strong><span>Owned shell · replay-safe bulk mutations</span></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+      <section id="diagnosis">
+        <div class="section-head"><span class="section-no">01</span><div><h2>Verified diagnosis</h2></div></div>
+        <div class="section-copy">
+          <p>Archive Workers and Freezer unfreeze reach the same singleton <code>ShellRepository</code>. Odin’s cached <code>MainShell</code> owns one FIFO and cannot begin a later package command until the active <code>tar</code> or extraction command returns.</p>
+          <p>Unfreeze is not currently a Worker, so changing WorkManager’s executor, adding a second chain, or adding another foreground service does not remove this queue.</p>
+        </div>
+        <div class="flow" aria-label="Current contended paths">
+          <div class="flow-row archive"><div class="flow-box">Archive Worker<br>tar / extract</div><div class="arrow">→</div><div class="flow-box">singleton ShellRepository</div><div class="arrow">→</div><div class="flow-box">MainShell FIFO</div></div>
+          <div class="flow-row interactive"><div class="flow-box">Freezer UI<br>unfreeze</div><div class="arrow">→</div><div class="flow-box">same ShellRepository</div><div class="arrow">→</div><div class="flow-box">same FIFO</div></div>
+        </div>
+        <div class="callout warning"><strong>The animation is a second defect.</strong> <code>performCountedFreeze</code> marks completion only after its loop. Cancellation or an unexpected throw can leave the dialog visible and incomplete forever, even after the shell operation has ended.</div>
+        <details><summary>What was ruled out</summary><div><p>Thor injects ordinary <code>Dispatchers.IO</code>; Odin waits through a callback rather than pinning a thread. Archive tar/extract holds no Room transaction, and WorkManager closes its own database transaction before the Worker body starts. Dispatcher starvation and Room write locking do not explain this reproduction.</p></div></details>
+      </section>
+
+      <section id="decisions">
+        <div class="section-head"><span class="section-no">02</span><div><h2>Architecture decisions</h2></div></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Decision</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Keep <code>THOR_JOB_CHAIN</code></td><td>Byte movers remain serialized to bound disk and staging pressure.</td></tr>
+            <tr><td>Activate <code>THOR_SWEEP_CHAIN</code></td><td>Short privilege sweeps should run independently while remaining ordered among themselves.</td></tr>
+            <tr><td>No foreground service for sweeps</td><td>Progress notifications do not require FGS priority or a <code>dataSync</code> slot.</td></tr>
+            <tr><td>Three root lanes</td><td>Archives cannot block sweeps or UI; sweeps cannot fill the interactive queue.</td></tr>
+            <tr><td>Persist target snapshots</td><td>WorkManager starts later and its <code>Data</code> is capped at 10 KiB.</td></tr>
+            <tr><td>Replay-safe operations only</td><td>WorkManager can rerun interrupted work regardless of the returned <code>Result</code>.</td></tr>
+            <tr><td>Same-package exclusion</td><td>Restore and package mutation must not race the same app’s files and state.</td></tr>
+            <tr><td>Visible degraded mode</td><td>If another <code>su</code> is refused, compatibility remains without an unexplained infinite wait.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="topology">
+        <div class="section-head"><span class="section-no">03</span><div><h2>Two schedulers, three root lanes</h2></div></div>
+        <p class="section-copy">WorkManager determines when durable work runs. The root router determines which privileged process receives its commands. A dispatcher is not a lane: two dispatchers calling <code>getShellAwait()</code> still converge on MainShell.</p>
+        <div class="grid-3">
+          <article class="card i"><h3>Interactive</h3><p>Immediate user-facing package actions. Existing MainShell stays the default for call sites not explicitly migrated.</p><ul><li>No archive commands</li><li>No Worker sweep commands</li><li>Fast failure in degraded conflicts</li></ul></article>
+          <article class="card a"><h3>Archive</h3><p>Every root shell boundary owned by backup and restore—not only tar creation.</p><ul><li>List and verify</li><li>Tar and extract</li><li>Swap and ownership repair</li><li>Privileged cleanup</li></ul></article>
+          <article class="card s"><h3>Sweep</h3><p>One command at a time for replay-safe package mutations on <code>THOR_SWEEP_CHAIN</code>.</p><ul><li>Freeze / unfreeze</li><li>Per-app cache clear</li><li>Reinstall / Fix Store</li></ul></article>
+        </div>
+        <div class="callout"><strong>Odin already supports this.</strong> <code>Shell.Builder.create().build()</code> creates another <code>su</code> process with independent streams and a private task deque. A second <code>RealShellRepository</code> is not enough because it still resolves the cached MainShell.</div>
+      </section>
+
+      <section id="ownership">
+        <div class="section-head"><span class="section-no">04</span><div><h2>Owned shell lifecycle</h2></div></div>
+        <p class="section-copy">Thor passes an explicit <code>PrivilegeExecutionLane</code> through the privileged operation boundary. It is not hidden in a dispatcher or coroutine-context element. Root routes it; Shizuku and Dhizuku may ignore it in this cut.</p>
+        <div class="lifecycle">
+          <div class="step"><b>01</b><strong>Acquire</strong><span>A cancellable outer mutex ensures no second Odin task is queued.</span></div>
+          <div class="step"><b>02</b><strong>Build lazily</strong><span>Create or reuse the lane’s healthy shell generation.</span></div>
+          <div class="step"><b>03</b><strong>Execute once</strong><span>Submit one job, record queue wait and command duration.</span></div>
+          <div class="step"><b>04</b><strong>Retire safely</strong><span>On cancel or transport death, close only the generation this operation owns.</span></div>
+        </div>
+        <div class="callout danger"><strong>A coroutine timeout is not cancellation by itself.</strong> An active dedicated command must invalidate and close its shell. The next command gets a fresh generation. Mutating commands are never automatically retried after an unknown transport outcome.</div>
+        <details open><summary>Timeout policy</summary><div><p>Sweep items retain the existing 30-second deadline, but expiry now closes the sweep shell so a timed-out command cannot execute later. Archive tar/extract has no fixed wall-clock limit because legitimate duration scales with data size. The user’s cancel action must still terminate the owned archive generation.</p><p>Device validation must prove closing <code>su</code> also terminates the active child. If <code>tar</code> survives, PID-scoped child termination from a fresh control shell is required before cancellation can claim success.</p></div></details>
+      </section>
+
+      <section id="coordination">
+        <div class="section-head"><span class="section-no">05</span><div><h2>Concurrency where it is safe</h2></div></div>
+        <p class="section-copy">A process-singleton package coordinator owns keyed leases. Archive backup and restore hold an exclusive lease for the full operation. Sweeps hold one package only while acting on it. Different package names remain independent.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Collision</th><th>Policy</th></tr></thead>
+          <tbody>
+            <tr><td>UI action vs same-package archive</td><td>Fail fast with “Backup/restore in progress for this app.”</td></tr>
+            <tr><td>Sweep item vs same-package archive</td><td>Bounded admission wait, then count busy/unresolved and continue.</td></tr>
+            <tr><td>Archive vs short package mutation</td><td>Bounded wait; fail before staging begins if the lease remains held.</td></tr>
+            <tr><td>Different packages</td><td class="yes">Proceed on separate lanes.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="requests">
+        <div class="section-head"><span class="section-no">06</span><div><h2>Durable sweep requests</h2></div></div>
+        <p class="section-copy">The launcher snapshots operation metadata and canonical package names in Room, then puts only a request id in WorkManager <code>Data</code>. It rejects blanks, removes exact duplicates, and sorts with Kotlin’s locale-independent natural string order before assigning ordinals. The current <code>BulkScope</code> has Watchlist and Profile only; it does not have a Selection variant. Every surface resolves its scope before enqueue.</p>
+        <div class="flow" aria-label="Durable sweep request lifecycle">
+          <div class="flow-row"><div class="flow-box">Resolve + validate<br>selected packages</div><div class="arrow">→</div><div class="flow-box">Room snapshot<br>request + target rows</div><div class="arrow">→</div><div class="flow-box">Work Data<br>request_id only</div></div>
+          <div class="flow-row"><div class="flow-box">Worker loads<br>ordered targets</div><div class="arrow">→</div><div class="flow-box">Execute + publish<br>truthful counts</div><div class="arrow">→</div><div class="flow-box">Terminal cleanup<br>plus launch janitor</div></div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Operation</th><th>Worker?</th><th>Replay contract</th></tr></thead>
+          <tbody>
+            <tr><td>Freeze</td><td class="yes">Yes</td><td>Converges on disabled/suspended state.</td></tr>
+            <tr><td>Unfreeze</td><td class="yes">Yes</td><td>Converges on enable + unsuspend; unknown unsuspend is not success.</td></tr>
+            <tr><td>Per-app cache clear</td><td class="yes">Yes</td><td>Repeated clear is safe.</td></tr>
+            <tr><td>Reinstall / Fix Store</td><td class="yes">Yes</td><td>Admitted after command and postcondition verification.</td></tr>
+            <tr><td>Force-stop</td><td class="no">No</td><td>Replay could kill an app the user relaunched.</td></tr>
+            <tr><td>Uninstall</td><td class="no">No</td><td>No exactly-once boundary with PackageManager.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout warning"><strong>No hidden durable work.</strong> If notifications are unavailable, the launcher returns <code>NotificationsRequired</code> instead of starting a non-FGS sweep with no visible progress or cancel action.</div>
+      </section>
+
+      <section id="worker">
+        <div class="section-head"><span class="section-no">07</span><div><h2>Worker lifecycle and truth</h2></div></div>
+        <div class="section-copy"><p>One generic <code>PrivilegeSweepWorker</code> owns the lifecycle; operation-specific functions own each package mutation. A single new <code>PRIVILEGE_SWEEP</code> value is appended to <code>ThorJobKind</code> so existing ordinal-derived notification ids do not move.</p></div>
+        <div class="grid-3">
+          <article class="card"><h3>Progress</h3><p><code>ThorJobStage.ACTING</code> publishes processed/total. Root is sequential on one sweep shell; other transports retain only proven bounded concurrency.</p></article>
+          <article class="card"><h3>Cancellation</h3><p><code>APPEND_OR_REPLACE</code> propagates active cancellation to dependent successors, so the first cut labels this action “Cancel sweep queue.” Every affected request becomes terminal; partial counts use <code>noteResult</code>.</p></article>
+          <article class="card"><h3>Replay</h3><p>No operation-level <code>Result.retry()</code>. Process death may still rerun work, which is why every admitted operation must be replay-safe.</p></article>
+        </div>
+        <p class="mono">total = succeeded + failed + busy + unresolved</p>
+      </section>
+
+      <section id="ui">
+        <div class="section-head"><span class="section-no">08</span><div><h2>UI state follows the job</h2></div></div>
+        <p class="section-copy">Migrated Freezer actions launch a durable request and observe Worker state. The dialog no longer owns an unguarded action loop. Rotation or process recreation reconnects by request/work id rather than launching again.</p>
+        <ul class="checklist">
+          <li>Success completes and auto-dismisses.</li>
+          <li>Failures and busy items complete but remain visible.</li>
+          <li>Cancellation shows partial and unresolved counts.</li>
+          <li>Launch failure clears running state immediately.</li>
+          <li>Unexpected observer failure reaches a terminal error.</li>
+          <li>The legacy path gains an independent <code>try/finally</code> repair.</li>
+        </ul>
+      </section>
+
+      <section id="testing">
+        <div class="section-head"><span class="section-no">09</span><div><h2>Proof before rollout</h2></div></div>
+        <details open><summary>JVM contract tests</summary><div><ul><li>A blocked archive lane does not delay interactive or sweep executors.</li><li>One lane stays serial; a pre-lease cancellation submits nothing.</li><li>Active cancellation retires only the owning generation.</li><li>Transport death does not retry a mutation.</li><li>Package leases block only matching packages.</li><li>Request snapshots survive recreation and bypass the WorkManager Data size limit.</li><li>Force-stop and uninstall cannot be encoded as sweep operations.</li><li>Every Freezer completion path becomes terminal.</li></ul></div></details>
+        <details open><summary>Physical root-manager gate</summary><div><ol><li>Create MainShell, archive shell, and sweep shell on available Magisk, KernelSU, and APatch devices.</li><li>Verify authorization, uid, namespace, SELinux access, and paths.</li><li>Hold a slow archive; complete unrelated interactive unfreeze and a sweep.</li><li>Reject a same-package mutation visibly.</li><li>Cancel archive; prove the child process is gone and staging cleanup completed.</li><li>Recreate one dedicated shell without affecting the other two.</li><li>Kill Thor during each Worker class and verify replay.</li></ol></div></details>
+        <div class="callout"><strong>The root change does not ship from JVM evidence alone.</strong> Concurrent <code>su</code> policy, child-process death, namespaces, and SELinux access are device facts.</div>
+      </section>
+
+      <section id="delivery">
+        <div class="section-head"><span class="section-no">10</span><div><h2>Delivery sequence</h2></div></div>
+        <div class="lifecycle">
+          <div class="step"><b>01</b><strong>Observe + terminate</strong><span>Failing tests, lane logs, and Freezer terminal-state repair.</span></div>
+          <div class="step"><b>02</b><strong>Isolate root</strong><span>Router, owned shells, package coordinator, archive migration.</span></div>
+          <div class="step"><b>03</b><strong>Persist sweeps</strong><span>Room migration, request store, Worker, notifications.</span></div>
+          <div class="step"><b>04</b><strong>Migrate actions</strong><span>Freeze/unfreeze first; cache clear and reinstall after proof.</span></div>
+        </div>
+        <p class="section-copy">Implementation uses a topic branch from <code>dev</code>, targets <code>dev</code>, and does not mix this work with a release bump. Gradle tests run with <code>--rerun-tasks</code>; totals come from JUnit XML.</p>
+      </section>
+
+      <section id="acceptance">
+        <div class="section-head"><span class="section-no">11</span><div><h2>Acceptance criteria</h2></div></div>
+        <ul class="checklist">
+          <li>Long root archives cannot occupy interactive or sweep shells.</li>
+          <li>Unrelated unfreeze completes during backup/restore.</li>
+          <li>Same-package conflicts are bounded and explained.</li>
+          <li>Cancellation stops the underlying child on validated devices.</li>
+          <li>No cancelled queued command executes later.</li>
+          <li>Sweeps survive Activity recreation and ordinary process death.</li>
+          <li>Sweeps do not use a foreground service.</li>
+          <li>Notification-disabled users receive no invisible durable work.</li>
+          <li>Partial counts remain truthful.</li>
+          <li>Force-stop and uninstall remain outside WorkManager.</li>
+          <li>Job and sweep chains remain independently serialized.</li>
+          <li>The Freezer UI reaches a terminal state on every path.</li>
+        </ul>
+        <div class="risk-grid" aria-label="Key risks and safeguards">
+          <div>Extra <code>su</code> rejected</div><div>Visible degraded mode through coordinated MainShell fallback.</div>
+          <div><code>tar</code> survives shell death</div><div>Device proof required; otherwise PID-scoped termination before cleanup.</div>
+          <div>Stale cleanup closes new shell</div><div>Generation-token ownership check.</div>
+          <div>WorkManager replays a mutation</div><div>Only convergent, replay-safe actions are admitted.</div>
+          <div>Selection exceeds 10 KiB</div><div>Room snapshot; WorkManager receives one request id.</div>
+        </div>
+        <div class="footer">Canonical repository document: <code>docs/superpowers/specs/2026-08-28-worker-shell-lanes-design.md</code></div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

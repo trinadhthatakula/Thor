@@ -41,4 +41,7 @@ interface AppShortcutController {
 
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut for [action]. */
     fun pinBulkShortcut(action: String)
+
+    /** Publish or remove the dynamic Freezer shortcuts to match the user's setting. */
+    fun syncDynamicShortcuts(enabled: Boolean)
 }

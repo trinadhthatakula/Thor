@@ -68,6 +68,7 @@ import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.presentation.queue.QueueNavigationButton
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
@@ -91,7 +92,8 @@ fun AppListScreen(
     onNavigateToAppInfo: ((packageName: String, appName: String) -> Unit)? = null,
     // These actions bubble up to MainScreen/HomeViewModel for execution
     onAppAction: (AppClickAction) -> Unit = {},
-    onMultiAppAction: (MultiAppAction) -> Unit = {}
+    onMultiAppAction: (MultiAppAction) -> Unit = {},
+    onNavigateToQueue: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -115,6 +117,9 @@ fun AppListScreen(
     // One-off freezer prompt is driven by a transient event; the screen holds its own visibility
     // state so it isn't replayed on recomposition/config change.
     var freezerPrompt by remember { mutableStateOf<FreezerPrompt?>(null) }
+    var pendingBulkFreeze by rememberSaveable(stateSaver = BulkFreezeConfirmationRequest.Saver) {
+        mutableStateOf<BulkFreezeConfirmationRequest?>(null)
+    }
 
     // Resolved in composition: the event handler runs outside it and cannot call stringResource.
     val shareListTitle = stringResource(R.string.export_list_share)
@@ -167,6 +172,7 @@ fun AppListScreen(
     // Handle one-off feedback (toasts + freezer prompt) delivered exactly once.
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
+            is AppListEvent.RequestReinstall -> onMultiAppAction(MultiAppAction.ReInstall(event.apps))
             is AppListEvent.ShowMessage ->
                 Toast.makeText(context, event.message.asString(context), Toast.LENGTH_SHORT).show()
 
@@ -218,24 +224,30 @@ fun AppListScreen(
                         color = MaterialTheme.colorScheme.primary,
                         letterSpacing = (-1).sp,
                         maxLines = 1,
-                        modifier = Modifier.weight(1f).basicMarquee()
+                        modifier = Modifier
+                            .weight(1f)
+                            .basicMarquee()
                     )
                 }
 
-                // RIGHT: Connected button group to switch between App List Types
-                ConnectedButtonGroup(
-                    items = AppListType.entries.map { type ->
-                        ConnectedButtonGroupItem.Icon(
-                            icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                            contentDescription = stringResource(
-                                if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    QueueNavigationButton(onClick = onNavigateToQueue)
+
+                    // RIGHT: Connected button group to switch between App List Types
+                    ConnectedButtonGroup(
+                        items = AppListType.entries.map { type ->
+                            ConnectedButtonGroupItem.Icon(
+                                icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
+                                contentDescription = stringResource(
+                                    if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                                )
                             )
-                        )
-                    },
-                    selectedIndex = AppListType.entries.indexOf(state.appListType),
-                    onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
-                    modifier = Modifier.width(IntrinsicSize.Max)
-                )
+                        },
+                        selectedIndex = AppListType.entries.indexOf(state.appListType),
+                        onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
+                        modifier = Modifier.width(IntrinsicSize.Max)
+                    )
+                }
             }
 
             // 2. Package-visibility banner, above the search bar AppList draws below.
@@ -327,10 +339,14 @@ fun AppListScreen(
                     },
                     onListTypeChanged = { viewModel.updateListType(it) },
                     onMultiAppAction = { action ->
-                        if (action is MultiAppAction.Freeze || action is MultiAppAction.UnFreeze) {
-                            viewModel.performMultiAction(action)
-                        } else {
-                            onMultiAppAction(action)
+                        when (action) {
+                            is MultiAppAction.Freeze -> {
+                                if (action.appList.isNotEmpty()) {
+                                    pendingBulkFreeze = BulkFreezeConfirmationRequest.from(action)
+                                }
+                            }
+                            is MultiAppAction.UnFreeze -> viewModel.performMultiAction(action)
+                            else -> onMultiAppAction(action)
                         }
                     }
                 )
@@ -349,6 +365,21 @@ fun AppListScreen(
                 .padding(bottom = 16.dp)
         )
 
+        pendingBulkFreeze?.let { request ->
+            BulkFreezeConfirmationDialog(
+                appCount = request.action.appList.size,
+                requestKey = request.id,
+                onConfirm = { addToFreezer ->
+                    // Consume consent before launching: a second tap cannot replay the request.
+                    if (pendingBulkFreeze?.id == request.id) {
+                        pendingBulkFreeze = null
+                        viewModel.performMultiAction(request.action, addToFreezer = addToFreezer)
+                    }
+                },
+                onDismiss = { pendingBulkFreeze = null },
+            )
+        }
+
         selectedAppForSheet?.let { app ->
             AppInfoSheet(
                 appInfo = app,
@@ -362,7 +393,12 @@ fun AppListScreen(
                         // Freeze from the sheet goes through the local VM so it surfaces the
                         // "Frozen — Add to Freezer?" prompt instead of silently just disabling.
                         action is AppClickAction.Freeze ->
-                            viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, true)
+                            viewModel.freezeApp(
+                                action.appInfo.packageName,
+                                action.appInfo.appName,
+                                true
+                            )
+
                         else -> onAppAction(action)
                     }
                     // Deliberately no `selectedPackageForSheet = null` here. AppInfoSheet owns its
@@ -398,7 +434,11 @@ fun AppListScreen(
                     }) { Text(stringResource(R.string.open_settings)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.dismissUsageAccessPrompt() }) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = { viewModel.dismissUsageAccessPrompt() }) {
+                        Text(
+                            stringResource(R.string.cancel)
+                        )
+                    }
                 }
             )
         }

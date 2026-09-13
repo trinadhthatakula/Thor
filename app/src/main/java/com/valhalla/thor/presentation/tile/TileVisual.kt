@@ -5,6 +5,8 @@ package com.valhalla.thor.presentation.tile
 
 import android.service.quicksettings.Tile
 import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.domain.model.PrivilegeSweepPhase
+import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 
 /**
  * What the QS tile should show. Deliberately framework-free — [tileStateFor] maps these onto
@@ -21,8 +23,23 @@ enum class TileVisual { CHECKING, NO_PRIVILEGE, NOTHING_TO_FREEZE, READY, WORKIN
  * still in flight: AOSP's `CustomTile.handleClick()` early-returns on `STATE_UNAVAILABLE`,
  * so an optimistic NO_PRIVILEGE paint would silently swallow every tap until the next
  * listen. CHECKING maps to a clickable state, and the click path re-checks privilege itself
- * (`BulkFreezeRunner.run` awaits `isReady` and no-ops without privilege).
+ * (`the durable sweep controller.run` awaits `isReady` and no-ops without privilege).
  */
+fun tileVisualFor(
+    privilege: PrivilegeState,
+    freezableCount: Int?,
+    status: PrivilegeSweepStatus?,
+): TileVisual = tileVisualFor(
+    privilege = privilege,
+    freezableCount = freezableCount,
+    isRunning = status?.phase == PrivilegeSweepPhase.QUEUED ||
+        status?.phase == PrivilegeSweepPhase.RUNNING,
+)
+
+fun retainedProcessedCount(status: PrivilegeSweepStatus?): Int? = status?.let {
+    it.succeeded + it.failed + it.busy
+}
+
 fun tileVisualFor(
     privilege: PrivilegeState,
     freezableCount: Int?,

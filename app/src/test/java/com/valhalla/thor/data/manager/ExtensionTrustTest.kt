@@ -26,6 +26,14 @@ class ExtensionTrustTest {
     }
 
     @Test
+    fun `toCertSha256Hex of abc matches known digest`() {
+        assertEquals(
+            "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD",
+            "abc".toByteArray().toCertSha256Hex(),
+        )
+    }
+
+    @Test
     fun `toCertSha256Hex is uppercase hex with no separators and masks negative bytes`() {
         // Includes 0xFF which is a negative Byte — verifies no sign-extension in the hex output.
         val hex = byteArrayOf(0x00, 0x0F, 0x10, 0x7F, 0xFF.toByte()).toCertSha256Hex()

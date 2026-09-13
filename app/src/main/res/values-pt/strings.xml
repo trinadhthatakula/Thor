@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="fix_store_requires_privilege">A reparação da loja requer Root ou Shizuku. Nenhuma aplicação foi alterada.</string>
+    <string name="fix_store_unsupported_dhizuku">A reparação da loja requer Root ou Shizuku. O Android não permite que o Dhizuku registe o Google Play como instalador de uma aplicação. Nenhuma aplicação foi alterada.</string>
 
     <!-- Navigation -->
     <string name="home">Início</string>
@@ -29,6 +31,9 @@
     <string name="show_extensions_tile_desc">Mostrar Extensões no ecrã principal</string>
     <string name="auto_reinstall">Reinstalar aplicações automaticamente</string>
     <string name="auto_reinstall_desc">Preservar automaticamente a Google Play Store como instalador registado, para permitir atualizações em segundo plano</string>
+    <string name="grant_all_permissions">Conceder todas as permissões ao instalar</string>
+    <string name="grant_all_permissions_desc">Dar à aplicação todas as permissões que pede assim que for instalada, sem perguntar — apenas em instalações com root, Shizuku ou Dhizuku. Desativado por predefinição, e o instalador permite alterá-lo para uma única instalação; em ambos os casos, as atualizações mantêm as permissões já concedidas</string>
+    <string name="grant_all_permissions_install">Conceder todas as permissões pedidas</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Separador predefinido</string>
     <string name="default_tab_desc">O ecrã que o Thor abre ao arrancar</string>
@@ -39,7 +44,7 @@
     <string name="dynamic_colors">Cores dinâmicas</string>
     <string name="dynamic_colors_desc">Integração com o Material You</string>
     <string name="biometric_lock">Bloqueio biométrico</string>
-    <string name="biometric_lock_desc">Exigir autenticação ao arrancar</string>
+    <string name="biometric_lock_desc">Exigir autenticação ao iniciar. Quando ativo, o bloqueio impede capturas e gravações do ecrã do Thor e oculta a pré-visualização nas aplicações recentes.</string>
     <string name="biometric_not_available">Biometria não configurada ou indisponível</string>
     <string name="active_engine">Motor ativo</string>
     <string name="active_engine_desc">Alternar entre os fornecedores disponíveis</string>
@@ -325,8 +330,8 @@
     <string name="usage_access_needed_title">É necessário acesso à utilização</string>
     <string name="usage_access_prompt_body">O Thor precisa de acesso à utilização para ler o tamanho das aplicações. Ative-o para o Thor e escolha «Tamanho» novamente. Também pode gerir isto em Definições → Permissões.</string>
     <string name="notification_access">Notificações</string>
-    <string name="notification_access_granted_subtitle">Os resultados do congelamento em massa são mostrados como notificações</string>
-    <string name="notification_access_needed_subtitle">Permita as notificações para ver os resultados do congelamento em massa</string>
+    <string name="notification_access_granted_subtitle">As ações em aplicações em segundo plano mostram o progresso nas notificações</string>
+    <string name="notification_access_needed_subtitle">Permita as notificações nas definições do sistema para executar ações em aplicações em segundo plano e acompanhar o progresso</string>
     <string name="open_settings">Abrir as definições</string>
     <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
          ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
@@ -345,18 +350,11 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Conceda primeiro Root / Shizuku / Dhizuku</string>
     <string name="tile_no_apps_toast">Não há aplicações no Congelador</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">%1$d aplicação congelada</item>
-        <item quantity="other">%1$d aplicações congeladas</item>
-    </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_freeze_partial_failure">%1$d/%2$d aplicações congeladas (%3$d falharam)</string>
     <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
          fired before these packages resolved. -->
-    <string name="tile_freeze_incomplete">%1$d/%2$d aplicações congeladas (%3$d por terminar)</string>
     <string name="tile_checking">A verificar…</string>
     <string name="tile_freezing">A congelar…</string>
-    <string name="channel_bulk_result_name">Resultados das ações em massa</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Definições do Congelador</string>
@@ -388,6 +386,11 @@
     <string name="privilege_required_warning">É necessário privilégio (Root, Shizuku ou Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Descongelar todas as aplicações?</string>
     <string name="unfreeze_all_confirmation_desc">Isto vai descongelar (ativar) todas as aplicações que estão na lista do Congelador. Tem a certeza de que quer continuar?</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="one">Congelar %1$d aplicação selecionada? As aplicações que o Thor bloquear por segurança serão ignoradas.</item>
+        <item quantity="other">Congelar %1$d aplicações selecionadas? As aplicações que o Thor bloquear por segurança serão ignoradas.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">Mantenha estas aplicações na lista do Congelador depois de as congelar. Desmarcar esta opção não remove aplicações que já estão no Congelador.</string>
     <string name="import_disabled_apps_title">Importar aplicações desativadas</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="one">Há %1$d aplicação desativada que não está no seu Congelador. Quer adicioná-la ao Congelador?</item>
@@ -447,20 +450,9 @@
     <string name="extension_install_failed">A verificação falhou: %1$s</string>
 
 
-    <!-- UiText Messages -->
-    <string name="action_completed_format">%1$s concluído: %2$s</string>
-    <string name="frozen_success">%1$s congelada</string>
+    <!-- UiText Messages -->    <string name="frozen_success">%1$s congelada</string>
     <string name="unfrozen_success">%1$s descongelada</string>
     <string name="added_to_freezer_success">Adicionada ao Congelador</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">%1$d aplicação descongelada</item>
-        <item quantity="other">%1$d aplicações descongeladas</item>
-    </plurals>
-    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_unfreeze_partial_failure">%1$d/%2$d aplicações descongeladas (%3$d falharam)</string>
-    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
-         packages resolved, so they are neither confirmed done nor confirmed failed. -->
-    <string name="tile_unfreeze_incomplete">%1$d/%2$d aplicações descongeladas (%3$d por terminar)</string>
     <string name="error_format">Erro: %1$s</string>
     <string name="failed_to_load_apps">Não foi possível carregar as aplicações</string>
     <plurals name="removed_from_freezer_success">
@@ -573,6 +565,11 @@
     <string name="exit">Sair</string>
     <string name="title_thor_installer">Instalador do Thor</string>
     <string name="install_analyzing">A analisar o pacote…</string>
+    <string name="legacy_install_description">%1$s destina-se ao SDK %2$d. Esta versão do Android normalmente bloqueia novas instalações abaixo do SDK %3$d.</string>
+    <string name="legacy_install_confirm_title">Permitir instalação antiga?</string>
+    <string name="legacy_install_confirm_message">%1$s (%2$s) destina-se ao SDK %3$d, abaixo do mínimo de instalação do SDK %4$d. Contornar este bloqueio de segurança pode colocar o seu dispositivo e os seus dados em risco. As aplicações antigas podem receber permissões durante a instalação segundo o respetivo modelo de permissões antigo. Continue apenas se confiar neste APK. Isto aplica-se apenas a esta instalação; a assinatura, a compatibilidade do dispositivo e outras verificações do Android continuam a aplicar-se.</string>
+    <string name="legacy_install_allow_once">Instalar desta vez</string>
+    <string name="legacy_install_unsupported">A instalação antiga requer Android 14 ou mais recente e Root ou Shizuku. Os modos normal, Dhizuku e externo não podem aplicar esta exceção.</string>
     <string name="install_downgrade_warning">Isto vai reverter a aplicação para uma versão anterior.</string>
     <!-- %1$s and %2$s are version codes. They are deliberately %s, not %d: %d is localised by
          java.util.Formatter (Arabic-Indic digits under ar-EG, for example), and these same two
@@ -622,18 +619,11 @@
     <string name="log_no_apps_to_fix">Não foram encontradas aplicações a reparar.</string>
     <!-- Developer log line, not grammar-sensitive UI — plural form intentionally not used. -->
     <string name="log_found_apps_to_fix">Encontradas %1$d aplicações a reparar.</string>
-    <string name="log_reinstalling_batch">A reinstalar aplicações</string>
     <string name="log_freezing_batch">A congelar aplicações</string>
     <string name="log_unfreezing_batch">A descongelar aplicações</string>
     <string name="log_killing_batch">A terminar aplicações</string>
-    <string name="log_clearing_cache_batch">A limpar as caches</string>
     <string name="log_uninstalling_batch">A desinstalar aplicações</string>
-    <string name="log_suspending_batch">A suspender aplicações</string>
-    <string name="log_unsuspending_batch">A anular a suspensão das aplicações</string>
-    <string name="log_sharing_batch">A partilhar aplicações</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] A preparar %3$s…</string>
-    <string name="log_ready"> -> Pronto</string>
     <string name="log_success"> -> Sucesso</string>
     <string name="log_failed"> -> Falhou: %1$s</string>
 
@@ -648,7 +638,6 @@
     <string name="no_matching_apps_freezer">Não há aplicações correspondentes</string>
     <string name="add_to_freezer_hint">Toque em + para adicionar aplicações</string>
     <string name="filter_all">Todas</string>
-    <string name="error_debuggable_app">A aplicação é depurável (provável incompatibilidade de assinatura)</string>
     <string name="error_unsafe_skipped">Ignorada: a aplicação de sistema é UNSAFE / a verificação de segurança falhou</string>
     <string name="error_self_skipped">Ignorada: o Thor não pode fazer isto a si próprio</string>
     <string name="error_parse_package">Não foi possível analisar o pacote.</string>
@@ -739,7 +728,6 @@
     <string name="profile_delete_desc">Só o perfil é removido. As aplicações que ele contém ficam exatamente como estão — o que estiver congelado continua congelado.</string>
     <string name="profile_saved">Perfil guardado</string>
     <string name="profile_deleted">Perfil eliminado</string>
-    <string name="profile_nothing_to_do">Não há nada a fazer para este perfil</string>
     <string name="bulk_run_failed">Essa execução não chegou ao fim — verifique as aplicações antes de confiar nela</string>
     <string name="error_profile_name_taken">Esse nome de perfil já está a ser usado</string>
     <string name="error_profile_delete_failed">Não foi possível eliminar esse perfil</string>
@@ -771,5 +759,217 @@
     <string name="export_list_failed">Não foi possível guardar a lista</string>
     <string name="clear_all_caches_requires_usage_access">O Shizuku não consegue limpar a cache de todas as aplicações sem acesso à utilização. É preciso indicar ao Android quantos bytes deve libertar, e só essa permissão consegue medir quanta cache existe. Conceda acesso à utilização ao Thor nas Definições e tente novamente.</string>
     <string name="clear_all_caches_unsupported_dhizuku">O Dhizuku não consegue limpar caches. Não tem shell onde executar a limpeza de cache do Android, e a API de Device Owner não tem equivalente. Mude para Root ou Shizuku.</string>
+
+    <!-- Component control (App info → Components).
+         "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
+         guarded by a permission Thor does not hold. It needs root; the platform grants the waiver to
+         uid 0 alone, so a Shizuku running as shell cannot do it either. -->
+    <string name="component_action_open">Abrir</string>
+    <string name="component_action_force_open">Forçar a abertura</string>
+    <string name="component_action_copy">Copiar o nome da classe</string>
+    <string name="component_action_stop_now">Parar agora</string>
+    <string name="component_action_disable">Desativar</string>
+    <string name="component_action_enable">Ativar</string>
+    <string name="component_action_reset">Repor a predefinição</string>
+    <string name="component_action_forget">Esquecer</string>
+    <string name="cd_component_actions">Ações para %1$s</string>
+
+    <string name="component_badge_restricted">Restringido pelo Thor</string>
+    <string name="component_badge_drift">Alterado noutro sítio</string>
+    <string name="component_badge_disabled">Desativado</string>
+    <string name="component_badge_not_exported">Não exportado</string>
+    <string name="component_badge_off_by_default">Desativado de origem</string>
+
+    <string name="component_blocker_no_privilege">Ative o Root ou o Shizuku para alterar componentes.</string>
+    <string name="component_blocker_shizuku_not_root">Alterar componentes exige que o Shizuku tenha sido iniciado como root. Um Shizuku em modo shell não consegue.</string>
+    <string name="component_blocker_dhizuku">O Dhizuku não consegue alterar componentes individuais. Use Root ou um Shizuku em modo root.</string>
+    <string name="component_control_requires_root_shizuku">O Shizuku está a correr como shell, não como root. Alterar componentes exige root.</string>
+    <string name="component_control_unsupported_dhizuku">O Dhizuku não consegue controlar componentes individuais.</string>
+
+    <string name="component_launched">%1$s aberto</string>
+    <string name="component_service_stopped">%1$s parado</string>
+    <string name="component_disabled_success">%1$s desativado</string>
+    <string name="component_enabled_success">%1$s ativado</string>
+    <string name="component_reset_success">%1$s reposto na predefinição</string>
+    <string name="component_forgotten">O Thor deixou de acompanhar %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="one">%1$d componente restringido pelo Thor</item>
+        <item quantity="other">%1$d componentes restringidos pelo Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="one">%1$d componente reposto</item>
+        <item quantity="other">%1$d componentes repostos</item>
+    </plurals>
+    <string name="component_restore_all_partial">Reposição: %1$d de %2$d — tente novamente para repor os restantes</string>
+    <string name="component_restore_all_action">Repor tudo</string>
+    <string name="component_restore_all_title">Repor todos os componentes?</string>
+    <string name="component_restore_all_message">Todos os componentes que o Thor desativou — nesta aplicação e em todas as outras — voltam ao estado de origem. Os componentes alterados por outras ferramentas ficam intactos.</string>
+
+    <string name="component_disclaimer_title">Desativar o componente?</string>
+    <string name="component_disclaimer_message">%1$s continua a fazer parte da aplicação; apenas deixa de ser executado. As aplicações raramente contam com isso, por isso uma funcionalidade pode deixar de funcionar sem qualquer erro, ou a aplicação pode falhar. O Thor regista o que desativa para que possa desfazer mais tarde.</string>
+    <string name="component_disclaimer_confirm">Desativá-lo</string>
+    <string name="component_disclaimer_dont_ask_session">Não perguntar novamente nesta sessão</string>
+    <string name="component_disabled_unrecorded">O Thor não conseguiu registar a desativação de %1$s — Repor tudo não a incluirá</string>
+    <string name="sweep_notification_title">A aplicar ações às aplicações</string>
+    <string name="sweep_queued">Ações em fila</string>
+    <string name="sweep_running">A executar %1$d de %2$d</string>
+    <string name="sweep_succeeded">Concluídas %1$d de %2$d</string>
+    <string name="sweep_partial">As ações terminaram com problemas</string>
+    <string name="sweep_cancelled">A fila de ações foi cancelada</string>
+    <string name="sweep_failed">As ações falharam</string>
+    <string name="sweep_observer_failure">Progresso indisponível</string>
+    <string name="sweep_root_lane_degraded">Via Root de arquivo/ações em modo degradado</string>
+    <string name="sweep_result_summary">Ações em aplicações — com êxito: %1$d · falhadas: %2$d · ocupadas: %3$d · não resolvidas: %4$d</string>
+
+    <!-- Filas duradouras de serviços em primeiro plano -->
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">Fila de tarefas</string>
+    <string name="task_queue_providers">Fornecedores de privilégios</string>
+    <string name="task_queue_section_running">Em execução</string>
+    <string name="task_queue_section_queued">Em fila / ação necessária</string>
+    <string name="task_queue_section_recent">Recentes</string>
+    <string name="task_queue_empty">Ainda não existem tarefas</string>
+    <string name="task_queue_empty_running">Não há tarefas em execução</string>
+    <string name="task_queue_empty_queued">Não há tarefas em fila nem ações necessárias</string>
+    <string name="task_queue_empty_recent">Não há tarefas recentes</string>
+    <string name="task_queue_kind_data">Operações de dados</string>
+    <string name="task_queue_kind_privilege">Ações privilegiadas em aplicações</string>
+    <string name="task_queue_background">Segundo plano</string>
+    <string name="task_queue_cancel">Cancelar</string>
+    <string name="task_queue_close">Fechar</string>
+    <string name="task_queue_progress">%1$d de %2$d</string>
+
+    <string name="task_action_authenticate_archive">Autenticar arquivo</string>
+    <string name="task_action_provide_source">Fornecer origem</string>
+    <string name="task_action_review_restore">Rever restauro</string>
+    <string name="task_action_authorize_privilege">Autorizar privilégio</string>
+    <string name="task_action_authorize_retry">Autorizar nova tentativa</string>
+    <string name="task_action_retry">Tentar novamente</string>
+    <string name="task_action_resume">Retomar</string>
+    <string name="task_action_share">Partilhar</string>
+    <string name="task_action_open_notification_settings">Abrir definições de notificações</string>
+
+    <string name="task_operation_archive_backup">Cópia de segurança em arquivo</string>
+    <string name="task_operation_archive_restore">Restauro de arquivo</string>
+    <string name="task_operation_app_export">Exportação de aplicações</string>
+    <string name="task_operation_share_prepare">Preparação para partilhar</string>
+    <string name="task_operation_freeze">Congelar aplicações</string>
+    <string name="task_operation_unfreeze">Descongelar aplicações</string>
+    <string name="task_operation_suspend">Suspender aplicações</string>
+    <string name="task_operation_unsuspend">Anular a suspensão das aplicações</string>
+    <string name="task_operation_clear_cache">Limpar caches das aplicações</string>
+    <string name="task_operation_reinstall">Corrigir Loja</string>
+
+    <string name="task_state_starting">A iniciar</string>
+    <string name="task_state_queued">Em fila</string>
+    <string name="task_state_running">Em execução</string>
+    <string name="task_state_stopping">A parar</string>
+    <string name="task_state_waiting_for_auth">Autenticação necessária</string>
+    <string name="task_state_waiting_for_source">Origem necessária</string>
+    <string name="task_state_waiting_for_privilege">Privilégio necessário</string>
+    <string name="task_state_interrupted_review">Revisão necessária</string>
+    <string name="task_state_ready">Pronto para partilhar</string>
+    <string name="task_state_ready_partial">Parcialmente pronto para partilhar</string>
+    <string name="task_state_start_blocked">Início bloqueado</string>
+    <string name="task_state_start_blocked_notification">Notificações bloqueadas</string>
+    <string name="task_state_succeeded">Concluída</string>
+    <string name="task_state_partial">Concluída com problemas</string>
+    <string name="task_state_failed">Falhou</string>
+    <string name="task_state_cancelled">Cancelada</string>
+    <string name="task_state_expired">Expirada</string>
+    <string name="task_state_observer_failure">Estado indisponível</string>
+
+    <string name="task_reason_queued">À espera dos trabalhos anteriores nesta fila.</string>
+    <string name="task_reason_stopping">A concluir o cancelamento em segurança.</string>
+    <string name="task_reason_waiting_for_auth">Introduza a frase-passe do arquivo de %1$s para continuar.</string>
+    <string name="task_reason_waiting_for_source">Escolha o arquivo de %1$s para continuar.</string>
+    <string name="task_reason_waiting_for_privilege">Configure o Root, o Shizuku ou o Dhizuku e volte ao Thor.</string>
+    <string name="task_reason_interrupted_restore">O restauro de %1$s foi interrompido depois de as alterações aos dados terem começado. Reveja-o antes de retomar.</string>
+    <string name="task_reason_interrupted_sweep">O Thor não conseguiu verificar %1$s depois de %2$s. Tente novamente apenas após rever a aplicação.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="one">Está pronto para partilhar %1$d ficheiro preparado.</item>
+        <item quantity="other">Estão prontos para partilhar %1$d ficheiros preparados.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="one">%1$d de %2$d ficheiros está pronto para partilhar; os restantes não puderam ser preparados.</item>
+        <item quantity="other">%1$d de %2$d ficheiros estão prontos para partilhar; os restantes não puderam ser preparados.</item>
+    </plurals>
+    <string name="task_reason_start_blocked">O Android impediu o início desta tarefa. Tente novamente com o Thor aberto.</string>
+    <string name="task_reason_start_blocked_notification">Este canal de notificações está bloqueado. Ative-o antes de tentar novamente.</string>
+    <string name="task_reason_failed">A tarefa não terminou. Reveja os detalhes antes de tentar novamente.</string>
+    <string name="task_reason_expired">Os ficheiros preparados expiraram e foram removidos.</string>
+    <string name="task_reason_observer_failure">O Thor não consegue carregar o estado atual da tarefa. A tarefa guardada não foi alterada.</string>
+    <string name="task_reason_root_lane_degraded">O canal root dedicado não está disponível. O trabalho root em segundo plano está a usar o canal alternativo partilhado.</string>
+
+    <string name="data_queue_notification_channel_name">Operações de dados</string>
+    <string name="data_queue_notification_channel_description">Progresso de arquivo, restauro, exportação e preparação para partilhar</string>
+    <string name="privilege_queue_notification_channel_name">Ações privilegiadas em aplicações</string>
+    <string name="privilege_queue_notification_channel_description">Progresso das ações em fila para congelar, descongelar, suspender, anular a suspensão, limpar caches e corrigir a Loja</string>
+    <string name="data_queue_notification_title">Operação de dados em curso</string>
+    <string name="privilege_queue_notification_title">Ação numa aplicação em curso</string>
+    <string name="task_queue_notification_status">%1$s · %2$d de %3$d</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="one">Mais %1$d tarefa em fila</item>
+        <item quantity="other">Mais %1$d tarefas em fila</item>
+    </plurals>
+    <string name="task_queue_notification_cancel">Cancelar</string>
+    <string name="task_queue_notification_ready_title">Pronto para partilhar</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="one">Está pronto %1$d ficheiro preparado.</item>
+        <item quantity="other">Estão prontos %1$d ficheiros preparados.</item>
+    </plurals>
+    <string name="task_queue_notification_ready_partial_title">Alguns ficheiros estão prontos para partilhar</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="one">%1$d de %2$d ficheiros está pronto.</item>
+        <item quantity="other">%1$d de %2$d ficheiros estão prontos.</item>
+    </plurals>
+
+    <string name="task_dialog_archive_auth_title">Autenticar arquivo</string>
+    <string name="task_dialog_archive_auth_message">Introduza a frase-passe do arquivo de %1$s. Só é usada nesta tentativa e não é guardada.</string>
+    <string name="task_dialog_archive_passphrase_label">Frase-passe</string>
+    <string name="task_dialog_archive_auth_submit">Continuar</string>
+    <string name="task_dialog_restore_source_title">Fornecer origem do restauro</string>
+    <string name="task_dialog_restore_source_message">Escolha o arquivo de %1$s. O Thor não guarda o endereço da origem.</string>
+    <string name="task_dialog_restore_source_select">Escolher arquivo</string>
+    <string name="task_dialog_restore_review_title">Rever restauro interrompido</string>
+    <string name="task_dialog_restore_review_message">O restauro de %1$s parou depois de as alterações aos dados terem começado. Verifique a aplicação antes de escolher Retomar.</string>
+    <string name="task_dialog_restore_review_resume">Retomar restauro</string>
+    <string name="task_dialog_sweep_retry_title">Autorizar nova tentativa no alvo</string>
+    <string name="task_dialog_sweep_retry_message">O Thor não conseguiu verificar %1$s depois de %2$s. Tente novamente neste alvo apenas se for seguro repetir a ação.</string>
+    <string name="task_dialog_sweep_retry_confirm">Tentar novamente neste alvo</string>
+    <string name="task_dialog_share_expired_message">Estes ficheiros privados para partilha atingiram o limite de 24 horas e foram removidos.</string>
+
+    <plurals name="task_log_pending_queued">
+        <item quantity="one">%1$d tarefa aceite e colocada em fila</item>
+        <item quantity="other">%1$d tarefas aceites e colocadas em fila</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="one">%1$d tarefa pendente</item>
+        <item quantity="other">%1$d tarefas pendentes</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="one">%1$d tarefa não processada</item>
+        <item quantity="other">%1$d tarefas não processadas</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="one">%1$d resultado anterior omitido</item>
+        <item quantity="other">%1$d resultados anteriores omitidos</item>
+    </plurals>
+    <string name="task_log_stage_preparing">A preparar a tarefa.</string>
+    <string name="task_log_stage_staging_source">A copiar a origem selecionada para a área privada temporária.</string>
+    <string name="task_log_stage_measuring">A medir os dados da aplicação.</string>
+    <string name="task_log_stage_capturing">A recolher os dados da aplicação.</string>
+    <string name="task_log_stage_writing">A escrever a saída.</string>
+    <string name="task_log_stage_installing">A instalar o pacote da aplicação.</string>
+    <string name="task_log_stage_restoring">A restaurar os dados da aplicação.</string>
+    <string name="task_log_stage_publishing">A publicar a saída.</string>
+    <string name="task_log_stage_finishing">A concluir a tarefa.</string>
+    <string name="task_log_item_running">A processar %1$s.</string>
+    <string name="task_log_item_succeeded">%1$s concluído.</string>
+    <string name="task_log_item_failed">%1$s falhou.</string>
+    <string name="task_log_item_cancelled">%1$s cancelado.</string>
+    <string name="task_log_item_busy">%1$s foi ignorado porque está a ser usado por outra operação.</string>
+    <string name="task_log_item_unknown">Não foi possível verificar o estado final de %1$s.</string>
 
 </resources>

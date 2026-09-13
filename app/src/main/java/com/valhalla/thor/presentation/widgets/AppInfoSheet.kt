@@ -593,7 +593,7 @@ private fun AppHeader(
             text = appInfo.packageName,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily,
+            fontFamily = com.valhalla.thor.presentation.theme.LocalTechnicalFontFamily.current,
             modifier = Modifier
                 .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(8.dp))

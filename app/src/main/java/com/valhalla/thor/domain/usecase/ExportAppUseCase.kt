@@ -7,10 +7,16 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.ExportTargetChoice
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.resolveExportTarget
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.domain.repository.AppExportPublication
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
@@ -54,8 +60,9 @@ class ExportAppUseCase(
     suspend operator fun invoke(
         appInfo: AppInfo,
         format: BundleFormat = BundleFormat.autoFor(appInfo),
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<String> = withContext(ioDispatcher) {
-        exportInto(appInfo, format, openSession(SINGLE_STAGING_DIR))
+        exportInto(appInfo, format, openSession(SINGLE_STAGING_DIR), execution = execution)
     }
 
     /**
@@ -84,18 +91,23 @@ class ExportAppUseCase(
         format: BundleFormat,
         session: ExportSession,
         fileName: String? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+        captureProgress: VerifiedProgress = VerifiedProgress.NONE,
+        publicationProgress: VerifiedProgress = VerifiedProgress.NONE,
     ): Result<String> = withContext(ioDispatcher) {
         var staged: File? = null
         try {
-            val file = bundleBuilder.build(
+            val file = bundleBuilder.buildWithProgress(
                 appInfo,
                 cacheSubDir = session.stagingSubDir,
                 format = format,
                 fileName = fileName,
+                execution = execution,
+                progress = captureProgress,
             ).getOrElse { return@withContext Result.failure(it) }
             staged = file
 
-            Result.success(writeStaged(file, session, format.mime))
+            Result.success(writeStaged(file, session, format.mime, publicationProgress))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -117,6 +129,33 @@ class ExportAppUseCase(
         }
     }
 
+    /** Durable task path: reconcile the operation-owned publication before staging any bytes. */
+    suspend fun exportDurableInto(
+        appInfo: AppInfo,
+        format: BundleFormat,
+        session: ExportSession,
+        publicationIdentity: AppExportPublicationIdentity,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+        captureProgress: VerifiedProgress = VerifiedProgress.NONE,
+        captureBoundary: VerifiedOperationBoundary = VerifiedOperationBoundary.NONE,
+        publicationProgress: VerifiedProgress = VerifiedProgress.NONE,
+        publicationStart: suspend () -> Unit,
+    ): Result<AppExportPublication> = withContext(ioDispatcher) {
+        exportDurableBundle(
+            bundleBuilder = bundleBuilder,
+            fileStore = fileStore,
+            appInfo = appInfo,
+            format = format,
+            session = session,
+            publicationIdentity = publicationIdentity,
+            execution = execution,
+            captureProgress = captureProgress,
+            captureBoundary = captureBoundary,
+            publicationProgress = publicationProgress,
+            publicationStart = publicationStart,
+        )
+    }
+
     /**
      * Write an already-staged file to [session]'s destination, returning the location label.
      *
@@ -128,10 +167,13 @@ class ExportAppUseCase(
         file: File,
         session: ExportSession,
         mime: String,
+        progress: VerifiedProgress = VerifiedProgress.NONE,
     ): String = withContext(ioDispatcher) {
         when (val choice = session.target) {
-            is ExportTargetChoice.Custom -> fileStore.writeToTree(file, choice.treeUri, mime)
-            ExportTargetChoice.Downloads -> fileStore.writeToDownloads(file, mime)
+            is ExportTargetChoice.Custom ->
+                fileStore.writeToTree(file, choice.treeUri, mime, progress)
+
+            ExportTargetChoice.Downloads -> fileStore.writeToDownloads(file, mime, progress)
         }
     }
 
@@ -142,8 +184,78 @@ class ExportAppUseCase(
         fileStore.currentTargetLabel(savedUri)
     }
 
+    /** Label the already-resolved target without re-reading a preference another sheet can change. */
+    suspend fun targetLabel(target: ExportTargetChoice): String = withContext(ioDispatcher) {
+        fileStore.currentTargetLabel((target as? ExportTargetChoice.Custom)?.treeUri)
+    }
+
     companion object {
         /** Staging scope for one-app exports; a batch takes a scope of its own. */
         const val SINGLE_STAGING_DIR = "export_temp"
+    }
+}
+
+/**
+ * Worker-neutral durable export transaction. Reconciliation runs before packaging so a process
+ * death after public visibility but before Room settlement never builds or publishes a duplicate.
+ */
+internal suspend fun exportDurableBundle(
+    bundleBuilder: AppBundleBuilder,
+    fileStore: AppBundleFileStore,
+    appInfo: AppInfo,
+    format: BundleFormat,
+    session: ExportSession,
+    publicationIdentity: AppExportPublicationIdentity,
+    execution: PrivilegeExecutionContext,
+    captureProgress: VerifiedProgress,
+    captureBoundary: VerifiedOperationBoundary,
+    publicationProgress: VerifiedProgress,
+    publicationStart: suspend () -> Unit,
+): Result<AppExportPublication> {
+    var staged: File? = null
+    return try {
+        when (val reconciliation =
+            fileStore.reconcilePublicExport(session.target, publicationIdentity)) {
+            is AppExportPublicationReconciliation.Complete -> {
+                // Only the runner's interrupted PUBLISHING path may adopt a SAF final. A fresh or
+                // pre-publication attempt has no evidence that an existing document belongs to it.
+                if (session.target is ExportTargetChoice.Custom) {
+                    Result.failure(java.io.IOException("An export with this identity already exists"))
+                } else {
+                    Result.success(reconciliation.publication)
+                }
+            }
+
+            AppExportPublicationReconciliation.Absent -> {
+                val file = bundleBuilder.buildWithProgress(
+                    appInfo = appInfo,
+                    cacheSubDir = session.stagingSubDir,
+                    format = format,
+                    fileName = publicationIdentity.fileName,
+                    execution = execution,
+                    progress = captureProgress,
+                    operationBoundary = captureBoundary,
+                ).getOrElse { return Result.failure(it) }
+                staged = file
+                // This durable boundary must commit before SAF create, not after the first copy.
+                publicationStart()
+                Result.success(
+                    fileStore.publishPublicExport(
+                        file = file,
+                        target = session.target,
+                        mime = format.mime,
+                        identity = publicationIdentity,
+                        progress = publicationProgress,
+                    )
+                )
+            }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        if (BuildConfig.DEBUG) e.printStackTrace()
+        Result.failure(e)
+    } finally {
+        staged?.delete()
     }
 }

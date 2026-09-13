@@ -10,8 +10,10 @@ import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -116,5 +118,25 @@ class ArchiveKeyHolderTest {
         advanceTimeBy(ArchiveKeyHolder.KEY_LIFETIME_MS / 2 + 1)
 
         assertArrayEquals(ByteArray(32) { 2 }, holder.take("job-1")?.encoded)
+    }
+
+    @Test
+    fun `retiring claim cleanup cannot delete a replacement key generation`() {
+        val firstToken = holder.put("job-1", key(1))
+        val secondToken = holder.put("job-1", key(2))
+
+        assertFalse(holder.drop("job-1", firstToken))
+        assertTrue(holder.drop("job-1", secondToken))
+        assertNull(holder.take("job-1"))
+    }
+
+    @Test
+    fun `a durable task UUID is the key holder identity`() {
+        val taskId = "00000000-0000-0000-0000-000000000005"
+
+        holder.put(taskId, key(5))
+
+        assertArrayEquals(ByteArray(32) { 5 }, holder.take(taskId)?.encoded)
+        assertNull(holder.take(taskId))
     }
 }

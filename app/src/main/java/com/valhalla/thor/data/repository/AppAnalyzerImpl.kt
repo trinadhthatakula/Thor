@@ -12,7 +12,6 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
-import android.os.Build
 import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.AppMetadata
@@ -68,7 +67,7 @@ class AppAnalyzerImpl(
         //
         // That copy is also the ONE read of the caller's URI: the install runs off this file,
         // so a hostile provider cannot serve a clean APK to the sheet the user approves and
-        // spyware to the `pm install -r -g` that follows. See StagedPackage.
+        // spyware to the privileged install that follows. See StagedPackage.
         val bundleFile = File(stagingDir, "staged_$token")
         val apkFile = File(context.cacheDir, "analysis_$token.apk")
 
@@ -325,19 +324,11 @@ class AppAnalyzerImpl(
     }
 
     /** Parse an on-disk APK via getPackageArchiveInfo across API levels. */
-    private fun parseArchive(tempFile: File): PackageInfo? {
-        val pm = context.packageManager
-        val flags = PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageArchiveInfo(
-                tempFile.absolutePath,
-                PackageManager.PackageInfoFlags.of(flags.toLong())
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
-        }
-    }
+    private fun parseArchive(tempFile: File): PackageInfo? =
+        context.packageManager.readArchivePackageInfo(
+            tempFile,
+            PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS,
+        )
 
     /**
      * Build [AppMetadata] purely from bundle sidecar JSON when no bundled APK could
@@ -423,7 +414,11 @@ class AppAnalyzerImpl(
             version = archiveInfo.versionName ?: "Unknown",
             versionCode = archiveInfo.longVersionCode,
             iconPath = persistIcon(iconBitmap, archiveInfo.packageName, archiveInfo.longVersionCode),
-            permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
+            permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList(),
+            // [archiveInfo] was parsed from bundleFile itself for a monolithic APK, or from the
+            // selected identity candidate extracted from that same staged bundle. Never source
+            // this security-sensitive policy input from manifest.json/info.json sidecars.
+            targetSdk = parsedArchiveTargetSdk(archiveInfo),
         )
     }
 
@@ -483,6 +478,15 @@ class AppAnalyzerImpl(
         return bitmap
     }
 }
+
+/**
+ * Reads the target SDK only from Android's parsed APK representation.
+ *
+ * Kept separate from sidecar parsing so policy callers cannot accidentally substitute an archive
+ * manifest's JSON declaration for the APK that the installer will receive.
+ */
+internal fun parsedArchiveTargetSdk(archiveInfo: PackageInfo): Int? =
+    archiveInfo.applicationInfo?.targetSdkVersion
 
 /** How long a staged input may sit unclaimed before the next analysis reclaims its disk. */
 internal const val STAGED_PACKAGE_TTL_MILLIS = 60L * 60L * 1000L

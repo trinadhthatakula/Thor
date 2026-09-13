@@ -7,26 +7,35 @@ import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.DefaultTab
+import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.AnyFileOpenerController
+import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
-import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.presentation.security.biometricRefusalMessage
 import com.valhalla.thor.util.LocaleManager
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
-import com.valhalla.thor.util.bulkResultMessage
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -50,8 +59,10 @@ class SettingsViewModel(
     private val systemRepository: SystemRepository,
     private val biometricHelper: AuthCapability,
     private val localeManager: LocaleManager,
-    private val bulkFreeze: BulkFreezeController,
-    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
+    private val sweepResolver: PrivilegeSweepTargetResolver,
+    private val sweepController: PrivilegeSweepController,
+    private val taskNavigationTargets: TaskNavigationTargets,
+    private val appShortcuts: AppShortcutController,
     private val anyFileOpenerController: AnyFileOpenerController,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -155,6 +166,10 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setThemeMode(mode) }
     }
 
+    fun setFontPreset(preset: FontPreset) {
+        viewModelScope.launch { preferenceRepository.setFontPreset(preset) }
+    }
+
     fun setDynamicColor(enabled: Boolean) {
         viewModelScope.launch { preferenceRepository.setDynamicColor(enabled) }
     }
@@ -234,6 +249,14 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setAutoReinstallEnabled(enabled) }
     }
 
+    fun setGrantAllPermissionsOnInstall(enabled: Boolean) {
+        viewModelScope.launch { preferenceRepository.setGrantAllPermissionsOnInstall(enabled) }
+    }
+
+    fun setAllowLegacyApkInstall(enabled: Boolean) {
+        viewModelScope.launch { preferenceRepository.setAllowLegacyApkInstall(enabled) }
+    }
+
     /**
      * Applying the locale is conditional on the write, because these two steps disagree about how
      * long they last: `applyLocale` changes the running process now, the preference is what brings
@@ -276,50 +299,41 @@ class SettingsViewModel(
     fun setAddFreezerToLauncher(enabled: Boolean) {
         viewModelScope.launch {
             preferenceRepository.setAddFreezerToLauncher(enabled)
-            freezerShortcutManager.syncDynamicShortcuts(enabled)
+            appShortcuts.syncDynamicShortcuts(enabled)
         }
     }
 
-    /**
-     * Restore every app on the freezer watchlist, through [BulkFreezeController] like every other
-     * bulk run.
-     *
-     * This used to unfreeze here, and being the one watchlist-wide path outside the runner cost it
-     * four things the runner already had. It fanned out with an unbounded `awaitAll`, so a large
-     * watchlist put one concurrent privileged call per entry against a single shell; it had no
-     * deadline, so a wedged binder left the toast pending forever; it asked for the pinned-icon
-     * rebuild by hand, which is the kind of call that gets forgotten at the next surface; and it
-     * left a parked freeze result in the tile subtitle describing apps it had just restored.
-     *
-     * It also over-reported. `getAllPackageNames` is the whole watchlist, and every entry was
-     * unfrozen and counted, so "Unfroze 12 apps" included the ones that were already running.
-     * `targetsFor` filters to the entries actually frozen, so the number now matches what changed.
-     *
-     * Single-app and small-selection unfreezes stay where they are: the runner's API is list-shaped
-     * and watchlist-or-profile scoped, and they are neither.
-     */
+    /** Enqueues a cross-app restore for every frozen package stored for Thor's current user. */
     fun unfreezeAll() {
+        val requestId = UUID.randomUUID()
+        taskNavigationTargets.requestOpenProvisional(
+            requestId,
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = PrivilegeSweepOperation.UNFREEZE.name,
+            ),
+        )
         viewModelScope.launch {
-            val outcome = bulkFreeze.launch(BulkRequest(BulkOp.UNFREEZE)).await()
-            _events.send(
-                when (outcome) {
-                    is BulkOutcome.Completed -> bulkResultMessage(outcome.result)
-                    // Naming the precondition beats "Unfroze 0 apps", which reads as a failed
-                    // unfreeze. Which precondition matters: with a full watchlist and a dead
-                    // Shizuku binder, "No apps in Freezer" is a statement the user can disprove by
-                    // looking at the screen behind the toast, and it hides the one thing they could
-                    // act on.
-                    is BulkOutcome.NothingToDo -> UiText.StringResource(
-                        when (outcome.reason) {
-                            NoOpReason.NO_PRIVILEGE -> R.string.tile_grant_privilege_toast
-                            NoOpReason.NO_TARGETS -> R.string.tile_no_apps_toast
-                        }
+            try {
+                val spec = sweepResolver.resolve(
+                    BulkRequest(BulkOp.UNFREEZE),
+                    PrivilegeSweepSource.SETTINGS,
+                )
+                when (val launch = sweepController.launch(requestId, spec)) {
+                    is PrivilegeSweepLaunchResult.Accepted -> taskNavigationTargets.requestAccepted(
+                        provisionalTaskId = requestId,
+                        canonicalTaskId = launch.requestId,
                     )
-                    // Not the same thing: the run raised, possibly after restoring part of the
-                    // watchlist, so the one claim that must not be made is that nothing happened.
-                    is BulkOutcome.Failed -> UiText.StringResource(R.string.bulk_run_failed)
+
+                    is PrivilegeSweepLaunchResult.Rejected ->
+                        taskNavigationTargets.requestRejected(requestId)
                 }
-            )
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                Logger.e("SettingsViewModel", "restore-all sweep launch failed", exception)
+                taskNavigationTargets.requestRejected(requestId)
+            }
         }
     }
 

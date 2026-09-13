@@ -185,6 +185,7 @@
       was typed. Says what to do instead of guessing at a cause it does not know.
     -->
     <string name="restore_error_unlock_check_failed">Thor no pudo comprobar esa frase de contraseña. Inténtalo de nuevo.</string>
+    <string name="restore_error_authentication_failed">No se pudo autenticar esta copia de seguridad y no se restauró.</string>
     <string name="restore_failed_passphrase_lost">Thor ya no tiene la frase de contraseña de esta copia de seguridad — desbloquéala otra vez</string>
     <string name="restore_failed_salt_unreadable">no se pudo leer la sal de este archivo</string>
     <!--

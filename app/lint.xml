@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Severity overrides for Android Lint. app/build.gradle.kts sets warningsAsErrors, so anything left at
-  WARNING here fails the build — keep this file to the checks that are deliberately, permanently
-  exempt, and fix everything else at the source.
+  Severity overrides for Android Lint. Explicit severities here take precedence over the general
+  warningsAsErrors setting in app/build.gradle.kts. Keep informational exceptions documented and
+  use an explicit error for checks that must fail the build; fix their findings at the source.
 -->
 <lint>
     <!--
@@ -67,4 +67,19 @@
     <issue id="SdCardPath">
         <ignore path="src/test/**" />
     </issue>
+
+    <!--
+      SyntheticAccessor is disabled by default, so this entry enables it. Declare it as an error:
+      an explicit XML warning stays a warning even when warningsAsErrors is enabled. :bypass
+      enables the same check directly in its lint DSL without an XML severity override.
+
+      File-private helpers live in a separate JVM class from their callers, and nested classes,
+      lambdas and coroutine bodies can also need access$ bridges to private members. Keep helpers
+      internal where safe so these calls do not require bridges. Visibility changes must preserve
+      reflection names and kept APIs; widening every private declaration is not a safe substitute.
+
+      Release optimization may remove these bridges. This gate keeps avoidable compiler-generated
+      accessors out of the app and its tests without assuming a measured release performance gain.
+    -->
+    <issue id="SyntheticAccessor" severity="error" />
 </lint>

@@ -12,22 +12,22 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.core.content.pm.ShortcutManagerCompat
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
-import com.valhalla.thor.domain.model.BulkOutcome
-import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.AppLocale
-import com.valhalla.thor.util.bulkResultMessage
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -40,12 +40,24 @@ import org.koin.android.ext.android.inject
  */
 // Not a splash screen: this is a translucent trampoline activity that does async
 // enable-then-launch work; it shows no UI and has no branded splash.
+internal fun shortcutBulkMessageRes(result: PrivilegeSweepLaunchResult): Int = when (result) {
+    is PrivilegeSweepLaunchResult.Accepted -> R.string.sweep_queued
+    is PrivilegeSweepLaunchResult.Rejected -> when (result.reason) {
+        PrivilegeSweepLaunchRejection.NotificationsRequired ->
+            R.string.notification_access_needed_subtitle
+        PrivilegeSweepLaunchRejection.NoPrivilege -> R.string.tile_grant_privilege_toast
+        PrivilegeSweepLaunchRejection.NoTargets -> R.string.tile_no_apps_toast
+        is PrivilegeSweepLaunchRejection.EnqueueFailed -> R.string.bulk_run_failed
+    }
+}
+
 @SuppressLint("CustomSplashScreen")
 class FreezerLaunchActivity : Activity() {
 
     private val systemRepository: SystemRepository by inject()
     private val manageAppUseCase: ManageAppUseCase by inject()
     private val freezerShortcutManager: FreezerShortcutManager by inject()
+    private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /**
@@ -54,7 +66,7 @@ class FreezerLaunchActivity : Activity() {
      * A third entry point, reached from a launcher shortcut without passing through
      * [com.valhalla.thor.HomeActivity]. It draws no UI, but every outcome it reports is a
      * `getString` on **this** context — `tile_grant_privilege_toast`, `tile_no_apps_toast`,
-     * `bulk_run_failed`, `freezer_launch_failed` and [com.valhalla.thor.util.bulkResultMessage] —
+     * `bulk_run_failed`, `freezer_launch_failed`, and the queued acknowledgement —
      * so without the wrap those toasts are the one part of Thor still speaking English.
      *
      * No `recreateOnChange` counterpart: this activity is `noHistory`, `excludeFromRecents` and
@@ -94,65 +106,20 @@ class FreezerLaunchActivity : Activity() {
     private fun reportShortcutUsed(shortcutId: String) =
         ShortcutManagerCompat.reportShortcutUsed(this, shortcutId)
 
-    // Bulk: privilege-guard, hand off to the app-scoped manager, report, finish.
+    // Bulk: persist and enqueue inside the short report window, then get out of the launcher's way.
     private fun guardThenBulk(disable: Boolean) {
         scope.launch {
-            if (!hasPrivilege()) {
-                toast(getString(R.string.tile_grant_privilege_toast))
-                finish()
-                return@launch
-            }
-            val run = freezerShortcutManager.runBulk(disable)
-
-            // Report from HERE rather than from the runner, because here is the only place it
-            // can be done unconditionally. NotificationManagerService.checkCanEnqueueToast drops
-            // a toast from a background package whose notifications are disabled — which is
-            // exactly what BulkFreezeRunner is (app-scoped, no UI). This trampoline is
-            // translucent but *resumed*, so it is foreground and its toast always renders. For
-            // Unfreeze-all that matters: the notification needs permission and the QS tile is
-            // freeze-only, so with notifications off an unfreeze used to report nothing at all.
-            //
-            // The wait is bounded well inside the run's own 30s deadline: this window is
-            // invisible but touchable, so sitting on it would swallow taps meant for the
-            // launcher underneath. Past the window we acknowledge and get out of the way — the
-            // run belongs to the app scope and finishes (and notifies) without us.
-            val outcome = withTimeoutOrNull(REPORT_WINDOW_MS) {
-                try {
-                    run.await()
-                } catch (_: CancellationException) {
-                    // Two very different cancellations arrive here. If our own scope died
-                    // (onDestroy) we must propagate; if the Deferred was cancelled because a
-                    // conflicting op replaced this run, we have nothing to report but are still
-                    // alive and still owe the user a toast.
-                    currentCoroutineContext().ensureActive()
-                    null
-                }
+            val result = withTimeoutOrNull(REPORT_WINDOW_MS) {
+                sweepLauncher.launch(
+                    request = BulkRequest(if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE),
+                    source = PrivilegeSweepSource.LAUNCHER,
+                ).await()
             }
             toast(
-                when (outcome) {
-                    is BulkOutcome.Completed ->
-                        bulkResultMessage(outcome.result).asString(this@FreezerLaunchActivity)
-                    // Nothing to act on. The privilege branch is not dead despite the check
-                    // above: that check reads a probe taken here, while the runner awaits the
-                    // resolved PrivilegeState, and a mode revoked in between resolves to no
-                    // privilege on a run this activity already let through.
-                    is BulkOutcome.NothingToDo -> getString(
-                        when (outcome.reason) {
-                            NoOpReason.NO_PRIVILEGE -> R.string.tile_grant_privilege_toast
-                            NoOpReason.NO_TARGETS -> R.string.tile_no_apps_toast
-                        }
-                    )
-                    // Deliberately vague about what got frozen, because the runner does not know
-                    // either: the throw can land before the first package or halfway through the
-                    // batch. Saying "nothing to do" here — which is what this used to say — is the
-                    // one reading that is certainly wrong.
-                    is BulkOutcome.Failed -> getString(R.string.bulk_run_failed)
-                    // Timed out, or replaced by a conflicting op: either way work is in flight.
-                    null -> getString(
-                        if (disable) R.string.log_freezing_batch
-                        else R.string.log_unfreezing_batch
-                    )
-                }
+                getString(
+                    result?.let(::shortcutBulkMessageRes)
+                        ?: if (disable) R.string.log_freezing_batch else R.string.log_unfreezing_batch
+                )
             )
             finish()
         }
@@ -220,8 +187,9 @@ class FreezerLaunchActivity : Activity() {
     private companion object {
         /**
          * How long the trampoline stays alive waiting for a bulk run's outcome. Short because
-         * the window is invisible yet touchable; long enough to cover an ordinary watchlist,
-         * which the runner fans out five wide.
+         * the window is invisible yet touchable; long enough for the Room-to-WorkManager enqueue
+         * handoff in ordinary conditions. The process-owned launcher continues that handoff if this
+         * report window expires.
          */
         const val REPORT_WINDOW_MS = 2_000L
     }

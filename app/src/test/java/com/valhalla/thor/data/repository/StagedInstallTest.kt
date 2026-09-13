@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.domain.model.StagedPackage
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -160,6 +161,24 @@ class StagedInstallTest {
     @Test
     fun `a source past the limit yields no byte count, so no caller can mistake it for a copy`() {
         assertNull(digestOfCopy(ByteArray(5000), limit = 4096L))
+    }
+
+    @Test
+    fun `an authenticated archive install set is reused without resolving the bundle again`() {
+        val staged = StagedPackage(
+            file = File(tempDir(), "bundle.xapk"),
+            displayName = "bundle.xapk",
+            installSet = listOf("base.apk", "split_config.en.apk"),
+        )
+        var fallbackCalls = 0
+
+        val resolved = resolveStagedInstallSet(staged) { _, _ ->
+            fallbackCalls++
+            listOf("attacker.apk")
+        }
+
+        assertEquals(staged.installSet, resolved)
+        assertEquals(0, fallbackCalls)
     }
 
     // ---- writeEntriesWithinBudget (the PackageInstaller session path) ---------------------
@@ -386,6 +405,12 @@ class StagedInstallTest {
     }
 
     // ---- integrityGuardedInstall ---------------------------------------------------------
+    //
+    // The install commands below are opaque payloads, not specimens: `integrityGuardedInstall`
+    // prefixes whatever string it is handed and never parses it, so these literals say nothing about
+    // what Thor emits. Do not read the `-r -g` in them as current — the grant is opt-in as of GH#445
+    // and the real command is a `pm install-create` session either way (`installViaSessionCommand`).
+    // They are left as-is deliberately: rewriting them would imply this function cares what it wraps.
 
     @Test
     fun `the hash check runs before pm install, not after`() {

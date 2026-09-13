@@ -8,11 +8,6 @@ import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.FileProvider
-import androidx.core.net.toUri
-import com.valhalla.thor.util.Logger
-import java.io.File
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,11 +15,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import coil3.compose.AsyncImage
-import coil3.compose.SubcomposeAsyncImage
-import com.valhalla.thor.presentation.utils.ArchiveIconModel
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -61,20 +51,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -82,22 +74,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import androidx.core.net.toUri
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.SubcomposeAsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.presentation.home.components.BentoTile
-import com.valhalla.thor.presentation.widgets.AppIcon
-import java.text.DateFormat
-import java.util.Date
-import org.koin.androidx.compose.koinViewModel
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.documentfile.provider.DocumentFile
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
+import com.valhalla.thor.presentation.utils.ArchiveIconModel
+import com.valhalla.thor.presentation.widgets.AppIcon
+import com.valhalla.thor.util.AppLocale
+import com.valhalla.thor.util.Logger
+import org.koin.androidx.compose.koinViewModel
+import java.io.File
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,8 +138,9 @@ fun BackupRestoreHubScreen(
             val doc = DocumentFile.fromSingleUri(context, uri)
             val name = doc?.name?.lowercase().orEmpty()
             val path = uri.path?.lowercase().orEmpty()
-            val isBundle = name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apks") ||
-                path.endsWith(".apk") || path.endsWith(".xapk") || path.endsWith(".apks")
+            val isBundle =
+                name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apks") ||
+                        path.endsWith(".apk") || path.endsWith(".xapk") || path.endsWith(".apks")
             if (isBundle) {
                 installerViewModel.parsePackage(uri)
                 showInstallerSheet = true
@@ -181,11 +179,11 @@ fun BackupRestoreHubScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
-                windowInsets = WindowInsets(0,0,0,0)
+                windowInsets = WindowInsets(0, 0, 0, 0)
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0,0,0,0)
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -249,27 +247,41 @@ fun BackupRestoreHubScreen(
                                 onRestore = { handleRestoreOrInstall(item) },
                                 onShare = {
                                     val parsedUri = item.uriString.toUri()
-                                    val shareUri = if (parsedUri.scheme == "file" && parsedUri.path != null) {
-                                        try {
-                                            FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.provider",
-                                                File(parsedUri.path!!)
-                                            )
-                                        } catch (e: Exception) {
-                                            Logger.e("BackupRestoreHub", "Failed to get share URI for file", e)
-                                            Toast.makeText(context, R.string.unknown_error_occurred, Toast.LENGTH_SHORT).show()
-                                            null
-                                        }
-                                    } else {
-                                        parsedUri
-                                    } ?: return@ArchiveItemCard
+                                    val shareUri =
+                                        if (parsedUri.scheme == "file" && parsedUri.path != null) {
+                                            try {
+                                                FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.provider",
+                                                    File(parsedUri.path!!)
+                                                )
+                                            } catch (e: Exception) {
+                                                Logger.e(
+                                                    "BackupRestoreHub",
+                                                    "Failed to get share URI for file",
+                                                    e
+                                                )
+                                                Toast.makeText(
+                                                    context,
+                                                    R.string.unknown_error_occurred,
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                null
+                                            }
+                                        } else {
+                                            parsedUri
+                                        } ?: return@ArchiveItemCard
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "*/*"
                                         putExtra(Intent.EXTRA_STREAM, shareUri)
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
-                                    context.startActivity(Intent.createChooser(shareIntent, item.displayName))
+                                    context.startActivity(
+                                        Intent.createChooser(
+                                            shareIntent,
+                                            item.displayName
+                                        )
+                                    )
                                 },
                                 onDelete = { viewModel.requestDeleteArchive(item) },
                             )
@@ -397,7 +409,12 @@ private fun BackupsSectionHeader(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 Text(
-                    text = "$totalCount (${Formatter.formatShortFileSize(context, totalSizeBytes)})",
+                    text = "$totalCount (${
+                        Formatter.formatShortFileSize(
+                            context,
+                            totalSizeBytes
+                        )
+                    })",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -458,10 +475,17 @@ private fun ArchiveItemCard(
     onDelete: () -> Unit,
 ) {
     val context = LocalContext.current
-    val formattedSize = remember(item.sizeBytes) { Formatter.formatShortFileSize(context, item.sizeBytes) }
-    val formattedDate = remember(item.dateModifiedEpochSec) {
+    val formattedSize =
+        remember(item.sizeBytes) { Formatter.formatShortFileSize(context, item.sizeBytes) }
+    // The locale comes off this Context's Configuration, not from Locale.getDefault() — below API 33
+    // the process default is the *device's* language whatever the in-app picker chose, which would put
+    // an English date next to the size above it, formatted by android.text.format.Formatter from this
+    // same Context. See AppLocale.localeOf and AppInfoDetailsScreen.formatTime.
+    val locale = AppLocale.localeOf(context)
+    val formattedDate = remember(item.dateModifiedEpochSec, locale) {
         if (item.dateModifiedEpochSec > 0) {
-            DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(item.dateModifiedEpochSec * 1000))
+            DateFormat.getDateInstance(DateFormat.MEDIUM, locale)
+                .format(Date(item.dateModifiedEpochSec * 1000))
         } else {
             ""
         }
@@ -769,7 +793,12 @@ private fun AppPickerBottomSheet(
     onAppSelect: (AppInfo) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(
+            SheetValue.Hidden, SheetValue.Expanded
+        )
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,

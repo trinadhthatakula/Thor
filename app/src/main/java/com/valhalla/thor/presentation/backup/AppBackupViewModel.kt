@@ -102,6 +102,16 @@ data class AppBackupUiState(
     val progress: ThorJobProgress? = null,
     val running: Boolean = false,
     /**
+     * True only after [ArchiveJobLauncher.startBackup] returns a WorkManager id.
+     *
+     * [running] becomes true synchronously on the tap so a second tap cannot enqueue a duplicate, but
+     * key derivation and WorkManager's enqueue operation still have to settle after that. Until this is
+     * true, dismissing the sheet clears its dedicated view-model owner and can cancel the handoff before
+     * durable work exists. The Background action and sheet dismissal are therefore gated on this exact
+     * boundary rather than on notification timing.
+     */
+    val jobAccepted: Boolean = false,
+    /**
      * The job exists but WorkManager has not started it — `ENQUEUED` or `BLOCKED`, both of which
      * [ThorJobStatus.Pending] carries.
      *
@@ -134,6 +144,10 @@ data class AppBackupUiState(
      */
     val canStart: Boolean
         get() = supported == true && !running && selected.isNotEmpty()
+
+    /** True only when leaving the sheet cannot cancel the pre-WorkManager handoff. */
+    val canRunInBackground: Boolean
+        get() = running && jobAccepted
 }
 
 /**
@@ -292,12 +306,12 @@ class AppBackupViewModel(
      *   one path that never starts a coroutine, and in a `finally` on every path the coroutine does
      *   reach.
      *
-     *   One hole is left, and it cannot be closed from here: if this view model is cleared before the
-     *   launched block is dispatched, the block and its `finally` never run. `AppBackupSheet` scopes
-     *   the view model to its own composition with `rememberViewModelStoreOwner()`, so a dismissal
-     *   landing in that window leaves the array intact. Stated rather than papered over, because the
-     *   layer below cites this contract: `ThorJobLauncher.startBackup` documents that the caller owns
-     *   the passphrase and that the callee will not clear it.
+     *   One method-local hole remains: if this view model is cleared before the launched block is
+     *   dispatched, the block and its `finally` never run. `AppBackupSheet` now refuses user dismissal
+     *   until WorkManager accepts the job, so Background, Back, scrim taps and swipes cannot create that
+     *   schedule; forced host destruction still can. Stated rather than papered over, because the layer
+     *   below cites this contract: `ThorJobLauncher.startBackup` documents that the caller owns the
+     *   passphrase and that the callee will not clear it.
      * @param remember whether to cache [typed] in the vault. Ignored when [typed] is empty.
      */
     fun beginBackup(typed: CharArray, remember: Boolean) {
@@ -314,7 +328,15 @@ class AppBackupViewModel(
         // Cleared synchronously, before the coroutine that enqueues. Nothing is watching yet — the
         // passphrase recall and the enqueue both have to complete first — so for that whole window
         // this is the only thing that can take the previous run's bar down.
-        _uiState.update { it.copy(running = true, queued = false, finished = null, progress = null) }
+        _uiState.update {
+            it.copy(
+                running = true,
+                jobAccepted = false,
+                queued = false,
+                finished = null,
+                progress = null,
+            )
+        }
 
         launchGuarded(
             // The `catch` this function did without. `strings_backup.xml`'s
@@ -332,6 +354,7 @@ class AppBackupViewModel(
                 _uiState.update {
                     it.copy(
                         running = false,
+                        jobAccepted = false,
                         queued = false,
                         finished = BackupFinish.Failed(reason = null, workerRan = false),
                     )
@@ -348,7 +371,9 @@ class AppBackupViewModel(
             try {
                 val passphrase = if (typed.isNotEmpty()) typed else recalled
                 if (passphrase == null || passphrase.isEmpty()) {
-                    _uiState.update { it.copy(running = false, passphraseNeeded = true) }
+                    _uiState.update {
+                        it.copy(running = false, jobAccepted = false, passphraseNeeded = true)
+                    }
                     return@launchGuarded
                 }
                 if (remember && typed.isNotEmpty()) vault.remember(typed)
@@ -400,6 +425,9 @@ class AppBackupViewModel(
      */
     private fun watch(jobId: UUID) {
         watching?.cancel()
+        // Synchronous with the accepted id. A dismissal after this point may cancel this sheet's
+        // watcher, but it cannot retract the WorkManager row the launcher already awaited.
+        _uiState.update { it.copy(running = true, jobAccepted = true, finished = null) }
         watching = launchGuarded(
             // A throw out of either collector would otherwise leave `running` true with no watcher
             // left to clear it: the bar sticks, Start stays disabled, and the only way out is killing
@@ -415,10 +443,9 @@ class AppBackupViewModel(
             // from whatever `finish` left — which is the banner, still up, and `watching` nulled.
             // The banner is cleared here; the bar is the collector's, below.
             //
-            // `running` is set ahead of the first status rather than waiting for it: WorkManager's
+            // `running` and `jobAccepted` were set before this watcher was dispatched: WorkManager's
             // flow is not guaranteed to answer in the same frame, and a Start button over a job that
             // is already writing invites a second one.
-            _uiState.update { it.copy(running = true, finished = null) }
             launch {
                 // Assigned, never filtered. The registry is keyed by job id, so this flow holds this
                 // job's progress and nothing else's — including the null that a job which has not
@@ -521,7 +548,9 @@ class AppBackupViewModel(
         // vacuous — it would delete the coverage of the reattach and `beginBackup` clears rather than
         // add any. Whoever tries this again: the bar is cleared by whatever starts the next job, on
         // purpose.
-        _uiState.update { it.copy(running = false, queued = false, finished = result) }
+        _uiState.update {
+            it.copy(running = false, jobAccepted = false, queued = false, finished = result)
+        }
         watching?.cancel()
         watching = null
     }

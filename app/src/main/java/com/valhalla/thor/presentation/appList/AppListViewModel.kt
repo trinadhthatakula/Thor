@@ -6,19 +6,23 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.domain.model.APP_LIST_MIME
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
-import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
+import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
+import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.SortBy
+import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.filterApps
 import com.valhalla.thor.domain.model.freezeTier
@@ -31,6 +35,7 @@ import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.domain.usecase.ExportAppListUseCase
@@ -39,11 +44,13 @@ import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.presentation.launchGuarded
+import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
+import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.util.AppScanRevision
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
-import com.valhalla.thor.util.UiTextException
-import com.valhalla.thor.util.bulkResultMessage
+import com.valhalla.thor.util.asUiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -66,6 +73,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import java.util.UUID
 
 // ... AppListUiState remains same ...
 data class AppListUiState(
@@ -118,7 +126,7 @@ data class AppListUiState(
     // also the permanent answer on every AOSP build, which is the point — a Pixel does not define
     // this permission, so "not granted" there must never be mistaken for "denied" and turned into a
     // banner nobody can ever dismiss. See installedAppsPermissionState().
-    val installedAppsPermission: InstalledAppsPermission = InstalledAppsPermission.Unsupported
+    val installedAppsPermission: InstalledAppsPermission = InstalledAppsPermission.Unsupported,
 )
 
 /**
@@ -127,6 +135,7 @@ data class AppListUiState(
  */
 sealed interface AppListEvent {
     data class ShowMessage(val message: UiText) : AppListEvent
+    data class RequestReinstall(val apps: List<AppInfo>) : AppListEvent
     data class ShowFreezerPrompt(val prompt: FreezerPrompt) : AppListEvent
 
     /** Hand the exported list to another app. [uri] is a `content://` string; the screen chooses. */
@@ -150,6 +159,9 @@ class AppListViewModel(
     private val installedAppsPermission: InstalledAppsPermissionGate,
     private val installerLabelResolver: InstallerLabelResolver,
     private val exportAppListUseCase: ExportAppListUseCase,
+    private val sweepResolver: PrivilegeSweepTargetResolver,
+    private val sweepController: PrivilegeSweepController,
+    private val taskNavigationTargets: TaskNavigationTargets,
     // Injected rather than hardcoded so a test can put every stage of this view model on one
     // scheduler: the sort/filter pipeline below runs off-main, and a `Dispatchers.Default` baked
     // in here would keep it on a real thread pool while the rest ran on virtual time.
@@ -278,7 +290,8 @@ class AppListViewModel(
     private fun observePermissionFilter() {
         viewModelScope.launch {
             combine(
-                preferenceRepository.userPreferences.map { it.appFilterType }.distinctUntilChanged(),
+                preferenceRepository.userPreferences.map { it.appFilterType }
+                    .distinctUntilChanged(),
                 _rawState.map { state ->
                     (state.allUserApps + state.allSystemApps)
                         .mapTo(HashSet()) { "${it.packageName}@${it.lastUpdateTime}" }
@@ -497,7 +510,25 @@ class AppListViewModel(
     }
 
     fun freezeApp(packageName: String, appName: String?, freeze: Boolean) {
-        viewModelScope.launch {
+        // `launchGuarded`, not a bare `launch`, because of the freezer read inside `onSuccess`
+        // below. `Result.onSuccess` catches nothing — its lambda is a plain inline lambda — so a
+        // Room throw from `contains()` (SQLiteFullException, SQLiteDiskIOException,
+        // SQLiteDatabaseCorruptException) walks straight out of it, out of the launch, and into the
+        // thread's default handler, because `:app` installs no `CoroutineExceptionHandler`. One
+        // freeze on a full disk was process death.
+        //
+        // The report here is deliberately unadorned. Everything on this path that can fail in a way
+        // worth naming already names itself: both privileged calls return a `Result` and the
+        // `onFailure` branch renders it, and the freezer read degrades on its own rather than
+        // aborting (see below). What is left to reach this handler is an unexpected throw with
+        // nothing to add to it, so it is shown as-is instead of being dressed up as a claim about
+        // what did or did not happen to the app.
+        launchGuarded(
+            onFailure = { e ->
+                Logger.e("AppListViewModel", "freeze toggle for $packageName failed", e)
+                _events.trySend(AppListEvent.ShowMessage(e.asUiText()))
+            }
+        ) {
             // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
             // view model rather than by AppRiskDialog declining to render a confirm button.
             // Unfreezing keeps the raw call: it must never be blocked.
@@ -517,8 +548,30 @@ class AppListViewModel(
                 }
 
                 if (freeze) {
-                    val inFreezer = withContext(ioDispatcher) {
-                        freezerRepository.contains(packageName)
+                    // "Not in the freezer" is the safe answer when the read fails — the same
+                    // fallback observeFreezerMembership's `catch` takes, for the same reason. The
+                    // app is already frozen by the time this runs, and all this Boolean decides is
+                    // whether to offer to track it. Guessing `true` would leave a frozen app off
+                    // the watchlist without a word, which is the stranding this feature exists to
+                    // prevent; guessing `false` costs at worst one prompt for an app already on it,
+                    // and `FreezerDao.insert` is `OnConflictStrategy.IGNORE`, so confirming that
+                    // prompt is a no-op rather than a duplicate row. Caught here rather than left
+                    // to the guard above because the guard can only abandon the block — and
+                    // abandoning it here would drop the freeze report the user is owed for a
+                    // freeze that succeeded.
+                    val inFreezer = try {
+                        withContext(ioDispatcher) {
+                            freezerRepository.contains(packageName)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e(
+                            "AppListViewModel",
+                            "freezer membership read for $packageName failed",
+                            e
+                        )
+                        false
                     }
                     if (!inFreezer) {
                         _events.send(
@@ -545,14 +598,9 @@ class AppListViewModel(
                     )
                 }
             }.onFailure { e ->
-                // A UiTextException already carries the message to show (the tier refusal) and
-                // has a null `message`, which error_format would render as a bare "Error: ".
-                _events.send(
-                    AppListEvent.ShowMessage(
-                        if (e is UiTextException) e.uiText
-                        else UiText.StringResource(R.string.error_format, e.message ?: "")
-                    )
-                )
+                // The tier refusal arrives here as a UiTextException, which carries its message in
+                // `uiText` and leaves `message` null — see [asUiText].
+                _events.send(AppListEvent.ShowMessage(e.asUiText()))
             }
         }
     }
@@ -568,7 +616,26 @@ class AppListViewModel(
      * Unfreeze-all reaches it. Refusing here would strand a frozen app off the list it belongs on.
      */
     fun addToFreezer(packageName: String) {
-        viewModelScope.launch(ioDispatcher) {
+        launchGuarded(
+            // `ioDispatcher` passed through rather than dropped: this is a Room write, and letting
+            // it default to `Dispatchers.Main.immediate` would move it to the main thread without
+            // anything failing to say so, because Room's suspend DAO functions dispatch internally
+            // and would keep working.
+            context = ioDispatcher,
+            // The app is *already frozen* when this runs — the prompt this confirms only appears
+            // after [freezeApp] succeeded — so a failed insert has undone nothing. What is lost is
+            // the row that makes a frozen app recoverable: gone from the freezer screen and out of
+            // Unfreeze-all's reach, which iterates the watchlist. That is worth reporting, but it
+            // is emphatically not "the freeze failed", and no existing string says "it is frozen,
+            // Thor just could not write it down" — one Room failure is not worth an English-only
+            // ninth string across eight locales. So the throw is reported verbatim instead: on the
+            // failures that actually reach here (a full disk, a failing one) its message names the
+            // disk, which is the part the user can act on.
+            onFailure = { e ->
+                Logger.e("AppListViewModel", "adding $packageName to the freezer failed", e)
+                _events.trySend(AppListEvent.ShowMessage(e.asUiText()))
+            }
+        ) {
             freezerRepository.add(packageName)
             _events.send(
                 AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
@@ -594,7 +661,52 @@ class AppListViewModel(
      * before the gate existed can always be taken back off.
      */
     fun toggleFreezerMembership(packageName: String) {
-        viewModelScope.launch(ioDispatcher) {
+        // Non-null once the restore has come back successful, holding the label to report it with.
+        // `onFailure` is not suspend and cannot re-derive which side of the irreversible step a
+        // throw landed on, and the two sides mean opposite things: before the restore nothing has
+        // happened to the app and a Room throw means the tap did nothing, while after it the app
+        // really is thawed and only Thor's record of it is missing. Reporting both the same way
+        // would tell a user whose app just came back that the unfreeze failed.
+        var unfrozenLabel: String? = null
+        launchGuarded(
+            // `ioDispatcher` passed through rather than dropped: this body runs the three watchlist
+            // calls *and* the privileged restore, and the default context would put all four on
+            // `Dispatchers.Main.immediate` with nothing failing to report it.
+            context = ioDispatcher,
+            // All three Room calls in this body report by throwing, and the delete is the one that
+            // matters: it runs after `restoreApp`/`forceUnfreeze` has already succeeded, so an
+            // escaping throw used to land between the irreversible act and the record of it — and
+            // then kill the process, leaving exactly the frozen-but-untracked stranding this
+            // method's KDoc promises to prevent, arrived at from the other direction.
+            onFailure = { e ->
+                Logger.e("AppListViewModel", "freezer membership toggle for $packageName failed", e)
+                val unfrozen = unfrozenLabel
+                if (unfrozen != null) {
+                    // Two facts, in the order they matter, the same as
+                    // AppInfoDetailsViewModel.addOrRemoveFromFreezer — the other surface that takes an
+                    // app off the watchlist, and one that must not answer the same failure
+                    // differently. The restore returned success, so the app is enabled and
+                    // unsuspended, and saying so first is the only claim here that is certainly true;
+                    // a bare "Error: …" on its own would read as "the unfreeze failed" over an app the
+                    // user can see running.
+                    //
+                    // Then the throw, rather than stopping at the good news. The undropped row is
+                    // survivable — it keeps the app on the freezer screen and inside Unfreeze-all's
+                    // reach, and the next tap retries the delete after a restore that is by then a
+                    // no-op — but "survivable" is not "not worth mentioning": whatever broke the
+                    // delete is a failing disk, and that is the part the user can act on.
+                    _events.trySend(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(R.string.unfrozen_success, unfrozen)
+                        )
+                    )
+                }
+                // Nothing has happened to the app on the other side of the restore — the membership
+                // read that chooses the branch, or the insert that only ever adds a row (adding never
+                // freezes) — so on that path this is the whole report.
+                _events.trySend(AppListEvent.ShowMessage(e.asUiText()))
+            }
+        ) {
             if (freezerRepository.contains(packageName)) {
                 // Restore before dropping the row, and before reporting success. The privileged call
                 // is the only step that can fail and the Room delete is durable, so removing first
@@ -607,7 +719,11 @@ class AppListViewModel(
                 val app = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
                     .firstOrNull { it.packageName == packageName }
                 val restored =
-                    if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
+                    if (app != null) manageAppUseCase.restoreApp(
+                        packageName,
+                        app.enabled,
+                        app.isSuspended
+                    )
                     else manageAppUseCase.forceUnfreeze(packageName)
                 restored.onFailure { e ->
                     _events.send(
@@ -615,18 +731,23 @@ class AppListViewModel(
                             UiText.StringResource(R.string.error_format, e.message ?: "")
                         )
                     )
-                    return@launch
+                    return@launchGuarded
                 }
-                freezerRepository.remove(packageName)
-                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
-                // live shortcut for an app no longer in the freezer would let it drive a freeze
-                // from the launcher.
-                appShortcuts.disableAppShortcut(packageName)
+                // Latched between the privileged call and the durable one, which is the only place
+                // it can be right: past here the app is thawed whatever the rest of this block does.
+                unfrozenLabel = app?.appName ?: packageName
                 // Same optimistic local patch freezeApp does, so the row stops reading as frozen
-                // without waiting for a full rescan.
+                // without waiting for a full rescan. Ordered ahead of the two steps that can throw,
+                // because it cannot: it is a CAS over two `List.map`s, touching neither Room nor the
+                // shortcut service. Left behind them, a throw from either would skip it and leave the
+                // list drawing the app as frozen while the guard above says "Unfrozen X" — the screen
+                // contradicting its own toast, on the one path where the toast is certainly true.
                 _rawState.update { state ->
                     fun restore(list: List<AppInfo>) = list.map {
-                        if (it.packageName == packageName) it.copy(enabled = true, isSuspended = false)
+                        if (it.packageName == packageName) it.copy(
+                            enabled = true,
+                            isSuspended = false
+                        )
                         else it
                     }
                     state.copy(
@@ -634,6 +755,27 @@ class AppListViewModel(
                         allSystemApps = restore(state.allSystemApps)
                     )
                 }
+                // Grey the shortcut before dropping the row. A pinned shortcut can only be disabled,
+                // never removed — `disableShortcuts` is the whole of what the app gets — so both
+                // orders leave residue when their second step throws, and the only question is which
+                // residue the user can get out of.
+                //
+                // Greying first: the disable throws, the row survives, the app is still listed in the
+                // freezer, so the same toggle retries the whole pair and the guard above has already
+                // said what failed. Row first: the delete lands, the disable throws, and the app is
+                // gone from the freezer screen — which is the surface that would have retried the
+                // disable. What is left is an orphaned live shortcut and no route back to it.
+                //
+                // Note what that orphan does *not* do, because an earlier version of this comment had
+                // it backwards. A per-app shortcut carries ACTION_LAUNCH, and
+                // FreezerLaunchActivity.launchApp answers it with forceUnfreeze-then-start, so a stale
+                // one thaws an app — it cannot freeze one. And it is not self-healing either: a
+                // shortcut greyed by `disableShortcuts` shows `shortcut_no_longer_frozen` instead of
+                // firing, so the way back is a fresh "Add to home screen", not the next tap. The cost
+                // of getting this order wrong is a launcher tile that outlives the watchlist row it
+                // was made for, not a freeze nobody asked for.
+                appShortcuts.disableAppShortcut(packageName)
+                freezerRepository.remove(packageName)
                 _events.send(
                     AppListEvent.ShowMessage(
                         UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
@@ -655,7 +797,7 @@ class AppListViewModel(
                     _events.send(
                         AppListEvent.ShowMessage(UiText.StringResource(R.string.error_unsafe_skipped))
                     )
-                    return@launch
+                    return@launchGuarded
                 }
                 freezerRepository.add(packageName)
                 _events.send(
@@ -665,120 +807,77 @@ class AppListViewModel(
         }
     }
 
-    fun performMultiAction(action: MultiAppAction) {
+    private suspend fun launchSelectionSweep(
+        operation: PrivilegeSweepOperation,
+        apps: List<AppInfo>,
+        freezerMode: FreezerMode? = null,
+        addToFreezer: Boolean = false,
+    ) {
+        val provisionalTaskId = UUID.randomUUID()
+        taskNavigationTargets.requestOpenProvisional(
+            provisionalTaskId,
+            ProvisionalTaskIdentity(
+                queueKind = TaskQueueKind.PRIVILEGE,
+                operationId = operation.name,
+            ),
+        )
+        try {
+            val spec = sweepResolver.resolveSelection(
+                operation = operation,
+                packageNames = apps.map(AppInfo::packageName),
+                source = PrivilegeSweepSource.APP_LIST,
+                freezerMode = freezerMode,
+                addToFreezer = addToFreezer,
+            )
+            when (val launch = sweepController.launch(provisionalTaskId, spec)) {
+                is PrivilegeSweepLaunchResult.Accepted -> taskNavigationTargets.requestAccepted(
+                    provisionalTaskId,
+                    launch.requestId,
+                )
+
+                is PrivilegeSweepLaunchResult.Rejected -> {
+                    taskNavigationTargets.requestRejected(provisionalTaskId)
+                }
+            }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            Logger.e("AppListViewModel", "selection sweep launch failed", exception)
+            taskNavigationTargets.requestRejected(provisionalTaskId)
+        }
+    }
+
+    fun performMultiAction(action: MultiAppAction, addToFreezer: Boolean = false) {
         viewModelScope.launch(ioDispatcher) {
             when (action) {
-                is MultiAppAction.Freeze -> {
-                    // EXPERT apps go through unwarned here by design — a batch is not the place to
-                    // interrogate the user app by app. BLOCKED is filtered here rather than left
-                    // to FreezeAppUseCase (which is what `freezeApp` uses) so the skipped apps
-                    // are counted once, in `failures`, instead of each costing a redundant
-                    // getAppDetails on the way to a second report of the same refusal.
-                    val eligibleApps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED }
-                    val skippedCount = action.appList.size - eligibleApps.size
-                    val succeededPackages = mutableSetOf<String>()
-                    var failures = skippedCount
+                is MultiAppAction.Freeze -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.FREEZE,
+                    apps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED },
+                    freezerMode = if (action.useSuspend) FreezerMode.SUSPEND else FreezerMode.FREEZE,
+                    addToFreezer = addToFreezer,
+                )
 
-                    eligibleApps.forEach { app ->
-                        val res = manageAppUseCase.setAppDisabled(app.packageName, true)
-                        if (res.isSuccess) {
-                            succeededPackages.add(app.packageName)
-                        } else {
-                            failures++
-                        }
-                    }
+                is MultiAppAction.UnFreeze -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.UNFREEZE,
+                    apps = action.appList,
+                )
 
-                    _rawState.update { state ->
-                        state.copy(
-                            allUserApps = state.allUserApps.map {
-                                if (it.packageName in succeededPackages) it.copy(enabled = false) else it
-                            },
-                            allSystemApps = state.allSystemApps.map {
-                                if (it.packageName in succeededPackages) it.copy(enabled = false) else it
-                            }
-                        )
-                    }
-                    _events.send(
-                        AppListEvent.ShowMessage(
-                            bulkResultMessage(
-                                BulkResult(
-                                    op = BulkOp.FREEZE,
-                                    total = action.appList.size,
-                                    succeeded = succeededPackages.size,
-                                    failed = failures,
-                                )
-                            )
-                        )
-                    )
-                }
+                is MultiAppAction.Suspend -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.SUSPEND,
+                    apps = action.appList,
+                )
 
-                is MultiAppAction.UnFreeze -> {
-                    // Only the packages that actually came back successful, for both halves of the
-                    // report. This used to discard every result, mark the whole selection
-                    // `enabled = true` and then send an unconditional success plural for
-                    // `appList.size` — so a batch where nothing was unfrozen said "Unfroze 12 apps"
-                    // and drew twelve thawed rows to match. The freeze branch above always counted
-                    // properly; only this direction did not.
-                    //
-                    // `forceUnfreeze`, not `setAppDisabled(_, false)` and not
-                    // `restoreApp(_, app.enabled, app.isSuspended)`:
-                    //
-                    //  - `setAppDisabled` clears one of the two dimensions a frozen app can be
-                    //    frozen in. An app suspended from any other surface — the Freezer's suspend
-                    //    mode, `MainViewModel.performCountedFreeze(useSuspend = true)`, the QS tile,
-                    //    an extension — comes back still suspended, and the report above now says so
-                    //    *precisely*: it counts the enable that succeeded while the user still can't
-                    //    open the app.
-                    //  - `restoreApp` reads the flags, and the flags here are stale by construction.
-                    //    `isSuspended` is patched in exactly one place in this ViewModel
-                    //    ([toggleFreezerMembership]) and never on a bulk path, so it only moves on a
-                    //    full rescan. A snapshot that still calls a just-suspended app active makes
-                    //    `restorePlanFor` plan nothing, and `restoreApp` then returns success having
-                    //    made zero privileged calls — the same lie this branch was just fixed to stop
-                    //    telling, re-entering through the choice of API. FreezerViewModel documents
-                    //    this trap twice for the same reason.
-                    //
-                    // `forceUnfreeze` asks unconditionally, which is what its KDoc is for ("bulk
-                    // 'unfreeze all' when per-app state isn't known"). The cost is one redundant
-                    // unsuspend per already-active app; root and Shizuku answer that from the flag
-                    // alone and Dhizuku pays one `pm unsuspend`. A redundant call is the cheaper of
-                    // the two mistakes.
-                    val succeededPackages = mutableSetOf<String>()
-                    action.appList.forEach { app ->
-                        if (manageAppUseCase.forceUnfreeze(app.packageName).isSuccess) {
-                            succeededPackages.add(app.packageName)
-                        }
-                    }
-                    _rawState.update { state ->
-                        // Both dimensions, because forceUnfreeze cleared both. Patching only
-                        // `enabled` would leave a thawed app drawn as suspended until the next
-                        // rescan, and would leave the next unfreeze reading that stale flag.
-                        state.copy(
-                            allUserApps = state.allUserApps.map {
-                                if (it.packageName in succeededPackages) {
-                                    it.copy(enabled = true, isSuspended = false)
-                                } else it
-                            },
-                            allSystemApps = state.allSystemApps.map {
-                                if (it.packageName in succeededPackages) {
-                                    it.copy(enabled = true, isSuspended = false)
-                                } else it
-                            }
-                        )
-                    }
-                    _events.send(
-                        AppListEvent.ShowMessage(
-                            bulkResultMessage(
-                                BulkResult(
-                                    op = BulkOp.UNFREEZE,
-                                    total = action.appList.size,
-                                    succeeded = succeededPackages.size,
-                                    failed = action.appList.size - succeededPackages.size,
-                                )
-                            )
-                        )
-                    )
-                }
+                is MultiAppAction.UnSuspend -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.UNSUSPEND,
+                    apps = action.appList,
+                )
+
+                is MultiAppAction.ClearCache -> launchSelectionSweep(
+                    operation = PrivilegeSweepOperation.CLEAR_CACHE,
+                    apps = action.appList,
+                )
+
+                is MultiAppAction.ReInstall -> _events.send(AppListEvent.RequestReinstall(action.appList))
 
                 else -> {
                     // Fallback or forward? If we forward, we need a callback. 

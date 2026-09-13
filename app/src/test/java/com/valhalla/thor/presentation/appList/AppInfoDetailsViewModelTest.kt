@@ -3,9 +3,19 @@
 
 package com.valhalla.thor.presentation.appList
 
+import com.valhalla.thor.R
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.ShellCommandCancelled
+import com.valhalla.thor.domain.model.ShellCommandTimedOut
+import com.valhalla.thor.domain.model.ShellLaneBusy
+import com.valhalla.thor.domain.model.ShellLaneDegraded
+import com.valhalla.thor.domain.model.ShellTransportDied
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
@@ -16,7 +26,12 @@ import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
+import androidx.lifecycle.viewModelScope
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -24,7 +39,10 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -66,7 +84,7 @@ class AppInfoDetailsViewModelTest {
     }
 
     private fun viewModel(): AppInfoDetailsViewModel {
-        val manageAppUseCase = ManageAppUseCase(system)
+        val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         return AppInfoDetailsViewModel(
             appRepository = appRepository,
             systemRepository = system,
@@ -307,6 +325,73 @@ class AppInfoDetailsViewModelTest {
     }
 
     @Test
+    fun `typed OBB failures settle the real ViewModel on the stable unavailable verdict`() = runTest {
+        loaded(userApp("a"))
+        val vm = viewModel()
+
+        executionFailures().forEach { failure ->
+            system.obbProbeFailure = failure
+            vm.loadAppDetails("a")
+            runCurrent()
+
+            assertEquals(
+                ObbProbe.Undetermined(PRESENTATION_OBB_FAILURE_REASON),
+                vm.uiState.value.obbProbe,
+            )
+        }
+    }
+
+    @Test
+    fun `the real detail load keeps structured OBB cancellation identity`() = runTest {
+        loaded(userApp("a"))
+        val cancellation = ShellCommandCancelled(
+            PrivilegeCommandClass("obb.probe"),
+            CancellationException("cancelled"),
+        )
+        system.obbProbeFailure = cancellation
+        val vm = viewModel()
+        runCurrent()
+        val parent = vm.viewModelScope.coroutineContext[Job]!!
+        val existingChildren = parent.children.toSet()
+
+        vm.loadAppDetails("a")
+        val loadJob = (parent.children.toSet() - existingChildren).single()
+        val completion = CompletableDeferred<Throwable?>()
+        loadJob.invokeOnCompletion(completion::complete)
+        runCurrent()
+
+        assertTrue("the public load must reach the OBB collaborator", "probeObb:a" in system.calls)
+        assertSame(cancellation, completion.await())
+        assertNull(vm.uiState.value.obbProbe)
+    }
+
+    @Test
+    fun `the real detail load leaves an ordinary OBB failure unchanged`() {
+        val failure = IllegalStateException("ordinary OBB failure")
+        val completion = AtomicReference<Throwable?>()
+
+        val thrown = assertThrows(IllegalStateException::class.java) {
+            runTest {
+                loaded(userApp("a"))
+                system.obbProbeFailure = failure
+                val vm = viewModel()
+                runCurrent()
+                val parent = vm.viewModelScope.coroutineContext[Job]!!
+                val existingChildren = parent.children.toSet()
+
+                vm.loadAppDetails("a")
+                val loadJob = (parent.children.toSet() - existingChildren).single()
+                loadJob.invokeOnCompletion(completion::set)
+                runCurrent()
+            }
+        }
+
+        assertSame(failure, thrown)
+        assertSame(failure, completion.get())
+        assertTrue("the public load must reach the OBB collaborator", "probeObb:a" in system.calls)
+    }
+
+    @Test
     fun `the verdict is absent until the probe answers, not None`() = runTest {
         loaded(userApp("a"))
         val vm = viewModel()
@@ -357,5 +442,272 @@ class AppInfoDetailsViewModelTest {
         runCurrent()
 
         assertEquals(ObbProbe.None, vm.uiState.value.obbProbe)
+    }
+
+    private fun executionFailures(): List<PrivilegeExecutionException> = listOf(
+        ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE),
+        ShellLaneDegraded(PrivilegeExecutionLane.INTERACTIVE),
+        ShellTransportDied(PrivilegeExecutionLane.INTERACTIVE),
+        ShellCommandTimedOut(PrivilegeCommandClass("obb.probe")),
+    )
+
+    // --- The Room throws that used to be process death (fix/freezer-bookkeeping-crashes) ---
+    //
+    // This file had no `try`, no `catch` and no `runCatching` anywhere in it before that branch, and
+    // every watchlist call in it sat in a bare `viewModelScope.launch`. Room reports a full or failing
+    // disk by *throwing*, `FreezerRepositoryImpl` is a pass-through that does not catch, and `:app`
+    // installs no `CoroutineExceptionHandler` — so opening this sheet on a bad disk killed the app.
+    //
+    // Each test below removes one guard's reason to exist. Without the guard they do not merely
+    // assert wrongly, they take the test runner's coroutine with them, which is the correct shape for
+    // a pin on a crash.
+
+    /**
+     * The two-facts case, and the one worth getting right: something throws *after* the freeze has
+     * already succeeded.
+     *
+     * The detail read is the seam, and picking it took some elimination. `refreshAppShortcut` runs
+     * first and looks like the obvious candidate, but it is fire-and-forget — it returns as soon as
+     * its body is scheduled on `FreezerShortcutManager`'s own scope, so its throw arrives after this
+     * frame is gone and no guard here could ever see it. The watchlist read next to it is wrapped in
+     * `isInFreezer`, which deliberately degrades to false. That leaves `refreshDetails`' package
+     * manager call, which reports a dead `system_server` or a package that vanished mid-tap by
+     * throwing and has nothing to degrade to — so it is the one remaining collaborator that can land
+     * a throw between the act and the report of it.
+     *
+     * A bare "Error: …" there would tell a user whose app is demonstrably frozen that their action
+     * failed, so the guard leads with the truth and then names the throw.
+     */
+    @Test
+    fun `a freeze that succeeds then throws says so before naming the failure`() = runTest {
+        loaded(userApp("a", enabled = true))
+        appRepository.failDetailsWith("a", IllegalStateException("package manager died"))
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.toggleFreezerState("a", freeze = true, appName = "App A")
+        runCurrent()
+
+        assertEquals(
+            "the freeze really happened, so that is the first thing said",
+            listOf(
+                UiText.StringResource(R.string.frozen_success, "App A"),
+                UiText.StringResource(R.string.error_format, "package manager died")
+            ),
+            seen
+        )
+    }
+
+    /**
+     * And the shortcut refresh's own failure, which by design reaches nobody.
+     *
+     * Worth pinning precisely because the fix here first tried to report it: a guard around
+     * [AppShortcutController.refreshAppShortcut] catches nothing, so the freeze is announced exactly
+     * once and the stale launcher icon is absorbed by `FreezerShortcutManager.launchSafely`. If this
+     * test ever starts seeing a second event, the port has grown a throw its callers were not written
+     * for.
+     */
+    @Test
+    fun `a launcher icon that will not repaint is not the user's problem`() = runTest {
+        loaded(userApp("a", enabled = true))
+        freezer.add("a") // already tracked, so the freeze reports rather than prompting
+        shortcuts.failRefreshWith("a", IllegalStateException("shortcut rate limit exceeded"))
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.toggleFreezerState("a", freeze = true, appName = "App A")
+        runCurrent()
+
+        assertEquals(
+            UiText.StringResource(R.string.frozen_success, "App A"),
+            seen.single()
+        )
+        assertEquals(
+            "the refusal went to the port's own guard, not to the screen",
+            1,
+            shortcuts.absorbedFailures.size
+        )
+    }
+
+    /**
+     * The same shape on the removal path: restore succeeded, the row would not go.
+     *
+     * Also the only pin this surface has on the order of the two steps after the restore. The other
+     * three removal surfaces pin it with a shared `CallTrace`; this file has none, so without the
+     * `disabled` assertion below, swapping `disableAppShortcut` and `remove` back to row-first ships
+     * green across the whole suite.
+     */
+    @Test
+    fun `a removal whose delete raises still reports the unfreeze`() = runTest {
+        // appName distinct from the package, so the label expression is pinned too — `?: packageName`
+        // and bare `packageName` are indistinguishable when userApp() leaves appName null.
+        loaded(userApp("a", enabled = false, appName = "App A"))
+        freezer.add("a")
+        freezer.failRemoveWith("a", IllegalStateException("disk is full"))
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+        val seen = events(vm)
+
+        vm.addOrRemoveFromFreezer("a")
+        runCurrent()
+
+        assertEquals(
+            "the app is back — say that, then say the record did not keep up",
+            listOf(
+                UiText.StringResource(R.string.unfrozen_success, "App A"),
+                UiText.StringResource(R.string.error_format, "disk is full")
+            ),
+            seen
+        )
+        assertTrue("and the row is still there, so the next tap can retry it", freezer.contains("a"))
+        assertEquals(
+            "the shortcut is greyed before the row is dropped, so a row-first order fails here",
+            listOf("a"),
+            shortcuts.disabled
+        )
+        // The screen must not contradict the toast it just showed. `refreshDetails` never runs on
+        // this path — the delete throws first — so the only thing that can clear the `frozen` chip is
+        // the optimistic patch taken the moment `restoreApp` reported success.
+        assertTrue(
+            "the sheet shows the app running, as the toast says it is",
+            vm.uiState.value.detailedInfo?.appInfo?.enabled == true
+        )
+    }
+
+    /**
+     * The other side of the same guard: a throw *before* anything irreversible.
+     *
+     * Adding to the watchlist freezes nothing, so a failed insert really is a failed action and there
+     * is no success to lead with. One plain error, and no claim about the app.
+     */
+    @Test
+    fun `an add that raises is reported as the plain failure it is`() = runTest {
+        loaded(userApp("a"))
+        freezer.failAddWith("a", IllegalStateException("disk is full"))
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+        val seen = events(vm)
+
+        vm.addOrRemoveFromFreezer("a")
+        runCurrent()
+
+        assertEquals(
+            listOf(UiText.StringResource(R.string.error_format, "disk is full")),
+            seen
+        )
+        // Filtered rather than `isEmpty`: the `loadAppDetails` above leaves the three privilege
+        // probes in `calls`, so "nothing was done to the app" has to be said about the calls that
+        // would actually do something to it.
+        assertTrue(
+            "nothing was done to the app — adding a row never freezes",
+            system.calls.none { it.startsWith("setAppDisabled") || it.startsWith("setAppSuspended") }
+        )
+        assertTrue("and no row landed", freezer.added.isEmpty())
+    }
+
+    /**
+     * [AppInfoDetailsViewModel.addToFreezer] — the prompt's own confirm, which is a different method
+     * from the toggle above and had no test at all.
+     *
+     * It only ever runs after a freeze already succeeded, so the insert raising costs the watchlist
+     * row and nothing else: the app stays frozen and stops being tracked, which is precisely the
+     * state the prompt appeared to offer a way out of. Two things therefore have to survive the
+     * throw — the prompt, so the retry is one more tap, and `isInFreezer` staying false, because no
+     * row was written and the sheet's toggle would otherwise claim one was.
+     *
+     * The prompt outliving the failure is load-bearing on this surface in a way it is not on the
+     * others: `AppInfoDetailsScreen.kt` leaves dismissal to the view model, where `AppListScreen`
+     * and `FreezerScreen` clear their own prompt state as the dialog goes. Whatever this method
+     * leaves in `freezerPrompt` is what the user sees.
+     */
+    @Test
+    fun `a prompt confirm whose insert raises keeps the prompt and stays untracked`() = runTest {
+        loaded(userApp("a", enabled = true))
+        freezer.failAddWith("a", IllegalStateException("disk is full"))
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+        val seen = events(vm)
+
+        // The only way the prompt is raised: a freeze that lands on an app not yet tracked.
+        vm.toggleFreezerState("a", freeze = true, appName = "App A")
+        runCurrent()
+        assertNotNull("precondition: the freeze raised the prompt", vm.uiState.value.freezerPrompt)
+        assertTrue("precondition: and it said so by prompting, not by toasting", seen.isEmpty())
+
+        vm.addToFreezer("a")
+        runCurrent()
+
+        assertEquals(
+            "the freeze is not re-announced and the failure is not dressed up as one",
+            listOf(UiText.StringResource(R.string.error_format, "disk is full")),
+            seen
+        )
+        assertNotNull(
+            "the prompt stands, so the retry is one tap — this screen has no other dismissal",
+            vm.uiState.value.freezerPrompt
+        )
+        assertFalse("no row landed, so the sheet must not claim one", vm.uiState.value.isInFreezer)
+        assertTrue(freezer.added.isEmpty())
+    }
+
+    /**
+     * The membership read that picks between two opposite actions, which is deliberately *not*
+     * degraded the way the display read is.
+     *
+     * `isInFreezer` answers "not in the freezer" when the query throws, which is right for a label.
+     * It would be wrong here: it would answer a Remove tap by trying to Add. So this one reads the
+     * repository directly and lets the guard report it — nothing has happened to the app, and that is
+     * exactly what the user is told.
+     */
+    @Test
+    fun `a membership read that raises refuses to guess which action was meant`() = runTest {
+        loaded(userApp("a", enabled = false))
+        freezer.add("a")
+        freezer.failContainsWith("a", IllegalStateException("disk I O error"))
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.addOrRemoveFromFreezer("a")
+        runCurrent()
+
+        assertEquals(
+            listOf(UiText.StringResource(R.string.error_format, "disk I O error")),
+            seen
+        )
+        assertTrue("no restore, and no add: the tap did nothing", system.calls.isEmpty())
+        // Deliberately not `freezer.contains("a")`: that is the very call rigged to raise here, so
+        // asserting through it would throw out of the test body and report as a failure of the code
+        // under test. `removed` says the same thing without asking the broken question.
+        assertTrue("the row is untouched", freezer.removed.isEmpty())
+    }
+
+    /**
+     * And the display read, which *is* degraded — the case that must not be turned into an error.
+     *
+     * This read is a passenger on a detail load the user asked for. Failing it loudly would blame the
+     * load for a database fault, and crashing on it was the original bug: the sheet could not be
+     * opened at all. It degrades to "not tracked" and says nothing, matching
+     * `AppListViewModel.observeFreezerMembership`'s `Flow.catch`.
+     */
+    @Test
+    fun `a failed membership read leaves the detail load standing and silent`() = runTest {
+        loaded(userApp("a"))
+        freezer.add("a")
+        freezer.failContainsWith("a", IllegalStateException("disk I O error"))
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        assertNotNull("the details themselves landed", vm.uiState.value.detailedInfo)
+        assertFalse(
+            "degraded to not-tracked, which offers to add rather than hiding an untracked app",
+            vm.uiState.value.isInFreezer
+        )
+        assertTrue("and the load is not blamed for the database's fault", seen.isEmpty())
     }
 }

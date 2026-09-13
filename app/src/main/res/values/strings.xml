@@ -1,4 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="fix_store_requires_privilege">Fix Store requires Root or Shizuku. No apps were changed.</string>
+    <string name="fix_store_unsupported_dhizuku">Fix Store requires Root or Shizuku. Android does not allow Dhizuku to record Google Play as an app\'s installer. No apps were changed.</string>
 
     <!-- Navigation -->
     <string name="home">Home</string>
@@ -28,6 +30,9 @@
     <string name="show_extensions_tile_desc">Show Extensions on the home screen</string>
     <string name="auto_reinstall">Auto Reinstall Apps</string>
     <string name="auto_reinstall_desc">Automatically preserve Google Play Store as the installer of record to enable background updates</string>
+    <string name="grant_all_permissions">Grant All Permissions on Install</string>
+    <string name="grant_all_permissions_desc">Give an app every permission it requests the moment it is installed, with no prompt — root, Shizuku and Dhizuku installs only. Off by default, and the installer lets you change it for a single install; either way, updates keep the permissions you had already granted</string>
+    <string name="grant_all_permissions_install">Grant all requested permissions</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Default Tab</string>
     <string name="default_tab_desc">The screen Thor opens on at launch</string>
@@ -38,7 +43,7 @@
     <string name="dynamic_colors">Dynamic Colors</string>
     <string name="dynamic_colors_desc">Material You integration</string>
     <string name="biometric_lock">Biometric Lock</string>
-    <string name="biometric_lock_desc">Require auth on launch</string>
+    <string name="biometric_lock_desc">Require authentication on launch. When enabled, blocks screenshots and screen recording of Thor and hides its Recents preview.</string>
     <string name="biometric_not_available">Biometrics not enrolled or available</string>
     <string name="active_engine">Active Engine</string>
     <string name="active_engine_desc">Switch between available providers</string>
@@ -321,8 +326,8 @@
     <string name="usage_access_needed_title">Usage Access needed</string>
     <string name="usage_access_prompt_body">Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.</string>
     <string name="notification_access">Notifications</string>
-    <string name="notification_access_granted_subtitle">Bulk freeze results are shown as notifications</string>
-    <string name="notification_access_needed_subtitle">Allow notifications to see bulk freeze results</string>
+    <string name="notification_access_granted_subtitle">Background app actions report their progress in notifications</string>
+    <string name="notification_access_needed_subtitle">Allow notifications in system settings to run background app actions and see their progress</string>
     <string name="open_settings">Open settings</string>
     <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
          ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
@@ -341,18 +346,8 @@
     </plurals>
     <string name="tile_grant_privilege_toast">Grant Root / Shizuku / Dhizuku first</string>
     <string name="tile_no_apps_toast">No apps in Freezer</string>
-    <plurals name="tile_freeze_success">
-        <item quantity="one">Froze %1$d app</item>
-        <item quantity="other">Froze %1$d apps</item>
-    </plurals>
-    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_freeze_partial_failure" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d failed)</string>
-    <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
-         fired before these packages resolved. -->
-    <string name="tile_freeze_incomplete" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d unfinished)</string>
     <string name="tile_checking">Checking…</string>
     <string name="tile_freezing">Freezing…</string>
-    <string name="channel_bulk_result_name">Bulk action results</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>
@@ -384,6 +379,11 @@
     <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
     <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
+    <plurals name="bulk_freeze_confirm_desc">
+        <item quantity="one">Freeze %1$d selected app? Apps that Thor blocks for safety will be skipped.</item>
+        <item quantity="other">Freeze %1$d selected apps? Apps that Thor blocks for safety will be skipped.</item>
+    </plurals>
+    <string name="bulk_freeze_add_to_freezer_desc">Keep these apps in the Freezer list after freezing. Unchecking this does not remove apps already in the Freezer.</string>
     <string name="import_disabled_apps_title">Import Disabled Apps</string>
     <plurals name="import_disabled_apps_desc">
         <item quantity="one">There is %1$d disabled app that is not in your Freezer. Would you like to add it to the Freezer?</item>
@@ -443,20 +443,9 @@
     <string name="extension_install_failed">Verification failed: %1$s</string>
 
 
-    <!-- UiText Messages -->
-    <string name="action_completed_format">%1$s completed: %2$s</string>
-    <string name="frozen_success">Frozen %1$s</string>
+    <!-- UiText Messages -->    <string name="frozen_success">Frozen %1$s</string>
     <string name="unfrozen_success">Unfrozen %1$s</string>
     <string name="added_to_freezer_success">Added to Freezer</string>
-    <plurals name="unfrozen_count_success">
-        <item quantity="one">Unfrozen %1$d app</item>
-        <item quantity="other">Unfrozen %1$d apps</item>
-    </plurals>
-    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
-    <string name="tile_unfreeze_partial_failure" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d failed)</string>
-    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
-         packages resolved, so they are neither confirmed done nor confirmed failed. -->
-    <string name="tile_unfreeze_incomplete" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d unfinished)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Failed to load apps</string>
     <plurals name="removed_from_freezer_success">
@@ -554,6 +543,68 @@
     <string name="cd_collapse">Collapse</string>
     <string name="cd_expand">Expand</string>
     <string name="components_none_declared">None declared</string>
+
+    <!-- Component control (App info → Components).
+         "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
+         guarded by a permission Thor does not hold. It needs root; the platform grants the waiver to
+         uid 0 alone, so a Shizuku running as shell cannot do it either. -->
+    <string name="component_action_open">Open</string>
+    <string name="component_action_force_open">Force open</string>
+    <string name="component_action_copy">Copy class name</string>
+    <string name="component_action_stop_now">Stop now</string>
+    <string name="component_action_disable">Disable</string>
+    <string name="component_action_enable">Enable</string>
+    <string name="component_action_reset">Reset to default</string>
+    <string name="component_action_forget">Forget</string>
+    <string name="cd_component_actions">Actions for %1$s</string>
+
+    <string name="component_badge_restricted">Restricted by Thor</string>
+    <string name="component_badge_drift">Changed elsewhere</string>
+    <string name="component_badge_disabled">Disabled</string>
+    <string name="component_badge_not_exported">Not exported</string>
+    <string name="component_badge_off_by_default">Off by default</string>
+
+    <string name="component_blocker_no_privilege">Turn on Root or Shizuku to change components.</string>
+    <string name="component_blocker_shizuku_not_root">Changing components needs Shizuku started as root. A shell-mode Shizuku cannot.</string>
+    <string name="component_blocker_dhizuku">Dhizuku cannot change individual components. Use Root or a root-mode Shizuku.</string>
+    <string name="component_control_requires_root_shizuku">Shizuku is running as shell, not root. Changing components needs root.</string>
+    <string name="component_control_unsupported_dhizuku">Dhizuku cannot control individual components.</string>
+
+    <string name="component_launched">Opened %1$s</string>
+    <string name="component_service_stopped">Stopped %1$s</string>
+    <string name="component_disabled_success">Disabled %1$s</string>
+    <string name="component_enabled_success">Enabled %1$s</string>
+    <string name="component_reset_success">%1$s reset to default</string>
+    <string name="component_forgotten">Stopped tracking %1$s</string>
+
+    <plurals name="component_restricted_count">
+        <item quantity="one">%1$d component restricted by Thor</item>
+        <item quantity="other">%1$d components restricted by Thor</item>
+    </plurals>
+    <plurals name="component_restore_all_success">
+        <item quantity="one">Restored %1$d component</item>
+        <item quantity="other">Restored %1$d components</item>
+    </plurals>
+    <!--
+      "try again", not "the rest are still restricted": a row survives Restore All in two ways, and
+      only one of them leaves the component switched off. The other is a platform call that succeeded
+      whose ledger delete failed — that component is back on, and if it belongs to the app on screen
+      the refresh that follows this message relabels its row "Changed elsewhere", so the old wording
+      contradicted the very screen it appeared over. Naming the state is wrong for half the set;
+      naming the remedy is true for both, because the row that stayed behind is what makes the next
+      press a retry and setComponentEnabled is idempotent. See ComponentControlUseCase.restoreAll.
+    -->
+    <string name="component_restore_all_partial" tools:ignore="PluralsCandidate">Restored %1$d of %2$d — try again to finish the rest</string>
+    <string name="component_restore_all_action">Restore all</string>
+    <string name="component_restore_all_title">Restore every component?</string>
+    <string name="component_restore_all_message">Every component Thor disabled — in this app and in every other — goes back to how it shipped. Components changed by other tools are left alone.</string>
+
+    <string name="component_disclaimer_title">Disable a component?</string>
+    <string name="component_disclaimer_message">%1$s stays part of the app; it just stops running. Apps rarely expect this, so a feature may break with no error, or the app may crash. Thor records what it disables so you can undo it later.</string>
+    <string name="component_disclaimer_confirm">Disable it</string>
+    <string name="component_disclaimer_dont_ask_session">Don\'t ask again this session</string>
+    <string name="component_disabled_unrecorded">Disabled %1$s, but Thor could not record the change — Restore all will not include it</string>
+
     <string name="section_native_libs_title">Native Libraries (.so)</string>
     <string name="no_native_libs_found">No native libraries found</string>
     <string name="section_req_features_title">Required Features</string>
@@ -569,6 +620,11 @@
     <string name="exit">Exit</string>
     <string name="title_thor_installer">Thor Installer</string>
     <string name="install_analyzing">Analyzing Package…</string>
+    <string name="legacy_install_description">%1$s targets SDK %2$d. This Android version normally blocks new installs below SDK %3$d.</string>
+    <string name="legacy_install_confirm_title">Allow legacy installation?</string>
+    <string name="legacy_install_confirm_message">%1$s (%2$s) targets SDK %3$d, below the install minimum of SDK %4$d. Bypassing this security block can put your device and data at risk. Older apps may receive permissions at install time under their legacy permission model. Only continue if you trust this APK. This applies to this installation only; signature, device compatibility and other Android checks still apply.</string>
+    <string name="legacy_install_allow_once">Install this time</string>
+    <string name="legacy_install_unsupported">Legacy installation requires Android 14 or newer and Root or Shizuku. Normal, Dhizuku and external modes cannot apply this override.</string>
     <string name="install_downgrade_warning">This will downgrade the app.</string>
     <!-- %1$s and %2$s are version codes. They are deliberately %s, not %d: %d is localised by
          java.util.Formatter (Arabic-Indic digits under ar-EG, for example), and these same two
@@ -618,18 +674,11 @@
     <string name="log_no_apps_to_fix">No apps found that require fixing.</string>
     <!-- Developer log line, not grammar-sensitive UI — plural form intentionally not used. -->
     <string name="log_found_apps_to_fix" tools:ignore="PluralsCandidate">Found %1$d apps to fix.</string>
-    <string name="log_reinstalling_batch">Reinstalling Apps</string>
     <string name="log_freezing_batch">Freezing Apps</string>
     <string name="log_unfreezing_batch">Unfreezing Apps</string>
     <string name="log_killing_batch">Killing Apps</string>
-    <string name="log_clearing_cache_batch">Clearing Caches</string>
     <string name="log_uninstalling_batch">Uninstalling Apps</string>
-    <string name="log_suspending_batch">Suspending Apps</string>
-    <string name="log_unsuspending_batch">Unsuspending Apps</string>
-    <string name="log_sharing_batch">Sharing Apps</string>
     <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
-    <string name="log_batch_preparing">[%1$d/%2$d] Preparing %3$s…</string>
-    <string name="log_ready"> -> Ready</string>
     <string name="log_success"> -> Success</string>
     <string name="log_failed"> -> Failed: %1$s</string>
 
@@ -644,7 +693,6 @@
     <string name="no_matching_apps_freezer">No matching apps</string>
     <string name="add_to_freezer_hint">Tap + to add apps</string>
     <string name="filter_all">All</string>
-    <string name="error_debuggable_app">App is Debuggable (Signature mismatch likely)</string>
     <string name="error_unsafe_skipped">Skipped: System app is UNSAFE / safety check failed</string>
     <string name="error_self_skipped">Skipped: Thor cannot do this to itself</string>
     <string name="error_parse_package">Failed to parse package.</string>
@@ -734,7 +782,6 @@
     <string name="profile_delete_desc">Only the profile is removed. The apps in it are left exactly as they are — anything frozen stays frozen.</string>
     <string name="profile_saved">Profile saved</string>
     <string name="profile_deleted">Profile deleted</string>
-    <string name="profile_nothing_to_do">Nothing to do for this profile</string>
     <string name="bulk_run_failed">That run did not finish — check the apps before relying on it</string>
     <string name="error_profile_name_taken">That profile name is already taken</string>
     <string name="error_profile_delete_failed">Could not delete that profile</string>
@@ -766,5 +813,168 @@
     <string name="export_list_failed">Couldn\'t save the list</string>
     <string name="clear_all_caches_requires_usage_access">Shizuku can\'t clear every app\'s cache without Usage Access. Android has to be told how many bytes to reclaim, and only that permission can measure how much cache there is. Grant Thor usage access in Settings and try again.</string>
     <string name="clear_all_caches_unsupported_dhizuku">Dhizuku can\'t clear caches. It has no shell to run Android\'s cache trim in, and the Device Owner API has no equivalent. Switch to Root or Shizuku.</string>
+    <string name="sweep_notification_title">Applying app actions</string>
+    <string name="sweep_queued">App actions queued</string>
+    <string name="sweep_running">Running %1$d of %2$d</string>
+    <string name="sweep_succeeded">Completed %1$d of %2$d</string>
+    <string name="sweep_partial">App actions finished with issues</string>
+    <string name="sweep_cancelled">Action queue cancelled</string>
+    <string name="sweep_failed">App actions failed</string>
+    <string name="sweep_observer_failure">Progress unavailable</string>
+    <string name="sweep_root_lane_degraded">Root archive/sweep lane degraded</string>
+    <string name="sweep_result_summary">App actions — succeeded: %1$d · failed: %2$d · busy: %3$d · unresolved: %4$d</string>
+
+    <!-- Durable foreground-service queues -->
+    <string name="task_queue_title">Guardians</string>
+    <string name="task_queue_subtitle">Task queue</string>
+    <string name="task_queue_providers">Privilege providers</string>
+    <string name="guardian_groot" translatable="false">Groot</string>
+    <string name="guardian_rocket" translatable="false">Rocket</string>
+    <string name="guardian_starlord" translatable="false">Star-Lord</string>
+    <string name="task_queue_section_running">Running</string>
+    <string name="task_queue_section_queued">Queued / action required</string>
+    <string name="task_queue_section_recent">Recent</string>
+    <string name="task_queue_empty">No tasks yet</string>
+    <string name="task_queue_empty_running">Nothing is running</string>
+    <string name="task_queue_empty_queued">No queued tasks or actions needed</string>
+    <string name="task_queue_empty_recent">No recent tasks</string>
+    <string name="task_queue_kind_data">Data operations</string>
+    <string name="task_queue_kind_privilege">Privileged app actions</string>
+    <string name="task_queue_background">Background</string>
+    <string name="task_queue_cancel">Cancel</string>
+    <string name="task_queue_close">Close</string>
+    <string name="task_queue_progress">%1$d of %2$d</string>
+
+    <string name="task_action_authenticate_archive">Authenticate archive</string>
+    <string name="task_action_provide_source">Provide source</string>
+    <string name="task_action_review_restore">Review restore</string>
+    <string name="task_action_authorize_privilege">Authorize privilege</string>
+    <string name="task_action_authorize_retry">Authorize retry</string>
+    <string name="task_action_retry">Retry</string>
+    <string name="task_action_resume">Resume</string>
+    <string name="task_action_share">Share</string>
+    <string name="task_action_open_notification_settings">Open notification settings</string>
+
+    <string name="task_operation_archive_backup">Archive backup</string>
+    <string name="task_operation_archive_restore">Archive restore</string>
+    <string name="task_operation_app_export">App export</string>
+    <string name="task_operation_share_prepare">Prepare to share</string>
+    <string name="task_operation_freeze">Freeze apps</string>
+    <string name="task_operation_unfreeze">Unfreeze apps</string>
+    <string name="task_operation_suspend">Suspend apps</string>
+    <string name="task_operation_unsuspend">Unsuspend apps</string>
+    <string name="task_operation_clear_cache">Clear app caches</string>
+    <string name="task_operation_reinstall">Fix Store</string>
+
+    <string name="task_state_starting">Starting</string>
+    <string name="task_state_queued">Queued</string>
+    <string name="task_state_running">Running</string>
+    <string name="task_state_stopping">Stopping</string>
+    <string name="task_state_waiting_for_auth">Authentication required</string>
+    <string name="task_state_waiting_for_source">Source required</string>
+    <string name="task_state_waiting_for_privilege">Privilege required</string>
+    <string name="task_state_interrupted_review">Review required</string>
+    <string name="task_state_ready">Ready to share</string>
+    <string name="task_state_ready_partial">Partially ready to share</string>
+    <string name="task_state_start_blocked">Start blocked</string>
+    <string name="task_state_start_blocked_notification">Notifications blocked</string>
+    <string name="task_state_succeeded">Succeeded</string>
+    <string name="task_state_partial">Completed with issues</string>
+    <string name="task_state_failed">Failed</string>
+    <string name="task_state_cancelled">Cancelled</string>
+    <string name="task_state_expired">Expired</string>
+    <string name="task_state_observer_failure">Status unavailable</string>
+
+    <string name="task_reason_queued">Waiting for earlier work in this queue.</string>
+    <string name="task_reason_stopping">Finishing cancellation safely.</string>
+    <string name="task_reason_waiting_for_auth">Enter the archive passphrase for %1$s to continue.</string>
+    <string name="task_reason_waiting_for_source">Choose the archive for %1$s to continue.</string>
+    <string name="task_reason_waiting_for_privilege">Set up Root, Shizuku, or Dhizuku, then return to Thor.</string>
+    <string name="task_reason_interrupted_restore">%1$s was interrupted after app data changes began. Review before resuming.</string>
+    <string name="task_reason_interrupted_sweep">Thor could not verify %1$s after %2$s. Retry only after reviewing the app.</string>
+    <plurals name="task_reason_ready">
+        <item quantity="one">%1$d prepared file is ready to share.</item>
+        <item quantity="other">%1$d prepared files are ready to share.</item>
+    </plurals>
+    <plurals name="task_reason_ready_partial">
+        <item quantity="one">%1$d of %2$d files is ready to share; the rest could not be prepared.</item>
+        <item quantity="other">%1$d of %2$d files are ready to share; the rest could not be prepared.</item>
+    </plurals>
+    <string name="task_reason_start_blocked">Android prevented this task from starting. Retry while Thor is open.</string>
+    <string name="task_reason_start_blocked_notification">This notification channel is blocked. Enable it before retrying.</string>
+    <string name="task_reason_failed">The task did not finish. Review the details before trying again.</string>
+    <string name="task_reason_expired">Prepared files expired and were removed.</string>
+    <string name="task_reason_observer_failure">Thor cannot load the current task status. The stored task was not changed.</string>
+    <string name="task_reason_root_lane_degraded">The dedicated root lane is unavailable. Background root work is using the shared fallback lane.</string>
+
+    <string name="data_queue_notification_channel_name">Data operations</string>
+    <string name="data_queue_notification_channel_description">Progress for archive, restore, export, and share preparation</string>
+    <string name="privilege_queue_notification_channel_name">Privileged app actions</string>
+    <string name="privilege_queue_notification_channel_description">Progress for queued freeze, unfreeze, suspend, unsuspend, cache clearing, and Fix Store actions</string>
+    <string name="data_queue_notification_title">Data operation in progress</string>
+    <string name="privilege_queue_notification_title">App action in progress</string>
+    <string name="task_queue_notification_status">%1$s · %2$d of %3$d</string>
+    <plurals name="task_queue_notification_later_count">
+        <item quantity="one">%1$d more task queued</item>
+        <item quantity="other">%1$d more tasks queued</item>
+    </plurals>
+    <string name="task_queue_notification_cancel">Cancel</string>
+    <string name="task_queue_notification_ready_title">Ready to share</string>
+    <plurals name="task_queue_notification_ready_text">
+        <item quantity="one">%1$d prepared file is ready.</item>
+        <item quantity="other">%1$d prepared files are ready.</item>
+    </plurals>
+    <string name="task_queue_notification_ready_partial_title">Some files are ready to share</string>
+    <plurals name="task_queue_notification_ready_partial_text">
+        <item quantity="one">%1$d of %2$d files is ready.</item>
+        <item quantity="other">%1$d of %2$d files are ready.</item>
+    </plurals>
+
+    <string name="task_dialog_archive_auth_title">Authenticate archive</string>
+    <string name="task_dialog_archive_auth_message">Enter the archive passphrase for %1$s. It is used only for this attempt and is not saved.</string>
+    <string name="task_dialog_archive_passphrase_label">Passphrase</string>
+    <string name="task_dialog_archive_auth_submit">Continue</string>
+    <string name="task_dialog_restore_source_title">Provide restore source</string>
+    <string name="task_dialog_restore_source_message">Choose the archive for %1$s. Thor does not store the source address.</string>
+    <string name="task_dialog_restore_source_select">Choose archive</string>
+    <string name="task_dialog_restore_review_title">Review interrupted restore</string>
+    <string name="task_dialog_restore_review_message">The restore for %1$s stopped after app data changes began. Check the app before choosing Resume.</string>
+    <string name="task_dialog_restore_review_resume">Resume restore</string>
+    <string name="task_dialog_sweep_retry_title">Authorize target retry</string>
+    <string name="task_dialog_sweep_retry_message">Thor could not verify %1$s after %2$s. Retry this target only if repeating the action is safe.</string>
+    <string name="task_dialog_sweep_retry_confirm">Retry this target</string>
+    <string name="task_dialog_share_expired_message">These private share files reached their 24-hour limit and were removed.</string>
+
+    <plurals name="task_log_pending_queued">
+        <item quantity="one">%1$d task accepted and queued</item>
+        <item quantity="other">%1$d tasks accepted and queued</item>
+    </plurals>
+    <plurals name="task_log_pending_neutral">
+        <item quantity="one">%1$d task pending</item>
+        <item quantity="other">%1$d tasks pending</item>
+    </plurals>
+    <plurals name="task_log_pending_unprocessed">
+        <item quantity="one">%1$d task not processed</item>
+        <item quantity="other">%1$d tasks not processed</item>
+    </plurals>
+    <plurals name="task_log_results_omitted">
+        <item quantity="one">%1$d earlier result omitted</item>
+        <item quantity="other">%1$d earlier results omitted</item>
+    </plurals>
+    <string name="task_log_stage_preparing">Preparing task.</string>
+    <string name="task_log_stage_staging_source">Copying the selected source to private staging.</string>
+    <string name="task_log_stage_measuring">Measuring app data.</string>
+    <string name="task_log_stage_capturing">Capturing app data.</string>
+    <string name="task_log_stage_writing">Writing output.</string>
+    <string name="task_log_stage_installing">Installing app package.</string>
+    <string name="task_log_stage_restoring">Restoring app data.</string>
+    <string name="task_log_stage_publishing">Publishing output.</string>
+    <string name="task_log_stage_finishing">Finishing task.</string>
+    <string name="task_log_item_running">Processing %1$s.</string>
+    <string name="task_log_item_succeeded">Completed %1$s.</string>
+    <string name="task_log_item_failed">%1$s failed.</string>
+    <string name="task_log_item_cancelled">Cancelled %1$s.</string>
+    <string name="task_log_item_busy">Skipped %1$s because another operation is using it.</string>
+    <string name="task_log_item_unknown">The final state of %1$s could not be verified.</string>
 
 </resources>

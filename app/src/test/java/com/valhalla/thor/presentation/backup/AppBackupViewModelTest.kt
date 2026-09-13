@@ -30,6 +30,7 @@ import com.valhalla.thor.domain.usecase.MeasureAppDataUseCase
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.settings.PassphraseError
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -122,6 +123,7 @@ class AppBackupViewModelTest {
         val statuses: MutableStateFlow<ThorJobStatus> = MutableStateFlow(ThorJobStatus.Running),
         val running: MutableStateFlow<UUID?> = MutableStateFlow(null),
         val fail: Boolean = false,
+        val beforeAccepted: suspend () -> Unit = {},
     ) : ArchiveJobLauncher {
         var started: ArchiveBackupRequest? = null
 
@@ -153,6 +155,7 @@ class AppBackupViewModelTest {
             started = request
             startedWith = passphrase.concatToString()
             startedArray = passphrase
+            beforeAccepted()
             return if (fail) null else jobId
         }
 
@@ -467,6 +470,31 @@ class AppBackupViewModelTest {
             // The rejected call must be a no-op apart from the wipe: only one job may be enqueued.
             testScheduler.advanceUntilIdle()
             assertEquals("correct horse", launcher.startedWith)
+        }
+
+    @Test
+    fun `background remains unavailable until WorkManager accepts the backup`() =
+        runTest(dispatcher) {
+            val accepted = CompletableDeferred<Unit>()
+            val launcher = FakeLauncher(beforeAccepted = { accepted.await() })
+            val vm = viewModel(launcher = launcher)
+            vm.start("com.example.app", "Example")
+            testScheduler.advanceUntilIdle()
+
+            vm.beginBackup("correct horse".toCharArray(), remember = false)
+            testScheduler.runCurrent()
+
+            // `running` is set before key derivation and enqueue. Dismissing the sheet in this frame
+            // clears its dedicated ViewModelStoreOwner, cancels viewModelScope, and can prevent
+            // WorkManager from ever receiving the request. Background is only truthful after the
+            // launcher's awaited enqueue Operation has returned an id.
+            assertEquals(true, vm.uiState.value.running)
+            assertEquals(false, vm.uiState.value.canRunInBackground)
+
+            accepted.complete(Unit)
+            testScheduler.runCurrent()
+
+            assertEquals(true, vm.uiState.value.canRunInBackground)
         }
 
     @Test
@@ -989,6 +1017,8 @@ class AppBackupViewModelTest {
         testScheduler.advanceUntilIdle()
 
         assertEquals(false, vm.uiState.value.running)
+        assertEquals(false, vm.uiState.value.jobAccepted)
+        assertEquals(false, vm.uiState.value.canRunInBackground)
         assertTrue(vm.uiState.value.finished is BackupFinish.Failed)
     }
 
@@ -1005,6 +1035,7 @@ class AppBackupViewModelTest {
         testScheduler.advanceUntilIdle()
 
         assertEquals(true, vm.uiState.value.running)
+        assertEquals(true, vm.uiState.value.canRunInBackground)
         assertEquals(false, vm.uiState.value.canStart)
         assertNull(launcher.started)
     }

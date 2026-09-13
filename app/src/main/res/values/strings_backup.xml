@@ -194,6 +194,7 @@
       was typed. Says what to do instead of guessing at a cause it does not know.
     -->
     <string name="restore_error_unlock_check_failed">Thor could not check that passphrase. Try again.</string>
+    <string name="restore_error_authentication_failed">This backup could not be authenticated and was not restored.</string>
     <string name="restore_failed_passphrase_lost">Thor no longer has the passphrase for this backup — unlock it again</string>
     <string name="restore_failed_salt_unreadable">this archive\'s salt could not be read</string>
     <!--

@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.backup.hub
 
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.ComponentSnapshot
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.BackupArchiveItem
@@ -52,6 +53,7 @@ class BackupRestoreHubViewModelTest {
         override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? = null
         override suspend fun getApkDetails(apkPath: String): AppInfo? = null
         override suspend fun updateInstallSizes(sizes: Map<String, Long>) = Unit
+        override suspend fun getComponentDetails(packageName: String): ComponentSnapshot? = null
     }
 
     @Before

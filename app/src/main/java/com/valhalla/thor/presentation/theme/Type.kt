@@ -4,10 +4,13 @@
 package com.valhalla.thor.presentation.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.FontPreset
 import androidx.compose.ui.text.font.Font as ResFont
 
 val firaMonoFontFamily = FontFamily(
@@ -51,61 +54,100 @@ val bodyFontFamily = FontFamily(
     ResFont(resId = R.font.outfit_thin, weight = FontWeight.Thin, style = FontStyle.Italic),
 )
 
-val displayFontFamily = bodyFontFamily
+/** Families are resolved by role so a future role override can inherit the selected preset. */
+@Immutable
+internal data class AppFontFamilies(
+    val headings: FontFamily,
+    val body: FontFamily,
+    val labels: FontFamily,
+    val technical: FontFamily,
+)
+
+private val asgardFontFamilies = AppFontFamilies(
+    headings = bodyFontFamily,
+    body = bodyFontFamily,
+    labels = firaMonoFontFamily,
+    technical = firaMonoFontFamily,
+)
+
+private val systemFontFamilies = AppFontFamilies(
+    headings = FontFamily.Default,
+    body = FontFamily.Default,
+    labels = FontFamily.Default,
+    technical = FontFamily.Monospace,
+)
+
+internal fun fontFamiliesFor(preset: FontPreset): AppFontFamilies = when (preset) {
+    FontPreset.ASGARD -> asgardFontFamilies
+    FontPreset.SYSTEM -> systemFontFamilies
+}
+
+/** Fixed-width text for logs and technical identifiers, independent of ordinary UI labels. */
+val LocalTechnicalFontFamily = staticCompositionLocalOf { firaMonoFontFamily }
 
 // Default Material 3 typography values
-val baseline = Typography()
+private val baseline = Typography()
 
-val AppTypography = Typography(
+val AppTypography = createAppTypography(asgardFontFamilies)
+private val systemTypography = createAppTypography(systemFontFamilies)
+
+internal fun typographyFor(preset: FontPreset): Typography = when (preset) {
+    FontPreset.ASGARD -> AppTypography
+    FontPreset.SYSTEM -> systemTypography
+}
+
+// Construct both presets with the same metrics. This constructor also carries each family
+// into its emphasized counterpart; copying only the 15 ordinary styles would leave those behind.
+private fun createAppTypography(families: AppFontFamilies) = Typography(
     displayLarge = baseline.displayLarge.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.Black
     ),
     displayMedium = baseline.displayMedium.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.ExtraBold
     ),
     displaySmall = baseline.displaySmall.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.Bold
     ),
     headlineLarge = baseline.headlineLarge.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.Bold
     ),
     headlineMedium = baseline.headlineMedium.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.Bold
     ),
     headlineSmall = baseline.headlineSmall.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.Medium
     ),
     titleLarge = baseline.titleLarge.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.SemiBold
     ),
     titleMedium = baseline.titleMedium.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.Medium
     ),
     titleSmall = baseline.titleSmall.copy(
-        fontFamily = displayFontFamily,
+        fontFamily = families.headings,
         fontWeight = FontWeight.Normal
     ),
-    bodyLarge = baseline.bodyLarge.copy(fontFamily = bodyFontFamily),
-    bodyMedium = baseline.bodyMedium.copy(fontFamily = bodyFontFamily),
-    bodySmall = baseline.bodySmall.copy(fontFamily = bodyFontFamily),
+    bodyLarge = baseline.bodyLarge.copy(fontFamily = families.body),
+    bodyMedium = baseline.bodyMedium.copy(fontFamily = families.body),
+    bodySmall = baseline.bodySmall.copy(fontFamily = families.body),
     labelLarge = baseline.labelLarge.copy(
-        fontFamily = firaMonoFontFamily,
+        fontFamily = families.labels,
         fontWeight = FontWeight.Medium
     ),
     labelMedium = baseline.labelMedium.copy(
-        fontFamily = firaMonoFontFamily,
+        fontFamily = families.labels,
         fontWeight = FontWeight.Normal
     ),
     labelSmall = baseline.labelSmall.copy(
-        fontFamily = firaMonoFontFamily,
+        fontFamily = families.labels,
         fontWeight = FontWeight.Normal
     ),
 )

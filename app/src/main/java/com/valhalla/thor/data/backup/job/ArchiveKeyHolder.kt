@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.backup.job
 
 import com.valhalla.thor.util.Logger
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.SecretKey
 import kotlinx.coroutines.CoroutineDispatcher
@@ -51,13 +52,14 @@ class ArchiveKeyHolder(
 
     private val keys = ConcurrentHashMap<String, Held>()
 
-    /** A key and the timer that removes it if nothing else does. */
-    private class Held(val key: SecretKey, val expiry: Job)
+    /** A key, its process-local generation, and the timer that removes that exact generation. */
+    private class Held(val token: String, val key: SecretKey, val expiry: Job)
 
-    fun put(jobId: String, key: SecretKey) {
+    fun put(jobId: String, key: SecretKey): String {
+        val token = UUID.randomUUID().toString()
         val expiry = scope.launch {
             delay(KEY_LIFETIME_MS)
-            if (keys.remove(jobId) != null) {
+            if (drop(jobId, token)) {
                 // Worth a line: the job this belonged to will now fail with "its key is no longer in
                 // memory", and this is the only place that can say why.
                 Logger.w(TAG, "dropped an unused key for $jobId after ${KEY_LIFETIME_MS}ms")
@@ -65,8 +67,12 @@ class ArchiveKeyHolder(
         }
         // A second put under the same id replaces the entry, so the entry it replaced must take its
         // timer with it — otherwise the old timer fires later and removes the *new* key.
-        keys.put(jobId, Held(key, expiry))?.expiry?.cancel()
+        keys.put(jobId, Held(token, key, expiry))?.expiry?.cancel()
+        return token
     }
+
+    /** Returns the generation a newly claimed service execution is allowed to clean up. */
+    fun currentToken(jobId: String): String? = keys[jobId]?.token
 
     /** Single-use: a key with no job to use it is key material held for nothing. */
     fun take(jobId: String): SecretKey? = keys.remove(jobId)?.let { held ->
@@ -77,6 +83,21 @@ class ArchiveKeyHolder(
     /** For an enqueue that failed after [put] — a rejected request, a dismissed sheet. */
     fun drop(jobId: String) {
         keys.remove(jobId)?.expiry?.cancel()
+    }
+
+    /** Drops only the generation captured by a retiring claim, preserving a newer UI hand-off. */
+    fun drop(jobId: String, expectedToken: String): Boolean {
+        var removed: Held? = null
+        keys.computeIfPresent(jobId) { _, held ->
+            if (held.token == expectedToken) {
+                removed = held
+                null
+            } else {
+                held
+            }
+        }
+        removed?.expiry?.cancel()
+        return removed != null
     }
 
     companion object {

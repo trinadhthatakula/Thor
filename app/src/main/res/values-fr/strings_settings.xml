@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="allow_legacy_apk_install">Autoriser l\'installation des APK anciens sans demander</string>
+    <string name="allow_legacy_apk_install_desc">Dans le programme d\'installation de Thor, autorisez automatiquement les APK ciblant d\'anciennes versions d\'Android. Root ou Shizuku uniquement. Contourne le blocage de sécurité d\'Android ; les anciennes applications peuvent mettre votre appareil et vos données en danger. Lorsqu\'il est désactivé, demandez confirmation avant chaque installation héritée.</string>
+    <string name="legacy_install_allowed_by_setting">Autorisé par le réglage de votre programme d\'installation. La confirmation supplémentaire est désactivée.</string>
+</resources>

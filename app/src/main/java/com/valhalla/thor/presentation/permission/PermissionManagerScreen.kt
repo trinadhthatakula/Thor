@@ -328,7 +328,7 @@ private fun PermissionTopAppBar(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
+                fontFamily = com.valhalla.thor.presentation.theme.LocalTechnicalFontFamily.current
             )
         }
     }
@@ -487,7 +487,7 @@ private fun PermissionRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
+                fontFamily = com.valhalla.thor.presentation.theme.LocalTechnicalFontFamily.current
             )
 
             if (permission.description.isNotEmpty()) {

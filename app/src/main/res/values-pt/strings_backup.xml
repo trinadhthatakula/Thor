@@ -191,6 +191,7 @@
       was typed. Says what to do instead of guessing at a cause it does not know.
     -->
     <string name="restore_error_unlock_check_failed">O Thor não conseguiu verificar essa frase-passe. Tente novamente.</string>
+    <string name="restore_error_authentication_failed">Não foi possível autenticar esta cópia de segurança, pelo que não foi restaurada.</string>
     <string name="restore_failed_passphrase_lost">o Thor já não tem a frase-passe desta cópia de segurança — desbloqueie-a novamente</string>
     <string name="restore_failed_salt_unreadable">não foi possível ler o sal deste arquivo</string>
     <!--

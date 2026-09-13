@@ -127,7 +127,7 @@ class DataArchiveCapabilityCacheTest {
         // On a cold start, `privilegeState.state.value` is the default: isReady = false, active = NONE.
         // Reading `.value` directly returns false immediately — even on a rooted device — because
         // `hasAnyPrivilege` is `active != NONE`. `first { it.isReady }` suspends until the privilege
-        // probe resolves and then returns the real answer. `BulkFreezeRunner.launch`'s privilege gate
+        // probe resolves and then returns the real answer. `the legacy bulk executor.launch`'s privilege gate
         // carries this fix for the same snapshot-read bug; the pattern is the same.
         val probe = FakeProbe(answer = true)
         val privilege = FakePrivilege(PrivilegeState(isReady = false))
