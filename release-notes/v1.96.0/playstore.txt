@@ -1,0 +1,11 @@
+• ⏳ Follow backups, exports and bulk actions in Guardians Queue.
+
+• 💾 Encrypted offline backups, Backup Hub and XAPK/OBB support.
+
+• 🧩 Control app components; customize actions and fonts.
+
+• ❄️ Safer Freezer actions, installs and uninstall prompts.
+
+• 🌍 Better app visibility, settings and translations.
+
+• ⚠️ App-data backups from 1.95.2 or earlier cannot be restored. Make fresh backups after updating while original app data is available.
