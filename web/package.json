@@ -29,7 +29,7 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@astrojs/compiler": "^4.0.0",
-    "@types/node": "^26.5.0",
+    "@types/node": "^26.5.1",
     "axe-core": "^4.13.0",
     "jsdom": "^30.0.1",
     "smol-toml": "^1.8.0",
