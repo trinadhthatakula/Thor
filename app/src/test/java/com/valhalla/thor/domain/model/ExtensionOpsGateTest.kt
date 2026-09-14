@@ -71,6 +71,25 @@ class ExtensionOpsFreezeStateTest {
         assertTrue(isFrozenAppInfo(enabled = false, flags = ApplicationInfo.FLAG_INSTALLED))
     }
 
+    @Test fun `a hidden installed app selects unfreeze even though Android reports it enabled`() {
+        assertTrue(
+            isFrozenAppInfo(enabled = true, flags = ApplicationInfo.FLAG_INSTALLED, hidden = true)
+        )
+    }
+
+    @Test fun `unhiding does not erase a disabled or suspended freeze`() {
+        assertTrue(
+            isFrozenAppInfo(enabled = false, flags = ApplicationInfo.FLAG_INSTALLED, hidden = false)
+        )
+        assertTrue(
+            isFrozenAppInfo(
+                enabled = true,
+                flags = ApplicationInfo.FLAG_INSTALLED or ApplicationInfo.FLAG_SUSPENDED,
+                hidden = false,
+            )
+        )
+    }
+
     @Test fun `a system app uninstalled for this user is frozen`() {
         // The regression. A system app frozen by removal for this user — what FreezePolicy still
         // permits, and what every system app frozen before Thor preferred disabling is in — comes

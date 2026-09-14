@@ -14,6 +14,8 @@ import android.os.Bundle
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.freezer.AppFreezeStateReader
 import com.valhalla.thor.data.manager.ExtensionManager
+import com.valhalla.thor.data.source.local.isApplicationEffectivelyEnabled
+import com.valhalla.thor.data.source.local.isHiddenForUser
 import com.valhalla.thor.domain.model.isAuthorizedExtensionCaller
 import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.domain.model.opTargets
@@ -131,7 +133,7 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     }
 
     /**
-     * True if any of [pkgs] is currently frozen — disabled, uninstalled for this user, or suspended.
+     * True if any of [pkgs] is frozen — disabled, hidden, uninstalled for this user, or suspended.
      *
      * MATCH_DISABLED_COMPONENTS alone only saw the disabled half of a freeze. A system app frozen
      * by removal for the current user — what `FreezePolicy.uninstallFreezeFallbackAllowed` still
@@ -144,7 +146,7 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     private fun anyFrozen(pm: PackageManager, pkgs: List<String>): Boolean = pkgs.any { pkg ->
         runCatching {
             val info = pm.getApplicationInfo(pkg, AppFreezeStateReader.MATCH_FLAGS)
-            isFrozenAppInfo(info.enabled, info.flags)
+            isFrozenAppInfo(info.enabled, info.flags, info.isHiddenForUser)
         }.getOrDefault(false)
     }
 
@@ -157,16 +159,17 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
 }
 
 /**
- * The frozen verdict for one [ApplicationInfo], taken as (enabled, flags) so it stays a plain JVM
+ * The frozen verdict for one [ApplicationInfo], taken as state values so it stays a plain JVM
  * unit under test — a PackageManager cannot be faked in a unit test, and the flag arithmetic is the
  * half that got this wrong.
  *
  * FLAG_INSTALLED stops being optional the moment MATCH_UNINSTALLED_PACKAGES is in the query flags:
  * the lookup then *succeeds* for a system app uninstalled for this user and reports `enabled == true`,
  * so skipping the fold would only swap "throws, reads not frozen" for "succeeds, reads not frozen".
- * Same fold AppFreezeStateReader, AppInfoMapper and AppRepositoryImpl apply.
+ * Device-policy-hidden packages also stay enabled and installed, so their hidden bit is a third
+ * input. Same fold AppFreezeStateReader, AppInfoMapper and AppRepositoryImpl apply.
  */
-fun isFrozenAppInfo(enabled: Boolean, flags: Int): Boolean = isFrozen(
-    enabled = enabled && (flags and ApplicationInfo.FLAG_INSTALLED) != 0,
+fun isFrozenAppInfo(enabled: Boolean, flags: Int, hidden: Boolean = false): Boolean = isFrozen(
+    enabled = isApplicationEffectivelyEnabled(enabled, flags, hidden),
     isSuspended = (flags and ApplicationInfo.FLAG_SUSPENDED) != 0,
 )

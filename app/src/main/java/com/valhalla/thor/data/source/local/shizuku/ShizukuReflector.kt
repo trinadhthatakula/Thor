@@ -128,19 +128,8 @@ class ShizukuReflector(
         else context.packageManager.getApplicationInfo(packageName, flags)
     }.getOrNull()
 
-    // isAppDisabled() and isAppHidden() used to sit here. Neither had a caller, and both were wrong
-    // for the freeze path that would eventually have been the one to call them — which is the worse
-    // half: a dead helper that answers plausibly is a trap, not merely weight.
-    //
-    // isAppDisabled() read `enabled` and nothing else, so a system app frozen with
-    // `pm uninstall -k --user N` — this build's gated fallback, and every uninstall-only build
-    // before it — read back as *not* disabled. The test that survives is the conjunction, in
-    // Packages.isAppDisabled and AppFreezeStateReader.candidateOf.
-    //
-    // isAppHidden() tested PRIVATE_FLAG_HIDDEN, which nothing in Thor can set: hiding a package is
-    // DevicePolicyManager.setApplicationHidden, and there is not one DevicePolicyManager call in
-    // app/src under any privilege mode. It could only ever answer false. The same pair was deleted
-    // from DhizukuReflector; the definition of "frozen" now has one home per privilege mode.
+    // Effective enabled/hidden state is shared in ApplicationInfoState. Dhizuku hides through
+    // DevicePolicyManager, and Shizuku must recognize that state when the selected mode changes.
 
     fun isAppStopped(packageName: String): Boolean =
         getApplicationInfoOrNull(packageName)?.run { flags and ApplicationInfo.FLAG_STOPPED == ApplicationInfo.FLAG_STOPPED }

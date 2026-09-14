@@ -42,6 +42,9 @@ class DhizukuReflector(
         }
     }
 
+    fun setAppHidden(packageName: String, hidden: Boolean): Boolean =
+        DhizukuHelper.setAppHidden(context, packageName, hidden)
+
     fun setAppEnabled(packageName: String, enabled: Boolean): Boolean =
         setAppEnabledDetailed(packageName, enabled).succeeded
 
@@ -92,7 +95,7 @@ class DhizukuReflector(
 
     fun reinstallExistingApp(packageName: String): Boolean {
         return try {
-            DhizukuHelper.reinstallApp(packageName)
+            DhizukuHelper.restoreSystemApp(context, packageName)
         } catch (_: Exception) {
             false
         }
