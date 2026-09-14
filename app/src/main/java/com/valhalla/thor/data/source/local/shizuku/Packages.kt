@@ -6,6 +6,7 @@ package com.valhalla.thor.data.source.local.shizuku
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import com.valhalla.thor.data.source.local.isEffectivelyEnabled
 import com.valhalla.thor.data.source.local.thorUserId
 
 class Packages(private val app: Context) {
@@ -74,7 +75,7 @@ class Packages(private val app: Context) {
      */
     fun isAppDisabled(packageName: String): Boolean =
         getApplicationInfoOrNull(packageName)?.let {
-            !(it.enabled && (it.flags and ApplicationInfo.FLAG_INSTALLED) != 0)
+            !it.isEffectivelyEnabled
         } ?: false
 
     fun isAppStopped(packageName: String): Boolean =

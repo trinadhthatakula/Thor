@@ -445,6 +445,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">Frozen %1$s</string>
     <string name="unfrozen_success">Unfrozen %1$s</string>
+    <string name="dhizuku_freeze_failed">Could not freeze this app with Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">Could not unfreeze this app with Dhizuku.</string>
     <string name="added_to_freezer_success">Added to Freezer</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Failed to load apps</string>

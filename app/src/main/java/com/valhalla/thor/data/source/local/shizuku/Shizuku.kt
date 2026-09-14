@@ -13,6 +13,7 @@ import com.valhalla.thor.data.source.local.DataClearOutcome
 import com.valhalla.thor.data.source.local.awaitDataObserver
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.isEffectivelyEnabled
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
@@ -412,7 +413,7 @@ object Shizuku {
         // filter on the enabled setting, which AppFreezeStateReader.MATCH_FLAGS documents for the
         // same reason, so it would buy nothing here while changing a default other callers share.
         fun isDisabledNow(): Boolean = pkgs.getApplicationInfoOrNull(packageName)?.let {
-            !(it.enabled && (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0)
+            !it.isEffectivelyEnabled
         } ?: true // stopped resolving entirely: gone is at least as disabled as disabled
 
         // `pm disable-user` (COMPONENT_ENABLED_STATE_DISABLED_USER) and not `pm disable`: since

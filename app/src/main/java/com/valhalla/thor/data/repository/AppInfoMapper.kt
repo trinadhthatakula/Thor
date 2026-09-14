@@ -7,6 +7,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Environment
+import com.valhalla.thor.data.source.local.isEffectivelyEnabled
 import com.valhalla.thor.domain.model.AppInfo
 import java.io.File
 
@@ -68,7 +69,7 @@ fun mapToAppInfo(
         installerPackageName = pm.installerPackageNameOf(packInfo.packageName),
         publicSourceDir = appInfo.publicSourceDir,
         splitPublicSourceDirs = appInfo.splitPublicSourceDirs?.toList() ?: emptyList(),
-        enabled = appInfo.enabled && (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0,
+        enabled = appInfo.isEffectivelyEnabled,
         dataDir = appInfo.dataDir,
         nativeLibraryDir = appInfo.nativeLibraryDir,
         deviceProtectedDataDir = appInfo.deviceProtectedDataDir,

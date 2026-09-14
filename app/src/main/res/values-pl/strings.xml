@@ -461,6 +461,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">Zamrożono aplikację %1$s</string>
     <string name="unfrozen_success">Odmrożono aplikację %1$s</string>
+    <string name="dhizuku_freeze_failed">Nie udało się zamrozić tej aplikacji za pomocą Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">Nie udało się odmrozić tej aplikacji za pomocą Dhizuku.</string>
     <string name="added_to_freezer_success">Dodano do Zamrażarki</string>
     <string name="error_format">Błąd: %1$s</string>
     <string name="failed_to_load_apps">Nie udało się wczytać aplikacji</string>

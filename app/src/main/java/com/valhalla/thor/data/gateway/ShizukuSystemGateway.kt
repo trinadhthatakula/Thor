@@ -21,6 +21,8 @@ import com.valhalla.thor.data.source.local.escapedComponentSpecOrNull
 import com.valhalla.thor.data.source.local.installViaSessionCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
+import com.valhalla.thor.data.source.local.isEffectivelyEnabled
+import com.valhalla.thor.data.source.local.isHiddenForUser
 import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.setComponentStateCommand
 import com.valhalla.thor.data.source.local.startActivityCommand
@@ -61,6 +63,9 @@ class ShizukuSystemGateway internal constructor(
 
     internal var reinstallUserIdProvider: () -> Int = { thorUserId }
     internal var reinstallCommandExecutor: (String) -> Pair<Int, String?> = { command ->
+        ShizukuHelper.execute(command)
+    }
+    internal var unhideCommandExecutor: (String) -> Pair<Int, String?> = { command ->
         ShizukuHelper.execute(command)
     }
 
@@ -235,6 +240,25 @@ class ShizukuSystemGateway internal constructor(
         isDisabled: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> {
+        if (!isDisabled) {
+            try {
+                if (reflector.getApplicationInfoOrNull(packageName)?.isHiddenForUser == true) {
+                    // A Root-backed Shizuku service may unhide. Shell-backed Shizuku can be denied
+                    // MANAGE_USERS; `pm enable` must not conceal that failure by reporting success.
+                    unhideCommandExecutor("pm unhide --user $thorUserId ${packageName.escapeForShell()}")
+                    if (reflector.getApplicationInfoOrNull(packageName)?.isHiddenForUser != false) {
+                        return Result.failure(Exception(
+                            "Shizuku could not unhide $packageName. Use Dhizuku or Root to unfreeze this app."
+                        ))
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                return Result.failure(failure)
+            }
+        }
+
         // FLAG_SYSTEM alone, never OR'd with FLAG_UPDATED_SYSTEM_APP — ShizukuReflector.isSystemApp
         // is written that way, matching AppInfoMapper, AppFreezeStateReader.candidateOf and
         // RootSystemGateway.setAppDisabled. The destructive-fallback gate below is keyed on this
@@ -471,7 +495,7 @@ class ShizukuSystemGateway internal constructor(
         // Step 3 — verify the END state, not any single rung's report.
         val end = reflector.getApplicationInfoOrNull(packageName)
         val installed = end != null && (end.flags and ApplicationInfo.FLAG_INSTALLED) != 0
-        return if (installed && end.enabled) {
+        return if (end?.isEffectivelyEnabled == true) {
             Logger.d("ShizukuSystemGateway", "unfreeze($packageName): package is installed and enabled")
             Result.success(Unit)
         } else {
@@ -500,7 +524,7 @@ class ShizukuSystemGateway internal constructor(
     /** The canonical freeze test, matching `AppFreezeStateReader.candidateOf`. */
     private fun isFrozen(packageName: String): Boolean =
         reflector.getApplicationInfoOrNull(packageName)
-            ?.let { !(it.enabled && (it.flags and ApplicationInfo.FLAG_INSTALLED) != 0) } ?: true
+            ?.let { !it.isEffectivelyEnabled } ?: true
 
     override suspend fun setAppSuspended(
         packageName: String,

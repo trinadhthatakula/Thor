@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.source.local.dhizuku
 
 import android.annotation.SuppressLint
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.IBinder
@@ -12,6 +13,7 @@ import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.isHiddenForUser
 // The enable/disable rung machinery is privilege-agnostic; it lives in the `shizuku` package
 // because that is where it was first needed, and it is imported rather than re-typed here so the
 // two privilege modes cannot drift apart on "did the platform refuse?" — the one question whose
@@ -199,6 +201,70 @@ object DhizukuHelper {
     private fun asInterface(className: String, serviceName: String): Any? {
         val binder = getSystemService(serviceName) ?: return null
         return asInterface(className, binder)
+    }
+
+    /**
+     * Device-owner freeze keeps the APK and app data, but makes the package unavailable.
+     * Dhizuku's app uid cannot disable other packages through pm/IPackageManager. Use its
+     * device-policy binder directly; routing it through Shizuku requires a different service.
+     */
+    fun setAppHidden(context: Context, packageName: String, hidden: Boolean): Boolean {
+        if (Packages(context).getApplicationInfoOrNull(packageName) == null) return false
+        return try {
+            val owner = DhizukuAPI.getOwnerComponent()
+            val manager = devicePolicyManager(context)
+            manager.setApplicationHidden(owner, packageName, hidden)
+            // DPM can report "hidden" for a package that disappeared. Require a fresh package
+            // read too, so absence cannot masquerade as a successful freeze.
+            val verified = manager.isApplicationHidden(owner, packageName) == hidden &&
+                Packages(context).getApplicationInfoOrNull(packageName)?.isHiddenForUser == hidden
+            if (!verified) {
+                Logger.w("DhizukuHelper", "setAppHidden($packageName, hidden=$hidden): state unchanged")
+            }
+            verified
+        } catch (e: Exception) {
+            Logger.e("DhizukuHelper", "setAppHidden($packageName, hidden=$hidden) failed", e)
+            false
+        }
+    }
+
+    // Intentional hidden-API bridge through :bypass; the public DPM methods keep version-specific
+    // AIDL signatures in the framework. No cached Android service is modified.
+    @SuppressLint("PrivateApi")
+    private fun devicePolicyManager(context: Context): DevicePolicyManager {
+        val owner = DhizukuAPI.getOwnerComponent()
+        val ownerContext = context.applicationContext.createPackageContext(owner.packageName, 0)
+        val serviceClass = Class.forName("android.app.admin.IDevicePolicyManager")
+        val binder = getSystemService(Context.DEVICE_POLICY_SERVICE)
+            ?: throw IllegalStateException("Device policy service is unavailable through Dhizuku")
+        val service = Bypass.invoke<Any>(
+            Class.forName("android.app.admin.IDevicePolicyManager\$Stub"),
+            null,
+            "asInterface",
+            arrayOf(IBinder::class.java),
+            binder,
+        )
+        // A separate manager avoids changing Android's cached service. Its public methods
+        // handle AIDL signature differences across Android versions. The context must name
+        // the owner because DPM forwards its package name alongside the admin component.
+        val manager = Bypass.newInstance<DevicePolicyManager>(
+            DevicePolicyManager::class.java,
+            arrayOf(Context::class.java, serviceClass),
+            ownerContext,
+            service,
+        )
+        return manager
+    }
+
+    /** Restore legacy system-app freezes through the device-owner API, retaining app data. */
+    fun restoreSystemApp(context: Context, packageName: String): Boolean = try {
+        devicePolicyManager(context).enableSystemApp(DhizukuAPI.getOwnerComponent(), packageName)
+        Packages(context).getApplicationInfoOrNull(packageName)?.let {
+            (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+        } == true
+    } catch (e: Exception) {
+        Logger.e("DhizukuHelper", "restoreSystemApp($packageName) failed", e)
+        false
     }
 
     // KILL_BACKGROUND_PROCESSES is satisfied via elevated privilege (Dhizuku device-owner /

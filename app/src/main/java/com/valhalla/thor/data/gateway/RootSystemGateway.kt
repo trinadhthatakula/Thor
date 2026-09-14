@@ -29,6 +29,9 @@ import com.valhalla.thor.data.source.local.SessionApk
 import com.valhalla.thor.data.source.local.installViaSessionCommand
 import com.valhalla.thor.data.source.local.installedAppsAppOpGrantCommands
 import com.valhalla.thor.data.source.local.installedAppsAppOpRevokeCommands
+import com.valhalla.thor.data.source.local.isApplicationEffectivelyEnabled
+import com.valhalla.thor.data.source.local.isEffectivelyEnabled
+import com.valhalla.thor.data.source.local.isHiddenForUser
 import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.setAppEnabledCommand
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
@@ -638,6 +641,15 @@ class RootSystemGateway internal constructor(
 
         val currentUser = userIdProvider()
 
+        // Dhizuku freezes by hiding, which `pm enable` cannot undo. Clear that state through the
+        // selected Root transport before the legacy installed/enabled recovery steps.
+        if (!isDisabled && readHiddenForUser(packageName) == true) {
+            runCommand("pm unhide --user $currentUser $escapedPackage", execution, APP_ENABLED_STATE)
+            if (readHiddenForUser(packageName) != false) {
+                return Result.failure(Exception("Root: $packageName is still hidden after unfreeze."))
+            }
+        }
+
         if (isSystem) {
             return if (isDisabled) {
                 freezeSystemApp(packageName, escapedPackage, currentUser, execution)
@@ -653,21 +665,14 @@ class RootSystemGateway internal constructor(
         )
 
         // Not a bare `if (isSuccess) return it` — the exit code is not the judge here; see the KDoc.
-        // `enabled != isDisabled` reads oddly and is the whole test: it is "the state we asked for
-        // was reached", since reaching it means `enabled == !isDisabled`. A null read is neither, so
-        // the exit code keeps its answer.
+        // A null read is unverified, including when `pm` reports success.
         if (shellResult.isSuccess) {
             val enabled = readEffectivelyEnabled(packageName)
-            if (enabled == null || enabled != isDisabled) return shellResult
+            if (enabled == !isDisabled) return shellResult
         }
 
         // Check if already in the target state
-        if (appInfo != null) {
-            val currentInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
-            val currentEnabled = appInfo.enabled && currentInstalled
-            val currentDisabled = !currentEnabled
-            if (currentDisabled == isDisabled) return Result.success(Unit)
-        }
+        if (readEffectivelyEnabled(packageName) == !isDisabled) return Result.success(Unit)
 
         // Try unprivileged API as fallback. Still "only for non-system apps" — that used to be an
         // `if (!isSystem)` here; system apps now return above, before this point, so the guard is
@@ -681,13 +686,7 @@ class RootSystemGateway internal constructor(
             context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
         }
         if (unprivilegedResult.isSuccess) {
-            val postAppInfo = getApplicationInfoCompat(packageName)
-            if (postAppInfo != null) {
-                val postInstalled = (postAppInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
-                val postEnabled = postAppInfo.enabled && postInstalled
-                val postDisabled = !postEnabled
-                if (postDisabled == isDisabled) return Result.success(Unit)
-            }
+            if (readEffectivelyEnabled(packageName) == !isDisabled) return Result.success(Unit)
         }
 
         return Result.failure(Exception("Root setAppDisabled failed."))
@@ -880,6 +879,7 @@ class RootSystemGateway internal constructor(
         val failure = java.io.IOException(
             "Root unfreeze of $packageName failed: still ${
                 when (step) {
+                    RootFreezeChain.UnfreezeStep.UNHIDE -> "hidden"
                     RootFreezeChain.UnfreezeStep.INSTALL_EXISTING -> "not installed for user $currentUser"
                     else -> "disabled"
                 }
@@ -898,15 +898,18 @@ class RootSystemGateway internal constructor(
      * "frozen" (→ report a success that never happened).
      */
     private fun readEffectivelyEnabled(packageName: String): Boolean? =
-        getApplicationInfoCompat(packageName)?.let {
-            RootFreezeChain.isEffectivelyEnabled(it.enabled, it.flags)
-        }
+        runCatching { getApplicationInfoCompat(packageName)?.isEffectivelyEnabled }.getOrNull()
+
+    private fun readHiddenForUser(packageName: String): Boolean? =
+        runCatching { getApplicationInfoCompat(packageName)?.isHiddenForUser }.getOrNull()
 
     /** The next unfreeze rung for the package's live state, or `null` if it cannot be read. */
     private fun readUnfreezeStep(packageName: String): RootFreezeChain.UnfreezeStep? =
-        getApplicationInfoCompat(packageName)?.let {
-            RootFreezeChain.unfreezeStep(it.enabled, it.flags)
-        }
+        runCatching {
+            getApplicationInfoCompat(packageName)?.let {
+                RootFreezeChain.unfreezeStep(it.enabled, it.flags, it.isHiddenForUser)
+            }
+        }.getOrNull()
 
     /**
      * Whether the platform reports [packageName] as suspended right now, or `null` when its
@@ -1816,11 +1819,14 @@ object RootFreezeChain {
      * because the lookup then *succeeds* for a package uninstalled for this user and reports
      * `enabled == true`.
      */
-    fun isEffectivelyEnabled(enabled: Boolean, flags: Int): Boolean =
-        enabled && (flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+    fun isEffectivelyEnabled(enabled: Boolean, flags: Int, hidden: Boolean = false): Boolean =
+        isApplicationEffectivelyEnabled(enabled, flags, hidden)
 
     /** The rungs of an unfreeze, in the order they have to be attempted. */
     enum class UnfreezeStep {
+        /** Device-policy-hidden: handled before the installed/enabled recovery chain. */
+        UNHIDE,
+
         /** Not installed for this user — frozen with `pm uninstall --user N`. */
         INSTALL_EXISTING,
 
@@ -1842,7 +1848,8 @@ object RootFreezeChain {
      * `pm install-existing` on a disabled package does not enable it. Only install → enable clears
      * both; the caller re-reads between the two, so this being called twice is the normal path.
      */
-    fun unfreezeStep(enabled: Boolean, flags: Int): UnfreezeStep = when {
+    fun unfreezeStep(enabled: Boolean, flags: Int, hidden: Boolean = false): UnfreezeStep = when {
+        hidden -> UnfreezeStep.UNHIDE
         (flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) == 0 -> UnfreezeStep.INSTALL_EXISTING
         !enabled -> UnfreezeStep.ENABLE
         else -> UnfreezeStep.VERIFIED
