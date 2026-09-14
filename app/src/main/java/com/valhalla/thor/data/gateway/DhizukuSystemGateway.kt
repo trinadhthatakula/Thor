@@ -157,7 +157,16 @@ class DhizukuSystemGateway internal constructor(
         // Device owners freeze both user and system apps by hiding them. They do not hold
         // CHANGE_COMPONENT_ENABLED_STATE, and their subprocesses do not run as shell uid.
         if (!reflector.setAppHidden(packageName, isDisabled)) {
-            return Result.failure(Exception("Dhizuku: Could not change hidden state for $packageName."))
+            Logger.e(
+                "DhizukuSystemGateway",
+                "Could not change hidden state for $packageName to $isDisabled"
+            )
+            return Result.failure(
+                UiTextException(UiText.StringResource(
+                    if (isDisabled) R.string.dhizuku_freeze_failed
+                    else R.string.dhizuku_unfreeze_failed
+                ))
+            )
         }
         if (isDisabled) return Result.success(Unit)
 
@@ -173,7 +182,10 @@ class DhizukuSystemGateway internal constructor(
             if (reflector.getApplicationInfoOrNull(packageName)?.isEffectivelyEnabled == true) {
                 Result.success(Unit)
             } else {
-                Result.failure(Exception("Dhizuku: $packageName is still disabled after unhiding."))
+                Logger.e("DhizukuSystemGateway", "$packageName is still disabled after unhiding")
+                Result.failure(
+                    UiTextException(UiText.StringResource(R.string.dhizuku_unfreeze_failed))
+                )
             }
         }
     }
@@ -214,11 +226,13 @@ class DhizukuSystemGateway internal constructor(
             )
             Result.success(Unit)
         } else {
+            Logger.e(
+                "DhizukuSystemGateway",
+                "$packageName is still frozen after unfreeze " +
+                    "(installed=$installed, enabled=${end?.enabled})"
+            )
             Result.failure(
-                Exception(
-                    "Dhizuku: $packageName is still frozen after unfreeze " +
-                        "(installed=$installed, enabled=${end?.enabled})"
-                )
+                UiTextException(UiText.StringResource(R.string.dhizuku_unfreeze_failed))
             )
         }
     }

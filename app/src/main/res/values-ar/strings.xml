@@ -282,6 +282,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">تم تجميد %1$s</string>
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
+    <string name="dhizuku_freeze_failed">تعذر تجميد هذا التطبيق باستخدام Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">تعذر إلغاء تجميد هذا التطبيق باستخدام Dhizuku.</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <string name="error_format">خطأ: %1$s</string>

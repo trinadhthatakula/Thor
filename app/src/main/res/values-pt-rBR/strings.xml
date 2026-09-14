@@ -255,6 +255,8 @@
     <!-- UiText Messages -->
     <string name="frozen_success">%1$s congelado</string>
     <string name="unfrozen_success">%1$s descongelado</string>
+    <string name="dhizuku_freeze_failed">Não foi possível congelar este aplicativo com o Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">Não foi possível descongelar este aplicativo com o Dhizuku.</string>
     <string name="added_to_freezer_success">Adicionado ao Congelador</string>
     <string name="failed_to_load_apps">Não foi possível carregar os aplicativos</string>
     <plurals name="removed_from_freezer_success">

@@ -262,6 +262,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">%1$s gelé</string>
     <string name="unfrozen_success">%1$s dégelé</string>
+    <string name="dhizuku_freeze_failed">Impossible de geler cette application avec Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">Impossible de dégeler cette application avec Dhizuku.</string>
     <string name="added_to_freezer_success">Ajouté au congélateur</string>
     <string name="error_format">Erreur : %1$s</string>
     <string name="failed_to_load_apps">Échec du chargement des applications</string>
