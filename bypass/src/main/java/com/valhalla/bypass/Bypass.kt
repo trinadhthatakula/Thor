@@ -495,7 +495,9 @@ object Bypass {
             @Suppress("UNCHECKED_CAST")
             method.invoke(instance, *args) as T
         }
-        if (standardResult.isSuccess) {
+        // The method ran if reflection wrapped its exception. Retrying can repeat side effects
+        // and a permission denial does not become safer by traversing ART with Unsafe.
+        if (standardResult.isSuccess || standardResult.exceptionOrNull() is InvocationTargetException) {
             return standardResult.getOrThrow()
         }
 
@@ -504,7 +506,7 @@ object Bypass {
             val unsafeResult = runCatching {
                 unsafeInvoke<T>(clazz, instance, methodName, *args)
             }
-            if (unsafeResult.isSuccess) {
+            if (unsafeResult.isSuccess || unsafeResult.exceptionOrNull() is InvocationTargetException) {
                 return unsafeResult.getOrThrow()
             }
         }
@@ -514,7 +516,7 @@ object Bypass {
             val propertyResult = runCatching {
                 propertyInvoke<T>(clazz, instance, methodName, *args)
             }
-            if (propertyResult.isSuccess) {
+            if (propertyResult.isSuccess || propertyResult.exceptionOrNull() is InvocationTargetException) {
                 return propertyResult.getOrThrow()
             }
         }
@@ -540,7 +542,8 @@ object Bypass {
             @Suppress("UNCHECKED_CAST")
             constructor.newInstance(*args) as T
         }
-        if (standardResult.isSuccess) {
+        // A constructor that threw has already executed; do not construct a second instance.
+        if (standardResult.isSuccess || standardResult.exceptionOrNull() is InvocationTargetException) {
             return standardResult.getOrThrow()
         }
 
@@ -549,7 +552,7 @@ object Bypass {
             val unsafeResult = runCatching {
                 unsafeNewInstance<T>(clazz, *args)
             }
-            if (unsafeResult.isSuccess) {
+            if (unsafeResult.isSuccess || unsafeResult.exceptionOrNull() is InvocationTargetException) {
                 return unsafeResult.getOrThrow()
             }
         }
@@ -560,7 +563,7 @@ object Bypass {
                 @Suppress("UNCHECKED_CAST")
                 propertyNewInstance(clazz, *args) as T
             }
-            if (propertyResult.isSuccess) {
+            if (propertyResult.isSuccess || propertyResult.exceptionOrNull() is InvocationTargetException) {
                 return propertyResult.getOrThrow()
             }
         }

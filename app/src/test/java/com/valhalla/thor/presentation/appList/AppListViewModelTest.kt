@@ -50,6 +50,7 @@ import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
 import com.valhalla.thor.presentation.privilegeSweepResolver
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -502,6 +503,26 @@ class AppListViewModelTest {
      * anyway would make it an expensive one, since the freezer screen is what offers the way back.
      * Removal is all-or-nothing: restore first, drop the row only once it worked.
      */
+    @Test
+    fun `watchlist removal preserves localized Dhizuku failure and membership`() = runTest {
+        freezer.add("a")
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        runCurrent()
+        events.clear()
+        val reason = UiText.StringResource(R.string.dhizuku_unfreeze_failed)
+        system.failWith("setAppDisabled:a:false", UiTextException(reason))
+
+        vm.toggleFreezerMembership("a")
+        runCurrent()
+
+        assertEquals(listOf(AppListEvent.ShowMessage(reason)), events)
+        assertTrue(freezer.contains("a"))
+    }
+
     @Test
     fun `a failed restore is reported instead of the removal message`() = runTest {
         freezer.add("a")

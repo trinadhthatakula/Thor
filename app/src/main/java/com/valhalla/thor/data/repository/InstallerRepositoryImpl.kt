@@ -24,7 +24,6 @@ import com.valhalla.thor.data.source.local.privileged.transportFor
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
-import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.ObbPlacement
@@ -205,9 +204,8 @@ class InstallerRepositoryImpl(
                             // A refusal is a verdict about the archive, not a failure of this rung.
                             // Every rung below reads the same staged bytes and reaches it again,
                             // after re-writing however many gigabytes it took to get there — so it
-                            // goes straight out to the sheet with its own message. The four catches
-                            // that make up the two ladders all do this; ROOT and NORMAL have no
-                            // fallback and already propagate.
+                            // goes straight out to the sheet with its own message. Every session
+                            // fallback preserves this refusal; ROOT and NORMAL already propagate.
                             if (e is InstallRefusedException) throw e
                             Logger.e("InstallerRepo", "Shizuku shell install failed with exception", e)
                             ShizukuInstallAttempt(false, e.message)
@@ -267,54 +265,43 @@ class InstallerRepositoryImpl(
                     }
 
                     InstallMode.DHIZUKU -> {
-                        // 1. Try Shell command first
-                        val shellSuccess = try {
-                            installWithDhizuku(staged, canDowngrade, grantAllPermissions, onInstallSucceeded)
+                        // Device-owner installs need the owner's PackageInstaller identity.
+                        // A Dhizuku shell still has an app UID: pm install cannot borrow Play's
+                        // identity, and cannot read Thor's staged APKs on modern Android.
+                        val privilegedInstaller = try {
+                            privilegedInstallerHandle(InstallMode.DHIZUKU)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
-                            if (e is InstallRefusedException) throw e
-                            Logger.e("InstallerRepo", "Dhizuku shell install failed with exception, trying reflection", e)
-                            false
+                            Logger.e("InstallerRepo", "Failed to get Dhizuku installer", e)
+                            null
                         }
 
-                        if (!shellSuccess) {
-                            Logger.d("InstallerRepo", "Dhizuku shell install failed. Trying reflection fallback...")
-                            // 2. Try Reflection
-                            val privilegedInstaller = try {
-                                privilegedInstallerHandle(InstallMode.DHIZUKU)
-                            } catch (e: Throwable) {
-                                if (e is CancellationException) throw e
-                                Logger.e("InstallerRepo", "Failed to get Dhizuku privileged installer: ${e.message}")
-                                null
-                            }
-
-                            var reflectionSuccess = false
-                            if (privilegedInstaller != null) {
-                                try {
-                                    performPackageInstallerInstall(
-                                        staged,
-                                        privilegedInstaller,
-                                        canDowngrade,
-                                        emitErrors = false
-                                    )
-                                    reflectionSuccess = true
-                                } catch (e: Throwable) {
-                                    if (e is CancellationException) throw e
-                                    if (e is InstallRefusedException) throw e
-                                    Logger.e("InstallerRepo", "Dhizuku reflection install failed: ${e.message}")
-                                }
-                            }
-
-                            if (!reflectionSuccess) {
-                                Logger.d("InstallerRepo", "Dhizuku reflection install failed. Falling back to normal installer...")
-                                // 3. Fallback to Normal
+                        var committed = false
+                        if (privilegedInstaller != null) {
+                            try {
                                 performPackageInstallerInstall(
                                     staged,
-                                    defaultInstaller,
+                                    privilegedInstaller,
                                     canDowngrade,
-                                    emitErrors = true
+                                    emitErrors = false
                                 )
+                                committed = true
+                            } catch (e: Throwable) {
+                                if (e is CancellationException) throw e
+                                if (e is InstallRefusedException) throw e
+                                Logger.e("InstallerRepo", "Dhizuku session install failed", e)
                             }
+                        }
+
+                        // Once committed, InstallReceiver owns the asynchronous outcome. Retry
+                        // only setup/write/commit submission failures via the normal installer.
+                        if (!committed) {
+                            performPackageInstallerInstall(
+                                staged,
+                                defaultInstaller,
+                                canDowngrade,
+                                emitErrors = true
+                            )
                         }
                     }
 
@@ -567,7 +554,7 @@ class InstallerRepositoryImpl(
      * deletes it, and a failed install may be retried off it.
      *
      * Every returned [ExtractedApk] carries the SHA-256 of the bytes THIS call wrote, taken in
-     * flight. tempDir is shared storage on the Shizuku and Dhizuku rungs, so hashing the files
+     * flight. tempDir is shared storage on the Shizuku rung, so hashing the files
      * afterwards — the shape this replaces — measured whatever was in them by then, which on API
      * 28-29 is not necessarily what we put there.
      */
@@ -578,8 +565,8 @@ class InstallerRepositoryImpl(
             val installSet = resolveStagedInstallSet(staged, ::resolveInstallSetFromFile)
             if (installSet == null) {
                 // Monolithic APK: copy the staged file as-is (named base.apk). A copy, not a
-                // rename: the staged file has to survive for a retry, and on the Shizuku/Dhizuku
-                // paths tempDir is on a different filesystem anyway.
+                // rename: the staged file has to survive for a retry, and on the Shizuku
+                // path tempDir is on a different filesystem anyway.
                 //
                 // The budget cannot fire here — the source is Thor's own staged file, which
                 // analyze() already bounded on the way in — but it is spelled out rather than
@@ -669,9 +656,9 @@ class InstallerRepositoryImpl(
         try {
             // No integrity guard on this rung, and none needed: tempDir is context.cacheDir, which
             // is app-private on every API level, so there is no window for another app to swap a
-            // file between the write and `pm`'s read. The Shizuku/Dhizuku rungs below are guarded
-            // because they have to stage into shared storage; the session paths read the staged
-            // file directly and never expose it at all. Those are all four write paths.
+            // file between the write and `pm`'s read. The Shizuku rung below is guarded
+            // because it stages into shared storage; session paths read the staged file directly
+            // and never expose it at all.
             val apkPaths = tempFiles.map { it.file.absolutePath }
             // The gateway resolves a null against the saved setting; this rung has no reason to
             // resolve it first, and doing so would put a second copy of that rule in the app.
@@ -814,86 +801,6 @@ class InstallerRepositoryImpl(
         }
     }
 
-    private suspend fun installWithDhizuku(
-        staged: StagedPackage,
-        canDowngrade: Boolean,
-        grantAllPermissions: Boolean?,
-        onInstallSucceeded: () -> Unit,
-    ): Boolean {
-        eventBus.emit(InstallState.Installing(0f))
-
-        // Shared storage for the same reason as the Shizuku path, and guarded the same way — but
-        // with a caveat that does not apply there. DhizukuAPI.newProcess runs the shell inside the
-        // device-owner *app*, at an ordinary app uid, which is precisely the uid class that cannot
-        // read another app's Android/data from API 30 on; Shizuku's uid 2000 is the exemption, and
-        // Dhizuku has no equivalent. So this rung is expected to work on API 28-29 and to fail on
-        // anything newer no matter how the bytes are moved, and the session rung
-        // (privilegedInstallerHandle) is the one that has to carry modern Android: there Thor's own
-        // process supplies the bytes and the shell is not involved at all. That rung had its own
-        // defect until now — it ran on the Shizuku binder wrapper, so on a Dhizuku-only device
-        // there was nothing left to carry modern Android with.
-        val baseDir = context.externalCacheDir ?: context.cacheDir
-        val tempDir = File(baseDir, "install_dhizuku_${UUID.randomUUID()}")
-        val tempFiles = stageInstallSetCleaningUpOnFailure(staged, tempDir)
-
-        if (tempFiles.isNullOrEmpty()) {
-            tempDir.deleteRecursively()
-            return false
-        }
-
-        eventBus.emit(InstallState.Installing(0.5f))
-
-        val installerArg = preferenceRepository.getInstallerArg()
-        // Same resolution rule as installWithShizuku above, and the same reason for it.
-        val grantAll = grantAllPermissions
-            ?: preferenceRepository.shouldGrantAllPermissionsOnInstall()
-
-        return try {
-            // Same rung, same seed, same fix as installWithShizuku above — and the same pairing
-            // with the session rung, which privilegedInstallerHandle() creates for thorUserId.
-            // Dhizuku's identity does not soften the trap: `pm` runs inside the device-owner app
-            // via DhizukuAPI.newProcess, but the missing --user is parsed by PackageManagerService,
-            // not by whoever invoked it, so the bare form installed for every user here too.
-            // A streaming session for the same two reasons as the Shizuku rung: system_server, not
-            // this shell, is what opens a path argument, and `pm install-multiple` does not exist.
-            // The second reason bites here even on API 28-29, where the read succeeds — every split
-            // set failed on an unknown verb regardless of permissions.
-            //
-            // Digests from the copy, for the same reason as the Shizuku rung above.
-            val digests = tempFiles.map { it.file.absolutePath to it.sha256 }
-            val command = installViaSessionCommand(
-                apks = tempFiles.map {
-                    SessionApk(
-                        path = it.file.absolutePath,
-                        sizeBytes = it.file.length(),
-                        name = it.file.name,
-                    )
-                },
-                userId = thorUserId,
-                canDowngrade = canDowngrade,
-                grantAllPermissions = grantAll,
-                installerArg = installerArg,
-            )
-            val result = DhizukuHelper.execute(integrityGuardedInstall(digests, command))
-
-            if (result.first == 0) {
-                onInstallSucceeded()
-                eventBus.emit(InstallState.Installing(1.0f))
-                eventBus.emit(InstallState.Success)
-                true
-            } else {
-                Logger.e("InstallerRepo", "Dhizuku shell install failed: ${result.second}")
-                false
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Logger.e("InstallerRepo", "Dhizuku shell install failed with exception: ${e.message}", e)
-            false
-        } finally {
-            tempDir.deleteRecursively()
-        }
-    }
-
     @SuppressLint("RequestInstallPackagesPolicy")
     private suspend fun performPackageInstallerInstall(
         staged: StagedPackage,
@@ -920,8 +827,7 @@ class InstallerRepositoryImpl(
         // `INSTALL_GRANT_ALL_REQUESTED_PERMISSIONS`, a bit in the hidden `installFlags` field — and
         // a session created with a flag the caller is not allowed to set fails outright rather than
         // degrading, so reaching for it would turn a convenience toggle into an install that stops
-        // working. This rung has never granted anything and is not the rung GH#445 was about; it is
-        // the *fallback*, reached only when the shell rung above returns false. Consequence worth
+        // working. This is Dhizuku's primary route and Shizuku's fallback. Consequence worth
         // knowing: with the box ticked, a package that lands here comes up ungranted anyway.
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
@@ -1272,7 +1178,7 @@ internal fun writeEntriesWithinBudget(
  * Prefix a privileged install command with a check that each staged APK still hashes to what it did
  * when we wrote it, aborting with [INTEGRITY_CHECK_EXIT_CODE] if not.
  *
- * The Shizuku/Dhizuku rungs have to stage into shared storage (see installWithShizuku), where on
+ * The Shizuku rung has to stage into shared storage (see installWithShizuku), where on
  * API 28-29 — minSdk is 28, and Android/data was not sandboxed until 11 — any app holding
  * WRITE_EXTERNAL_STORAGE can watch the directory with a FileObserver and swap base.apk before
  * `pm` reads it. The session would then install the attacker's package, silently — and, if the user
@@ -1286,7 +1192,7 @@ internal fun writeEntriesWithinBudget(
  * remains — `sha256sum` finishes, then the bytes are read — but it is microseconds of the same
  * script rather than the whole staging-to-install span.
  *
- * Now that both callers pass [installViaSessionCommand], the guard's read and the install's read are
+ * With [installViaSessionCommand], the guard's read and the install's read are
  * the same read: `sha256sum <path>` and `cat <path>` are both performed by this shell, on this path,
  * needing exactly one permission between them. So the guard can no longer fail on a path the install
  * would have managed — it costs a hash, not a rung. That was not true of `pm install <path>`, where

@@ -32,7 +32,7 @@
     <string name="auto_reinstall">Reinstalar aplicações automaticamente</string>
     <string name="auto_reinstall_desc">Preservar automaticamente a Google Play Store como instalador registado, para permitir atualizações em segundo plano</string>
     <string name="grant_all_permissions">Conceder todas as permissões ao instalar</string>
-    <string name="grant_all_permissions_desc">Dar à aplicação todas as permissões que pede assim que for instalada, sem perguntar — apenas em instalações com root, Shizuku ou Dhizuku. Desativado por predefinição, e o instalador permite alterá-lo para uma única instalação; em ambos os casos, as atualizações mantêm as permissões já concedidas</string>
+    <string name="grant_all_permissions_desc">Conceder as permissões de execução pedidas durante a instalação com Root ou Shizuku. Desativado por predefinição; pode alterá-lo para uma única instalação. As atualizações mantêm as permissões já concedidas.</string>
     <string name="grant_all_permissions_install">Conceder todas as permissões pedidas</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Separador predefinido</string>
@@ -760,7 +760,7 @@
     <string name="export_list_empty">Não há aplicações nesta lista para exportar</string>
     <string name="export_list_failed">Não foi possível guardar a lista</string>
     <string name="clear_all_caches_requires_usage_access">O Shizuku não consegue limpar a cache de todas as aplicações sem acesso à utilização. É preciso indicar ao Android quantos bytes deve libertar, e só essa permissão consegue medir quanta cache existe. Conceda acesso à utilização ao Thor nas Definições e tente novamente.</string>
-    <string name="clear_all_caches_unsupported_dhizuku">O Dhizuku não consegue limpar caches. Não tem shell onde executar a limpeza de cache do Android, e a API de Device Owner não tem equivalente. Mude para Root ou Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">O Dhizuku não consegue limpar caches. O processo do proprietário do dispositivo não tem a permissão necessária do Android, e a API de proprietário do dispositivo não tem equivalente. Mude para Root ou Shizuku.</string>
 
     <!-- Component control (App info → Components).
          "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
@@ -974,4 +974,8 @@
     <string name="task_log_item_busy">%1$s foi ignorado porque está a ser usado por outra operação.</string>
     <string name="task_log_item_unknown">Não foi possível verificar o estado final de %1$s.</string>
 
+    <string name="setting_requires_root_or_shizuku">Inativo no modo atual. Requer Root ou Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">O Dhizuku não pode forçar a paragem de aplicações. Mude para Root ou Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">Não foi possível limpar os dados desta aplicação com o Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">Não foi possível desinstalar esta aplicação com o Dhizuku.</string>
 </resources>

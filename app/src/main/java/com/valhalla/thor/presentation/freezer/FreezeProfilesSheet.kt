@@ -53,6 +53,7 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.presentation.widgets.rememberCanForceStopApps
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.killableMembers
@@ -94,7 +95,8 @@ fun FreezeProfilesSheet(
     onCreate: () -> Unit,
     onEdit: (FreezeProfile) -> Unit,
     onDelete: (profileId: Long) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    canForceStop: Boolean = rememberCanForceStopApps(),
 ) {
     // Deletion is the one irreversible action here — a profile carries a name and a hand-picked
     // list that nothing else in the app can reconstruct. Plain remember: a confirmation that
@@ -168,6 +170,7 @@ fun FreezeProfilesSheet(
                         allApps = allApps,
                         sweepStatus = profileRequestStatus(profile.id, runningRequests),
                         hasPrivilege = hasPrivilege,
+                        canForceStop = canForceStop,
                         onRun = { op, mode -> onRun(profile.id, op, mode) },
                         onKill = onKill,
                         onEdit = { onEdit(profile) },
@@ -236,6 +239,7 @@ private fun FreezeProfileRow(
     allApps: List<AppInfo>,
     sweepStatus: PrivilegeSweepStatus?,
     hasPrivilege: Boolean,
+    canForceStop: Boolean,
     onRun: (BulkOp, FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
     onEdit: () -> Unit,
@@ -351,18 +355,17 @@ private fun FreezeProfileRow(
                             onRun(BulkOp.FREEZE, FreezerMode.SUSPEND)
                         }
                     )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.action_force_stop)) },
-                        // Not gated on isRunning: a force-stop is orthogonal to a freeze rather
-                        // than a competing direction, so it neither coalesces with one nor
-                        // cancels it. Gated on the resolved list instead, which is what makes
-                        // "there is nothing running to stop" visible before the tap.
-                        enabled = hasPrivilege && killable.isNotEmpty(),
-                        onClick = {
-                            menuOpen = false
-                            onKill(killable)
-                        }
-                    )
+                    if (canForceStop) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.action_force_stop)) },
+                            // Force-stop is independent of a profile's freeze operation.
+                            enabled = killable.isNotEmpty(),
+                            onClick = {
+                                menuOpen = false
+                                onKill(killable)
+                            }
+                        )
+                    }
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_edit)) },

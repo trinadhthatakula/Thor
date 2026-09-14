@@ -726,11 +726,7 @@ class AppListViewModel(
                     )
                     else manageAppUseCase.forceUnfreeze(packageName)
                 restored.onFailure { e ->
-                    _events.send(
-                        AppListEvent.ShowMessage(
-                            UiText.StringResource(R.string.error_format, e.message ?: "")
-                        )
-                    )
+                    _events.send(AppListEvent.ShowMessage(e.asUiText()))
                     return@launchGuarded
                 }
                 // Latched between the privileged call and the durable one, which is the only place

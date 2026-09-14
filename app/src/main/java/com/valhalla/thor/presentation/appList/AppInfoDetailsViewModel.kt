@@ -322,7 +322,7 @@ class AppInfoDetailsViewModel(
                 // Refresh detail only — no privilege re-probe, no loader flash.
                 refreshDetails(packageName)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                _events.send(e.asUiText())
             }
         }
     }
@@ -335,7 +335,7 @@ class AppInfoDetailsViewModel(
                 _events.send(UiText.StringResource(R.string.killed_success, appName))
                 refreshDetails(packageName)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                _events.send(e.asUiText())
             }
         }
     }
@@ -348,7 +348,7 @@ class AppInfoDetailsViewModel(
                 _events.send(UiText.StringResource(R.string.cache_cleared_success, appName))
                 refreshDetails(packageName)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                _events.send(e.asUiText())
             }
         }
     }
@@ -361,7 +361,7 @@ class AppInfoDetailsViewModel(
                 _events.send(UiText.StringResource(R.string.data_cleared_success, appName))
                 refreshDetails(packageName)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                _events.send(e.asUiText())
             }
         }
     }
@@ -464,7 +464,7 @@ class AppInfoDetailsViewModel(
                 (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
                 else manageAppUseCase.forceUnfreeze(packageName))
                     .onFailure { e ->
-                        _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                        _events.send(e.asUiText())
                         return@launchGuarded
                     }
                 // From here on the app is running again and cannot be un-run. Everything below is
