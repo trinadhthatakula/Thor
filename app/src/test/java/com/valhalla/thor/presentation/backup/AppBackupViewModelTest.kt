@@ -705,6 +705,30 @@ class AppBackupViewModelTest {
 
         assertEquals(BackupFinish.Succeeded, vm.uiState.value.finished)
         assertEquals(false, vm.uiState.value.running)
+        assertEquals(true, vm.uiState.value.canOfferSupport)
+    }
+
+    @Test
+    fun `a completed backup replay does not offer support`() = runTest(dispatcher) {
+        val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Succeeded()))
+        launcher.running.value = launcher.jobId
+        val vm = viewModel(launcher = launcher)
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+        assertEquals(BackupFinish.Succeeded, vm.uiState.value.finished)
+        assertEquals(false, vm.uiState.value.canOfferSupport)
+    }
+
+    @Test
+    fun `a newly started fast backup offers support even when running was conflated`() = runTest(dispatcher) {
+        val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Succeeded()))
+        val vm = viewModel(launcher = launcher)
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+        vm.beginBackup("correct horse".toCharArray(), remember = false)
+        testScheduler.advanceUntilIdle()
+        assertEquals(BackupFinish.Succeeded, vm.uiState.value.finished)
+        assertEquals(true, vm.uiState.value.canOfferSupport)
     }
 
     @Test

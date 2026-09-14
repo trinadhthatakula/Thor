@@ -16,8 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -38,12 +42,15 @@ import com.valhalla.thor.domain.model.TaskLifecyclePhase
 import com.valhalla.thor.domain.model.TaskLogLine
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.presentation.navigation.ThorRoute
+import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
+import com.valhalla.thor.presentation.settings.SupportPromptCoordinator
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.TermLoggerContent
 import com.valhalla.thor.presentation.widgets.TermLoggerStatus
 import com.valhalla.thor.util.UiText
 import java.util.UUID
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
 @Composable
@@ -55,13 +62,30 @@ fun TaskDetailScreen(
     showAsDialog: Boolean = true,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val supportCoordinator = koinInject<SupportPromptCoordinator>()
+    val supportState by supportCoordinator.state.collectAsStateWithLifecycle()
+    var showSupport by remember(state.taskId) { mutableStateOf(false) }
     ObserveAsEvents(viewModel.actionResults, onEvent = onActionDispatch)
+
+    if (showSupport) {
+        SupportDeveloperHelper(onDismiss = onBackground)
+        return
+    }
 
     TaskDetailContent(
         state = state,
         onBackground = onBackground,
         onAction = viewModel::perform,
         showAsDialog = showAsDialog,
+        onSupport = if (state.completedWhileObserved && supportState.canInvite) {
+            {
+                if (supportCoordinator.state.value.canInvite &&
+                    viewModel.uiState.value.completedWhileObserved
+                ) showSupport = true
+            }
+        } else {
+            null
+        },
     )
 }
 
@@ -71,6 +95,7 @@ internal fun TaskDetailContent(
     onBackground: () -> Unit,
     onAction: (TaskAction) -> Unit,
     showAsDialog: Boolean = true,
+    onSupport: (() -> Unit)? = null,
 ) {
     val content: @Composable () -> Unit = {
         Box(
@@ -102,7 +127,7 @@ internal fun TaskDetailContent(
                     null
                 },
             ) {
-                TaskDetailFooter(state, onBackground, onAction)
+                TaskDetailFooter(state, onBackground, onAction, onSupport)
             }
         }
     }
@@ -126,6 +151,7 @@ internal fun TaskDetailFooter(
     state: TaskDetailUiState,
     onBackground: () -> Unit,
     onAction: (TaskAction) -> Unit,
+    onSupport: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -156,6 +182,20 @@ internal fun TaskDetailFooter(
                     .testTag(TASK_DETAIL_STOPPING_TAG),
             ) {
                 Text(stringResource(R.string.task_state_stopping))
+            }
+        }
+
+        if (state.phase == TaskLifecyclePhase.SUCCEEDED &&
+            state.completedWhileObserved && state.detail?.hasWarnings == false && onSupport != null
+        ) {
+            TextButton(
+                onClick = onSupport,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag(TASK_DETAIL_SUPPORT_TAG),
+            ) {
+                Text(stringResource(R.string.support_thor))
             }
         }
 
@@ -442,6 +482,7 @@ internal const val TASK_DETAIL_SCRIM_TAG = "task-detail-scrim"
 internal const val TASK_DETAIL_LOGGER_TAG = "task-detail-logger"
 internal const val TASK_DETAIL_BACKGROUND_TAG = "task-detail-background"
 internal const val TASK_DETAIL_STOPPING_TAG = "task-detail-stopping"
+internal const val TASK_DETAIL_SUPPORT_TAG = "task-detail-support"
 
 internal fun taskDetailActionTag(action: TaskAction): String =
     "task-detail-action-$action"

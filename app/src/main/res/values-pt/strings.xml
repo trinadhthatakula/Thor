@@ -646,6 +646,8 @@
     <string name="error_downgrade_privilege">A reversão de versão só é suportada com acesso privilegiado (Root, Shizuku ou Dhizuku).</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">Apoiar o Thor</string>
+    <string name="support_already_support">Já apoio o Thor</string>
     <string name="support_developer">Apoiar o programador</string>
     <string name="support_developer_desc">Apoiar o desenvolvimento contínuo do Thor</string>
     <string name="support_developer_desc_detailed">O Thor é de código aberto e completamente sem publicidade. Se lhe tem sido útil, considere apoiar o meu trabalho:</string>

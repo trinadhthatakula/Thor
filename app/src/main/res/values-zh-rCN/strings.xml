@@ -413,6 +413,8 @@
     <string name="error_downgrade_privilege">降级仅支持特权访问（Root、Shizuku 或 Dhizuku）。</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">支持 Thor</string>
+    <string name="support_already_support">我已经支持 Thor 了</string>
     <string name="support_developer">支持开发者</string>
     <string name="support_developer_desc">支持 Thor 的持续开发</string>
     <string name="support_developer_desc_detailed">Thor 是开源且完全无广告的。如果它对您有所帮助，请考虑支持我的工作：</string>

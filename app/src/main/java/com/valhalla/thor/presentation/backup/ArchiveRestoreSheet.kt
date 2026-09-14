@@ -36,6 +36,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalAccessibilityManager
+import com.valhalla.thor.presentation.settings.SupportPromptCoordinator
+import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
+import org.koin.compose.koinInject
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -142,6 +146,9 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
         viewModelStoreOwner = rememberViewModelStoreOwner()
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val supportCoordinator = koinInject<SupportPromptCoordinator>()
+    val support by supportCoordinator.state.collectAsStateWithLifecycle()
+    var showSupport by remember(uriString) { mutableStateOf(false) }
     // Keyed on `uriString`, not bare: the sheet stays composed across a change of archive delivered
     // from outside (a second `.thorbak` opened while it is up), and `open()` clears every field it
     // owns but cannot reach this one — the same defect the picker callback below documents.
@@ -171,6 +178,14 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
         }
     }
 
+    if (showSupport) {
+        SupportDeveloperHelper(onDismiss = {
+            viewModel.dismissResult()
+            onDismiss()
+        })
+        return
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         // No partial detent, unlike `AppBackupSheet`'s default state. This sheet's tall frame is a
@@ -196,6 +211,9 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
             // file the user is looking straight at.
             onPickFile = { picker.launch(arrayOf("*/*")) },
             onDismiss = onDismiss,
+            onSupport = if (state.canOfferSupport && support.canInvite) {
+                { if (supportCoordinator.state.value.canInvite) showSupport = true }
+            } else null,
         )
     }
 }
@@ -223,7 +241,11 @@ private fun RestoreSheetBody(
     onPassphraseChange: (String) -> Unit,
     onPickFile: () -> Unit,
     onDismiss: () -> Unit,
+    onSupport: (() -> Unit)? = null,
 ) {
+    val successTimeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
+        SUCCESS_LINGER_MS, containsIcons = false, containsText = true, containsControls = true,
+    ) ?: SUCCESS_LINGER_MS
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -461,13 +483,14 @@ private fun RestoreSheetBody(
             state.finished?.let { finish ->
                 if (finish is RestoreFinish.Succeeded && finish.warnings.isEmpty()) {
                     LaunchedEffect(Unit) {
-                        delay(SUCCESS_LINGER_MS)
+                        delay(successTimeout)
                         viewModel.dismissResult()
                         onDismiss()
                     }
                 }
                 RestoreOutcomeDialog(
                     finish = finish,
+                    onSupport = onSupport.takeIf { finish is RestoreFinish.Succeeded && finish.warnings.isEmpty() },
                     onDismiss = {
                         viewModel.dismissResult()
                         if (finish is RestoreFinish.Succeeded) {
@@ -567,7 +590,7 @@ private fun RestoreRunning(state: ArchiveRestoreUiState, onBackground: () -> Uni
  * How a completed or failed restore is acknowledged.
  */
 @Composable
-private fun RestoreOutcomeDialog(finish: RestoreFinish, onDismiss: () -> Unit) {
+private fun RestoreOutcomeDialog(finish: RestoreFinish, onDismiss: () -> Unit, onSupport: (() -> Unit)? = null) {
     AlertDialog(
         onDismissRequest = onDismiss,
         text = {
@@ -577,6 +600,11 @@ private fun RestoreOutcomeDialog(finish: RestoreFinish, onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 RestoreOutcome(finish = finish)
+                if (onSupport != null) {
+                    TextButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.support_thor))
+                    }
+                }
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.CenterHorizontally)

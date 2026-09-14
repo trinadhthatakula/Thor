@@ -195,6 +195,7 @@ internal fun DataTaskSnapshot.toQueuedDetail(): QueuedTaskDetail = QueuedTaskDet
         .distinct()
         .take(MAX_PROJECTED_WARNINGS)
         .toList(),
+    hasWarnings = warnings.isNotEmpty(),
 )
 
 internal fun StoredPrivilegeSweep.toQueuedDetail(): QueuedTaskDetail = QueuedTaskDetail(

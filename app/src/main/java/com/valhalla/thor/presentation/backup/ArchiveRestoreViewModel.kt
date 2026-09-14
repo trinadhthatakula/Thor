@@ -233,6 +233,7 @@ data class ArchiveRestoreUiState(
      */
     val queued: Boolean = false,
     val finished: RestoreFinish? = null,
+    val canOfferSupport: Boolean = false,
     /** §8.5: a restore that never finished, from this launch or an earlier one. */
     val interrupted: ArchiveBreadcrumb? = null,
 ) {
@@ -709,7 +710,7 @@ internal class ArchiveRestoreViewModel(
                     )
                 }
             } else {
-                watch(id)
+                watch(id, newlyStarted = true)
             }
         }
     }
@@ -854,7 +855,7 @@ internal class ArchiveRestoreViewModel(
      * Only one at a time — the screen shows one archive — so an earlier watcher is cancelled here
      * rather than left collecting a job whose result nothing will read.
      */
-    private fun watch(jobId: UUID) {
+    private fun watch(jobId: UUID, newlyStarted: Boolean = false) {
         watching?.cancel()
         watching = launchGuarded(
             // Without this a throw out of either collector leaves `running` true with no watcher left
@@ -899,7 +900,12 @@ internal class ArchiveRestoreViewModel(
 
                     // `status.warnings`, not an empty list: a restore that placed the data but not
                     // the game data succeeds, and this is the only place that reaches the user.
-                    is ThorJobStatus.Succeeded -> finish(RestoreFinish.Succeeded(status.warnings))
+                    is ThorJobStatus.Succeeded -> {
+                        _uiState.update {
+                            it.copy(canOfferSupport = (newlyStarted || seenLive) && status.warnings.isEmpty())
+                        }
+                        finish(RestoreFinish.Succeeded(status.warnings))
+                    }
                     // `workerRan = true` unconditionally, and not from `seenRunning`: every shape of
                     // FAILED that Thor itself produces is `doWork` returning `Result.failure()`, and a
                     // watcher that attached late can miss RUNNING but cannot make the run un-happen.

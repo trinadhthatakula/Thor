@@ -204,6 +204,7 @@ class FreezerViewModelTest {
             trace
         )
         assertTrue("nothing is left selected", vm.uiState.value.multiSelection.isEmpty())
+        assertTrue((seen.single() as FreezerEvent.ShowToast).isSuccess)
         // The count is what was removed, not what was asked for. They agree here and only here.
         assertEquals(
             UiText.PluralsResource(R.plurals.removed_from_freezer_success, 2),

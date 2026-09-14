@@ -336,6 +336,8 @@
     <string name="error_self_skipped">Ignorado: o Thor não pode fazer isso consigo mesmo</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">Apoiar o Thor</string>
+    <string name="support_already_support">Já apoio o Thor</string>
     <string name="support_developer">Apoiar o desenvolvedor</string>
     <string name="support_developer_desc_detailed">O Thor é de código aberto e completamente sem anúncios. Se ele tem sido útil para você, considere apoiar o meu trabalho:</string>
     <string name="become_patreon_desc">Apoiar o desenvolvimento contínuo com uma assinatura mensal</string>

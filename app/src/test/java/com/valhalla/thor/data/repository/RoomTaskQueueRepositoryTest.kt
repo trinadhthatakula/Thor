@@ -164,6 +164,22 @@ class RoomTaskQueueRepositoryTest {
     }
 
     @Test
+    fun `successful restore retains warning presence without exposing diagnostic text`() {
+        val detail = dataTask(
+            state = DataTaskState.SUCCEEDED,
+            kind = DataTaskKind.ARCHIVE_RESTORE,
+            detail = restoreDetail(null),
+            warnings = listOf("Some files could not be restored: /data/private/example"),
+        ).toQueuedDetail()
+
+        assertEquals(TaskLifecyclePhase.SUCCEEDED, detail.summary.phase)
+        assertTrue(detail.hasWarnings)
+        assertTrue(detail.warningCodes.isEmpty())
+        assertFalse(detail.toString().contains("/data/private"))
+        assertFalse(dataTask(state = DataTaskState.SUCCEEDED).toQueuedDetail().hasWarnings)
+    }
+
+    @Test
     fun `both queues compact every pending child before the display cap`() {
         for (count in listOf(1, 63, 64, 65, 80)) {
             val details = listOf(

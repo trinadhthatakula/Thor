@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -53,6 +56,29 @@ class ComponentControlViewModelTest {
 
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
+
+    @Test
+    fun `only a fully recorded component change invites support`() = runTest {
+        val complete = Fixture()
+        complete.viewModel.requestDisable(ComponentType.SERVICE, component("Sync"))
+        complete.viewModel.onDisclaimerConfirmed(dontAskAgain = false)
+        assertTrue(complete.viewModel.events.first().isSuccess)
+
+        val partial = Fixture(ledger = FakeLedger(IllegalStateException("disk is full")))
+        partial.viewModel.requestDisable(ComponentType.SERVICE, component("Sync"))
+        partial.viewModel.onDisclaimerConfirmed(dontAskAgain = false)
+        assertFalse(partial.viewModel.events.first().isSuccess)
+        assertEquals(listOf("setComponentEnabled:$PKG:Sync:DISABLED"), partial.disables)
+    }
+
+    @Test
+    fun `failed component changes never invite support`() = runTest {
+        val fixture = Fixture()
+        fixture.system.failWith("setComponentEnabled:$PKG:Sync:DISABLED", IllegalStateException("denied"))
+        fixture.viewModel.requestDisable(ComponentType.SERVICE, component("Sync"))
+        fixture.viewModel.onDisclaimerConfirmed(dontAskAgain = false)
+        assertFalse(fixture.viewModel.events.first().isSuccess)
+    }
 
     @Test
     fun `the disclaimer is raised for a disable in a fresh session`() = runTest {
@@ -212,6 +238,7 @@ class ComponentControlViewModelTest {
     private class Fixture(
         session: ComponentConsentSession = ComponentConsentSession(),
         val packageName: String = PKG,
+        ledger: ComponentOverrideRepository = FakeLedger(),
     ) {
         val system = FakeSystemRepository()
 
@@ -219,7 +246,7 @@ class ComponentControlViewModelTest {
             appRepository = FakeAppRepository().apply {
                 componentSnapshots[packageName] = SNAPSHOT
             },
-            componentControl = ComponentControlUseCase(system, FakeLedger()),
+            componentControl = ComponentControlUseCase(system, ledger),
             capabilityProvider = ComponentCapabilityProvider(
                 FakePrivilegeStateProvider(
                     PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true)
@@ -235,7 +262,7 @@ class ComponentControlViewModelTest {
     }
 
     /** Enough of a ledger to run the use case; the rows themselves are asserted in its own suite. */
-    private class FakeLedger : ComponentOverrideRepository {
+    private class FakeLedger(private val recordFailure: Throwable? = null) : ComponentOverrideRepository {
 
         private val rows = mutableListOf<ComponentOverride>()
         private val revision = MutableStateFlow(0)
@@ -251,6 +278,7 @@ class ComponentControlViewModelTest {
             type: ComponentType,
             restoreToEnabled: Boolean,
         ) {
+            recordFailure?.let { throw it }
             rows += ComponentOverride(packageName, className, type, restoreToEnabled, disabledAt = 0L)
             revision.value++
         }

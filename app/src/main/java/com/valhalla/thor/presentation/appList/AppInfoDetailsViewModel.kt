@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.OperationMessage
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.ObbProbe
@@ -99,8 +100,8 @@ class AppInfoDetailsViewModel(
     // replayed on recomposition or config change. A buffered Channel (not a replay=0 SharedFlow)
     // retains events emitted before/between collectors so a value fired while the screen's collector
     // is not yet STARTED (early lifecycle / config change) is delivered rather than silently dropped.
-    private val _events = Channel<UiText>(Channel.BUFFERED)
-    val events: Flow<UiText> = _events.receiveAsFlow()
+    private val _events = Channel<OperationMessage>(Channel.BUFFERED)
+    val events: Flow<OperationMessage> = _events.receiveAsFlow()
 
     /**
      * The same toast channel every action below already reports through, reached from a non-suspend
@@ -118,8 +119,12 @@ class AppInfoDetailsViewModel(
      * `trySend`. Calling this one `emitToast` gave the same name to opposite delivery guarantees
      * across two files that are read together, in a class where both spellings compile.
      */
+    private suspend fun emitMessage(text: UiText, isSuccess: Boolean = false) {
+        _events.send(OperationMessage(text, isSuccess))
+    }
+
     private fun tryEmitToast(text: UiText) {
-        _events.trySend(text)
+        _events.trySend(OperationMessage(text))
     }
 
     /**
@@ -299,18 +304,20 @@ class AppInfoDetailsViewModel(
                     // Don't auto-add — prompt the user to add it to the Freezer instead.
                     _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
                 } else {
-                    val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
                     _uiState.update { it.copy(isInFreezer = inFreezer) }
-                    _events.send(UiText.StringResource(msgRes, appName ?: packageName))
-                    // Told. A later throw must not repeat this toast on its way out.
-                    appliedButUnannounced = false
+                    // Feedback follows refresh so a later failure cannot carry a support action.
                 }
                 // Refresh detail only — no privilege re-probe, no loader flash.
                 refreshDetails(packageName)
+                if (!freeze || inFreezer) {
+                    val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
+                    emitMessage(UiText.StringResource(msgRes, appName ?: packageName), isSuccess = true)
+                    appliedButUnannounced = false
+                }
             }.onFailure { e ->
                 // The tier refusal arrives here as a UiTextException, which carries its message in
                 // `uiText` and leaves `message` null — see [asUiText].
-                _events.send(e.asUiText())
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -321,8 +328,16 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 // Refresh detail only — no privilege re-probe, no loader flash.
                 refreshDetails(packageName)
+                val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
+                emitMessage(
+                    UiText.StringResource(
+                        if (suspend) R.string.suspended_success else R.string.unsuspended_success,
+                        appName,
+                    ),
+                    isSuccess = true,
+                )
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -332,10 +347,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.forceStop(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _events.send(UiText.StringResource(R.string.killed_success, appName))
                 refreshDetails(packageName)
+                emitMessage(UiText.StringResource(R.string.killed_success, appName), isSuccess = true)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -345,10 +360,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.clearCache(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _events.send(UiText.StringResource(R.string.cache_cleared_success, appName))
                 refreshDetails(packageName)
+                emitMessage(UiText.StringResource(R.string.cache_cleared_success, appName), isSuccess = true)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -358,10 +373,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.clearAppData(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _events.send(UiText.StringResource(R.string.data_cleared_success, appName))
                 refreshDetails(packageName)
+                emitMessage(UiText.StringResource(R.string.data_cleared_success, appName), isSuccess = true)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -464,7 +479,7 @@ class AppInfoDetailsViewModel(
                 (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
                 else manageAppUseCase.forceUnfreeze(packageName))
                     .onFailure { e ->
-                        _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                        emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
                         return@launchGuarded
                     }
                 // From here on the app is running again and cannot be un-run. Everything below is
@@ -504,7 +519,7 @@ class AppInfoDetailsViewModel(
                 // and reports success.
                 _uiState.update { it.copy(isInFreezer = false) }
                 refreshDetails(packageName)
-                _events.send(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1))
+                emitMessage(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1), isSuccess = true)
             } else {
                 // Same BLOCKED gate as FreezerViewModel.toggleManaged and
                 // AppListViewModel.toggleFreezerMembership — three surfaces reach the watchlist and
@@ -512,7 +527,7 @@ class AppInfoDetailsViewModel(
                 // Fails closed while details are still loading: an unknown tier is not a safe tier.
                 val app = _uiState.value.detailedInfo?.appInfo
                 if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
-                    _events.send(UiText.StringResource(R.string.error_unsafe_skipped))
+                    emitMessage(UiText.StringResource(R.string.error_unsafe_skipped))
                     return@launchGuarded
                 }
                 // Unlike the branch above, this one freezes nothing — the watchlist row is the whole
@@ -520,7 +535,7 @@ class AppInfoDetailsViewModel(
                 // which is exactly how the guard reports it: one plain error, no success claim.
                 freezerRepository.add(packageName)
                 _uiState.update { it.copy(isInFreezer = true) }
-                _events.send(UiText.StringResource(R.string.added_to_freezer_success))
+                emitMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
             }
         }
     }

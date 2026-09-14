@@ -873,7 +873,7 @@ class AppListViewModelTest {
         assertEquals(
             listOf(
                 AppListEvent.ShowMessage(
-                    UiText.StringResource(R.string.export_saved, "Downloads/Thor")
+                    UiText.StringResource(R.string.export_saved, "Downloads/Thor"), isSuccess = true
                 )
             ),
             events

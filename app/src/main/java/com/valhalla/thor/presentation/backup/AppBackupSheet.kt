@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +59,8 @@ import com.valhalla.thor.domain.model.labelKind
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
 import com.valhalla.thor.presentation.settings.PassphraseError
+import com.valhalla.thor.presentation.settings.SupportPromptCoordinator
+import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.settings.passphraseErrorText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -110,6 +113,12 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
         viewModelStoreOwner = rememberViewModelStoreOwner()
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val supportCoordinator = koinInject<SupportPromptCoordinator>()
+    val support by supportCoordinator.state.collectAsStateWithLifecycle()
+    var showSupport by remember(packageName) { mutableStateOf(false) }
+    val successTimeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
+        SUCCESS_LINGER_MS, containsIcons = false, containsText = true, containsControls = true,
+    ) ?: SUCCESS_LINGER_MS
     val preferenceRepository = koinInject<PreferenceRepository>()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -168,6 +177,11 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
         initialValue = SheetValue.Hidden,
         confirmValueChange = confirmValueChange,
     )
+
+    if (showSupport) {
+        SupportDeveloperHelper(onDismiss = onDismiss)
+        return
+    }
 
     ModalBottomSheet(
         // The callback guard keeps the owner alive; confirmValueChange above also stops the sheet from
@@ -248,14 +262,20 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                     // timer with it, rather than leaving a dismiss to fire later at whatever the sheet
                     // has become by then.
                     LaunchedEffect(Unit) {
-                        delay(SUCCESS_LINGER_MS)
+                        delay(successTimeout)
                         onDismiss()
                     }
                     // `onDismiss`, not `viewModel::dismissResult`. Clearing the banner is the right
                     // thing for a *failure*, which puts the user back on a form they may want to retry
                     // from; a success has no such form, so this button skips the wait rather than
                     // returning anywhere.
-                    BackupOutcome(finish = BackupFinish.Succeeded, onDismiss = onDismiss)
+                    BackupOutcome(
+                        finish = BackupFinish.Succeeded,
+                        onDismiss = onDismiss,
+                        onSupport = if (state.canOfferSupport && support.canInvite) {
+                            { if (supportCoordinator.state.value.canInvite) showSupport = true }
+                        } else null,
+                    )
                 }
 
                 // Idle, and supported. Every `enabled = !state.running` below is now provably true —
@@ -512,7 +532,7 @@ private fun BackupRunning(
  * the same class of error in the opposite direction.
  */
 @Composable
-private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit) {
+private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit, onSupport: (() -> Unit)? = null) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -575,6 +595,11 @@ private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
+            }
+        }
+        if (onSupport != null) {
+            TextButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.support_thor))
             }
         }
         Button(

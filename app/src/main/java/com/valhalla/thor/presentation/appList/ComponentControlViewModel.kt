@@ -10,6 +10,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.OperationMessage
 import com.valhalla.thor.data.source.local.ComponentCapabilityProvider
 import com.valhalla.thor.domain.model.ComponentCapability
 import com.valhalla.thor.domain.model.ComponentDetail
@@ -89,8 +90,8 @@ class ComponentControlViewModel(
 
     // Same shape and same reason as AppInfoDetailsViewModel's: a BUFFERED Channel so a message
     // emitted while the tab's collector is not yet STARTED is delivered rather than dropped.
-    private val _events = Channel<UiText>(Channel.BUFFERED)
-    val events: Flow<UiText> = _events.receiveAsFlow()
+    private val _events = Channel<OperationMessage>(Channel.BUFFERED)
+    val events: Flow<OperationMessage> = _events.receiveAsFlow()
 
     private var ledgerJob: Job? = null
     private var refreshJob: Job? = null
@@ -157,7 +158,7 @@ class ComponentControlViewModel(
             else it.copy(isLoading = false, snapshot = snapshot ?: it.snapshot)
         }
         if (snapshot == null) {
-            _events.send(UiText.StringResource(R.string.failed_to_load_app_details))
+            emitMessage(UiText.StringResource(R.string.failed_to_load_app_details))
         }
     }
 
@@ -208,8 +209,8 @@ class ComponentControlViewModel(
     private suspend fun reportLaunch(result: Result<Unit>, component: ComponentDetail) {
         result
             .onSuccess {
-                _events.send(
-                    UiText.StringResource(R.string.component_launched, component.shortName)
+                emitMessage(
+                    UiText.StringResource(R.string.component_launched, component.shortName), isSuccess = true
                 )
             }
             .onFailure { e -> sendFailure(e) }
@@ -221,8 +222,8 @@ class ComponentControlViewModel(
         runExclusively(component.className) {
             componentControl.stopService(packageName, component.className)
                 .onSuccess {
-                    _events.send(
-                        UiText.StringResource(R.string.component_service_stopped, component.shortName)
+                    emitMessage(
+                        UiText.StringResource(R.string.component_service_stopped, component.shortName), isSuccess = true
                     )
                 }
                 .onFailure { e -> sendFailure(e) }
@@ -338,8 +339,8 @@ class ComponentControlViewModel(
             Logger.e(TAG, "Ledger write failed after a successful component change", e)
         }
         if (outcome.isPlatformSuccess) {
-            _events.send(success)
             refreshSnapshot(packageName)
+            emitMessage(success, isSuccess = outcome.ledgerError == null)
         } else {
             outcome.platform.exceptionOrNull()?.let { sendFailure(it) }
         }
@@ -352,8 +353,8 @@ class ComponentControlViewModel(
         launchReporting(component.className) {
             componentControl.forget(packageName, component.className)
                 .onSuccess {
-                    _events.send(
-                        UiText.StringResource(R.string.component_forgotten, component.shortName)
+                    emitMessage(
+                        UiText.StringResource(R.string.component_forgotten, component.shortName), isSuccess = true
                     )
                 }
                 .onFailure { e -> sendFailure(e) }
@@ -380,7 +381,8 @@ class ComponentControlViewModel(
         _uiState.update { it.copy(showRestoreAllConfirm = false) }
         launchReporting("restoreAll") {
             val outcome = withContext(ioDispatcher) { componentControl.restoreAll() }
-            _events.send(
+            if (packageName.isNotEmpty()) refreshSnapshot(packageName)
+            emitMessage(
                 if (outcome.isComplete) {
                     UiText.PluralsResource(
                         R.plurals.component_restore_all_success,
@@ -392,9 +394,8 @@ class ComponentControlViewModel(
                         outcome.restored,
                         outcome.attempted,
                     )
-                }
+                }, isSuccess = outcome.isComplete && outcome.restored > 0
             )
-            if (packageName.isNotEmpty()) refreshSnapshot(packageName)
         }
     }
 
@@ -449,8 +450,12 @@ class ComponentControlViewModel(
         }
     }
 
+    private suspend fun emitMessage(text: UiText, isSuccess: Boolean = false) {
+        _events.send(OperationMessage(text, isSuccess))
+    }
+
     private suspend fun sendFailure(e: Throwable) {
-        _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+        emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
     }
 
     private companion object {

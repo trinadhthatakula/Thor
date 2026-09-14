@@ -420,6 +420,8 @@
     <string name="error_downgrade_privilege">La degradación solo es compatible con acceso privilegiado (Root, Shizuku o Dhizuku).</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">Apoyar a Thor</string>
+    <string name="support_already_support">Ya apoyo a Thor</string>
     <string name="support_developer">Apoyar al desarrollador</string>
     <string name="support_developer_desc">Apoya el desarrollo continuo de Thor</string>
     <string name="support_developer_desc_detailed">Thor es de código abierto y completamente libre de anuncios. Si te ha sido útil, considera apoyar mi trabajo:</string>
