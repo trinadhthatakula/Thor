@@ -30,3 +30,13 @@ donation link alone never marks someone as a supporter.
 
 Home and Settings keep their deliberate support entry points for everyone, including subscribers.
 Support preferences are local app settings, as before; they are not an account-wide history.
+
+## Examples
+
+Success feedback stays accessible inside an open app-info sheet:
+
+<img src="images/support/success-feedback.png" alt="Success snackbar with Support Thor inside the app-info sheet" width="320">
+
+FOSS supporters can opt out of future invitations:
+
+<img src="images/support/foss-support-sheet.png" alt="FOSS support sheet with I already support Thor" width="480">
