@@ -237,13 +237,12 @@ class InstallerRepositoryImpl(
                             var reflectionSuccess = false
                             if (privilegedInstaller != null) {
                                 try {
-                                    performPackageInstallerInstall(
+                                    reflectionSuccess = performPackageInstallerInstall(
                                         staged,
                                         privilegedInstaller,
                                         canDowngrade,
                                         emitErrors = false
                                     )
-                                    reflectionSuccess = true
                                 } catch (e: Throwable) {
                                     if (e is CancellationException) throw e
                                     if (e is InstallRefusedException) throw e
@@ -279,13 +278,12 @@ class InstallerRepositoryImpl(
                         var committed = false
                         if (privilegedInstaller != null) {
                             try {
-                                performPackageInstallerInstall(
+                                committed = performPackageInstallerInstall(
                                     staged,
                                     privilegedInstaller,
                                     canDowngrade,
                                     emitErrors = false
                                 )
-                                committed = true
                             } catch (e: Throwable) {
                                 if (e is CancellationException) throw e
                                 if (e is InstallRefusedException) throw e
@@ -810,7 +808,7 @@ class InstallerRepositoryImpl(
         installer: InstallerHandle,
         canDowngrade: Boolean,
         emitErrors: Boolean = true
-    ) {
+    ): Boolean {
         // Written before the first entry is copied, once the install set is known; the staged
         // file's own length is the right answer for a monolithic APK and a decent lower bound
         // for a bundle until then.
@@ -852,7 +850,7 @@ class InstallerRepositoryImpl(
             if (e is CancellationException) throw e
             if (emitErrors) {
                 eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to create session: ${e.message}")))
-                return
+                return false
             } else throw e
         }
 
@@ -868,7 +866,7 @@ class InstallerRepositoryImpl(
             }
             if (emitErrors) {
                 eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to open session: ${e.message}")))
-                return
+                return false
             } else throw e
         }
 
@@ -919,7 +917,20 @@ class InstallerRepositoryImpl(
             }
         }
 
-        try {
+        return trackInstallSessionSubmission(
+            abandon = session::abandon,
+            onSubmissionFailure = { failure ->
+                Logger.e("thorInstaller", "Install failed", failure)
+                if (emitErrors) {
+                    eventBus.emit(
+                        InstallState.Error(UiText.DynamicString(failure.message ?: "Unknown installation error"))
+                    )
+                } else throw failure
+            },
+            onCleanupFailure = { failure ->
+                Logger.e("thorInstaller", "Session close failed after install submission", failure)
+            },
+        ) { markSubmitted ->
             // The staged copy IS the input, already on disk — no second read of the URI, and no
             // second copy either. ZipFile (central directory) reads it; ZipInputStream cannot
             // handle APKPure's STORED-with-data-descriptor entries and derails on the first one.
@@ -1026,21 +1037,8 @@ class InstallerRepositoryImpl(
             )
 
             session.commit(pendingIntent.intentSender)
+            markSubmitted()
             session.close()
-
-        } catch (e: Throwable) {
-            // Abandon FIRST, and on every throwable — including CancellationException, which is
-            // the common case: the user swipes the sheet away mid-copy and this coroutine is
-            // cancelled. Rethrowing before the abandon left the session neither committed nor
-            // abandoned, and PackageInstaller caps sessions per app, so a few dozen abandoned
-            // previews used to block every later install until they aged out. The failure path
-            // where openSession() throws already got this right; this one didn't.
-            runCatching { session.abandon() }
-            if (e is CancellationException) throw e
-            Logger.e("thorInstaller", "Install failed", e)
-            if (emitErrors) {
-                eventBus.emit(InstallState.Error(UiText.DynamicString(e.message ?: "Unknown installation error")))
-            } else throw e
         }
     }
 }
