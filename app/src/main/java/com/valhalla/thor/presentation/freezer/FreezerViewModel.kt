@@ -11,6 +11,8 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
@@ -130,6 +132,8 @@ data class FreezerUiState(
      * screen — so a parameter would have to be threaded through a host that has no interest in it.
      */
     val gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
+    val multiActionsOrder: List<MultiAppActionId> = MultiAppActionLayout.FREEZER.defaultOrder,
+    val hiddenMultiActions: Set<MultiAppActionId> = emptySet(),
     val addFreezerToLauncher: Boolean = false,
     val profiles: List<FreezeProfile> = emptyList(),
     val profileEditorSearchQuery: String = "",
@@ -869,6 +873,8 @@ class FreezerViewModel(
                         hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt,
                         isGrid = prefs.freezerIsGrid,
                         gridDensity = prefs.appGridDensity,
+                        multiActionsOrder = prefs.freezerMultiActionsOrder,
+                        hiddenMultiActions = prefs.hiddenFreezerMultiActions,
                         addFreezerToLauncher = prefs.addFreezerToLauncher
                     )
                 }

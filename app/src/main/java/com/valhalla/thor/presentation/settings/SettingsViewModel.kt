@@ -16,6 +16,8 @@ import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.FixStoreRoute
 import com.valhalla.thor.domain.model.fixStoreRoute
 import com.valhalla.thor.domain.model.resolvePrivilegeMode
@@ -426,6 +428,28 @@ class SettingsViewModel(
     fun resetAppInfoActionsCustomization() {
         viewModelScope.launch {
             preferenceRepository.resetAppInfoActionsCustomization()
+        }
+    }
+
+    fun setMultiAppActionsOrder(layout: MultiAppActionLayout, order: List<MultiAppActionId>) {
+        viewModelScope.launch {
+            preferenceRepository.setMultiAppActionsOrder(layout, order)
+        }
+    }
+
+    fun setMultiAppActionVisibility(
+        layout: MultiAppActionLayout,
+        actionId: MultiAppActionId,
+        isVisible: Boolean,
+    ) {
+        viewModelScope.launch {
+            preferenceRepository.setMultiAppActionVisibility(layout, actionId, isVisible)
+        }
+    }
+
+    fun resetMultiAppActionsCustomization(layout: MultiAppActionLayout) {
+        viewModelScope.launch {
+            preferenceRepository.resetMultiAppActionsCustomization(layout)
         }
     }
 }

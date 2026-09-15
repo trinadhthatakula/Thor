@@ -442,7 +442,7 @@
     <string name="settings_summary_restore_interrupted">Uma restauração não terminou</string>
     <string name="settings_summary_backup">Restaurar um arquivo ou alterar a senha</string>
     <string name="settings_summary_unprivileged">Requer root, Shizuku ou Dhizuku</string>
-    <string name="settings_summary_customization">Fontes e ações do painel do app</string>
+    <string name="settings_summary_customization">Fontes e layouts de ações</string>
 
     <string name="settings_category_customization">Personalização</string>
     <string name="customization_fonts">Fontes</string>
@@ -455,11 +455,16 @@
     <string name="font_preview_numbers">0123456789 · 1,2 GB</string>
     <string name="customization_app_info_actions">Ações do painel do app</string>
     <string name="customization_app_info_actions_desc">Reordenar e alternar ações no painel inferior do app</string>
+    <string name="customization_app_list_multi_actions">Ações em lote na lista de apps</string>
+    <string name="customization_freezer_multi_actions">Ações em lote no Congelador</string>
+    <string name="customization_multi_actions_desc">Escolha e organize as ações para os apps selecionados.</string>
+    <string name="customization_multi_actions_availability">As ações aparecem conforme a seleção, os privilégios e os perfis disponíveis. Fechar está sempre disponível.</string>
     <string name="customization_drag_hint">Arraste para reordenar • Alterne para mostrar ou ocultar</string>
     <string name="customization_preview_title">Pré-visualização da barra de ações</string>
     <string name="reset_to_default">Restaurar padrão</string>
     <string name="reset_actions_confirm_title">Restaurar a ordem das ações?</string>
     <string name="reset_actions_confirm_desc">Isso restaurará a ordem padrão e tornará todas as ações visíveis.</string>
+    <string name="reset_multi_actions_confirm_desc">Restaurar a ordem e a visibilidade desta barra de seleção? Os outros layouts de ações serão mantidos.</string>
 
     <string name="action_open_desc">Iniciar o aplicativo</string>
     <string name="action_settings_desc">Abrir configurações do aplicativo no sistema Android</string>

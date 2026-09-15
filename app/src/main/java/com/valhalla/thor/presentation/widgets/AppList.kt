@@ -93,6 +93,8 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.asGeneralName
@@ -136,6 +138,8 @@ fun AppList(
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {},
     onAddToProfiles: ((List<AppInfo>) -> Unit)? = null,
+    multiActionsOrder: List<MultiAppActionId> = MultiAppActionLayout.APP_LIST.defaultOrder,
+    hiddenMultiActions: Set<MultiAppActionId> = emptySet(),
     clearSelectionRequest: Int = 0,
     profileAssignmentSelection: List<AppInfo> = emptyList(),
     onToggleView: () -> Unit = {},
@@ -286,6 +290,8 @@ fun AppList(
         if (isMultiSelectMode) {
             MultiSelectToolBox(
                 selected = multiSelection,
+                actionOrder = multiActionsOrder,
+                hiddenActions = hiddenMultiActions,
                 onAddToProfiles = onAddToProfiles?.let { assign -> { assign(multiSelection) } },
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 32.dp)

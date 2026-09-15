@@ -109,6 +109,8 @@ fun SettingsCategoryScreen(
     onOpenRestore: () -> Unit,
     onNavigateToExtensionManager: () -> Unit,
     onNavigateToCustomizeAppInfoActions: () -> Unit = {},
+    onNavigateToCustomizeAppListMultiActions: () -> Unit = {},
+    onNavigateToCustomizeFreezerMultiActions: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -375,6 +377,24 @@ fun SettingsCategoryScreen(
                         showChevron = true,
                         highlighted = lit,
                         onClick = onNavigateToCustomizeAppInfoActions
+                    )
+
+                    SettingsRowId.APP_LIST_MULTI_ACTIONS -> SettingsClickRow(
+                        icon = R.drawable.dashboard_customize,
+                        title = stringResource(R.string.customization_app_list_multi_actions),
+                        subtitle = stringResource(R.string.customization_multi_actions_desc),
+                        showChevron = true,
+                        highlighted = lit,
+                        onClick = onNavigateToCustomizeAppListMultiActions,
+                    )
+
+                    SettingsRowId.FREEZER_MULTI_ACTIONS -> SettingsClickRow(
+                        icon = R.drawable.dashboard_customize,
+                        title = stringResource(R.string.customization_freezer_multi_actions),
+                        subtitle = stringResource(R.string.customization_multi_actions_desc),
+                        showChevron = true,
+                        highlighted = lit,
+                        onClick = onNavigateToCustomizeFreezerMultiActions,
                     )
 
                     // ── Freezer ─────────────────────────────────────────────────────────────────

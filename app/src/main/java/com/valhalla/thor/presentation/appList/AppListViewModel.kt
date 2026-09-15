@@ -17,6 +17,8 @@ import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -114,6 +116,8 @@ data class AppListUiState(
     val isLoadingDetails: Boolean = false,
     val isGrid: Boolean = true,
     val gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
+    val multiActionsOrder: List<MultiAppActionId> = MultiAppActionLayout.APP_LIST.defaultOrder,
+    val hiddenMultiActions: Set<MultiAppActionId> = emptySet(),
     val isComputingSizes: Boolean = false,
     // Holds the pull-to-refresh indicator up for a readable minimum. isLoading cannot do this job:
     // getAllApps() emits the Room cache before it starts the package rescan, so isLoading clears
@@ -209,7 +213,9 @@ class AppListViewModel(
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
             isGrid = prefs.appListIsGrid,
-            gridDensity = prefs.appGridDensity
+            gridDensity = prefs.appGridDensity,
+            multiActionsOrder = prefs.appListMultiActionsOrder,
+            hiddenMultiActions = prefs.hiddenAppListMultiActions,
         )
         processList(mergedState)
     }

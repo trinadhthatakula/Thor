@@ -7,6 +7,8 @@ import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezeCandidate
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeState
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -227,6 +229,74 @@ class SettingsViewModelTest {
         runCurrent()
 
         assertEquals(FontPreset.ASGARD, vm.uiState.value.prefs.fontPreset)
+        assertTrue(preferences.writeFailureLatched)
+    }
+
+    @Test
+    fun `multi-app edits follow saved layouts and reset only the selected toolbar`() = runTest {
+        val initial = UserPreferences(themeMode = ThemeMode.DARK)
+        val preferences = FakePreferenceRepository(initial)
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = preferences,
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+        )
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
+        runCurrent()
+        val appListOrder = MultiAppActionLayout.APP_LIST.defaultOrder.reversed()
+        val freezerOrder = MultiAppActionLayout.FREEZER.defaultOrder.reversed()
+
+        vm.setMultiAppActionsOrder(MultiAppActionLayout.APP_LIST, appListOrder)
+        vm.setMultiAppActionVisibility(MultiAppActionLayout.APP_LIST, MultiAppActionId.SHARE, false)
+        vm.setMultiAppActionsOrder(MultiAppActionLayout.FREEZER, freezerOrder)
+        vm.setMultiAppActionVisibility(MultiAppActionLayout.FREEZER, MultiAppActionId.UNINSTALL, false)
+        runCurrent()
+
+        val saved = initial.copy(
+            appListMultiActionsOrder = appListOrder,
+            hiddenAppListMultiActions = setOf(MultiAppActionId.SHARE),
+            freezerMultiActionsOrder = freezerOrder,
+            hiddenFreezerMultiActions = setOf(MultiAppActionId.UNINSTALL),
+        )
+        assertEquals(saved, vm.uiState.value.prefs)
+
+        vm.resetMultiAppActionsCustomization(MultiAppActionLayout.APP_LIST)
+        runCurrent()
+
+        assertEquals(
+            saved.copy(
+                appListMultiActionsOrder = MultiAppActionLayout.APP_LIST.defaultOrder,
+                hiddenAppListMultiActions = emptySet(),
+            ),
+            vm.uiState.value.prefs,
+        )
+    }
+
+    @Test
+    fun `failed multi-app preference writes keep the saved toolbar and report failure`() = runTest {
+        val initial = UserPreferences(hiddenFreezerMultiActions = setOf(MultiAppActionId.SHARE))
+        val preferences = FakePreferenceRepository(initial, writesFail = true)
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = preferences,
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+        )
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
+        runCurrent()
+
+        vm.setMultiAppActionsOrder(
+            MultiAppActionLayout.FREEZER,
+            MultiAppActionLayout.FREEZER.defaultOrder.reversed(),
+        )
+        vm.setMultiAppActionVisibility(MultiAppActionLayout.FREEZER, MultiAppActionId.UNINSTALL, false)
+        vm.resetMultiAppActionsCustomization(MultiAppActionLayout.FREEZER)
+        runCurrent()
+
+        assertEquals(initial, vm.uiState.value.prefs)
         assertTrue(preferences.writeFailureLatched)
     }
 

@@ -25,6 +25,8 @@ import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.MissingFreezeProfilesException
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
@@ -829,6 +831,50 @@ class FakePreferenceRepository(
                 appInfoActionsOrder = AppInfoActionId.DEFAULT_ORDER,
                 hiddenAppInfoActions = emptySet()
             )
+        }
+    }
+
+    override suspend fun setMultiAppActionsOrder(
+        layout: MultiAppActionLayout,
+        order: List<MultiAppActionId>,
+    ) {
+        val reconciled = layout.fromSavedNamesOrDefault(order.map { it.name })
+        write {
+            when (layout) {
+                MultiAppActionLayout.APP_LIST -> it.copy(appListMultiActionsOrder = reconciled)
+                MultiAppActionLayout.FREEZER -> it.copy(freezerMultiActionsOrder = reconciled)
+            }
+        }
+    }
+
+    override suspend fun setMultiAppActionVisibility(
+        layout: MultiAppActionLayout,
+        actionId: MultiAppActionId,
+        isVisible: Boolean,
+    ) {
+        if (actionId !in layout.defaultOrder) return
+        write {
+            val hidden = it.hiddenMultiAppActions(layout).toMutableSet()
+            if (isVisible) hidden.remove(actionId) else hidden.add(actionId)
+            when (layout) {
+                MultiAppActionLayout.APP_LIST -> it.copy(hiddenAppListMultiActions = hidden)
+                MultiAppActionLayout.FREEZER -> it.copy(hiddenFreezerMultiActions = hidden)
+            }
+        }
+    }
+
+    override suspend fun resetMultiAppActionsCustomization(layout: MultiAppActionLayout) {
+        write {
+            when (layout) {
+                MultiAppActionLayout.APP_LIST -> it.copy(
+                    appListMultiActionsOrder = layout.defaultOrder,
+                    hiddenAppListMultiActions = emptySet(),
+                )
+                MultiAppActionLayout.FREEZER -> it.copy(
+                    freezerMultiActionsOrder = layout.defaultOrder,
+                    hiddenFreezerMultiActions = emptySet(),
+                )
+            }
         }
     }
 }

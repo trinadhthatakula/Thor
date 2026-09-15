@@ -92,6 +92,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.TaskAction
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.repository.InstallerLabelResolver
@@ -132,6 +133,7 @@ import com.valhalla.thor.presentation.backup.hub.BackupRestoreHubScreen
 import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.customization.AppInfoActionsCustomizationScreen
+import com.valhalla.thor.presentation.settings.customization.MultiAppActionsCustomizationScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
@@ -941,6 +943,12 @@ fun MainScreen(
                                 },
                                 onNavigateToCustomizeAppInfoActions = {
                                     settingsBackStack.add(ThorRoute.AppInfoActionsCustomization)
+                                },
+                                onNavigateToCustomizeAppListMultiActions = {
+                                    settingsBackStack.add(ThorRoute.AppListMultiActionsCustomization)
+                                },
+                                onNavigateToCustomizeFreezerMultiActions = {
+                                    settingsBackStack.add(ThorRoute.FreezerMultiActionsCustomization)
                                 }
                             )
                         }
@@ -998,6 +1006,34 @@ fun MainScreen(
                                 }
                             },
                             viewModel = settingsViewModel
+                        )
+                    }
+
+                    entry<ThorRoute.AppListMultiActionsCustomization>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) {
+                        MultiAppActionsCustomizationScreen(
+                            layout = MultiAppActionLayout.APP_LIST,
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            viewModel = settingsViewModel,
+                        )
+                    }
+
+                    entry<ThorRoute.FreezerMultiActionsCustomization>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) {
+                        MultiAppActionsCustomizationScreen(
+                            layout = MultiAppActionLayout.FREEZER,
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            viewModel = settingsViewModel,
                         )
                     }
 

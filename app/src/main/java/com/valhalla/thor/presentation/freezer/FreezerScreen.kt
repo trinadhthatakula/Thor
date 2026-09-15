@@ -503,6 +503,8 @@ fun FreezerScreen(
                 }
                 FreezerSelectToolBox(
                     selected = selectedApps,
+                    actionOrder = state.multiActionsOrder,
+                    hiddenActions = state.hiddenMultiActions,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
                     isDhizuku = state.isDhizuku,
