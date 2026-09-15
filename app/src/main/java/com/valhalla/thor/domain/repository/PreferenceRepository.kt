@@ -123,6 +123,7 @@ interface PreferenceRepository {
 
     // --- Support Developer Prompt ---
     suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean)
+    suspend fun setAlreadySupportsThor(alreadySupports: Boolean)
 
     // --- Animations ---
     suspend fun setAnimationIntensity(intensity: AnimationIntensity)

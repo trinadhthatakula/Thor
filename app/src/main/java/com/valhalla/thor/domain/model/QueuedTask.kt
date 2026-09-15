@@ -193,6 +193,8 @@ data class QueuedTaskDetail(
     val lines: List<TaskLogLine>,
     val resultCode: String?,
     val warningCodes: List<String>,
+    /** Includes warnings whose diagnostic text cannot be projected as a stable code. */
+    val hasWarnings: Boolean = warningCodes.isNotEmpty(),
 ) {
     init {
         resultCode?.let { requireTaskStableCode(it, "resultCode") }

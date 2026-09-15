@@ -719,6 +719,10 @@ class FakePreferenceRepository(
         write { it.copy(hasShownSupportDeveloperPrompt = hasShown) }
     }
 
+    override suspend fun setAlreadySupportsThor(alreadySupports: Boolean) {
+        write { it.copy(alreadySupportsThor = alreadySupports) }
+    }
+
     override suspend fun setAnimationIntensity(intensity: AnimationIntensity) {
         write { it.copy(animationIntensity = intensity) }
     }

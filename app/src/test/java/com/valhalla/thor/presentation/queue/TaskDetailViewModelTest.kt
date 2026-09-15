@@ -35,6 +35,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
@@ -135,6 +136,122 @@ class TaskDetailViewModelTest {
         room.value = detail(TaskLifecyclePhase.SUCCEEDED, completed = 5, total = 5)
         overlay.value = TaskProgress(4, 5, "STALE")
         assertEquals(TaskProgress(5, 5, null), viewModel.uiState.value.summary?.progress)
+    }
+
+    @Test
+    fun `completed history does not qualify for a support invitation`() = runTest {
+        val observed = MutableStateFlow<QueuedTaskDetail?>(null)
+        val viewModel = viewModel(FakeTaskQueueRepository(observed))
+
+        observed.value = detail(TaskLifecyclePhase.SUCCEEDED)
+        runCurrent()
+
+        assertEquals(TaskLifecyclePhase.SUCCEEDED, viewModel.uiState.value.phase)
+        assertFalse(viewModel.uiState.value.completedWhileObserved)
+    }
+
+    @Test
+    fun `provisional starting alone does not qualify a later success`() = runTest {
+        val observed = MutableStateFlow<QueuedTaskDetail?>(null)
+        val viewModel = viewModel(
+            FakeTaskQueueRepository(observed),
+            provisionalIdentity = ProvisionalTaskIdentity(
+                TaskQueueKind.DATA,
+                DataTaskKind.APP_EXPORT.name,
+            ),
+        )
+        runCurrent()
+        assertEquals(TaskLifecyclePhase.STARTING, viewModel.uiState.value.phase)
+
+        observed.value = detail(TaskLifecyclePhase.SUCCEEDED)
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.completedWhileObserved)
+    }
+
+    @Test
+    fun `persisted queued or running followed by success qualifies`() = runTest {
+        listOf(TaskLifecyclePhase.QUEUED, TaskLifecyclePhase.RUNNING).forEach { phase ->
+            val observed = MutableStateFlow(detail(phase))
+            val viewModel = viewModel(FakeTaskQueueRepository(observed))
+            runCurrent()
+            assertFalse(viewModel.uiState.value.completedWhileObserved)
+
+            observed.value = detail(TaskLifecyclePhase.SUCCEEDED)
+            runCurrent()
+
+            assertTrue("Observed phase: $phase", viewModel.uiState.value.completedWhileObserved)
+        }
+    }
+
+    @Test
+    fun `partial failed cancelled and expired tasks never qualify`() = runTest {
+        listOf(
+            TaskLifecyclePhase.READY_PARTIAL,
+            TaskLifecyclePhase.PARTIAL,
+            TaskLifecyclePhase.FAILED,
+            TaskLifecyclePhase.CANCELLED,
+            TaskLifecyclePhase.EXPIRED,
+        ).forEach { phase ->
+            val observed = MutableStateFlow(detail(TaskLifecyclePhase.RUNNING))
+            val viewModel = viewModel(FakeTaskQueueRepository(observed))
+            runCurrent()
+
+            observed.value = detail(phase)
+            runCurrent()
+            assertFalse("Terminal phase: $phase", viewModel.uiState.value.completedWhileObserved)
+
+            observed.value = detail(TaskLifecyclePhase.SUCCEEDED)
+            runCurrent()
+            assertFalse("Stale success after $phase", viewModel.uiState.value.completedWhileObserved)
+        }
+    }
+
+    @Test
+    fun `success with redacted restore warnings does not qualify`() = runTest {
+        val observed = MutableStateFlow(detail(TaskLifecyclePhase.RUNNING))
+        val viewModel = viewModel(FakeTaskQueueRepository(observed))
+        runCurrent()
+
+        observed.value = detail(TaskLifecyclePhase.SUCCEEDED).copy(hasWarnings = true)
+        runCurrent()
+
+        assertEquals(TaskLifecyclePhase.SUCCEEDED, viewModel.uiState.value.phase)
+        assertFalse(viewModel.uiState.value.completedWhileObserved)
+    }
+
+    @Test
+    fun `recreating a completed task does not preserve support eligibility`() = runTest {
+        val savedState = SavedStateHandle()
+        val observed = MutableStateFlow(detail(TaskLifecyclePhase.RUNNING))
+        val repository = FakeTaskQueueRepository(observed)
+        val first = viewModel(repository, savedState = savedState)
+        runCurrent()
+        observed.value = detail(TaskLifecyclePhase.SUCCEEDED)
+        runCurrent()
+        assertTrue(first.uiState.value.completedWhileObserved)
+        assertEquals(setOf(TaskDetailViewModel.TASK_ID_KEY), savedState.keys())
+
+        val reopened = viewModel(repository, savedState = savedState)
+        runCurrent()
+
+        assertEquals(TaskLifecyclePhase.SUCCEEDED, reopened.uiState.value.phase)
+        assertFalse(reopened.uiState.value.completedWhileObserved)
+    }
+
+    @Test
+    fun `progress overlay cannot qualify a historical success`() = runTest {
+        val overlay = MutableStateFlow<TaskProgress?>(null)
+        val viewModel = viewModel(
+            repository = FakeTaskQueueRepository(flowOf(detail(TaskLifecyclePhase.SUCCEEDED))),
+            overlay = FakeTaskProgressOverlaySource(overlay),
+        )
+        runCurrent()
+
+        overlay.value = TaskProgress(1, 2, "RUNNING")
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.completedWhileObserved)
     }
 
     @Test

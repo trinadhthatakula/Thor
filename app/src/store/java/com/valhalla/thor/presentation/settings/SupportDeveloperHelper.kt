@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +33,16 @@ private fun Context.findActivity(): Activity? = when (this) {
 @Composable
 fun SupportDeveloperHelper(
     onDismiss: () -> Unit,
-    billingProcessor: BillingProcessor = koinInject()
+    billingProcessor: BillingProcessor = koinInject(),
+    supportPromptCoordinator: SupportPromptCoordinator = koinInject(),
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
+    val supportState by supportPromptCoordinator.state.collectAsState()
+
+    LaunchedEffect(supportPromptCoordinator) {
+        supportPromptCoordinator.markPromptShown()
+    }
 
     val isBillingAvailable by billingProcessor.isBillingAvailable.collectAsState()
     val products by billingProcessor.products.collectAsState()
@@ -254,6 +261,12 @@ fun SupportDeveloperHelper(
 
     SupportDeveloperTabbedBottomSheet(
         tabs = tabs,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        onAlreadySupports = if (supportState.canSelfDeclareSupport) {
+            {
+                supportPromptCoordinator.declareSupport()
+                onDismiss()
+            }
+        } else null,
     )
 }

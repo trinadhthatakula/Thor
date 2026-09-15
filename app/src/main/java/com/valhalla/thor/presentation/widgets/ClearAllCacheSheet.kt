@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
@@ -61,12 +63,19 @@ fun ClearAllCacheSheet(
     formattedFreedBytes: String?,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    onSupport: (() -> Unit)? = null,
 ) {
+    val resultTimeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
+        originalTimeoutMillis = RESULT_AUTO_DISMISS_MS,
+        containsIcons = true,
+        containsText = true,
+        containsControls = true,
+    ) ?: RESULT_AUTO_DISMISS_MS
     if (state is CacheClearState.Done) {
         // Keyed on the state instance: a second clear started after this one auto-dismissed gets its
         // own timer rather than inheriting a cancelled one.
         LaunchedEffect(state) {
-            delay(RESULT_AUTO_DISMISS_MS)
+            delay(resultTimeout)
             onDismiss()
         }
     }
@@ -172,6 +181,11 @@ fun ClearAllCacheSheet(
             )
 
             if (state !is CacheClearState.Running) {
+                if (state is CacheClearState.Done && onSupport != null) {
+                    OutlinedButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.support_thor))
+                    }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)

@@ -420,6 +420,8 @@
     <string name="error_downgrade_privilege">La rétrogradation n\'est prise en charge qu\'avec un accès privilégié (Root, Shizuku ou Dhizuku).</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">Soutenir Thor</string>
+    <string name="support_already_support">Je soutiens déjà Thor</string>
     <string name="support_developer">Soutenir le développeur</string>
     <string name="support_developer_desc">Soutenir le développement continu de Thor</string>
     <string name="support_developer_desc_detailed">Thor est open source et complètement sans publicité. S\'il vous a été utile, merci d\'envisager de soutenir mon travail :</string>

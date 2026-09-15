@@ -191,6 +191,7 @@ class PreferenceRepositoryImpl(
 
         // Support Developer Prompt
         val HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT = booleanPreferencesKey("has_shown_support_developer_prompt")
+        val ALREADY_SUPPORTS_THOR = booleanPreferencesKey("already_supports_thor")
 
         // Animations
         val ANIMATION_INTENSITY = stringPreferencesKey("animation_intensity")
@@ -373,6 +374,12 @@ class PreferenceRepositoryImpl(
     override suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             it[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] = hasShown
+        }
+    }
+
+    override suspend fun setAlreadySupportsThor(alreadySupports: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.ALREADY_SUPPORTS_THOR] = alreadySupports
         }
     }
 
@@ -686,6 +693,7 @@ internal fun Preferences.toUserPreferences(
         hasShownDisabledAppsPrompt =
             local[LocalKeys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
         hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
+        alreadySupportsThor = prefs[Keys.ALREADY_SUPPORTS_THOR] ?: false,
         animationIntensity = animationIntensity,
         appListIsGrid = appListIsGrid,
         freezerIsGrid = freezerIsGrid,

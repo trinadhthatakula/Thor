@@ -701,6 +701,8 @@
     <string name="error_downgrade_privilege">Downgrade is only supported with privileged access (Root, Shizuku, or Dhizuku).</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">Support Thor</string>
+    <string name="support_already_support">I already support Thor</string>
     <string name="support_developer">Support Developer</string>
     <string name="support_developer_desc">Support ongoing development of Thor</string>
     <string name="support_developer_desc_detailed">Thor is open source and completely ad-free. If it has been helpful to you, please consider supporting my work:</string>

@@ -68,6 +68,34 @@ class InstallerViewModelTest {
     private var fixtureNumber = 0
 
     @Test
+    fun `early APK success stays active until game data work settles`() = runTest {
+        for (placementFails in listOf(false, true)) {
+            val fixture = fixture()
+            val finishPlacement = CompletableDeferred<Unit>()
+            fixture.repository.onInstall = {
+                fixture.eventBus.emit(InstallState.Installing(0f))
+                fixture.eventBus.emit(InstallState.Success)
+                finishPlacement.await()
+                if (placementFails) {
+                    fixture.eventBus.emit(InstallState.Error(UiText.DynamicString("Game data failed")))
+                }
+            }
+            fixture.parseReadyPackage()
+            fixture.viewModel.startInstallation()
+            runCurrent()
+
+            assertEquals(InstallState.Success, fixture.eventBus.latest)
+            assertTrue(fixture.viewModel.isInstallCallActive.value)
+
+            finishPlacement.complete(Unit)
+            runCurrent()
+
+            assertFalse(fixture.viewModel.isInstallCallActive.value)
+            assertEquals(placementFails, fixture.eventBus.latest is InstallState.Error)
+        }
+    }
+
+    @Test
     fun `unsupported install modes suppress saved and per-install grants`() = runTest {
         for (mode in listOf(InstallMode.DHIZUKU, InstallMode.NORMAL, InstallMode.EXTERNAL)) {
             val fixture = fixture()
@@ -107,6 +135,7 @@ class InstallerViewModelTest {
             runCurrent()
 
             assertNull(completion.await())
+            assertFalse(fixture.viewModel.isInstallCallActive.value)
             assertEquals(
                 InstallState.Error(UiText.StringResource(R.string.unknown_error_occurred)),
                 fixture.eventBus.latest,
@@ -129,6 +158,7 @@ class InstallerViewModelTest {
         runCurrent()
 
         assertSame(cancellation, completion.await())
+        assertFalse(fixture.viewModel.isInstallCallActive.value)
         assertSame(
             "cancellation must not be presented as a stable error",
             ready,
@@ -506,6 +536,7 @@ class InstallerViewModelTest {
         private val failure: Throwable?,
     ) : InstallerRepository {
         val calls = mutableListOf<InstallCall>()
+        var onInstall: suspend () -> Unit = {}
 
         override suspend fun installPackage(
             staged: StagedPackage,
@@ -521,6 +552,7 @@ class InstallerViewModelTest {
             onInvocationStarted()
             calls += InstallCall(staged, uri, mode, canDowngrade, grantAllPermissions, bypassLowTargetSdkBlock)
             if (failure != null) throw failure
+            onInstall()
         }
     }
 

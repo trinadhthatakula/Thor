@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.appList
 
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.OperationMessage
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.ObbFile
@@ -98,10 +99,56 @@ class AppInfoDetailsViewModelTest {
         )
     }
 
+    @Test
+    fun `only successful data clearing carries a support invitation`() = runTest {
+        val vm = viewModel()
+        val seen = mutableListOf<OperationMessage>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { seen += it } }
+
+        vm.clearData("example")
+        runCurrent()
+        assertTrue(seen.single().isSuccess)
+        seen.clear()
+        system.failWith("clearAppData:example", IllegalStateException("denied"))
+        vm.clearData("example")
+        runCurrent()
+        assertFalse(seen.single().isSuccess)
+    }
+
+    @Test
+    fun `suspend and unsuspend offer support only after success`() = runTest {
+        val vm = viewModel()
+        val seen = mutableListOf<OperationMessage>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { seen += it } }
+        vm.toggleSuspendState("example", true)
+        runCurrent()
+        vm.toggleSuspendState("example", false)
+        runCurrent()
+        assertEquals(2, seen.size)
+        assertTrue(seen.all { it.isSuccess })
+        seen.clear()
+        system.failWith("setAppSuspended:example:true", IllegalStateException("denied"))
+        vm.toggleSuspendState("example", true)
+        runCurrent()
+        assertFalse(seen.single().isSuccess)
+    }
+
+    @Test
+    fun `applied freeze change followed by refresh failure never invites support`() = runTest {
+        val vm = viewModel()
+        val seen = mutableListOf<OperationMessage>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { seen += it } }
+        appRepository.failDetailsWith("example", IllegalStateException("refresh failed"))
+        vm.toggleFreezerState("example", "Example", false)
+        runCurrent()
+        assertEquals(2, seen.size)
+        assertTrue(seen.none { it.isSuccess })
+    }
+
     /** Collects one-off events for the duration of the test, as the screen does. */
     private fun TestScope.events(vm: AppInfoDetailsViewModel): List<UiText> {
         val seen = mutableListOf<UiText>()
-        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { seen += it } }
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { seen += it.message } }
         return seen
     }
 
@@ -692,6 +739,32 @@ class AppInfoDetailsViewModelTest {
         )
         assertFalse("no row landed, so the sheet must not claim one", vm.uiState.value.isInFreezer)
         assertTrue(freezer.added.isEmpty())
+    }
+
+    @Test
+    fun `successful prompt confirmation reports the tracked app without freezing it again`() = runTest {
+        loaded(userApp("a", enabled = true))
+        val vm = viewModel()
+        val seen = mutableListOf<OperationMessage>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { seen += it } }
+
+        vm.toggleFreezerState("a", freeze = true, appName = "App A")
+        runCurrent()
+        assertNotNull(vm.uiState.value.freezerPrompt)
+        assertTrue(seen.isEmpty())
+        system.calls.clear()
+
+        vm.addToFreezer("a")
+        runCurrent()
+
+        assertTrue(freezer.contains("a"))
+        assertNull(vm.uiState.value.freezerPrompt)
+        assertTrue(vm.uiState.value.isInFreezer)
+        assertEquals(
+            listOf(OperationMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)),
+            seen,
+        )
+        assertTrue(system.calls.none { it.startsWith("setAppDisabled") || it.startsWith("setAppSuspended") })
     }
 
     /**
