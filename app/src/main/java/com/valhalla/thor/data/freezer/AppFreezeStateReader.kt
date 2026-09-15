@@ -6,6 +6,7 @@ package com.valhalla.thor.data.freezer
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.valhalla.thor.data.source.local.UadSnapshot
+import com.valhalla.thor.data.source.local.isEffectivelyEnabled
 import com.valhalla.thor.domain.model.FreezeCandidate
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.FreezeTier
@@ -19,11 +20,9 @@ import org.koin.core.annotation.Single
  * Reads an app's live freeze state. The single place that answers "is this app frozen?",
  * replacing the inline copy that used to live in FreezerShortcutManager.
  *
- * [MATCH_FLAGS] covers both of Thor's freeze mechanics — MATCH_DISABLED_COMPONENTS for a
- * disabled package, MATCH_UNINSTALLED_PACKAGES for a system package uninstalled for the user —
- * and FLAG_SUSPENDED (API 24+) catches the suspend-mode case. Both mechanics are live: a system
- * app is frozen with `pm disable` where the platform allows it and with `pm uninstall --user N`
- * where it does not, and packages frozen the second way by earlier builds are still out there.
+ * [MATCH_FLAGS] includes disabled, device-policy-hidden and user-uninstalled packages. The
+ * effective enabled state folds those three mechanics together, while FLAG_SUSPENDED catches
+ * suspend mode. User-uninstalled packages from earlier builds still need to be restorable.
  */
 @Single
 class AppFreezeStateReader(
@@ -57,18 +56,10 @@ class AppFreezeStateReader(
      */
     fun candidateOf(packageName: String, uad: UadSnapshot): FreezeCandidate = try {
         val info = packageManager.getApplicationInfo(packageName, MATCH_FLAGS)
-        // MATCH_UNINSTALLED_PACKAGES is not optional. A *system* app is frozen with `pm disable`
-        // where that works and with `pm uninstall --user N` where it does not — the gated
-        // destructive fallback (`uninstallFreezeFallbackAllowed`), plus every package the
-        // uninstall-only builds froze and that is still frozen today. A package in that second
-        // state is not installed for this user, so the lookup throws NameNotFoundException without
-        // the flag — the app then reads ABSENT and freezableCandidates drops it, which silently
-        // emptied the Unfreeze-all target list. FLAG_INSTALLED then has to be folded into
-        // `enabled`, the same way AppInfoMapper and AppRepositoryImpl already do it, or the
-        // package comes back looking ACTIVE instead of FROZEN. One conjunction, one mechanic each:
-        // `info.enabled` is what catches the `pm disable` half (that package *is* installed),
-        // FLAG_INSTALLED is what catches the uninstall half (that package reports enabled == true).
-        val enabled = info.enabled && (info.flags and ApplicationInfo.FLAG_INSTALLED) != 0
+        // Hiding retains FLAG_INSTALLED and enabled=true; legacy user-uninstall freezes retain
+        // enabled=true but clear FLAG_INSTALLED. Both need MATCH_UNINSTALLED_PACKAGES to resolve,
+        // and both must count as frozen in the same way as the app-list mapper/cache.
+        val enabled = info.isEffectivelyEnabled
         val suspended = (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
         // FLAG_SYSTEM alone, never OR'd with FLAG_UPDATED_SYSTEM_APP — that is what isSystem
         // means everywhere else in Thor (AppInfoMapper, RootSystemGateway.setAppDisabled), and
@@ -108,8 +99,9 @@ class AppFreezeStateReader(
          * The query flags any lookup of a possibly-frozen package needs, and the one definition of
          * them.
          *
-         * MATCH_UNINSTALLED_PACKAGES for a package frozen with `pm uninstall --user N`, whose
-         * lookup throws `NameNotFoundException` without it; MATCH_DISABLED_COMPONENTS for one
+         * MATCH_UNINSTALLED_PACKAGES for device-policy-hidden packages and packages frozen with
+         * `pm uninstall --user N`, whose lookup throws `NameNotFoundException` without it;
+         * MATCH_DISABLED_COMPONENTS for one
          * frozen with `pm disable`, which is belt-and-braces rather than load-bearing —
          * `getApplicationInfo` does not filter on the *application's* enabled setting, so a
          * disabled package resolves either way.
@@ -128,9 +120,8 @@ class AppFreezeStateReader(
          * are gated to user apps. One definition, so the next site to need them cannot half-have
          * them.
          *
-         * A caller that resolves an `ApplicationInfo` with these must fold FLAG_INSTALLED into
-         * `enabled`, as [candidateOf] does: the lookup now *succeeds* for a package uninstalled for
-         * this user and reports `enabled == true`, which trades one wrong answer for another.
+         * A caller that resolves an `ApplicationInfo` with these must use [isEffectivelyEnabled],
+         * as [candidateOf] does. Hidden and user-uninstalled packages both report enabled=true.
          */
         const val MATCH_FLAGS =
             PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.MATCH_DISABLED_COMPONENTS

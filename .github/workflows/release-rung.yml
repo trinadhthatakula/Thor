@@ -19,6 +19,13 @@ on:
         description: 'Lane to run when publishing.'
         required: true
         type: string
+      play_already_published_version_code:
+        description: >-
+          Exact version code already promoted manually to Play production.
+          Only beta/production may use this; other versions follow the normal ladder.
+        required: false
+        default: ''
+        type: string
       tag_suffix:
         description: "Appended to v<version-name>. Empty for production."
         required: true
@@ -175,6 +182,19 @@ jobs:
           echo "::notice::versionCode unchanged at ${CODE} — building for verification only, not publishing."
           echo "publish=false" >> "$GITHUB_OUTPUT"
 
+      - name: Select release action
+        id: release_action
+        env:
+          PUBLISH: ${{ steps.gate.outputs.publish }}
+          RUNG: ${{ inputs.rung }}
+          CODE: ${{ steps.ver.outputs.code }}
+          LANE: ${{ inputs.fastlane_lane }}
+          CAPTION_STATUS: ${{ inputs.caption_status }}
+          ALREADY_PUBLISHED_CODE: ${{ inputs.play_already_published_version_code }}
+        run: |
+          .github/scripts/select-release-action.sh "$PUBLISH" "$RUNG" "$CODE" "$LANE" \
+            "$CAPTION_STATUS" "$ALREADY_PUBLISHED_CODE" >> "$GITHUB_OUTPUT"
+
       # Pre-flight, before anything publishes. Bolting this next to the
       # Telegram send would fail a half-published release, because that step
       # sits between the Play action and the GitHub release.
@@ -201,7 +221,7 @@ jobs:
           TELEGRAM: ${{ inputs.telegram }}
           WRAPPER: ${{ inputs.caption_wrapper_units }}
           TITLE_PREFIX: ${{ inputs.title_prefix }}
-          CAPTION_STATUS: ${{ inputs.caption_status }}
+          CAPTION_STATUS: ${{ steps.release_action.outputs.caption_status }}
         run: |
           if [ ! -d "release-notes/v${NAME}" ] && [ ! -d "release-notes/${NAME}" ]; then
             if [ "$REQUIRE_NOTES" = "true" ]; then
@@ -318,6 +338,7 @@ jobs:
           fi
 
       - name: Decode Google Play Service Account
+        if: steps.release_action.outputs.requires_play == 'true'
         env:
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
         run: |
@@ -346,8 +367,16 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
+          RELEASE_LANE: ${{ steps.release_action.outputs.lane }}
+          PLAY_ALREADY_PUBLISHED: ${{ steps.release_action.outputs.play_already_published }}
         run: |
-          bundle exec fastlane android ${{ steps.gate.outputs.publish == 'true' && inputs.fastlane_lane || 'build_release_candidates' }}
+          bundle exec fastlane android "$RELEASE_LANE"
+          if [ "$PLAY_ALREADY_PUBLISHED" = "true" ]; then
+            # This release is already live there from a manual Play promotion.
+            # build_release_candidates never reads or writes Play; it leaves
+            # track.txt blank because no Play action ran in this workflow.
+            printf 'production' > track.txt
+          fi
 
       - name: Prepare Release Notes
         id: prep_notes
@@ -410,7 +439,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TITLE_PREFIX: ${{ inputs.title_prefix }}
-          CAPTION_STATUS: ${{ inputs.caption_status }}
+          CAPTION_STATUS: ${{ steps.release_action.outputs.caption_status }}
           NOTES_PATH: ${{ steps.prep_notes.outputs.telegram_notes_path }}
           REQUIRE_NOTES: ${{ inputs.require_notes }}
         run: |

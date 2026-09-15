@@ -6,6 +6,7 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezeProfileEntity
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.ProfileAssignmentResult
 import com.valhalla.thor.domain.model.normalizeProfileName
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import kotlinx.coroutines.flow.Flow
@@ -57,4 +58,10 @@ class FreezeProfileRepositoryImpl(
 
     override suspend fun delete(profileId: Long) =
         freezeProfileDao.deleteProfile(profileId)
+
+    override suspend fun addApps(
+        profileIds: Set<Long>,
+        packageNames: Set<String>,
+        addToFreezer: Boolean,
+    ): ProfileAssignmentResult = freezeProfileDao.addApps(profileIds, packageNames, addToFreezer)
 }

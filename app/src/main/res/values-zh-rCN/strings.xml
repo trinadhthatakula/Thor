@@ -215,14 +215,13 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">冻结设置</string>
-    <string name="unfreeze_all">全部解冻</string>
-    <string name="unfreeze_all_apps">解冻所有应用</string>
-    <string name="unfreeze_all_apps_desc">启用目前在冻结列表中的所有应用</string>
+    <string name="unfreeze_all">解冻冻结列表中的应用</string>
+    <string name="unfreeze_all_apps">解冻冻结列表中的全部应用</string>
     <string name="auto_freeze">自动冻结</string>
     <string name="auto_freeze_desc">屏幕锁定后自动冻结应用</string>
     <string name="privilege_required_warning">需要权限（Root、Shizuku 或 Dhizuku）</string>
-    <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
-    <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
+    <string name="unfreeze_all_confirmation_title">解冻冻结列表中的应用？</string>
+    <string name="unfreeze_all_confirmation_desc">这将解冻冻结列表中的应用，不包括仅通过配置管理的应用。</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="other">冻结所选的 %1$d 个应用？Thor 因安全原因拦截的应用将被跳过。</item>
     </plurals>
@@ -254,6 +253,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">已冻结 %1$s</string>
     <string name="unfrozen_success">已解冻 %1$s</string>
+    <string name="dhizuku_freeze_failed">无法使用 Dhizuku 冻结此应用。</string>
+    <string name="dhizuku_unfreeze_failed">无法使用 Dhizuku 解冻此应用。</string>
     <string name="added_to_freezer_success">已添加到冻结列表</string>
     <string name="add_to_freezer">添加至冻结室</string>
     <string name="freezer_add_warning_title">添加后会立即冻结</string>
@@ -411,6 +412,8 @@
     <string name="error_downgrade_privilege">降级仅支持特权访问（Root、Shizuku 或 Dhizuku）。</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">支持 Thor</string>
+    <string name="support_already_support">我已经支持 Thor 了</string>
     <string name="support_developer">支持开发者</string>
     <string name="support_developer_desc">支持 Thor 的持续开发</string>
     <string name="support_developer_desc_detailed">Thor 是开源且完全无广告的。如果它对您有所帮助，请考虑支持我的工作：</string>
@@ -479,7 +482,7 @@
     <string name="auto_reinstall">自动重新安装应用</string>
     <string name="auto_reinstall_desc">自动保留 Google Play 商店作为主安装程序，以启用后台更新</string>
     <string name="grant_all_permissions">安装时授予全部权限</string>
-    <string name="grant_all_permissions_desc">应用安装后立即获得其请求的全部权限，不再询问；仅适用于通过 Root、Shizuku 或 Dhizuku 的安装。默认关闭，并且可在安装器中为单次安装临时更改；无论开启与否，更新都会保留你已经授予的权限</string>
+    <string name="grant_all_permissions_desc">通过 Root 或 Shizuku 安装时授予应用请求的运行时权限。默认关闭，可为单次安装更改此选项。更新会保留已授予的权限。</string>
     <string name="grant_all_permissions_install">授予其请求的全部权限</string>
     <string name="legacy_extension_title">检测到旧版扩展</string>
     <string name="legacy_extension_desc">已安装旧版 Stormbringer 扩展（拼写错误为 \"Strombringer\"）。请将其卸载以避免冲突，并安装更新的 Stormbringer 扩展。</string>
@@ -549,7 +552,7 @@
     <string name="add_freezer_to_launcher">添加冻结室到启动器</string>
     <string name="add_freezer_to_launcher_desc">将冻结的应用显示为桌面快捷方式，点击即可启动</string>
     <string name="add_to_home_screen">添加到主屏幕</string>
-    <string name="freeze_all_apps">全部冻结</string>
+    <string name="freeze_all_apps">冻结列表中的全部应用</string>
     <string name="shortcuts">快捷方式</string>
     <string name="shortcut_add_all">添加所有应用</string>
     <string name="shortcut_added_named">已将 %1$s 添加到主屏幕</string>
@@ -597,6 +600,23 @@
     <string name="no_profiles_yet">尚无配置</string>
     <string name="no_profiles_yet_desc">把常一起冻结的应用编为一组，即可一键冻结</string>
     <string name="profile_save_selection">保存为配置</string>
+    <string name="profile_assignment_title">添加到配置</string>
+    <string name="profile_assignment_description">将所选应用添加到每个选定的配置中。</string>
+    <string name="profile_assignment_selected_apps">已选应用：%1$d</string>
+    <string name="profile_assignment_selected_profiles">已选配置：%1$d</string>
+    <string name="profile_assignment_member_count">配置中的应用：%1$d</string>
+    <string name="profile_assignment_overlap">新增：%1$d · 已包含：%2$d</string>
+    <string name="profile_assignment_confirm">添加到所选配置</string>
+    <string name="profile_assignment_result">%1$s：已添加：%2$d · 已包含：%3$d</string>
+    <string name="profile_assignment_skipped">已跳过的应用：%1$d</string>
+    <string name="profile_assignment_no_profiles">没有可用的配置。</string>
+    <string name="profile_assignment_save_failed">无法将应用添加到所选配置。请重试。</string>
+    <string name="profile_assignment_profiles_changed">某个所选配置已不可用。请重新选择配置。</string>
+    <string name="profile_assignment_no_eligible_apps">所选应用均无法添加到这些配置。</string>
+    <string name="profile_assignment_expert_title">添加需要谨慎操作的应用？</string>
+    <string name="profile_assignment_expert_message">部分所选应用被配置冻结后，可能会影响系统功能。仍要添加吗？</string>
+    <string name="profile_assignment_expert_confirm">仍然添加</string>
+    <string name="profile_assignment_all_present">所有所选应用均已包含在所选配置中。</string>
     <string name="profile_delete_title">删除“%1$s”？</string>
     <string name="profile_delete_desc">仅删除该配置。其中的应用保持原状 — 已冻结的仍保持冻结。</string>
     <string name="profile_saved">配置已保存</string>
@@ -629,7 +649,7 @@
     <string name="export_list_empty">此列表中没有可导出的应用</string>
     <string name="export_list_failed">无法保存列表</string>
     <string name="clear_all_caches_requires_usage_access">没有“使用情况访问权限”，Shizuku 无法清除所有应用的缓存。必须告诉 Android 需要释放多少字节，而只有该权限才能测量缓存的大小。请在系统设置中授予 Thor 使用情况访问权限后重试。</string>
-    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku 无法清除缓存。它没有可用于执行 Android 缓存清理的 shell，设备所有者 API 也没有对应的接口。请切换到 Root 或 Shizuku 模式。</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku 无法清除缓存。其设备所有者进程没有 Android 清除缓存所需的权限，设备所有者 API 也没有对应接口。请切换到 Root 或 Shizuku 模式。</string>
 
     <!-- 分类式设置页面 — 参见 values/strings_settings.xml -->
     <string name="settings_category_appearance">外观</string>
@@ -659,7 +679,7 @@
     <string name="settings_summary_restore_interrupted">有一次恢复未完成</string>
     <string name="settings_summary_backup">恢复存档，或更改密码短语</string>
     <string name="settings_summary_unprivileged">需要 Root、Shizuku 或 Dhizuku</string>
-    <string name="settings_summary_customization">字体与应用详情操作</string>
+    <string name="settings_summary_customization">字体与操作布局</string>
 
     <string name="settings_category_customization">自定义</string>
     <string name="customization_fonts">字体</string>
@@ -672,11 +692,16 @@
     <string name="font_preview_numbers">0123456789 · 1.2 GB</string>
     <string name="customization_app_info_actions">应用操作栏</string>
     <string name="customization_app_info_actions_desc">调整应用底部操作栏中按钮的排序与显示状态</string>
+    <string name="customization_app_list_multi_actions">应用列表批量操作</string>
+    <string name="customization_freezer_multi_actions">应用冻结批量操作</string>
+    <string name="customization_multi_actions_desc">选择并排列所选应用的操作。</string>
+    <string name="customization_multi_actions_availability">操作会根据所选应用、权限和可用配置显示。关闭按钮始终可用。</string>
     <string name="customization_drag_hint">拖拽以重新排序 • 开关以显示或隐藏</string>
     <string name="customization_preview_title">操作栏预览</string>
     <string name="reset_to_default">恢复默认设置</string>
     <string name="reset_actions_confirm_title">重置操作顺序？</string>
     <string name="reset_actions_confirm_desc">这将恢复默认顺序并显示所有操作选项。</string>
+    <string name="reset_multi_actions_confirm_desc">要重置此选择工具栏的操作顺序和显示状态吗？其他操作布局将保持不变。</string>
 
     <string name="action_open_desc">启动应用程序</string>
     <string name="action_settings_desc">打开 Android 系统应用设置</string>
@@ -895,4 +920,28 @@
     <string name="task_log_item_busy">已跳过 %1$s，因为另一个操作正在使用它。</string>
     <string name="task_log_item_unknown">无法验证 %1$s 的最终状态。</string>
 
+    <string name="setting_requires_root_or_shizuku">当前模式下不可用。需要 Root 或 Shizuku。</string>
+    <string name="force_stop_unsupported_dhizuku">Dhizuku 无法强行停止应用。请切换到 Root 或 Shizuku。</string>
+    <string name="dhizuku_clear_data_failed">无法通过 Dhizuku 清除此应用的数据。</string>
+    <string name="dhizuku_uninstall_failed">无法通过 Dhizuku 卸载此应用。</string>
+    <string name="profile_assignment_also_freezer">同时添加到冻结列表</string>
+    <string name="profile_assignment_also_freezer_description">将这些应用纳入“全部冻结”，并在开启自动冻结时自动冻结。</string>
+    <string name="profile_assignment_freezer_added">已添加到冻结列表：%1$d</string>
+    <string name="profile_assignment_freezer_load_failed">无法加载冻结列表。请重试。</string>
+    <string name="app_info_profiles_count">配置（%1$d）</string>
+    <string name="app_info_profiles_only">仅通过配置管理</string>
+    <string name="app_info_freezer_and_profiles">在冻结列表和配置中</string>
+    <string name="unfreeze_managed_apps">解冻冻结列表和配置中的应用</string>
+    <string name="unfreeze_managed_apps_desc">恢复冻结列表及所有配置中已冻结的应用。</string>
+    <string name="unfreeze_managed_confirmation_title">解冻冻结列表和配置中的应用？</string>
+    <string name="unfreeze_managed_confirmation_desc">这将解冻冻结列表及所有配置中的应用。</string>
+    <string name="profile_removal_recovery_title">移除前确认</string>
+    <string name="profile_removal_recovery_message">待检查的应用：%1$d。这些应用已冻结，或无法检查其状态，且不在其他配置或冻结列表中。请先解冻；也可以不解冻直接移除，再通过应用列表恢复。移除后，批量恢复和启动器恢复功能也将不再包含这些应用。</string>
+    <string name="profile_removal_unfreeze_continue">解冻并继续</string>
+    <string name="profile_removal_keep_frozen">不解冻直接移除</string>
+    <string name="profile_removal_check_failed">无法检查应用所属的配置或冻结列表。配置尚未更改。请重试。</string>
+    <string name="profile_removal_restore_failed">部分应用无法解冻。配置尚未更改。请重试，或不解冻直接移除。</string>
+    <string name="profile_removal_write_failed">无法保存配置更改。请重试。</string>
+    <string name="profile_removal_profile_changed">此配置已不可用。未保存任何更改。</string>
+    <string name="profile_removal_state_unknown">状态不可用</string>
 </resources>

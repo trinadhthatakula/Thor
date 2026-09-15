@@ -64,6 +64,45 @@ class TaskDetailScreenTest {
     val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun newSuccessfulTaskShowsSupportAndDispatchesItsLocalCallback() {
+        var supportCount = 0
+        setContent(
+            state(TaskLifecyclePhase.SUCCEEDED).copy(completedWhileObserved = true),
+            onSupport = { supportCount++ },
+        )
+
+        rule.onNodeWithTag(TASK_DETAIL_SUPPORT_TAG)
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+        rule.runOnIdle { assertEquals(1, supportCount) }
+    }
+
+    @Test
+    fun completedHistoryDoesNotShowSupportEvenWithAnEligibleCallback() {
+        setContent(state(TaskLifecyclePhase.SUCCEEDED), onSupport = {})
+
+        rule.onNodeWithTag(TASK_DETAIL_SUPPORT_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun partialResultDoesNotShowSupportEvenWithAnEligibleCallback() {
+        setContent(
+            state(TaskLifecyclePhase.PARTIAL).copy(completedWhileObserved = true),
+            onSupport = {},
+        )
+
+        rule.onNodeWithTag(TASK_DETAIL_SUPPORT_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun ineligibleSupporterDoesNotReceiveSuccessInvitation() {
+        setContent(state(TaskLifecyclePhase.SUCCEEDED).copy(completedWhileObserved = true))
+
+        rule.onNodeWithTag(TASK_DETAIL_SUPPORT_TAG).assertDoesNotExist()
+    }
+
+    @Test
     fun navigationDialogKeepsOriginVisibleAndBackgroundReturnsToIt() {
         setNavigationDialogContent()
 
@@ -359,6 +398,7 @@ class TaskDetailScreenTest {
         state: TaskDetailUiState,
         onBackground: () -> Unit = {},
         onAction: (TaskAction) -> Unit = {},
+        onSupport: (() -> Unit)? = null,
     ) {
         rule.setContent {
             MaterialTheme {
@@ -366,6 +406,7 @@ class TaskDetailScreenTest {
                     state = state,
                     onBackground = onBackground,
                     onAction = onAction,
+                    onSupport = onSupport,
                 )
             }
         }

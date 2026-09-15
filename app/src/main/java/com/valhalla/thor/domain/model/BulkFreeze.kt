@@ -10,10 +10,12 @@ enum class BulkOp { FREEZE, UNFREEZE }
 sealed interface BulkScope {
     data object Watchlist : BulkScope
     data class Profile(val id: Long) : BulkScope
+    /** Explicit recovery across both lists; never used to widen a freeze or auto-freeze. */
+    data object ManagedApps : BulkScope
 }
 
 /**
- * Input to target resolution. The scope is intentionally limited to watchlist and profile;
+ * Input to target resolution. Named scopes cover watchlist, profile, and combined recovery;
  * arbitrary selections are passed explicitly to `PrivilegeSweepTargetResolver.resolveSelection`.
  */
 data class BulkRequest(

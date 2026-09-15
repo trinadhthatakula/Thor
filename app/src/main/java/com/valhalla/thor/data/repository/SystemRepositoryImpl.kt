@@ -142,7 +142,7 @@ class SystemRepositoryImpl(
     ): Result<Long?> = withContext(ioDispatcher) {
         if (!activeGatewayResolver.isRootAvailable(execution)) {
             return@withContext Result.failure(
-                Exception("Clearing one app's cache requires Root. Shizuku and Dhizuku can only clear every app's cache at once.")
+                Exception("Clearing one app's cache requires Root. Shizuku can clear caches across the device; Dhizuku cannot clear caches.")
             )
         }
         measuringCacheFreed({ storageStats.cacheBytes(packageName) }) {

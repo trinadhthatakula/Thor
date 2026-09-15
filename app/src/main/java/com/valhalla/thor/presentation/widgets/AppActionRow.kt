@@ -88,7 +88,8 @@ fun AppActionRow(
      * Null is not the only way to get no tile: the action is additionally gated on a privilege mode
      * being active, so a non-null callback still renders nothing on a device with no shell.
      */
-    onBackup: (() -> Unit)? = null
+    onBackup: (() -> Unit)? = null,
+    canForceStop: Boolean = rememberCanForceStopApps(),
 ) {
     val hasPrivilege = isRoot || isShizuku || isDhizuku
     val isFrozen = !appInfo.enabled
@@ -159,7 +160,7 @@ fun AppActionRow(
                     )
                 }
 
-                AppInfoActionId.FORCE_STOP -> if (hasPrivilege && appInfo.enabled) {
+                AppInfoActionId.FORCE_STOP -> if (canForceStop && appInfo.enabled) {
                     ActionItem(
                         icon = R.drawable.force_close,
                         label = stringResource(R.string.action_force_stop),

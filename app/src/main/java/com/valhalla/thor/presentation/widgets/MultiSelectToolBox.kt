@@ -34,6 +34,9 @@ import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
+import androidx.compose.ui.platform.testTag
 
 @Composable
 fun MultiSelectToolBox(
@@ -43,7 +46,11 @@ fun MultiSelectToolBox(
     isShizuku: Boolean = false,
     isDhizuku: Boolean = false,
     onCancel: () -> Unit = {},
-    onMultiAppAction: (MultiAppAction) -> Unit = {}
+    onMultiAppAction: (MultiAppAction) -> Unit = {},
+    canForceStop: Boolean = rememberCanForceStopApps(),
+    onAddToProfiles: (() -> Unit)? = null,
+    actionOrder: List<MultiAppActionId> = MultiAppActionLayout.APP_LIST.defaultOrder,
+    hiddenActions: Set<MultiAppActionId> = emptySet(),
 ) {
     // Pure derivations of `selected`; computed directly in composition so the
     // buttons never lag a frame behind the selection (no stale-state flicker).
@@ -67,87 +74,53 @@ fun MultiSelectToolBox(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Close Action (Leftmost for easy exit)
+            // Exit remains available even when every configurable action is hidden.
             ToolBoxItem(
                 icon = R.drawable.round_close,
                 label = stringResource(R.string.close),
-                onClick = onCancel
+                onClick = onCancel,
+                modifier = Modifier.testTag("app_list_multi_action_close"),
             )
 
-            // ReInstall (Root OR Shizuku OR Dhizuku)
-            if (isRoot || isShizuku || isDhizuku) {
-                ToolBoxItem(
-                    icon = R.drawable.apk_install,
-                    label = stringResource(R.string.action_reinstall),
-                    onClick = { onMultiAppAction(MultiAppAction.ReInstall(selected)) }
-                )
+            val hasPrivilege = isRoot || isShizuku || isDhizuku
+            actionOrder.distinct().filterNot { it in hiddenActions }.forEach { action ->
+                val available = when (action) {
+                    MultiAppActionId.REINSTALL -> hasPrivilege
+                    MultiAppActionId.FREEZE -> hasPrivilege && hasUnFrozen
+                    MultiAppActionId.UNFREEZE -> hasPrivilege && hasFrozen
+                    MultiAppActionId.SUSPEND -> hasPrivilege && hasUnSuspended
+                    MultiAppActionId.UNSUSPEND -> hasPrivilege && hasSuspended
+                    MultiAppActionId.ADD_TO_PROFILES -> onAddToProfiles != null
+                    // uid 2000 cannot clear another app's cache; keep this Root-only.
+                    MultiAppActionId.CLEAR_CACHE -> isRoot
+                    MultiAppActionId.FORCE_STOP -> canForceStop
+                    MultiAppActionId.SHARE, MultiAppActionId.EXPORT, MultiAppActionId.UNINSTALL -> true
+                    MultiAppActionId.SAVE_AS_PROFILE, MultiAppActionId.REMOVE_FROM_FREEZER -> false
+                }
+                if (available) {
+                    ToolBoxItem(
+                        icon = action.defaultIconRes,
+                        label = stringResource(action.titleRes),
+                        modifier = Modifier.testTag("app_list_multi_action_${action.name}"),
+                        onClick = {
+                            when (action) {
+                                MultiAppActionId.REINSTALL -> onMultiAppAction(MultiAppAction.ReInstall(selected))
+                                MultiAppActionId.FREEZE -> onMultiAppAction(MultiAppAction.Freeze(selected))
+                                MultiAppActionId.UNFREEZE -> onMultiAppAction(MultiAppAction.UnFreeze(selected))
+                                MultiAppActionId.SUSPEND -> onMultiAppAction(MultiAppAction.Suspend(selected))
+                                MultiAppActionId.UNSUSPEND -> onMultiAppAction(MultiAppAction.UnSuspend(selected))
+                                MultiAppActionId.ADD_TO_PROFILES -> onAddToProfiles?.invoke()
+                                MultiAppActionId.CLEAR_CACHE -> onMultiAppAction(MultiAppAction.ClearCache(selected))
+                                MultiAppActionId.SHARE -> onMultiAppAction(MultiAppAction.Share(selected))
+                                MultiAppActionId.EXPORT -> onMultiAppAction(MultiAppAction.Backup(selected))
+                                MultiAppActionId.UNINSTALL -> onMultiAppAction(MultiAppAction.Uninstall(selected))
+                                MultiAppActionId.FORCE_STOP -> onMultiAppAction(MultiAppAction.Kill(selected))
+                                MultiAppActionId.SAVE_AS_PROFILE, MultiAppActionId.REMOVE_FROM_FREEZER -> Unit
+                            }
+                        },
+                    )
+                }
             }
-
-            // Freeze/Unfreeze (Root OR Shizuku OR Dhizuku)
-            if (isRoot || isShizuku || isDhizuku) {
-                if (hasUnFrozen) {
-                    ToolBoxItem(
-                        icon = R.drawable.frozen,
-                        label = stringResource(R.string.action_freeze),
-                        onClick = { onMultiAppAction(MultiAppAction.Freeze(selected)) }
-                    )
-                }
-                if (hasFrozen) {
-                    ToolBoxItem(
-                        icon = R.drawable.unfreeze,
-                        label = stringResource(R.string.action_unfreeze),
-                        onClick = { onMultiAppAction(MultiAppAction.UnFreeze(selected)) }
-                    )
-                }
-                if (hasUnSuspended) {
-                    ToolBoxItem(
-                        icon = R.drawable.warning,
-                        label = stringResource(R.string.action_suspend),
-                        onClick = { onMultiAppAction(MultiAppAction.Suspend(selected)) }
-                    )
-                }
-                if (hasSuspended) {
-                    ToolBoxItem(
-                        icon = R.drawable.bolt,
-                        label = stringResource(R.string.action_unsuspend),
-                        onClick = { onMultiAppAction(MultiAppAction.UnSuspend(selected)) }
-                    )
-                }
-            }
-
-            // Root only, unlike everything above it. Per-package cache clearing needs the
-            // signature-level `INTERNAL_DELETE_CACHE_FILES`; Shizuku's uid-2000 call is answered by
-            // PackageManagerService with "silently ignoring", so this button used to report a clean
-            // sweep of the whole selection while freeing nothing. See `AppActionRow`.
-            if (isRoot) {
-                ToolBoxItem(
-                    icon = R.drawable.clear_all,
-                    label = stringResource(R.string.action_cache),
-                    onClick = { onMultiAppAction(MultiAppAction.ClearCache(selected)) }
-                )
-            }
-
-            // Standard Actions
-            ToolBoxItem(
-                icon = R.drawable.share,
-                label = stringResource(R.string.action_share),
-                onClick = { onMultiAppAction(MultiAppAction.Share(selected)) }
-            )
-            ToolBoxItem(
-                icon = R.drawable.storage,
-                label = stringResource(R.string.action_export_selected),
-                onClick = { onMultiAppAction(MultiAppAction.Backup(selected)) }
-            )
-            ToolBoxItem(
-                icon = R.drawable.delete_forever,
-                label = stringResource(R.string.action_uninstall),
-                onClick = { onMultiAppAction(MultiAppAction.Uninstall(selected)) }
-            )
-            ToolBoxItem(
-                icon = R.drawable.danger,
-                label = stringResource(R.string.action_kill),
-                onClick = { onMultiAppAction(MultiAppAction.Kill(selected)) }
-            )
         }
     }
 }
@@ -156,11 +129,12 @@ fun MultiSelectToolBox(
 private fun ToolBoxItem(
     icon: Int,
     label: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
+        modifier = modifier
             .width(72.dp)
             .clip(RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)

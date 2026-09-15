@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.settings.customization
 
 import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -57,6 +58,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
@@ -70,7 +72,6 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.asgard.components.AsgardActionItem
 import com.valhalla.thor.R
-import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.presentation.settings.SettingsIconBox
 import com.valhalla.thor.presentation.settings.SettingsTopBar
 import com.valhalla.thor.presentation.settings.SettingsViewModel
@@ -108,13 +109,57 @@ fun AppInfoActionsCustomizationScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs = state.prefs
 
-    val currentOrder = prefs.appInfoActionsOrder
-    val hiddenActions = prefs.hiddenAppInfoActions
+    ActionsCustomizationEditor(
+        currentOrder = prefs.appInfoActionsOrder.map { action ->
+            CustomizationAction(
+                id = action,
+                key = action.name,
+                titleRes = action.titleRes,
+                defaultIconRes = action.defaultIconRes,
+                descriptionRes = action.descriptionRes,
+            )
+        },
+        hiddenActions = prefs.hiddenAppInfoActions,
+        titleRes = R.string.customization_app_info_actions,
+        onBack = onBack,
+        onOrderChanged = viewModel::setAppInfoActionsOrder,
+        onVisibilityChanged = viewModel::setAppInfoActionVisibility,
+        onReset = viewModel::resetAppInfoActionsCustomization,
+    )
+}
 
+/** Metadata shared by the App Info and multi-app editors without coupling their action catalogs. */
+internal data class CustomizationAction<Id>(
+    val id: Id,
+    val key: String,
+    @StringRes val titleRes: Int,
+    @DrawableRes val defaultIconRes: Int,
+    @StringRes val descriptionRes: Int? = null,
+)
+
+internal data class CustomizationPreviewAction(
+    @StringRes val titleRes: Int,
+    @DrawableRes val defaultIconRes: Int,
+)
+
+/** Keeps drag synchronization, accessible stepping and reset behavior consistent across editors. */
+@Composable
+internal fun <Id> ActionsCustomizationEditor(
+    currentOrder: List<CustomizationAction<Id>>,
+    hiddenActions: Set<Id>,
+    @StringRes titleRes: Int,
+    onBack: () -> Unit,
+    onOrderChanged: (List<Id>) -> Unit,
+    onVisibilityChanged: (Id, Boolean) -> Unit,
+    onReset: () -> Unit,
+    fixedPreviewActions: List<CustomizationPreviewAction> = emptyList(),
+    @StringRes availabilityRes: Int? = null,
+    @StringRes resetDescriptionRes: Int = R.string.reset_actions_confirm_desc,
+) {
     // Seeded rather than left empty and filled by the effect below: an empty first frame renders the
     // list with no rows and the preview with its "all actions are hidden" copy, which flashes past
     // on every entry to the screen.
-    val localActions = remember { mutableStateListOf<AppInfoActionId>().apply { addAll(currentOrder) } }
+    val localActions = remember { mutableStateListOf<CustomizationAction<Id>>().apply { addAll(currentOrder) } }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
@@ -128,13 +173,13 @@ fun AppInfoActionsCustomizationScreen(
     // back where it started writes nothing, `currentOrder` never changes again, and `localActions`
     // stays diverged from what is actually stored until the screen is left. Any later drag then
     // persists that stale snapshot over the change it never applied.
-    var deferredOrder by remember { mutableStateOf<List<AppInfoActionId>?>(null) }
+    var deferredOrder by remember { mutableStateOf<List<CustomizationAction<Id>>?>(null) }
 
     val reorderState = rememberReorderableLazyListState(
         listState = listState,
         onMove = { fromKey, toKey ->
-            val fromIndex = localActions.indexOfFirst { it.name == fromKey }
-            val toIndex = localActions.indexOfFirst { it.name == toKey }
+            val fromIndex = localActions.indexOfFirst { it.key == fromKey }
+            val toIndex = localActions.indexOfFirst { it.key == toKey }
             if (fromIndex != -1 && toIndex != -1 && fromIndex != toIndex) {
                 val item = localActions.removeAt(fromIndex)
                 localActions.add(toIndex, item)
@@ -151,7 +196,7 @@ fun AppInfoActionsCustomizationScreen(
             // visibly snapped back until its own echo returned. A drag that moved nothing never
             // reaches here (`movedDuringGesture`), which is the case the deferral exists for.
             deferredOrder = null
-            viewModel.setAppInfoActionsOrder(localActions.toList())
+            onOrderChanged(localActions.map { it.id })
         }
     )
 
@@ -161,7 +206,7 @@ fun AppInfoActionsCustomizationScreen(
         if (index in localActions.indices && target in localActions.indices) {
             val item = localActions.removeAt(index)
             localActions.add(target, item)
-            viewModel.setAppInfoActionsOrder(localActions.toList())
+            onOrderChanged(localActions.map { it.id })
             haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
             scope.launch { listState.keepIndexVisible(target, revealMarginPx) }
         }
@@ -200,7 +245,7 @@ fun AppInfoActionsCustomizationScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         SettingsTopBar(
-            title = stringResource(R.string.customization_app_info_actions),
+            title = stringResource(titleRes),
             onBack = onBack
         )
 
@@ -245,26 +290,35 @@ fun AppInfoActionsCustomizationScreen(
                         }
                     }
 
-                    // Live Preview Section
+                    availabilityRes?.let { resource ->
+                        Text(
+                            text = stringResource(resource),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
                     ActionRowPreviewCard(
-                        actions = localActions.filterNot { it in hiddenActions }
+                        actions = fixedPreviewActions + localActions
+                            .filterNot { it.id in hiddenActions }
+                            .map { CustomizationPreviewAction(it.titleRes, it.defaultIconRes) }
                     )
                 }
             }
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().testTag("customization_actions_list"),
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 48.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Reorderable action items
                 itemsIndexed(
                     items = localActions,
-                    key = { _, action -> action.name }
+                    key = { _, action -> action.key }
                 ) { index, action ->
-                    val isHidden = action in hiddenActions
-                    val isBeingDragged = reorderState.draggingItemKey == action.name
+                    val isHidden = action.id in hiddenActions
+                    val isBeingDragged = reorderState.draggingItemKey == action.key
 
                     val elevation by animateDpAsState(
                         targetValue = if (isBeingDragged) 12.dp else 0.dp,
@@ -301,7 +355,7 @@ fun AppInfoActionsCustomizationScreen(
                             isBeingDragged = isBeingDragged,
                             reorderState = reorderState,
                             onVisibilityChanged = { visible ->
-                                viewModel.setAppInfoActionVisibility(action, visible)
+                                onVisibilityChanged(action.id, visible)
                             },
                             onMoveUp = { moveBy(index, -1) },
                             onMoveDown = { moveBy(index, 1) }
@@ -323,11 +377,11 @@ fun AppInfoActionsCustomizationScreen(
                 )
             },
             title = { Text(stringResource(R.string.reset_actions_confirm_title)) },
-            text = { Text(stringResource(R.string.reset_actions_confirm_desc)) },
+            text = { Text(stringResource(resetDescriptionRes)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.resetAppInfoActionsCustomization()
+                        onReset()
                         showResetConfirmation = false
                     }
                 ) {
@@ -409,7 +463,7 @@ private suspend fun LazyListState.keepIndexVisible(index: Int, marginPx: Int) {
 
 @Composable
 private fun ActionRowPreviewCard(
-    actions: List<AppInfoActionId>,
+    actions: List<CustomizationPreviewAction>,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -443,6 +497,7 @@ private fun ActionRowPreviewCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
+                    .testTag("customization_actions_preview")
                     .clearAndSetSemantics { contentDescription = spokenOrder },
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Top
@@ -461,8 +516,8 @@ private fun ActionRowPreviewCard(
 }
 
 @Composable
-private fun CustomizableActionItemRow(
-    action: AppInfoActionId,
+private fun <Id> CustomizableActionItemRow(
+    action: CustomizationAction<Id>,
     index: Int,
     totalCount: Int,
     isVisible: Boolean,
@@ -493,6 +548,7 @@ private fun CustomizableActionItemRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(backgroundColor)
+            .testTag("customization_action_${action.key}")
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -504,7 +560,7 @@ private fun CustomizableActionItemRow(
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
-                .dragHandle(action.name, reorderState)
+                .dragHandle(action.key, reorderState)
                 .clearAndSetSemantics { },
             contentAlignment = Alignment.Center
         ) {
@@ -539,13 +595,15 @@ private fun CustomizableActionItemRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = stringResource(action.descriptionRes),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            action.descriptionRes?.let { descriptionRes ->
+                Text(
+                    text = stringResource(descriptionRes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         Spacer(Modifier.width(8.dp))

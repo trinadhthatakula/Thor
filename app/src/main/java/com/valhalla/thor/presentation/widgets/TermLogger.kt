@@ -46,6 +46,8 @@ fun TermLoggerDialog(
     title: UiText,
     logs: List<UiText>,
     isOperationComplete: Boolean,
+    isOperationSuccessful: Boolean = false,
+    onSupport: (() -> Unit)? = null,
     /** A stop has been asked for; the app in flight is still finishing. */
     isStopping: Boolean = false,
     /** Null when the running operation has no coherent halfway point to stop at. */
@@ -73,14 +75,19 @@ fun TermLoggerDialog(
                     title
                 },
                 logs = logs,
-                status = if (isOperationComplete) {
-                    TermLoggerStatus.SUCCESS
-                } else {
-                    TermLoggerStatus.ACTIVE
+                status = when {
+                    !isOperationComplete -> TermLoggerStatus.ACTIVE
+                    isOperationSuccessful -> TermLoggerStatus.SUCCESS
+                    else -> TermLoggerStatus.NEUTRAL
                 },
                 onClose = onDismiss.takeIf { isOperationComplete },
             ) {
                 if (isOperationComplete) {
+                    if (isOperationSuccessful && onSupport != null) {
+                        OutlinedButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.support_thor))
+                        }
+                    }
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier

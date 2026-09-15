@@ -4,6 +4,8 @@
 package com.valhalla.thor.data.source.local.dhizuku
 
 import android.annotation.SuppressLint
+import android.app.admin.DevicePolicyManager
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.IBinder
@@ -11,7 +13,7 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
-import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.isHiddenForUser
 // The enable/disable rung machinery is privilege-agnostic; it lives in the `shizuku` package
 // because that is where it was first needed, and it is imported rather than re-typed here so the
 // two privilege modes cannot drift apart on "did the platform refuse?" — the one question whose
@@ -28,12 +30,9 @@ import com.valhalla.thor.data.source.local.shizuku.firstRungThatSticks
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.shizuku.shellRungResult
 import com.valhalla.thor.data.source.local.thorUserId
-import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
-import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import com.rosan.dhizuku.api.Dhizuku as DhizukuAPI
 import com.valhalla.thor.util.Logger
-import com.valhalla.thor.R
 import java.util.concurrent.TimeUnit
 
 /**
@@ -180,7 +179,8 @@ object DhizukuHelper {
         return try {
             val binder = SystemServiceHelper.getSystemService(serviceName)
             DhizukuAPI.binderWrapper(binder)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Logger.e("DhizukuHelper", "Cannot obtain $serviceName through Dhizuku", e)
             null
         }
     }
@@ -192,7 +192,7 @@ object DhizukuHelper {
             null,
             "asInterface",
             arrayOf(IBinder::class.java),
-            ShizukuBinderWrapper(original)
+            original
         )
     }
 
@@ -201,76 +201,68 @@ object DhizukuHelper {
         return asInterface(className, binder)
     }
 
-    // KILL_BACKGROUND_PROCESSES is satisfied via elevated privilege (Dhizuku device-owner /
-    // shell), not a manifest grant, so the framework permission check is not applicable here.
-    @SuppressLint("MissingPermission")
-    fun forceStopApp(context: Context, packageName: String): Boolean {
-        val pkgs = Packages(context)
-        val userId = pkgs.myUserId
-        // 1. Shell first — and its exit code is not evidence of anything, in either direction.
-        // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so exit 0
-        // says the command parsed, never that a process died. The honest verifier was already
-        // written in this function — `pkgs.isAppStopped`, rung 3 below — and sat unreachable behind
-        // this short-circuit. Do not "simplify" the readback back out.
-        //
-        // **Do not read this rung as the live one.** `execute` runs `am` inside the *Dhizuku* app:
-        // `DhizukuAPI.newProcess` is an AIDL call to `IDhizuku.remoteProcess`, so the child is
-        // spawned by the device-owner app at its own ordinary app uid. AMS gates what that child
-        // then asks for — `ActivityManagerService.forceStopPackage` opens on
-        // `checkCallingPermission(FORCE_STOP_PACKAGES)`, a `signature|privileged` permission that
-        // holding device owner does not confer — so it throws SecurityException,
-        // `ShellCommand.exec` prints that to stderr and leaves its `res` at -1, and `am` exits 255
-        // without `runForceStop` ever reaching its `return 0`. The `&&` below therefore
-        // short-circuits, and `pkgs.isAppStopped` is not called on this rung at all.
-        //
-        // That chain is AOSP-derived rather than measured for `force-stop` itself; its identity
-        // half is measured on device. The same binary at the same Dhizuku uid is recorded further
-        // down this file being refused `am get-current-user` — `Permission Denial … uid=10231`,
-        // exit 255 — which is this exact shape one command over.
-        //
-        // The readback stays anyway: it costs nothing on a rung that short-circuits, and it is the
-        // guard for the one case that would otherwise lie — an exit 0 from a transport that killed
-        // nothing, which is what a ROM or a Dhizuku build that does hold the permission would
-        // produce. Nothing is lost when it never runs, because rung 3 re-reads FLAG_STOPPED
-        // unconditionally: one verifier, reached whichever rung did the work.
-        //
-        // The `newProcess` identity fact lives in [setAppDisabledDetailed]'s **KDoc**, where it is
-        // a caveat — neither of its rungs reaches `PackageManagerService` as uid 2000, which is
-        // precisely why nothing there trusts an exit code — and not in its reflection rung, whose
-        // note says the opposite about *itself*: double-wrapped binder, dead on a Dhizuku-only
-        // device.
-        val result = execute("am force-stop --user $userId $packageName")
-        if (result.first == 0 && pkgs.isAppStopped(packageName)) return true
-
-        // 2. Fallback to reflection, and nothing reads its result any more. All it could ever report
-        // was that the invoke did not throw, which through `asInterface`'s double-wrapped binder is
-        // not a statement about ActivityManagerService at all — fixing rung 1 and leaving
-        // `if (reflectionResult) return true` underneath it would have been the same defect one line
-        // lower. The line is deleted rather than gated because rung 3 already re-reads FLAG_STOPPED
-        // unconditionally: one verifier, reached whichever rung did the work.
-        runCatching {
-            val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE)
-            if (am != null) {
-                Bypass.invoke<Any?>(
-                    am::class.java, am, "forceStopPackage", packageName, userId
-                )
+    /**
+     * Device-owner freeze keeps the APK and app data, but makes the package unavailable.
+     * Dhizuku's app uid cannot disable other packages through pm/IPackageManager. Use its
+     * device-policy binder directly; routing it through Shizuku requires a different service.
+     */
+    fun setAppHidden(context: Context, packageName: String, hidden: Boolean): Boolean {
+        if (Packages(context).getApplicationInfoOrNull(packageName) == null) return false
+        return try {
+            val owner = DhizukuAPI.getOwnerComponent()
+            val manager = devicePolicyManager(context)
+            manager.setApplicationHidden(owner, packageName, hidden)
+            // DPM can report "hidden" for a package that disappeared. Require a fresh package
+            // read too, so absence cannot masquerade as a successful freeze.
+            val verified = manager.isApplicationHidden(owner, packageName) == hidden &&
+                Packages(context).getApplicationInfoOrNull(packageName)?.isHiddenForUser == hidden
+            if (!verified) {
+                Logger.w("DhizukuHelper", "setAppHidden($packageName, hidden=$hidden): state unchanged")
             }
-        }.onFailure {
-            Logger.e(
-                "DhizukuHelper",
-                "forceStopApp reflection failed for $packageName",
-                it
-            )
+            verified
+        } catch (e: Exception) {
+            Logger.e("DhizukuHelper", "setAppHidden($packageName, hidden=$hidden) failed", e)
+            false
         }
+    }
 
-        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
-        if (pkgs.isAppStopped(packageName)) return true
-        runCatching {
-            val am =
-                context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
-            am?.killBackgroundProcesses(packageName)
-        }
-        return pkgs.isAppStopped(packageName)
+    // Intentional hidden-API bridge through :bypass; the public DPM methods keep version-specific
+    // AIDL signatures in the framework. No cached Android service is modified.
+    @SuppressLint("PrivateApi")
+    internal fun devicePolicyManager(context: Context): DevicePolicyManager {
+        val owner = DhizukuAPI.getOwnerComponent()
+        val ownerContext = context.applicationContext.createPackageContext(owner.packageName, 0)
+        val serviceClass = Class.forName("android.app.admin.IDevicePolicyManager")
+        val binder = getSystemService(Context.DEVICE_POLICY_SERVICE)
+            ?: throw IllegalStateException("Device policy service is unavailable through Dhizuku")
+        val service = Bypass.invoke<Any>(
+            Class.forName("android.app.admin.IDevicePolicyManager\$Stub"),
+            null,
+            "asInterface",
+            arrayOf(IBinder::class.java),
+            binder,
+        )
+        // A separate manager avoids changing Android's cached service. Its public methods
+        // handle AIDL signature differences across Android versions. The context must name
+        // the owner because DPM forwards its package name alongside the admin component.
+        val manager = Bypass.newInstance<DevicePolicyManager>(
+            DevicePolicyManager::class.java,
+            arrayOf(Context::class.java, serviceClass),
+            ownerContext,
+            service,
+        )
+        return manager
+    }
+
+    /** Restore legacy system-app freezes through the device-owner API, retaining app data. */
+    fun restoreSystemApp(context: Context, packageName: String): Boolean = try {
+        devicePolicyManager(context).enableSystemApp(DhizukuAPI.getOwnerComponent(), packageName)
+        Packages(context).getApplicationInfoOrNull(packageName)?.let {
+            (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+        } == true
+    } catch (e: Exception) {
+        Logger.e("DhizukuHelper", "restoreSystemApp($packageName) failed", e)
+        false
     }
 
     /**
@@ -299,9 +291,8 @@ object DhizukuHelper {
      * needed. Two copies of "did the platform refuse?" is exactly how the two privilege modes would
      * drift apart on the one decision that can cost a user their data.
      *
-     * What is deliberately *not* shared is which rungs may report a refusal at all. Only the shell
-     * rung may here — see the reflection rung's own note for why its exceptions describe a
-     * transport rather than a policy.
+     * Only the shell rung may authorize policy-refusal escalation. A generic reflection failure
+     * can still originate in transport setup rather than the platform's package policy.
      *
      * **Whose identity these rungs run as is not shell's.** `DhizukuAPI.newProcess` spawns `pm`
      * inside the device-owner app, and the reflection rung goes through the same app's binder
@@ -370,21 +361,8 @@ object DhizukuHelper {
                     "setAppDisabled fallback reflection failed for $packageName (disabled=$disabled)",
                     e
                 )
-                // FAILED however loudly it throws, and unlike its Shizuku twin — for the same reason
-                // the unprivileged rung below is FAILED. This rung does not reach
-                // PackageManagerService as the device owner: `asInterface` double-wraps the binder,
-                // Dhizuku's own wrapper and then `ShizukuBinderWrapper` on top of it, so on a
-                // Dhizuku-only device the call dies in a transport that belongs to a privilege mode
-                // the user has not set up. Some of those deaths *are* SecurityExceptions, and
-                // reading one as "PackageManagerService refuses this device" would hand
-                // `uninstallFreezeFallbackAllowed` a green light for `pm uninstall -k` on the
-                // strength of Shizuku not being installed.
-                //
-                // Nothing diagnostic is lost. A genuine refusal of the device-owner identity shows
-                // up one rung earlier — the shell rung runs `pm` inside the device-owner app via
-                // DhizukuAPI.newProcess, so PMS's SecurityException reaches us as `pm`'s own output
-                // and a non-zero exit — and `firstRungThatSticks` keeps that refusal sticky for the
-                // rest of the chain.
+                // A Binder or reflection failure is not evidence authorizing a destructive
+                // fallback. The shell rung separately records explicit platform refusals.
                 RungResult.FAILED
             }
         }
@@ -405,14 +383,7 @@ object DhizukuHelper {
             }.getOrElse { RungResult.FAILED }
         }
 
-        // Shell first, the order Dhizuku has always used. Shizuku's freeze path flips to
-        // reflection-first for the reason `EnableRungOrder` gives, which is not about identity:
-        // both of its rungs reach PackageManagerService as the same uid, and so do both of these.
-        // What it buys there is skipping a `pm` round trip — ordinary userspace an OEM is free to
-        // modify or lock down — in favour of a call that names its target state and its caller
-        // explicitly. That argument transfers here unchanged, so the order is kept only because
-        // flipping it would be a behaviour change with nothing measured behind it and no Dhizuku
-        // device to measure on.
+        // Keep the established recovery order; each rung still needs a package-state readback.
         val ordered = listOf(shellRung, reflectionRung, unprivilegedRung)
 
         // `Packages.isAppDisabled` folds FLAG_INSTALLED into `enabled`, so a package already frozen
@@ -454,21 +425,12 @@ object DhizukuHelper {
     // Even where the shell call is permitted it answers the wrong question, and no cache is needed
     // for the answer that replaces it; both reasons are in [thorUserId]'s KDoc.
 
-    /**
-     * The user-facing "uninstall this app" action: removes [packageName] for the current user
-     * **and its data with it**, which is what somebody who asked to uninstall an app wants.
-     *
-     * No `-k` here, deliberately. [freezeSystemAppForUser] is the one that keeps the data, and the
-     * two are separate functions precisely so neither flag can drift onto the other path. Until
-     * this change they were the same function: the system-app freeze called *this* one, so every
-     * Dhizuku freeze of a preinstalled app destroyed its data, on every release, silently.
-     *
-     * Returns what `pm` said rather than a Boolean. The exit code is reported, never judged — the
-     * caller re-reads FLAG_INSTALLED, because `pm uninstall` is not a reliable narrator of whether
-     * the package is still installed for this user in either direction.
-     */
-    fun uninstallApp(packageName: String): SystemAppRemovalOutcome =
-        removeForUser(packageName, keepData = false)
+    /** Removes only the current user's app, awaiting the owner installer's actual result. */
+    suspend fun uninstallApp(
+        context: Context,
+        packageName: String,
+        timeoutMillis: Long = OWNER_OPERATION_TIMEOUT_MS,
+    ): SystemAppRemovalOutcome = uninstallWithDeviceOwner(context, packageName, timeoutMillis)
 
     /**
      * Removes a **preinstalled** app for the current user *without* deleting its data — the last
@@ -508,14 +470,7 @@ object DhizukuHelper {
     fun freezeSystemAppForUser(packageName: String): SystemAppRemovalOutcome =
         removeForUser(packageName, keepData = true)
 
-    /**
-     * The one `pm uninstall` invocation, with the one flag that separates the two callers above.
-     *
-     * Shared rather than duplicated so the two paths cannot drift in anything *but* [keepData] —
-     * the parameter has no default for the same reason. Nothing here interprets the result: both
-     * callers re-read the package state, since the exit code lies in both directions (`pm` can exit
-     * 0 having changed nothing, and can exit non-zero having done the work).
-     */
+    /** Legacy data-preserving system-app removal; user-facing uninstall uses PackageInstaller. */
     private fun removeForUser(packageName: String, keepData: Boolean): SystemAppRemovalOutcome = try {
         val currentUser = thorUserId
         val keepDataFlag = if (keepData) "-k " else ""
@@ -615,7 +570,7 @@ object DhizukuHelper {
                 // Give the readers a bounded window to drain, then stop waiting on them.
                 outThread.join(READER_JOIN_TIMEOUT_MS)
                 errThread.join(READER_JOIN_TIMEOUT_MS)
-                exitCode to (output.get().ifBlank { error.get() })
+                exitCode to combineProcessOutput(output.get(), error.get())
             } else {
                 timedOut = true
                 Logger.e(
@@ -634,9 +589,11 @@ object DhizukuHelper {
                 errThread.join(READER_JOIN_TIMEOUT_MS)
                 // Readers are already free; now request the (possibly slow) forcible kill.
                 runCatching { process.destroyForcibly() }
-                -1 to "Command timed out after ${EXECUTE_TIMEOUT_MS}ms".let { msg ->
-                    output.get().ifBlank { error.get() }.ifBlank { msg }
-                }
+                -1 to combineProcessOutput(
+                    output.get(),
+                    error.get(),
+                    "Command timed out after ${EXECUTE_TIMEOUT_MS}ms",
+                )
             }
         } finally {
             // Always tear the process down (idempotent even if already destroyed on timeout).
@@ -652,359 +609,74 @@ object DhizukuHelper {
         -1 to err.stackTraceToString()
     }
 
-    /**
-     * Wipes [packageName]'s data **for [thorUserId]** — `pm clear` first, then a hidden-API
-     * `IPackageManager` call.
-     *
-     * **A `true` from this function comes from the shell rung or from nowhere.** `pm clear` blocks
-     * on its own observer inside
-     * `PackageManagerShellCommand` and exits non-zero when the wipe fails, so it can be believed;
-     * the reflection rung below can not be, and no longer says otherwise. It used to return `true`
-     * whenever the invoke did not throw, which for the single most destructive operation Thor
-     * performs meant the user was told their data was gone on the strength of a binder call that,
-     * on a Dhizuku-only device, never reached PackageManagerService.
-     *
-     * Reporting failure here is the conservative direction: clearing data twice costs nothing, so a
-     * user who retries loses nothing, while a false "done" loses them the chance to try a privilege
-     * mode that would have worked.
-     */
-    // PrivateApi: hidden-API reflection is intentional — the core privilege mechanism, guarded by
-    // the :bypass VMRuntime unseal.
-    @SuppressLint("PrivateApi")
-    fun clearAppData(packageName: String): Boolean {
-        // 1. Try shell first, naming the same user the reflection rung below hands to
-        // clearApplicationUserData. `pm clear` with no `--user` seeds USER_SYSTEM, so from a work
-        // profile this rung wiped the primary user's copy and exited 0 — and the reflection rung
-        // that would have targeted the right user never ran.
-        val result = execute(clearAppDataCommand(packageName.escapeForShell(), thorUserId))
-        if (result.first == 0) return true
-
-        // 2. Fallback to reflection — issued, and deliberately never believed.
-        // `clearApplicationUserData` returns
-        // `void`, so the verdict only ever arrives on the `IPackageDataObserver` that is `null`
-        // here, and `asInterface`'s double-wrapped binder means that on a Dhizuku-only device the
-        // call dies in a Shizuku transport before PackageManagerService sees it — the argument
-        // [setAppDisabledDetailed]'s reflection rung records in full. This rung therefore reported
-        // "your data is gone" for a call that could not have deleted anything, unconditionally, on
-        // every release.
-        //
-        // The call stays because on a device that also has Shizuku it may genuinely run; only the
-        // claim is withdrawn. An observer is not wired up in its place: on the device this rung
-        // actually runs on the call never reaches PackageManagerService, so a real observer would
-        // buy one guaranteed 15-second timeout per package — an always-red answer that teaches the
-        // user nothing. Honest and fast beats verified and impossible. If the transport is ever
-        // fixed, *that* is the change that earns an observer here.
-        return runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
-            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
-            Bypass.invoke<Any?>(
-                pm.javaClass,
-                pm,
-                "clearApplicationUserData",
-                arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
-                packageName,
-                null,
-                thorUserId
-            )
-            Logger.w(
-                "DhizukuHelper",
-                "clearAppData($packageName): the reflection rung was issued but can confirm nothing, " +
-                    "so it reports failure — `pm clear` above is the only rung that can wipe this data"
-            )
-            false
-        }.getOrElse { false }
-    }
-
-    /**
-     * Suspends or unsuspends [packageName], reporting success only when a readback agrees.
-     *
-     * Dhizuku is the one privilege mode with **no suspender readback at all**. `dumpsys package` is
-     * gated on `android.permission.DUMP` (`PackageManagerService.dump` →
-     * `DumpUtils.checkDumpAndUsageStatsPermission`, android-16 `PackageManagerService.java:6689`)
-     * and Dhizuku's commands run as the device-owner app rather than as shell, so there is no
-     * process here that may dump and nothing for
-     * [com.valhalla.thor.domain.model.parseSuspendingPackages] to parse. Do not add one: a dump this
-     * process is allowed to take does not exist, and a fabricated "verification" that always says
-     * yes is worse than none.
-     *
-     * What this process *can* read is `ApplicationInfo.FLAG_SUSPENDED`, and for the direction that
-     * strands apps that is enough. From API 30 on, `PackageSettingBase.removeSuspension(callingPackage)`
-     * (android-11.0.0_r1 `PackageSettingBase.java:443-452`, carried into `SuspendPackageHelper` on
-     * 13-16) removes only the caller's own entry and leaves `suspended` true while anybody else's
-     * remains — so a flag that is *still set* after an unsuspend is exactly the "another privilege
-     * owns this suspension" signal. We cannot name the owner without DUMP, but we can refuse to
-     * claim we lifted it.
-     *
-     * Every success exit is therefore gated on that flag, and an unreadable flag fails **closed**.
-     * Both of the paths this replaces reported success without ever looking:
-     * - `pm unsuspend` exits 0 even when it changed nothing. Lifting a suspension you do not own
-     *   leaves `oldSuspendParams == null == newSuspendParams` → `changed == false`, which the
-     *   platform logs as "No change is needed" and omits from the returned failure array, so the
-     *   command, the reflection call and every caller above them all read success.
-     * - the final PM re-query defaulted an unresolvable `ApplicationInfo` to "not suspended", which
-     *   on the unsuspend path reads as "it worked".
-     *
-     * Known limit, unfixable without DUMP: `FLAG_SUSPENDED` is the *aggregate* state, not our own
-     * entry in it. On the suspend direction a pre-existing foreign suspension therefore satisfies
-     * the readback even if our own call did nothing. That errs toward the state the user asked for;
-     * the unsuspend direction, the one that leaves an app permanently unusable, errs closed.
-     */
-    // PrivateApi: hidden-API reflection is intentional — the core privilege mechanism, guarded by
-    // the :bypass VMRuntime unseal.
-    @SuppressLint("PrivateApi")
-    fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
-        val pkgs = Packages(context)
-        pkgs.getApplicationInfoOrNull(packageName) ?: return false
-        val userId = pkgs.myUserId
-
-        // The suspended state the platform reports *now*, or null when the ApplicationInfo cannot
-        // be read. null is deliberately not false — "I could not read it" collapsing into "not
-        // suspended" is precisely how an unsuspend that did nothing used to report success. Same
-        // shape as RootSystemGateway.readEffectivelyEnabled.
-        fun readSuspended(): Boolean? = pkgs.getApplicationInfoOrNull(packageName)?.run {
-            (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
-        }
-
-        // Unknown compares equal to neither true nor false, so an unreadable flag is "not verified"
-        // in both directions. Re-querying PackageManager is sound even though the mutation happened
-        // in another process: PMS invalidates the app-side ApplicationInfo cache as part of the same
-        // commit, so it is already stale-free by the time the call that changed it returns.
-        fun verified(): Boolean = readSuspended() == suspended
-
-        // 1. Try shell first
-        val command = if (suspended) {
-            "pm suspend --user $userId $packageName"
-        } else {
-            "pm unsuspend --user $userId $packageName"
-        }
-        val shellResult = execute(command)
-        if (shellResult.first != 0) {
-            Logger.w(
-                "DhizukuHelper",
-                "'$command' exited ${shellResult.first}: ${shellResult.second}"
-            )
-        }
-        // Checked even on a non-zero exit, and it is the *only* thing checked on a zero one: the
-        // goal is the state, not the exit code. `pm unsuspend` exits 0 when it changed nothing, and
-        // a command that failed on an app already in the requested state left nothing to do.
-        if (verified()) return true
-
-        // 2. Fallback to reflection
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            runCatching {
-                // Thrown rather than returned: an unreachable IPackageManager is a diagnosable
-                // failure, and the onFailure below is the only place it gets said out loud.
-                val pm = asInterface("android.content.pm.IPackageManager", "package")
-                    ?: throw IllegalStateException("IPackageManager is unreachable through Dhizuku")
-                val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
-                val dialogInfo = if (suspended) buildSuspendDialogInfo(context) else null
-                val failed = callSetPackagesSuspended(
-                    pm = pm,
-                    dialogInfoClass = dialogInfoClass,
-                    packageName = packageName,
-                    suspended = suspended,
-                    dialogInfo = dialogInfo,
-                    caller = BuildConfig.APPLICATION_ID,
-                    userId = userId
-                )
-                // Logged, never trusted: see callSetPackagesSuspended on why an empty array is not
-                // a success signal. The verified() below is what decides.
-                if (failed?.contains(packageName) == true) {
-                    Logger.w(
-                        "DhizukuHelper",
-                        "setPackagesSuspendedAsUser reported $packageName in its failure list"
-                    )
-                }
-            }.onFailure {
-                Logger.e("DhizukuHelper", "setAppSuspended reflection failed for $packageName", it)
-            }
-
-            if (verified()) return true
-        }
-
-        // 3. Neither path could be confirmed. Report the failure instead of inventing a success:
-        // the caller turns this into a Result.failure the user actually sees.
-        Logger.w(
-            "DhizukuHelper",
-            "setAppSuspended($packageName, suspended=$suspended) unconfirmed — FLAG_SUSPENDED reads " +
-                "${readSuspended()}. From API 30 a suspension can only be lifted by the identity that " +
-                "recorded it, and without DUMP this process cannot read which identity that is: the " +
-                "shell rung's `pm` names $SHELL_SUSPENDER_IDENTITY, the reflection rung names " +
-                "${BuildConfig.APPLICATION_ID}, and neither is confirmed against what the platform " +
-                "actually recorded. A suspension recorded by Thor's root mode needs root mode to clear it."
-        )
-        return false
-    }
-
-    /**
-     * Invokes whichever `IPackageManager.setPackagesSuspendedAsUser` overload this platform has, and
-     * returns the packages it claims it could **not** change.
-     *
-     * Newest first, because each signature *replaced* its predecessor rather than joining it: only
-     * one exists on any given device, so a wrong guess throws `NoSuchMethodException` instead of
-     * mis-dispatching.
-     * - **API 35+ (9 args)** — the `UserPackage` rework split the single `userId` into
-     *   `suspendingUserId` (the user the *suspending* package lives in) and `targetUserId`. This
-     *   lookup was absent, so on 35+ both of the attempts below missed and the entire reflection
-     *   fallback was dead code that could only ever return "failed".
-     * - **API 33-34 (8 args)** — adds the `flags` argument that carries `FLAG_SUSPEND_QUARANTINED`.
-     * - **API 29-32 (7 args)** — the original `SuspendDialogInfo` form.
-     *
-     * **An empty return is not proof of success.** Naming a `callingPackage` that owns no entry for
-     * the package leaves `oldSuspendParams == null == newSuspendParams`, so nothing changed, nothing
-     * failed, and the package appears in neither list. Only a `FLAG_SUSPENDED` readback settles it.
-     */
-    @SuppressLint("PrivateApi")
-    private fun callSetPackagesSuspended(
-        pm: Any,
-        dialogInfoClass: Class<*>,
+    /** The public owner API supplies a real completion callback; issuing the request is not success. */
+    suspend fun clearAppData(
+        context: Context,
         packageName: String,
-        suspended: Boolean,
-        dialogInfo: Any?,
-        caller: String,
-        userId: Int
-    ): Array<String>? {
-        try {
-            // Android 15+ (API 35+): 9 args
-            return Bypass.invoke<Array<String>?>(
-                pm.javaClass, pm, "setPackagesSuspendedAsUser",
-                arrayOf(
-                    Array<String>::class.java,
-                    Boolean::class.javaPrimitiveType!!,
-                    android.os.PersistableBundle::class.java,
-                    android.os.PersistableBundle::class.java,
-                    dialogInfoClass,
-                    Int::class.javaPrimitiveType!!,   // flags
-                    String::class.java,               // callingPackage
-                    Int::class.javaPrimitiveType!!,   // suspendingUserId
-                    Int::class.javaPrimitiveType!!    // targetUserId
-                ),
-                arrayOf(packageName),
-                suspended,
-                null, null,
-                dialogInfo,
-                0,
-                caller,
-                userId,
-                userId
-            )
-        } catch (_: NoSuchMethodException) {
-            Logger.d("DhizukuHelper", "No 9-arg setPackagesSuspendedAsUser on this platform")
-        }
-
-        try {
-            // Android 13-14 (API 33-34): 8 args
-            return Bypass.invoke<Array<String>?>(
-                pm.javaClass, pm, "setPackagesSuspendedAsUser",
-                arrayOf(
-                    Array<String>::class.java,
-                    Boolean::class.javaPrimitiveType!!,
-                    android.os.PersistableBundle::class.java,
-                    android.os.PersistableBundle::class.java,
-                    dialogInfoClass,
-                    Int::class.javaPrimitiveType!!,   // flags
-                    String::class.java,               // callingPackage
-                    Int::class.javaPrimitiveType!!    // userId
-                ),
-                arrayOf(packageName),
-                suspended,
-                null, null,
-                dialogInfo,
-                0,
-                caller,
-                userId
-            )
-        } catch (_: NoSuchMethodException) {
-            Logger.d("DhizukuHelper", "No 8-arg setPackagesSuspendedAsUser on this platform")
-        }
-
-        // Android 10-12 (API 29-32): 7 args. Last resort, so a miss here propagates rather than
-        // being swallowed — the caller logs it and the readback fails the operation anyway.
-        return Bypass.invoke<Array<String>?>(
-            pm.javaClass, pm, "setPackagesSuspendedAsUser",
-            arrayOf(
-                Array<String>::class.java,
-                Boolean::class.javaPrimitiveType!!,
-                android.os.PersistableBundle::class.java,
-                android.os.PersistableBundle::class.java,
-                dialogInfoClass,
-                String::class.java,               // callingPackage
-                Int::class.javaPrimitiveType!!    // userId
-            ),
-            arrayOf(packageName),
-            suspended,
-            null, null,
-            dialogInfo,
-            caller,
-            userId
-        )
+        timeoutMillis: Long = OWNER_OPERATION_TIMEOUT_MS,
+    ): Boolean {
+        return awaitPackageOperation<Boolean>(packageName, timeoutMillis) { completed ->
+            devicePolicyManager(context).clearApplicationUserData(
+                DhizukuAPI.getOwnerComponent(),
+                packageName,
+                java.util.concurrent.Executor { it.run() },
+            ) { clearedPackage, succeeded -> completed(clearedPackage, succeeded) }
+        } == true
     }
 
-    /**
-     * Thor's custom text for the system's "app is paused" dialog, or null to let the system use its
-     * own default.
-     *
-     * Null is a fully supported argument to `setPackagesSuspendedAsUser`, so a dialog that cannot be
-     * assembled must not take the suspension down with it — which is exactly what it used to do:
-     * [Bypass.invoke]'s vararg form resolves the overload from the runtime type of the argument, and
-     * `SuspendDialogInfo.Builder.setTitle(String)` only exists from API 31 (the API 29 overload takes
-     * a `@StringRes int`). On API 29-30 that lookup threw `NoSuchMethodException` out of the caller's
-     * `runCatching` and killed the whole reflection path before it ever reached the suspend call.
-     *
-     * The `@StringRes int` overloads are deliberately not used as a pre-31 fallback: the system's
-     * `SuspendedAppActivity` resolves such an id against the resources of whichever package the
-     * platform *recorded* as the suspender. This helper's only caller is [setAppSuspended]'s
-     * reflection rung, which names `BuildConfig.APPLICATION_ID`, so the id would ordinarily land on
-     * Thor's own resources — but Dhizuku is the one privilege mode that cannot read the suspension
-     * record back at all (no `DUMP`; see [setAppSuspended]), so "ordinarily" is the strongest claim
-     * this file can make about where it lands. A literal string is right whoever renders it, and a
-     * missing title is better than a wrong one. (`com.android.shell` is
-     * `Shizuku.buildSuspendDialogInfo`'s answer, where the caller really is shell uid 2000; it does
-     * not transfer here.)
-     */
-    @SuppressLint("PrivateApi")
-    private fun buildSuspendDialogInfo(context: Context): Any? = runCatching {
-        val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
-        val builder = Bypass.newInstance<Any>(builderClass)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            val title = context.getString(R.string.suspended_app_dialog_title)
-            Bypass.invoke<Any>(builderClass, builder, "setTitle", title)
-        }
-        // setMessage(String) exists from API 29, and this is only reached on Q+.
-        val message = context.getString(R.string.suspended_app_dialog_message)
-        Bypass.invoke<Any>(builderClass, builder, "setMessage", message)
-        Bypass.invoke<Any>(builderClass, builder, "build")
-    }.onFailure {
-        // Warn rather than swallow: this failing silently is why dialogInfo was always null.
-        Logger.w(
-            "DhizukuHelper",
-            "SuspendDialogInfo unavailable, falling back to the system's default dialog: $it"
+    /** Device-owner suspension is supported from API 24, including Thor's API 28 minimum. */
+    fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean = try {
+        val packages = Packages(context)
+        requireNotNull(packages.getApplicationInfoOrNull(packageName)) { "Package $packageName is unavailable" }
+        val failed = devicePolicyManager(context).setPackagesSuspended(
+            DhizukuAPI.getOwnerComponent(), arrayOf(packageName), suspended,
         )
-    }.getOrNull()
+        fun verified(): Boolean = packages.getApplicationInfoOrNull(packageName)?.let {
+            (it.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED != 0) == suspended
+        } == true
+        if (packageName in failed) {
+            false
+        } else if (verified()) {
+            true
+        } else if (!suspended) {
+            // Older Thor versions recorded suspension via pm as com.android.shell. Only lift that
+            // legacy entry when DPM has removed the owner's entry but the aggregate flag remains.
+            execute("pm unsuspend --user $thorUserId ${packageName.escapeForShell()}")
+            verified()
+        } else {
+            false
+        }
+    } catch (e: Exception) {
+        Logger.e("DhizukuHelper", "setAppSuspended($packageName, suspended=$suspended) failed", e)
+        false
+    }
 
-    /**
-     * Restricts or unrestricts background execution for [packageName], for the user Thor runs as.
-     *
-     * The `--user` the shell rung now carries is not the `pm` story told elsewhere in this file:
-     * nothing here defaults to user 0 and nothing here fans out to all users.
-     * `AppOpsService.Shell.parseUserPackageOp` seeds `UserHandle.USER_CURRENT` and resolves it with
-     * `ActivityManager.getCurrentUser()` — evaluated inside system_server — so the bare command
-     * targeted the **globally foreground user**, which is neither the caller's user nor user 0. On a
-     * managed profile the foreground user is the parent, so a restriction set from the work profile
-     * landed on the personal profile's copy; in a Xiaomi Second Space the space you switched into
-     * *is* foreground, so the same command happened to be right. The defect was therefore the
-     * dependence on foreground state, not a fixed wrong target, and it could differ between one call
-     * and the next while Thor stayed alive.
-     *
-     * The reflection rung below never had the problem: it resolves the op against the package's own
-     * uid, which carries the user in its high bits, so it was already per-user. The two rungs now
-     * agree on which app op they are setting for whom.
-     *
-     * Both are also read back now, with `IAppOpsService.checkOperation`, and the two rungs treat an
-     * *unreadable* readback differently on purpose — see [readBackgroundMode]. The shell rung's own
-     * report is already honest, so an unreadable readback leaves it standing; the reflection rung's
-     * never was, so an unreadable readback leaves it with nothing to stand on.
-     */
+    /** Policy grants are checked separately from the app's effective runtime grant. */
+    fun setRuntimePermission(
+        context: Context,
+        packageName: String,
+        permissionName: String,
+        granted: Boolean,
+    ): Boolean = try {
+        val manager = devicePolicyManager(context)
+        val owner = DhizukuAPI.getOwnerComponent()
+        val state = if (granted) DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
+            else DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED
+        setAndVerifyPermissionState(
+            granted = granted,
+            setPolicy = { manager.setPermissionGrantState(owner, packageName, permissionName, state) },
+            readPolicyMatches = { manager.getPermissionGrantState(owner, packageName, permissionName) == state },
+            readGranted = {
+                context.packageManager.checkPermission(permissionName, packageName) ==
+                    PackageManager.PERMISSION_GRANTED
+            },
+        )
+    } catch (e: Exception) {
+        Logger.e("DhizukuHelper", "setRuntimePermission($packageName, $permissionName, $granted) failed", e)
+        false
+    }
+
+    /** Require the effective app-op to match, including any overriding UID-level policy. */
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
         // One expression for the mode both rungs write and the readback compares against, so a
         // future edit cannot set one thing and check for another. `allow` is `MODE_ALLOWED` and not
@@ -1017,17 +689,12 @@ object DhizukuHelper {
             android.app.AppOpsManager.MODE_ALLOWED
         }
 
-        // 1. Try shell first. Unlike the other shell rungs in this file this one is not a liar:
-        // `appops set` returns -1 for an unknown package or op, so a 0 is a real statement about a
-        // real op. The readback is added on top of that rather than in place of it, which is why an
-        // unreadable readback must not sink it — turning "I could not check" into a reported failure
-        // here would be a regression, unlike at the clear-data sites where fail-closed is right.
         val result = execute(
             backgroundRestrictionCommand(packageName.escapeForShell(), thorUserId, restricted)
         )
         if (result.first == 0) {
             val mode = readBackgroundMode(context, packageName)
-            if (mode == null || mode == expectedMode) return true
+            if (mode == expectedMode) return true
             Logger.w(
                 "DhizukuHelper",
                 "setAppRestricted($packageName, restricted=$restricted): `appops set` exited 0 but " +
@@ -1035,15 +702,7 @@ object DhizukuHelper {
             )
         }
 
-        // 2. Fallback to reflection. The call is kept for the reason [clearAppData]'s rung 2 keeps
-        // its own — `asInterface` double-wraps the binder, so on a Dhizuku-only device this dies in
-        // a Shizuku transport, but on a device that also has Shizuku it may genuinely run. What is
-        // refused is this rung's *self-report*: "the invoke did not throw" is not a mode. Unlike
-        // clearAppData, an app op can actually be read back, so this rung reports
-        // what `checkOperation` says rather than a flat `false` — a state the platform confirms is
-        // not a lie, and answering `false` over a confirmed change would strand the user retrying an
-        // operation that already worked. An unreadable readback still means `false` here, because
-        // there is nothing else left to believe.
+        // Set only the package mode: clearing a UID override would also affect sibling apps.
         return runCatching {
             val appops =
                 asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
@@ -1084,70 +743,45 @@ object DhizukuHelper {
         "android:run_any_in_background"
     )
 
-    /**
-     * The mode `IAppOpsService` reports for [packageName]'s RUN_ANY_IN_BACKGROUND op right now, or
-     * `null` for "could not read it".
-     *
-     * `null` is deliberately not "some other mode": the two callers in [setAppRestricted] treat them
-     * differently, and collapsing them is exactly how a readback stops being a verifier and becomes
-     * a second failure mode.
-     *
-     * **Expected to answer `null` on a Dhizuku-only device, and that is not a defect.** This rides
-     * the same double-wrapped binder as the reflection rung — `asInterface` puts
-     * `ShizukuBinderWrapper` on top of Dhizuku's own wrapper — so where that rung is dead this is
-     * dead with it.
-     *
-     * What a `null` costs depends on which rung asked, and the two are opposites:
-     * - **Shell rung** — not load-bearing. `appops set` exits non-zero for an unknown package or
-     *   op, so that rung's own report is already honest and a `null` leaves it standing. This
-     *   readback can only *add* confirmation there, which is what makes failing open safe rather
-     *   than optimistic.
-     * - **Reflection rung** — the sole verdict. "The invoke did not throw" is not a mode, so with
-     *   no readback there is nothing left to believe and a `null` forces `false` — which is what
-     *   that rung's own comment says. Fail-closed, as at the clear-data sites.
-     *
-     * **Known blind spot: a uid-level mode hides the package-level one this asks about.**
-     * `AppOpsService.checkOperationUnchecked` consults
-     * `mAppOpsCheckingService.getUidMode(uidState.uid, persistentDeviceId, code)` first and returns
-     * straight away whenever that differs from `AppOpsManager.opToDefaultMode(code)` — before the
-     * package entry is consulted at all. Both write paths in [setAppRestricted] are *package*-level
-     * (`appops set <pkg>` and `IAppOpsService.setMode(op, uid, packageName, mode)`), so wherever a
-     * uid-level mode exists for `OP_RUN_ANY_IN_BACKGROUND` this reports something unrelated to
-     * whether the write landed. `checkOperationRaw` is not the fix: it drops `evalMode`, not the
-     * uid short-circuit. The mechanism is AOSP-verified; what is *not* established is that anything
-     * writes this op at uid level — Settings' Battery ▸ Restricted uses the package-level form — so
-     * this is a known blind spot rather than an observed bug.
-     *
-     * `checkOperation(int, int, String)` is the signature this project has *not* verified across
-     * 28..37 — it has been stable in `IAppOpsService` for as long as anyone has needed it, but that
-     * is a recollection and not a measurement. A drifted signature arrives as a
-     * `NoSuchMethodException`, which lands here as `null` and therefore costs nothing, and that is
-     * the whole reason the uncertainty is tolerable instead of blocking.
-     */
-    // The type argument is spelled out because the block has two exits of different types — an early
-    // `null` and an `Int` — and an unreadable op must arrive as `null`, never as a mode.
-    private fun readBackgroundMode(context: Context, packageName: String): Int? = runCatching<Int?> {
-        val appops = asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
-            ?: return@runCatching null
-        Bypass.invoke<Int>(
-            appops::class.java,
-            appops,
-            "checkOperation",
-            arrayOf(
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                String::class.java
-            ),
-            runAnyInBackgroundOp(),
-            Packages(context).packageUid(packageName),
-            packageName
+    private fun readBackgroundMode(context: Context, packageName: String): Int? =
+        readAppOpMode(context, packageName, "android:run_any_in_background")
+
+    /** Read through Dhizuku directly; AppOpsManager's process-wide cache uses an unwrapped service. */
+    @SuppressLint("PrivateApi")
+    internal fun readAppOpMode(context: Context, packageName: String, operation: String): Int? = try {
+        val service = requireNotNull(asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)) {
+            "AppOps service is unavailable through Dhizuku"
+        }
+        val uid = context.packageManager.getApplicationInfo(packageName, 0).uid
+        val code = operation.toIntOrNull() ?: Bypass.invoke<Int>(
+            AppOpsManager::class.java, null,
+            if (operation.startsWith("android:")) "strOpToOp" else "strDebugOpToOp",
+            arrayOf(String::class.java), operation,
         )
-    }.getOrElse {
-        Logger.d(
-            "DhizukuHelper",
-            "setAppRestricted($packageName): RUN_ANY_IN_BACKGROUND is unreadable, so the rung's own " +
-                "report stands: $it"
-        )
+        val intType = Int::class.javaPrimitiveType!!
+        val legacyTypes = arrayOf(intType, intType, String::class.java)
+        val deviceTypes = arrayOf(intType, intType, String::class.java, intType)
+        val attributionTypes = arrayOf(intType, intType, String::class.java, String::class.java, intType)
+        val methods = Class.forName("com.android.internal.app.IAppOpsService").methods
+        val legacy = methods.firstOrNull {
+            it.name == "checkOperation" && it.parameterTypes.contentEquals(legacyTypes)
+        }
+        val attributed = methods.firstOrNull {
+            it.name == "checkOperationForDevice" && it.parameterTypes.contentEquals(attributionTypes)
+        }
+        val device = methods.firstOrNull {
+            it.name == "checkOperationForDevice" && it.parameterTypes.contentEquals(deviceTypes)
+        }
+        // Discover first and invoke only a matching signature. A missing platform method must not
+        // send the reflection helper into its ART fallback; an unreadable result stays a failure.
+        when {
+            legacy != null -> legacy.invoke(service, code, uid, packageName) as Int
+            attributed != null -> attributed.invoke(service, code, uid, packageName, null, 0) as Int
+            device != null -> device.invoke(service, code, uid, packageName, 0) as Int
+            else -> null
+        }
+    } catch (e: Exception) {
+        Logger.d("DhizukuHelper", "Cannot verify app-op $operation for $packageName: $e")
         null
     }
 }

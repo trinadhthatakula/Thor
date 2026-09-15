@@ -10,6 +10,8 @@ import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
@@ -123,6 +125,7 @@ interface PreferenceRepository {
 
     // --- Support Developer Prompt ---
     suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean)
+    suspend fun setAlreadySupportsThor(alreadySupports: Boolean)
 
     // --- Animations ---
     suspend fun setAnimationIntensity(intensity: AnimationIntensity)
@@ -176,4 +179,11 @@ interface PreferenceRepository {
     suspend fun setAppInfoActionsOrder(order: List<AppInfoActionId>)
     suspend fun setAppInfoActionVisibility(actionId: AppInfoActionId, isVisible: Boolean)
     suspend fun resetAppInfoActionsCustomization()
+    suspend fun setMultiAppActionsOrder(layout: MultiAppActionLayout, order: List<MultiAppActionId>)
+    suspend fun setMultiAppActionVisibility(
+        layout: MultiAppActionLayout,
+        actionId: MultiAppActionId,
+        isVisible: Boolean,
+    )
+    suspend fun resetMultiAppActionsCustomization(layout: MultiAppActionLayout)
 }

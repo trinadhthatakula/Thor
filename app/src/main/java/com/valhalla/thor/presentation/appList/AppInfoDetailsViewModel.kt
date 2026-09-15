@@ -6,7 +6,9 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.OperationMessage
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.freezeTier
@@ -14,6 +16,7 @@ import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
@@ -24,17 +27,32 @@ import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.asUiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+
+data class AppProfileMembership(
+    val packageName: String,
+    val profiles: List<FreezeProfile>,
+    val isInFreezer: Boolean,
+)
 
 data class AppInfoDetailsUiState(
     val isLoading: Boolean = true,
@@ -43,6 +61,7 @@ data class AppInfoDetailsUiState(
     val isDhizuku: Boolean = false,
     val detailedInfo: DetailedAppInfo? = null,
     val isInFreezer: Boolean = false,
+    val profileMembership: AppProfileMembership? = null,
     val freezerPrompt: FreezerPrompt? = null,
     /**
      * [UserPreferences.skipRoutineFreezeConfirmation][com.valhalla.thor.domain.model.UserPreferences],
@@ -69,6 +88,7 @@ class AppInfoDetailsViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
     private val freezerRepository: FreezerRepository,
+    private val freezeProfileRepository: FreezeProfileRepository,
     // The port, not the concrete FreezerShortcutManager: this screen only retires and re-renders a
     // single app's shortcut, and the manager needs a Context, so depending on the class put the
     // whole view model out of reach of a JVM test. Same dependency AppListViewModel already takes.
@@ -82,6 +102,9 @@ class AppInfoDetailsViewModel(
 
     private val _uiState = MutableStateFlow(AppInfoDetailsUiState())
     val uiState = _uiState.asStateFlow()
+    private val membershipPackage = MutableStateFlow<String?>(null)
+    private var membershipJob: Job? = null
+    private var detailLoadJob: Job? = null
 
     init {
         // Collected for the view model's whole life rather than read once, so flipping the setting
@@ -95,12 +118,72 @@ class AppInfoDetailsViewModel(
         }
     }
 
+    /** Observes names and membership without loading the manifest, permissions, or OBB data. */
+    fun observeProfileMembership(packageName: String) {
+        val samePackage = membershipPackage.value == packageName
+        // A completed read can be retried for the same app; a live subscription stays shared.
+        if (samePackage && membershipJob?.isActive == true) return
+        membershipJob?.cancel()
+        membershipPackage.value = packageName
+        if (!samePackage) {
+            detailLoadJob?.cancel()
+            _uiState.update {
+                it.copy(
+                    profileMembership = null,
+                    isInFreezer = false,
+                    detailedInfo = it.detailedInfo?.takeIf { details -> details.appInfo.packageName == packageName },
+                    obbProbe = null,
+                    errorMessage = null,
+                )
+            }
+        }
+        membershipJob = viewModelScope.launch {
+            combine(
+                freezeProfileRepository.observeProfiles(),
+                freezerRepository.getAll(),
+            ) { profiles, watchlist ->
+                AppProfileMembership(
+                    packageName = packageName,
+                    profiles = profiles.filter { packageName in it.packageNames },
+                    isInFreezer = packageName in watchlist,
+                )
+            }
+                .distinctUntilChanged()
+                .flowOn(ioDispatcher)
+                .retryWhen { error, attempt ->
+                    if (error is CancellationException || attempt >= 2) false
+                    else {
+                        delay(500)
+                        true
+                    }
+                }
+                .catch { error ->
+                    if (error is CancellationException) throw error
+                    currentCoroutineContext().ensureActive()
+                    Logger.e("AppInfoDetailsViewModel", "Profile membership read failed", error)
+                    _uiState.update {
+                        if (membershipPackage.value == packageName) it.copy(profileMembership = null)
+                        else it
+                    }
+                }
+                .collect { membership ->
+                    currentCoroutineContext().ensureActive()
+                    _uiState.update {
+                        if (membershipPackage.value == packageName) it.copy(
+                            profileMembership = membership,
+                            isInFreezer = membership.isInFreezer,
+                        ) else it
+                    }
+                }
+        }
+    }
+
     // One-off toast feedback lives here (not in UiState) so it fires exactly once and is never
     // replayed on recomposition or config change. A buffered Channel (not a replay=0 SharedFlow)
     // retains events emitted before/between collectors so a value fired while the screen's collector
     // is not yet STARTED (early lifecycle / config change) is delivered rather than silently dropped.
-    private val _events = Channel<UiText>(Channel.BUFFERED)
-    val events: Flow<UiText> = _events.receiveAsFlow()
+    private val _events = Channel<OperationMessage>(Channel.BUFFERED)
+    val events: Flow<OperationMessage> = _events.receiveAsFlow()
 
     /**
      * The same toast channel every action below already reports through, reached from a non-suspend
@@ -118,8 +201,12 @@ class AppInfoDetailsViewModel(
      * `trySend`. Calling this one `emitToast` gave the same name to opposite delivery guarantees
      * across two files that are read together, in a class where both spellings compile.
      */
+    private suspend fun emitMessage(text: UiText, isSuccess: Boolean = false) {
+        _events.send(OperationMessage(text, isSuccess))
+    }
+
     private fun tryEmitToast(text: UiText) {
-        _events.trySend(text)
+        _events.trySend(OperationMessage(text))
     }
 
     /**
@@ -154,6 +241,8 @@ class AppInfoDetailsViewModel(
     }
 
     fun loadAppDetails(packageName: String) {
+        observeProfileMembership(packageName)
+        detailLoadJob?.cancel()
         _uiState.update {
             it.copy(
                 isLoading = true,
@@ -166,7 +255,7 @@ class AppInfoDetailsViewModel(
                 obbProbe = null
             )
         }
-        viewModelScope.launch {
+        detailLoadJob = viewModelScope.launch {
             // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku) and a
             // potentially slow root check; run them off the Main thread. Each probe is an
             // independent round-trip, so launch them concurrently and let their latency
@@ -189,6 +278,7 @@ class AppInfoDetailsViewModel(
             val (hasRoot, hasShizuku, hasDhizuku) = probes
 
             val details = appRepository.getDetailedAppInfo(packageName)
+            currentCoroutineContext().ensureActive()
             if (details != null) {
                 _uiState.update {
                     it.copy(
@@ -197,7 +287,10 @@ class AppInfoDetailsViewModel(
                         isShizuku = hasShizuku,
                         isDhizuku = hasDhizuku,
                         detailedInfo = details,
-                        isInFreezer = inFreezer
+                        // The watchlist may have changed while heavy details were loading.
+                        isInFreezer = it.profileMembership
+                            ?.takeIf { membership -> membership.packageName == packageName }
+                            ?.isInFreezer ?: inFreezer
                     )
                 }
             } else {
@@ -214,6 +307,7 @@ class AppInfoDetailsViewModel(
             val probe = probeObbForPresentation {
                 systemRepository.probeObb(packageName)
             }
+            currentCoroutineContext().ensureActive()
             _uiState.update { it.copy(obbProbe = probe) }
         }
     }
@@ -229,6 +323,7 @@ class AppInfoDetailsViewModel(
     // viewModelScope coroutine, so launching again was redundant and could let concurrent refreshes
     // complete out of order. Called directly => it serializes within the caller's coroutine.
     private suspend fun refreshDetails(packageName: String) {
+        if (membershipPackage.value != null && membershipPackage.value != packageName) return
         // The membership read is guarded inside [isInFreezer] rather than at this function's call
         // sites, and that is the whole reason the helper exists. Seven coroutines call this —
         // toggleFreezerState, toggleSuspendState, forceStopApp, clearCache, clearData, addToFreezer
@@ -241,10 +336,12 @@ class AppInfoDetailsViewModel(
         val details = appRepository.getDetailedAppInfo(packageName)
         if (details != null) {
             _uiState.update {
-                it.copy(
+                if (membershipPackage.value == null || membershipPackage.value == packageName) it.copy(
                     detailedInfo = details,
-                    isInFreezer = inFreezer
-                )
+                    isInFreezer = it.profileMembership
+                        ?.takeIf { membership -> membership.packageName == packageName }
+                        ?.isInFreezer ?: inFreezer
+                ) else it
             }
         }
     }
@@ -294,23 +391,36 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 appliedButUnannounced = true
                 appShortcuts.refreshAppShortcut(packageName)
-                val inFreezer = withContext(ioDispatcher) { isInFreezer(packageName) }
+                val membershipSnapshot = withContext(ioDispatcher) { isInFreezer(packageName) }
+                val inFreezer = _uiState.value.profileMembership
+                    ?.takeIf { membership -> membership.packageName == packageName }
+                    ?.isInFreezer ?: membershipSnapshot
                 if (freeze && !inFreezer) {
                     // Don't auto-add — prompt the user to add it to the Freezer instead.
                     _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
                 } else {
-                    val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
-                    _uiState.update { it.copy(isInFreezer = inFreezer) }
-                    _events.send(UiText.StringResource(msgRes, appName ?: packageName))
-                    // Told. A later throw must not repeat this toast on its way out.
-                    appliedButUnannounced = false
+                    _uiState.update {
+                        if (membershipPackage.value == null || membershipPackage.value == packageName) {
+                            it.copy(
+                                isInFreezer = it.profileMembership
+                                    ?.takeIf { membership -> membership.packageName == packageName }
+                                    ?.isInFreezer ?: inFreezer,
+                            )
+                        } else it
+                    }
+                    // Feedback follows refresh so a later failure cannot carry a support action.
                 }
                 // Refresh detail only — no privilege re-probe, no loader flash.
                 refreshDetails(packageName)
+                if (!freeze || inFreezer) {
+                    val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
+                    emitMessage(UiText.StringResource(msgRes, appName ?: packageName), isSuccess = true)
+                    appliedButUnannounced = false
+                }
             }.onFailure { e ->
                 // The tier refusal arrives here as a UiTextException, which carries its message in
                 // `uiText` and leaves `message` null — see [asUiText].
-                _events.send(e.asUiText())
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -321,8 +431,16 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 // Refresh detail only — no privilege re-probe, no loader flash.
                 refreshDetails(packageName)
+                val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
+                emitMessage(
+                    UiText.StringResource(
+                        if (suspend) R.string.suspended_success else R.string.unsuspended_success,
+                        appName,
+                    ),
+                    isSuccess = true,
+                )
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -332,10 +450,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.forceStop(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _events.send(UiText.StringResource(R.string.killed_success, appName))
                 refreshDetails(packageName)
+                emitMessage(UiText.StringResource(R.string.killed_success, appName), isSuccess = true)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -345,10 +463,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.clearCache(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _events.send(UiText.StringResource(R.string.cache_cleared_success, appName))
                 refreshDetails(packageName)
+                emitMessage(UiText.StringResource(R.string.cache_cleared_success, appName), isSuccess = true)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -358,10 +476,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.clearAppData(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _events.send(UiText.StringResource(R.string.data_cleared_success, appName))
                 refreshDetails(packageName)
+                emitMessage(UiText.StringResource(R.string.data_cleared_success, appName), isSuccess = true)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -395,6 +513,7 @@ class AppInfoDetailsViewModel(
             withContext(ioDispatcher) { freezerRepository.add(packageName) }
             _uiState.update { it.copy(freezerPrompt = null, isInFreezer = true) }
             refreshDetails(packageName)
+            emitMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
         }
     }
 
@@ -464,7 +583,7 @@ class AppInfoDetailsViewModel(
                 (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
                 else manageAppUseCase.forceUnfreeze(packageName))
                     .onFailure { e ->
-                        _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                        emitMessage(e.asUiText())
                         return@launchGuarded
                     }
                 // From here on the app is running again and cannot be un-run. Everything below is
@@ -504,7 +623,7 @@ class AppInfoDetailsViewModel(
                 // and reports success.
                 _uiState.update { it.copy(isInFreezer = false) }
                 refreshDetails(packageName)
-                _events.send(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1))
+                emitMessage(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1), isSuccess = true)
             } else {
                 // Same BLOCKED gate as FreezerViewModel.toggleManaged and
                 // AppListViewModel.toggleFreezerMembership — three surfaces reach the watchlist and
@@ -512,7 +631,7 @@ class AppInfoDetailsViewModel(
                 // Fails closed while details are still loading: an unknown tier is not a safe tier.
                 val app = _uiState.value.detailedInfo?.appInfo
                 if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
-                    _events.send(UiText.StringResource(R.string.error_unsafe_skipped))
+                    emitMessage(UiText.StringResource(R.string.error_unsafe_skipped))
                     return@launchGuarded
                 }
                 // Unlike the branch above, this one freezes nothing — the watchlist row is the whole
@@ -520,7 +639,7 @@ class AppInfoDetailsViewModel(
                 // which is exactly how the guard reports it: one plain error, no success claim.
                 freezerRepository.add(packageName)
                 _uiState.update { it.copy(isInFreezer = true) }
-                _events.send(UiText.StringResource(R.string.added_to_freezer_success))
+                emitMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
             }
         }
     }

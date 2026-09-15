@@ -72,6 +72,11 @@ class PrivilegeSweepTargetResolver(
         val members = when (val scope = request.scope) {
             BulkScope.Watchlist -> freezerRepository.getAllPackageNames()
             is BulkScope.Profile -> freezeProfileRepository.packagesOf(scope.id)
+            BulkScope.ManagedApps -> {
+                require(request.op == BulkOp.UNFREEZE) { "Combined membership is a recovery-only scope" }
+                (freezerRepository.getAllPackageNames() + freezeProfileRepository.allProfilePackageNames())
+                    .distinct()
+            }
         }
         val targets = if (members.isEmpty()) {
             emptyList()

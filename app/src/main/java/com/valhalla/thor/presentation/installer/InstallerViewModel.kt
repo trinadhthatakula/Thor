@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.supportsInstallTimePermissionGrants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -69,6 +70,8 @@ class InstallerViewModel(
 ) : ViewModel() {
 
     val installState = eventBus.events
+    private val _isInstallCallActive = MutableStateFlow(false)
+    val isInstallCallActive: StateFlow<Boolean> = _isInstallCallActive.asStateFlow()
 
     private val _installMode = MutableStateFlow(InstallMode.NORMAL)
     val installMode: StateFlow<InstallMode> = _installMode.asStateFlow()
@@ -305,12 +308,18 @@ class InstallerViewModel(
             request.uri == pendingUri && request.mode == _installMode.value
 
     private suspend fun install(request: InstallRequest, bypassLowTargetSdkBlock: Boolean) {
-        runInstallerPresentationBoundary(eventBus) {
-            repository.installPackage(
-                request.analysis.staged, request.uri, request.mode,
-                request.canDowngrade, request.grantAllPermissions,
-                bypassLowTargetSdkBlock = bypassLowTargetSdkBlock,
-            )
+        _isInstallCallActive.value = true
+        try {
+            runInstallerPresentationBoundary(eventBus) {
+                repository.installPackage(
+                    request.analysis.staged, request.uri, request.mode,
+                    request.canDowngrade, request.grantAllPermissions,
+                    bypassLowTargetSdkBlock = bypassLowTargetSdkBlock,
+                )
+            }
+        } finally {
+            // APK installation may emit Success before archive game data has been placed.
+            _isInstallCallActive.value = false
         }
     }
 
@@ -356,7 +365,11 @@ class InstallerViewModel(
         // sending that would turn "the user never answered" into "the user said no" and override a
         // setting that said yes. Passing null hands that resolution to the repository, which reads
         // the setting itself.
-        val grantAll = _grantAllOverride.value
+        val grantAll = if (supportsInstallTimePermissionGrants(mode)) {
+            _grantAllOverride.value
+        } else {
+            false
+        }
         val request = InstallRequest(selectionRevision, analysis, uri, mode, allowDowngrade, grantAll)
         val legacyInstall = supportsLowTargetSdkBypass(mode, Build.VERSION.SDK_INT) &&
             requiresLowTargetSdkBypass(analysis.metadata.targetSdk, Build.VERSION.SDK_INT)

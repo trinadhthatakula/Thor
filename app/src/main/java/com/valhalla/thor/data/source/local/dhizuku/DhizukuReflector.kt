@@ -11,36 +11,26 @@ import com.valhalla.thor.data.source.local.shizuku.DisableOutcome
 import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.util.Logger
 import org.koin.core.annotation.Single
+import kotlinx.coroutines.CancellationException
 
 @Single
 class DhizukuReflector(
     private val context: Context
 ) {
 
-    fun forceStop(packageName: String): Boolean {
+    suspend fun clearData(packageName: String, timeoutMillis: Long = OWNER_OPERATION_TIMEOUT_MS): Boolean {
         return try {
-            DhizukuHelper.forceStopApp(context, packageName)
-        } catch (e: Exception) {
-            Logger.e("DhizukuReflector", "forceStop failed", e)
-            false
-        }
-    }
-
-    // clearCache() used to sit here. Dhizuku has no cache-clearing rung left to call: its shell
-    // rung ran as the Dhizuku app's own uid, which cannot touch another package's cache directory,
-    // and its reflection rung was already documented as "issued, and deliberately never believed"
-    // because `asInterface`'s double-wrapped binder dies in a Shizuku transport the user never set
-    // up. Two rungs that could not work is not a fallback chain. `DhizukuSystemGateway` now fails
-    // this operation with a sentence naming Root as the mode that performs it.
-
-    fun clearData(packageName: String): Boolean {
-        return try {
-            DhizukuHelper.clearAppData(packageName)
+            DhizukuHelper.clearAppData(context, packageName, timeoutMillis)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e("DhizukuReflector", "clearData failed", e)
             false
         }
     }
+
+    fun setAppHidden(packageName: String, hidden: Boolean): Boolean =
+        DhizukuHelper.setAppHidden(context, packageName, hidden)
 
     fun setAppEnabled(packageName: String, enabled: Boolean): Boolean =
         setAppEnabledDetailed(packageName, enabled).succeeded
@@ -64,9 +54,11 @@ class DhizukuReflector(
     }
 
     /** The user-facing uninstall: removes the app for this user **and its data**. No `-k`. */
-    fun uninstallApp(packageName: String): SystemAppRemovalOutcome {
+    suspend fun uninstallApp(packageName: String, timeoutMillis: Long = OWNER_OPERATION_TIMEOUT_MS): SystemAppRemovalOutcome {
         return try {
-            DhizukuHelper.uninstallApp(packageName)
+            DhizukuHelper.uninstallApp(context, packageName, timeoutMillis)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e("DhizukuReflector", "uninstallApp failed", e)
             SystemAppRemovalOutcome(succeeded = false, exitCode = -1, platformMessage = e.message)
@@ -92,28 +84,35 @@ class DhizukuReflector(
 
     fun reinstallExistingApp(packageName: String): Boolean {
         return try {
-            DhizukuHelper.reinstallApp(packageName)
+            DhizukuHelper.restoreSystemApp(context, packageName)
         } catch (_: Exception) {
             false
         }
     }
 
-    fun getApplicationInfoOrNull(packageName: String): ApplicationInfo? {
-        return try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getApplicationInfo(
-                    packageName,
-                    PackageManager.ApplicationInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
-                )
-            } else {
-                context.packageManager.getApplicationInfo(
-                    packageName,
-                    PackageManager.MATCH_UNINSTALLED_PACKAGES
-                )
-            }
-        } catch (_: Exception) {
-            null
+    /** Only NameNotFoundException means absent; transport/security failures remain errors. */
+    private fun readApplicationInfo(packageName: String): ApplicationInfo? = try {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getApplicationInfo(
+                packageName,
+                PackageManager.ApplicationInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()),
+            )
+        } else {
+            context.packageManager.getApplicationInfo(packageName, PackageManager.MATCH_UNINSTALLED_PACKAGES)
         }
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+
+    fun getApplicationInfoOrNull(packageName: String): ApplicationInfo? = try {
+        readApplicationInfo(packageName)
+    } catch (e: Exception) {
+        Logger.e("DhizukuReflector", "Cannot read $packageName", e)
+        null
+    }
+
+    fun readInstalledState(packageName: String): Result<Boolean> = runCatching {
+        readApplicationInfo(packageName)?.let { (it.flags and ApplicationInfo.FLAG_INSTALLED) != 0 } == true
     }
 
     // isAppDisabled() used to sit here, reading `enabled` and nothing else. It had no callers, and

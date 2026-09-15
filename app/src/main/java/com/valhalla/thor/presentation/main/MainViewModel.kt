@@ -69,6 +69,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import com.valhalla.thor.presentation.settings.SupportPromptCoordinator
 import java.util.UUID
 
 /**
@@ -82,8 +83,8 @@ sealed interface MainSideEffect {
     data class NormalUninstall(val packageName: String) : MainSideEffect
     data class BatchUninstall(val packageName: String, val requestId: String) : MainSideEffect
 
-    /** Transient user feedback (Toast). Consumed once by the screen, never re-shown on recomposition. */
-    data class Message(val text: UiText) : MainSideEffect
+    /** Only confirmed successes offer an optional support action. */
+    data class Message(val text: UiText, val isSuccess: Boolean = false) : MainSideEffect
 }
 
 /**
@@ -94,6 +95,7 @@ data class LoggerState(
     val title: UiText = UiText.DynamicString(""),
     val logs: List<UiText> = emptyList(),
     val isComplete: Boolean = false,
+    val isSuccessful: Boolean = false,
     /**
      * Whether this run can be stopped part-way. True only for the per-app batches, where stopping
      * leaves a coherent result — some apps done, the rest untouched. A single shell command has no
@@ -222,6 +224,7 @@ data class MainUiState(
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
     val hasShownSupportDeveloperPrompt: Boolean = true,
     val showSupportDeveloperPrompt: Boolean = false,
+    val canInviteToSupport: Boolean = false,
     val prefs: UserPreferences = UserPreferences()
 )
 
@@ -246,6 +249,7 @@ class MainViewModel(
     private val sweepController: PrivilegeSweepController,
     private val taskNavigationTargets: TaskNavigationTargets,
     private val shareSubmissionCoordinator: ShareSubmissionCoordinator,
+    private val supportPromptCoordinator: SupportPromptCoordinator,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -257,6 +261,7 @@ class MainViewModel(
     )
 
     private var pendingSupportPrompt = false
+    private var actionFeedbackHostVisible = false
 
     /** Whether [openRestoreSheetForLaunchUri] has already fired for this ViewModel. See it for why here. */
     private var launchRestoreUriConsumed = false
@@ -297,6 +302,7 @@ class MainViewModel(
 
     init {
         observePreferences()
+        observeSupportEligibility()
         observeBackupRun()
         observeJobSheetRequests()
     }
@@ -306,8 +312,22 @@ class MainViewModel(
             preferenceRepository.userPreferences.collect { prefs ->
                 _uiState.update {
                     it.copy(
-                        hasShownSupportDeveloperPrompt = prefs.hasShownSupportDeveloperPrompt,
                         prefs = prefs
+                    )
+                }
+            }
+        }
+    }
+
+    private fun observeSupportEligibility() {
+        viewModelScope.launch {
+            supportPromptCoordinator.state.collect { support ->
+                if (support.hasShownPrompt || !support.canInvite) pendingSupportPrompt = false
+                _uiState.update {
+                    it.copy(
+                        hasShownSupportDeveloperPrompt = support.hasShownPrompt,
+                        canInviteToSupport = support.canInvite,
+                        showSupportDeveloperPrompt = it.showSupportDeveloperPrompt && support.canInvite
                     )
                 }
             }
@@ -341,7 +361,7 @@ class MainViewModel(
                 var shown = false
                 try {
                     for (message in report.messages) {
-                        _effect.send(MainSideEffect.Message(message))
+                        _effect.send(MainSideEffect.Message(message, isSuccess = report.asksForSupport))
                         shown = true
                     }
                     if (report.asksForSupport) triggerSupportPromptIfNeeded()
@@ -437,9 +457,8 @@ class MainViewModel(
     }
 
     fun markSupportDeveloperPromptShown() {
-        viewModelScope.launch(ioDispatcher) {
-            preferenceRepository.setHasShownSupportDeveloperPrompt(true)
-        }
+        supportPromptCoordinator.markPromptShown()
+        pendingSupportPrompt = false
         _uiState.update {
             it.copy(
                 showSupportDeveloperPrompt = false,
@@ -453,12 +472,37 @@ class MainViewModel(
     }
 
     private fun triggerSupportPromptIfNeeded() {
-        if (!_uiState.value.hasShownSupportDeveloperPrompt) {
-            if (_uiState.value.loggerState.isVisible) {
+        val support = supportPromptCoordinator.state.value
+        if (support.canInvite && !support.hasShownPrompt) {
+            if (_uiState.value.loggerState.isVisible || actionFeedbackHostVisible) {
                 pendingSupportPrompt = true
             } else {
                 _uiState.update { it.copy(showSupportDeveloperPrompt = true) }
             }
+        }
+    }
+
+    fun onOperationFeedbackHostChanged(visible: Boolean) {
+        actionFeedbackHostVisible = visible
+        if (!visible && pendingSupportPrompt) {
+            pendingSupportPrompt = false
+            triggerSupportPromptIfNeeded()
+        }
+    }
+
+    /** A deliberate tap replaces the completed result, consuming any deferred automatic prompt. */
+    fun openSupportFromSuccess() {
+        if (!supportPromptCoordinator.state.value.canInvite) return
+        val current = _uiState.value
+        if (current.loggerState.let { it.isVisible && !it.isComplete } ||
+            current.cacheClear is CacheClearState.Running) return
+        pendingSupportPrompt = false
+        _uiState.update {
+            it.copy(
+                loggerState = LoggerState(),
+                cacheClear = null,
+                showSupportDeveloperPrompt = true
+            )
         }
     }
 
@@ -554,6 +598,7 @@ class MainViewModel(
 
     private fun startLogger(title: UiText, canStop: Boolean = false) {
         stopRequested = false
+        pendingSupportPrompt = false
         _uiState.update {
             it.copy(
                 loggerState = LoggerState(
@@ -573,13 +618,16 @@ class MainViewModel(
         }
     }
 
-    private fun finishLogger() {
+    private fun finishLogger(successful: Boolean = false) {
         addLog(UiText.StringResource(R.string.log_op_complete))
         _uiState.update { state ->
             state.copy(
-                loggerState = state.loggerState.copy(isComplete = true, isStopping = false)
+                loggerState = state.loggerState.copy(
+                    isComplete = true, isSuccessful = successful, isStopping = false
+                )
             )
         }
+        if (successful) triggerSupportPromptIfNeeded()
     }
 
     /**
@@ -731,18 +779,18 @@ class MainViewModel(
                     startLogger(UiText.StringResource(R.string.log_reinstalling_app, action.appInfo.appName ?: ""))
                     addLog(UiText.StringResource(R.string.log_applying_play_store_sig))
 
-                    withContext(ioDispatcher) {
+                    val successful = withContext(ioDispatcher) {
                         val result =
                             manageAppUseCase.reinstallAppWithGoogle(action.appInfo.packageName)
                         if (result.isSuccess) {
                             addLog(UiText.StringResource(R.string.log_reinstall_success))
-                            triggerSupportPromptIfNeeded()
                         } else {
                             addLog(result.exceptionOrNull()?.asUiText()
                                 ?: UiText.StringResource(R.string.log_failed_with_msg, ""))
                         }
+                        result.isSuccess
                     }
-                    finishLogger()
+                    finishLogger(successful)
                 }
 
                 // 5. UNINSTALL (System = Risky -> Logger / User = Fast -> Toast)
@@ -750,8 +798,9 @@ class MainViewModel(
                     if (action.appInfo.isSystem) {
                         startLogger(UiText.StringResource(R.string.log_uninstalling_system_app))
                         addLog(UiText.StringResource(R.string.log_target_app, action.appInfo.appName ?: ""))
-                        withContext(ioDispatcher) {
+                        val successful = withContext(ioDispatcher) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
+                            var fullySuccessful = result.isSuccess
                             if (result.isSuccess) {
                                 addLog(UiText.StringResource(R.string.log_uninstall_success))
                                 // The uninstall above has already happened and nothing here can undo
@@ -772,15 +821,14 @@ class MainViewModel(
                                 // uninstalled package back, so there is no second route that would
                                 // pick this app up later.
                                 //
-                                // Reported as an error line and not as a failed uninstall, because
-                                // the uninstall did not fail — the "✔ Uninstall successful" line
-                                // directly above stands, and `triggerSupportPromptIfNeeded` below
-                                // still runs for the same reason.
+                                // Keep the successful uninstall line, but a missing recovery record
+                                // makes the overall result partial and ineligible for an invitation.
                                 try {
                                     freezerRepository.add(action.appInfo.packageName)
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Exception) {
+                                    fullySuccessful = false
                                     Logger.e(
                                         "MainViewModel",
                                         "uninstalled ${action.appInfo.packageName}, but adding it to the freezer failed",
@@ -788,14 +836,14 @@ class MainViewModel(
                                     )
                                     addLog(UiText.StringResource(R.string.log_error, e.message ?: ""))
                                 }
-                                triggerSupportPromptIfNeeded()
                             } else {
                                 addLog(UiText.StringResource(R.string.log_priv_uninstall_failed))
                                 addLog(UiText.StringResource(R.string.log_attempting_system_uninstall))
                                 _effect.send(MainSideEffect.NormalUninstall(action.appInfo.packageName))
                             }
+                            fullySuccessful
                         }
-                        finishLogger()
+                        finishLogger(successful)
                     } else {
                         viewModelScope.launch(ioDispatcher) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
@@ -805,7 +853,8 @@ class MainViewModel(
                                         UiText.StringResource(
                                             R.string.uninstall_success,
                                             action.appInfo.appName ?: action.appInfo.packageName
-                                        )
+                                        ),
+                                        isSuccess = true
                                     )
                                 )
                                 triggerSupportPromptIfNeeded()
@@ -954,7 +1003,8 @@ class MainViewModel(
                     val unrecorded = mutableListOf<Throwable>()
                     performLoggedMultiAction(
                         UiText.StringResource(R.string.log_uninstalling_batch),
-                        action.appList
+                        action.appList,
+                        isFullySuccessful = { unrecorded.isEmpty() },
                     ) { appInfo ->
                         if (appInfo.packageName == BuildConfig.APPLICATION_ID) {
                             // Same reasoning as the Kill branch, with a worse ending: this one succeeds.
@@ -1181,7 +1231,7 @@ class MainViewModel(
                         add(UiText.StringResource(R.string.export_bulk_index_failed))
                     }
                 },
-                asksForSupport = true
+                asksForSupport = result.total > 0 && result.succeeded == result.total && result.indexWritten
             )
         }
     }
@@ -1226,10 +1276,11 @@ class MainViewModel(
     private suspend fun performLoggedMultiAction(
         title: UiText,
         apps: List<AppInfo>,
+        isFullySuccessful: () -> Boolean = { true },
         block: suspend (AppInfo) -> Result<Unit>
     ) {
         startLogger(title, canStop = apps.size > 1)
-        var hasAtLeastOneSuccess = false
+        var succeeded = 0
         var processed = 0
 
         withContext(ioDispatcher) {
@@ -1242,7 +1293,7 @@ class MainViewModel(
                 processed++
                 if (result.isSuccess) {
                     addLog(UiText.StringResource(R.string.log_success))
-                    hasAtLeastOneSuccess = true
+                    succeeded++
                 } else {
                     val exception = result.exceptionOrNull()
                     val errorLog = if (exception is UiTextException) {
@@ -1266,10 +1317,7 @@ class MainViewModel(
         if (processed < apps.size) {
             addLog(UiText.StringResource(R.string.log_stopped, processed, apps.size))
         }
-        finishLogger()
-        if (hasAtLeastOneSuccess) {
-            triggerSupportPromptIfNeeded()
-        }
+        finishLogger(successful = apps.isNotEmpty() && succeeded == apps.size && isFullySuccessful())
     }
 
     /**
@@ -1291,12 +1339,14 @@ class MainViewModel(
                             successMessage?.invoke(app, value) ?: getSuccessMessage(
                                 action,
                                 app.appName ?: app.packageName
-                            )
+                            ),
+                            isSuccess = true
                         )
                     )
                     triggerSupportPromptIfNeeded()
                 }
                 .onFailure { e ->
+                    pendingSupportPrompt = false
                     _effect.send(MainSideEffect.Message(e.asUiText()))
                 }
         else {

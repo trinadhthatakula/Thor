@@ -23,6 +23,8 @@ import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
@@ -191,6 +193,7 @@ class PreferenceRepositoryImpl(
 
         // Support Developer Prompt
         val HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT = booleanPreferencesKey("has_shown_support_developer_prompt")
+        val ALREADY_SUPPORTS_THOR = booleanPreferencesKey("already_supports_thor")
 
         // Animations
         val ANIMATION_INTENSITY = stringPreferencesKey("animation_intensity")
@@ -215,6 +218,10 @@ class PreferenceRepositoryImpl(
         // Customization
         val APP_INFO_ACTIONS_ORDER = stringPreferencesKey("app_info_actions_order")
         val HIDDEN_APP_INFO_ACTIONS = stringSetPreferencesKey("hidden_app_info_actions")
+        val APP_LIST_MULTI_ACTIONS_ORDER = stringPreferencesKey("app_list_multi_actions_order")
+        val HIDDEN_APP_LIST_MULTI_ACTIONS = stringSetPreferencesKey("hidden_app_list_multi_actions")
+        val FREEZER_MULTI_ACTIONS_ORDER = stringPreferencesKey("freezer_multi_actions_order")
+        val HIDDEN_FREEZER_MULTI_ACTIONS = stringSetPreferencesKey("hidden_freezer_multi_actions")
     }
 
     /** Keys in [localState] — see that store's doc for what earns a place here. */
@@ -376,6 +383,12 @@ class PreferenceRepositoryImpl(
         }
     }
 
+    override suspend fun setAlreadySupportsThor(alreadySupports: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.ALREADY_SUPPORTS_THOR] = alreadySupports
+        }
+    }
+
     override suspend fun setAnimationIntensity(intensity: AnimationIntensity) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             it[Keys.ANIMATION_INTENSITY] = intensity.name
@@ -477,6 +490,74 @@ class PreferenceRepositoryImpl(
             it.remove(Keys.APP_INFO_ACTIONS_ORDER)
             it.remove(Keys.HIDDEN_APP_INFO_ACTIONS)
         }
+    }
+
+    override suspend fun setMultiAppActionsOrder(
+        layout: MultiAppActionLayout,
+        order: List<MultiAppActionId>,
+    ) {
+        context.dataStore.writeMultiAppActionsOrder(layout, order)
+    }
+
+    override suspend fun setMultiAppActionVisibility(
+        layout: MultiAppActionLayout,
+        actionId: MultiAppActionId,
+        isVisible: Boolean,
+    ) {
+        context.dataStore.writeMultiAppActionVisibility(layout, actionId, isVisible)
+    }
+
+    override suspend fun resetMultiAppActionsCustomization(layout: MultiAppActionLayout) {
+        context.dataStore.clearMultiAppActionsCustomization(layout)
+    }
+}
+
+private fun multiAppActionsOrderKey(layout: MultiAppActionLayout): Preferences.Key<String> =
+    when (layout) {
+        MultiAppActionLayout.APP_LIST -> Keys.APP_LIST_MULTI_ACTIONS_ORDER
+        MultiAppActionLayout.FREEZER -> Keys.FREEZER_MULTI_ACTIONS_ORDER
+    }
+
+private fun hiddenMultiAppActionsKey(layout: MultiAppActionLayout): Preferences.Key<Set<String>> =
+    when (layout) {
+        MultiAppActionLayout.APP_LIST -> Keys.HIDDEN_APP_LIST_MULTI_ACTIONS
+        MultiAppActionLayout.FREEZER -> Keys.HIDDEN_FREEZER_MULTI_ACTIONS
+    }
+
+// Keep the actual DataStore transforms reachable from JVM tests without creating an Android Context.
+internal suspend fun DataStore<Preferences>.writeMultiAppActionsOrder(
+    layout: MultiAppActionLayout,
+    order: List<MultiAppActionId>,
+) {
+    val reconciled = layout.fromSavedNamesOrDefault(order.map { it.name })
+    val key = multiAppActionsOrderKey(layout)
+    guardedWrite(SETTINGS_STORE) {
+        it[key] = reconciled.joinToString(",") { action -> action.name }
+    }
+}
+
+internal suspend fun DataStore<Preferences>.writeMultiAppActionVisibility(
+    layout: MultiAppActionLayout,
+    actionId: MultiAppActionId,
+    isVisible: Boolean,
+) {
+    if (actionId !in layout.defaultOrder) return
+    val key = hiddenMultiAppActionsKey(layout)
+    guardedWrite(SETTINGS_STORE) {
+        val hidden = layout.fromSavedHiddenNames(it[key]).toMutableSet()
+        if (isVisible) hidden.remove(actionId) else hidden.add(actionId)
+        it[key] = hidden.mapTo(mutableSetOf()) { action -> action.name }
+    }
+}
+
+internal suspend fun DataStore<Preferences>.clearMultiAppActionsCustomization(
+    layout: MultiAppActionLayout,
+) {
+    val orderKey = multiAppActionsOrderKey(layout)
+    val hiddenKey = hiddenMultiAppActionsKey(layout)
+    guardedWrite(SETTINGS_STORE) {
+        it.remove(orderKey)
+        it.remove(hiddenKey)
     }
 }
 
@@ -686,6 +767,7 @@ internal fun Preferences.toUserPreferences(
         hasShownDisabledAppsPrompt =
             local[LocalKeys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
         hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
+        alreadySupportsThor = prefs[Keys.ALREADY_SUPPORTS_THOR] ?: false,
         animationIntensity = animationIntensity,
         appListIsGrid = appListIsGrid,
         freezerIsGrid = freezerIsGrid,
@@ -699,6 +781,18 @@ internal fun Preferences.toUserPreferences(
         appInfoActionsOrder = AppInfoActionId.fromSavedNamesOrDefault(
             prefs[Keys.APP_INFO_ACTIONS_ORDER]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
         ),
-        hiddenAppInfoActions = AppInfoActionId.fromSavedHiddenNames(prefs[Keys.HIDDEN_APP_INFO_ACTIONS])
+        hiddenAppInfoActions = AppInfoActionId.fromSavedHiddenNames(prefs[Keys.HIDDEN_APP_INFO_ACTIONS]),
+        appListMultiActionsOrder = MultiAppActionLayout.APP_LIST.fromSavedNamesOrDefault(
+            prefs[Keys.APP_LIST_MULTI_ACTIONS_ORDER]?.split(",")
+        ),
+        hiddenAppListMultiActions = MultiAppActionLayout.APP_LIST.fromSavedHiddenNames(
+            prefs[Keys.HIDDEN_APP_LIST_MULTI_ACTIONS]
+        ),
+        freezerMultiActionsOrder = MultiAppActionLayout.FREEZER.fromSavedNamesOrDefault(
+            prefs[Keys.FREEZER_MULTI_ACTIONS_ORDER]?.split(",")
+        ),
+        hiddenFreezerMultiActions = MultiAppActionLayout.FREEZER.fromSavedHiddenNames(
+            prefs[Keys.HIDDEN_FREEZER_MULTI_ACTIONS]
+        ),
     )
 }

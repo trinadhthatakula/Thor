@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,8 +35,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,9 +48,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.paneTitle
@@ -65,6 +73,9 @@ import com.valhalla.thor.presentation.appList.AppInfoDetailBody
 import com.valhalla.thor.presentation.appList.AppInfoDetailsViewModel
 import com.valhalla.thor.presentation.appList.ExportBottomSheet
 import com.valhalla.thor.presentation.backup.AppBackupSheet
+import com.valhalla.thor.presentation.common.LocalOperationFeedbackTarget
+import com.valhalla.thor.presentation.common.OperationFeedbackHost
+import com.valhalla.thor.presentation.common.rememberOperationFeedback
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -159,6 +170,17 @@ fun AppInfoSheet(
     val contentScrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val operationFeedback = rememberOperationFeedback()
+    val feedbackTarget = LocalOperationFeedbackTarget.current
+    DisposableEffect(feedbackTarget, operationFeedback) {
+        val previous = feedbackTarget?.current
+        feedbackTarget?.current = operationFeedback
+        onDispose {
+            if (feedbackTarget != null && feedbackTarget.current === operationFeedback) {
+                feedbackTarget.current = previous
+            }
+        }
+    }
 
     // Not keyed by package: both hosts interpose a null selection between two apps — the sheet's own
     // window is touch-modal, so a list tap cannot land while it is up — so the slot is never reused
@@ -169,6 +191,9 @@ fun AppInfoSheet(
         viewModelStoreOwner = rememberViewModelStoreOwner()
     )
     val detailsState by detailsViewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(appInfo.packageName) {
+        detailsViewModel.observeProfileMembership(appInfo.packageName)
+    }
 
     // Sticky: once the details have been asked for they stay on screen, so collapsing back to the
     // partial detent does not throw the work away. rememberSaveable carries that across a
@@ -210,10 +235,24 @@ fun AppInfoSheet(
         // carry a search field, but the default already covers the keyboard: modalWindowInsets is
         // safeDrawing.only(Top + Bottom), and safeDrawing is systemBars ∪ ime ∪ displayCutout.
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val windowHeight = LocalWindowInfo.current.containerSize.height
+        val bottomInset = WindowInsets.safeDrawing.getBottom(density)
+        var bodyTopInWindow by remember { mutableFloatStateOf(0f) }
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize().onGloballyPositioned {
+                bodyTopInWindow = it.positionInWindow().y
+            },
+        ) {
             // Against the sheet's own height, not against what the header leaves over — see the
             // layout note on this function.
             val detailBodyHeight = maxHeight
+            // At the partial detent the full body extends below the window. Anchor feedback to
+            // the visible part, above system bars/the keyboard, without changing the sheet anchors.
+            val feedbackHeight = with(density) {
+                (windowHeight - bodyTopInWindow - bottomInset)
+                    .coerceIn(0f, maxHeight.toPx()).toDp()
+            }
 
             Column(
                 modifier = Modifier
@@ -336,6 +375,16 @@ fun AppInfoSheet(
                     }
                 )
 
+                detailsState.profileMembership
+                    ?.takeIf { it.packageName == appInfo.packageName }
+                    ?.let { membership ->
+                        AppProfileMembershipSection(
+                            profiles = membership.profiles,
+                            isInFreezer = membership.isInFreezer,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        )
+                    }
+
                 // 3. The detail body, below the fold until the sheet is expanded. Only added once
                 // it has been asked for: an empty screen-height Box would otherwise let the column
                 // scroll into nothing.
@@ -346,6 +395,7 @@ fun AppInfoSheet(
                             .height(detailBodyHeight)
                     ) {
                         val details = detailsState.detailedInfo
+                            ?.takeIf { it.appInfo.packageName == appInfo.packageName }
                         when {
                             // Kept ahead of the error and loading branches so a failed or in-flight
                             // refresh never blanks details that are already on screen.
@@ -384,6 +434,15 @@ fun AppInfoSheet(
                         }
                     }
                 }
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(feedbackHeight)) {
+                OperationFeedbackHost(
+                    operationFeedback,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                    enabled = !showUninstallConfirmation && !showReinstallWarning &&
+                        !showClearDataConfirmation && !showFreezeConfirmation &&
+                        !showExportSheet && !showBackupSheet,
+                )
             }
         }
     }
@@ -623,4 +682,3 @@ private fun AppHeader(
         // UAD Description skipped by user request
     }
 }
-

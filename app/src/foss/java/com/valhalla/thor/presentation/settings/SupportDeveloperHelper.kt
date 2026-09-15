@@ -5,6 +5,9 @@ package com.valhalla.thor.presentation.settings
 
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -12,12 +15,19 @@ import androidx.core.net.toUri
 import com.valhalla.thor.R
 import com.valhalla.thor.presentation.widgets.SupportAction
 import com.valhalla.thor.presentation.widgets.SupportDeveloperBottomSheet
+import org.koin.compose.koinInject
 
 @Composable
 fun SupportDeveloperHelper(
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    supportPromptCoordinator: SupportPromptCoordinator = koinInject(),
 ) {
     val context = LocalContext.current
+    val supportState by supportPromptCoordinator.state.collectAsState()
+
+    LaunchedEffect(supportPromptCoordinator) {
+        supportPromptCoordinator.markPromptShown()
+    }
 
     val sponsorsTitle = stringResource(R.string.sponsor_github_title)
     val sponsorsDesc = stringResource(R.string.sponsor_github_desc)
@@ -95,6 +105,12 @@ fun SupportDeveloperHelper(
 
     SupportDeveloperBottomSheet(
         actions = actions,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        onAlreadySupports = if (supportState.canSelfDeclareSupport) {
+            {
+                supportPromptCoordinator.declareSupport()
+                onDismiss()
+            }
+        } else null,
     )
 }

@@ -24,6 +24,9 @@ import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
+import com.valhalla.thor.domain.model.MissingFreezeProfilesException
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
@@ -33,10 +36,13 @@ import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepSpec
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
+import com.valhalla.thor.domain.model.ProfileAssignmentCount
+import com.valhalla.thor.domain.model.ProfileAssignmentResult
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.model.isUsablePackageName
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.AppRepository
@@ -459,6 +465,7 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     FreezeProfileRepository {
 
     private val profiles = MutableStateFlow(initial)
+    val freezerPackageNames = mutableSetOf<String>()
     private var nextId = (initial.maxOfOrNull { it.id } ?: 0L) + 1
 
     /**
@@ -496,6 +503,32 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     override suspend fun delete(profileId: Long) {
         writeFailure?.let { throw it }
         profiles.update { list -> list.filterNot { it.id == profileId } }
+    }
+
+    override suspend fun addApps(
+        profileIds: Set<Long>,
+        packageNames: Set<String>,
+        addToFreezer: Boolean,
+    ): ProfileAssignmentResult {
+        writeFailure?.let { throw it }
+        require(profileIds.isNotEmpty() && profileIds.all { it > 0 })
+        require(packageNames.isNotEmpty() && packageNames.all(::isUsablePackageName))
+        val current = profiles.value
+        val missing = profileIds - current.map { it.id }.toSet()
+        if (missing.isNotEmpty()) throw MissingFreezeProfilesException(missing)
+        val counts = current.filter { it.id in profileIds }.sortedBy { it.id }.map { profile ->
+            val alreadyPresent = packageNames.count { it in profile.packageNames }
+            ProfileAssignmentCount(profile.id, profile.name, packageNames.size - alreadyPresent, alreadyPresent)
+        }
+        profiles.value = current.map { profile ->
+            if (profile.id in profileIds) {
+                profile.copy(packageNames = (profile.packageNames + packageNames).distinct().sorted())
+            } else profile
+        }
+        val freezerAddedCount = if (addToFreezer) {
+            packageNames.count { freezerPackageNames.add(it) }
+        } else 0
+        return ProfileAssignmentResult(counts, freezerAddedCount)
     }
 }
 
@@ -719,6 +752,10 @@ class FakePreferenceRepository(
         write { it.copy(hasShownSupportDeveloperPrompt = hasShown) }
     }
 
+    override suspend fun setAlreadySupportsThor(alreadySupports: Boolean) {
+        write { it.copy(alreadySupportsThor = alreadySupports) }
+    }
+
     override suspend fun setAnimationIntensity(intensity: AnimationIntensity) {
         write { it.copy(animationIntensity = intensity) }
     }
@@ -794,6 +831,50 @@ class FakePreferenceRepository(
                 appInfoActionsOrder = AppInfoActionId.DEFAULT_ORDER,
                 hiddenAppInfoActions = emptySet()
             )
+        }
+    }
+
+    override suspend fun setMultiAppActionsOrder(
+        layout: MultiAppActionLayout,
+        order: List<MultiAppActionId>,
+    ) {
+        val reconciled = layout.fromSavedNamesOrDefault(order.map { it.name })
+        write {
+            when (layout) {
+                MultiAppActionLayout.APP_LIST -> it.copy(appListMultiActionsOrder = reconciled)
+                MultiAppActionLayout.FREEZER -> it.copy(freezerMultiActionsOrder = reconciled)
+            }
+        }
+    }
+
+    override suspend fun setMultiAppActionVisibility(
+        layout: MultiAppActionLayout,
+        actionId: MultiAppActionId,
+        isVisible: Boolean,
+    ) {
+        if (actionId !in layout.defaultOrder) return
+        write {
+            val hidden = it.hiddenMultiAppActions(layout).toMutableSet()
+            if (isVisible) hidden.remove(actionId) else hidden.add(actionId)
+            when (layout) {
+                MultiAppActionLayout.APP_LIST -> it.copy(hiddenAppListMultiActions = hidden)
+                MultiAppActionLayout.FREEZER -> it.copy(hiddenFreezerMultiActions = hidden)
+            }
+        }
+    }
+
+    override suspend fun resetMultiAppActionsCustomization(layout: MultiAppActionLayout) {
+        write {
+            when (layout) {
+                MultiAppActionLayout.APP_LIST -> it.copy(
+                    appListMultiActionsOrder = layout.defaultOrder,
+                    hiddenAppListMultiActions = emptySet(),
+                )
+                MultiAppActionLayout.FREEZER -> it.copy(
+                    freezerMultiActionsOrder = layout.defaultOrder,
+                    hiddenFreezerMultiActions = emptySet(),
+                )
+            }
         }
     }
 }

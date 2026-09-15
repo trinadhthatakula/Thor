@@ -37,6 +37,9 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
+import androidx.compose.ui.platform.testTag
 import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
 
@@ -50,8 +53,11 @@ fun FreezerSelectToolBox(
     onCancel: () -> Unit = {},
     onRemoveFromFreezer: () -> Unit = {},
     onSaveAsProfile: () -> Unit = {},
+    onAddToProfiles: (() -> Unit)? = null,
     onMultiAppAction: (MultiAppAction) -> Unit = {},
-    freezerMode: FreezerMode = FreezerMode.FREEZE
+    freezerMode: FreezerMode = FreezerMode.FREEZE,
+    actionOrder: List<MultiAppActionId> = MultiAppActionLayout.FREEZER.defaultOrder,
+    hiddenActions: Set<MultiAppActionId> = emptySet(),
 ) {
     // "Frozen" = disabled OR suspended; "active" = freezable (enabled & not suspended). GH#239.
     val hasFrozen = remember(selected) { selected.any { it.isFrozen } }
@@ -71,68 +77,60 @@ fun FreezerSelectToolBox(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            FreezerToolItem(icon = R.drawable.round_close, label = stringResource(R.string.close), onClick = onCancel)
+            FreezerToolItem(
+                icon = R.drawable.round_close,
+                label = stringResource(R.string.close),
+                onClick = onCancel,
+                modifier = Modifier.testTag("freezer_multi_action_close"),
+            )
 
-            if (isRoot || isShizuku || isDhizuku) {
-                if (hasUnFrozen) {
-                    FreezerToolItem(
-                        icon = R.drawable.frozen,
-                        label = stringResource(R.string.action_freeze),
-                        onClick = {
-                            onMultiAppAction(
-                                MultiAppAction.Freeze(selected, useSuspend = freezerMode == FreezerMode.SUSPEND)
-                            )
-                        }
-                    )
+            val hasPrivilege = isRoot || isShizuku || isDhizuku
+            actionOrder.distinct().filterNot { it in hiddenActions }.forEach { action ->
+                val available = when (action) {
+                    MultiAppActionId.FREEZE -> hasPrivilege && hasUnFrozen
+                    MultiAppActionId.UNFREEZE -> hasPrivilege && hasFrozen
+                    MultiAppActionId.ADD_TO_PROFILES -> onAddToProfiles != null
+                    MultiAppActionId.SAVE_AS_PROFILE, MultiAppActionId.REMOVE_FROM_FREEZER,
+                    MultiAppActionId.SHARE, MultiAppActionId.EXPORT, MultiAppActionId.UNINSTALL -> true
+                    else -> false
                 }
-                if (hasFrozen) {
+                if (available) {
                     FreezerToolItem(
-                        icon = R.drawable.unfreeze,
-                        label = stringResource(R.string.action_unfreeze),
-                        onClick = { onMultiAppAction(MultiAppAction.UnFreeze(selected)) }
+                        icon = action.defaultIconRes,
+                        label = stringResource(action.titleRes),
+                        modifier = Modifier.testTag("freezer_multi_action_${action.name}"),
+                        onClick = {
+                            when (action) {
+                                MultiAppActionId.FREEZE -> onMultiAppAction(
+                                    MultiAppAction.Freeze(selected, useSuspend = freezerMode == FreezerMode.SUSPEND)
+                                )
+                                MultiAppActionId.UNFREEZE -> onMultiAppAction(MultiAppAction.UnFreeze(selected))
+                                MultiAppActionId.ADD_TO_PROFILES -> onAddToProfiles?.invoke()
+                                MultiAppActionId.SAVE_AS_PROFILE -> onSaveAsProfile()
+                                MultiAppActionId.REMOVE_FROM_FREEZER -> onRemoveFromFreezer()
+                                MultiAppActionId.SHARE -> onMultiAppAction(MultiAppAction.Share(selected))
+                                MultiAppActionId.EXPORT -> onMultiAppAction(MultiAppAction.Backup(selected))
+                                MultiAppActionId.UNINSTALL -> onMultiAppAction(MultiAppAction.Uninstall(selected))
+                                else -> Unit
+                            }
+                        },
                     )
                 }
             }
-
-            // Needs no privilege: this only names the selection, it does not freeze it.
-            FreezerToolItem(
-                icon = R.drawable.list_alt,
-                label = stringResource(R.string.profile_save_selection),
-                onClick = onSaveAsProfile
-            )
-
-            FreezerToolItem(
-                icon = R.drawable.delete,
-                label = stringResource(R.string.action_remove),
-                onClick = onRemoveFromFreezer
-            )
-
-            FreezerToolItem(
-                icon = R.drawable.share,
-                label = stringResource(R.string.action_share),
-                onClick = { onMultiAppAction(MultiAppAction.Share(selected)) }
-            )
-
-            FreezerToolItem(
-                icon = R.drawable.storage,
-                label = stringResource(R.string.action_export_selected),
-                onClick = { onMultiAppAction(MultiAppAction.Backup(selected)) }
-            )
-
-            FreezerToolItem(
-                icon = R.drawable.delete_forever,
-                label = stringResource(R.string.action_uninstall),
-                onClick = { onMultiAppAction(MultiAppAction.Uninstall(selected)) }
-            )
         }
     }
 }
 
 @Composable
-private fun FreezerToolItem(icon: Int, label: String, onClick: () -> Unit) {
+private fun FreezerToolItem(
+    icon: Int,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
+        modifier = modifier
             .width(72.dp)
             .clip(RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)

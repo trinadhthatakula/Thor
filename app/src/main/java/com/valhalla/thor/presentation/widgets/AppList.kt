@@ -93,6 +93,8 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.asGeneralName
@@ -135,6 +137,11 @@ fun AppList(
     onListTypeChanged: (AppListType) -> Unit = {},
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {},
+    onAddToProfiles: ((List<AppInfo>) -> Unit)? = null,
+    multiActionsOrder: List<MultiAppActionId> = MultiAppActionLayout.APP_LIST.defaultOrder,
+    hiddenMultiActions: Set<MultiAppActionId> = emptySet(),
+    clearSelectionRequest: Int = 0,
+    profileAssignmentSelection: List<AppInfo> = emptyList(),
     onToggleView: () -> Unit = {},
     // Both act on the list as displayed, so they live behind the same sheet that shapes it. No-op
     // defaults keep the preview and the widget's other callers from having to care.
@@ -149,6 +156,7 @@ fun AppList(
     // selection would throw NotSerializableException on rotation/process death. The selection is
     // intentionally transient — it is cleared on appListType change and via BackHandler.
     var multiSelection by remember { mutableStateOf(emptyList<AppInfo>()) }
+    LaunchedEffect(clearSelectionRequest) { multiSelection = emptyList() }
 
     // Optimization: Use a Set for O(1) lookups
     val selectedPackageNames = remember(multiSelection) {
@@ -160,6 +168,11 @@ fun AppList(
     BackHandler(isMultiSelectMode) { multiSelection = emptyList() }
 
     LaunchedEffect(appListType) { multiSelection = emptyList() }
+    LaunchedEffect(profileAssignmentSelection) {
+        // The assignment ViewModel retains its draft through rotation. Restore that source
+        // selection after the initial resets; an empty draft on Cancel must leave it intact.
+        if (profileAssignmentSelection.isNotEmpty()) multiSelection = profileAssignmentSelection
+    }
 
     // 3. UI Layout
     Box(modifier = modifier.fillMaxSize()) {
@@ -277,6 +290,9 @@ fun AppList(
         if (isMultiSelectMode) {
             MultiSelectToolBox(
                 selected = multiSelection,
+                actionOrder = multiActionsOrder,
+                hiddenActions = hiddenMultiActions,
+                onAddToProfiles = onAddToProfiles?.let { assign -> { assign(multiSelection) } },
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 32.dp)
                     .align(Alignment.BottomEnd),

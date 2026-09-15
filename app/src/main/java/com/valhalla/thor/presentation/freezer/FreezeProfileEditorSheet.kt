@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -130,11 +131,15 @@ fun FreezeProfileEditorSheet(
         }
     }
 
-    val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
+    val writeLocked by rememberUpdatedState(isSaving)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        confirmValueChange = { it != SheetValue.Hidden || !writeLocked },
+    )
     val coroutineScope = rememberCoroutineScope()
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onDismiss() },
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
@@ -159,7 +164,7 @@ fun FreezeProfileEditorSheet(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    onClick = { onSave(name, selection.toList()) },
+                    onClick = { if (!isSaving) onSave(name, selection.toList()) },
                     enabled = nameError == ProfileNameError.OK && !isSaving
                 ) {
                     Text(stringResource(R.string.action_save))
@@ -171,6 +176,7 @@ fun FreezeProfileEditorSheet(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
+                enabled = !isSaving,
                 singleLine = true,
                 label = { Text(stringResource(R.string.profile_name_label)) },
                 isError = name.isNotEmpty() && nameError != ProfileNameError.OK,
@@ -221,14 +227,14 @@ fun FreezeProfileEditorSheet(
                         )
                     },
                     selectedIndex = AppListType.entries.indexOf(selectedType),
-                    onItemSelected = { selectedType = AppListType.entries[it] },
+                    onItemSelected = { if (!isSaving) selectedType = AppListType.entries[it] },
                     modifier = Modifier.width(IntrinsicSize.Max)
                 )
             }
 
             AppSearchBar(
                 query = searchQuery,
-                onQueryChange = onSearchChange,
+                onQueryChange = { if (!isSaving) onSearchChange(it) },
                 modifier = Modifier.onFocusChanged {
                     if (it.hasFocus) coroutineScope.launch { sheetState.expand() }
                 }
@@ -253,11 +259,13 @@ fun FreezeProfileEditorSheet(
                         // The runner's tier filter would drop a blocked app from the freeze
                         // anyway, so warning here is what stops the user from building a profile
                         // that silently does less than it lists. Removal is never gated.
-                        val tier = app.freezeTier
-                        if (!picked && tier != FreezeTier.NORMAL) pendingApp = app
-                        else selection =
-                            if (picked) selection - app.packageName
-                            else selection + app.packageName
+                        if (!isSaving) {
+                            val tier = app.freezeTier
+                            if (!picked && tier != FreezeTier.NORMAL) pendingApp = app
+                            else selection =
+                                if (picked) selection - app.packageName
+                                else selection + app.packageName
+                        }
                     }
                 )
             }
@@ -271,7 +279,7 @@ fun FreezeProfileEditorSheet(
             app = app,
             action = AppRiskAction.Freeze,
             onConfirm = {
-                selection = selection + app.packageName
+                if (!isSaving) selection = selection + app.packageName
                 pendingApp = null
             },
             onDismiss = { pendingApp = null }

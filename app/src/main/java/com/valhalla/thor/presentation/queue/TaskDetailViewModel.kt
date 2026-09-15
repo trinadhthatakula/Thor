@@ -131,6 +131,7 @@ data class TaskDetailUiState(
     val phase: TaskLifecyclePhase,
     val detail: QueuedTaskDetail? = null,
     val provisionalIdentity: ProvisionalTaskIdentity? = null,
+    val completedWhileObserved: Boolean = false,
 ) {
     val summary: QueuedTaskSummary?
         get() = detail?.summary
@@ -149,7 +150,10 @@ data class TaskDetailActionResult(
 )
 
 private sealed interface TaskDetailObservation {
-    data class Value(val detail: QueuedTaskDetail?) : TaskDetailObservation
+    data class Value(
+        val detail: QueuedTaskDetail?,
+        val completedWhileObserved: Boolean = false,
+    ) : TaskDetailObservation
     data object Failure : TaskDetailObservation
 }
 
@@ -174,16 +178,38 @@ class TaskDetailViewModel(
     }
 
     private val cancellationRequested = MutableStateFlow(false)
+    // Session-only: neither synthetic STARTING nor reopening history counts as new work.
+    private var observedActiveTask = false
 
     private val observedDetail: Flow<TaskDetailObservation> = combine(
-        taskQueueRepository.observe(taskId),
+        taskQueueRepository.observe(taskId).map { persistedDetail ->
+            val detail = persistedDetail?.takeIf { it.summary.taskId == taskId }
+            val phase = detail?.summary?.phase
+            when (phase) {
+                TaskLifecyclePhase.QUEUED,
+                TaskLifecyclePhase.RUNNING -> observedActiveTask = true
+
+                null,
+                TaskLifecyclePhase.PARTIAL,
+                TaskLifecyclePhase.FAILED,
+                TaskLifecyclePhase.CANCELLED,
+                TaskLifecyclePhase.EXPIRED,
+                TaskLifecyclePhase.READY_PARTIAL -> observedActiveTask = false
+
+                else -> Unit
+            }
+            TaskDetailObservation.Value(
+                detail = detail,
+                completedWhileObserved = phase == TaskLifecyclePhase.SUCCEEDED &&
+                    observedActiveTask && detail?.hasWarnings == false,
+            )
+        },
         progressOverlaySource.observe(taskId)
             .onStart { emit(null) }
             .catch { emit(null) },
-    ) { detail, overlay ->
-        val observation: TaskDetailObservation = TaskDetailObservation.Value(
-            detail
-                ?.takeIf { it.summary.taskId == taskId }
+    ) { persistedObservation, overlay ->
+        val observation: TaskDetailObservation = persistedObservation.copy(
+            detail = persistedObservation.detail
                 ?.withProgressOverlay(overlay)
                 ?.withSortedLines(),
         )
@@ -245,6 +271,7 @@ class TaskDetailViewModel(
                 taskId = taskId,
                 phase = detail.summary.phase,
                 detail = detail,
+                completedWhileObserved = observation.completedWhileObserved,
             )
         }
     }.stateIn(

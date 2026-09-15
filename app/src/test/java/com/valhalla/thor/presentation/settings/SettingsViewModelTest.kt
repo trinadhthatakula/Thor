@@ -5,7 +5,10 @@ package com.valhalla.thor.presentation.settings
 
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezeCandidate
+import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeState
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -124,6 +127,24 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `settings recovery includes an app managed only through a profile`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = FakePreferenceRepository(),
+            controller = controller,
+            candidates = mapOf("profile.app" to FreezeCandidate(FreezeState.FROZEN)),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+            profiles = FakeFreezeProfileRepository(listOf(FreezeProfile(1, "Games", listOf("profile.app")))),
+        )
+
+        vm.unfreezeAll()
+        runCurrent()
+
+        assertEquals(listOf("profile.app"), controller.launched.single().packageNames)
+    }
+
+    @Test
     fun `restore all launch exception rejects the exact provisional task`() = runTest {
         val controller = FakePrivilegeSweepController().apply {
             launchFailure = IllegalStateException("acceptance failed")
@@ -211,12 +232,81 @@ class SettingsViewModelTest {
         assertTrue(preferences.writeFailureLatched)
     }
 
+    @Test
+    fun `multi-app edits follow saved layouts and reset only the selected toolbar`() = runTest {
+        val initial = UserPreferences(themeMode = ThemeMode.DARK)
+        val preferences = FakePreferenceRepository(initial)
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = preferences,
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+        )
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
+        runCurrent()
+        val appListOrder = MultiAppActionLayout.APP_LIST.defaultOrder.reversed()
+        val freezerOrder = MultiAppActionLayout.FREEZER.defaultOrder.reversed()
+
+        vm.setMultiAppActionsOrder(MultiAppActionLayout.APP_LIST, appListOrder)
+        vm.setMultiAppActionVisibility(MultiAppActionLayout.APP_LIST, MultiAppActionId.SHARE, false)
+        vm.setMultiAppActionsOrder(MultiAppActionLayout.FREEZER, freezerOrder)
+        vm.setMultiAppActionVisibility(MultiAppActionLayout.FREEZER, MultiAppActionId.UNINSTALL, false)
+        runCurrent()
+
+        val saved = initial.copy(
+            appListMultiActionsOrder = appListOrder,
+            hiddenAppListMultiActions = setOf(MultiAppActionId.SHARE),
+            freezerMultiActionsOrder = freezerOrder,
+            hiddenFreezerMultiActions = setOf(MultiAppActionId.UNINSTALL),
+        )
+        assertEquals(saved, vm.uiState.value.prefs)
+
+        vm.resetMultiAppActionsCustomization(MultiAppActionLayout.APP_LIST)
+        runCurrent()
+
+        assertEquals(
+            saved.copy(
+                appListMultiActionsOrder = MultiAppActionLayout.APP_LIST.defaultOrder,
+                hiddenAppListMultiActions = emptySet(),
+            ),
+            vm.uiState.value.prefs,
+        )
+    }
+
+    @Test
+    fun `failed multi-app preference writes keep the saved toolbar and report failure`() = runTest {
+        val initial = UserPreferences(hiddenFreezerMultiActions = setOf(MultiAppActionId.SHARE))
+        val preferences = FakePreferenceRepository(initial, writesFail = true)
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = preferences,
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+        )
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
+        runCurrent()
+
+        vm.setMultiAppActionsOrder(
+            MultiAppActionLayout.FREEZER,
+            MultiAppActionLayout.FREEZER.defaultOrder.reversed(),
+        )
+        vm.setMultiAppActionVisibility(MultiAppActionLayout.FREEZER, MultiAppActionId.UNINSTALL, false)
+        vm.resetMultiAppActionsCustomization(MultiAppActionLayout.FREEZER)
+        runCurrent()
+
+        assertEquals(initial, vm.uiState.value.prefs)
+        assertTrue(preferences.writeFailureLatched)
+    }
+
     private fun viewModel(
         freezer: FakeFreezerRepository,
         preferences: FakePreferenceRepository,
         controller: FakePrivilegeSweepController,
         candidates: Map<String, FreezeCandidate>,
         targets: TaskNavigationTargets,
+        profiles: FakeFreezeProfileRepository = FakeFreezeProfileRepository(),
     ): SettingsViewModel = SettingsViewModel(
         preferenceRepository = preferences,
         systemRepository = FakeSystemRepository(),
@@ -224,7 +314,7 @@ class SettingsViewModelTest {
         localeManager = LocaleManager(FakeContext(File("/tmp"))),
         sweepResolver = privilegeSweepResolver(
             freezerRepository = freezer,
-            freezeProfileRepository = FakeFreezeProfileRepository(),
+            freezeProfileRepository = profiles,
             preferenceRepository = preferences,
             candidates = candidates,
             userId = 10,
