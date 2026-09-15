@@ -61,6 +61,27 @@ All three are thin callers of one shared implementation,
 [`release-rung.yml`](../.github/workflows/release-rung.yml). They differ only in the inputs they
 declare. **If a rung needs to behave differently, add an input — do not fork the workflow.**
 
+### One-time exception: 1.96.1 is already on Play production
+
+The maintainer manually promoted **1961 (1.96.1)** from closed testing to Play production after
+testers confirmed it resolved the Dhizuku issues in 1.96.0. The source branches still need their
+normal `dev` → `master` → `production` promotion so GitHub, Obtainium and F-Droid-compatible stores
+can receive the same fixes.
+
+For this version only, the master and production callers set
+`play_already_published_version_code: '1961'`. When the detected code matches, the shared workflow
+keeps GitHub publication enabled but runs `build_release_candidates`, skips decoding the Play
+service account, and makes no Play API calls. It still builds both signed APKs from each rung's
+own commit, pins the release tag to that commit, checks the notes, and sends the production
+announcement with an accurate already-published Play status. Reusing the tester APK under a tag
+at a different commit would break reproducibility checks.
+
+The exception does not change the dev uploader or any later version's promotions. Do not rerun
+the dev publish workflow for 1961, which Play has already accepted. Merge the exception into
+`dev` first, then promote that revision through master and production; an older workflow revision
+does not contain the exception. After the stable GitHub release is published, synchronize the
+Shizu manifest and carry that sync to master as described in the release-notes guide.
+
 ### Rung 1 — `dev`
 
 Builds both flavours, uploads the `store` AAB to Play's `alpha` track, **mirrors that same release

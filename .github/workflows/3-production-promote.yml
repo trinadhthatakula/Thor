@@ -36,6 +36,9 @@ jobs:
     with:
       rung: production
       fastlane_lane: promote_production
+      # v1.96.1 is already live on Play after a manual emergency promotion.
+      # Only this code skips Play; the stable GitHub release still publishes.
+      play_already_published_version_code: '1961'
       # No suffix: this is the tag Obtainium, IzzyOnDroid and the Shizu store's
       # /releases/latest/ URL all resolve to.
       tag_suffix: ''
