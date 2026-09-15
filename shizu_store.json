@@ -24,7 +24,7 @@
   "repo_url": "https://github.com/trinadhthatakula/Thor",
   "app_website": "https://thor.trinadhthatakula.com",
   "download_url": "https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk",
-  "changelog": "• 📦 Backup & Restore Hub: browse, restore, share or delete backups and app bundles from one screen\n\n• 💾 Encrypted offline backups: full app data on root, APK + shared storage on Shizuku, plus .xapk & OBB\n\n• 🔀 Reorder or hide App Info actions; tap an app's icon to open it, long-press for system settings\n\n• 🔧 Fixed app lists that showed only Thor; newly granted root or Dhizuku applies on Refresh\n\n• 🌐 8 languages: EN, AR, ES, FR, PL, PT, PT-BR, ZH, plus clearer freezer action labels",
+  "changelog": "• ⏳ Follow backups, exports and bulk actions in Guardians Queue.\n\n• 💾 Encrypted offline backups, Backup Hub and XAPK/OBB support.\n\n• 🧩 Control app components; customize actions and fonts.\n\n• ❄️ Safer Freezer actions, installs and uninstall prompts.\n\n• 🌍 Better app visibility, settings and translations.\n\n• ⚠️ App-data backups from 1.95.2 or earlier cannot be restored. Make fresh backups after updating while original app data is available.",
   "store_issue_number": 279,
   "category": "Tools",
   "license": "GPL-3.0-or-later",
