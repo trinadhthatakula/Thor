@@ -95,17 +95,24 @@ release-notes/v<version>/
 └── github.md ────────→ GitHub Release body
 ```
 
-**`playstore.txt` is the single source for three channels.** All three copies must stay
-byte-identical, because each consumer reads its own copy: F-Droid reads `fastlane/`, the Shizu store
-reads `shizu_store.json`. Write the text once, then propagate it (Step 5).
+**`playstore.txt` is the single source for three channels.** The `fastlane/` copy must stay
+byte-identical; the decoded Shizu `.changelog` must match apart from trailing newlines. Each
+consumer reads its own copy: F-Droid reads `fastlane/`, the Shizu store reads `shizu_store.json`.
+Write the text once, then propagate it (Step 5).
 
-Only one of those copies is audited. `.github/scripts/check-shizu-manifest.sh` compares
+`.github/scripts/test/test-changelog-content.sh` checks retained source/en-US pairs and requires
+the current version's canonical copy. This catches first-line truncation that a non-empty-file
+check misses. It also exercises the actual Fastfile copy with multiple bullets and blank lines.
+`test-shizu-changelog-roundtrip.sh` runs the actual Shizu sync in an isolated fixture, verifying
+all lines survive JSON encoding, including quotes and literal backslashes.
+
+`.github/scripts/check-shizu-manifest.sh` compares
 `shizu_store.json`'s `.changelog` against `playstore.txt`, and `pr-ci.yml`'s `shizu-manifest` job
 runs it on **every**
 PR — deliberately un-path-filtered, since `on.pull_request.paths` would gate the whole workflow
 including the required `build-and-test` check. So a forgotten `sync-shizu-changelog.sh` surfaces on
-the PR rather than becoming a silent store regression. The **`fastlane/` copy is checked by
-nothing** — the `diff` in Step 6 is its only gate, which is why Step 6 is not optional.
+the PR rather than becoming a silent store regression. The content and round-trip tests above
+also run on every PR through `.github/scripts/test/run-tests.sh`.
 
 **It surfaces as a `::warning::` on a PR, not a red check.** The checker derives its expected
 version from **`origin/production`**, so a production promotion moves the target without any PR
@@ -288,8 +295,10 @@ release PR rather than a store regression found later.
 Translate if you can; if you cannot, English is the correct placeholder — a translated release
 would still beat a blank one, and a blank one is the failure mode this prevents. A translation
 added later is safe: `copy_playstore_notes` in `fastlane/Fastfile` overwrites `en-US` only and
-skips any other locale whose file is already non-empty, so the production upload will not
-overwrite a contributed translation with English.
+skips any other locale whose file is already non-empty, so neither the dev upload nor production
+promotion overwrites a contributed translation with English. Both use whole-file copying and
+stop before publishing if copying fails. Copy the complete file when preparing release artifacts;
+a first-line read or single-line environment assignment loses every bullet after the first newline.
 
 ⚠️ **The Shizu manifest is no longer part of this step.** `sync-shizu-changelog.sh` reads
 `versionCode` from **`origin/production:gradle.properties`**, not from the working tree, because
@@ -304,14 +313,19 @@ Run it here and it will sync the changelog of the **last production release**, p
 the production promotion**, not during release prep:
 
 ```bash
-git fetch origin production                # the script reads this ref; a shallow clone has it not
-.github/scripts/sync-shizu-changelog.sh    # on master, once production carries the new versionCode
-git add shizu_store.json                   # and commit it to master
+git fetch origin dev production            # the script reads origin/production
+git switch -c chore/sync-shizu-changelog origin/dev
+.github/scripts/sync-shizu-changelog.sh    # once production carries the new versionCode
+git add shizu_store.json
+# Commit on this topic branch and open a PR targeting dev, as AGENTS.md requires.
 ```
 
-Until that lands, `shizu-manifest` warns on PRs and the weekly audit fails — see the note under the
-diagram above. `SHIZU_VERSION_REF` overrides the ref for a one-off; if it does not resolve, the
-script fails loudly rather than quietly falling back to production.
+The store reads the manifest from **`master`**, so the sync commit must also reach `master` through
+the normal PR promotion flow before the live listing changes. Merging its PR into `dev` alone does
+not update the store. Until the sync reaches the audited branch, `shizu-manifest` warns on PRs and
+the weekly audit fails — see the note under the diagram above. `SHIZU_VERSION_REF` overrides the
+ref for a one-off; if it does not resolve, the script fails loudly rather than quietly falling back
+to production.
 
 CI never runs *this* script: the `master` ruleset requires a PR and a status check, and a
 `GITHUB_TOKEN`-authored PR does not trigger `pull_request` workflows, so no bot can land that
@@ -328,7 +342,7 @@ says "different" is the expected state, not a defect.
 ```bash
 .github/scripts/check-notes-budget.sh <version>   # e.g. 1.94.1
 
-# the three copies agree, and the manifest still describes reality
+# Fastlane matches the version being prepared; Shizu matches published production
 diff release-notes/v<version>/playstore.txt fastlane/metadata/android/en-US/changelogs/<versionCode>.txt
 .github/scripts/check-shizu-manifest.sh                 # add --network for the URL tier
 
