@@ -28,7 +28,9 @@ import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -221,6 +223,7 @@ class ProfileRemovalRecoveryViewModelTest {
     fun `metadata write failure keeps recovery and retries the same retained edit`() = runTest {
         val id = profiles.create("Before", listOf("unknown"))
         val vm = viewModel()
+        val seen = events(vm)
         vm.updateProfile(6, id, "After", emptyList())
         runCurrent()
         profiles.writeFailure = IllegalStateException("disk full")
@@ -228,6 +231,7 @@ class ProfileRemovalRecoveryViewModelTest {
         runCurrent()
 
         assertEquals(UiText.StringResource(R.string.profile_removal_write_failed), vm.uiState.value.profileRemovalRecovery?.error)
+        assertTrue("the recovery dialog presents the failure without a second toast", seen.isEmpty())
         assertEquals("Before", profiles.observeProfiles().first().single().name)
         assertEquals(listOf("unknown"), profiles.packagesOf(id))
         profiles.writeFailure = null
@@ -235,6 +239,34 @@ class ProfileRemovalRecoveryViewModelTest {
         runCurrent()
         assertEquals("After", profiles.observeProfiles().first().single().name)
         assertTrue(profiles.packagesOf(id).isEmpty())
+    }
+
+    @Test
+    fun `write failure without recovery emits one localized message and allows retry`() = runTest {
+        apps.apps.value = listOf(AppInfo(packageName = "active"))
+        val id = profiles.create("Selected", listOf("active"))
+        profiles.writeFailure = IllegalStateException("private database failure")
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.deleteProfile(id)
+        runCurrent()
+
+        assertEquals(
+            listOf(FreezerEvent.ShowToast(UiText.StringResource(R.string.profile_removal_write_failed))),
+            seen,
+        )
+        assertNull(vm.uiState.value.profileRemovalRecovery)
+        assertFalse(vm.uiState.value.profileSaveInFlight)
+        assertEquals(listOf("active"), profiles.packagesOf(id))
+
+        profiles.writeFailure = null
+        vm.deleteProfile(id)
+        runCurrent()
+
+        assertTrue(profiles.observeProfiles().first().isEmpty())
+        assertEquals(2, seen.size)
+        assertEquals(FreezerEvent.ShowToast(UiText.StringResource(R.string.profile_deleted)), seen.last())
     }
 
     @Test
@@ -296,6 +328,12 @@ class ProfileRemovalRecoveryViewModelTest {
 
     private fun FreezerViewModel.recoveryPackages() =
         uiState.value.profileRemovalRecovery?.apps?.map { it.packageName }
+
+    private fun TestScope.events(vm: FreezerViewModel): List<FreezerEvent> {
+        val seen = mutableListOf<FreezerEvent>()
+        backgroundScope.launch(main.dispatcher) { vm.events.collect { seen += it } }
+        return seen
+    }
 
     private fun frozen(packageName: String) = AppInfo(packageName = packageName, enabled = false)
 
