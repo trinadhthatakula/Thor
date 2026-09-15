@@ -35,6 +35,9 @@ jobs:
     with:
       rung: beta
       fastlane_lane: promote_beta
+      # v1.96.1 was manually promoted from closed testing to Play production.
+      # Build/tag the GitHub beta assets without touching any Play track.
+      play_already_published_version_code: '1961'
       tag_suffix: -beta-${{ github.run_number }}
       title_prefix: Beta
       prerelease: true

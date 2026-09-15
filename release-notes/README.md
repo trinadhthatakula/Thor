@@ -37,6 +37,11 @@ promoted rather than rebuilt.
 A push that does not change `versionCode` still builds, but publishes nothing — except on
 `production`, where it is an error, because there is nothing to promote.
 
+**1.96.1 distribution exception:** Play production already received versionCode 1961 through a
+manual promotion. Its master/production workflows build and publish the GitHub APKs without
+calling Play again; later versions retain normal routing. See the
+[one-time exception](../docs/branching-and-releases.md#one-time-exception-1961-is-already-on-play-production).
+
 ### Mid-cycle bug fixes
 
 **There is no hotfix bypass.** A fix lands on `dev` with a *new* version code and re-enters at the
