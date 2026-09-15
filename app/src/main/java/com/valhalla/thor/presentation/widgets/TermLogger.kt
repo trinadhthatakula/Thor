@@ -23,7 +23,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -85,7 +84,7 @@ fun TermLoggerDialog(
             ) {
                 if (isOperationComplete) {
                     if (isOperationSuccessful && onSupport != null) {
-                        TextButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
                             Text(stringResource(R.string.support_thor))
                         }
                     }

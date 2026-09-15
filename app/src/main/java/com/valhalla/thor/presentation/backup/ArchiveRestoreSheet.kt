@@ -601,7 +601,7 @@ private fun RestoreOutcomeDialog(finish: RestoreFinish, onDismiss: () -> Unit, o
             ) {
                 RestoreOutcome(finish = finish)
                 if (onSupport != null) {
-                    TextButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.support_thor))
                     }
                 }

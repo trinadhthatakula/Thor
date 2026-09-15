@@ -960,7 +960,7 @@ fun PortableInstaller(
                         }
 
                         if (observation.completedWhileObserved && !isInstallCallActive && supportState.canInvite) {
-                            TextButton(onClick = {
+                            OutlinedButton(onClick = {
                                 if (supportCoordinator.state.value.canInvite &&
                                     !viewModel.isInstallCallActive.value &&
                                     viewModel.installState.replayCache.lastOrNull() == InstallState.Success

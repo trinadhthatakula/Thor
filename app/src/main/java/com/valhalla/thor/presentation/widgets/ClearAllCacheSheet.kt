@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
@@ -181,7 +182,7 @@ fun ClearAllCacheSheet(
 
             if (state !is CacheClearState.Running) {
                 if (state is CacheClearState.Done && onSupport != null) {
-                    TextButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onSupport, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.support_thor))
                     }
                 }

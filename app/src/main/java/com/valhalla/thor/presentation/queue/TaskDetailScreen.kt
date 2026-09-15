@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -188,7 +187,7 @@ internal fun TaskDetailFooter(
         if (state.phase == TaskLifecyclePhase.SUCCEEDED &&
             state.completedWhileObserved && state.detail?.hasWarnings == false && onSupport != null
         ) {
-            TextButton(
+            OutlinedButton(
                 onClick = onSupport,
                 modifier = Modifier
                     .fillMaxWidth()
