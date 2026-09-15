@@ -35,6 +35,23 @@ class RootFreezeChainTest {
     }
 
     @Test
+    fun `a hidden installed app requires unhide before legacy restore steps`() {
+        assertFalse(RootFreezeChain.isEffectivelyEnabled(true, ApplicationInfo.FLAG_INSTALLED, hidden = true))
+        assertEquals(
+            RootFreezeChain.UnfreezeStep.UNHIDE,
+            RootFreezeChain.unfreezeStep(true, ApplicationInfo.FLAG_INSTALLED, hidden = true),
+        )
+        assertEquals(
+            RootFreezeChain.UnfreezeStep.UNHIDE,
+            RootFreezeChain.unfreezeStep(false, 0, hidden = true),
+        )
+        assertEquals(
+            RootFreezeChain.UnfreezeStep.INSTALL_EXISTING,
+            RootFreezeChain.unfreezeStep(false, 0, hidden = false),
+        )
+    }
+
+    @Test
     fun `an app uninstalled for this user is not effectively enabled despite enabled being true`() {
         // The trap the whole fold exists for. Under MATCH_UNINSTALLED_PACKAGES the lookup *succeeds*
         // for a package uninstalled for this user and reports enabled == true; only the missing
@@ -129,11 +146,13 @@ class RootFreezeChainTest {
         // unfreeze reports success on a package the freezer still lists as frozen.
         for (enabled in listOf(true, false)) {
             for (flags in listOf(0, ApplicationInfo.FLAG_INSTALLED)) {
-                assertEquals(
-                    "enabled=$enabled flags=$flags",
-                    RootFreezeChain.isEffectivelyEnabled(enabled, flags),
-                    RootFreezeChain.unfreezeStep(enabled, flags) == RootFreezeChain.UnfreezeStep.VERIFIED
-                )
+                for (hidden in listOf(true, false)) {
+                    assertEquals(
+                        "enabled=$enabled flags=$flags hidden=$hidden",
+                        RootFreezeChain.isEffectivelyEnabled(enabled, flags, hidden),
+                        RootFreezeChain.unfreezeStep(enabled, flags, hidden) == RootFreezeChain.UnfreezeStep.VERIFIED
+                    )
+                }
             }
         }
     }

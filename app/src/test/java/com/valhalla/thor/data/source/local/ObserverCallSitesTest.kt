@@ -69,8 +69,8 @@ class ObserverCallSitesTest {
      * root-only now; Shizuku gets `pm trim-caches`, which uses no observer at all.
      *
      * `RootSystemGateway` is not here and does not belong here: it mentions `IPackageDataObserver`
-     * only in comments explaining why its cache clear goes through the shell instead. `DhizukuHelper`
-     * is excluded deliberately, and the last test in this file is what keeps that exclusion honest.
+     * only in comments explaining why its cache clear goes through the shell instead. Dhizuku uses
+     * the public DPM listener, whose distinct wiring is checked separately below.
      */
     private val verifiedSites = listOf(
         ClearSite(
@@ -124,8 +124,7 @@ class ObserverCallSitesTest {
      * The exact shape the fix removed must not come back by copy-paste.
      *
      * `null /* IPackageDataObserver */` is how the argument was spelled at four of the five sites,
-     * comment and all, and it is still spelled that way in `DhizukuHelper` — which is precisely why
-     * it is the thing most likely to be pasted back in while "making the gateways consistent". The
+     * comment and all. It must not return while "making the gateways consistent". The
      * check is on the raw text including comments, unlike the sweep above, because here the comment
      * is the fingerprint.
      */
@@ -271,43 +270,18 @@ class ObserverCallSitesTest {
         )
     }
 
-    // -- the deliberate exclusion -------------------------------------------------------------
-
-    /**
-     * `DhizukuHelper` still passes `null`, still says why, and is still outside this sweep.
-     *
-     * Its reflection rung was made honest rather than verified: on a Dhizuku-only device the call
-     * dies inside a `ShizukuBinderWrapper` before it ever reaches `PackageManagerService`, so a real
-     * observer would buy one guaranteed 15-second timeout per package — an always-red answer that
-     * teaches nobody anything — and the rung now simply returns `false`. That is a decision, not an
-     * oversight, and this test is what keeps the difference legible.
-     *
-     * One rung, not two. The other was `clearCache`, deleted along with Shizuku's for the same
-     * reason: no privilege mode short of a platform signature can clear one package's cache through
-     * `PackageManagerService`, so there was nothing left for it to be honest about.
-     *
-     * It is deliberately two-sided. If the comment marking the rung disappears, the reasoning has
-     * been lost and this fails. If [awaitDataObserver] ever appears in that file, the transport has
-     * been fixed and Dhizuku belongs in [verifiedSites] — which is also a failure, and the right
-     * one: the sweep should widen rather than quietly not cover the new code.
-     */
+    /** DPM owns the Binder observer; Thor supplies and awaits the public completion listener. */
     @Test
-    fun `Dhizuku is excluded on purpose, and says so`() {
-        val dhizuku = sourceOf("data/source/local/dhizuku/Dhizuku.kt")
-        val marker = "issued, and deliberately never believed"
-
-        assertEquals(
-            "DhizukuHelper's reflection rung no longer carries \"$marker\" — either it was " +
-                "rewired, in which case add it to verifiedSites, or the reasoning was deleted",
-            1,
-            dhizuku.split(marker).size - 1
-        )
-
-        assertFalse(
-            "DhizukuHelper now uses awaitDataObserver, so it is no longer excluded and must be " +
-                "added to verifiedSites instead of being asserted about here",
-            dhizuku.contains("awaitDataObserver")
-        )
+    fun `Dhizuku clears through the public owner API and awaits its listener`() {
+        val body = bodyOf(ClearSite(
+            relativePath = "data/source/local/dhizuku/Dhizuku.kt",
+            functionName = "clearAppData",
+            control = "awaitPackageOperation",
+            frameworkMethods = emptyList(),
+        ))
+        assertTrue(body.contains("clearApplicationUserData("))
+        assertTrue(body.contains("completed(clearedPackage, succeeded)"))
+        assertFalse(body.contains("Bypass.invoke"))
     }
 
     // -- machinery ----------------------------------------------------------------------------

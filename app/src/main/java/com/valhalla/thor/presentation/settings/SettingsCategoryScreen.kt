@@ -109,6 +109,8 @@ fun SettingsCategoryScreen(
     onOpenRestore: () -> Unit,
     onNavigateToExtensionManager: () -> Unit,
     onNavigateToCustomizeAppInfoActions: () -> Unit = {},
+    onNavigateToCustomizeAppListMultiActions: () -> Unit = {},
+    onNavigateToCustomizeFreezerMultiActions: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -188,8 +190,8 @@ fun SettingsCategoryScreen(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text(stringResource(R.string.unfreeze_all_confirmation_title)) },
-            text = { Text(stringResource(R.string.unfreeze_all_confirmation_desc)) },
+            title = { Text(stringResource(R.string.unfreeze_managed_confirmation_title)) },
+            text = { Text(stringResource(R.string.unfreeze_managed_confirmation_desc)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -377,6 +379,24 @@ fun SettingsCategoryScreen(
                         onClick = onNavigateToCustomizeAppInfoActions
                     )
 
+                    SettingsRowId.APP_LIST_MULTI_ACTIONS -> SettingsClickRow(
+                        icon = R.drawable.dashboard_customize,
+                        title = stringResource(R.string.customization_app_list_multi_actions),
+                        subtitle = stringResource(R.string.customization_multi_actions_desc),
+                        showChevron = true,
+                        highlighted = lit,
+                        onClick = onNavigateToCustomizeAppListMultiActions,
+                    )
+
+                    SettingsRowId.FREEZER_MULTI_ACTIONS -> SettingsClickRow(
+                        icon = R.drawable.dashboard_customize,
+                        title = stringResource(R.string.customization_freezer_multi_actions),
+                        subtitle = stringResource(R.string.customization_multi_actions_desc),
+                        showChevron = true,
+                        highlighted = lit,
+                        onClick = onNavigateToCustomizeFreezerMultiActions,
+                    )
+
                     // ── Freezer ─────────────────────────────────────────────────────────────────
                     SettingsRowId.AUTO_FREEZE -> SettingsExpandedSwitchRow(
                         icon = R.drawable.frozen,
@@ -436,10 +456,10 @@ fun SettingsCategoryScreen(
                     // click row. Error colours and no chevron: this leads nowhere, it acts.
                     SettingsRowId.UNFREEZE_ALL -> SettingsClickRow(
                         icon = R.drawable.unfreeze,
-                        title = stringResource(R.string.unfreeze_all_apps),
+                        title = stringResource(R.string.unfreeze_managed_apps),
                         subtitle = privilegeAwareSubtitle(
                             hasPrivilege,
-                            R.string.unfreeze_all_apps_desc
+                            R.string.unfreeze_managed_apps_desc
                         ),
                         enabled = hasPrivilege,
                         destructive = true,
@@ -451,26 +471,27 @@ fun SettingsCategoryScreen(
                     SettingsRowId.AUTO_REINSTALL -> SettingsSwitchRow(
                         icon = R.drawable.settings_backup_restore,
                         title = stringResource(R.string.auto_reinstall),
-                        subtitle = stringResource(R.string.auto_reinstall_desc),
+                        subtitle = stringResource(
+                            if (state.canFixStore) R.string.auto_reinstall_desc
+                            else R.string.setting_requires_root_or_shizuku
+                        ),
                         checked = prefs.autoReinstallEnabled,
+                        enabled = state.canFixStore,
                         highlighted = lit,
                         onCheckedChange = { viewModel.setAutoReinstallEnabled(it) }
                     )
 
-                    // Gated on `hasPrivilege` because there is nothing for it to change without one:
-                    // with no privilege every install goes through the system installer, which asks
-                    // for permissions the ordinary way and has never taken orders from this toggle.
-                    // Left tappable-looking with no privilege it would read as "Thor is granting
-                    // everything and I cannot stop it", which is the opposite of what it does.
+                    // Install-time grants need Root or Shizuku. Device-owner policy grants
+                    // are a separate per-permission action, not an install option.
                     SettingsRowId.GRANT_ALL_PERMISSIONS -> SettingsSwitchRow(
                         icon = R.drawable.danger,
                         title = stringResource(R.string.grant_all_permissions),
-                        subtitle = privilegeAwareSubtitle(
-                            hasPrivilege,
-                            R.string.grant_all_permissions_desc
+                        subtitle = stringResource(
+                            if (state.canGrantPermissionsOnInstall) R.string.grant_all_permissions_desc
+                            else R.string.setting_requires_root_or_shizuku
                         ),
                         checked = prefs.grantAllPermissionsOnInstall,
-                        enabled = hasPrivilege,
+                        enabled = state.canGrantPermissionsOnInstall,
                         highlighted = lit,
                         onCheckedChange = { viewModel.setGrantAllPermissionsOnInstall(it) }
                     )

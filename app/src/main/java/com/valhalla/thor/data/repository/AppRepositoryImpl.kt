@@ -14,6 +14,7 @@ import android.os.Build
 import androidx.core.content.edit
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.UadHelper
+import com.valhalla.thor.data.source.local.isEffectivelyEnabled
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
@@ -315,7 +316,7 @@ class AppRepositoryImpl(
                             (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
 
                         val isInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
-                        val isEnabled = appInfo.enabled && isInstalled
+                        val isEnabled = appInfo.isEffectivelyEnabled
 
                         if (!forceRefresh &&
                             cachedEntry != null &&

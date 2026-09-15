@@ -1398,6 +1398,7 @@ class ArchiveRestoreViewModelTest {
         testScheduler.advanceUntilIdle()
         assertEquals(RestoreFinish.Succeeded(), vm.uiState.value.finished)
         assertEquals(false, vm.uiState.value.running)
+        assertEquals(true, vm.uiState.value.canOfferSupport)
     }
 
     @Test
@@ -1424,6 +1425,7 @@ class ArchiveRestoreViewModelTest {
             RestoreFinish.Succeeded(listOf("the game data could not be placed: no space left on device")),
             vm.uiState.value.finished,
         )
+        assertEquals(false, vm.uiState.value.canOfferSupport)
     }
 
     @Test

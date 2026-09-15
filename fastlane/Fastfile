@@ -117,32 +117,12 @@ platform :android do
       generated_aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
       UI.user_error!("❌ No AAB generated") unless generated_aab_path
 
-      # Try to locate playstore.txt
-      skip_changelogs = true
-      changelog_dir = File.join(project_root, "release-notes", "v#{new_version_name}")
-      playstore_notes_path = File.join(changelog_dir, "playstore.txt")
-
-      unless File.exist?(playstore_notes_path)
-        changelog_dir = File.join(project_root, "release-notes", new_version_name)
-        playstore_notes_path = File.join(changelog_dir, "playstore.txt")
-      end
-
-      if File.exist?(playstore_notes_path)
-        require 'fileutils'
-        dest_dir = File.join(fastlane_dir, "metadata", "android", "en-US", "changelogs")
-        FileUtils.mkdir_p(dest_dir)
-        dest_file = File.join(dest_dir, "#{final_version_code}.txt")
-        begin
-          FileUtils.cp(playstore_notes_path, dest_file)
-          UI.success("📝 Successfully copied Play Store release notes to #{dest_file}")
-          skip_changelogs = false
-        rescue => e
-          UI.error("❌ Failed to copy Play Store release notes from #{playstore_notes_path} to #{dest_file}: #{e.message}")
-          skip_changelogs = true
-        end
-      else
-        UI.important("⚠️  No Play Store release notes found at: #{playstore_notes_path}. Skipping changelog upload.")
-      end
+      # Use the same complete-file copy for dev and production. Every locale
+      # needs notes, and a copy failure must stop before the one-time upload.
+      skip_changelogs = !copy_playstore_notes(
+        project_root: project_root, version_name: new_version_name,
+        version_code: final_version_code, required: false
+      )
 
       # Upload to the track the lane asked for — always one of ThorRelease::UPLOAD_TRACKS
       # (internal or alpha). beta and production are never received here: they are
@@ -346,14 +326,19 @@ platform :android do
   # would undo their work silently, on the one rung that reaches all users.
   # A locale with no translation still gets English, which is the point - it
   # beats a blank what's-new.
-  def copy_playstore_notes(project_root:, version_name:, version_code:)
+  def copy_playstore_notes(project_root:, version_name:, version_code:, required: true)
     require 'fileutils'
 
     notes = File.join(project_root, 'release-notes', "v#{version_name}", 'playstore.txt')
     notes = File.join(project_root, 'release-notes', version_name, 'playstore.txt') unless File.exist?(notes)
-    UI.user_error!("❌ No curated playstore.txt for v#{version_name} - a stable must have one") unless File.exist?(notes)
+    unless File.exist?(notes)
+      UI.user_error!("❌ No curated playstore.txt for v#{version_name} - a stable must have one") if required
+      UI.important("⚠️  No Play Store release notes found for v#{version_name}. Skipping changelog upload.")
+      return false
+    end
+    UI.user_error!("❌ Curated playstore.txt for v#{version_name} is empty") if File.read(notes, encoding: 'UTF-8').strip.empty?
 
-    metadata_root = File.join(Dir.pwd, 'metadata', 'android')
+    metadata_root = File.join(project_root, 'fastlane', 'metadata', 'android')
     locales = Dir.children(metadata_root).select { |d| File.directory?(File.join(metadata_root, d)) }
     UI.user_error!("❌ No locales found under #{metadata_root}") if locales.empty?
 
@@ -370,6 +355,8 @@ platform :android do
       FileUtils.cp(notes, dest)
       UI.message("📝 #{locale}/changelogs/#{version_code}.txt")
     end
+
+    true
   end
 
   desc 'Master: build -> promote alpha to beta (Open testing) -> GitHub pre-release'

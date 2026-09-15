@@ -32,7 +32,7 @@
     <string name="auto_reinstall">Automatyczna reinstalacja aplikacji</string>
     <string name="auto_reinstall_desc">Automatycznie zachowuj Google Play Store jako zarejestrowany instalator, aby umożliwić aktualizacje w tle</string>
     <string name="grant_all_permissions">Przyznaj wszystkie uprawnienia przy instalacji</string>
-    <string name="grant_all_permissions_desc">Nadaj aplikacji wszystkie żądane uprawnienia zaraz po instalacji, bez pytania — tylko przy instalacji przez root, Shizuku lub Dhizuku. Domyślnie wyłączone, a w instalatorze można to zmienić dla pojedynczej instalacji; w obu przypadkach aktualizacje zachowują już przyznane uprawnienia</string>
+    <string name="grant_all_permissions_desc">Przyznawaj żądane uprawnienia czasu wykonywania podczas instalacji przez Root lub Shizuku. Domyślnie wyłączone; możesz zmienić to dla pojedynczej instalacji. Aktualizacje zachowują wcześniej przyznane uprawnienia.</string>
     <string name="grant_all_permissions_install">Przyznaj wszystkie żądane uprawnienia</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Domyślna karta</string>
@@ -359,9 +359,8 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ustawienia Zamrażarki</string>
-    <string name="unfreeze_all">Odmroź wszystkie</string>
-    <string name="unfreeze_all_apps">Odmroź wszystkie aplikacje</string>
-    <string name="unfreeze_all_apps_desc">Włącz wszystkie aplikacje, które są teraz na liście Zamrażarki</string>
+    <string name="unfreeze_all">Odmroź aplikacje z Zamrażarki</string>
+    <string name="unfreeze_all_apps">Odmroź wszystkie w Zamrażarce</string>
     <string name="auto_freeze">Automatyczne zamrażanie</string>
     <string name="freeze_mode">Tryb zamrażania</string>
     <string name="suspend_instead_of_freeze">Zawieszaj zamiast zamrażać</string>
@@ -372,7 +371,7 @@
     <string name="add_freezer_to_launcher">Dodaj Zamrażarkę do launchera</string>
     <string name="add_freezer_to_launcher_desc">Pokazuj zamrożone aplikacje jako skróty na ekranie głównym, które uruchomisz jednym dotknięciem</string>
     <string name="add_to_home_screen">Dodaj do ekranu głównego</string>
-    <string name="freeze_all_apps">Zamroź wszystkie</string>
+    <string name="freeze_all_apps">Zamroź wszystkie w Zamrażarce</string>
     <string name="shortcuts">Skróty</string>
     <string name="shortcut_add_all">Dodaj wszystkie aplikacje</string>
     <string name="shortcut_added_named">Dodano aplikację %1$s do ekranu głównego</string>
@@ -387,8 +386,8 @@
     <string name="freezer_launch_failed">Nie udało się uruchomić tej aplikacji</string>
     <string name="shortcut_no_longer_frozen">Już nie jest zamrożona</string>
     <string name="privilege_required_warning">Wymagane uprawnienia (Root, Shizuku lub Dhizuku)</string>
-    <string name="unfreeze_all_confirmation_title">Odmrozić wszystkie aplikacje?</string>
-    <string name="unfreeze_all_confirmation_desc">Spowoduje to odmrożenie (włączenie) wszystkich aplikacji, które są teraz na liście Zamrażarki. Na pewno chcesz kontynuować?</string>
+    <string name="unfreeze_all_confirmation_title">Odmrozić aplikacje z Zamrażarki?</string>
+    <string name="unfreeze_all_confirmation_desc">Spowoduje to odmrożenie aplikacji z listy Zamrażarki. Nie obejmuje aplikacji zarządzanych wyłącznie przez profile.</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="one">Zamrozić %1$d wybraną aplikację? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
         <item quantity="few">Zamrozić %1$d wybrane aplikacje? Aplikacje blokowane przez Thor ze względów bezpieczeństwa zostaną pominięte.</item>
@@ -461,6 +460,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">Zamrożono aplikację %1$s</string>
     <string name="unfrozen_success">Odmrożono aplikację %1$s</string>
+    <string name="dhizuku_freeze_failed">Nie udało się zamrozić tej aplikacji za pomocą Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">Nie udało się odmrozić tej aplikacji za pomocą Dhizuku.</string>
     <string name="added_to_freezer_success">Dodano do Zamrażarki</string>
     <string name="error_format">Błąd: %1$s</string>
     <string name="failed_to_load_apps">Nie udało się wczytać aplikacji</string>
@@ -657,6 +658,8 @@
     <string name="error_downgrade_privilege">Instalacja starszej wersji jest obsługiwana tylko z dostępem uprzywilejowanym (Root, Shizuku lub Dhizuku).</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">Wesprzyj Thora</string>
+    <string name="support_already_support">Już wspieram Thora</string>
     <string name="support_developer">Wesprzyj dewelopera</string>
     <string name="support_developer_desc">Wesprzyj dalszy rozwój aplikacji Thor</string>
     <string name="support_developer_desc_detailed">Thor jest oprogramowaniem open source i całkowicie bez reklam. Jeśli okazał się przydatny, rozważ wsparcie mojej pracy:</string>
@@ -737,6 +740,23 @@
     <string name="no_profiles_yet">Brak profili</string>
     <string name="no_profiles_yet_desc">Zgrupuj aplikacje, które zamrażasz razem, i zamrażaj je jednym dotknięciem</string>
     <string name="profile_save_selection">Zapisz jako profil</string>
+    <string name="profile_assignment_title">Dodaj do profili</string>
+    <string name="profile_assignment_description">Dodaj wybrane aplikacje do każdego wybranego profilu.</string>
+    <string name="profile_assignment_selected_apps">Wybrane aplikacje: %1$d</string>
+    <string name="profile_assignment_selected_profiles">Wybrane profile: %1$d</string>
+    <string name="profile_assignment_member_count">Aplikacje w profilu: %1$d</string>
+    <string name="profile_assignment_overlap">Nowe: %1$d · Już uwzględnione: %2$d</string>
+    <string name="profile_assignment_confirm">Dodaj do wybranych profili</string>
+    <string name="profile_assignment_result">%1$s: Dodane: %2$d · Już uwzględnione: %3$d</string>
+    <string name="profile_assignment_skipped">Pominięte aplikacje: %1$d</string>
+    <string name="profile_assignment_no_profiles">Brak dostępnych profili.</string>
+    <string name="profile_assignment_save_failed">Nie udało się dodać aplikacji do wybranych profili. Spróbuj ponownie.</string>
+    <string name="profile_assignment_profiles_changed">Jeden z wybranych profili nie jest już dostępny. Wybierz profile ponownie.</string>
+    <string name="profile_assignment_no_eligible_apps">Żadnej z wybranych aplikacji nie można dodać do tych profili.</string>
+    <string name="profile_assignment_expert_title">Dodać aplikacje wymagające ostrożności?</string>
+    <string name="profile_assignment_expert_message">Niektóre wybrane aplikacje mogą wpływać na funkcje systemu po zamrożeniu przez profil. Dodać je mimo to?</string>
+    <string name="profile_assignment_expert_confirm">Dodaj mimo to</string>
+    <string name="profile_assignment_all_present">Wszystkie wybrane aplikacje są już w wybranych profilach.</string>
     <string name="profile_delete_title">Usunąć „%1$s”?</string>
     <string name="profile_delete_desc">Usuwany jest tylko profil. Aplikacje w nim pozostają dokładnie takie, jakie są — co jest zamrożone, zostaje zamrożone.</string>
     <string name="profile_saved">Zapisano profil</string>
@@ -775,7 +795,7 @@
     <string name="export_list_empty">Na tej liście nie ma aplikacji do eksportu</string>
     <string name="export_list_failed">Nie udało się zapisać listy</string>
     <string name="clear_all_caches_requires_usage_access">Shizuku nie może wyczyścić pamięci podręcznej wszystkich aplikacji bez dostępu do danych o użyciu. Androidowi trzeba podać, ile bajtów ma odzyskać, a tylko to uprawnienie pozwala zmierzyć, ile pamięci podręcznej jest. Przyznaj aplikacji Thor dostęp do danych o użyciu w Ustawieniach i spróbuj ponownie.</string>
-    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku nie może czyścić pamięci podręcznej. Nie ma powłoki, w której uruchomiłby androidowe czyszczenie pamięci podręcznej, a API Device Owner nie ma odpowiednika. Przełącz się na Root lub Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku nie może czyścić pamięci podręcznej. Proces właściciela urządzenia nie ma wymaganego uprawnienia Androida, a interfejs Device Owner nie udostępnia takiej funkcji. Przełącz się na Root lub Shizuku.</string>
 
     <!-- Component control (App info → Components).
          "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
@@ -1011,4 +1031,28 @@
     <string name="task_log_item_busy">Pominięto %1$s, ponieważ używa go inna operacja.</string>
     <string name="task_log_item_unknown">Nie udało się zweryfikować końcowego stanu %1$s.</string>
 
+    <string name="setting_requires_root_or_shizuku">Nieaktywne w bieżącym trybie. Wymaga Root lub Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">Dhizuku nie może wymuszać zatrzymania aplikacji. Przełącz na Root lub Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">Nie udało się wyczyścić danych tej aplikacji przez Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">Nie udało się odinstalować tej aplikacji przez Dhizuku.</string>
+    <string name="profile_assignment_also_freezer">Dodaj również do Zamrażarki</string>
+    <string name="profile_assignment_also_freezer_description">Uwzględnia te aplikacje w akcji „Zamroź wszystkie” oraz w automatycznym zamrażaniu, jeśli jest włączone.</string>
+    <string name="profile_assignment_freezer_added">Dodane do Zamrażarki: %1$d</string>
+    <string name="profile_assignment_freezer_load_failed">Nie udało się wczytać listy Zamrażarki. Spróbuj ponownie.</string>
+    <string name="app_info_profiles_count">Profile (%1$d)</string>
+    <string name="app_info_profiles_only">Zarządzana tylko przez profile</string>
+    <string name="app_info_freezer_and_profiles">W Zamrażarce i profilach</string>
+    <string name="unfreeze_managed_apps">Odmroź aplikacje z Zamrażarki i profili</string>
+    <string name="unfreeze_managed_apps_desc">Przywróć zamrożone aplikacje z listy Zamrażarki i wszystkich profili.</string>
+    <string name="unfreeze_managed_confirmation_title">Odmrozić aplikacje z Zamrażarki i profili?</string>
+    <string name="unfreeze_managed_confirmation_desc">Spowoduje to odmrożenie aplikacji z listy Zamrażarki i wszystkich profili.</string>
+    <string name="profile_removal_recovery_title">Sprawdź przed usunięciem z profilu</string>
+    <string name="profile_removal_recovery_message">Aplikacje do sprawdzenia: %1$d. Te aplikacje są zamrożone lub nie udało się sprawdzić ich stanu i nie należą do żadnego innego profilu ani do Zamrażarki. Najpierw je odmroź albo usuń bez odmrażania i użyj listy aplikacji do ich przywrócenia. Usunięcie wykluczy je także ze zbiorczego przywracania oraz przywracania z poziomu programu uruchamiającego.</string>
+    <string name="profile_removal_unfreeze_continue">Odmroź i kontynuuj</string>
+    <string name="profile_removal_keep_frozen">Usuń bez odmrażania</string>
+    <string name="profile_removal_check_failed">Nie udało się sprawdzić, do których profili i list należą aplikacje. Twój profil nie został zmieniony. Spróbuj ponownie.</string>
+    <string name="profile_removal_restore_failed">Nie udało się odmrozić niektórych aplikacji. Twój profil nie został zmieniony. Spróbuj ponownie lub usuń je bez odmrażania.</string>
+    <string name="profile_removal_write_failed">Nie udało się zapisać zmian profilu. Spróbuj ponownie.</string>
+    <string name="profile_removal_profile_changed">Ten profil nie jest już dostępny. Nie zapisano żadnych zmian.</string>
+    <string name="profile_removal_state_unknown">Stan niedostępny</string>
 </resources>

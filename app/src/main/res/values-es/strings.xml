@@ -217,14 +217,13 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ajustes del congelador</string>
-    <string name="unfreeze_all">Descongelar todo</string>
-    <string name="unfreeze_all_apps">Descongelar todas las aplicaciones</string>
-    <string name="unfreeze_all_apps_desc">Habilitar todas las aplicaciones en la lista del Congelador</string>
+    <string name="unfreeze_all">Descongelar aplicaciones del Congelador</string>
+    <string name="unfreeze_all_apps">Descongelar todo en el Congelador</string>
     <string name="auto_freeze">Congelación automática</string>
     <string name="auto_freeze_desc">Congelar aplicaciones automáticamente al bloquear la pantalla</string>
     <string name="privilege_required_warning">Se requiere privilegio (Root, Shizuku o Dhizuku)</string>
-    <string name="unfreeze_all_confirmation_title">¿Descongelar todas las aplicaciones?</string>
-    <string name="unfreeze_all_confirmation_desc">Esto descongelará (habilitará) todas las aplicaciones actualmente en la lista del Congelador. ¿Estás seguro de que quieres continuar?</string>
+    <string name="unfreeze_all_confirmation_title">¿Descongelar las aplicaciones del Congelador?</string>
+    <string name="unfreeze_all_confirmation_desc">Esto descongelará las aplicaciones de tu lista del Congelador. No incluye las aplicaciones gestionadas solo mediante perfiles.</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="one">¿Congelar %1$d aplicación seleccionada? Se omitirán las aplicaciones que Thor bloquee por seguridad.</item>
         <item quantity="other">¿Congelar %1$d aplicaciones seleccionadas? Se omitirán las aplicaciones que Thor bloquee por seguridad.</item>
@@ -262,6 +261,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">Se congeló %1$s</string>
     <string name="unfrozen_success">Se descongeló %1$s</string>
+    <string name="dhizuku_freeze_failed">No se pudo congelar esta aplicación con Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">No se pudo descongelar esta aplicación con Dhizuku.</string>
     <string name="added_to_freezer_success">Añadido al congelador</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Error al cargar las aplicaciones</string>
@@ -418,6 +419,8 @@
     <string name="error_downgrade_privilege">La degradación solo es compatible con acceso privilegiado (Root, Shizuku o Dhizuku).</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">Apoyar a Thor</string>
+    <string name="support_already_support">Ya apoyo a Thor</string>
     <string name="support_developer">Apoyar al desarrollador</string>
     <string name="support_developer_desc">Apoya el desarrollo continuo de Thor</string>
     <string name="support_developer_desc_detailed">Thor es de código abierto y completamente libre de anuncios. Si te ha sido útil, considera apoyar mi trabajo:</string>
@@ -486,7 +489,7 @@
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="grant_all_permissions">Conceder todos los permisos al instalar</string>
-    <string name="grant_all_permissions_desc">Dar a la aplicación todos los permisos que solicita en cuanto se instala, sin preguntar; solo en instalaciones con root, Shizuku o Dhizuku. Desactivado de forma predeterminada, y el instalador permite cambiarlo para una sola instalación; en ambos casos, las actualizaciones conservan los permisos que ya habías concedido</string>
+    <string name="grant_all_permissions_desc">Concede los permisos de ejecución solicitados al instalar con Root o Shizuku. Desactivado de forma predeterminada; puedes cambiarlo para una sola instalación. Las actualizaciones conservan los permisos ya concedidos.</string>
     <string name="grant_all_permissions_install">Conceder todos los permisos solicitados</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
     <string name="legacy_extension_desc">Se ha detectado una versión heredada de la extensión Stormbringer (escrita incorrectamente como \"Strombringer\"). Por favor, desinstálala para evitar conflictos e instala la versión actualizada.</string>
@@ -557,7 +560,7 @@
     <string name="add_freezer_to_launcher">Añadir Congelador al lanzador</string>
     <string name="add_freezer_to_launcher_desc">Mostrar las aplicaciones congeladas como accesos directos en la pantalla de inicio para abrirlas con un toque</string>
     <string name="add_to_home_screen">Añadir a la pantalla de inicio</string>
-    <string name="freeze_all_apps">Congelar todo</string>
+    <string name="freeze_all_apps">Congelar todo en el Congelador</string>
     <string name="shortcuts">Accesos directos</string>
     <string name="shortcut_add_all">Añadir todas las apps</string>
     <string name="shortcut_added_named">%1$s añadido a la pantalla de inicio</string>
@@ -606,6 +609,23 @@
     <string name="no_profiles_yet">Aún no hay perfiles</string>
     <string name="no_profiles_yet_desc">Agrupa las aplicaciones que congelas juntas y congélalas con un solo toque</string>
     <string name="profile_save_selection">Guardar como perfil</string>
+    <string name="profile_assignment_title">Añadir a perfiles</string>
+    <string name="profile_assignment_description">Añade las aplicaciones seleccionadas a cada perfil elegido.</string>
+    <string name="profile_assignment_selected_apps">Aplicaciones seleccionadas: %1$d</string>
+    <string name="profile_assignment_selected_profiles">Perfiles seleccionados: %1$d</string>
+    <string name="profile_assignment_member_count">Aplicaciones en el perfil: %1$d</string>
+    <string name="profile_assignment_overlap">Nuevas: %1$d · Ya incluidas: %2$d</string>
+    <string name="profile_assignment_confirm">Añadir a los perfiles seleccionados</string>
+    <string name="profile_assignment_result">%1$s: Añadidas: %2$d · Ya incluidas: %3$d</string>
+    <string name="profile_assignment_skipped">Aplicaciones omitidas: %1$d</string>
+    <string name="profile_assignment_no_profiles">No hay perfiles disponibles.</string>
+    <string name="profile_assignment_save_failed">No se pudieron añadir las aplicaciones a los perfiles seleccionados. Inténtalo de nuevo.</string>
+    <string name="profile_assignment_profiles_changed">Uno de los perfiles seleccionados ya no está disponible. Vuelve a elegir los perfiles.</string>
+    <string name="profile_assignment_no_eligible_apps">Ninguna de las aplicaciones seleccionadas se puede añadir a estos perfiles.</string>
+    <string name="profile_assignment_expert_title">¿Añadir aplicaciones que requieren precaución?</string>
+    <string name="profile_assignment_expert_message">Algunas aplicaciones seleccionadas pueden afectar a las funciones del sistema cuando un perfil las congela. ¿Quieres añadirlas de todos modos?</string>
+    <string name="profile_assignment_expert_confirm">Añadir de todos modos</string>
+    <string name="profile_assignment_all_present">Todas las aplicaciones seleccionadas ya están en los perfiles seleccionados.</string>
     <string name="profile_delete_title">¿Eliminar «%1$s»?</string>
     <string name="profile_delete_desc">Solo se elimina el perfil. Las aplicaciones que contiene se quedan tal cual — lo que esté congelado sigue congelado.</string>
     <string name="profile_saved">Perfil guardado</string>
@@ -640,7 +660,7 @@
     <string name="export_list_empty">No hay aplicaciones en esta lista para exportar</string>
     <string name="export_list_failed">No se pudo guardar la lista</string>
     <string name="clear_all_caches_requires_usage_access">Shizuku no puede borrar la caché de todas las apps sin acceso de uso. Hay que indicarle a Android cuántos bytes debe liberar, y solo ese permiso puede medir cuánta caché hay. Concede a Thor el acceso de uso en Ajustes e inténtalo de nuevo.</string>
-    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku no puede borrar cachés. No tiene una shell en la que ejecutar la limpieza de caché de Android, y la API de propietario del dispositivo no ofrece nada equivalente. Cambia a Root o a Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku no puede borrar cachés. Su proceso de propietario del dispositivo no tiene el permiso necesario de Android, y la API de propietario del dispositivo no ofrece una función equivalente. Cambia a Root o a Shizuku.</string>
 
     <!-- Pantalla de ajustes por categorías — véase values/strings_settings.xml -->
     <string name="settings_category_appearance">Apariencia</string>
@@ -670,7 +690,7 @@
     <string name="settings_summary_restore_interrupted">Una restauración no terminó</string>
     <string name="settings_summary_backup">Restaurar un archivo o cambiar la frase de contraseña</string>
     <string name="settings_summary_unprivileged">Requiere Root, Shizuku o Dhizuku</string>
-    <string name="settings_summary_customization">Fuentes y acciones del panel de la app</string>
+    <string name="settings_summary_customization">Fuentes y diseños de acciones</string>
 
     <string name="settings_category_customization">Personalización</string>
     <string name="customization_fonts">Fuentes</string>
@@ -683,11 +703,16 @@
     <string name="font_preview_numbers">0123456789 · 1,2 GB</string>
     <string name="customization_app_info_actions">Acciones del panel de la app</string>
     <string name="customization_app_info_actions_desc">Reordenar y activar o desactivar acciones en el panel inferior</string>
+    <string name="customization_app_list_multi_actions">Acciones por lotes en la lista de apps</string>
+    <string name="customization_freezer_multi_actions">Acciones por lotes en el Congelador</string>
+    <string name="customization_multi_actions_desc">Elige y ordena las acciones para las apps seleccionadas.</string>
+    <string name="customization_multi_actions_availability">Las acciones se muestran según la selección, los privilegios y los perfiles disponibles. Cerrar siempre está disponible.</string>
     <string name="customization_drag_hint">Arrastra para reordenar • Activa o desactiva para mostrar u ocultar</string>
     <string name="customization_preview_title">Vista previa de la barra de acciones</string>
     <string name="reset_to_default">Restablecer valores predeterminados</string>
     <string name="reset_actions_confirm_title">¿Restablecer el orden de las acciones?</string>
     <string name="reset_actions_confirm_desc">Esto restablecerá el orden predeterminado y mostrará todas las acciones.</string>
+    <string name="reset_multi_actions_confirm_desc">¿Restablecer el orden y la visibilidad de esta barra de selección? Se conservarán los demás diseños de acciones.</string>
 
     <string name="action_open_desc">Iniciar la aplicación</string>
     <string name="action_settings_desc">Abrir ajustes del sistema Android para la aplicación</string>
@@ -917,4 +942,28 @@
     <string name="task_log_item_busy">Se omitió %1$s porque otra operación lo está usando.</string>
     <string name="task_log_item_unknown">No se pudo verificar el estado final de %1$s.</string>
 
+    <string name="setting_requires_root_or_shizuku">Inactivo en el modo actual. Requiere Root o Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">Dhizuku no puede forzar la detención de aplicaciones. Cambia a Root o Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">No se pudieron borrar los datos de esta aplicación con Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">No se pudo desinstalar esta aplicación con Dhizuku.</string>
+    <string name="profile_assignment_also_freezer">Añadir también al Congelador</string>
+    <string name="profile_assignment_also_freezer_description">Incluye estas aplicaciones en «Congelar todo» y en la congelación automática cuando esté activada.</string>
+    <string name="profile_assignment_freezer_added">Añadidas al Congelador: %1$d</string>
+    <string name="profile_assignment_freezer_load_failed">No se pudo cargar la lista del Congelador. Inténtalo de nuevo.</string>
+    <string name="app_info_profiles_count">Perfiles (%1$d)</string>
+    <string name="app_info_profiles_only">Gestionada solo mediante perfiles</string>
+    <string name="app_info_freezer_and_profiles">En el Congelador y en perfiles</string>
+    <string name="unfreeze_managed_apps">Descongelar aplicaciones del Congelador y de perfiles</string>
+    <string name="unfreeze_managed_apps_desc">Restaura las aplicaciones congeladas de tu lista del Congelador y de todos los perfiles.</string>
+    <string name="unfreeze_managed_confirmation_title">¿Descongelar las aplicaciones del Congelador y de los perfiles?</string>
+    <string name="unfreeze_managed_confirmation_desc">Esto descongelará las aplicaciones de tu lista del Congelador y de todos los perfiles.</string>
+    <string name="profile_removal_recovery_title">Revisar eliminación del perfil</string>
+    <string name="profile_removal_recovery_message">Aplicaciones que revisar: %1$d. Estas aplicaciones están congeladas o no se pudo comprobar su estado, y no figuran en ningún otro perfil ni en el Congelador. Descongélalas primero o elimínalas sin descongelarlas y usa Lista de aplicaciones para recuperarlas. Al eliminarlas, también quedan excluidas de la recuperación masiva y de la restauración desde el lanzador.</string>
+    <string name="profile_removal_unfreeze_continue">Descongelar y continuar</string>
+    <string name="profile_removal_keep_frozen">Eliminar sin descongelar</string>
+    <string name="profile_removal_check_failed">No se pudo comprobar en qué perfiles y listas están las aplicaciones. Tu perfil no se ha modificado. Inténtalo de nuevo.</string>
+    <string name="profile_removal_restore_failed">Algunas aplicaciones no se pudieron descongelar. Tu perfil no se ha modificado. Vuelve a intentarlo o elimínalas sin descongelarlas.</string>
+    <string name="profile_removal_write_failed">No se pudieron guardar los cambios del perfil. Inténtalo de nuevo.</string>
+    <string name="profile_removal_profile_changed">Este perfil ya no está disponible. No se ha guardado ningún cambio.</string>
+    <string name="profile_removal_state_unknown">Estado no disponible</string>
 </resources>

@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.supportsInstallTimePermissionGrants
 import com.valhalla.thor.data.manager.PendingInstallIntent
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.util.UiText
@@ -91,6 +92,8 @@ import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.model.minimumInstallTargetSdk
 import com.valhalla.thor.domain.model.requiresLowTargetSdkBypass
 import com.valhalla.thor.domain.model.supportsLowTargetSdkBypass
+import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
+import com.valhalla.thor.presentation.settings.SupportPromptCoordinator
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -184,17 +187,33 @@ fun PortableInstaller(
     onDismiss: () -> Unit,
     viewModel: InstallerViewModel = koinViewModel()
 ) {
-    val state by viewModel.installState.collectAsStateWithLifecycle(initialValue = InstallState.Idle)
+    val observedStates = remember(viewModel) { viewModel.installState.observeSupportCompletion() }
+    val observation by observedStates.collectAsStateWithLifecycle(
+        initialValue = InstallerSupportObservation(InstallState.Idle),
+    )
+    val state = observation.state
+    val isInstallCallActive by viewModel.isInstallCallActive.collectAsStateWithLifecycle()
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val installerMode by viewModel.installMode.collectAsStateWithLifecycle()
     val grantAllPermissions by viewModel.grantAllPermissions.collectAsStateWithLifecycle()
     val allowLegacyApkInstall by viewModel.allowLegacyApkInstall.collectAsStateWithLifecycle()
     val legacyInstallConfirmation by viewModel.legacyInstallConfirmation.collectAsStateWithLifecycle()
+    val supportCoordinator = koinInject<SupportPromptCoordinator>()
+    val supportState by supportCoordinator.state.collectAsStateWithLifecycle()
+    var showSupport by remember { mutableStateOf(false) }
+
+    if (showSupport) {
+        SupportDeveloperHelper(onDismiss = {
+            viewModel.resetState()
+            onDismiss()
+        })
+        return
+    }
 
     var lastMeta by remember { mutableStateOf<AppMetadata?>(null) }
     LaunchedEffect(state) {
         if (state is InstallState.ReadyToInstall) {
-            lastMeta = (state as InstallState.ReadyToInstall).meta
+            lastMeta = state.meta
         }
     }
 
@@ -659,11 +678,9 @@ fun PortableInstaller(
                     // never taken orders from this box, and in EXTERNAL another app does the
                     // installing entirely. Shown there it would be a control that does nothing,
                     // and — worse for a privacy setting — one the user could reasonably read as
-                    // proof that Thor is granting everything.
-                    if (installerMode == InstallMode.ROOT ||
-                        installerMode == InstallMode.SHIZUKU ||
-                        installerMode == InstallMode.DHIZUKU
-                    ) {
+                    // proof that Thor is granting everything. Dhizuku's device-owner session also
+                    // lacks the install-time grant flag; its standalone policy grants are separate.
+                    if (supportsInstallTimePermissionGrants(installerMode)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -939,6 +956,17 @@ fun PortableInstaller(
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                            }
+                        }
+
+                        if (observation.completedWhileObserved && !isInstallCallActive && supportState.canInvite) {
+                            OutlinedButton(onClick = {
+                                if (supportCoordinator.state.value.canInvite &&
+                                    !viewModel.isInstallCallActive.value &&
+                                    viewModel.installState.replayCache.lastOrNull() == InstallState.Success
+                                ) showSupport = true
+                            }) {
+                                Text(stringResource(R.string.support_thor))
                             }
                         }
 

@@ -125,6 +125,7 @@ data class AppBackupUiState(
      */
     val queued: Boolean = false,
     val finished: BackupFinish? = null,
+    val canOfferSupport: Boolean = false,
 ) {
     /**
      * At least one data class. The bundle on its own is **not** enough, however reasonable that
@@ -397,7 +398,7 @@ class AppBackupViewModel(
                         )
                     }
                 } else {
-                    watch(id)
+                    watch(id, newlyStarted = true)
                 }
             } finally {
                 // `ThorJobLauncher.startBackup` states that the caller owns the array and that the
@@ -423,11 +424,11 @@ class AppBackupViewModel(
      * Only one at a time — a sheet shows one app's backup — so an earlier watcher is cancelled here
      * rather than left collecting a job whose result nothing will read.
      */
-    private fun watch(jobId: UUID) {
+    private fun watch(jobId: UUID, newlyStarted: Boolean = false) {
         watching?.cancel()
         // Synchronous with the accepted id. A dismissal after this point may cancel this sheet's
         // watcher, but it cannot retract the WorkManager row the launcher already awaited.
-        _uiState.update { it.copy(running = true, jobAccepted = true, finished = null) }
+        _uiState.update { it.copy(running = true, jobAccepted = true, finished = null, canOfferSupport = false) }
         watching = launchGuarded(
             // A throw out of either collector would otherwise leave `running` true with no watcher
             // left to clear it: the bar sticks, Start stays disabled, and the only way out is killing
@@ -486,7 +487,10 @@ class AppBackupViewModel(
                         _uiState.update { it.copy(running = true, queued = false) }
                     }
 
-                    is ThorJobStatus.Succeeded -> finish(BackupFinish.Succeeded)
+                    is ThorJobStatus.Succeeded -> {
+                        _uiState.update { it.copy(canOfferSupport = newlyStarted || seenLive) }
+                        finish(BackupFinish.Succeeded)
+                    }
                     // `workerRan = true` unconditionally rather than from `seenRunning`: every FAILED
                     // Thor produces is `doWork` returning `Result.failure()`, and a watcher that
                     // attached late can miss RUNNING but cannot make the run un-happen. The one FAILED

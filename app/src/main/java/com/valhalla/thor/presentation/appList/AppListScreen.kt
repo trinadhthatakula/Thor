@@ -4,7 +4,6 @@
 package com.valhalla.thor.presentation.appList
 
 import android.content.Intent
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -53,8 +52,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.OperationFeedbackHost
+import com.valhalla.thor.presentation.common.OperationMessage
+import com.valhalla.thor.presentation.common.rememberOperationFeedback
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.AppListType
@@ -68,6 +71,8 @@ import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.presentation.freezer.ProfileAssignmentHost
+import com.valhalla.thor.presentation.freezer.ProfileAssignmentViewModel
 import com.valhalla.thor.presentation.queue.QueueNavigationButton
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppList
@@ -97,6 +102,14 @@ fun AppListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val operationFeedback = rememberOperationFeedback()
+    val profileAssignment: ProfileAssignmentViewModel = koinViewModel(key = "app-list-profile-assignment")
+    val assignmentState by profileAssignment.uiState.collectAsStateWithLifecycle()
+    var profileSelectionReset by remember { mutableIntStateOf(0) }
+    ProfileAssignmentHost(profileAssignment) { message ->
+        profileSelectionReset++
+        operationFeedback.show(message)
+    }
     // The package, not the AppInfo, and rememberSaveable rather than remember: AppInfoSheet parks a
     // composable-scoped ViewModelStore on this entry's store and relies on re-entering composition
     // to release it, so the sheet has to come back after a configuration change. Resolving against
@@ -174,7 +187,10 @@ fun AppListScreen(
         when (event) {
             is AppListEvent.RequestReinstall -> onMultiAppAction(MultiAppAction.ReInstall(event.apps))
             is AppListEvent.ShowMessage ->
-                Toast.makeText(context, event.message.asString(context), Toast.LENGTH_SHORT).show()
+                operationFeedback.show(
+                    OperationMessage(event.message, event.isSuccess),
+                    allowSupport = freezerPrompt == null,
+                )
 
             is AppListEvent.ShowFreezerPrompt ->
                 freezerPrompt = event.prompt
@@ -311,9 +327,16 @@ fun AppListScreen(
                     isDhizuku = state.isDhizuku,
                     isGrid = state.isGrid,
                     gridDensity = state.gridDensity,
+                    multiActionsOrder = state.multiActionsOrder,
+                    hiddenMultiActions = state.hiddenMultiActions,
                     onToggleView = viewModel::toggleGridMode,
                     onExportList = viewModel::exportList,
                     onShareList = viewModel::shareList,
+                    onAddToProfiles = (profileAssignment::open).takeIf {
+                        assignmentState.profiles.isNotEmpty() && !assignmentState.profilesLoadFailed
+                    },
+                    clearSelectionRequest = profileSelectionReset,
+                    profileAssignmentSelection = assignmentState.selectedApps,
                     installerNameMap = installerNameMap,
                     permissionIndex = state.permissionIndex,
                     isLoadingPermissions = state.isLoadingPermissions,
@@ -352,6 +375,11 @@ fun AppListScreen(
                 )
             }
         }
+        OperationFeedbackHost(
+            operationFeedback,
+            enabled = freezerPrompt == null,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+        )
         FreezerPromptSnackbar(
             visible = freezerPrompt != null,
             appName = freezerPrompt?.appName,

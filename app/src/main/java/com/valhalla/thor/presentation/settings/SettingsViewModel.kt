@@ -12,9 +12,16 @@ import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
+import com.valhalla.thor.domain.model.FixStoreRoute
+import com.valhalla.thor.domain.model.fixStoreRoute
+import com.valhalla.thor.domain.model.resolvePrivilegeMode
+import com.valhalla.thor.domain.model.supportsInstallTimePermissionGrants
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
@@ -79,7 +86,21 @@ class SettingsViewModel(
          * [AnyFileOpenerController] for why it is not mirrored into DataStore.
          */
         val anyFileOpenerEnabled: Boolean = false
-    )
+    ) {
+        private val activePrivilegeMode: PrivilegeMode
+            get() = resolvePrivilegeMode(
+                prefs.preferredPrivilegeMode,
+                isRootAvailable,
+                isShizukuAvailable,
+                isDhizukuAvailable,
+            )
+
+        val canFixStore: Boolean
+            get() = fixStoreRoute(activePrivilegeMode) == FixStoreRoute.PRIVILEGED
+
+        val canGrantPermissionsOnInstall: Boolean
+            get() = supportsInstallTimePermissionGrants(activePrivilegeMode)
+    }
 
     /** Off-main-thread snapshot of the available privilege engines. */
     private data class PrivilegeProbe(
@@ -303,7 +324,7 @@ class SettingsViewModel(
         }
     }
 
-    /** Enqueues a cross-app restore for every frozen package stored for Thor's current user. */
+    /** Restores frozen apps in the Freezer list or any profile for Thor's current user. */
     fun unfreezeAll() {
         val requestId = UUID.randomUUID()
         taskNavigationTargets.requestOpenProvisional(
@@ -316,7 +337,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val spec = sweepResolver.resolve(
-                    BulkRequest(BulkOp.UNFREEZE),
+                    BulkRequest(BulkOp.UNFREEZE, BulkScope.ManagedApps),
                     PrivilegeSweepSource.SETTINGS,
                 )
                 when (val launch = sweepController.launch(requestId, spec)) {
@@ -407,6 +428,28 @@ class SettingsViewModel(
     fun resetAppInfoActionsCustomization() {
         viewModelScope.launch {
             preferenceRepository.resetAppInfoActionsCustomization()
+        }
+    }
+
+    fun setMultiAppActionsOrder(layout: MultiAppActionLayout, order: List<MultiAppActionId>) {
+        viewModelScope.launch {
+            preferenceRepository.setMultiAppActionsOrder(layout, order)
+        }
+    }
+
+    fun setMultiAppActionVisibility(
+        layout: MultiAppActionLayout,
+        actionId: MultiAppActionId,
+        isVisible: Boolean,
+    ) {
+        viewModelScope.launch {
+            preferenceRepository.setMultiAppActionVisibility(layout, actionId, isVisible)
+        }
+    }
+
+    fun resetMultiAppActionsCustomization(layout: MultiAppActionLayout) {
+        viewModelScope.launch {
+            preferenceRepository.resetMultiAppActionsCustomization(layout)
         }
     }
 }

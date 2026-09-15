@@ -31,7 +31,7 @@
     <string name="auto_reinstall">Auto Reinstall Apps</string>
     <string name="auto_reinstall_desc">Automatically preserve Google Play Store as the installer of record to enable background updates</string>
     <string name="grant_all_permissions">Grant All Permissions on Install</string>
-    <string name="grant_all_permissions_desc">Give an app every permission it requests the moment it is installed, with no prompt — root, Shizuku and Dhizuku installs only. Off by default, and the installer lets you change it for a single install; either way, updates keep the permissions you had already granted</string>
+    <string name="grant_all_permissions_desc">Grant requested runtime permissions at installation using Root or Shizuku. Off by default; you can change this for one install. Updates retain existing permission grants.</string>
     <string name="grant_all_permissions_install">Grant all requested permissions</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Default Tab</string>
@@ -351,9 +351,8 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>
-    <string name="unfreeze_all">Unfreeze All</string>
-    <string name="unfreeze_all_apps">Unfreeze All Apps</string>
-    <string name="unfreeze_all_apps_desc">Enable all apps currently in the Freezer list</string>
+    <string name="unfreeze_all">Unfreeze Freezer apps</string>
+    <string name="unfreeze_all_apps">Unfreeze all in Freezer</string>
     <string name="auto_freeze">Auto Freeze</string>
     <string name="freeze_mode">Freeze Mode</string>
     <string name="suspend_instead_of_freeze">Suspend instead of freeze</string>
@@ -364,7 +363,7 @@
     <string name="add_freezer_to_launcher">Add Freezer to launcher</string>
     <string name="add_freezer_to_launcher_desc">Show frozen apps as home-screen shortcuts you can tap to launch</string>
     <string name="add_to_home_screen">Add to Home screen</string>
-    <string name="freeze_all_apps">Freeze all</string>
+    <string name="freeze_all_apps">Freeze all in Freezer</string>
     <string name="shortcuts">Shortcuts</string>
     <string name="shortcut_add_all">Add all apps</string>
     <string name="shortcut_added_named">%1$s added to Home screen</string>
@@ -377,8 +376,8 @@
     <string name="freezer_launch_failed">Couldn\'t launch this app</string>
     <string name="shortcut_no_longer_frozen">No longer frozen</string>
     <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>
-    <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
-    <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
+    <string name="unfreeze_all_confirmation_title">Unfreeze Freezer apps?</string>
+    <string name="unfreeze_all_confirmation_desc">This will unfreeze apps in your Freezer list. Apps managed only through profiles are not included.</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="one">Freeze %1$d selected app? Apps that Thor blocks for safety will be skipped.</item>
         <item quantity="other">Freeze %1$d selected apps? Apps that Thor blocks for safety will be skipped.</item>
@@ -445,6 +444,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">Frozen %1$s</string>
     <string name="unfrozen_success">Unfrozen %1$s</string>
+    <string name="dhizuku_freeze_failed">Could not freeze this app with Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">Could not unfreeze this app with Dhizuku.</string>
     <string name="added_to_freezer_success">Added to Freezer</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Failed to load apps</string>
@@ -699,6 +700,8 @@
     <string name="error_downgrade_privilege">Downgrade is only supported with privileged access (Root, Shizuku, or Dhizuku).</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">Support Thor</string>
+    <string name="support_already_support">I already support Thor</string>
     <string name="support_developer">Support Developer</string>
     <string name="support_developer_desc">Support ongoing development of Thor</string>
     <string name="support_developer_desc_detailed">Thor is open source and completely ad-free. If it has been helpful to you, please consider supporting my work:</string>
@@ -778,6 +781,23 @@
     <string name="no_profiles_yet">No profiles yet</string>
     <string name="no_profiles_yet_desc">Group the apps you freeze together, then freeze them in one tap</string>
     <string name="profile_save_selection">Save as profile</string>
+    <string name="profile_assignment_title">Add to profiles</string>
+    <string name="profile_assignment_description">Add the selected apps to each chosen profile.</string>
+    <string name="profile_assignment_selected_apps">Selected apps: %1$d</string>
+    <string name="profile_assignment_selected_profiles">Selected profiles: %1$d</string>
+    <string name="profile_assignment_member_count">Apps in profile: %1$d</string>
+    <string name="profile_assignment_overlap">New: %1$d · Already included: %2$d</string>
+    <string name="profile_assignment_confirm">Add to selected profiles</string>
+    <string name="profile_assignment_result">%1$s: Added: %2$d · Already included: %3$d</string>
+    <string name="profile_assignment_skipped">Apps skipped: %1$d</string>
+    <string name="profile_assignment_no_profiles">No profiles are available.</string>
+    <string name="profile_assignment_save_failed">Could not add apps to the selected profiles. Try again.</string>
+    <string name="profile_assignment_profiles_changed">A selected profile is no longer available. Choose profiles again.</string>
+    <string name="profile_assignment_no_eligible_apps">None of the selected apps can be added to these profiles.</string>
+    <string name="profile_assignment_expert_title">Add apps that require caution?</string>
+    <string name="profile_assignment_expert_message">Some selected apps may affect system features when frozen by a profile. Add them anyway?</string>
+    <string name="profile_assignment_expert_confirm">Add anyway</string>
+    <string name="profile_assignment_all_present">All selected apps are already in the selected profiles.</string>
     <string name="profile_delete_title">Delete “%1$s”?</string>
     <string name="profile_delete_desc">Only the profile is removed. The apps in it are left exactly as they are — anything frozen stays frozen.</string>
     <string name="profile_saved">Profile saved</string>
@@ -812,7 +832,7 @@
     <string name="export_list_empty">There are no apps in this list to export</string>
     <string name="export_list_failed">Couldn\'t save the list</string>
     <string name="clear_all_caches_requires_usage_access">Shizuku can\'t clear every app\'s cache without Usage Access. Android has to be told how many bytes to reclaim, and only that permission can measure how much cache there is. Grant Thor usage access in Settings and try again.</string>
-    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku can\'t clear caches. It has no shell to run Android\'s cache trim in, and the Device Owner API has no equivalent. Switch to Root or Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku can\'t clear caches. Its device-owner process lacks Android\'s cache-clearing permission, and the Device Owner API has no equivalent. Switch to Root or Shizuku.</string>
     <string name="sweep_notification_title">Applying app actions</string>
     <string name="sweep_queued">App actions queued</string>
     <string name="sweep_running">Running %1$d of %2$d</string>
@@ -977,4 +997,28 @@
     <string name="task_log_item_busy">Skipped %1$s because another operation is using it.</string>
     <string name="task_log_item_unknown">The final state of %1$s could not be verified.</string>
 
+    <string name="setting_requires_root_or_shizuku">Inactive in the current mode. Requires Root or Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">Dhizuku cannot force-stop apps. Switch to Root or Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">Could not clear this app’s data with Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">Could not uninstall this app with Dhizuku.</string>
+    <string name="profile_assignment_also_freezer">Also add to Freezer</string>
+    <string name="profile_assignment_also_freezer_description">Includes these apps in Freeze all and auto-freeze when enabled.</string>
+    <string name="profile_assignment_freezer_added">Added to Freezer: %1$d</string>
+    <string name="profile_assignment_freezer_load_failed">Could not load the Freezer list. Try again.</string>
+    <string name="app_info_profiles_count">Profiles (%1$d)</string>
+    <string name="app_info_profiles_only">Managed through profiles only</string>
+    <string name="app_info_freezer_and_profiles">In Freezer and profiles</string>
+    <string name="unfreeze_managed_apps">Unfreeze Freezer and profiles</string>
+    <string name="unfreeze_managed_apps_desc">Restore frozen apps in your Freezer list and all profiles.</string>
+    <string name="unfreeze_managed_confirmation_title">Unfreeze Freezer and profile apps?</string>
+    <string name="unfreeze_managed_confirmation_desc">This will unfreeze apps in your Freezer list and all profiles.</string>
+    <string name="profile_removal_recovery_title">Review profile removal</string>
+    <string name="profile_removal_recovery_message">Apps to review: %1$d. These apps are frozen or their state could not be checked, and they have no other profile or Freezer entry. Unfreeze them first, or remove them without unfreezing and use App list for recovery. Removing them also excludes them from bulk recovery and launcher restore.</string>
+    <string name="profile_removal_unfreeze_continue">Unfreeze and continue</string>
+    <string name="profile_removal_keep_frozen">Remove without unfreezing</string>
+    <string name="profile_removal_check_failed">Could not check app membership. Your profile has not been changed. Try again.</string>
+    <string name="profile_removal_restore_failed">Some apps could not be unfrozen. Your profile has not been changed. Retry or remove without unfreezing.</string>
+    <string name="profile_removal_write_failed">Could not save profile changes. Try again.</string>
+    <string name="profile_removal_profile_changed">This profile is no longer available. No changes were saved.</string>
+    <string name="profile_removal_state_unknown">State unavailable</string>
 </resources>

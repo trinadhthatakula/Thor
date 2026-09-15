@@ -17,6 +17,8 @@ import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.MultiAppActionId
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -114,6 +116,8 @@ data class AppListUiState(
     val isLoadingDetails: Boolean = false,
     val isGrid: Boolean = true,
     val gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
+    val multiActionsOrder: List<MultiAppActionId> = MultiAppActionLayout.APP_LIST.defaultOrder,
+    val hiddenMultiActions: Set<MultiAppActionId> = emptySet(),
     val isComputingSizes: Boolean = false,
     // Holds the pull-to-refresh indicator up for a readable minimum. isLoading cannot do this job:
     // getAllApps() emits the Room cache before it starts the package rescan, so isLoading clears
@@ -134,7 +138,7 @@ data class AppListUiState(
  * so transient feedback is delivered exactly once and never replayed on recomposition/config change.
  */
 sealed interface AppListEvent {
-    data class ShowMessage(val message: UiText) : AppListEvent
+    data class ShowMessage(val message: UiText, val isSuccess: Boolean = false) : AppListEvent
     data class RequestReinstall(val apps: List<AppInfo>) : AppListEvent
     data class ShowFreezerPrompt(val prompt: FreezerPrompt) : AppListEvent
 
@@ -209,7 +213,9 @@ class AppListViewModel(
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
             isGrid = prefs.appListIsGrid,
-            gridDensity = prefs.appGridDensity
+            gridDensity = prefs.appGridDensity,
+            multiActionsOrder = prefs.appListMultiActionsOrder,
+            hiddenMultiActions = prefs.hiddenAppListMultiActions,
         )
         processList(mergedState)
     }
@@ -583,7 +589,7 @@ class AppListViewModel(
                                 UiText.StringResource(
                                     R.string.frozen_success,
                                     appName ?: packageName
-                                )
+                                ), isSuccess = true
                             )
                         )
                     }
@@ -593,7 +599,7 @@ class AppListViewModel(
                             UiText.StringResource(
                                 R.string.unfrozen_success,
                                 appName ?: packageName
-                            )
+                            ), isSuccess = true
                         )
                     )
                 }
@@ -638,7 +644,7 @@ class AppListViewModel(
         ) {
             freezerRepository.add(packageName)
             _events.send(
-                AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
+                AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
             )
         }
     }
@@ -726,11 +732,7 @@ class AppListViewModel(
                     )
                     else manageAppUseCase.forceUnfreeze(packageName)
                 restored.onFailure { e ->
-                    _events.send(
-                        AppListEvent.ShowMessage(
-                            UiText.StringResource(R.string.error_format, e.message ?: "")
-                        )
-                    )
+                    _events.send(AppListEvent.ShowMessage(e.asUiText()))
                     return@launchGuarded
                 }
                 // Latched between the privileged call and the durable one, which is the only place
@@ -778,7 +780,7 @@ class AppListViewModel(
                 freezerRepository.remove(packageName)
                 _events.send(
                     AppListEvent.ShowMessage(
-                        UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
+                        UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1), isSuccess = true
                     )
                 )
             } else {
@@ -801,7 +803,7 @@ class AppListViewModel(
                 }
                 freezerRepository.add(packageName)
                 _events.send(
-                    AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
                 )
             }
         }
@@ -1000,7 +1002,7 @@ class AppListViewModel(
             exportAppListUseCase(apps)
                 .onSuccess {
                     _events.send(
-                        AppListEvent.ShowMessage(UiText.StringResource(R.string.export_saved, it))
+                        AppListEvent.ShowMessage(UiText.StringResource(R.string.export_saved, it), isSuccess = true)
                     )
                 }
                 .onFailure { e ->

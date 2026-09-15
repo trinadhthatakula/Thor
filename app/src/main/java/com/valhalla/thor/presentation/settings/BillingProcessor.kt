@@ -6,8 +6,16 @@ package com.valhalla.thor.presentation.settings
 import android.app.Activity
 import kotlinx.coroutines.flow.StateFlow
 
+/** Connection progress is separate from whether Play has confirmed a subscription. */
+enum class BillingConnectionState { NOT_APPLICABLE, CONNECTING, CONNECTED, UNAVAILABLE }
+
+/** UNKNOWN includes startup and failed reads; neither means the user is not a subscriber. */
+enum class SubscriptionStatus { UNKNOWN, NOT_SUBSCRIBED, SUBSCRIBED, PENDING }
+
 interface BillingProcessor : AutoCloseable {
     val isBillingAvailable: StateFlow<Boolean>
+    val connectionState: StateFlow<BillingConnectionState>
+    val subscriptionStatus: StateFlow<SubscriptionStatus>
 
     /**
      * The support tiers Play is currently selling, **cheapest first**.

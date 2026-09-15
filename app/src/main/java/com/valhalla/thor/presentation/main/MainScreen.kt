@@ -40,7 +40,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import com.valhalla.thor.presentation.common.LocalOperationFeedbackTarget
+import com.valhalla.thor.presentation.common.OperationFeedbackTarget
+import com.valhalla.thor.presentation.common.OperationMessage
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +92,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.TaskAction
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.repository.InstallerLabelResolver
@@ -122,6 +133,7 @@ import com.valhalla.thor.presentation.backup.hub.BackupRestoreHubScreen
 import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.customization.AppInfoActionsCustomizationScreen
+import com.valhalla.thor.presentation.settings.customization.MultiAppActionsCustomizationScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
@@ -131,6 +143,8 @@ import com.valhalla.thor.presentation.widgets.ExportProgressBar
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
 import com.valhalla.thor.presentation.widgets.ThankYouDialog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -247,6 +261,13 @@ fun MainScreen(
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val latestState by rememberUpdatedState(state)
+    val snackbarHostState = remember { SnackbarHostState() }
+    val supportLabel by rememberUpdatedState(stringResource(R.string.support_thor))
+    val feedbackTarget = remember { OperationFeedbackTarget() }
+    LaunchedEffect(feedbackTarget.current) {
+        mainViewModel.onOperationFeedbackHostChanged(feedbackTarget.current != null)
+    }
 
     // --- Safety Gates (Dialog State) ---
     var pendingMultiAction by remember { mutableStateOf<MultiAppAction?>(null) }
@@ -510,6 +531,7 @@ fun MainScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            var successMessageJob: Job? = null
             mainViewModel.effect.collect { effect ->
                 when (effect) {
                     is MainSideEffect.LaunchApp -> {
@@ -559,17 +581,34 @@ fun MainScreen(
                     }
 
                     is MainSideEffect.Message -> {
-                        Toast.makeText(
-                            context,
-                            effect.text.asString(context),
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        val foregroundFeedback = feedbackTarget.current
+                        if (foregroundFeedback != null) {
+                            successMessageJob?.cancel()
+                            foregroundFeedback.show(OperationMessage(effect.text, effect.isSuccess))
+                        } else if (effect.isSuccess) {
+                            // Replace earlier success feedback instead of queuing prompts behind it.
+                            successMessageJob?.cancel()
+                            successMessageJob = launch {
+                                val result = snackbarHostState.showSnackbar(
+                                    message = effect.text.asString(context),
+                                    actionLabel = supportLabel.takeIf { latestState.canInviteToSupport },
+                                    duration = SnackbarDuration.Short,
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    mainViewModel.openSupportFromSuccess()
+                                }
+                            }
+                        } else {
+                            successMessageJob?.cancel()
+                            Toast.makeText(context, effect.text.asString(context), Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
         }
     }
 
+    CompositionLocalProvider(LocalOperationFeedbackTarget provides feedbackTarget) {
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -592,6 +631,17 @@ fun MainScreen(
 
         Scaffold(
             modifier = Modifier.weight(1f),
+            snackbarHost = {
+                SnackbarHost(snackbarHostState) { data ->
+                    Snackbar(
+                        action = if (data.visuals.actionLabel != null && state.canInviteToSupport) {
+                            { TextButton(onClick = data::performAction) {
+                                Text(stringResource(R.string.support_thor))
+                            } }
+                        } else null,
+                    ) { Text(data.visuals.message) }
+                }
+            },
             bottomBar = {
                 Column {
                     // Above the navigation bar and outside its AnimatedVisibility: an export
@@ -893,6 +943,12 @@ fun MainScreen(
                                 },
                                 onNavigateToCustomizeAppInfoActions = {
                                     settingsBackStack.add(ThorRoute.AppInfoActionsCustomization)
+                                },
+                                onNavigateToCustomizeAppListMultiActions = {
+                                    settingsBackStack.add(ThorRoute.AppListMultiActionsCustomization)
+                                },
+                                onNavigateToCustomizeFreezerMultiActions = {
+                                    settingsBackStack.add(ThorRoute.FreezerMultiActionsCustomization)
                                 }
                             )
                         }
@@ -950,6 +1006,34 @@ fun MainScreen(
                                 }
                             },
                             viewModel = settingsViewModel
+                        )
+                    }
+
+                    entry<ThorRoute.AppListMultiActionsCustomization>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) {
+                        MultiAppActionsCustomizationScreen(
+                            layout = MultiAppActionLayout.APP_LIST,
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            viewModel = settingsViewModel,
+                        )
+                    }
+
+                    entry<ThorRoute.FreezerMultiActionsCustomization>(
+                        metadata = ListDetailSceneStrategy.detailPane()
+                    ) {
+                        MultiAppActionsCustomizationScreen(
+                            layout = MultiAppActionLayout.FREEZER,
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            viewModel = settingsViewModel,
                         )
                     }
 
@@ -1187,6 +1271,10 @@ fun MainScreen(
                             title = state.loggerState.title,
                             logs = state.loggerState.logs,
                             isOperationComplete = state.loggerState.isComplete,
+                            isOperationSuccessful = state.loggerState.isSuccessful,
+                            onSupport = if (state.canInviteToSupport && state.loggerState.isSuccessful) {
+                                { mainViewModel.openSupportFromSuccess() }
+                            } else null,
                             isStopping = state.loggerState.isStopping,
                             onStop = if (state.loggerState.canStop) {
                                 { mainViewModel.requestStopBatch() }
@@ -1213,7 +1301,10 @@ fun MainScreen(
                                 ?.freedBytes
                                 ?.let { Formatter.formatShortFileSize(context, it) },
                             onConfirm = { mainViewModel.confirmClearAllCaches() },
-                            onDismiss = { mainViewModel.dismissCacheClear() }
+                            onDismiss = { mainViewModel.dismissCacheClear() },
+                            onSupport = if (state.canInviteToSupport && cacheClear is CacheClearState.Done) {
+                                { mainViewModel.openSupportFromSuccess() }
+                            } else null,
                         )
                     }
 
@@ -1274,6 +1365,7 @@ fun MainScreen(
                 }
             }
         }
+    }
     }
 }
 

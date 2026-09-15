@@ -102,8 +102,8 @@ fun HomeScreen(
     val hasPrivilege = state.activePrivilegeMode != null
     // Root *or* Shizuku, which is wider than the `isRoot` this used to be. The tile no longer clears
     // one app at a time — it runs `pm trim-caches`, and PackageManagerService gates that on
-    // CLEAR_APP_CACHE, a permission the shell uid holds. Dhizuku is still out: it has no shell to
-    // run the command in and the device-owner API has no equivalent.
+    // CLEAR_APP_CACHE, a permission the shell uid holds. Dhizuku commands run as the owner app,
+    // which lacks that permission, and the device-owner API has no equivalent.
     val canClearCache = state.activePrivilegeMode == PrivilegeMode.ROOT ||
         state.activePrivilegeMode == PrivilegeMode.SHIZUKU
     val reinstallVisible = state.activePrivilegeMode != null &&

@@ -223,14 +223,13 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>
-    <string name="unfreeze_all">إلغاء تجميد الكل</string>
-    <string name="unfreeze_all_apps">إلغاء تجميد جميع التطبيقات</string>
-    <string name="unfreeze_all_apps_desc">تمكين جميع التطبيقات الموجودة حالياً في قائمة المجمد</string>
+    <string name="unfreeze_all">إلغاء تجميد تطبيقات المجمد</string>
+    <string name="unfreeze_all_apps">إلغاء تجميد الكل في المجمد</string>
     <string name="auto_freeze">تجميد تلقائي</string>
     <string name="auto_freeze_desc">تجميد التطبيقات تلقائياً عند قفل الشاشة</string>
     <string name="privilege_required_warning">الصلاحية مطلوبة (Root أو Shizuku أو Dhizuku)</string>
-    <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
-    <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
+    <string name="unfreeze_all_confirmation_title">إلغاء تجميد تطبيقات المجمد؟</string>
+    <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد التطبيقات في قائمة المجمد. لا يشمل التطبيقات التي تُدار عبر الملفات فقط.</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="zero">تجميد %1$d من التطبيقات المحددة؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
         <item quantity="one">تجميد التطبيق المحدد (%1$d)؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
@@ -282,6 +281,8 @@
 
     <!-- UiText Messages -->    <string name="frozen_success">تم تجميد %1$s</string>
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
+    <string name="dhizuku_freeze_failed">تعذر تجميد هذا التطبيق باستخدام Dhizuku.</string>
+    <string name="dhizuku_unfreeze_failed">تعذر إلغاء تجميد هذا التطبيق باستخدام Dhizuku.</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <string name="error_format">خطأ: %1$s</string>
@@ -448,6 +449,8 @@
     <string name="error_downgrade_privilege">خفض الإصدار مدعوم فقط مع الوصول المميز (Root أو Shizuku أو Dhizuku).</string>
 
     <!-- Support Developer -->
+    <string name="support_thor">دعم Thor</string>
+    <string name="support_already_support">أنا أدعم Thor بالفعل</string>
     <string name="support_developer">دعم المطور</string>
     <string name="support_developer_desc">دعم التطوير المستمر لـ Thor</string>
     <string name="support_developer_desc_detailed">Thor مفتوح المصدر وخالٍ تمامًا من الإعلانات. إذا كان مفيدًا لك، يرجى التفكير في دعم عملي:</string>
@@ -516,7 +519,7 @@
     <string name="auto_reinstall">إعادة التثبيت التلقائي للتطبيقات</string>
     <string name="auto_reinstall_desc">الحفاظ تلقائيًا على متجر Google Play كمثبت رئيسي لتمكين التحديثات في الخلفية</string>
     <string name="grant_all_permissions">منح كل الأذونات عند التثبيت</string>
-    <string name="grant_all_permissions_desc">منح التطبيق كل إذن يطلبه فور تثبيته، دون أي مطالبة — يقتصر ذلك على التثبيت عبر الروت أو Shizuku أو Dhizuku. مُعطَّل افتراضيًا، ويمكنك تغييره من المُثبِّت لعملية تثبيت واحدة؛ وفي الحالتين تحتفظ التحديثات بالأذونات التي سبق أن منحتها</string>
+    <string name="grant_all_permissions_desc">منح أذونات وقت التشغيل المطلوبة عند التثبيت باستخدام Root أو Shizuku. معطّل افتراضيًا؛ يمكنك تغييره لعملية تثبيت واحدة. تحتفظ التحديثات بالأذونات الممنوحة سابقًا.</string>
     <string name="grant_all_permissions_install">منح كل الأذونات المطلوبة</string>
     <string name="legacy_extension_title">تم اكتشاف امتداد قديم</string>
     <string name="legacy_extension_desc">تم تثبيت إصدار قديم من امتداد Stormbringer (باسم خاطئ \"Strombringer\") الملحق. يرجى إلغاء تثبيته لتجنب التعارض وتثبيت امتداد Stormbringer المحدث.</string>
@@ -591,7 +594,7 @@
     <string name="add_freezer_to_launcher">إضافة المجمد إلى شاشة التشغيل</string>
     <string name="add_freezer_to_launcher_desc">إظهار التطبيقات المجمدة كاختصارات على الشاشة الرئيسية يمكنك النقر عليها لتشغيلها</string>
     <string name="add_to_home_screen">إضافة إلى الشاشة الرئيسية</string>
-    <string name="freeze_all_apps">تجميد الكل</string>
+    <string name="freeze_all_apps">تجميد الكل في المجمد</string>
     <string name="shortcuts">الاختصارات</string>
     <string name="shortcut_add_all">إضافة جميع التطبيقات</string>
     <string name="shortcut_added_named">تمت إضافة %1$s إلى الشاشة الرئيسية</string>
@@ -645,6 +648,23 @@
     <string name="no_profiles_yet">لا توجد ملفات بعد</string>
     <string name="no_profiles_yet_desc">اجمع التطبيقات التي تجمّدها معًا، ثم جمّدها بنقرة واحدة</string>
     <string name="profile_save_selection">حفظ كملف</string>
+    <string name="profile_assignment_title">إضافة إلى الملفات</string>
+    <string name="profile_assignment_description">أضف التطبيقات المحددة إلى كل ملف تختاره.</string>
+    <string name="profile_assignment_selected_apps">التطبيقات المحددة: %1$d</string>
+    <string name="profile_assignment_selected_profiles">الملفات المحددة: %1$d</string>
+    <string name="profile_assignment_member_count">التطبيقات في الملف: %1$d</string>
+    <string name="profile_assignment_overlap">الجديدة: %1$d · المضمنة بالفعل: %2$d</string>
+    <string name="profile_assignment_confirm">إضافة إلى الملفات المحددة</string>
+    <string name="profile_assignment_result">%1$s: المضافة: %2$d · المضمنة بالفعل: %3$d</string>
+    <string name="profile_assignment_skipped">التطبيقات التي تم تخطيها: %1$d</string>
+    <string name="profile_assignment_no_profiles">لا توجد ملفات متاحة.</string>
+    <string name="profile_assignment_save_failed">تعذرت إضافة التطبيقات إلى الملفات المحددة. حاول مرة أخرى.</string>
+    <string name="profile_assignment_profiles_changed">لم يعد أحد الملفات المحددة متاحًا. اختر الملفات مجددًا.</string>
+    <string name="profile_assignment_no_eligible_apps">لا يمكن إضافة أي من التطبيقات المحددة إلى هذه الملفات.</string>
+    <string name="profile_assignment_expert_title">هل تريد إضافة تطبيقات تتطلب الحذر؟</string>
+    <string name="profile_assignment_expert_message">قد تؤثر بعض التطبيقات المحددة في وظائف النظام عند تجميدها بواسطة ملف. هل تريد إضافتها على أي حال؟</string>
+    <string name="profile_assignment_expert_confirm">إضافة على أي حال</string>
+    <string name="profile_assignment_all_present">جميع التطبيقات المحددة موجودة بالفعل في الملفات المحددة.</string>
     <string name="profile_delete_title">حذف «%1$s»؟</string>
     <string name="profile_delete_desc">يُحذف الملف فقط. تبقى التطبيقات التي بداخله كما هي — وما كان مجمدًا يظل مجمدًا.</string>
     <string name="profile_saved">تم حفظ الملف</string>
@@ -687,7 +707,7 @@
     <string name="export_list_empty">لا توجد تطبيقات في هذه القائمة للتصدير</string>
     <string name="export_list_failed">تعذّر حفظ القائمة</string>
     <string name="clear_all_caches_requires_usage_access">لا يستطيع Shizuku مسح ذاكرة التخزين المؤقت لكل التطبيقات بدون إذن الوصول إلى الاستخدام. يجب إخبار Android بعدد البايتات المطلوب تحريرها، وهذا الإذن وحده هو ما يمكنه قياس حجم ذاكرة التخزين المؤقت. امنح Thor إذن الوصول إلى الاستخدام من الإعدادات ثم أعد المحاولة.</string>
-    <string name="clear_all_caches_unsupported_dhizuku">لا يستطيع Dhizuku مسح ذاكرة التخزين المؤقت. ليست لديه صدفة (shell) لتشغيل أداة تقليص ذاكرة التخزين المؤقت في Android، ولا تتضمن واجهة مالك الجهاز أي بديل لها. بدّل إلى وضع Root أو Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">لا يستطيع Dhizuku مسح ذاكرة التخزين المؤقت. لا تملك عملية مالك الجهاز إذن Android اللازم لمسحها، ولا توفر واجهة مالك الجهاز بديلاً لذلك. بدّل إلى وضع Root أو Shizuku.</string>
 
     <!-- شاشة الإعدادات المقسّمة إلى فئات — راجع values/strings_settings.xml -->
     <string name="settings_category_appearance">المظهر</string>
@@ -717,7 +737,7 @@
     <string name="settings_summary_restore_interrupted">لم تكتمل إحدى عمليات الاستعادة</string>
     <string name="settings_summary_backup">استعادة أرشيف أو تغيير عبارة المرور</string>
     <string name="settings_summary_unprivileged">يتطلب Root أو Shizuku أو Dhizuku</string>
-    <string name="settings_summary_customization">الخطوط وإجراءات لوحة التطبيق</string>
+    <string name="settings_summary_customization">الخطوط وتخطيطات الإجراءات</string>
 
     <string name="settings_category_customization">التخصيص</string>
     <string name="customization_fonts">الخطوط</string>
@@ -730,11 +750,16 @@
     <string name="font_preview_numbers">٠١٢٣٤٥٦٧٨٩ · ١٫٢ غيغابايت</string>
     <string name="customization_app_info_actions">إجراءات لوحة التطبيق</string>
     <string name="customization_app_info_actions_desc">إعادة ترتيب وتبديل الإجراءات في اللوحة السفلية للتطبيق</string>
+    <string name="customization_app_list_multi_actions">إجراءات جماعية في قائمة التطبيقات</string>
+    <string name="customization_freezer_multi_actions">إجراءات جماعية في المجمد</string>
+    <string name="customization_multi_actions_desc">اختر إجراءات التطبيقات المحددة ورتّبها.</string>
+    <string name="customization_multi_actions_availability">تظهر الإجراءات حسب التطبيقات المحددة والصلاحيات وملفات التجميد المتاحة. يظل زر الإغلاق متاحًا دائمًا.</string>
     <string name="customization_drag_hint">اسحب لإعادة الترتيب • بدّل للإظهار أو الإخفاء</string>
     <string name="customization_preview_title">معاينة شريط الإجراءات</string>
     <string name="reset_to_default">إعادة التعيين إلى الافتراضي</string>
     <string name="reset_actions_confirm_title">إعادة تعيين ترتيب الإجراءات؟</string>
     <string name="reset_actions_confirm_desc">سيؤدي هذا إلى استعادة الترتيب الافتراضي وإظهار جميع الإجراءات.</string>
+    <string name="reset_multi_actions_confirm_desc">هل تريد إعادة تعيين ترتيب الإجراءات وظهورها في شريط التحديد هذا؟ ستُحفظ تخطيطات الإجراءات الأخرى.</string>
 
     <string name="action_open_desc">تشغيل التطبيق</string>
     <string name="action_settings_desc">فتح إعدادات النظام للتطبيق في Android</string>
@@ -1009,4 +1034,28 @@
     <string name="task_log_item_busy">تم تخطي %1$s لأن عملية أخرى تستخدمه.</string>
     <string name="task_log_item_unknown">تعذّر التحقق من الحالة النهائية لـ %1$s.</string>
 
+    <string name="setting_requires_root_or_shizuku">غير نشط في الوضع الحالي. يتطلب Root أو Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">لا يستطيع Dhizuku فرض إيقاف التطبيقات. انتقل إلى Root أو Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">تعذّر محو بيانات هذا التطبيق باستخدام Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">تعذّر إلغاء تثبيت هذا التطبيق باستخدام Dhizuku.</string>
+    <string name="profile_assignment_also_freezer">الإضافة إلى المجمد أيضًا</string>
+    <string name="profile_assignment_also_freezer_description">يُدرج هذه التطبيقات ضمن «تجميد الكل» والتجميد التلقائي عند تفعيله.</string>
+    <string name="profile_assignment_freezer_added">المضافة إلى المجمد: %1$d</string>
+    <string name="profile_assignment_freezer_load_failed">تعذر تحميل قائمة المجمد. حاول مرة أخرى.</string>
+    <string name="app_info_profiles_count">الملفات (%1$d)</string>
+    <string name="app_info_profiles_only">تُدار عبر الملفات فقط</string>
+    <string name="app_info_freezer_and_profiles">في المجمد والملفات</string>
+    <string name="unfreeze_managed_apps">إلغاء تجميد تطبيقات المجمد والملفات</string>
+    <string name="unfreeze_managed_apps_desc">استعد التطبيقات المجمدة في قائمة المجمد وجميع الملفات.</string>
+    <string name="unfreeze_managed_confirmation_title">إلغاء تجميد تطبيقات المجمد والملفات؟</string>
+    <string name="unfreeze_managed_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد التطبيقات في قائمة المجمد وجميع الملفات.</string>
+    <string name="profile_removal_recovery_title">مراجعة الإزالة من الملف</string>
+    <string name="profile_removal_recovery_message">التطبيقات المطلوب مراجعتها: %1$d. هذه التطبيقات مجمدة أو تعذر التحقق من حالتها، وليست ضمن أي ملف آخر أو قائمة المجمد. ألغِ تجميدها أولًا، أو أزلها دون إلغاء تجميدها واستخدم قائمة التطبيقات لاستعادتها. تؤدي إزالتها أيضًا إلى استبعادها من الاستعادة الجماعية والاستعادة عبر المشغّل.</string>
+    <string name="profile_removal_unfreeze_continue">إلغاء التجميد والمتابعة</string>
+    <string name="profile_removal_keep_frozen">إزالة دون إلغاء التجميد</string>
+    <string name="profile_removal_check_failed">تعذر التحقق من الملفات والقوائم التي تضم التطبيقات. لم يتم تغيير ملفك. حاول مرة أخرى.</string>
+    <string name="profile_removal_restore_failed">تعذر إلغاء تجميد بعض التطبيقات. لم يتم تغيير ملفك. حاول مجددًا أو أزلها دون إلغاء تجميدها.</string>
+    <string name="profile_removal_write_failed">تعذر حفظ تغييرات الملف. حاول مرة أخرى.</string>
+    <string name="profile_removal_profile_changed">لم يعد هذا الملف متاحًا. لم تُحفظ أي تغييرات.</string>
+    <string name="profile_removal_state_unknown">الحالة غير متاحة</string>
 </resources>

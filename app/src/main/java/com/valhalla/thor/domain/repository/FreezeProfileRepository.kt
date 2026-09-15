@@ -4,6 +4,8 @@
 package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.MissingFreezeProfilesException
+import com.valhalla.thor.domain.model.ProfileAssignmentResult
 import kotlinx.coroutines.flow.Flow
 
 interface FreezeProfileRepository {
@@ -31,6 +33,22 @@ interface FreezeProfileRepository {
      * rejected rename ship the membership change anyway.
      */
     suspend fun update(profileId: Long, name: String, packageNames: List<String>)
+
+    /**
+     * Append each package to every selected existing profile, retaining names and other members.
+     * Duplicate memberships are counted without being inserted again. The entire assignment is
+     * atomic, and its counts and profile names reflect the database at the time of the write.
+     * When explicitly requested, Freezer enrollment is part of the same transaction; existing
+     * watchlist entries are retained. This never runs a freeze or changes an app's enabled state.
+     *
+     * @throws IllegalArgumentException for empty selections, nonpositive ids or invalid packages.
+     * @throws MissingFreezeProfilesException if any selected profile no longer exists.
+     */
+    suspend fun addApps(
+        profileIds: Set<Long>,
+        packageNames: Set<String>,
+        addToFreezer: Boolean = false,
+    ): ProfileAssignmentResult
 
     suspend fun delete(profileId: Long)
 }

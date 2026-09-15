@@ -40,18 +40,18 @@
 - Fingerprint Lock
 - Themes (dark, light, system) + AMOLED + Asgardian static theme
 - [Font presets](docs/font-presets.md) in Settings → Customization: Asgard (Outfit/Fira Code) or system fonts, applied across the app and installer
-- **Redesigned App Installer** — install packages with root, shizuku, or normal, featuring detailed UI states and associations for split formats (`.apkm`, `.apks`, and `.xapk`)
-- **Auto Reinstall** — sync and reinstall apps with custom install-time options
+- **Redesigned App Installer** — install packages with Root, Shizuku, Dhizuku, or Android’s normal installer, featuring detailed UI states and associations for split formats (`.apkm`, `.apks`, and `.xapk`)
+- **Auto Reinstall** — maintain Play Store installer attribution through Root or Shizuku
 - **Extension Manager** — an in-app catalog of optional add-ons, each signature-verified and SHA-256 checked before install
 - **Redesigned Home** — an adaptive bento grid with one-tap access to the Extension Manager
 - **Universal Android Debloater (UAD) Integration** — safety recommendation chips (Recommended, Advanced, Expert, Unsafe) dynamically shown for system packages
-- **Safe System App Debloating & Freezing** — freezes a system app by disabling it (`pm disable`), which keeps its data, and only removes it for the current user (`pm uninstall -k --user`, which keeps the data too) where the device itself refuses to disable system packages — some OEM builds do, whatever the Android version — plus Dhizuku, whose gateway is not yet converted. Unfreezing undoes either mechanic (`pm install-existing`, then `pm enable`)
+- **Safe System App Debloating & Freezing** — Root and Shizuku freeze apps by disabling them; Dhizuku uses Android’s device-owner hide/unhide API. Both keep the APK and app data. Thor also retains recovery for system apps removed for the current user by older versions.
 - **Adaptive UI Layouts** — vertical navigation rail for tablets/foldables, optimized viewport layouts, and split landscape detail screens
 - **Safety Gating** — blocks freezing of system apps marked as **Unsafe** by UAD to prevent bootloops, and warns on **Expert** packages
 - **Per-Component Control** — disable, enable or reset to default an individual activity, service, broadcast receiver or content provider; open an exported activity with no privilege at all, force-open an unexported or permission-guarded one, and stop a single running service. Every disable is recorded so **Restore all** can put components back to the state their developer shipped — across every app rather than just the one on screen, scoped to the Android user Thor is running in — and a component something else changed is labelled *Changed elsewhere* rather than silently reverted. Needs Root or a Shizuku started as root: the platform rejects per-component changes from the shell uid, and Dhizuku exposes no API for them
 - Root Support
 - Shizuku Support
-- Dhizuku Support
+- Dhizuku Support — device-owner app management; ordinary APK replacement is supported, while Fix Store, force-stop, and cache clearing require other modes
 - Fully reproducible, copyleft libre software (GPLv3.0)
 - Material 3 with optional dynamic colors (Material You)
 - Work Mode selection — manually choose between Root, Shizuku, or Dhizuku as the active privilege
@@ -74,7 +74,7 @@
 - Freeze/UnFreeze System apps
 - Sorting & filters
 - Layout preference persistence (grid/list mode preserved across restarts)
-- Clear Data/Cache (available in all privilege modes)
+- Clear app data through Root, Shizuku, or Dhizuku; clear one app’s cache with Root, or clear caches across the device with Root or Shizuku
 
 ## Upcoming Features
 

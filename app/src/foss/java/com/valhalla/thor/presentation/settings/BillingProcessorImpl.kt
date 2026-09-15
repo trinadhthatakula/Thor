@@ -11,6 +11,10 @@ import org.koin.core.annotation.Single
 @Single
 class BillingProcessorImpl : BillingProcessor {
     override val isBillingAvailable: StateFlow<Boolean> = MutableStateFlow(false)
+    override val connectionState: StateFlow<BillingConnectionState> =
+        MutableStateFlow(BillingConnectionState.NOT_APPLICABLE)
+    override val subscriptionStatus: StateFlow<SubscriptionStatus> =
+        MutableStateFlow(SubscriptionStatus.NOT_SUBSCRIBED)
     override val products: StateFlow<List<BillingProduct>> = MutableStateFlow(emptyList())
     override val activeSubscription: StateFlow<ActiveSubscription?> = MutableStateFlow(null)
     override val showThankYouDialog: StateFlow<Boolean> = MutableStateFlow(false)
