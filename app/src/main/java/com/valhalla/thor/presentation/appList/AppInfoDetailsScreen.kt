@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -77,6 +78,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.widgets.AppActionRow
 import com.valhalla.thor.presentation.widgets.AppHeaderIcon
+import com.valhalla.thor.presentation.widgets.AppProfileMembershipSection
 import com.valhalla.thor.presentation.widgets.AppRiskAction
 import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
@@ -162,7 +164,7 @@ fun AppInfoDetailsScreen(
                 .fillMaxSize()
         ) {
             when {
-                state.isLoading && state.detailedInfo == null -> {
+                state.isLoading && state.detailedInfo?.appInfo?.packageName != packageName -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
 
@@ -194,9 +196,14 @@ fun AppInfoDetailsScreen(
                     }
                 }
 
-                state.detailedInfo != null -> {
+                state.detailedInfo?.appInfo?.packageName == packageName -> {
                     val details = state.detailedInfo!!
-                    Column(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().then(
+                            if (showOnlyHeaderAndActions) Modifier.verticalScroll(rememberScrollState())
+                            else Modifier,
+                        ),
+                    ) {
                         if (!showOnlyTabs) {
                             AppInfoHeaderAndActions(
                                 appInfo = details.appInfo,
@@ -204,6 +211,7 @@ fun AppInfoDetailsScreen(
                                 isShizuku = state.isShizuku,
                                 isDhizuku = state.isDhizuku,
                                 isInFreezer = state.isInFreezer,
+                                profileMembership = state.profileMembership,
                                 skipRoutineFreezeConfirmation =
                                     state.skipRoutineFreezeConfirmation,
                                 onAppAction = onAppAction,
@@ -284,7 +292,8 @@ fun AppInfoHeaderAndActions(
     onUninstallTriggered: () -> Unit,
     modifier: Modifier = Modifier,
     sharedTransitionScope: SharedTransitionScope? = null,
-    animatedVisibilityScope: AnimatedVisibilityScope? = null
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    profileMembership: AppProfileMembership? = null,
 ) {
     val context = LocalContext.current
     val packageName = appInfo.packageName
@@ -354,6 +363,13 @@ fun AppInfoHeaderAndActions(
             // through that tab. Every app that is not on the watchlist could not.
             onBackup = { showBackupSheet = true }
         )
+        profileMembership?.takeIf { it.packageName == packageName }?.let { membership ->
+            AppProfileMembershipSection(
+                profiles = membership.profiles,
+                isInFreezer = membership.isInFreezer,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            )
+        }
     }
 
     // --- DIALOGS ---

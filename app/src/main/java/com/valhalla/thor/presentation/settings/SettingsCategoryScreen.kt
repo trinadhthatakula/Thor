@@ -188,8 +188,8 @@ fun SettingsCategoryScreen(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text(stringResource(R.string.unfreeze_all_confirmation_title)) },
-            text = { Text(stringResource(R.string.unfreeze_all_confirmation_desc)) },
+            title = { Text(stringResource(R.string.unfreeze_managed_confirmation_title)) },
+            text = { Text(stringResource(R.string.unfreeze_managed_confirmation_desc)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -436,10 +436,10 @@ fun SettingsCategoryScreen(
                     // click row. Error colours and no chevron: this leads nowhere, it acts.
                     SettingsRowId.UNFREEZE_ALL -> SettingsClickRow(
                         icon = R.drawable.unfreeze,
-                        title = stringResource(R.string.unfreeze_all_apps),
+                        title = stringResource(R.string.unfreeze_managed_apps),
                         subtitle = privilegeAwareSubtitle(
                             hasPrivilege,
-                            R.string.unfreeze_all_apps_desc
+                            R.string.unfreeze_managed_apps_desc
                         ),
                         enabled = hasPrivilege,
                         destructive = true,

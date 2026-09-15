@@ -191,6 +191,9 @@ fun AppInfoSheet(
         viewModelStoreOwner = rememberViewModelStoreOwner()
     )
     val detailsState by detailsViewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(appInfo.packageName) {
+        detailsViewModel.observeProfileMembership(appInfo.packageName)
+    }
 
     // Sticky: once the details have been asked for they stay on screen, so collapsing back to the
     // partial detent does not throw the work away. rememberSaveable carries that across a
@@ -372,6 +375,16 @@ fun AppInfoSheet(
                     }
                 )
 
+                detailsState.profileMembership
+                    ?.takeIf { it.packageName == appInfo.packageName }
+                    ?.let { membership ->
+                        AppProfileMembershipSection(
+                            profiles = membership.profiles,
+                            isInFreezer = membership.isInFreezer,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        )
+                    }
+
                 // 3. The detail body, below the fold until the sheet is expanded. Only added once
                 // it has been asked for: an empty screen-height Box would otherwise let the column
                 // scroll into nothing.
@@ -382,6 +395,7 @@ fun AppInfoSheet(
                             .height(detailBodyHeight)
                     ) {
                         val details = detailsState.detailedInfo
+                            ?.takeIf { it.appInfo.packageName == appInfo.packageName }
                         when {
                             // Kept ahead of the error and loading branches so a failed or in-flight
                             // refresh never blanks details that are already on screen.

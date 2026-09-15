@@ -351,9 +351,8 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>
-    <string name="unfreeze_all">Unfreeze All</string>
-    <string name="unfreeze_all_apps">Unfreeze All Apps</string>
-    <string name="unfreeze_all_apps_desc">Enable all apps currently in the Freezer list</string>
+    <string name="unfreeze_all">Unfreeze Freezer apps</string>
+    <string name="unfreeze_all_apps">Unfreeze all in Freezer</string>
     <string name="auto_freeze">Auto Freeze</string>
     <string name="freeze_mode">Freeze Mode</string>
     <string name="suspend_instead_of_freeze">Suspend instead of freeze</string>
@@ -364,7 +363,7 @@
     <string name="add_freezer_to_launcher">Add Freezer to launcher</string>
     <string name="add_freezer_to_launcher_desc">Show frozen apps as home-screen shortcuts you can tap to launch</string>
     <string name="add_to_home_screen">Add to Home screen</string>
-    <string name="freeze_all_apps">Freeze all</string>
+    <string name="freeze_all_apps">Freeze all in Freezer</string>
     <string name="shortcuts">Shortcuts</string>
     <string name="shortcut_add_all">Add all apps</string>
     <string name="shortcut_added_named">%1$s added to Home screen</string>
@@ -377,8 +376,8 @@
     <string name="freezer_launch_failed">Couldn\'t launch this app</string>
     <string name="shortcut_no_longer_frozen">No longer frozen</string>
     <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>
-    <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
-    <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
+    <string name="unfreeze_all_confirmation_title">Unfreeze Freezer apps?</string>
+    <string name="unfreeze_all_confirmation_desc">This will unfreeze apps in your Freezer list. Apps managed only through profiles are not included.</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="one">Freeze %1$d selected app? Apps that Thor blocks for safety will be skipped.</item>
         <item quantity="other">Freeze %1$d selected apps? Apps that Thor blocks for safety will be skipped.</item>
@@ -782,6 +781,23 @@
     <string name="no_profiles_yet">No profiles yet</string>
     <string name="no_profiles_yet_desc">Group the apps you freeze together, then freeze them in one tap</string>
     <string name="profile_save_selection">Save as profile</string>
+    <string name="profile_assignment_title">Add to profiles</string>
+    <string name="profile_assignment_description">Add the selected apps to each chosen profile.</string>
+    <string name="profile_assignment_selected_apps">Selected apps: %1$d</string>
+    <string name="profile_assignment_selected_profiles">Selected profiles: %1$d</string>
+    <string name="profile_assignment_member_count">Apps in profile: %1$d</string>
+    <string name="profile_assignment_overlap">New: %1$d · Already included: %2$d</string>
+    <string name="profile_assignment_confirm">Add to selected profiles</string>
+    <string name="profile_assignment_result">%1$s: Added: %2$d · Already included: %3$d</string>
+    <string name="profile_assignment_skipped">Apps skipped: %1$d</string>
+    <string name="profile_assignment_no_profiles">No profiles are available.</string>
+    <string name="profile_assignment_save_failed">Could not add apps to the selected profiles. Try again.</string>
+    <string name="profile_assignment_profiles_changed">A selected profile is no longer available. Choose profiles again.</string>
+    <string name="profile_assignment_no_eligible_apps">None of the selected apps can be added to these profiles.</string>
+    <string name="profile_assignment_expert_title">Add apps that require caution?</string>
+    <string name="profile_assignment_expert_message">Some selected apps may affect system features when frozen by a profile. Add them anyway?</string>
+    <string name="profile_assignment_expert_confirm">Add anyway</string>
+    <string name="profile_assignment_all_present">All selected apps are already in the selected profiles.</string>
     <string name="profile_delete_title">Delete “%1$s”?</string>
     <string name="profile_delete_desc">Only the profile is removed. The apps in it are left exactly as they are — anything frozen stays frozen.</string>
     <string name="profile_saved">Profile saved</string>
@@ -985,4 +1001,24 @@
     <string name="force_stop_unsupported_dhizuku">Dhizuku cannot force-stop apps. Switch to Root or Shizuku.</string>
     <string name="dhizuku_clear_data_failed">Could not clear this app’s data with Dhizuku.</string>
     <string name="dhizuku_uninstall_failed">Could not uninstall this app with Dhizuku.</string>
+    <string name="profile_assignment_also_freezer">Also add to Freezer</string>
+    <string name="profile_assignment_also_freezer_description">Includes these apps in Freeze all and auto-freeze when enabled.</string>
+    <string name="profile_assignment_freezer_added">Added to Freezer: %1$d</string>
+    <string name="profile_assignment_freezer_load_failed">Could not load the Freezer list. Try again.</string>
+    <string name="app_info_profiles_count">Profiles (%1$d)</string>
+    <string name="app_info_profiles_only">Managed through profiles only</string>
+    <string name="app_info_freezer_and_profiles">In Freezer and profiles</string>
+    <string name="unfreeze_managed_apps">Unfreeze Freezer and profiles</string>
+    <string name="unfreeze_managed_apps_desc">Restore frozen apps in your Freezer list and all profiles.</string>
+    <string name="unfreeze_managed_confirmation_title">Unfreeze Freezer and profile apps?</string>
+    <string name="unfreeze_managed_confirmation_desc">This will unfreeze apps in your Freezer list and all profiles.</string>
+    <string name="profile_removal_recovery_title">Review profile removal</string>
+    <string name="profile_removal_recovery_message">Apps to review: %1$d. These apps are frozen or their state could not be checked, and they have no other profile or Freezer entry. Unfreeze them first, or remove them without unfreezing and use App list for recovery. Removing them also excludes them from bulk recovery and launcher restore.</string>
+    <string name="profile_removal_unfreeze_continue">Unfreeze and continue</string>
+    <string name="profile_removal_keep_frozen">Remove without unfreezing</string>
+    <string name="profile_removal_check_failed">Could not check app membership. Your profile has not been changed. Try again.</string>
+    <string name="profile_removal_restore_failed">Some apps could not be unfrozen. Your profile has not been changed. Retry or remove without unfreezing.</string>
+    <string name="profile_removal_write_failed">Could not save profile changes. Try again.</string>
+    <string name="profile_removal_profile_changed">This profile is no longer available. No changes were saved.</string>
+    <string name="profile_removal_state_unknown">State unavailable</string>
 </resources>

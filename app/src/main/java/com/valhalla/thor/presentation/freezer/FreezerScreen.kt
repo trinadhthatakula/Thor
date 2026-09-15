@@ -108,6 +108,12 @@ fun FreezerScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val operationFeedback = rememberOperationFeedback()
+    val profileAssignment: ProfileAssignmentViewModel = koinViewModel(key = "freezer-profile-assignment")
+    val assignmentState by profileAssignment.uiState.collectAsStateWithLifecycle()
+    ProfileAssignmentHost(profileAssignment) { message ->
+        viewModel.clearSelection()
+        operationFeedback.show(message)
+    }
     val hasPrivilege = state.isRoot || state.isShizuku || state.isDhizuku
     val noDisabledAppsFoundMessage = stringResource(R.string.no_disabled_apps_found)
 
@@ -505,6 +511,9 @@ fun FreezerScreen(
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp),
                     onCancel = { viewModel.clearSelection() },
+                    onAddToProfiles = if (assignmentState.profiles.isNotEmpty() && !assignmentState.profilesLoadFailed) {
+                        { profileAssignment.open(selectedApps) }
+                    } else null,
                     onRemoveFromFreezer = {
                         viewModel.removeFromFreezer(state.multiSelection)
                     },
@@ -665,6 +674,7 @@ fun FreezerScreen(
             allApps = state.allInstalledApps,
             runningRequests = state.runningRequests,
             hasPrivilege = hasPrivilege,
+            isWorking = state.profileSaveInFlight || state.profileRemovalRecovery != null,
             onRun = viewModel::runProfile,
             // Dismissed first: the kill lands in MainScreen's confirm dialog and then its progress
             // log, and neither is worth reading through a sheet that can no longer say anything
@@ -700,7 +710,7 @@ fun FreezerScreen(
             searchQuery = state.profileEditorSearchQuery,
             gridDensity = state.gridDensity,
             onSearchChange = viewModel::updateProfileEditorSearch,
-            isSaving = state.profileSaveInFlight,
+            isSaving = state.profileSaveInFlight || state.profileRemovalRecovery != null,
             // No close here. The sheet comes down on FreezerEvent.ProfileSaveSucceeded, so a write
             // the database refuses — a duplicate name, a foreign key — leaves the draft on screen
             // to be corrected instead of reporting itself into the void.
@@ -711,6 +721,16 @@ fun FreezerScreen(
                 else viewModel.updateProfile(editorSession, editing.id, name, packageNames)
             },
             onDismiss = { closeProfileEditor() }
+        )
+    }
+
+    state.profileRemovalRecovery?.let { recovery ->
+        ProfileRemovalRecoveryDialog(
+            recovery = recovery,
+            isWorking = state.profileSaveInFlight,
+            onUnfreeze = { viewModel.confirmProfileRemovalRecovery(unfreeze = true) },
+            onKeepFrozen = { viewModel.confirmProfileRemovalRecovery(unfreeze = false) },
+            onDismiss = viewModel::dismissProfileRemovalRecovery,
         )
     }
 

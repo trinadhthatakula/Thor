@@ -22,18 +22,19 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezerRepository
+import com.valhalla.thor.presentation.FakeFreezeProfileRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
-import androidx.lifecycle.viewModelScope
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -93,6 +94,7 @@ class AppInfoDetailsViewModelTest {
             manageAppUseCase = manageAppUseCase,
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
             freezerRepository = freezer,
+            freezeProfileRepository = FakeFreezeProfileRepository(),
             appShortcuts = shortcuts,
             preferenceRepository = preferences,
             ioDispatcher = mainDispatcherRule.dispatcher
@@ -437,15 +439,19 @@ class AppInfoDetailsViewModelTest {
             CancellationException("cancelled"),
         )
         system.obbProbeFailure = cancellation
+        val probeJob = CompletableDeferred<Job>()
+        val releaseProbe = CompletableDeferred<Unit>()
+        system.beforeObbProbeResult = {
+            probeJob.complete(currentCoroutineContext()[Job]!!)
+            releaseProbe.await()
+        }
         val vm = viewModel()
-        runCurrent()
-        val parent = vm.viewModelScope.coroutineContext[Job]!!
-        val existingChildren = parent.children.toSet()
 
         vm.loadAppDetails("a")
-        val loadJob = (parent.children.toSet() - existingChildren).single()
+        runCurrent()
         val completion = CompletableDeferred<Throwable?>()
-        loadJob.invokeOnCompletion(completion::complete)
+        probeJob.await().invokeOnCompletion(completion::complete)
+        releaseProbe.complete(Unit)
         runCurrent()
 
         assertTrue("the public load must reach the OBB collaborator", "probeObb:a" in system.calls)
@@ -462,14 +468,18 @@ class AppInfoDetailsViewModelTest {
             runTest {
                 loaded(userApp("a"))
                 system.obbProbeFailure = failure
+                val probeJob = CompletableDeferred<Job>()
+                val releaseProbe = CompletableDeferred<Unit>()
+                system.beforeObbProbeResult = {
+                    probeJob.complete(currentCoroutineContext()[Job]!!)
+                    releaseProbe.await()
+                }
                 val vm = viewModel()
-                runCurrent()
-                val parent = vm.viewModelScope.coroutineContext[Job]!!
-                val existingChildren = parent.children.toSet()
 
                 vm.loadAppDetails("a")
-                val loadJob = (parent.children.toSet() - existingChildren).single()
-                loadJob.invokeOnCompletion(completion::set)
+                runCurrent()
+                probeJob.await().invokeOnCompletion(completion::set)
+                releaseProbe.complete(Unit)
                 runCurrent()
             }
         }
@@ -803,11 +813,11 @@ class AppInfoDetailsViewModelTest {
      *
      * This read is a passenger on a detail load the user asked for. Failing it loudly would blame the
      * load for a database fault, and crashing on it was the original bug: the sheet could not be
-     * opened at all. It degrades to "not tracked" and says nothing, matching
-     * `AppListViewModel.observeFreezerMembership`'s `Flow.catch`.
+     * opened at all. The one-shot read degrades without a toast; a working live watchlist stream
+     * still supplies the membership so the failed read cannot undo a known tracked state.
      */
     @Test
-    fun `a failed membership read leaves the detail load standing and silent`() = runTest {
+    fun `a failed one-shot membership read preserves live membership and leaves details silent`() = runTest {
         loaded(userApp("a"))
         freezer.add("a")
         freezer.failContainsWith("a", IllegalStateException("disk I O error"))
@@ -818,10 +828,11 @@ class AppInfoDetailsViewModelTest {
         runCurrent()
 
         assertNotNull("the details themselves landed", vm.uiState.value.detailedInfo)
-        assertFalse(
-            "degraded to not-tracked, which offers to add rather than hiding an untracked app",
+        assertTrue(
+            "the live watchlist still knows the app is tracked",
             vm.uiState.value.isInFreezer
         )
+        assertTrue(vm.uiState.value.profileMembership!!.isInFreezer)
         assertTrue("and the load is not blamed for the database's fault", seen.isEmpty())
     }
 }

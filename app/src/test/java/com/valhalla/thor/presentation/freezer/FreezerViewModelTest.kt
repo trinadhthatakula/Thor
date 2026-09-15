@@ -147,6 +147,7 @@ class FreezerViewModelTest {
             sweepController = controller,
             taskNavigationTargets = taskNavigationTargets,
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
+            appRepository = appRepository,
             manageAppUseCase = manageAppUseCase,
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
             privilege = privilege,

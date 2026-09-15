@@ -18,6 +18,7 @@ import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PrivilegeSweepTargetResolverTest {
@@ -95,6 +96,42 @@ class PrivilegeSweepTargetResolverTest {
 
         assertEquals(listOf("frozen.blocked"), spec.packageNames)
         assertEquals(null, spec.freezerMode)
+    }
+
+    @Test
+    fun `managed recovery includes profile-only frozen apps once and leaves unrelated apps out`() = runTest {
+        val freezer = FakeFreezerRepository(setOf("shared.app", "watchlist.app"))
+        val profiles = FakeFreezeProfileRepository(listOf(
+            FreezeProfile(1, "Games", listOf("shared.app", "profile.app", "active.app")),
+            FreezeProfile(2, "Travel", listOf("profile.app")),
+        ))
+        val candidates = mapOf(
+            "shared.app" to FreezeCandidate(FreezeState.FROZEN),
+            "watchlist.app" to FreezeCandidate(FreezeState.FROZEN),
+            "profile.app" to FreezeCandidate(FreezeState.FROZEN, blockedFromFreeze = true),
+            "active.app" to FreezeCandidate(FreezeState.ACTIVE),
+            "unrelated.app" to FreezeCandidate(FreezeState.FROZEN),
+        )
+        val resolver = resolver(freezer = freezer, profiles = profiles, candidates = candidates)
+
+        val managed = resolver.resolve(
+            BulkRequest(BulkOp.UNFREEZE, BulkScope.ManagedApps),
+            PrivilegeSweepSource.SETTINGS,
+        )
+        val watchlist = resolver.resolve(BulkRequest(BulkOp.UNFREEZE), PrivilegeSweepSource.LAUNCHER)
+
+        assertEquals(listOf("profile.app", "shared.app", "watchlist.app"), managed.packageNames)
+        assertEquals(listOf("shared.app", "watchlist.app"), watchlist.packageNames)
+        assertEquals(setOf("shared.app", "watchlist.app"), freezer.getAllPackageNames().toSet())
+    }
+
+    @Test
+    fun `managed recovery cannot be used to freeze both lists`() = runTest {
+        val failure = runCatching {
+            resolver().resolve(BulkRequest(BulkOp.FREEZE, BulkScope.ManagedApps), PrivilegeSweepSource.SETTINGS)
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
     }
 
     @Test
