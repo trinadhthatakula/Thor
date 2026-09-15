@@ -46,6 +46,9 @@ interface FreezeProfileDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertApps(entities: List<FreezeProfileAppEntity>): List<Long>
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertFreezerApps(entities: List<FreezerEntity>): List<Long>
+
     /**
      * Append without replacing membership or renaming. Checking every target and inserting in
      * one transaction prevents partial success if a selected profile has been deleted. SQLite
@@ -55,6 +58,7 @@ interface FreezeProfileDao {
     suspend fun addApps(
         profileIds: Set<Long>,
         packageNames: Set<String>,
+        addToFreezer: Boolean = false,
     ): ProfileAssignmentResult {
         val targetIds = profileIds.toSet()
         val requestedPackages = packageNames.toList()
@@ -70,7 +74,7 @@ interface FreezeProfileDao {
         val missingIds = targetIds - targets.map { it.id }.toSet()
         if (missingIds.isNotEmpty()) throw MissingFreezeProfilesException(missingIds)
 
-        return ProfileAssignmentResult(targets.map { profile ->
+        val counts = targets.map { profile ->
             val added = insertApps(requestedPackages.map { FreezeProfileAppEntity(profile.id, it) })
                 .count { it != -1L }
             ProfileAssignmentCount(
@@ -79,7 +83,11 @@ interface FreezeProfileDao {
                 addedCount = added,
                 alreadyPresentCount = requestedPackages.size - added,
             )
-        })
+        }
+        val freezerAddedCount = if (addToFreezer) {
+            insertFreezerApps(requestedPackages.map(::FreezerEntity)).count { it != -1L }
+        } else 0
+        return ProfileAssignmentResult(counts, freezerAddedCount)
     }
 
     /**

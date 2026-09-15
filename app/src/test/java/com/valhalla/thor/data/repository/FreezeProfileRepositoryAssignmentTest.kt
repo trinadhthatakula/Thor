@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.source.local.room.AppDatabase
+import com.valhalla.thor.data.source.local.room.FreezerEntity
 import com.valhalla.thor.domain.model.MissingFreezeProfilesException
 import com.valhalla.thor.domain.model.ProfileAssignmentCount
 import kotlinx.coroutines.flow.first
@@ -65,6 +66,70 @@ class FreezeProfileRepositoryAssignmentTest {
         assertEquals(setOf("com.example.maps", "com.example.new", "android"), repository.packagesOf(second).toSet())
         assertEquals(listOf("com.example.work"), repository.packagesOf(other))
         assertEquals(metadata, database.freezeProfileDao().profilesByIds(listOf(first, second, other)))
+        assertEquals(0, result.freezerAddedCount)
+        assertTrue(database.freezerDao().getAllPackageNames().isEmpty())
+    }
+
+    @Test
+    fun `explicit enrollment reports new freezer packages only once across multiple profiles`() = runTest {
+        val first = repository.create("Games", listOf("com.example.new"))
+        val second = repository.create("Travel", emptyList())
+        database.freezerDao().insert(FreezerEntity("com.example.existing"))
+        database.freezerDao().insert(FreezerEntity("com.example.retained"))
+        val packages = setOf("com.example.new", "com.example.existing")
+
+        val result = repository.addApps(setOf(first, second), packages, addToFreezer = true)
+
+        assertEquals(3, result.addedCount)
+        assertEquals(1, result.alreadyPresentCount)
+        assertEquals(1, result.freezerAddedCount)
+        assertEquals(packages, repository.packagesOf(first).toSet())
+        assertEquals(packages, repository.packagesOf(second).toSet())
+        assertEquals(packages + "com.example.retained", database.freezerDao().getAllPackageNames().toSet())
+
+        val repeated = repository.addApps(setOf(first, second), packages, addToFreezer = true)
+        assertEquals(0, repeated.addedCount)
+        assertEquals(4, repeated.alreadyPresentCount)
+        assertEquals(0, repeated.freezerAddedCount)
+    }
+
+    @Test
+    fun `enrollment can add a package already present in every target profile`() = runTest {
+        val profile = repository.create("Games", listOf("com.example.new"))
+
+        val result = repository.addApps(setOf(profile), setOf("com.example.new"), addToFreezer = true)
+
+        assertEquals(0, result.addedCount)
+        assertEquals(1, result.freezerAddedCount)
+        assertEquals(listOf("com.example.new"), database.freezerDao().getAllPackageNames())
+    }
+
+    @Test
+    fun `freezer enrollment failure rolls back profile appends and earlier freezer insertions`() = runTest {
+        val profile = repository.create("Games", listOf("com.example.retained"))
+        database.freezerDao().insert(FreezerEntity("com.example.retained"))
+        database.openHelper.writableDatabase.execSQL(
+            """
+            CREATE TRIGGER reject_freezer_enrollment
+            BEFORE INSERT ON freezer_apps
+            WHEN NEW.packageName = 'com.example.rejected'
+            BEGIN
+                SELECT RAISE(ABORT, 'enrollment write rejected');
+            END
+            """.trimIndent(),
+        )
+
+        val failure = runCatching {
+            repository.addApps(
+                setOf(profile),
+                linkedSetOf("com.example.accepted", "com.example.rejected"),
+                addToFreezer = true,
+            )
+        }.exceptionOrNull()
+
+        assertTrue("Expected injected SQLite failure, got $failure", failure is SQLiteConstraintException)
+        assertEquals(listOf("com.example.retained"), repository.packagesOf(profile))
+        assertEquals(listOf("com.example.retained"), database.freezerDao().getAllPackageNames())
     }
 
     @Test
@@ -104,12 +169,13 @@ class FreezeProfileRepositoryAssignmentTest {
         val unknown = deleted + 1_000
 
         val failure = runCatching {
-            repository.addApps(setOf(surviving, deleted, unknown), setOf("com.example.new"))
+            repository.addApps(setOf(surviving, deleted, unknown), setOf("com.example.new"), addToFreezer = true)
         }.exceptionOrNull()
 
         assertTrue("Expected a typed missing-target failure, got $failure", failure is MissingFreezeProfilesException)
         assertEquals(setOf(deleted, unknown), (failure as MissingFreezeProfilesException).profileIds)
         assertEquals(before, repository.observeProfiles().first())
+        assertTrue(database.freezerDao().getAllPackageNames().isEmpty())
     }
 
     @Test
@@ -131,11 +197,12 @@ class FreezeProfileRepositoryAssignmentTest {
         )
 
         val failure = runCatching {
-            repository.addApps(setOf(first, second), setOf("com.example.new", "com.example.another"))
+            repository.addApps(setOf(first, second), setOf("com.example.new", "com.example.another"), addToFreezer = true)
         }.exceptionOrNull()
 
         assertTrue("Expected the injected SQLite constraint failure, got $failure", failure is SQLiteConstraintException)
         assertEquals(before, repository.observeProfiles().first())
+        assertTrue(database.freezerDao().getAllPackageNames().isEmpty())
     }
 
     @Test

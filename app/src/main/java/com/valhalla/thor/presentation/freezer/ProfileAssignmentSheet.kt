@@ -61,7 +61,7 @@ fun ProfileAssignmentHost(
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         // A failed observation hides the entry point, so recovery cannot rely on the sheet's
         // retry button alone. Try again when this destination becomes active.
-        if (viewModel.uiState.value.profilesLoadFailed) viewModel.retryProfiles()
+        viewModel.retryFailedSources()
     }
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
@@ -81,10 +81,17 @@ fun ProfileAssignmentHost(
                 val skipped = if (event.skippedCount > 0) {
                     listOf(resources.getString(R.string.profile_assignment_skipped, event.skippedCount))
                 } else emptyList()
+                val freezer = if (event.result.freezerAddedCount > 0) {
+                    listOf(resources.getString(
+                        R.string.profile_assignment_freezer_added,
+                        event.result.freezerAddedCount,
+                    ))
+                } else emptyList()
                 onAssigned(
                     OperationMessage(
-                        UiText.DynamicString((lines + skipped).joinToString("\n")),
-                        isSuccess = event.result.addedCount > 0 && event.skippedCount == 0,
+                        UiText.DynamicString((lines + freezer + skipped).joinToString("\n")),
+                        isSuccess = (event.result.addedCount > 0 || event.result.freezerAddedCount > 0) &&
+                            event.skippedCount == 0,
                     )
                 )
             }
@@ -94,9 +101,10 @@ fun ProfileAssignmentHost(
         ProfileAssignmentSheet(
             state = state,
             onToggleProfile = viewModel::toggleProfile,
+            onToggleAlsoAddToFreezer = viewModel::toggleAlsoAddToFreezer,
             onSubmit = { viewModel.submit() },
             onDismiss = viewModel::dismiss,
-            onRetry = viewModel::retryProfiles,
+            onRetry = viewModel::retryFailedSources,
             onConfirmExperts = { viewModel.submit(confirmExperts = true) },
             onDismissExperts = viewModel::dismissExpertConfirmation,
         )
@@ -108,6 +116,7 @@ fun ProfileAssignmentHost(
 internal fun ProfileAssignmentSheet(
     state: ProfileAssignmentUiState,
     onToggleProfile: (Long) -> Unit,
+    onToggleAlsoAddToFreezer: () -> Unit,
     onSubmit: () -> Unit,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
@@ -195,6 +204,51 @@ internal fun ProfileAssignmentSheet(
                     }
                 }
             }
+            if (state.canAddToFreezer || state.alsoAddToFreezer) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .testTag("profile_assignment_also_freezer")
+                            .toggleable(
+                                value = state.alsoAddToFreezer,
+                                enabled = !state.isSaving,
+                                role = Role.Checkbox,
+                                onValueChange = { onToggleAlsoAddToFreezer() },
+                            )
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Checkbox(
+                            checked = state.alsoAddToFreezer,
+                            onCheckedChange = null,
+                            enabled = !state.isSaving,
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.profile_assignment_also_freezer),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                stringResource(R.string.profile_assignment_also_freezer_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            if (state.freezerLoadFailed) {
+                item {
+                    Text(
+                        stringResource(R.string.profile_assignment_freezer_load_failed),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = onRetry, enabled = !state.isSaving) {
+                        Text(stringResource(R.string.retry_label))
+                    }
+                }
+            }
             state.error?.let { error ->
                 item {
                     Text(
@@ -215,7 +269,8 @@ internal fun ProfileAssignmentSheet(
                 Button(
                     onClick = onSubmit,
                     enabled = state.selectedProfileIds.isNotEmpty() && selectedPackages.isNotEmpty() &&
-                        !state.isSaving && !state.profilesLoadFailed,
+                        !state.isSaving && !state.profilesLoadFailed &&
+                        (!state.alsoAddToFreezer || (state.freezerLoaded && !state.freezerLoadFailed)),
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                         .testTag("profile_assignment_submit"),
                 ) {

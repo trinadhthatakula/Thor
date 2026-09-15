@@ -185,6 +185,7 @@ class ProfileSubmissionLifetimeTest {
             ),
             sweepController = controller, taskNavigationTargets = navigation,
             getInstalledAppsUseCase = GetInstalledAppsUseCase(apps), manageAppUseCase = manage,
+            appRepository = apps,
             freezeAppUseCase = FreezeAppUseCase(apps, manage), privilege = FakePrivilegeStateProvider(),
             preferenceRepository = prefs, appShortcuts = FakeAppShortcutController(),
             defaultDispatcher = main.dispatcher, ioDispatcher = main.dispatcher,

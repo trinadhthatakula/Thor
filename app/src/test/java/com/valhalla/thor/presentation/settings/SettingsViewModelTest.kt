@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.settings
 
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezeCandidate
+import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
@@ -124,6 +125,24 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `settings recovery includes an app managed only through a profile`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = FakePreferenceRepository(),
+            controller = controller,
+            candidates = mapOf("profile.app" to FreezeCandidate(FreezeState.FROZEN)),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+            profiles = FakeFreezeProfileRepository(listOf(FreezeProfile(1, "Games", listOf("profile.app")))),
+        )
+
+        vm.unfreezeAll()
+        runCurrent()
+
+        assertEquals(listOf("profile.app"), controller.launched.single().packageNames)
+    }
+
+    @Test
     fun `restore all launch exception rejects the exact provisional task`() = runTest {
         val controller = FakePrivilegeSweepController().apply {
             launchFailure = IllegalStateException("acceptance failed")
@@ -217,6 +236,7 @@ class SettingsViewModelTest {
         controller: FakePrivilegeSweepController,
         candidates: Map<String, FreezeCandidate>,
         targets: TaskNavigationTargets,
+        profiles: FakeFreezeProfileRepository = FakeFreezeProfileRepository(),
     ): SettingsViewModel = SettingsViewModel(
         preferenceRepository = preferences,
         systemRepository = FakeSystemRepository(),
@@ -224,7 +244,7 @@ class SettingsViewModelTest {
         localeManager = LocaleManager(FakeContext(File("/tmp"))),
         sweepResolver = privilegeSweepResolver(
             freezerRepository = freezer,
-            freezeProfileRepository = FakeFreezeProfileRepository(),
+            freezeProfileRepository = profiles,
             preferenceRepository = preferences,
             candidates = candidates,
             userId = 10,

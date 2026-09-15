@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.presentation.common.OperationMessage
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.freezeTier
@@ -15,6 +16,7 @@ import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
@@ -25,17 +27,33 @@ import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.asUiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+
+data class AppProfileMembership(
+    val packageName: String,
+    val profiles: List<FreezeProfile>,
+    val isInFreezer: Boolean,
+)
 
 data class AppInfoDetailsUiState(
     val isLoading: Boolean = true,
@@ -44,6 +62,7 @@ data class AppInfoDetailsUiState(
     val isDhizuku: Boolean = false,
     val detailedInfo: DetailedAppInfo? = null,
     val isInFreezer: Boolean = false,
+    val profileMembership: AppProfileMembership? = null,
     val freezerPrompt: FreezerPrompt? = null,
     /**
      * [UserPreferences.skipRoutineFreezeConfirmation][com.valhalla.thor.domain.model.UserPreferences],
@@ -70,6 +89,7 @@ class AppInfoDetailsViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
     private val freezerRepository: FreezerRepository,
+    private val freezeProfileRepository: FreezeProfileRepository,
     // The port, not the concrete FreezerShortcutManager: this screen only retires and re-renders a
     // single app's shortcut, and the manager needs a Context, so depending on the class put the
     // whole view model out of reach of a JVM test. Same dependency AppListViewModel already takes.
@@ -83,6 +103,8 @@ class AppInfoDetailsViewModel(
 
     private val _uiState = MutableStateFlow(AppInfoDetailsUiState())
     val uiState = _uiState.asStateFlow()
+    private val membershipPackage = MutableStateFlow<String?>(null)
+    private var detailLoadJob: Job? = null
 
     init {
         // Collected for the view model's whole life rather than read once, so flipping the setting
@@ -94,6 +116,60 @@ class AppInfoDetailsViewModel(
                 }
             }
         }
+        viewModelScope.launch {
+            membershipPackage.collectLatest { packageName ->
+                if (packageName == null) return@collectLatest
+                combine(
+                    freezeProfileRepository.observeProfiles(),
+                    freezerRepository.getAll(),
+                ) { profiles, watchlist ->
+                    AppProfileMembership(
+                        packageName = packageName,
+                        profiles = profiles.filter { packageName in it.packageNames },
+                        isInFreezer = packageName in watchlist,
+                    )
+                }
+                    .distinctUntilChanged()
+                    .flowOn(ioDispatcher)
+                    .retryWhen { error, attempt ->
+                        if (error is CancellationException || attempt >= 2) false
+                        else {
+                            delay(500)
+                            true
+                        }
+                    }
+                    .catch { error ->
+                        if (error is CancellationException) throw error
+                        Logger.e("AppInfoDetailsViewModel", "Profile membership read failed", error)
+                        _uiState.update {
+                            if (membershipPackage.value == packageName) it.copy(profileMembership = null)
+                            else it
+                        }
+                    }
+                    .collect { membership ->
+                        currentCoroutineContext().ensureActive()
+                        _uiState.update {
+                            if (membershipPackage.value == packageName) it.copy(profileMembership = membership)
+                            else it
+                        }
+                    }
+            }
+        }
+    }
+
+    /** Observes names and membership without loading the manifest, permissions, or OBB data. */
+    fun observeProfileMembership(packageName: String) {
+        if (membershipPackage.value == packageName) return
+        detailLoadJob?.cancel()
+        _uiState.update {
+            it.copy(
+                profileMembership = null,
+                detailedInfo = it.detailedInfo?.takeIf { details -> details.appInfo.packageName == packageName },
+                obbProbe = null,
+                errorMessage = null,
+            )
+        }
+        membershipPackage.value = packageName
     }
 
     // One-off toast feedback lives here (not in UiState) so it fires exactly once and is never
@@ -159,6 +235,8 @@ class AppInfoDetailsViewModel(
     }
 
     fun loadAppDetails(packageName: String) {
+        observeProfileMembership(packageName)
+        detailLoadJob?.cancel()
         _uiState.update {
             it.copy(
                 isLoading = true,
@@ -171,7 +249,7 @@ class AppInfoDetailsViewModel(
                 obbProbe = null
             )
         }
-        viewModelScope.launch {
+        detailLoadJob = viewModelScope.launch {
             // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku) and a
             // potentially slow root check; run them off the Main thread. Each probe is an
             // independent round-trip, so launch them concurrently and let their latency
@@ -194,6 +272,7 @@ class AppInfoDetailsViewModel(
             val (hasRoot, hasShizuku, hasDhizuku) = probes
 
             val details = appRepository.getDetailedAppInfo(packageName)
+            currentCoroutineContext().ensureActive()
             if (details != null) {
                 _uiState.update {
                     it.copy(
@@ -219,6 +298,7 @@ class AppInfoDetailsViewModel(
             val probe = probeObbForPresentation {
                 systemRepository.probeObb(packageName)
             }
+            currentCoroutineContext().ensureActive()
             _uiState.update { it.copy(obbProbe = probe) }
         }
     }
@@ -234,6 +314,7 @@ class AppInfoDetailsViewModel(
     // viewModelScope coroutine, so launching again was redundant and could let concurrent refreshes
     // complete out of order. Called directly => it serializes within the caller's coroutine.
     private suspend fun refreshDetails(packageName: String) {
+        if (membershipPackage.value != null && membershipPackage.value != packageName) return
         // The membership read is guarded inside [isInFreezer] rather than at this function's call
         // sites, and that is the whole reason the helper exists. Seven coroutines call this —
         // toggleFreezerState, toggleSuspendState, forceStopApp, clearCache, clearData, addToFreezer
@@ -244,7 +325,7 @@ class AppInfoDetailsViewModel(
         // here, fixes all seven at the same point and says nothing, which is the correct amount.
         val inFreezer = withContext(ioDispatcher) { isInFreezer(packageName) }
         val details = appRepository.getDetailedAppInfo(packageName)
-        if (details != null) {
+        if (details != null && (membershipPackage.value == null || membershipPackage.value == packageName)) {
             _uiState.update {
                 it.copy(
                     detailedInfo = details,

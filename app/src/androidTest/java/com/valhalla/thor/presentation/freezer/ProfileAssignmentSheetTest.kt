@@ -115,6 +115,46 @@ class ProfileAssignmentSheetTest {
     }
 
     @Test
+    fun freezerEnrollmentIsOptionalAndLocksWhileSaving() {
+        var state by mutableStateOf(draft().copy(freezerLoaded = true, selectedProfileIds = setOf(1L)))
+        setSheet(
+            state = { state },
+            onToggleFreezer = { state = state.copy(alsoAddToFreezer = !state.alsoAddToFreezer) },
+        )
+
+        sheetNode(FREEZER).assertIsOff().performClick().assertIsOn()
+        sheetText(R.string.profile_assignment_also_freezer_description).assertExists()
+        rule.runOnIdle { state = state.copy(isSaving = true) }
+        sheetNode(FREEZER).assertIsNotEnabled()
+    }
+
+    @Test
+    fun enrollmentIsHiddenWhenEverySelectedAppIsAlreadyInFreezer() {
+        setSheet(state = {
+            draft().copy(freezerLoaded = true, freezerPackageNames = apps.map { it.packageName }.toSet())
+        })
+
+        rule.onNodeWithTag(FREEZER).assertDoesNotExist()
+    }
+
+    @Test
+    fun failedFreezerReadStillAllowsRemovingTheOptionalEnrollment() {
+        var state by mutableStateOf(draft().copy(
+            selectedProfileIds = setOf(1L), freezerLoaded = true,
+            freezerLoadFailed = true, alsoAddToFreezer = true,
+        ))
+        setSheet(
+            state = { state },
+            onToggleFreezer = { state = state.copy(alsoAddToFreezer = false) },
+        )
+
+        sheetNode(SUBMIT).assertIsNotEnabled()
+        sheetNode(FREEZER).assertIsOn().performClick()
+        rule.onNodeWithTag(FREEZER).assertDoesNotExist()
+        sheetNode(SUBMIT).assertIsEnabled()
+    }
+
+    @Test
     fun savingDisablesRowsSubmitAndCancelWithoutCallingTheirCallbacks() {
         var toggles = 0
         var submissions = 0
@@ -353,6 +393,7 @@ class ProfileAssignmentSheetTest {
     private fun setSheet(
         state: () -> ProfileAssignmentUiState,
         onToggle: (Long) -> Unit = {},
+        onToggleFreezer: () -> Unit = {},
         onSubmit: () -> Unit = {},
         onDismiss: () -> Unit = {},
         onRetry: () -> Unit = {},
@@ -363,6 +404,7 @@ class ProfileAssignmentSheetTest {
             ProfileAssignmentSheet(
                 state = state(),
                 onToggleProfile = onToggle,
+                onToggleAlsoAddToFreezer = onToggleFreezer,
                 onSubmit = onSubmit,
                 onDismiss = onDismiss,
                 onRetry = onRetry,
@@ -407,5 +449,6 @@ class ProfileAssignmentSheetTest {
         const val SUBMIT = "profile_assignment_submit"
         const val CANCEL = "profile_assignment_cancel"
         const val ERROR = "profile_assignment_error"
+        const val FREEZER = "profile_assignment_also_freezer"
     }
 }

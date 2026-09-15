@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
@@ -321,7 +322,7 @@ class SettingsViewModel(
         }
     }
 
-    /** Enqueues a cross-app restore for every frozen package stored for Thor's current user. */
+    /** Restores frozen apps in the Freezer list or any profile for Thor's current user. */
     fun unfreezeAll() {
         val requestId = UUID.randomUUID()
         taskNavigationTargets.requestOpenProvisional(
@@ -334,7 +335,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val spec = sweepResolver.resolve(
-                    BulkRequest(BulkOp.UNFREEZE),
+                    BulkRequest(BulkOp.UNFREEZE, BulkScope.ManagedApps),
                     PrivilegeSweepSource.SETTINGS,
                 )
                 when (val launch = sweepController.launch(requestId, spec)) {

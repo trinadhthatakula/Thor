@@ -62,5 +62,6 @@ class FreezeProfileRepositoryImpl(
     override suspend fun addApps(
         profileIds: Set<Long>,
         packageNames: Set<String>,
-    ): ProfileAssignmentResult = freezeProfileDao.addApps(profileIds, packageNames)
+        addToFreezer: Boolean,
+    ): ProfileAssignmentResult = freezeProfileDao.addApps(profileIds, packageNames, addToFreezer)
 }

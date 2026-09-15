@@ -6,6 +6,8 @@ package com.valhalla.thor.domain.model
 /** Counts are memberships: one app added to two profiles contributes two to [addedCount]. */
 data class ProfileAssignmentResult(
     val profiles: List<ProfileAssignmentCount>,
+    /** Newly enrolled packages, counted once even when assigned to several profiles. */
+    val freezerAddedCount: Int = 0,
 ) {
     val addedCount: Int get() = profiles.sumOf { it.addedCount }
     val alreadyPresentCount: Int get() = profiles.sumOf { it.alreadyPresentCount }

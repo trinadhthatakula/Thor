@@ -215,14 +215,13 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">冻结设置</string>
-    <string name="unfreeze_all">全部解冻</string>
-    <string name="unfreeze_all_apps">解冻所有应用</string>
-    <string name="unfreeze_all_apps_desc">启用目前在冻结列表中的所有应用</string>
+    <string name="unfreeze_all">解冻冻结列表中的应用</string>
+    <string name="unfreeze_all_apps">解冻冻结列表中的全部应用</string>
     <string name="auto_freeze">自动冻结</string>
     <string name="auto_freeze_desc">屏幕锁定后自动冻结应用</string>
     <string name="privilege_required_warning">需要权限（Root、Shizuku 或 Dhizuku）</string>
-    <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
-    <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
+    <string name="unfreeze_all_confirmation_title">解冻冻结列表中的应用？</string>
+    <string name="unfreeze_all_confirmation_desc">这将解冻冻结列表中的应用，不包括仅通过配置管理的应用。</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="other">冻结所选的 %1$d 个应用？Thor 因安全原因拦截的应用将被跳过。</item>
     </plurals>
@@ -553,7 +552,7 @@
     <string name="add_freezer_to_launcher">添加冻结室到启动器</string>
     <string name="add_freezer_to_launcher_desc">将冻结的应用显示为桌面快捷方式，点击即可启动</string>
     <string name="add_to_home_screen">添加到主屏幕</string>
-    <string name="freeze_all_apps">全部冻结</string>
+    <string name="freeze_all_apps">冻结列表中的全部应用</string>
     <string name="shortcuts">快捷方式</string>
     <string name="shortcut_add_all">添加所有应用</string>
     <string name="shortcut_added_named">已将 %1$s 添加到主屏幕</string>
@@ -920,4 +919,24 @@
     <string name="force_stop_unsupported_dhizuku">Dhizuku 无法强行停止应用。请切换到 Root 或 Shizuku。</string>
     <string name="dhizuku_clear_data_failed">无法通过 Dhizuku 清除此应用的数据。</string>
     <string name="dhizuku_uninstall_failed">无法通过 Dhizuku 卸载此应用。</string>
+    <string name="profile_assignment_also_freezer">同时添加到冻结列表</string>
+    <string name="profile_assignment_also_freezer_description">将这些应用纳入“全部冻结”，并在开启自动冻结时自动冻结。</string>
+    <string name="profile_assignment_freezer_added">已添加到冻结列表：%1$d</string>
+    <string name="profile_assignment_freezer_load_failed">无法加载冻结列表。请重试。</string>
+    <string name="app_info_profiles_count">配置（%1$d）</string>
+    <string name="app_info_profiles_only">仅通过配置管理</string>
+    <string name="app_info_freezer_and_profiles">在冻结列表和配置中</string>
+    <string name="unfreeze_managed_apps">解冻冻结列表和配置中的应用</string>
+    <string name="unfreeze_managed_apps_desc">恢复冻结列表及所有配置中已冻结的应用。</string>
+    <string name="unfreeze_managed_confirmation_title">解冻冻结列表和配置中的应用？</string>
+    <string name="unfreeze_managed_confirmation_desc">这将解冻冻结列表及所有配置中的应用。</string>
+    <string name="profile_removal_recovery_title">移除前确认</string>
+    <string name="profile_removal_recovery_message">待检查的应用：%1$d。这些应用已冻结，或无法检查其状态，且不在其他配置或冻结列表中。请先解冻；也可以不解冻直接移除，再通过应用列表恢复。移除后，批量恢复和启动器恢复功能也将不再包含这些应用。</string>
+    <string name="profile_removal_unfreeze_continue">解冻并继续</string>
+    <string name="profile_removal_keep_frozen">不解冻直接移除</string>
+    <string name="profile_removal_check_failed">无法检查应用所属的配置或冻结列表。配置尚未更改。请重试。</string>
+    <string name="profile_removal_restore_failed">部分应用无法解冻。配置尚未更改。请重试，或不解冻直接移除。</string>
+    <string name="profile_removal_write_failed">无法保存配置更改。请重试。</string>
+    <string name="profile_removal_profile_changed">此配置已不可用。未保存任何更改。</string>
+    <string name="profile_removal_state_unknown">状态不可用</string>
 </resources>

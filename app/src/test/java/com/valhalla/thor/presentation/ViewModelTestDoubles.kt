@@ -463,6 +463,7 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     FreezeProfileRepository {
 
     private val profiles = MutableStateFlow(initial)
+    val freezerPackageNames = mutableSetOf<String>()
     private var nextId = (initial.maxOfOrNull { it.id } ?: 0L) + 1
 
     /**
@@ -505,6 +506,7 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     override suspend fun addApps(
         profileIds: Set<Long>,
         packageNames: Set<String>,
+        addToFreezer: Boolean,
     ): ProfileAssignmentResult {
         writeFailure?.let { throw it }
         require(profileIds.isNotEmpty() && profileIds.all { it > 0 })
@@ -521,7 +523,10 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
                 profile.copy(packageNames = (profile.packageNames + packageNames).distinct().sorted())
             } else profile
         }
-        return ProfileAssignmentResult(counts)
+        val freezerAddedCount = if (addToFreezer) {
+            packageNames.count { freezerPackageNames.add(it) }
+        } else 0
+        return ProfileAssignmentResult(counts, freezerAddedCount)
     }
 }
 

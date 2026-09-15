@@ -23,6 +23,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.repository.AppShortcutController
+import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -48,6 +49,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
@@ -58,6 +60,26 @@ import java.util.UUID
 
 // packageName + appName of an app frozen outside the freezer list — drives the "Add to Freezer" snackbar
 data class FreezerPrompt(val packageName: String, val appName: String?)
+
+data class ProfileRemovalApp(val packageName: String, val app: AppInfo?)
+
+data class ProfileRemovalRecovery(
+    val apps: List<ProfileRemovalApp>,
+    val error: UiText? = null,
+)
+
+private sealed interface ProfileRemoval {
+    val profileId: Long
+
+    data class Update(
+        val editorSession: Int,
+        override val profileId: Long,
+        val name: String,
+        val packageNames: List<String>,
+    ) : ProfileRemoval
+
+    data class Delete(override val profileId: Long) : ProfileRemoval
+}
 
 // One-off UI feedback that must fire exactly once — kept off the UiState StateFlow so it isn't
 // re-delivered on recomposition/config change. Collected in FreezerScreen via ObserveAsEvents.
@@ -116,6 +138,7 @@ data class FreezerUiState(
      * runs, so the sheet that is now waiting for its write cannot have a second one issued into it.
      */
     val profileSaveInFlight: Boolean = false,
+    val profileRemovalRecovery: ProfileRemovalRecovery? = null,
     /**
      * Every bulk run in flight, oldest first. Carries whole requests, not a Boolean, so a profile
      * row can show its own spinner without every other row spinning alongside it — and a list
@@ -133,6 +156,7 @@ class FreezerViewModel(
     private val sweepController: PrivilegeSweepController,
     private val taskNavigationTargets: TaskNavigationTargets,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
+    private val appRepository: AppRepository,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
     // The read-only privilege port and the shortcut port, not the concrete PrivilegeManager /
@@ -160,6 +184,9 @@ class FreezerViewModel(
     // and delivered when the screen subscribes rather than silently dropped. Matches MainViewModel.
     private val _events = Channel<FreezerEvent>(Channel.BUFFERED)
     val events: Flow<FreezerEvent> = _events.receiveAsFlow()
+
+    // Retained with the view model: neither rotation nor a failed restore discards the edit.
+    private var pendingProfileRemoval: ProfileRemoval? = null
 
     init {
         observeApps()
@@ -479,7 +506,7 @@ class FreezerViewModel(
         name: String,
         packageNames: List<String>
     ) {
-        saveProfile(editorSession) { freezeProfileRepository.update(profileId, name, packageNames) }
+        beginProfileRemoval(ProfileRemoval.Update(editorSession, profileId, name, packageNames.toList()))
     }
 
     /**
@@ -505,7 +532,7 @@ class FreezerViewModel(
      * *that* editor rather than whichever one is on screen when the write lands.
      */
     private fun saveProfile(editorSession: Int, write: suspend () -> Unit) {
-        if (_uiState.value.profileSaveInFlight) return
+        if (_uiState.value.profileSaveInFlight || pendingProfileRemoval != null) return
         _uiState.update { it.copy(profileSaveInFlight = true) }
         viewModelScope.launch(ioDispatcher) {
             try {
@@ -521,16 +548,149 @@ class FreezerViewModel(
     }
 
     fun deleteProfile(profileId: Long) {
+        beginProfileRemoval(ProfileRemoval.Delete(profileId))
+    }
+
+    private fun beginProfileRemoval(removal: ProfileRemoval) {
+        if (_uiState.value.profileSaveInFlight || pendingProfileRemoval != null) return
+        pendingProfileRemoval = removal
+        completeProfileRemoval(acknowledgedPackages = null, unfreeze = false)
+    }
+
+    fun dismissProfileRemovalRecovery() {
+        if (_uiState.value.profileSaveInFlight) return
+        pendingProfileRemoval = null
+        _uiState.update { it.copy(profileRemovalRecovery = null) }
+    }
+
+    fun confirmProfileRemovalRecovery(unfreeze: Boolean) {
+        val recovery = _uiState.value.profileRemovalRecovery ?: return
+        completeProfileRemoval(recovery.apps.mapTo(mutableSetOf()) { it.packageName }, unfreeze)
+    }
+
+    private fun completeProfileRemoval(acknowledgedPackages: Set<String>?, unfreeze: Boolean) {
+        if (_uiState.value.profileSaveInFlight) return
+        val removal = pendingProfileRemoval ?: return
+        _uiState.update { it.copy(profileSaveInFlight = true) }
         viewModelScope.launch(ioDispatcher) {
-            // A delete cannot collide with the unique name index — the only constraint it can
-            // trip is the members table's foreign key — so it must not borrow the save path's
-            // "that name is already taken", which would be nonsense over a Delete button.
-            runProfileWrite(R.string.error_profile_delete_failed) {
-                freezeProfileRepository.delete(profileId)
-                emitToast(UiText.StringResource(R.string.profile_deleted))
+            try {
+                val affected = profileRemovalRisk(removal)
+                val affectedPackages = affected.mapTo(mutableSetOf()) { it.packageName }
+                if (affected.isNotEmpty() && (acknowledgedPackages == null ||
+                        !acknowledgedPackages.containsAll(affectedPackages))) {
+                    _uiState.update { it.copy(profileRemovalRecovery = ProfileRemovalRecovery(affected)) }
+                    return@launch
+                }
+
+                if (unfreeze) {
+                    for (candidate in affected) {
+                        val app = candidate.app
+                        val restored = if (app == null || !app.isInstalled) {
+                            manageAppUseCase.forceUnfreeze(candidate.packageName)
+                        } else manageAppUseCase.restoreApp(
+                            candidate.packageName, app.enabled, app.isSuspended,
+                        )
+                        if (restored.isFailure) {
+                            val error = restored.exceptionOrNull()!!
+                            if (error is CancellationException) throw error
+                            Logger.e("FreezeViewModel", "Profile removal restore failed for ${candidate.packageName}", error)
+                            showProfileRemovalError(R.string.profile_removal_restore_failed)
+                            return@launch
+                        }
+                        // Shortcut refresh is diagnostic-only; it must not turn a successful
+                        // restore into a claim that the app is still frozen.
+                        try {
+                            appShortcuts.refreshAppShortcut(candidate.packageName)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Logger.e("FreezeViewModel", "Profile removal shortcut refresh failed", error)
+                        }
+                    }
+                    // Restoring can take time. Re-read memberships and package state so a new
+                    // orphaned freeze cannot inherit approval for the earlier set of apps.
+                    val remaining = profileRemovalRisk(removal).filter {
+                        // An unavailable state cannot verify the result, but a successful
+                        // forceUnfreeze already cleared both dimensions. New unknown packages
+                        // still require their own decision.
+                        it.app != null || it.packageName !in affectedPackages
+                    }
+                    if (remaining.isNotEmpty()) {
+                        _uiState.update { it.copy(profileRemovalRecovery = ProfileRemovalRecovery(remaining)) }
+                        return@launch
+                    }
+                }
+
+                val saved = when (removal) {
+                    is ProfileRemoval.Update -> runProfileWrite(
+                        R.string.error_profile_name_taken, R.string.profile_removal_write_failed,
+                    ) {
+                        freezeProfileRepository.update(removal.profileId, removal.name, removal.packageNames)
+                    }
+                    is ProfileRemoval.Delete -> runProfileWrite(
+                        R.string.error_profile_delete_failed, R.string.profile_removal_write_failed,
+                    ) {
+                        freezeProfileRepository.delete(removal.profileId)
+                    }
+                }
+                if (saved) {
+                    pendingProfileRemoval = null
+                    _uiState.update { it.copy(profileRemovalRecovery = null) }
+                    when (removal) {
+                        is ProfileRemoval.Update -> {
+                            emitToast(UiText.StringResource(R.string.profile_saved))
+                            _events.send(FreezerEvent.ProfileSaveSucceeded(removal.editorSession))
+                        }
+                        is ProfileRemoval.Delete -> emitToast(UiText.StringResource(R.string.profile_deleted))
+                    }
+                } else {
+                    showProfileRemovalError(R.string.profile_removal_write_failed)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (missing: MissingProfileForRemoval) {
+                Logger.e("FreezeViewModel", "Profile disappeared before removal", missing)
+                showProfileRemovalError(R.string.profile_removal_profile_changed)
+            } catch (error: Exception) {
+                Logger.e("FreezeViewModel", "Checking profile removal failed", error)
+                showProfileRemovalError(R.string.profile_removal_check_failed)
+            } finally {
+                _uiState.update { it.copy(profileSaveInFlight = false) }
             }
         }
     }
+
+    private suspend fun profileRemovalRisk(removal: ProfileRemoval): List<ProfileRemovalApp> {
+        // first() starts a fresh Room query instead of trusting the screen's last emission.
+        val profiles = freezeProfileRepository.observeProfiles().first()
+        val profile = profiles.firstOrNull { it.id == removal.profileId }
+            ?: throw MissingProfileForRemoval()
+        val retained = when (removal) {
+            is ProfileRemoval.Update -> removal.packageNames.toSet()
+            is ProfileRemoval.Delete -> emptySet()
+        }
+        val otherMembers = profiles.asSequence().filter { it.id != removal.profileId }
+            .flatMap { it.packageNames.asSequence() }.toSet()
+        val watchlist = freezerRepository.getAllPackageNames().toSet()
+        return (profile.packageNames.toSet() - retained - otherMembers - watchlist)
+            .sorted().mapNotNull { packageName ->
+                val app = appRepository.getAppDetails(packageName)
+                if (app == null || !app.isInstalled || !app.enabled || app.isSuspended) ProfileRemovalApp(packageName, app)
+                else null
+            }
+    }
+
+    private suspend fun showProfileRemovalError(@StringRes message: Int) {
+        val uiMessage = UiText.StringResource(message)
+        if (_uiState.value.profileRemovalRecovery != null) {
+            _uiState.update { it.copy(profileRemovalRecovery = it.profileRemovalRecovery?.copy(error = uiMessage)) }
+        } else {
+            pendingProfileRemoval = null
+            emitToast(uiMessage)
+        }
+    }
+
+    private class MissingProfileForRemoval : IllegalStateException()
 
     /**
      * Backstop for the editor's own [com.valhalla.thor.domain.model.profileNameError] check.
@@ -548,6 +708,7 @@ class FreezerViewModel(
      */
     private suspend fun runProfileWrite(
         @StringRes constraintMessage: Int,
+        @StringRes fallbackMessage: Int? = null,
         block: suspend () -> Unit
     ): Boolean {
         try {
@@ -560,7 +721,7 @@ class FreezerViewModel(
             emitToast(UiText.StringResource(constraintMessage))
         } catch (e: Exception) {
             Logger.e("FreezeViewModel", "profile write failed", e)
-            emitToast(e.asUiText())
+            emitToast(fallbackMessage?.let { UiText.StringResource(it) } ?: e.asUiText())
         }
         return false
     }

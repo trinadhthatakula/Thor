@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.model.ProfileAssignmentResult
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CancellationException
@@ -42,7 +43,16 @@ data class ProfileAssignmentUiState(
     val error: UiText? = null,
     val skippedCount: Int = 0,
     val expertApps: List<AppInfo> = emptyList(),
-)
+    val freezerPackageNames: Set<String> = emptySet(),
+    val freezerLoaded: Boolean = false,
+    val freezerLoadFailed: Boolean = false,
+    val alsoAddToFreezer: Boolean = false,
+) {
+    val canAddToFreezer: Boolean
+        get() = freezerLoaded && !freezerLoadFailed && selectedApps.any {
+            it.freezeTier != FreezeTier.BLOCKED && it.packageName !in freezerPackageNames
+        }
+}
 
 sealed interface ProfileAssignmentEvent {
     data class Assigned(
@@ -51,11 +61,12 @@ sealed interface ProfileAssignmentEvent {
     ) : ProfileAssignmentEvent
 }
 
-/** Owns an assignment draft; it never changes watchlist membership or runs a freeze. */
+/** Owns an assignment draft and optional watchlist enrollment; it never runs a freeze. */
 @KoinViewModel
 class ProfileAssignmentViewModel(
     private val freezeProfileRepository: FreezeProfileRepository,
     private val appRepository: AppRepository,
+    private val freezerRepository: FreezerRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ProfileAssignmentUiState())
@@ -65,9 +76,42 @@ class ProfileAssignmentViewModel(
     val events: Flow<ProfileAssignmentEvent> = _events.receiveAsFlow()
 
     private var profilesJob: Job? = null
+    private var freezerJob: Job? = null
 
     init {
         retryProfiles()
+        retryFreezer()
+    }
+
+    fun retryFailedSources() {
+        if (_uiState.value.profilesLoadFailed) retryProfiles()
+        if (_uiState.value.freezerLoadFailed) retryFreezer()
+    }
+
+    private fun retryFreezer() {
+        freezerJob?.cancel()
+        freezerJob = viewModelScope.launch {
+            try {
+                freezerRepository.getAll().flowOn(ioDispatcher).collect { packages ->
+                    _uiState.update { state ->
+                        val refreshed = state.copy(
+                            freezerPackageNames = packages.toSet(),
+                            freezerLoaded = true,
+                            freezerLoadFailed = false,
+                        )
+                        // Do not retain a hidden opt-in once all selected apps are enrolled.
+                        if (!state.isSaving && !refreshed.canAddToFreezer) {
+                            refreshed.copy(alsoAddToFreezer = false)
+                        } else refreshed
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Logger.e(TAG, "Observing assignment Freezer membership failed", error)
+                _uiState.update { it.copy(freezerLoadFailed = true) }
+            }
+        }
     }
 
     fun retryProfiles() {
@@ -126,6 +170,7 @@ class ProfileAssignmentViewModel(
                 } else null,
                 skippedCount = 0,
                 expertApps = emptyList(),
+                alsoAddToFreezer = false,
             )
         }
     }
@@ -143,6 +188,13 @@ class ProfileAssignmentViewModel(
         }
     }
 
+    fun toggleAlsoAddToFreezer() {
+        _uiState.update { state ->
+            if (!state.isOpen || state.isSaving || (!state.alsoAddToFreezer && !state.canAddToFreezer)) state
+            else state.copy(alsoAddToFreezer = !state.alsoAddToFreezer, expertApps = emptyList())
+        }
+    }
+
     fun dismiss() {
         _uiState.update { state ->
             if (state.isSaving) state
@@ -153,6 +205,7 @@ class ProfileAssignmentViewModel(
                 expertApps = emptyList(),
                 skippedCount = 0,
                 error = null,
+                alsoAddToFreezer = false,
             )
         }
     }
@@ -164,7 +217,8 @@ class ProfileAssignmentViewModel(
     fun submit(confirmExperts: Boolean = false) {
         val draft = _uiState.value
         if (!draft.isOpen || draft.isSaving || draft.profilesLoadFailed || draft.selectedApps.isEmpty() ||
-            draft.selectedProfileIds.isEmpty()
+            draft.selectedProfileIds.isEmpty() ||
+            (draft.alsoAddToFreezer && (!draft.freezerLoaded || draft.freezerLoadFailed))
         ) return
 
         // A true flag only confirms apps that the user has actually been shown. Revalidation may
@@ -215,6 +269,7 @@ class ProfileAssignmentViewModel(
                     freezeProfileRepository.addApps(
                         profileIds = draft.selectedProfileIds,
                         packageNames = eligible.mapTo(linkedSetOf()) { it.packageName },
+                        addToFreezer = draft.alsoAddToFreezer,
                     )
                 }
                 _uiState.update {
@@ -224,6 +279,7 @@ class ProfileAssignmentViewModel(
                         selectedProfileIds = emptySet(),
                         expertApps = emptyList(),
                         error = null,
+                        alsoAddToFreezer = false,
                     )
                 }
                 _events.send(ProfileAssignmentEvent.Assigned(result, skippedCount))

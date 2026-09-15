@@ -223,14 +223,13 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>
-    <string name="unfreeze_all">إلغاء تجميد الكل</string>
-    <string name="unfreeze_all_apps">إلغاء تجميد جميع التطبيقات</string>
-    <string name="unfreeze_all_apps_desc">تمكين جميع التطبيقات الموجودة حالياً في قائمة المجمد</string>
+    <string name="unfreeze_all">إلغاء تجميد تطبيقات المجمد</string>
+    <string name="unfreeze_all_apps">إلغاء تجميد الكل في المجمد</string>
     <string name="auto_freeze">تجميد تلقائي</string>
     <string name="auto_freeze_desc">تجميد التطبيقات تلقائياً عند قفل الشاشة</string>
     <string name="privilege_required_warning">الصلاحية مطلوبة (Root أو Shizuku أو Dhizuku)</string>
-    <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
-    <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
+    <string name="unfreeze_all_confirmation_title">إلغاء تجميد تطبيقات المجمد؟</string>
+    <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد التطبيقات في قائمة المجمد. لا يشمل التطبيقات التي تُدار عبر الملفات فقط.</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="zero">تجميد %1$d من التطبيقات المحددة؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
         <item quantity="one">تجميد التطبيق المحدد (%1$d)؟ سيتم تخطي التطبيقات التي يحظرها Thor لأسباب تتعلق بالسلامة.</item>
@@ -595,7 +594,7 @@
     <string name="add_freezer_to_launcher">إضافة المجمد إلى شاشة التشغيل</string>
     <string name="add_freezer_to_launcher_desc">إظهار التطبيقات المجمدة كاختصارات على الشاشة الرئيسية يمكنك النقر عليها لتشغيلها</string>
     <string name="add_to_home_screen">إضافة إلى الشاشة الرئيسية</string>
-    <string name="freeze_all_apps">تجميد الكل</string>
+    <string name="freeze_all_apps">تجميد الكل في المجمد</string>
     <string name="shortcuts">الاختصارات</string>
     <string name="shortcut_add_all">إضافة جميع التطبيقات</string>
     <string name="shortcut_added_named">تمت إضافة %1$s إلى الشاشة الرئيسية</string>
@@ -1034,4 +1033,24 @@
     <string name="force_stop_unsupported_dhizuku">لا يستطيع Dhizuku فرض إيقاف التطبيقات. انتقل إلى Root أو Shizuku.</string>
     <string name="dhizuku_clear_data_failed">تعذّر محو بيانات هذا التطبيق باستخدام Dhizuku.</string>
     <string name="dhizuku_uninstall_failed">تعذّر إلغاء تثبيت هذا التطبيق باستخدام Dhizuku.</string>
+    <string name="profile_assignment_also_freezer">الإضافة إلى المجمد أيضًا</string>
+    <string name="profile_assignment_also_freezer_description">يُدرج هذه التطبيقات ضمن «تجميد الكل» والتجميد التلقائي عند تفعيله.</string>
+    <string name="profile_assignment_freezer_added">المضافة إلى المجمد: %1$d</string>
+    <string name="profile_assignment_freezer_load_failed">تعذر تحميل قائمة المجمد. حاول مرة أخرى.</string>
+    <string name="app_info_profiles_count">الملفات (%1$d)</string>
+    <string name="app_info_profiles_only">تُدار عبر الملفات فقط</string>
+    <string name="app_info_freezer_and_profiles">في المجمد والملفات</string>
+    <string name="unfreeze_managed_apps">إلغاء تجميد تطبيقات المجمد والملفات</string>
+    <string name="unfreeze_managed_apps_desc">استعد التطبيقات المجمدة في قائمة المجمد وجميع الملفات.</string>
+    <string name="unfreeze_managed_confirmation_title">إلغاء تجميد تطبيقات المجمد والملفات؟</string>
+    <string name="unfreeze_managed_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد التطبيقات في قائمة المجمد وجميع الملفات.</string>
+    <string name="profile_removal_recovery_title">مراجعة الإزالة من الملف</string>
+    <string name="profile_removal_recovery_message">التطبيقات المطلوب مراجعتها: %1$d. هذه التطبيقات مجمدة أو تعذر التحقق من حالتها، وليست ضمن أي ملف آخر أو قائمة المجمد. ألغِ تجميدها أولًا، أو أزلها دون إلغاء تجميدها واستخدم قائمة التطبيقات لاستعادتها. تؤدي إزالتها أيضًا إلى استبعادها من الاستعادة الجماعية والاستعادة عبر المشغّل.</string>
+    <string name="profile_removal_unfreeze_continue">إلغاء التجميد والمتابعة</string>
+    <string name="profile_removal_keep_frozen">إزالة دون إلغاء التجميد</string>
+    <string name="profile_removal_check_failed">تعذر التحقق من الملفات والقوائم التي تضم التطبيقات. لم يتم تغيير ملفك. حاول مرة أخرى.</string>
+    <string name="profile_removal_restore_failed">تعذر إلغاء تجميد بعض التطبيقات. لم يتم تغيير ملفك. حاول مجددًا أو أزلها دون إلغاء تجميدها.</string>
+    <string name="profile_removal_write_failed">تعذر حفظ تغييرات الملف. حاول مرة أخرى.</string>
+    <string name="profile_removal_profile_changed">لم يعد هذا الملف متاحًا. لم تُحفظ أي تغييرات.</string>
+    <string name="profile_removal_state_unknown">الحالة غير متاحة</string>
 </resources>

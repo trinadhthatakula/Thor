@@ -358,9 +358,8 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Definições do Congelador</string>
-    <string name="unfreeze_all">Descongelar tudo</string>
-    <string name="unfreeze_all_apps">Descongelar todas as aplicações</string>
-    <string name="unfreeze_all_apps_desc">Ativar todas as aplicações que estão na lista do Congelador</string>
+    <string name="unfreeze_all">Descongelar aplicações do Congelador</string>
+    <string name="unfreeze_all_apps">Descongelar tudo no Congelador</string>
     <string name="auto_freeze">Congelamento automático</string>
     <string name="freeze_mode">Modo de congelamento</string>
     <string name="suspend_instead_of_freeze">Suspender em vez de congelar</string>
@@ -371,7 +370,7 @@
     <string name="add_freezer_to_launcher">Adicionar o Congelador ao launcher</string>
     <string name="add_freezer_to_launcher_desc">Mostrar as aplicações congeladas como atalhos no ecrã principal em que pode tocar para as abrir</string>
     <string name="add_to_home_screen">Adicionar ao ecrã principal</string>
-    <string name="freeze_all_apps">Congelar tudo</string>
+    <string name="freeze_all_apps">Congelar tudo no Congelador</string>
     <string name="shortcuts">Atalhos</string>
     <string name="shortcut_add_all">Adicionar todas as aplicações</string>
     <string name="shortcut_added_named">%1$s adicionada ao ecrã principal</string>
@@ -384,8 +383,8 @@
     <string name="freezer_launch_failed">Não foi possível abrir esta aplicação</string>
     <string name="shortcut_no_longer_frozen">Já não está congelada</string>
     <string name="privilege_required_warning">É necessário privilégio (Root, Shizuku ou Dhizuku)</string>
-    <string name="unfreeze_all_confirmation_title">Descongelar todas as aplicações?</string>
-    <string name="unfreeze_all_confirmation_desc">Isto vai descongelar (ativar) todas as aplicações que estão na lista do Congelador. Tem a certeza de que quer continuar?</string>
+    <string name="unfreeze_all_confirmation_title">Descongelar aplicações do Congelador?</string>
+    <string name="unfreeze_all_confirmation_desc">Isto vai descongelar as aplicações na sua lista do Congelador. Não inclui as aplicações geridas apenas através de perfis.</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="one">Congelar %1$d aplicação selecionada? As aplicações que o Thor bloquear por segurança serão ignoradas.</item>
         <item quantity="other">Congelar %1$d aplicações selecionadas? As aplicações que o Thor bloquear por segurança serão ignoradas.</item>
@@ -997,4 +996,24 @@
     <string name="force_stop_unsupported_dhizuku">O Dhizuku não pode forçar a paragem de aplicações. Mude para Root ou Shizuku.</string>
     <string name="dhizuku_clear_data_failed">Não foi possível limpar os dados desta aplicação com o Dhizuku.</string>
     <string name="dhizuku_uninstall_failed">Não foi possível desinstalar esta aplicação com o Dhizuku.</string>
+    <string name="profile_assignment_also_freezer">Adicionar também ao Congelador</string>
+    <string name="profile_assignment_also_freezer_description">Inclui estas aplicações em «Congelar tudo» e no congelamento automático, quando ativado.</string>
+    <string name="profile_assignment_freezer_added">Adicionadas ao Congelador: %1$d</string>
+    <string name="profile_assignment_freezer_load_failed">Não foi possível carregar a lista do Congelador. Tente novamente.</string>
+    <string name="app_info_profiles_count">Perfis (%1$d)</string>
+    <string name="app_info_profiles_only">Gerida apenas através de perfis</string>
+    <string name="app_info_freezer_and_profiles">No Congelador e em perfis</string>
+    <string name="unfreeze_managed_apps">Descongelar aplicações do Congelador e dos perfis</string>
+    <string name="unfreeze_managed_apps_desc">Restaure as aplicações congeladas na sua lista do Congelador e em todos os perfis.</string>
+    <string name="unfreeze_managed_confirmation_title">Descongelar aplicações do Congelador e dos perfis?</string>
+    <string name="unfreeze_managed_confirmation_desc">Isto vai descongelar as aplicações na sua lista do Congelador e em todos os perfis.</string>
+    <string name="profile_removal_recovery_title">Rever remoção do perfil</string>
+    <string name="profile_removal_recovery_message">Aplicações a rever: %1$d. Estas aplicações estão congeladas ou não foi possível verificar o seu estado, e não constam de outro perfil nem do Congelador. Descongele-as primeiro, ou remova-as sem descongelar e use a Lista de aplicações para as recuperar. A remoção também as exclui da recuperação em lote e do restauro através do launcher.</string>
+    <string name="profile_removal_unfreeze_continue">Descongelar e continuar</string>
+    <string name="profile_removal_keep_frozen">Remover sem descongelar</string>
+    <string name="profile_removal_check_failed">Não foi possível verificar a que perfis e listas pertencem as aplicações. O seu perfil não foi alterado. Tente novamente.</string>
+    <string name="profile_removal_restore_failed">Não foi possível descongelar algumas aplicações. O seu perfil não foi alterado. Tente novamente ou remova-as sem descongelar.</string>
+    <string name="profile_removal_write_failed">Não foi possível guardar as alterações do perfil. Tente novamente.</string>
+    <string name="profile_removal_profile_changed">Este perfil já não está disponível. Não foram guardadas alterações.</string>
+    <string name="profile_removal_state_unknown">Estado indisponível</string>
 </resources>

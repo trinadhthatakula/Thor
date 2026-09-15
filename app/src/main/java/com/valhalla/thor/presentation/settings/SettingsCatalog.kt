@@ -134,8 +134,8 @@ enum class SettingsRowId(
     ),
     UNFREEZE_ALL(
         SettingsCategory.FREEZER,
-        R.string.unfreeze_all_apps,
-        R.string.unfreeze_all_apps_desc,
+        R.string.unfreeze_managed_apps,
+        R.string.unfreeze_managed_apps_desc,
     ),
 
     // ── Installing & sharing ────────────────────────────────────────────────────────────────────

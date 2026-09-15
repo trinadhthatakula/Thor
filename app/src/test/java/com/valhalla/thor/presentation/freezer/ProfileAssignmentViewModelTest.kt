@@ -9,8 +9,10 @@ import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.ProfileAssignmentResult
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeFreezeProfileRepository
+import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
@@ -48,11 +50,13 @@ class ProfileAssignmentViewModelTest {
         FakeFreezeProfileRepository(listOf(FreezeProfile(1, "Games", listOf(existing)))),
     )
     private val apps = FakeAppRepository(listOf(selected))
+    private val freezer = FakeFreezerRepository()
 
     private fun viewModel(
         appRepository: AppRepository = apps,
         profileRepository: FreezeProfileRepository = profiles,
-    ) = ProfileAssignmentViewModel(profileRepository, appRepository, main.dispatcher)
+        freezerRepository: FreezerRepository = freezer,
+    ) = ProfileAssignmentViewModel(profileRepository, appRepository, freezerRepository, main.dispatcher)
 
     private fun TestScope.events(viewModel: ProfileAssignmentViewModel): List<ProfileAssignmentEvent> {
         val events = mutableListOf<ProfileAssignmentEvent>()
@@ -60,6 +64,133 @@ class ProfileAssignmentViewModelTest {
             viewModel.events.toList(events)
         }
         return events
+    }
+
+    @Test
+    fun `freezer enrollment is unchecked by default and follows live watchlist membership`() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.open(listOf(selected))
+
+        assertTrue(viewModel.uiState.value.canAddToFreezer)
+        assertFalse(viewModel.uiState.value.alsoAddToFreezer)
+        viewModel.toggleAlsoAddToFreezer()
+        assertTrue(viewModel.uiState.value.alsoAddToFreezer)
+
+        freezer.add(selected.packageName)
+        runCurrent()
+        assertFalse(viewModel.uiState.value.canAddToFreezer)
+        assertFalse(viewModel.uiState.value.alsoAddToFreezer)
+        viewModel.toggleAlsoAddToFreezer()
+        assertFalse(viewModel.uiState.value.alsoAddToFreezer)
+
+        freezer.remove(selected.packageName)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.canAddToFreezer)
+        viewModel.toggleProfile(1)
+        viewModel.submit()
+        advanceUntilIdle()
+        assertEquals(listOf(false), profiles.freezerRequests)
+        assertTrue(profiles.delegate.freezerPackageNames.isEmpty())
+    }
+
+    @Test
+    fun `opted in enrollment uses the revalidated eligible apps after expert confirmation`() = runTest {
+        val expert = selected.copy(isSystem = true, bloatRecommendation = "Expert")
+        val blocked = userApp("com.example.blocked").copy(isSystem = true, bloatRecommendation = "Unsafe")
+        val gone = userApp("com.example.gone")
+        apps.apps.value = listOf(expert, blocked)
+        val viewModel = viewModel()
+        val events = events(viewModel)
+        runCurrent()
+        viewModel.open(listOf(selected, blocked, gone))
+        viewModel.toggleProfile(1)
+        viewModel.toggleAlsoAddToFreezer()
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertTrue(profiles.requests.isEmpty())
+        assertTrue(profiles.delegate.freezerPackageNames.isEmpty())
+        assertTrue(viewModel.uiState.value.alsoAddToFreezer)
+        assertEquals(listOf(expert), viewModel.uiState.value.expertApps)
+        viewModel.submit(confirmExperts = true)
+        advanceUntilIdle()
+
+        assertEquals(listOf(true), profiles.freezerRequests)
+        assertEquals(setOf(selected.packageName), profiles.delegate.freezerPackageNames)
+        val assigned = events.single() as ProfileAssignmentEvent.Assigned
+        assertEquals(1, assigned.result.freezerAddedCount)
+        assertEquals(2, assigned.skippedCount)
+    }
+
+    @Test
+    fun `cancel and new assignments reset enrollment without writing`() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.open(listOf(selected))
+        viewModel.toggleAlsoAddToFreezer()
+        viewModel.dismiss()
+
+        assertFalse(viewModel.uiState.value.alsoAddToFreezer)
+        assertTrue(profiles.requests.isEmpty())
+        viewModel.open(listOf(selected))
+        assertFalse(viewModel.uiState.value.alsoAddToFreezer)
+        viewModel.toggleAlsoAddToFreezer()
+        viewModel.open(listOf(userApp("com.example.other")))
+        assertFalse(viewModel.uiState.value.alsoAddToFreezer)
+        assertTrue(profiles.delegate.freezerPackageNames.isEmpty())
+    }
+
+    @Test
+    fun `freezer load failure keeps chosen enrollment pending until retry succeeds`() = runTest {
+        val failObservation = CompletableDeferred<Unit>()
+        var shouldFail = true
+        val repository = object : FreezerRepository by freezer {
+            override fun getAll(): Flow<List<String>> = if (shouldFail) flow {
+                emit(emptyList())
+                failObservation.await()
+                throw IOException("private watchlist diagnostics")
+            } else freezer.getAll()
+        }
+        val viewModel = viewModel(freezerRepository = repository)
+        runCurrent()
+        viewModel.open(listOf(selected))
+        viewModel.toggleProfile(1)
+        viewModel.toggleAlsoAddToFreezer()
+        failObservation.complete(Unit)
+        runCurrent()
+        viewModel.submit()
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.freezerLoadFailed)
+        assertTrue(viewModel.uiState.value.alsoAddToFreezer)
+        assertFalse(viewModel.uiState.value.canAddToFreezer)
+        assertTrue(profiles.requests.isEmpty())
+        shouldFail = false
+        viewModel.retryFailedSources()
+        runCurrent()
+        assertFalse(viewModel.uiState.value.freezerLoadFailed)
+        assertTrue(viewModel.uiState.value.alsoAddToFreezer)
+        viewModel.submit()
+        advanceUntilIdle()
+        assertEquals(listOf(true), profiles.freezerRequests)
+    }
+
+    @Test
+    fun `unavailable optional freezer observation does not block profile only assignment`() = runTest {
+        val repository = object : FreezerRepository by freezer {
+            override fun getAll(): Flow<List<String>> = flow { throw IOException("private diagnostics") }
+        }
+        val viewModel = viewModel(freezerRepository = repository)
+        runCurrent()
+        viewModel.open(listOf(selected))
+        viewModel.toggleProfile(1)
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(listOf(false), profiles.freezerRequests)
+        assertFalse(viewModel.uiState.value.isOpen)
+        assertTrue(profiles.delegate.freezerPackageNames.isEmpty())
     }
 
     @Test
@@ -152,6 +283,7 @@ class ProfileAssignmentViewModelTest {
         runCurrent()
         viewModel.open(listOf(selected))
         viewModel.toggleProfile(1)
+        viewModel.toggleAlsoAddToFreezer()
         viewModel.submit()
         advanceUntilIdle()
 
@@ -159,6 +291,8 @@ class ProfileAssignmentViewModelTest {
         assertEquals(listOf(selected), viewModel.uiState.value.selectedApps)
         assertEquals(setOf(1L), viewModel.uiState.value.selectedProfileIds)
         assertEquals(UiText.StringResource(R.string.profile_assignment_save_failed), viewModel.uiState.value.error)
+        assertTrue(viewModel.uiState.value.alsoAddToFreezer)
+        assertTrue(profiles.delegate.freezerPackageNames.isEmpty())
         assertTrue(events.isEmpty())
         assertTrue(profiles.requests.isEmpty())
     }
@@ -411,15 +545,18 @@ class ProfileAssignmentViewModelTest {
     private class RecordingProfiles(val delegate: FakeFreezeProfileRepository) :
         FreezeProfileRepository by delegate {
         val requests = mutableListOf<Pair<Set<Long>, Set<String>>>()
+        val freezerRequests = mutableListOf<Boolean>()
         var beforeWrite: suspend () -> Unit = {}
 
         override suspend fun addApps(
             profileIds: Set<Long>,
             packageNames: Set<String>,
+            addToFreezer: Boolean,
         ): ProfileAssignmentResult {
             requests += profileIds to packageNames
+            freezerRequests += addToFreezer
             beforeWrite()
-            return delegate.addApps(profileIds, packageNames)
+            return delegate.addApps(profileIds, packageNames, addToFreezer)
         }
     }
 }

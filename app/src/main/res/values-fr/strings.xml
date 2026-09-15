@@ -217,14 +217,13 @@
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Paramètres du congélateur</string>
-    <string name="unfreeze_all">Tout dégeler</string>
-    <string name="unfreeze_all_apps">Dégeler toutes les applications</string>
-    <string name="unfreeze_all_apps_desc">Activer toutes les applications actuellement dans le Congélateur</string>
+    <string name="unfreeze_all">Dégeler les applis du Congélateur</string>
+    <string name="unfreeze_all_apps">Tout dégeler dans le Congélateur</string>
     <string name="auto_freeze">Gel automatique</string>
     <string name="auto_freeze_desc">Geler automatiquement les applications lorsque l\'écran est verrouillé</string>
     <string name="privilege_required_warning">Privilège requis (Root, Shizuku ou Dhizuku)</string>
-    <string name="unfreeze_all_confirmation_title">Dégeler toutes les applications ?</string>
-    <string name="unfreeze_all_confirmation_desc">Cela va dégeler (activer) toutes les applications actuellement dans le congélateur. Voulez-vous vraiment continuer ?</string>
+    <string name="unfreeze_all_confirmation_title">Dégeler les applis du Congélateur ?</string>
+    <string name="unfreeze_all_confirmation_desc">Cela dégèlera les applications de votre liste du Congélateur. Les applications gérées uniquement via des profils ne sont pas incluses.</string>
     <plurals name="bulk_freeze_confirm_desc">
         <item quantity="one">Geler %1$d application sélectionnée ? Les applications que Thor bloque pour des raisons de sécurité seront ignorées.</item>
         <item quantity="other">Geler %1$d applications sélectionnées ? Les applications que Thor bloque pour des raisons de sécurité seront ignorées.</item>
@@ -561,7 +560,7 @@
     <string name="add_freezer_to_launcher">Ajouter le Congélateur au lanceur</string>
     <string name="add_freezer_to_launcher_desc">Afficher les applications congelées comme raccourcis d\'écran d\'accueil pour les lancer d\'un simple geste</string>
     <string name="add_to_home_screen">Ajouter à l\'écran d\'accueil</string>
-    <string name="freeze_all_apps">Tout congeler</string>
+    <string name="freeze_all_apps">Tout congeler dans le Congélateur</string>
     <string name="shortcuts">Raccourcis</string>
     <string name="shortcut_add_all">Ajouter toutes les applications</string>
     <string name="shortcut_added_named">%1$s ajouté à l\'écran d\'accueil</string>
@@ -942,4 +941,24 @@
     <string name="force_stop_unsupported_dhizuku">Dhizuku ne peut pas forcer l’arrêt des applications. Passez à Root ou Shizuku.</string>
     <string name="dhizuku_clear_data_failed">Impossible d’effacer les données de cette application avec Dhizuku.</string>
     <string name="dhizuku_uninstall_failed">Impossible de désinstaller cette application avec Dhizuku.</string>
+    <string name="profile_assignment_also_freezer">Ajouter aussi au Congélateur</string>
+    <string name="profile_assignment_also_freezer_description">Inclut ces applications dans « Tout congeler » et dans le gel automatique lorsqu\'il est activé.</string>
+    <string name="profile_assignment_freezer_added">Ajoutées au Congélateur : %1$d</string>
+    <string name="profile_assignment_freezer_load_failed">Impossible de charger la liste du Congélateur. Réessayez.</string>
+    <string name="app_info_profiles_count">Profils (%1$d)</string>
+    <string name="app_info_profiles_only">Gérée uniquement via des profils</string>
+    <string name="app_info_freezer_and_profiles">Dans le Congélateur et les profils</string>
+    <string name="unfreeze_managed_apps">Dégeler les applis du Congélateur et des profils</string>
+    <string name="unfreeze_managed_apps_desc">Restaurez les applications congelées de votre liste du Congélateur et de tous les profils.</string>
+    <string name="unfreeze_managed_confirmation_title">Dégeler les applis du Congélateur et des profils ?</string>
+    <string name="unfreeze_managed_confirmation_desc">Cela dégèlera les applications de votre liste du Congélateur et de tous les profils.</string>
+    <string name="profile_removal_recovery_title">Vérifier le retrait du profil</string>
+    <string name="profile_removal_recovery_message">Applications à vérifier : %1$d. Ces applications sont congelées ou leur état n\'a pas pu être vérifié, et elles ne figurent dans aucun autre profil ni dans le Congélateur. Dégelez-les d\'abord, ou retirez-les sans les dégeler puis utilisez Liste des applis pour les récupérer. Leur retrait les exclut également de la récupération groupée et de la restauration depuis le lanceur.</string>
+    <string name="profile_removal_unfreeze_continue">Dégeler et continuer</string>
+    <string name="profile_removal_keep_frozen">Retirer sans dégeler</string>
+    <string name="profile_removal_check_failed">Impossible de vérifier à quels profils ou listes appartiennent les applications. Votre profil n\'a pas été modifié. Réessayez.</string>
+    <string name="profile_removal_restore_failed">Certaines applications n\'ont pas pu être dégelées. Votre profil n\'a pas été modifié. Réessayez ou retirez-les sans les dégeler.</string>
+    <string name="profile_removal_write_failed">Impossible d\'enregistrer les modifications du profil. Réessayez.</string>
+    <string name="profile_removal_profile_changed">Ce profil n\'est plus disponible. Aucune modification n\'a été enregistrée.</string>
+    <string name="profile_removal_state_unknown">État indisponible</string>
 </resources>

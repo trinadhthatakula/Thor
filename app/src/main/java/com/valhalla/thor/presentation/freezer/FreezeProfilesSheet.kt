@@ -32,12 +32,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,14 +100,21 @@ fun FreezeProfilesSheet(
     onDelete: (profileId: Long) -> Unit,
     onDismiss: () -> Unit,
     canForceStop: Boolean = rememberCanForceStopApps(),
+    isWorking: Boolean = false,
 ) {
     // Deletion is the one irreversible action here — a profile carries a name and a hand-picked
     // list that nothing else in the app can reconstruct. Plain remember: a confirmation that
     // survived process death would outlive the row it was raised from.
     var pendingDelete by remember { mutableStateOf<FreezeProfile?>(null) }
+    val writeLocked by rememberUpdatedState(isWorking)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        confirmValueChange = { it != SheetValue.Hidden || !writeLocked },
+    )
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isWorking) onDismiss() },
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
         tonalElevation = 0.dp
@@ -123,7 +133,7 @@ fun FreezeProfilesSheet(
                 letterSpacing = (-1).sp,
                 modifier = Modifier.weight(1f)
             )
-            FilledTonalButton(onClick = onCreate, shape = RoundedCornerShape(16.dp)) {
+            FilledTonalButton(onClick = onCreate, enabled = !isWorking, shape = RoundedCornerShape(16.dp)) {
                 Icon(
                     imageVector = Icons.Rounded.Add,
                     contentDescription = null,
@@ -171,6 +181,7 @@ fun FreezeProfilesSheet(
                         sweepStatus = profileRequestStatus(profile.id, runningRequests),
                         hasPrivilege = hasPrivilege,
                         canForceStop = canForceStop,
+                        isWorking = isWorking,
                         onRun = { op, mode -> onRun(profile.id, op, mode) },
                         onKill = onKill,
                         onEdit = { onEdit(profile) },
@@ -183,7 +194,7 @@ fun FreezeProfilesSheet(
 
     pendingDelete?.let { profile ->
         AlertDialog(
-            onDismissRequest = { pendingDelete = null },
+            onDismissRequest = { if (!isWorking) pendingDelete = null },
             icon = {
                 Icon(
                     painter = painterResource(R.drawable.warning),
@@ -197,6 +208,7 @@ fun FreezeProfilesSheet(
             text = { Text(stringResource(R.string.profile_delete_desc)) },
             confirmButton = {
                 TextButton(
+                    enabled = !isWorking,
                     onClick = {
                         onDelete(profile.id)
                         pendingDelete = null
@@ -206,7 +218,7 @@ fun FreezeProfilesSheet(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
+                TextButton(onClick = { pendingDelete = null }, enabled = !isWorking) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -240,6 +252,7 @@ private fun FreezeProfileRow(
     sweepStatus: PrivilegeSweepStatus?,
     hasPrivilege: Boolean,
     canForceStop: Boolean,
+    isWorking: Boolean,
     onRun: (BulkOp, FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
     onEdit: () -> Unit,
@@ -316,7 +329,7 @@ private fun FreezeProfileRow(
                     // No mode: the button says "freeze", and what freezing means is the user's
                     // standing choice. Only the explicit Suspend below overrides it.
                     onClick = { onRun(BulkOp.FREEZE, null) },
-                    enabled = hasPrivilege && profile.size > 0
+                    enabled = hasPrivilege && profile.size > 0 && !isWorking
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.frozen),
@@ -326,7 +339,7 @@ private fun FreezeProfileRow(
                 }
                 IconButton(
                     onClick = { onRun(BulkOp.UNFREEZE, null) },
-                    enabled = hasPrivilege && profile.size > 0
+                    enabled = hasPrivilege && profile.size > 0 && !isWorking
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.unfreeze),
@@ -337,7 +350,7 @@ private fun FreezeProfileRow(
             }
 
             Box {
-                IconButton(onClick = { menuOpen = true }) {
+                IconButton(onClick = { menuOpen = true }, enabled = !isWorking) {
                     Icon(
                         imageVector = Icons.Rounded.MoreVert,
                         contentDescription = stringResource(R.string.more_options)
@@ -349,7 +362,7 @@ private fun FreezeProfileRow(
                     // and sixth icon button would push the profile name into an ellipsis.
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_suspend)) },
-                        enabled = hasPrivilege && profile.size > 0 && !isRunning,
+                        enabled = hasPrivilege && profile.size > 0 && !isRunning && !isWorking,
                         onClick = {
                             menuOpen = false
                             onRun(BulkOp.FREEZE, FreezerMode.SUSPEND)
@@ -359,7 +372,7 @@ private fun FreezeProfileRow(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.action_force_stop)) },
                             // Force-stop is independent of a profile's freeze operation.
-                            enabled = killable.isNotEmpty(),
+                            enabled = killable.isNotEmpty() && !isWorking,
                             onClick = {
                                 menuOpen = false
                                 onKill(killable)
@@ -369,6 +382,7 @@ private fun FreezeProfileRow(
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_edit)) },
+                        enabled = !isWorking,
                         onClick = {
                             menuOpen = false
                             onEdit()
@@ -376,6 +390,7 @@ private fun FreezeProfileRow(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_delete)) },
+                        enabled = !isWorking,
                         onClick = {
                             menuOpen = false
                             onDelete()

@@ -22,6 +22,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezerRepository
+import com.valhalla.thor.presentation.FakeFreezeProfileRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
@@ -93,6 +94,7 @@ class AppInfoDetailsViewModelTest {
             manageAppUseCase = manageAppUseCase,
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
             freezerRepository = freezer,
+            freezeProfileRepository = FakeFreezeProfileRepository(),
             appShortcuts = shortcuts,
             preferenceRepository = preferences,
             ioDispatcher = mainDispatcherRule.dispatcher
