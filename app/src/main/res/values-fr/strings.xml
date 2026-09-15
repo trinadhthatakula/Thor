@@ -690,7 +690,7 @@
     <string name="settings_summary_restore_interrupted">Une restauration ne s\'est pas terminée</string>
     <string name="settings_summary_backup">Restaurer une archive ou changer la phrase secrète</string>
     <string name="settings_summary_unprivileged">Nécessite Root, Shizuku ou Dhizuku</string>
-    <string name="settings_summary_customization">Polices et actions du volet d’app</string>
+    <string name="settings_summary_customization">Polices et disposition des actions</string>
 
     <string name="settings_category_customization">Personnalisation</string>
     <string name="customization_fonts">Polices</string>
@@ -703,11 +703,16 @@
     <string name="font_preview_numbers">0123456789 · 1,2 Go</string>
     <string name="customization_app_info_actions">Actions du volet d\'app</string>
     <string name="customization_app_info_actions_desc">Réorganiser et activer ou désactiver les actions du volet inférieur</string>
+    <string name="customization_app_list_multi_actions">Actions groupées de la liste des apps</string>
+    <string name="customization_freezer_multi_actions">Actions groupées du Congélateur</string>
+    <string name="customization_multi_actions_desc">Choisissez et organisez les actions pour les apps sélectionnées.</string>
+    <string name="customization_multi_actions_availability">Les actions s’affichent selon la sélection, les privilèges et les profils disponibles. Fermer reste toujours disponible.</string>
     <string name="customization_drag_hint">Glissez pour réorganiser • Basculez pour afficher ou masquer</string>
     <string name="customization_preview_title">Aperçu de la barre d\'actions</string>
     <string name="reset_to_default">Rétablir les valeurs par défaut</string>
     <string name="reset_actions_confirm_title">Réinitialiser l\'ordre des actions ?</string>
     <string name="reset_actions_confirm_desc">Ceci restaurera l\'ordre par défaut et rendra toutes les actions visibles.</string>
+    <string name="reset_multi_actions_confirm_desc">Réinitialiser l’ordre et la visibilité de cette barre de sélection ? Les autres dispositions d’actions seront conservées.</string>
 
     <string name="action_open_desc">Lancer l\'application</string>
     <string name="action_settings_desc">Ouvrir les paramètres système Android de l\'application</string>

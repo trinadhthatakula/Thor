@@ -737,7 +737,7 @@
     <string name="settings_summary_restore_interrupted">لم تكتمل إحدى عمليات الاستعادة</string>
     <string name="settings_summary_backup">استعادة أرشيف أو تغيير عبارة المرور</string>
     <string name="settings_summary_unprivileged">يتطلب Root أو Shizuku أو Dhizuku</string>
-    <string name="settings_summary_customization">الخطوط وإجراءات لوحة التطبيق</string>
+    <string name="settings_summary_customization">الخطوط وتخطيطات الإجراءات</string>
 
     <string name="settings_category_customization">التخصيص</string>
     <string name="customization_fonts">الخطوط</string>
@@ -750,11 +750,16 @@
     <string name="font_preview_numbers">٠١٢٣٤٥٦٧٨٩ · ١٫٢ غيغابايت</string>
     <string name="customization_app_info_actions">إجراءات لوحة التطبيق</string>
     <string name="customization_app_info_actions_desc">إعادة ترتيب وتبديل الإجراءات في اللوحة السفلية للتطبيق</string>
+    <string name="customization_app_list_multi_actions">إجراءات جماعية في قائمة التطبيقات</string>
+    <string name="customization_freezer_multi_actions">إجراءات جماعية في المجمد</string>
+    <string name="customization_multi_actions_desc">اختر إجراءات التطبيقات المحددة ورتّبها.</string>
+    <string name="customization_multi_actions_availability">تظهر الإجراءات حسب التطبيقات المحددة والصلاحيات وملفات التجميد المتاحة. يظل زر الإغلاق متاحًا دائمًا.</string>
     <string name="customization_drag_hint">اسحب لإعادة الترتيب • بدّل للإظهار أو الإخفاء</string>
     <string name="customization_preview_title">معاينة شريط الإجراءات</string>
     <string name="reset_to_default">إعادة التعيين إلى الافتراضي</string>
     <string name="reset_actions_confirm_title">إعادة تعيين ترتيب الإجراءات؟</string>
     <string name="reset_actions_confirm_desc">سيؤدي هذا إلى استعادة الترتيب الافتراضي وإظهار جميع الإجراءات.</string>
+    <string name="reset_multi_actions_confirm_desc">هل تريد إعادة تعيين ترتيب الإجراءات وظهورها في شريط التحديد هذا؟ ستُحفظ تخطيطات الإجراءات الأخرى.</string>
 
     <string name="action_open_desc">تشغيل التطبيق</string>
     <string name="action_settings_desc">فتح إعدادات النظام للتطبيق في Android</string>

@@ -114,6 +114,12 @@ data class UserPreferences(
     val appInfoActionsOrder: List<AppInfoActionId> = AppInfoActionId.DEFAULT_ORDER,
     val hiddenAppInfoActions: Set<AppInfoActionId> = emptySet(),
 
+    // Multi-app toolbars have separate layouts; availability is resolved at render time.
+    val appListMultiActionsOrder: List<MultiAppActionId> = MultiAppActionLayout.APP_LIST.defaultOrder,
+    val hiddenAppListMultiActions: Set<MultiAppActionId> = emptySet(),
+    val freezerMultiActionsOrder: List<MultiAppActionId> = MultiAppActionLayout.FREEZER.defaultOrder,
+    val hiddenFreezerMultiActions: Set<MultiAppActionId> = emptySet(),
+
     /**
      * True when the values above are Thor's defaults rather than the user's, because the settings
      * store could not be read or had to be thrown away and replaced after corruption.
@@ -125,4 +131,14 @@ data class UserPreferences(
      * failed read, a silently disarmed app lock.
      */
     val settingsLost: Boolean = false
-)
+) {
+    fun multiAppActionsOrder(layout: MultiAppActionLayout): List<MultiAppActionId> = when (layout) {
+        MultiAppActionLayout.APP_LIST -> appListMultiActionsOrder
+        MultiAppActionLayout.FREEZER -> freezerMultiActionsOrder
+    }
+
+    fun hiddenMultiAppActions(layout: MultiAppActionLayout): Set<MultiAppActionId> = when (layout) {
+        MultiAppActionLayout.APP_LIST -> hiddenAppListMultiActions
+        MultiAppActionLayout.FREEZER -> hiddenFreezerMultiActions
+    }
+}

@@ -327,6 +327,8 @@ fun AppListScreen(
                     isDhizuku = state.isDhizuku,
                     isGrid = state.isGrid,
                     gridDensity = state.gridDensity,
+                    multiActionsOrder = state.multiActionsOrder,
+                    hiddenMultiActions = state.hiddenMultiActions,
                     onToggleView = viewModel::toggleGridMode,
                     onExportList = viewModel::exportList,
                     onShareList = viewModel::shareList,

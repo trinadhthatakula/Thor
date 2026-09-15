@@ -679,7 +679,7 @@
     <string name="settings_summary_restore_interrupted">有一次恢复未完成</string>
     <string name="settings_summary_backup">恢复存档，或更改密码短语</string>
     <string name="settings_summary_unprivileged">需要 Root、Shizuku 或 Dhizuku</string>
-    <string name="settings_summary_customization">字体与应用详情操作</string>
+    <string name="settings_summary_customization">字体与操作布局</string>
 
     <string name="settings_category_customization">自定义</string>
     <string name="customization_fonts">字体</string>
@@ -692,11 +692,16 @@
     <string name="font_preview_numbers">0123456789 · 1.2 GB</string>
     <string name="customization_app_info_actions">应用操作栏</string>
     <string name="customization_app_info_actions_desc">调整应用底部操作栏中按钮的排序与显示状态</string>
+    <string name="customization_app_list_multi_actions">应用列表批量操作</string>
+    <string name="customization_freezer_multi_actions">应用冻结批量操作</string>
+    <string name="customization_multi_actions_desc">选择并排列所选应用的操作。</string>
+    <string name="customization_multi_actions_availability">操作会根据所选应用、权限和可用配置显示。关闭按钮始终可用。</string>
     <string name="customization_drag_hint">拖拽以重新排序 • 开关以显示或隐藏</string>
     <string name="customization_preview_title">操作栏预览</string>
     <string name="reset_to_default">恢复默认设置</string>
     <string name="reset_actions_confirm_title">重置操作顺序？</string>
     <string name="reset_actions_confirm_desc">这将恢复默认顺序并显示所有操作选项。</string>
+    <string name="reset_multi_actions_confirm_desc">要重置此选择工具栏的操作顺序和显示状态吗？其他操作布局将保持不变。</string>
 
     <string name="action_open_desc">启动应用程序</string>
     <string name="action_settings_desc">打开 Android 系统应用设置</string>

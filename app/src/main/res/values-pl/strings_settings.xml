@@ -66,7 +66,7 @@
     <string name="settings_summary_restore_interrupted">Przywracanie nie zostało ukończone</string>
     <string name="settings_summary_backup">Przywróć archiwum lub zmień hasło</string>
     <string name="settings_summary_unprivileged">Wymaga uprawnień root, Shizuku lub Dhizuku</string>
-    <string name="settings_summary_customization">Czcionki i akcje panelu aplikacji</string>
+    <string name="settings_summary_customization">Czcionki i układy akcji</string>
 
     <!-- ── Kategoria personalizacji i akcje ───────────────────────────────────────────── -->
     <string name="settings_category_customization">Personalizacja</string>
@@ -80,11 +80,16 @@
     <string name="font_preview_numbers">0123456789 · 1,2 GB</string>
     <string name="customization_app_info_actions">Akcje panelu aplikacji</string>
     <string name="customization_app_info_actions_desc">Zmień kolejność i widoczność akcji w dolnym panelu aplikacji</string>
+    <string name="customization_app_list_multi_actions">Akcje grupowe na liście aplikacji</string>
+    <string name="customization_freezer_multi_actions">Akcje grupowe w Zamrażarce</string>
+    <string name="customization_multi_actions_desc">Wybierz i uporządkuj akcje dla zaznaczonych aplikacji.</string>
+    <string name="customization_multi_actions_availability">Dostępność akcji zależy od zaznaczonych aplikacji, uprawnień i dostępnych profili. Przycisk Zamknij jest zawsze dostępny.</string>
     <string name="customization_drag_hint">Przeciągnij, aby zmienić kolejność • Przełącz, aby ukryć lub pokazać</string>
     <string name="customization_preview_title">Podgląd paska akcji</string>
     <string name="reset_to_default">Przywróć domyślne</string>
     <string name="reset_actions_confirm_title">Przywrócić domyślną kolejność akcji?</string>
     <string name="reset_actions_confirm_desc">Spowoduje to przywrócenie domyślnej kolejności oraz odkrycie wszystkich ukrytych akcji.</string>
+    <string name="reset_multi_actions_confirm_desc">Zresetować kolejność i widoczność akcji na tym pasku zaznaczenia? Pozostałe układy akcji zostaną zachowane.</string>
 
     <string name="action_open_desc">Uruchom aplikację</string>
     <string name="action_settings_desc">Otwórz ustawienia systemowe aplikacji w systemie Android</string>

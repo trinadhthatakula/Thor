@@ -114,6 +114,16 @@ enum class SettingsRowId(
         R.string.customization_app_info_actions,
         R.string.customization_app_info_actions_desc,
     ),
+    APP_LIST_MULTI_ACTIONS(
+        SettingsCategory.CUSTOMIZATION,
+        R.string.customization_app_list_multi_actions,
+        R.string.customization_multi_actions_desc,
+    ),
+    FREEZER_MULTI_ACTIONS(
+        SettingsCategory.CUSTOMIZATION,
+        R.string.customization_freezer_multi_actions,
+        R.string.customization_multi_actions_desc,
+    ),
 
     // ── Freezer ─────────────────────────────────────────────────────────────────────────────────
     AUTO_FREEZE(SettingsCategory.FREEZER, R.string.auto_freeze, R.string.auto_freeze_desc),
