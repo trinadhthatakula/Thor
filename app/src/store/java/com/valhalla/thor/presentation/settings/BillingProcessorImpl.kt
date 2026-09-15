@@ -51,14 +51,15 @@ class BillingProcessorImpl(
 
     private val scope = CoroutineScope(SupervisorJob() + defaultDispatcher)
 
-    private val _isBillingAvailable = MutableStateFlow(true)
-    override val isBillingAvailable: StateFlow<Boolean> = _isBillingAvailable.asStateFlow()
+    private val statusTracker = BillingStatusTracker()
+    override val isBillingAvailable: StateFlow<Boolean> = statusTracker.isBillingAvailable
+    override val connectionState: StateFlow<BillingConnectionState> = statusTracker.connectionState
+    override val subscriptionStatus: StateFlow<SubscriptionStatus> = statusTracker.subscriptionStatus
 
     private val _products = MutableStateFlow<List<BillingProduct>>(emptyList())
     override val products: StateFlow<List<BillingProduct>> = _products.asStateFlow()
 
-    private val _activeSubscription = MutableStateFlow<ActiveSubscription?>(null)
-    override val activeSubscription: StateFlow<ActiveSubscription?> = _activeSubscription.asStateFlow()
+    override val activeSubscription: StateFlow<ActiveSubscription?> = statusTracker.activeSubscription
 
     private val _showThankYouDialog = MutableStateFlow(false)
     override val showThankYouDialog: StateFlow<Boolean> = _showThankYouDialog.asStateFlow()
@@ -115,7 +116,14 @@ class BillingProcessorImpl(
 
     private val billingClient: BillingClient = BillingClient.newBuilder(context.applicationContext)
         .setListener { billingResult, purchases ->
+            observeConnection()
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
+                // Suppress support requests immediately, even while acknowledgement is retrying.
+                // This callback is a delta, not an authoritative empty account snapshot.
+                statusTracker.purchasesUpdated(
+                    hasPurchased = purchases.any { it.purchaseState == Purchase.PurchaseState.PURCHASED },
+                    hasPending = purchases.any { it.purchaseState == Purchase.PurchaseState.PENDING },
+                )
                 for (purchase in purchases) {
                     val isPurchased = purchase.purchaseState == Purchase.PurchaseState.PURCHASED
                     when {
@@ -143,7 +151,7 @@ class BillingProcessorImpl(
                 // on this path, so asking is the only way to reach the token.
                 //
                 // No toast: "Billing error: 7" tells the user they did something wrong when they did
-                // not, and the sweep produces its own feedback — it publishes `_activeSubscription`,
+                // not, and the sweep produces its own feedback — it publishes `activeSubscription`,
                 // which is what makes the support sheet render the tier as the active plan.
                 queryActiveSubscriptions()
             } else if (billingResult.responseCode != BillingClient.BillingResponseCode.USER_CANCELED) {
@@ -169,9 +177,8 @@ class BillingProcessorImpl(
         //
         // What it does NOT do is notify *this* client's listener. The library's own reconnect passes
         // an internal `zzbv` to `zzbu(listener, i)` with `i != 0`, which does not overwrite the app's
-        // stored `zzK` — so `onBillingSetupFinished` never fires again and `_isBillingAvailable` /
-        // `_products` are never repaired. [scheduleReconnect] is what actually rebuilds a binding
-        // lost to a background Play Store self-update, and it is the only thing that can.
+        // stored `zzK`, so `onBillingSetupFinished` never fires again. API callbacks now observe
+        // the raw connection state too; catalogue recovery still comes from setup or resume.
         .enableAutoServiceReconnection()
         .build()
 
@@ -202,6 +209,21 @@ class BillingProcessorImpl(
     private val isConnected: Boolean
         get() = billingClient.connectionState == BillingClient.ConnectionState.CONNECTED
 
+    /** Client API callbacks can reconnect without invoking our setup listener. */
+    internal fun observeConnection() {
+        when (billingClient.connectionState) {
+            BillingClient.ConnectionState.CONNECTED ->
+                statusTracker.connectionChanged(BillingConnectionState.CONNECTED)
+            BillingClient.ConnectionState.CONNECTING ->
+                statusTracker.connectionChanged(BillingConnectionState.CONNECTING)
+            BillingClient.ConnectionState.CLOSED ->
+                statusTracker.connectionChanged(BillingConnectionState.UNAVAILABLE)
+            // A disconnected client may still have a scheduled reconnect. The ladder reports
+            // UNAVAILABLE when that bounded attempt is exhausted, rather than during its delay.
+            else -> Unit
+        }
+    }
+
     init {
         // startConnection() reaches PackageManager.queryIntentServices and bindService with no
         // thread hop of its own. This singleton is resolved on the first-frame path, which is
@@ -214,27 +236,33 @@ class BillingProcessorImpl(
         // Before startConnection, not after: zzbu can answer BILLING_UNAVAILABLE on this very
         // thread before startConnection returns, and the listener below must find the ladder
         // already knowing an attempt is in progress.
+        statusTracker.connectionChanged(BillingConnectionState.CONNECTING)
         reconnect.onAttemptStarted()
-        billingClient.startConnection(object : BillingClientStateListener {
-            override fun onBillingSetupFinished(billingResult: BillingResult) {
-                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    // Set back to true, not merely left alone: recovery has to be visible or the
-                    // support sheet keeps rendering the "Rate on Play Store" fallback forever.
-                    _isBillingAvailable.value = true
-                    reconnect.reset()
-                    queryProducts()
-                    queryActiveSubscriptions()
-                } else {
-                    _isBillingAvailable.value = false
+        try {
+            billingClient.startConnection(object : BillingClientStateListener {
+                override fun onBillingSetupFinished(billingResult: BillingResult) {
+                    if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                        // Set back to true, not merely left alone: recovery has to be visible or the
+                        // support sheet keeps rendering the "Rate on Play Store" fallback forever.
+                        statusTracker.connectionChanged(BillingConnectionState.CONNECTED)
+                        reconnect.reset()
+                        queryProducts()
+                        queryActiveSubscriptions()
+                    } else {
+                        scheduleReconnect(reconnect.onFailure())
+                    }
+                }
+
+                override fun onBillingServiceDisconnected() {
                     scheduleReconnect(reconnect.onFailure())
                 }
-            }
-
-            override fun onBillingServiceDisconnected() {
-                _isBillingAvailable.value = false
-                scheduleReconnect(reconnect.onFailure())
-            }
-        })
+            })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("BillingProcessor", "Could not start billing connection", e)
+            scheduleReconnect(reconnect.onFailure())
+        }
     }
 
     /**
@@ -247,10 +275,8 @@ class BillingProcessorImpl(
      * `BillingClientImpl.zzaI(int)` behind `zzbw(long)`/`zzbx(long)`, which run at the head of each
      * API callable, so the library only rebuilds a binding when an API call is made on a
      * disconnected client. When it does, it reconnects with an internal listener of its own and
-     * never calls `onBillingSetupFinished` on the one this class registered — so `_isBillingAvailable`
-     * and `_products`, which are written nowhere else, stay stale however many times the library
-     * silently repairs the binding underneath. That is why the two mechanisms are not
-     * interchangeable and why the budget below cannot be the last word.
+     * never calls `onBillingSetupFinished` on the one this class registered. API callbacks observe
+     * the repaired connection, while this ladder also retries when no API call is being made.
      *
      * One run of it is worth ~31 s and then it stops, because a device with no usable Play Store
      * would otherwise get an unbounded background wakeup loop out of a donation button. The escape
@@ -259,6 +285,18 @@ class BillingProcessorImpl(
      */
     // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
     internal fun scheduleReconnect(step: BillingReconnectStep) {
+        if (isConnected) {
+            statusTracker.connectionChanged(BillingConnectionState.CONNECTED)
+            reconnect.reset()
+            return
+        }
+        statusTracker.connectionChanged(when {
+            billingClient.connectionState == BillingClient.ConnectionState.CONNECTING ->
+                BillingConnectionState.CONNECTING
+            step is BillingReconnectStep.Retry || step == BillingReconnectStep.AlreadyQueued ->
+                BillingConnectionState.CONNECTING
+            else -> BillingConnectionState.UNAVAILABLE
+        })
         if (step is BillingReconnectStep.Exhausted) {
             Logger.w(
                 "BillingProcessor",
@@ -273,14 +311,21 @@ class BillingProcessorImpl(
                 // After close() the client is CLOSED for good; the ladder has to be told, or the
                 // queued-retry flag it is still holding would make every later call read as
                 // "a retry is already pending" on an instance that can never retry again.
-                billingClient.connectionState == BillingClient.ConnectionState.CLOSED ->
+                billingClient.connectionState == BillingClient.ConnectionState.CLOSED -> {
+                    statusTracker.connectionChanged(BillingConnectionState.UNAVAILABLE)
                     reconnect.stop()
+                }
                 // The library's own reconnection, or a resume-driven attempt, won the race. Both
                 // branches still have to clear the queued flag — a step that silently declines to
                 // run and says nothing is how a ladder stalls without ever reporting exhaustion.
-                isConnected -> reconnect.reset()
-                billingClient.connectionState == BillingClient.ConnectionState.CONNECTING ->
+                isConnected -> {
+                    statusTracker.connectionChanged(BillingConnectionState.CONNECTED)
                     reconnect.reset()
+                }
+                billingClient.connectionState == BillingClient.ConnectionState.CONNECTING -> {
+                    statusTracker.connectionChanged(BillingConnectionState.CONNECTING)
+                    reconnect.reset()
+                }
 
                 else -> connectToBilling()
             }
@@ -336,6 +381,7 @@ class BillingProcessorImpl(
         // [CatalogRefreshGate].
         catalogRefresh.onFetchStarted()
         billingClient.queryProductDetailsAsync(params) { billingResult, queryResult ->
+            observeConnection()
             // This runs on a library callback thread, so an escaping exception is an uncaught crash
             // rather than a failed coroutine. Everything it touches (`productDetailsById`,
             // `_products`) is already thread-safe; the mapping below is a few dozen field reads.
@@ -438,11 +484,34 @@ class BillingProcessorImpl(
      */
     // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
     internal fun queryActiveSubscriptions() {
+        val query = statusTracker.beginPurchaseQuery()
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.SUBS)
             .build()
         billingClient.queryPurchasesAsync(params) { billingResult, purchaseList ->
+            observeConnection()
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                // Most recent, not first: an upgrade can leave the replaced plan in the list.
+                val active = purchaseList
+                    .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+                    .maxByOrNull { it.purchaseTime }
+                val activeProductId = active?.products?.firstOrNull()
+                val activePlan = if (active != null && !activeProductId.isNullOrEmpty()) {
+                    ActiveSubscription(activeProductId, active.purchaseToken)
+                } else {
+                    if (active != null) {
+                        Logger.w("BillingProcessor", "Active purchase has empty or null product list")
+                    }
+                    null
+                }
+                // Publish the status and plan in one generation-checked transaction. A stale
+                // response can still repay acknowledgement below, but cannot overwrite a plan.
+                statusTracker.purchasesQueried(
+                    query,
+                    hasPurchased = purchaseList.any { it.purchaseState == Purchase.PurchaseState.PURCHASED },
+                    hasPending = purchaseList.any { it.purchaseState == Purchase.PurchaseState.PENDING },
+                    activeSubscription = activePlan,
+                )
                 // The whole list, not just the active one: this is the only backstop for a
                 // purchase whose onPurchasesUpdated never arrived, and Google revokes and refunds
                 // anything still unacknowledged after three days. Silent — the thank-you dialog
@@ -453,28 +522,8 @@ class BillingProcessorImpl(
                         acknowledgePurchase(purchase, showThankYou = false)
                     }
                 }
-                // Most recent, not first: an upgrade leaves the replaced subscription in the list
-                // until Play retires it, and taking whichever Play happened to list first is the
-                // same ordering bet the offer selection above stopped making. Newest is the tier
-                // the user last chose.
-                val active = purchaseList
-                    .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
-                    .maxByOrNull { it.purchaseTime }
-                if (active != null) {
-                    val activeProductId = active.products.firstOrNull()
-                    if (!activeProductId.isNullOrEmpty()) {
-                        _activeSubscription.value = ActiveSubscription(
-                            productId = activeProductId,
-                            purchaseToken = active.purchaseToken
-                        )
-                    } else {
-                        Logger.w("BillingProcessor", "Active purchase has empty or null product list")
-                        _activeSubscription.value = null
-                    }
-                } else {
-                    _activeSubscription.value = null
-                }
             } else {
+                statusTracker.purchaseQueryFailed(query)
                 Logger.e("BillingProcessor", "Failed to query active purchases: ${billingResult.responseCode}")
             }
         }
@@ -511,6 +560,7 @@ class BillingProcessorImpl(
                     Logger.e("BillingProcessor", "Error acknowledging purchase", e)
                     BillingClient.BillingResponseCode.ERROR
                 }
+                observeConnection()
                 if (responseCode == BillingClient.BillingResponseCode.OK) {
                     if (showThankYou) _showThankYouDialog.value = true
                     queryActiveSubscriptions()
@@ -625,6 +675,7 @@ class BillingProcessorImpl(
             // for the rest of the process.
             queryActiveSubscriptions()
             if (isConnected) {
+                statusTracker.connectionChanged(BillingConnectionState.CONNECTED)
                 // The catalogue can fail on its own, without the binding ever dropping. Binding is
                 // local IPC and needs no network; `queryProductDetails` is a network call, so first
                 // launch in airplane mode gives OK from onBillingSetupFinished and
@@ -652,8 +703,8 @@ class BillingProcessorImpl(
                 return@launch
             }
             // Still worth re-arming now that the sweep above no longer depends on it:
-            // `_isBillingAvailable` and `_products` are written only from `onBillingSetupFinished`,
-            // and the library's own rebind never calls that (see `enableAutoServiceReconnection`).
+            // the library's own rebind never calls our setup listener, and the ladder must remain
+            // retryable if the API call above could not repair the connection.
             scheduleReconnect(reconnect.onResume())
         }
     }
@@ -710,6 +761,7 @@ class BillingProcessorImpl(
      * checks for one invariant because a resume can arrive at any of the three moments.
      */
     override fun close() {
+        statusTracker.connectionChanged(BillingConnectionState.UNAVAILABLE)
         reconnect.stop()
         try {
             billingClient.endConnection()

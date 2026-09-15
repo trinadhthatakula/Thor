@@ -134,7 +134,7 @@ data class AppListUiState(
  * so transient feedback is delivered exactly once and never replayed on recomposition/config change.
  */
 sealed interface AppListEvent {
-    data class ShowMessage(val message: UiText) : AppListEvent
+    data class ShowMessage(val message: UiText, val isSuccess: Boolean = false) : AppListEvent
     data class RequestReinstall(val apps: List<AppInfo>) : AppListEvent
     data class ShowFreezerPrompt(val prompt: FreezerPrompt) : AppListEvent
 
@@ -583,7 +583,7 @@ class AppListViewModel(
                                 UiText.StringResource(
                                     R.string.frozen_success,
                                     appName ?: packageName
-                                )
+                                ), isSuccess = true
                             )
                         )
                     }
@@ -593,7 +593,7 @@ class AppListViewModel(
                             UiText.StringResource(
                                 R.string.unfrozen_success,
                                 appName ?: packageName
-                            )
+                            ), isSuccess = true
                         )
                     )
                 }
@@ -638,7 +638,7 @@ class AppListViewModel(
         ) {
             freezerRepository.add(packageName)
             _events.send(
-                AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
+                AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
             )
         }
     }
@@ -774,7 +774,7 @@ class AppListViewModel(
                 freezerRepository.remove(packageName)
                 _events.send(
                     AppListEvent.ShowMessage(
-                        UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
+                        UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1), isSuccess = true
                     )
                 )
             } else {
@@ -797,7 +797,7 @@ class AppListViewModel(
                 }
                 freezerRepository.add(packageName)
                 _events.send(
-                    AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
                 )
             }
         }
@@ -996,7 +996,7 @@ class AppListViewModel(
             exportAppListUseCase(apps)
                 .onSuccess {
                     _events.send(
-                        AppListEvent.ShowMessage(UiText.StringResource(R.string.export_saved, it))
+                        AppListEvent.ShowMessage(UiText.StringResource(R.string.export_saved, it), isSuccess = true)
                     )
                 }
                 .onFailure { e ->

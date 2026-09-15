@@ -152,6 +152,15 @@ class ToUserPreferencesTest {
         assertTrue(settings.toUserPreferences().allowLegacyApkInstall)
     }
 
+    @Test
+    fun `support declaration restores from user settings rather than per-install state`() {
+        val supporter = preferencesOf(Keys.ALREADY_SUPPORTS_THOR to true)
+
+        assertFalse(emptyPreferences().toUserPreferences().alreadySupportsThor)
+        assertTrue(supporter.toUserPreferences().alreadySupportsThor)
+        assertFalse(emptyPreferences().toUserPreferences(supporter).alreadySupportsThor)
+    }
+
     /** Every entry round-trips, so a rename of one is caught here rather than on a user's device. */
     @Test
     fun `each default tab survives the write-read round trip`() {

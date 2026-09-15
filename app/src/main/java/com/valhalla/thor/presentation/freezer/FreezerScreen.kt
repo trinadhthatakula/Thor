@@ -70,6 +70,9 @@ import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.OperationFeedbackHost
+import com.valhalla.thor.presentation.common.OperationMessage
+import com.valhalla.thor.presentation.common.rememberOperationFeedback
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -104,6 +107,7 @@ fun FreezerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val operationFeedback = rememberOperationFeedback()
     val hasPrivilege = state.isRoot || state.isShizuku || state.isDhizuku
     val noDisabledAppsFoundMessage = stringResource(R.string.no_disabled_apps_found)
 
@@ -203,7 +207,10 @@ fun FreezerScreen(
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
             is FreezerEvent.ShowToast ->
-                Toast.makeText(context, event.message.asString(context), Toast.LENGTH_SHORT).show()
+                operationFeedback.show(
+                    OperationMessage(event.message, event.isSuccess),
+                    allowSupport = freezerPrompt == null && state.multiSelection.isEmpty(),
+                )
 
             is FreezerEvent.ShowFreezerPrompt ->
                 freezerPrompt = FreezerPrompt(event.packageName, event.appName)
@@ -225,6 +232,12 @@ fun FreezerScreen(
     }
 
     Scaffold(
+        snackbarHost = {
+            OperationFeedbackHost(
+                operationFeedback,
+                enabled = freezerPrompt == null && state.multiSelection.isEmpty(),
+            )
+        },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->

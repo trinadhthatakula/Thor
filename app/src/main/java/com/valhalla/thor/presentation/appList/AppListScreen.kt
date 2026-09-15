@@ -4,7 +4,6 @@
 package com.valhalla.thor.presentation.appList
 
 import android.content.Intent
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -55,6 +54,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.OperationFeedbackHost
+import com.valhalla.thor.presentation.common.OperationMessage
+import com.valhalla.thor.presentation.common.rememberOperationFeedback
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.AppListType
@@ -97,6 +99,7 @@ fun AppListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val operationFeedback = rememberOperationFeedback()
     // The package, not the AppInfo, and rememberSaveable rather than remember: AppInfoSheet parks a
     // composable-scoped ViewModelStore on this entry's store and relies on re-entering composition
     // to release it, so the sheet has to come back after a configuration change. Resolving against
@@ -174,7 +177,10 @@ fun AppListScreen(
         when (event) {
             is AppListEvent.RequestReinstall -> onMultiAppAction(MultiAppAction.ReInstall(event.apps))
             is AppListEvent.ShowMessage ->
-                Toast.makeText(context, event.message.asString(context), Toast.LENGTH_SHORT).show()
+                operationFeedback.show(
+                    OperationMessage(event.message, event.isSuccess),
+                    allowSupport = freezerPrompt == null,
+                )
 
             is AppListEvent.ShowFreezerPrompt ->
                 freezerPrompt = event.prompt
@@ -352,6 +358,11 @@ fun AppListScreen(
                 )
             }
         }
+        OperationFeedbackHost(
+            operationFeedback,
+            enabled = freezerPrompt == null,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+        )
         FreezerPromptSnackbar(
             visible = freezerPrompt != null,
             appName = freezerPrompt?.appName,

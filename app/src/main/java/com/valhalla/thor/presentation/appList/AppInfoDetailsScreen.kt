@@ -83,6 +83,8 @@ import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.presentation.widgets.StatusChip
 import com.valhalla.thor.presentation.widgets.appHeaderIconGlowInset
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.OperationFeedbackHost
+import com.valhalla.thor.presentation.common.rememberOperationFeedback
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.ComponentControlBlocker
@@ -116,16 +118,20 @@ fun AppInfoDetailsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val operationFeedback = rememberOperationFeedback()
 
     LaunchedEffect(packageName) {
         viewModel.loadAppDetails(packageName)
     }
 
     ObserveAsEvents(viewModel.events) { msg ->
-        Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
+        operationFeedback.show(msg, allowSupport = state.freezerPrompt == null)
     }
 
     Scaffold(
+        snackbarHost = {
+            OperationFeedbackHost(operationFeedback, enabled = state.freezerPrompt == null)
+        },
         topBar = {
             if (!showOnlyHeaderAndActions && !showOnlyTabs) {
                 Row(
@@ -969,146 +975,155 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
     val viewModel: ComponentControlViewModel = koinViewModel(key = packageName)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val operationFeedback = rememberOperationFeedback()
 
     LaunchedEffect(packageName, details.components) {
         viewModel.load(packageName, details.components)
     }
 
     ObserveAsEvents(viewModel.events) { msg ->
-        Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
+        operationFeedback.show(msg)
     }
 
     // rememberSaveable so the search query survives rotation / config change.
     var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text(stringResource(R.string.search_components_placeholder)) },
-            leadingIcon = {
-                Icon(
-                    painterResource(R.drawable.round_search),
-                    contentDescription = null
-                )
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
-            )
-        )
-
-        val filtered = remember(searchQuery, state.snapshot) {
-            val filter = { items: List<ComponentDetail> ->
-                if (searchQuery.isEmpty()) items
-                else items.filter { it.className.contains(searchQuery, ignoreCase = true) }
-            }
-            ComponentLists(
-                activities = filter(state.snapshot.activities),
-                services = filter(state.snapshot.services),
-                receivers = filter(state.snapshot.receivers),
-                providers = filter(state.snapshot.providers)
-            )
-        }
-
-        // rememberSaveable so the expanded/collapsed sections survive rotation / config changes.
-        var activitiesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-        var servicesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-        var receiversExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-        var providersExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-
-        val clipboard = LocalClipboard.current
-        val coroutineScope = rememberCoroutineScope()
-        val classNameLabel = stringResource(R.string.class_name_label)
-        val onCopyClassName: (String) -> Unit = { className ->
-            // Toast inside the coroutine, after the await — see AppInfoSheet for why. setClipEntry
-            // suspends, so a Toast beside the launch reports a copy that has not happened yet and
-            // may never happen if the scope is cancelled.
-            coroutineScope.launch {
-                clipboard.setClipEntry(
-                    ClipEntry(
-                        android.content.ClipData.newPlainText(classNameLabel, className)
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text(stringResource(R.string.search_components_placeholder)) },
+                leadingIcon = {
+                    Icon(
+                        painterResource(R.drawable.round_search),
+                        contentDescription = null
                     )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
                 )
-                Toast.makeText(
-                    context,
-                    R.string.toast_copied_class_name,
-                    Toast.LENGTH_SHORT
-                ).show()
+            )
+
+            val filtered = remember(searchQuery, state.snapshot) {
+                val filter = { items: List<ComponentDetail> ->
+                    if (searchQuery.isEmpty()) items
+                    else items.filter { it.className.contains(searchQuery, ignoreCase = true) }
+                }
+                ComponentLists(
+                    activities = filter(state.snapshot.activities),
+                    services = filter(state.snapshot.services),
+                    receivers = filter(state.snapshot.receivers),
+                    providers = filter(state.snapshot.providers)
+                )
+            }
+
+            // rememberSaveable so the expanded/collapsed sections survive rotation / config changes.
+            var activitiesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+            var servicesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+            var receiversExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+            var providersExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+
+            val clipboard = LocalClipboard.current
+            val coroutineScope = rememberCoroutineScope()
+            val classNameLabel = stringResource(R.string.class_name_label)
+            val onCopyClassName: (String) -> Unit = { className ->
+                // Toast inside the coroutine, after the await — see AppInfoSheet for why. setClipEntry
+                // suspends, so a Toast beside the launch reports a copy that has not happened yet and
+                // may never happen if the scope is cancelled.
+                coroutineScope.launch {
+                    clipboard.setClipEntry(
+                        ClipEntry(
+                            android.content.ClipData.newPlainText(classNameLabel, className)
+                        )
+                    )
+                    Toast.makeText(
+                        context,
+                        R.string.toast_copied_class_name,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            ComponentControlBanner(
+                blocker = state.capability.blocker,
+                restrictedCount = state.restrictedCount,
+                onRestoreAll = viewModel::requestRestoreAll
+            )
+
+            val activitiesTitle =
+                stringResource(R.string.section_activities_title, filtered.activities.size)
+            val servicesTitle =
+                stringResource(R.string.section_services_title, filtered.services.size)
+            val receiversTitle =
+                stringResource(R.string.section_receivers_title, filtered.receivers.size)
+            val providersTitle =
+                stringResource(R.string.section_providers_title, filtered.providers.size)
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+            ) {
+                componentSection(
+                    keyPrefix = "activities",
+                    type = ComponentType.ACTIVITY,
+                    title = activitiesTitle,
+                    items = filtered.activities,
+                    state = state,
+                    expanded = activitiesExpanded,
+                    onToggle = { activitiesExpanded = !activitiesExpanded },
+                    onCopy = onCopyClassName,
+                    viewModel = viewModel
+                )
+                componentSection(
+                    keyPrefix = "services",
+                    type = ComponentType.SERVICE,
+                    title = servicesTitle,
+                    items = filtered.services,
+                    state = state,
+                    expanded = servicesExpanded,
+                    onToggle = { servicesExpanded = !servicesExpanded },
+                    onCopy = onCopyClassName,
+                    viewModel = viewModel
+                )
+                componentSection(
+                    keyPrefix = "receivers",
+                    type = ComponentType.RECEIVER,
+                    title = receiversTitle,
+                    items = filtered.receivers,
+                    state = state,
+                    expanded = receiversExpanded,
+                    onToggle = { receiversExpanded = !receiversExpanded },
+                    onCopy = onCopyClassName,
+                    viewModel = viewModel
+                )
+                componentSection(
+                    keyPrefix = "providers",
+                    type = ComponentType.PROVIDER,
+                    title = providersTitle,
+                    items = filtered.providers,
+                    state = state,
+                    expanded = providersExpanded,
+                    onToggle = { providersExpanded = !providersExpanded },
+                    onCopy = onCopyClassName,
+                    viewModel = viewModel
+                )
             }
         }
 
-        ComponentControlBanner(
-            blocker = state.capability.blocker,
-            restrictedCount = state.restrictedCount,
-            onRestoreAll = viewModel::requestRestoreAll
+        OperationFeedbackHost(
+            operationFeedback,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+            enabled = state.pendingConsent == null && !state.showRestoreAllConfirm,
         )
-
-        val activitiesTitle =
-            stringResource(R.string.section_activities_title, filtered.activities.size)
-        val servicesTitle =
-            stringResource(R.string.section_services_title, filtered.services.size)
-        val receiversTitle =
-            stringResource(R.string.section_receivers_title, filtered.receivers.size)
-        val providersTitle =
-            stringResource(R.string.section_providers_title, filtered.providers.size)
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
-        ) {
-            componentSection(
-                keyPrefix = "activities",
-                type = ComponentType.ACTIVITY,
-                title = activitiesTitle,
-                items = filtered.activities,
-                state = state,
-                expanded = activitiesExpanded,
-                onToggle = { activitiesExpanded = !activitiesExpanded },
-                onCopy = onCopyClassName,
-                viewModel = viewModel
-            )
-            componentSection(
-                keyPrefix = "services",
-                type = ComponentType.SERVICE,
-                title = servicesTitle,
-                items = filtered.services,
-                state = state,
-                expanded = servicesExpanded,
-                onToggle = { servicesExpanded = !servicesExpanded },
-                onCopy = onCopyClassName,
-                viewModel = viewModel
-            )
-            componentSection(
-                keyPrefix = "receivers",
-                type = ComponentType.RECEIVER,
-                title = receiversTitle,
-                items = filtered.receivers,
-                state = state,
-                expanded = receiversExpanded,
-                onToggle = { receiversExpanded = !receiversExpanded },
-                onCopy = onCopyClassName,
-                viewModel = viewModel
-            )
-            componentSection(
-                keyPrefix = "providers",
-                type = ComponentType.PROVIDER,
-                title = providersTitle,
-                items = filtered.providers,
-                state = state,
-                expanded = providersExpanded,
-                onToggle = { providersExpanded = !providersExpanded },
-                onCopy = onCopyClassName,
-                viewModel = viewModel
-            )
-        }
     }
 
     state.pendingConsent?.let { pending ->

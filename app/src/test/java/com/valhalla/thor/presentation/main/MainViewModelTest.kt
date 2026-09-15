@@ -45,6 +45,10 @@ import com.valhalla.thor.presentation.privilegeSweepResolver
 import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
 import com.valhalla.thor.presentation.systemApp
+import com.valhalla.thor.presentation.settings.BillingConnectionState
+import com.valhalla.thor.presentation.settings.FakeSupportBillingProcessor
+import com.valhalla.thor.presentation.settings.SubscriptionStatus
+import com.valhalla.thor.presentation.settings.SupportPromptCoordinator
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
@@ -95,6 +99,7 @@ class MainViewModelTest {
     private lateinit var appRepository: FakeAppRepository
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var prefs: FakePreferenceRepository
+    private val supportCoordinators = mutableListOf<SupportPromptCoordinator>()
     private val privilege = FakePrivilegeStateProvider(PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true))
 
     /** Stands in for `Context.cacheDir`: an export stages bundles and its manifest into it. */
@@ -113,6 +118,8 @@ class MainViewModelTest {
 
     @After
     fun tearDown() {
+        supportCoordinators.forEach { it.close() }
+        supportCoordinators.clear()
         cache.deleteRecursively()
     }
 
@@ -142,7 +149,10 @@ class MainViewModelTest {
         sweepController: FakePrivilegeSweepController = FakePrivilegeSweepController(),
         taskNavigationTargets: TaskNavigationTargets =
             TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+        billing: FakeSupportBillingProcessor = FakeSupportBillingProcessor(),
     ): MainViewModel {
+        val support = SupportPromptCoordinator(preferenceRepository, billing, mainDispatcherRule.dispatcher)
+            .also(supportCoordinators::add)
         val vm = MainViewModel(
             privilege = privilege,
             manageAppUseCase = ManageAppUseCase(systemRepository, DefaultPackageOperationCoordinator()),
@@ -166,7 +176,8 @@ class MainViewModelTest {
             shareSubmissionCoordinator = com.valhalla.thor.presentation.share.ShareSubmissionCoordinator(
                 shareLauncher, taskNavigationTargets, mainDispatcherRule.dispatcher,
             ),
-            ioDispatcher = mainDispatcherRule.dispatcher
+            ioDispatcher = mainDispatcherRule.dispatcher,
+            supportPromptCoordinator = support,
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
         return vm
@@ -1028,6 +1039,114 @@ class MainViewModelTest {
     }
 
     // --- Fix Store: the picker ----------------------------------------------------------------
+
+    @Test
+    fun `existing subscribers never receive an automatic or contextual invitation`() = runTest {
+        val billing = FakeSupportBillingProcessor(BillingConnectionState.CONNECTED).apply {
+            subscriptionStatus.value = SubscriptionStatus.SUBSCRIBED
+        }
+        val vm = viewModel(billing = billing)
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"))))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.loggerState.isSuccessful)
+        assertFalse(vm.uiState.value.canInviteToSupport)
+        vm.dismissLogger()
+        vm.openSupportFromSuccess()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
+        assertFalse(vm.uiState.value.prefs.hasShownSupportDeveloperPrompt)
+    }
+
+    @Test
+    fun `subscription purchase while logger is open clears its deferred invitation`() = runTest {
+        val billing = FakeSupportBillingProcessor(BillingConnectionState.CONNECTED).apply {
+            subscriptionStatus.value = SubscriptionStatus.NOT_SUBSCRIBED
+        }
+        val vm = viewModel(billing = billing)
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"))))
+        advanceUntilIdle()
+        billing.subscriptionStatus.value = SubscriptionStatus.PENDING
+        advanceUntilIdle()
+        vm.dismissLogger()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
+        assertFalse(vm.uiState.value.canInviteToSupport)
+    }
+
+    @Test
+    fun `logger support handoff opens one sheet and consumes the deferred automatic prompt`() = runTest {
+        val vm = viewModel()
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"))))
+        advanceUntilIdle()
+        vm.openSupportFromSuccess()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertTrue(vm.uiState.value.showSupportDeveloperPrompt)
+        vm.markSupportDeveloperPromptShown()
+        vm.dismissLogger()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
+        assertTrue(vm.uiState.value.canInviteToSupport)
+        vm.openSupportFromSuccess()
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.showSupportDeveloperPrompt)
+    }
+
+    @Test
+    fun `a partially successful batch earns neither logger support nor the automatic sheet`() = runTest {
+        system.failWith("forceStopApp:com.b", IllegalStateException("denied"))
+        val vm = viewModel()
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.loggerState.isComplete)
+        assertFalse(vm.uiState.value.loggerState.isSuccessful)
+        vm.dismissLogger()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
+    }
+
+    @Test
+    fun `quick action success is distinguished from failure for actionable feedback`() = runTest {
+        val vm = viewModel()
+        val messages = mutableListOf<MainSideEffect.Message>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) {
+            vm.effect.collect { if (it is MainSideEffect.Message) messages += it }
+        }
+        vm.onAppAction(AppClickAction.Kill(userApp("com.a")))
+        advanceUntilIdle()
+        system.failWith("forceStopApp:com.a", IllegalStateException("denied"))
+        vm.onAppAction(AppClickAction.Kill(userApp("com.a")))
+        advanceUntilIdle()
+        assertEquals(listOf(true, false), messages.map { it.isSuccess })
+    }
+
+    @Test
+    fun `automatic support waits until the app action sheet is dismissed`() = runTest {
+        val vm = viewModel()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.effect.collect {} }
+        vm.onOperationFeedbackHostChanged(true)
+        vm.onAppAction(AppClickAction.Kill(userApp("com.a")))
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
+        vm.onOperationFeedbackHostChanged(false)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.showSupportDeveloperPrompt)
+    }
+
+    @Test
+    fun `a later failed action clears the app sheet's deferred invitation`() = runTest {
+        val vm = viewModel()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.effect.collect {} }
+        vm.onOperationFeedbackHostChanged(true)
+        vm.onAppAction(AppClickAction.Kill(userApp("com.a")))
+        advanceUntilIdle()
+        system.failWith("forceStopApp:com.a", IllegalStateException("denied"))
+        vm.onAppAction(AppClickAction.Kill(userApp("com.a")))
+        advanceUntilIdle()
+        vm.onOperationFeedbackHostChanged(false)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
+    }
 
     @Test
     fun `home fix store waits for the first privilege probe before opening picker`() = runTest {

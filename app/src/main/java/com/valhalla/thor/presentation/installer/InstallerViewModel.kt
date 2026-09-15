@@ -70,6 +70,8 @@ class InstallerViewModel(
 ) : ViewModel() {
 
     val installState = eventBus.events
+    private val _isInstallCallActive = MutableStateFlow(false)
+    val isInstallCallActive: StateFlow<Boolean> = _isInstallCallActive.asStateFlow()
 
     private val _installMode = MutableStateFlow(InstallMode.NORMAL)
     val installMode: StateFlow<InstallMode> = _installMode.asStateFlow()
@@ -306,12 +308,18 @@ class InstallerViewModel(
             request.uri == pendingUri && request.mode == _installMode.value
 
     private suspend fun install(request: InstallRequest, bypassLowTargetSdkBlock: Boolean) {
-        runInstallerPresentationBoundary(eventBus) {
-            repository.installPackage(
-                request.analysis.staged, request.uri, request.mode,
-                request.canDowngrade, request.grantAllPermissions,
-                bypassLowTargetSdkBlock = bypassLowTargetSdkBlock,
-            )
+        _isInstallCallActive.value = true
+        try {
+            runInstallerPresentationBoundary(eventBus) {
+                repository.installPackage(
+                    request.analysis.staged, request.uri, request.mode,
+                    request.canDowngrade, request.grantAllPermissions,
+                    bypassLowTargetSdkBlock = bypassLowTargetSdkBlock,
+                )
+            }
+        } finally {
+            // APK installation may emit Success before archive game data has been placed.
+            _isInstallCallActive.value = false
         }
     }
 

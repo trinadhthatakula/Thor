@@ -56,6 +56,7 @@ data class UserPreferences(
 
     // Support Developer Prompt
     val hasShownSupportDeveloperPrompt: Boolean = false,
+    val alreadySupportsThor: Boolean = false,
 
     // Animation Intensity
     val animationIntensity: AnimationIntensity = AnimationIntensity.MEDIUM,

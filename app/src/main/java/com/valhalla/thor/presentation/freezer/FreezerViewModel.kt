@@ -62,7 +62,7 @@ data class FreezerPrompt(val packageName: String, val appName: String?)
 // One-off UI feedback that must fire exactly once — kept off the UiState StateFlow so it isn't
 // re-delivered on recomposition/config change. Collected in FreezerScreen via ObserveAsEvents.
 sealed interface FreezerEvent {
-    data class ShowToast(val message: UiText) : FreezerEvent
+    data class ShowToast(val message: UiText, val isSuccess: Boolean = false) : FreezerEvent
     data class ShowFreezerPrompt(val packageName: String, val appName: String?) : FreezerEvent
 
     /**
@@ -321,7 +321,7 @@ class FreezerViewModel(
                         packageNames.size,
                         failures.size
                     )
-                }
+                }, isSuccess = failures.isEmpty() && succeeded.isNotEmpty()
             )
         }
     }
@@ -603,7 +603,7 @@ class FreezerViewModel(
             freezerRepository.add(packageName)
             // After the write, never before: "Added to Freezer" emitted first would be the only
             // thing the user is told about a row that then failed to land.
-            emitToast(UiText.StringResource(R.string.added_to_freezer_success))
+            emitToast(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
         }
     }
 
@@ -628,7 +628,7 @@ class FreezerViewModel(
                         _events.send(FreezerEvent.ShowFreezerPrompt(packageName, appName))
                     } else {
                         emitToast(
-                            UiText.StringResource(R.string.frozen_success, appName ?: packageName)
+                            UiText.StringResource(R.string.frozen_success, appName ?: packageName), isSuccess = true
                         )
                     }
                 }
@@ -654,7 +654,7 @@ class FreezerViewModel(
                 .onSuccess {
                     appShortcuts.refreshAppShortcut(packageName)
                     emitToast(
-                        UiText.StringResource(R.string.unfrozen_success, appName ?: packageName)
+                        UiText.StringResource(R.string.unfrozen_success, appName ?: packageName), isSuccess = true
                     )
                 }
                 .onFailure { e ->
@@ -665,7 +665,8 @@ class FreezerViewModel(
 
     // --- Feedback ---
 
-    private suspend fun emitToast(text: UiText) = _events.send(FreezerEvent.ShowToast(text))
+    private suspend fun emitToast(text: UiText, isSuccess: Boolean = false) =
+        _events.send(FreezerEvent.ShowToast(text, isSuccess))
 
     /**
      * [emitToast] from somewhere that cannot suspend.
@@ -793,7 +794,7 @@ class FreezerViewModel(
             // two-facts-in-order convention `AppInfoDetailsViewModel`'s guards use for the same
             // succeeded-then-threw shape.
             if (succeeded > 0) {
-                emitToast(UiText.PluralsResource(R.plurals.added_to_freezer_count_success, succeeded))
+                emitToast(UiText.PluralsResource(R.plurals.added_to_freezer_count_success, succeeded), isSuccess = failures.isEmpty())
             }
             if (failures.isNotEmpty()) {
                 // Say what the database said. Every app in this list was already disabled before the

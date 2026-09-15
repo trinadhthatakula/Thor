@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,7 +59,8 @@ data class SupportTab(
 @Composable
 fun SupportDeveloperBottomSheet(
     actions: List<SupportAction>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onAlreadySupports: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -91,6 +93,7 @@ fun SupportDeveloperBottomSheet(
                 }
                 SupportActionRow(action = action)
             }
+            AlreadySupportsButton(onAlreadySupports)
         }
     }
 }
@@ -104,7 +107,8 @@ fun SupportDeveloperBottomSheet(
 fun SupportDeveloperTabbedBottomSheet(
     tabs: List<SupportTab>,
     onDismiss: () -> Unit,
-    initialTab: Int = 0
+    initialTab: Int = 0,
+    onAlreadySupports: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -156,6 +160,19 @@ fun SupportDeveloperTabbedBottomSheet(
                 }
                 SupportActionRow(action = action)
             }
+            AlreadySupportsButton(onAlreadySupports)
+        }
+    }
+}
+
+@Composable
+private fun AlreadySupportsButton(onClick: (() -> Unit)?) {
+    if (onClick != null) {
+        TextButton(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        ) {
+            Text(stringResource(R.string.support_already_support))
         }
     }
 }
