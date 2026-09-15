@@ -37,7 +37,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
@@ -104,6 +103,7 @@ class AppInfoDetailsViewModel(
     private val _uiState = MutableStateFlow(AppInfoDetailsUiState())
     val uiState = _uiState.asStateFlow()
     private val membershipPackage = MutableStateFlow<String?>(null)
+    private var membershipJob: Job? = null
     private var detailLoadJob: Job? = null
 
     init {
@@ -116,60 +116,66 @@ class AppInfoDetailsViewModel(
                 }
             }
         }
-        viewModelScope.launch {
-            membershipPackage.collectLatest { packageName ->
-                if (packageName == null) return@collectLatest
-                combine(
-                    freezeProfileRepository.observeProfiles(),
-                    freezerRepository.getAll(),
-                ) { profiles, watchlist ->
-                    AppProfileMembership(
-                        packageName = packageName,
-                        profiles = profiles.filter { packageName in it.packageNames },
-                        isInFreezer = packageName in watchlist,
-                    )
-                }
-                    .distinctUntilChanged()
-                    .flowOn(ioDispatcher)
-                    .retryWhen { error, attempt ->
-                        if (error is CancellationException || attempt >= 2) false
-                        else {
-                            delay(500)
-                            true
-                        }
-                    }
-                    .catch { error ->
-                        if (error is CancellationException) throw error
-                        Logger.e("AppInfoDetailsViewModel", "Profile membership read failed", error)
-                        _uiState.update {
-                            if (membershipPackage.value == packageName) it.copy(profileMembership = null)
-                            else it
-                        }
-                    }
-                    .collect { membership ->
-                        currentCoroutineContext().ensureActive()
-                        _uiState.update {
-                            if (membershipPackage.value == packageName) it.copy(profileMembership = membership)
-                            else it
-                        }
-                    }
-            }
-        }
     }
 
     /** Observes names and membership without loading the manifest, permissions, or OBB data. */
     fun observeProfileMembership(packageName: String) {
-        if (membershipPackage.value == packageName) return
-        detailLoadJob?.cancel()
-        _uiState.update {
-            it.copy(
-                profileMembership = null,
-                detailedInfo = it.detailedInfo?.takeIf { details -> details.appInfo.packageName == packageName },
-                obbProbe = null,
-                errorMessage = null,
-            )
-        }
+        val samePackage = membershipPackage.value == packageName
+        // A completed read can be retried for the same app; a live subscription stays shared.
+        if (samePackage && membershipJob?.isActive == true) return
+        membershipJob?.cancel()
         membershipPackage.value = packageName
+        if (!samePackage) {
+            detailLoadJob?.cancel()
+            _uiState.update {
+                it.copy(
+                    profileMembership = null,
+                    isInFreezer = false,
+                    detailedInfo = it.detailedInfo?.takeIf { details -> details.appInfo.packageName == packageName },
+                    obbProbe = null,
+                    errorMessage = null,
+                )
+            }
+        }
+        membershipJob = viewModelScope.launch {
+            combine(
+                freezeProfileRepository.observeProfiles(),
+                freezerRepository.getAll(),
+            ) { profiles, watchlist ->
+                AppProfileMembership(
+                    packageName = packageName,
+                    profiles = profiles.filter { packageName in it.packageNames },
+                    isInFreezer = packageName in watchlist,
+                )
+            }
+                .distinctUntilChanged()
+                .flowOn(ioDispatcher)
+                .retryWhen { error, attempt ->
+                    if (error is CancellationException || attempt >= 2) false
+                    else {
+                        delay(500)
+                        true
+                    }
+                }
+                .catch { error ->
+                    if (error is CancellationException) throw error
+                    currentCoroutineContext().ensureActive()
+                    Logger.e("AppInfoDetailsViewModel", "Profile membership read failed", error)
+                    _uiState.update {
+                        if (membershipPackage.value == packageName) it.copy(profileMembership = null)
+                        else it
+                    }
+                }
+                .collect { membership ->
+                    currentCoroutineContext().ensureActive()
+                    _uiState.update {
+                        if (membershipPackage.value == packageName) it.copy(
+                            profileMembership = membership,
+                            isInFreezer = membership.isInFreezer,
+                        ) else it
+                    }
+                }
+        }
     }
 
     // One-off toast feedback lives here (not in UiState) so it fires exactly once and is never
@@ -281,7 +287,10 @@ class AppInfoDetailsViewModel(
                         isShizuku = hasShizuku,
                         isDhizuku = hasDhizuku,
                         detailedInfo = details,
-                        isInFreezer = inFreezer
+                        // The watchlist may have changed while heavy details were loading.
+                        isInFreezer = it.profileMembership
+                            ?.takeIf { membership -> membership.packageName == packageName }
+                            ?.isInFreezer ?: inFreezer
                     )
                 }
             } else {
@@ -325,12 +334,14 @@ class AppInfoDetailsViewModel(
         // here, fixes all seven at the same point and says nothing, which is the correct amount.
         val inFreezer = withContext(ioDispatcher) { isInFreezer(packageName) }
         val details = appRepository.getDetailedAppInfo(packageName)
-        if (details != null && (membershipPackage.value == null || membershipPackage.value == packageName)) {
+        if (details != null) {
             _uiState.update {
-                it.copy(
+                if (membershipPackage.value == null || membershipPackage.value == packageName) it.copy(
                     detailedInfo = details,
-                    isInFreezer = inFreezer
-                )
+                    isInFreezer = it.profileMembership
+                        ?.takeIf { membership -> membership.packageName == packageName }
+                        ?.isInFreezer ?: inFreezer
+                ) else it
             }
         }
     }
@@ -380,12 +391,23 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 appliedButUnannounced = true
                 appShortcuts.refreshAppShortcut(packageName)
-                val inFreezer = withContext(ioDispatcher) { isInFreezer(packageName) }
+                val membershipSnapshot = withContext(ioDispatcher) { isInFreezer(packageName) }
+                val inFreezer = _uiState.value.profileMembership
+                    ?.takeIf { membership -> membership.packageName == packageName }
+                    ?.isInFreezer ?: membershipSnapshot
                 if (freeze && !inFreezer) {
                     // Don't auto-add — prompt the user to add it to the Freezer instead.
                     _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
                 } else {
-                    _uiState.update { it.copy(isInFreezer = inFreezer) }
+                    _uiState.update {
+                        if (membershipPackage.value == null || membershipPackage.value == packageName) {
+                            it.copy(
+                                isInFreezer = it.profileMembership
+                                    ?.takeIf { membership -> membership.packageName == packageName }
+                                    ?.isInFreezer ?: inFreezer,
+                            )
+                        } else it
+                    }
                     // Feedback follows refresh so a later failure cannot carry a support action.
                 }
                 // Refresh detail only — no privilege re-probe, no loader flash.

@@ -624,11 +624,13 @@ class FreezerViewModel(
                 val saved = when (removal) {
                     is ProfileRemoval.Update -> runProfileWrite(
                         R.string.error_profile_name_taken, R.string.profile_removal_write_failed,
+                        onFailure = { showProfileRemovalError(it) },
                     ) {
                         freezeProfileRepository.update(removal.profileId, removal.name, removal.packageNames)
                     }
                     is ProfileRemoval.Delete -> runProfileWrite(
                         R.string.error_profile_delete_failed, R.string.profile_removal_write_failed,
+                        onFailure = { showProfileRemovalError(it) },
                     ) {
                         freezeProfileRepository.delete(removal.profileId)
                     }
@@ -643,8 +645,6 @@ class FreezerViewModel(
                         }
                         is ProfileRemoval.Delete -> emitToast(UiText.StringResource(R.string.profile_deleted))
                     }
-                } else {
-                    showProfileRemovalError(R.string.profile_removal_write_failed)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -680,8 +680,10 @@ class FreezerViewModel(
             }
     }
 
-    private suspend fun showProfileRemovalError(@StringRes message: Int) {
-        val uiMessage = UiText.StringResource(message)
+    private suspend fun showProfileRemovalError(@StringRes message: Int) =
+        showProfileRemovalError(UiText.StringResource(message))
+
+    private suspend fun showProfileRemovalError(uiMessage: UiText) {
         if (_uiState.value.profileRemovalRecovery != null) {
             _uiState.update { it.copy(profileRemovalRecovery = it.profileRemovalRecovery?.copy(error = uiMessage)) }
         } else {
@@ -709,6 +711,7 @@ class FreezerViewModel(
     private suspend fun runProfileWrite(
         @StringRes constraintMessage: Int,
         @StringRes fallbackMessage: Int? = null,
+        onFailure: suspend (UiText) -> Unit = { emitToast(it) },
         block: suspend () -> Unit
     ): Boolean {
         try {
@@ -718,10 +721,10 @@ class FreezerViewModel(
             throw e
         } catch (e: SQLiteConstraintException) {
             Logger.e("FreezeViewModel", "profile write rejected by a constraint", e)
-            emitToast(UiText.StringResource(constraintMessage))
+            onFailure(UiText.StringResource(constraintMessage))
         } catch (e: Exception) {
             Logger.e("FreezeViewModel", "profile write failed", e)
-            emitToast(fallbackMessage?.let { UiText.StringResource(it) } ?: e.asUiText())
+            onFailure(fallbackMessage?.let { UiText.StringResource(it) } ?: e.asUiText())
         }
         return false
     }
