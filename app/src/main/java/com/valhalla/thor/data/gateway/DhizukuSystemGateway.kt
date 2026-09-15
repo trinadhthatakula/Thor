@@ -3,12 +3,15 @@
 
 package com.valhalla.thor.data.gateway
 
+import android.app.AppOpsManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.pm.ApplicationInfo
 import com.valhalla.thor.R
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
-import com.valhalla.thor.data.source.local.shizuku.displayLine
+import com.valhalla.thor.data.source.local.dhizuku.OWNER_OPERATION_TIMEOUT_MS
+import com.valhalla.thor.data.source.local.dhizuku.uninstallVerified
 import com.valhalla.thor.data.source.local.SessionApk
 import com.valhalla.thor.data.source.local.isEffectivelyEnabled
 import com.valhalla.thor.data.source.local.installViaSessionCommand
@@ -28,7 +31,6 @@ import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import kotlinx.coroutines.flow.first
 import java.io.File
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
@@ -113,40 +115,26 @@ class DhizukuSystemGateway internal constructor(
     override suspend fun forceStopApp(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        return if (reflector.forceStop(packageName)) Result.success(Unit)
-        else Result.failure(Exception("Dhizuku: Force stop failed. Shell command and reflection both denied."))
-    }
+    ): Result<Unit> = Result.failure(
+        UiTextException(UiText.StringResource(R.string.force_stop_unsupported_dhizuku))
+    )
 
-    /**
-     * Always a failure, and that is the correction rather than a gap.
-     *
-     * `pm trim-caches` is a shell command, and Dhizuku has no shell: [executeShellCommand] runs
-     * through the Dhizuku app's own uid, which `PackageManagerShellCommand` refuses. The device
-     * owner API has no cache-clearing member at all — `DevicePolicyManager` can wipe a profile, not
-     * a cache — and the reflective `deleteApplicationCacheFiles*` rung this gateway used to carry
-     * died in a double-wrapped binder belonging to a privilege mode the user had not set up. Three
-     * doors, all shut, so this says so in a sentence the user can act on instead of failing with a
-     * shell error that reads like a bug.
-     */
+    /** The owner UID lacks cache-trimming authority, and DPM has no cache-only clearing API. */
     override suspend fun clearAllCaches(
         targetFreeBytes: Long?,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> {
-        // Localized because `MainViewModel.quickAction` drops `e.message` into
-        // R.string.error_format, which would otherwise put an English sentence inside a translated
-        // one.
         return Result.failure(
-            Exception(context.getString(R.string.clear_all_caches_unsupported_dhizuku))
+            UiTextException(UiText.StringResource(R.string.clear_all_caches_unsupported_dhizuku))
         )
     }
 
     override suspend fun clearAppData(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        return if (reflector.clearData(packageName)) Result.success(Unit)
-        else Result.failure(Exception("Dhizuku: Clear data failed. Shell pm clear and reflection both failed."))
+    ): Result<Unit> = withContext(ioDispatcher) {
+        if (reflector.clearData(packageName, execution.ownerOperationTimeoutMillis())) Result.success(Unit)
+        else Result.failure(UiTextException(UiText.StringResource(R.string.dhizuku_clear_data_failed)))
     }
 
     override suspend fun setAppDisabled(
@@ -244,37 +232,24 @@ class DhizukuSystemGateway internal constructor(
         return Result.failure(Exception("Dhizuku: Reboot not supported directly. Use Root mode instead."))
     }
 
-    /**
-     * The user-facing uninstall. Removes the app's data with it — no `-k` — because that is what
-     * somebody who asked to uninstall an app wants; the freeze path has its own data-preserving
-     * device-policy hide operation and must never come through here.
-     *
-     * Judged on FLAG_INSTALLED rather than on `pm`'s exit code, which lies in both directions, and
-     * the platform's own words are carried into the failure instead of "Uninstall failed."
-     *
-     * "`pm` said yes and the package is still here" gets its own sentence rather than being folded
-     * into the generic one, the same way the freeze path above splits it. Without the split, `pm`'s
-     * own word — `Success` — is pasted into a sentence beginning "Uninstall failed", which reads as
-     * nonsense and hides what happened. It is reachable: removing an *updated* system app takes the
-     * update off and leaves the factory version installed, so `pm` exits 0 and FLAG_INSTALLED never
-     * clears. Reporting failure there is still right — the app is on the device and the caller
-     * falls back to the platform's own uninstall dialog — the message just has to say so.
-     */
+    /** Await this operation's result and a readable absent state; a query failure is not absence. */
     override suspend fun uninstallApp(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        val removal = reflector.uninstallApp(packageName)
-        if (!reflector.isAppInstalled(packageName)) return Result.success(Unit)
-        if (removal.succeeded) {
-            return Result.failure(
-                Exception(
-                    "Dhizuku: uninstall reported success but $packageName is still installed " +
-                        "for this user."
-                )
+    ): Result<Unit> = withContext(ioDispatcher) {
+        val removal = reflector.uninstallApp(packageName, execution.ownerOperationTimeoutMillis())
+        val installed = reflector.readInstalledState(packageName)
+        if (uninstallVerified(removal.succeeded, installed)) {
+            Result.success(Unit)
+        } else {
+            Logger.e(
+                "DhizukuSystemGateway",
+                "Uninstall $packageName failed: status=${removal.exitCode}, " +
+                    "detail=${removal.platformMessage}, installed=${installed.getOrNull()}",
+                installed.exceptionOrNull(),
             )
+            Result.failure(UiTextException(UiText.StringResource(R.string.dhizuku_uninstall_failed)))
         }
-        return Result.failure(Exception("Dhizuku: Uninstall failed — ${removal.displayLine()}"))
     }
 
     /**
@@ -362,101 +337,80 @@ class DhizukuSystemGateway internal constructor(
         packageName: String,
         permissionName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
-        }
-        val userId = getPackageUserId(packageName)
-            ?: return Result.failure(Exception("Dhizuku: cannot resolve the Android user for $packageName; refusing to grant on user 0."))
-        val escapedPackageName = packageName.escapeForShell()
-        val escapedPermissionName = permissionName.escapeForShell()
-        return try {
-            val result = DhizukuHelper.execute("pm grant --user $userId $escapedPackageName $escapedPermissionName")
-            val grantFailure = {
-                Result.failure<Unit>(
-                    Exception("Dhizuku: pm grant failed with exit code ${result.first}: ${result.second}")
-                )
-            }
-            if (permissionName != GET_INSTALLED_APPS_PERMISSION) {
-                return if (result.first == 0) Result.success(Unit) else grantFailure()
-            }
-
-            // The app-ops are a *parallel route* to package visibility, not a follow-up to the
-            // grant, so they run whatever `pm grant` returned. On the ROMs this permission exists
-            // for — MIUI/HyperOS, ColorOS, OriginOS — the AOSP `pm grant` of a vendor-defined
-            // permission frequently exits non-zero while the app-op is the thing that actually
-            // opens the package list, which is why installedAppsAppOpGrantCommands fires three
-            // spellings of it. Gating them on the grant succeeding is what made a Chinese-ROM
-            // install come back with Thor as the only visible app: the grant failed, the app-op
-            // was never set, and nothing else in the app knows how to open that gate.
-            val appOpTook = installedAppsAppOpGrantCommands(escapedPackageName, userId)
-                .map { DhizukuHelper.execute(it) }
-                .any { it.first == 0 }
-
-            // The report follows the gate that actually opened, for every package and not just
-            // Thor's own — RootSystemGateway.grantPermission holds the reasoning. Short version:
-            // this method is not self-only, and restricting the fold to self-grants left a
-            // third-party grant on a MIUI-class ROM writing the app-op, reporting failure, and
-            // leaving the row OFF, from where the screen can only ever grant again — so nothing
-            // could reach revokePermission to close the op it had just opened.
-            if (result.first == 0 || appOpTook) Result.success(Unit)
-            else grantFailure()
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    ): Result<Unit> = changePermission(packageName, permissionName, granted = true)
 
     override suspend fun revokePermission(
         packageName: String,
         permissionName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = changePermission(packageName, permissionName, granted = false)
+
+    private suspend fun changePermission(
+        packageName: String,
+        permissionName: String,
+        granted: Boolean,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        fun failure(): Result<Unit> = Result.failure(
+            UiTextException(UiText.StringResource(R.string.failed_to_modify_permission))
+        )
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+            return@withContext failure()
         }
-        val userId = getPackageUserId(packageName)
-            ?: return Result.failure(Exception("Dhizuku: cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
-        val escapedPackageName = packageName.escapeForShell()
-        val escapedPermissionName = permissionName.escapeForShell()
-        return try {
-            val result = DhizukuHelper.execute("pm revoke --user $userId $escapedPackageName $escapedPermissionName")
-
-            // The revoke half of the parallel route: the app-op grant outlives `pm revoke`, so a
-            // revoke that only ran `pm revoke` reported success while package visibility stayed
-            // open, and nothing else in the app could close it. Issued whatever the revoke
-            // returned, and deliberately not folded into the result — all three resets failing is
-            // the ordinary outcome on any device that does not define this op, so reading that as a
-            // failed revoke would report one on every AOSP device. `pm revoke` stays the verdict.
-            if (permissionName == GET_INSTALLED_APPS_PERMISSION) {
-                installedAppsAppOpRevokeCommands(escapedPackageName, userId)
-                    .forEach { DhizukuHelper.execute(it) }
-            }
-
-            if (result.first == 0) Result.success(Unit)
-            else Result.failure(Exception("Dhizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
+        // DPM acts on its owner's user. Never let an unresolved/cross-user package select user 0.
+        val userId = reflector.getApplicationInfoOrNull(packageName)?.let { userIdOf(it.uid) }
+        if (userId != thorUserId) return@withContext failure()
+        try {
+            val policyChanged = DhizukuHelper.setRuntimePermission(
+                context, packageName, permissionName, granted,
+            )
+            val succeeded = if (permissionName == GET_INSTALLED_APPS_PERMISSION) {
+                changeInstalledAppsAppOps(packageName, userId, granted, policyChanged)
+            } else policyChanged
+            if (succeeded) Result.success(Unit) else failure()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Result.failure(e)
+            Logger.e("DhizukuSystemGateway", "Permission change failed for $packageName/$permissionName", e)
+            failure()
         }
     }
 
-    /**
-     * The Android user the package actually lives in.
-     *
-     * `pm grant`/`pm revoke` default to user 0 when no `--user` is passed, so on a work profile or a
-     * Xiaomi Second Space the change would hit the primary user's same-named package instead. Derived
-     * from the package's own uid, matching the Root and Shizuku gateways — a permission must not
-     * grant under one privilege mode and quietly miss under another.
-     *
-     * Dhizuku runs these as the Device Owner (user 0), which is not guaranteed to hold
-     * INTERACT_ACROSS_USERS, so a cross-user `--user` may be refused. That is the intended outcome:
-     * `pm` reports a real failure instead of silently mutating user 0's copy of the package. For the
-     * ordinary same-user case `--user <id>` is exactly what the bare command already did, and Dhizuku
-     * already passes `--user` on its install/uninstall paths.
-     *
-     * Null means the package could not be resolved at all; callers must fail rather than fall back to
-     * user 0, which is the original bug.
-     */
-    private fun getPackageUserId(packageName: String): Int? =
-        reflector.getApplicationInfoOrNull(packageName)?.let { userIdOf(it.uid) }
+    /** OEM package visibility can be an app-op even when its runtime permission cannot be granted. */
+    private fun changeInstalledAppsAppOps(
+        packageName: String,
+        userId: Int,
+        granted: Boolean,
+        policyChanged: Boolean,
+    ): Boolean {
+        val commands = if (granted) {
+            installedAppsAppOpGrantCommands(packageName.escapeForShell(), userId)
+        } else {
+            installedAppsAppOpRevokeCommands(packageName.escapeForShell(), userId)
+        }
+        val outcomes = commands.map { command ->
+            // These are our fixed appops-set builders: the operation immediately precedes the mode.
+            val operation = command.substringBeforeLast(' ').substringAfterLast(' ')
+            val before = DhizukuHelper.readAppOpMode(context, packageName, operation)
+            val (code, output) = DhizukuHelper.execute(command)
+            val after = DhizukuHelper.readAppOpMode(context, packageName, operation)
+            if (code != 0) Logger.d("DhizukuSystemGateway", "App-op $operation failed: $output")
+            AppOpChange(supported = before != null || after != null || code == 0, mode = after)
+        }.filter { it.supported }
+        if (granted) return policyChanged || outcomes.any { it.mode == AppOpsManager.MODE_ALLOWED }
 
+        val permissionDenied = context.packageManager.checkPermission(
+            GET_INSTALLED_APPS_PERMISSION, packageName,
+        ) != PackageManager.PERMISSION_GRANTED
+        // Reset every supported route. A read error or remaining UID-level allow cannot become a
+        // successful revoke. MODE_DEFAULT hands control back to the now-denied runtime permission.
+        return permissionDenied && if (outcomes.isEmpty()) policyChanged else outcomes.all {
+            it.mode == AppOpsManager.MODE_DEFAULT || it.mode == AppOpsManager.MODE_IGNORED ||
+                it.mode == AppOpsManager.MODE_ERRORED
+        }
+    }
+
+    private data class AppOpChange(val supported: Boolean, val mode: Int?)
+
+    private fun PrivilegeExecutionContext.ownerOperationTimeoutMillis(): Long =
+        commandTimeout?.inWholeMilliseconds ?: OWNER_OPERATION_TIMEOUT_MS
 }

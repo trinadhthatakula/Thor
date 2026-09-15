@@ -359,7 +359,8 @@ private fun categorySummary(
 
         SettingsCategory.INSTALLING -> listOf(
             stringResource(
-                if (prefs.autoReinstallEnabled) R.string.settings_summary_auto_reinstall_on
+                if (!state.canFixStore) R.string.setting_requires_root_or_shizuku
+                else if (prefs.autoReinstallEnabled) R.string.settings_summary_auto_reinstall_on
                 else R.string.settings_summary_auto_reinstall_off
             )
         )

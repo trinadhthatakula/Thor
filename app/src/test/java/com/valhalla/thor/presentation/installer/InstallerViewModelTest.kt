@@ -68,6 +68,36 @@ class InstallerViewModelTest {
     private var fixtureNumber = 0
 
     @Test
+    fun `unsupported install modes suppress saved and per-install grants`() = runTest {
+        for (mode in listOf(InstallMode.DHIZUKU, InstallMode.NORMAL, InstallMode.EXTERNAL)) {
+            val fixture = fixture()
+            fixture.preferences.setGrantAllPermissionsOnInstall(true)
+            fixture.parseReadyPackage()
+            fixture.viewModel.setGrantAllPermissions(true)
+            fixture.viewModel.setInstallMode(mode)
+            fixture.viewModel.startInstallation()
+            runCurrent()
+
+            assertEquals(false, fixture.repository.calls.single().grantAllPermissions)
+            assertTrue(fixture.preferences.shouldGrantAllPermissionsOnInstall())
+        }
+    }
+
+    @Test
+    fun `Root and Shizuku retain the per-install grant choice`() = runTest {
+        for (mode in listOf(InstallMode.ROOT, InstallMode.SHIZUKU)) {
+            val fixture = fixture()
+            fixture.parseReadyPackage()
+            fixture.viewModel.setGrantAllPermissions(true)
+            fixture.viewModel.setInstallMode(mode)
+            fixture.viewModel.startInstallation()
+            runCurrent()
+
+            assertEquals(true, fixture.repository.calls.single().grantAllPermissions)
+        }
+    }
+
+    @Test
     fun `startInstallation maps every typed execution failure to stable user text`() = runTest {
         executionFailures().forEach { failure ->
             val fixture = fixture(failure)

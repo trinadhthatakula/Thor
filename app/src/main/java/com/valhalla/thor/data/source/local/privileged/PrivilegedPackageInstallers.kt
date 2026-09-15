@@ -197,9 +197,8 @@ internal object PrivilegedPackageInstallers {
      * Puts [transport]'s wrapper around [binder] so the transact leaves as the privileged identity
      * instead of as Thor.
      *
-     * Single-wrapped, on purpose. `DhizukuHelper.asInterface` puts `ShizukuBinderWrapper` on top of
-     * Dhizuku's own wrapper, and that file documents at length why the resulting rungs are dead on a
-     * Dhizuku-only device. Nothing here repeats it.
+     * Each transport gets exactly its own wrapper. Adding a Shizuku wrapper to a Dhizuku binder
+     * would make device-owner operations depend on an unrelated Shizuku connection.
      */
     fun wrap(transport: PrivilegedInstallerTransport, binder: IBinder): IBinder = when (transport) {
         PrivilegedInstallerTransport.SHIZUKU -> ShizukuBinderWrapper(binder)

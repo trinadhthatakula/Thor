@@ -21,3 +21,12 @@ internal fun PackageManager.readInstallerPackageName(packageName: String): Strin
         @Suppress("DEPRECATION")
         getInstallerPackageName(packageName)
     }
+
+/** Installer attribution excludes the historical initiator; a failed read must still throw. */
+internal fun PackageManager.readInstallerOfRecord(packageName: String): String? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        getInstallSourceInfo(packageName).installingPackageName
+    } else {
+        @Suppress("DEPRECATION")
+        getInstallerPackageName(packageName)
+    }

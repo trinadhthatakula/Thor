@@ -363,9 +363,7 @@ class FreezerViewModel(
                             freezerRepository.add(packageName)
                         }
                         .onFailure { e ->
-                            emitToast(
-                                UiText.StringResource(R.string.error_format, e.message ?: "")
-                            )
+                            emitToast(e.asUiText())
                         }
                 } else {
                     // Restore first, drop the row second — the same ordering [removeFromFreezer]
@@ -383,9 +381,7 @@ class FreezerViewModel(
                     // app stays frozen.
                     manageAppUseCase.forceUnfreeze(packageName)
                         .onFailure { e ->
-                            emitToast(
-                                UiText.StringResource(R.string.error_format, e.message ?: "")
-                            )
+                            emitToast(e.asUiText())
                             return@launch
                         }
                     // Shortcut first, then the row — the same order as the bulk path above and
@@ -564,7 +560,7 @@ class FreezerViewModel(
             emitToast(UiText.StringResource(constraintMessage))
         } catch (e: Exception) {
             Logger.e("FreezeViewModel", "profile write failed", e)
-            emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
+            emitToast(e.asUiText())
         }
         return false
     }
@@ -662,7 +658,7 @@ class FreezerViewModel(
                     )
                 }
                 .onFailure { e ->
-                    emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                    emitToast(e.asUiText())
                 }
         }
     }

@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.supportsInstallTimePermissionGrants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -356,7 +357,11 @@ class InstallerViewModel(
         // sending that would turn "the user never answered" into "the user said no" and override a
         // setting that said yes. Passing null hands that resolution to the repository, which reads
         // the setting itself.
-        val grantAll = _grantAllOverride.value
+        val grantAll = if (supportsInstallTimePermissionGrants(mode)) {
+            _grantAllOverride.value
+        } else {
+            false
+        }
         val request = InstallRequest(selectionRevision, analysis, uri, mode, allowDowngrade, grantAll)
         val legacyInstall = supportsLowTargetSdkBypass(mode, Build.VERSION.SDK_INT) &&
             requiresLowTargetSdkBypass(analysis.metadata.targetSdk, Build.VERSION.SDK_INT)

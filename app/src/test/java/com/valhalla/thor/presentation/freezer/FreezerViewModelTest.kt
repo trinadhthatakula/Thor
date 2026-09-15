@@ -35,6 +35,7 @@ import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentityRegistry
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -427,6 +428,56 @@ class FreezerViewModelTest {
      * The manage sheet's single-app path, which had the same ordering and reported the failure over
      * a row that was already gone.
      */
+    @Test
+    fun `managed add preserves the localized Dhizuku freeze failure`() = runTest {
+        appRepository.apps.value = listOf(userApp("a"))
+        val reason = UiText.StringResource(R.string.dhizuku_freeze_failed)
+        system.failWith("setAppDisabled:a:true", UiTextException(reason))
+        val vm = viewModel()
+        val seen = events(vm)
+        runCurrent()
+
+        vm.toggleManaged("a", add = true)
+        runCurrent()
+
+        assertEquals(reason, seen.onlyToast())
+        assertFalse("A failed freeze cannot add a watchlist row", freezer.contains("a"))
+    }
+
+    @Test
+    fun `managed removal preserves the localized Dhizuku restore failure and the row`() = runTest {
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        freezer.add("a")
+        val reason = UiText.StringResource(R.string.dhizuku_unfreeze_failed)
+        system.failWith("setAppDisabled:a:false", UiTextException(reason))
+        val vm = viewModel()
+        val seen = events(vm)
+        runCurrent()
+
+        vm.toggleManaged("a", add = false)
+        runCurrent()
+
+        assertEquals(reason, seen.onlyToast())
+        assertTrue(freezer.contains("a"))
+        assertTrue(shortcuts.disabled.isEmpty())
+    }
+
+    @Test
+    fun `single unfreeze preserves the localized Dhizuku failure`() = runTest {
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        val reason = UiText.StringResource(R.string.dhizuku_unfreeze_failed)
+        system.failWith("setAppDisabled:a:false", UiTextException(reason))
+        val vm = viewModel()
+        val seen = events(vm)
+        runCurrent()
+
+        vm.unfreezeSingleApp("a", "App A")
+        runCurrent()
+
+        assertEquals(reason, seen.onlyToast())
+        assertTrue("Failed unfreeze must not refresh the shortcut", shortcuts.refreshed.isEmpty())
+    }
+
     @Test
     fun `the manage sheet keeps the row when the app will not come back`() = runTest {
         appRepository.apps.value = listOf(userApp("a", enabled = false))

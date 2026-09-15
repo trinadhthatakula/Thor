@@ -451,26 +451,27 @@ fun SettingsCategoryScreen(
                     SettingsRowId.AUTO_REINSTALL -> SettingsSwitchRow(
                         icon = R.drawable.settings_backup_restore,
                         title = stringResource(R.string.auto_reinstall),
-                        subtitle = stringResource(R.string.auto_reinstall_desc),
+                        subtitle = stringResource(
+                            if (state.canFixStore) R.string.auto_reinstall_desc
+                            else R.string.setting_requires_root_or_shizuku
+                        ),
                         checked = prefs.autoReinstallEnabled,
+                        enabled = state.canFixStore,
                         highlighted = lit,
                         onCheckedChange = { viewModel.setAutoReinstallEnabled(it) }
                     )
 
-                    // Gated on `hasPrivilege` because there is nothing for it to change without one:
-                    // with no privilege every install goes through the system installer, which asks
-                    // for permissions the ordinary way and has never taken orders from this toggle.
-                    // Left tappable-looking with no privilege it would read as "Thor is granting
-                    // everything and I cannot stop it", which is the opposite of what it does.
+                    // Install-time grants need Root or Shizuku. Device-owner policy grants
+                    // are a separate per-permission action, not an install option.
                     SettingsRowId.GRANT_ALL_PERMISSIONS -> SettingsSwitchRow(
                         icon = R.drawable.danger,
                         title = stringResource(R.string.grant_all_permissions),
-                        subtitle = privilegeAwareSubtitle(
-                            hasPrivilege,
-                            R.string.grant_all_permissions_desc
+                        subtitle = stringResource(
+                            if (state.canGrantPermissionsOnInstall) R.string.grant_all_permissions_desc
+                            else R.string.setting_requires_root_or_shizuku
                         ),
                         checked = prefs.grantAllPermissionsOnInstall,
-                        enabled = hasPrivilege,
+                        enabled = state.canGrantPermissionsOnInstall,
                         highlighted = lit,
                         onCheckedChange = { viewModel.setGrantAllPermissionsOnInstall(it) }
                     )

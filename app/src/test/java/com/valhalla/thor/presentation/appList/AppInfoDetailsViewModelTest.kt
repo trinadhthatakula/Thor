@@ -26,6 +26,7 @@ import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import androidx.lifecycle.viewModelScope
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
@@ -152,6 +153,46 @@ class AppInfoDetailsViewModelTest {
             system.calls
         )
         assertFalse(freezer.contains("a"))
+    }
+
+    @Test
+    fun `details watchlist removal preserves the localized Dhizuku failure`() = runTest {
+        loaded(userApp("a", enabled = false))
+        freezer.add("a")
+        val reason = UiText.StringResource(R.string.dhizuku_unfreeze_failed)
+        system.failWith("setAppDisabled:a:false", UiTextException(reason))
+        val vm = viewModel()
+        val seen = events(vm)
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        vm.addOrRemoveFromFreezer("a")
+        runCurrent()
+
+        assertEquals(listOf(reason), seen)
+        assertTrue(freezer.contains("a"))
+        assertTrue(shortcuts.disabled.isEmpty())
+    }
+
+    @Test
+    fun `details operation callbacks preserve resource-backed failures`() = runTest {
+        val actions: List<Pair<String, (AppInfoDetailsViewModel) -> Unit>> = listOf(
+            "setAppSuspended:a:true" to { vm -> vm.toggleSuspendState("a", true) },
+            "forceStopApp:a" to { vm -> vm.forceStopApp("a") },
+            "clearCache:a" to { vm -> vm.clearCache("a") },
+            "clearAppData:a" to { vm -> vm.clearData("a") },
+        )
+        val reason = UiText.StringResource(R.string.unknown_error_occurred)
+        for ((operation, invoke) in actions) {
+            system.failWith(operation, UiTextException(reason))
+            val vm = viewModel()
+            val seen = events(vm)
+
+            invoke(vm)
+            runCurrent()
+
+            assertEquals(operation, listOf(reason), seen)
+        }
     }
 
     @Test

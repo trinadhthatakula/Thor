@@ -60,7 +60,8 @@ for the presentation layer.
     - **Root (su)**: Via the Odin library (Kotlin-refactored fork of `libsu`).
     - **Shizuku**: Shell-command-first (`am`, `pm`, `appops`) with reflection fallback via
       `:bypass`.
-    - **Dhizuku**: Device Owner API with reflection fallback via `:bypass`.
+    - **Dhizuku**: Wrapped device-owner APIs and PackageInstaller sessions. Commands run at the
+      owner app’s UID, which does not carry shell/root permissions; reflection does not change that.
     - **Work Mode (`PrivilegeMode`)**: User-selectable privilege engine (ROOT / SHIZUKU / DHIZUKU)
       with automatic fallback strategy (Root → Shizuku → Dhizuku).
     - **Internal Bypass (`:bypass`)**: Custom Kotlin implementation using `VMRuntime` exemptions and
@@ -72,33 +73,29 @@ for the presentation layer.
 
 ## ✨ Key Features
 
-- **App Management**: Install, uninstall, freeze (disable/enable), suspend/unsuspend, and
+- **App Management**: Install, uninstall, freeze (disable/enable or device-owner hide/unhide), suspend/unsuspend, and
   background-restrict apps. Tracks `isSuspended` and `isDebuggable` flags directly on `AppInfo`.
 - **Work Mode**: User-selectable privilege engine (`PrivilegeMode`: ROOT, SHIZUKU, DHIZUKU) stored
   in `UserPreferences`. Falls back automatically if the preferred mode is unavailable.
 - **Batch Operations**: Batch freeze/unfreeze, reinstall, uninstall, kill, suspend/unsuspend, and
   clear data — all logged in real time through the terminal logger dialog.
-- **App Suspension**: Uses `IPackageManager` reflection to suspend apps, showing a custom "Thor"
-  -branded system dialog. Supports Android 10 through 13+ with version-specific fallbacks.
+- **App Suspension**: Root and Shizuku use package-manager routes; Dhizuku uses the owner’s
+  `DevicePolicyManager.setPackagesSuspended` API. Android can refuse protected packages.
 - **Background Restriction**: Restricts an app's background activity via `setAppRestricted`.
-- **Fix Store (Reinstall with Google)**: Reassigns installer to Play Store. Available in all
-  privilege modes (Root, Shizuku, Dhizuku).
-- **Clear Data / Clear Cache**: Available in all privilege modes; `clearAppData` uses `pm clear`
-  with multi-user support.
+- **Fix Store (Reinstall with Google)**: Reassigns installer attribution to Play Store through
+  Root or Shizuku. Dhizuku explicitly refuses this operation. Its ordinary APK replacement path
+  uses the actual owner package as installer and cannot promise Play attribution.
+- **Clear Data / Clear Cache**: Clear Data uses the active privileged route, including the
+  device-owner completion callback under Dhizuku. Per-app cache clearing requires Root;
+  whole-device cache clearing supports Root and Shizuku. Dhizuku lacks cache-clearing authority.
+- **Force Stop**: Available only when Root or Shizuku is active. A device owner has no force-stop API.
 - **Advanced Insights**: Installer source (resolved from package labels, not hardcoded), split APK
   indicators, version codes, SDK targets, `isSuspended`, `isDebuggable`.
-- **System App Support**: Uninstall or freeze system apps (requires any privilege mode). A freeze
-  disables the package and keeps its data. Only where the platform actually *refused* the disable
-  does it fall back to `pm uninstall -k --user N` — a **per-user removal, not a real uninstall**:
-  the APK stays on the read-only partition, the package record survives, and `-k` keeps both the
-  data directories and the runtime permission grants, so `pm install-existing --user N` restores
-  the app intact. That refusal is an OEM restriction, not an Android version. Dhizuku is the one
-  exception still on the old path: its gateway is not yet converted, so it removes for the current
-  user unconditionally and without `-k`. Note the fallback is unavailable to Shizuku at shell uid
-  on API 37, which answers it with `only root can delete system app for a particular user`.
-  `domain/model/FreezePolicy.kt` owns the rule; every reader of freeze state must handle both
-  mechanics, since devices carry system apps frozen the old way, when the removal ran first,
-  unconditionally, and without `-k`.
+- **System App Support**: Freeze keeps the APK and data: Root/Shizuku disable the package,
+  while Dhizuku hides it through device policy. A refused freeze is reported as a failure;
+  it does not fall back to uninstalling the app. Recovery still recognizes system packages removed
+  for the current user by older versions and attempts restoration through a supported route.
+  Separately disabling and hiding an app may require restoring each state with its owning mode.
 - **Security**: Biometric/device-credential lock for app access. Per-session authentication state.
 - **App Metadata Caching**: Room DB cache for `AppInfo`, invalidated via `lastUpdateTime`.
 - **Preferences** (`UserPreferences`): theme, AMOLED, dynamic color, biometric lock, sort/filter

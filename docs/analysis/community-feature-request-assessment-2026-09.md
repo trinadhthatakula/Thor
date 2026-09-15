@@ -170,8 +170,9 @@ change the demand signal.
 - #382: the available-mode selector is in `SettingsScreen` / `DashboardHeader`; the in-app Dhizuku
   request is implemented by `DhizukuHelper.requestPermission` and released in v1.95.1.
 - #445: PR #446 is merged into this `dev` snapshot.  Its default-off setting and one-install choice
-  are wired through `InstallerViewModel` and each Root, Shizuku, and Dhizuku session path; no stable
-  release tag contains that merge yet.
+  reach the Root/Shizuku shell install paths. The September 15 Dhizuku audit found that its
+  working PackageInstaller path ignored the option; the option is now gated to Root/Shizuku.
+  The original September 9 release-tag observation does not establish current release status.
 - #390: do not confuse Xiaomi's **Update system apps** Developer Options control with **Install via
   USB** or system optimization.  The former is a reported first-line workaround for this exact
   vendor error; its availability and effect need an affected-device off/on comparison before Thor
