@@ -24,7 +24,7 @@
   "repo_url": "https://github.com/trinadhthatakula/Thor",
   "app_website": "https://thor.trinadhthatakula.com",
   "download_url": "https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk",
-  "changelog": "• ⏳ Follow backups, exports and bulk actions in Guardians Queue.\n\n• 💾 Encrypted offline backups, Backup Hub and XAPK/OBB support.\n\n• 🧩 Control app components; customize actions and fonts.\n\n• ❄️ Safer Freezer actions, installs and uninstall prompts.\n\n• 🌍 Better app visibility, settings and translations.\n\n• ⚠️ App-data backups from 1.95.2 or earlier cannot be restored. Make fresh backups after updating while original app data is available.",
+  "changelog": "• 🛠️ Bug fixes and groundwork for the full customization update in 1.97.0.\n\n• ❄️ Dhizuku freeze/unfreeze keeps apps and data, with clearer action limits.\n\n• 📦 More reliable Dhizuku installs, app removal and data clearing.\n\n• 🗂️ Add selected apps to Freezer profiles, see memberships and choose how to recover frozen apps when removing them.\n\n• 🎛️ Reorder or hide multi-app actions in App list and Freezer, with separate saved layouts for each.",
   "store_issue_number": 279,
   "category": "Tools",
   "license": "GPL-3.0-or-later",
