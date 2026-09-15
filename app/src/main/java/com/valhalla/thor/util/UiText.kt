@@ -156,12 +156,11 @@ class UiTextException(val uiText: UiText) : Exception() {
     /**
      * A diagnostic in [toString], deliberately **not** in `message`.
      *
-     * `message` has to stay null. A dozen handlers still render a failure as
-     * `StringResource(error_format, e.message ?: "")`, so giving this exception a message would put
-     * `UiText.StringResource(resId=…)` on screen in a toast — trading an empty error for a worse
-     * one. Those handlers are correct as they stand, because this type is only ever *returned* in a
-     * `Result.failure` by the freeze gates, and every site that can receive one already calls
-     * [asUiText]; a `message` would change what the other twelve print without fixing anything.
+     * `message` stays null: using the diagnostic text as a fallback raw message would put
+     * `UiText.StringResource(resId=…)` on screen. Consumers must use [asUiText] to preserve
+     * resource-backed failures, whether a gateway
+     * returns them through `Result.onFailure` or an operation throws them. Giving this exception
+     * a fallback raw message would hide a missing conversion while still leaking diagnostics.
      *
      * `toString` reaches `Logger`, `printStackTrace` and debugger views, and none of those read
      * `message`. So the diagnostic goes where it costs nothing user-facing — until now a swallowed

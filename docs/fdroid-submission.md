@@ -302,16 +302,17 @@ Changelog: https://github.com/trinadhthatakula/Thor/releases
 Summary: Manage, freeze and clean up your installed apps
 Description: |-
   Thor is an app manager for rooted devices and for devices with Shizuku or
-  Dhizuku. It can freeze, suspend, force-stop, clear and uninstall apps that
-  Android normally will not let you touch.
+  Dhizuku. Available operations depend on the active mode: device-owner
+  access does not provide force-stop, cache clearing, or Play installer attribution.
 
   Features:
 
-  * Freezer — disable apps without uninstalling them, with a watchlist and
+  * Freezer — disable or hide apps without uninstalling them, with a watchlist and
     optional auto-freeze when the screen turns off
   * Pinned home-screen shortcuts that unfreeze and launch in one tap
   * Suspend mode as a lighter alternative to freezing
-  * Force stop, clear cache, clear data, batch uninstall
+  * Clear data and batch uninstall; force-stop requires Root or Shizuku
+  * Per-app cache clearing with Root; device-wide cache clearing with Root or Shizuku
   * Works through root, Shizuku or Dhizuku, whichever is available
 
 RepoType: git

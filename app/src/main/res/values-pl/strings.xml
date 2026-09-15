@@ -32,7 +32,7 @@
     <string name="auto_reinstall">Automatyczna reinstalacja aplikacji</string>
     <string name="auto_reinstall_desc">Automatycznie zachowuj Google Play Store jako zarejestrowany instalator, aby umożliwić aktualizacje w tle</string>
     <string name="grant_all_permissions">Przyznaj wszystkie uprawnienia przy instalacji</string>
-    <string name="grant_all_permissions_desc">Nadaj aplikacji wszystkie żądane uprawnienia zaraz po instalacji, bez pytania — tylko przy instalacji przez root, Shizuku lub Dhizuku. Domyślnie wyłączone, a w instalatorze można to zmienić dla pojedynczej instalacji; w obu przypadkach aktualizacje zachowują już przyznane uprawnienia</string>
+    <string name="grant_all_permissions_desc">Przyznawaj żądane uprawnienia czasu wykonywania podczas instalacji przez Root lub Shizuku. Domyślnie wyłączone; możesz zmienić to dla pojedynczej instalacji. Aktualizacje zachowują wcześniej przyznane uprawnienia.</string>
     <string name="grant_all_permissions_install">Przyznaj wszystkie żądane uprawnienia</string>
     <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
     <string name="default_tab">Domyślna karta</string>
@@ -779,7 +779,7 @@
     <string name="export_list_empty">Na tej liście nie ma aplikacji do eksportu</string>
     <string name="export_list_failed">Nie udało się zapisać listy</string>
     <string name="clear_all_caches_requires_usage_access">Shizuku nie może wyczyścić pamięci podręcznej wszystkich aplikacji bez dostępu do danych o użyciu. Androidowi trzeba podać, ile bajtów ma odzyskać, a tylko to uprawnienie pozwala zmierzyć, ile pamięci podręcznej jest. Przyznaj aplikacji Thor dostęp do danych o użyciu w Ustawieniach i spróbuj ponownie.</string>
-    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku nie może czyścić pamięci podręcznej. Nie ma powłoki, w której uruchomiłby androidowe czyszczenie pamięci podręcznej, a API Device Owner nie ma odpowiednika. Przełącz się na Root lub Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku nie może czyścić pamięci podręcznej. Proces właściciela urządzenia nie ma wymaganego uprawnienia Androida, a interfejs Device Owner nie udostępnia takiej funkcji. Przełącz się na Root lub Shizuku.</string>
 
     <!-- Component control (App info → Components).
          "Force open" is the label for an activity an ordinary launch cannot reach — unexported, or
@@ -1015,4 +1015,8 @@
     <string name="task_log_item_busy">Pominięto %1$s, ponieważ używa go inna operacja.</string>
     <string name="task_log_item_unknown">Nie udało się zweryfikować końcowego stanu %1$s.</string>
 
+    <string name="setting_requires_root_or_shizuku">Nieaktywne w bieżącym trybie. Wymaga Root lub Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">Dhizuku nie może wymuszać zatrzymania aplikacji. Przełącz na Root lub Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">Nie udało się wyczyścić danych tej aplikacji przez Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">Nie udało się odinstalować tej aplikacji przez Dhizuku.</string>
 </resources>

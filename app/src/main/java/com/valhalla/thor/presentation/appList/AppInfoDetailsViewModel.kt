@@ -337,7 +337,7 @@ class AppInfoDetailsViewModel(
                     isSuccess = true,
                 )
             }.onFailure { e ->
-                emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -350,7 +350,7 @@ class AppInfoDetailsViewModel(
                 refreshDetails(packageName)
                 emitMessage(UiText.StringResource(R.string.killed_success, appName), isSuccess = true)
             }.onFailure { e ->
-                emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -363,7 +363,7 @@ class AppInfoDetailsViewModel(
                 refreshDetails(packageName)
                 emitMessage(UiText.StringResource(R.string.cache_cleared_success, appName), isSuccess = true)
             }.onFailure { e ->
-                emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -376,7 +376,7 @@ class AppInfoDetailsViewModel(
                 refreshDetails(packageName)
                 emitMessage(UiText.StringResource(R.string.data_cleared_success, appName), isSuccess = true)
             }.onFailure { e ->
-                emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                emitMessage(e.asUiText())
             }
         }
     }
@@ -480,7 +480,7 @@ class AppInfoDetailsViewModel(
                 (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
                 else manageAppUseCase.forceUnfreeze(packageName))
                     .onFailure { e ->
-                        emitMessage(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                        emitMessage(e.asUiText())
                         return@launchGuarded
                     }
                 // From here on the app is running again and cannot be un-run. Everything below is

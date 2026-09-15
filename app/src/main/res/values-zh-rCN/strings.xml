@@ -483,7 +483,7 @@
     <string name="auto_reinstall">自动重新安装应用</string>
     <string name="auto_reinstall_desc">自动保留 Google Play 商店作为主安装程序，以启用后台更新</string>
     <string name="grant_all_permissions">安装时授予全部权限</string>
-    <string name="grant_all_permissions_desc">应用安装后立即获得其请求的全部权限，不再询问；仅适用于通过 Root、Shizuku 或 Dhizuku 的安装。默认关闭，并且可在安装器中为单次安装临时更改；无论开启与否，更新都会保留你已经授予的权限</string>
+    <string name="grant_all_permissions_desc">通过 Root 或 Shizuku 安装时授予应用请求的运行时权限。默认关闭，可为单次安装更改此选项。更新会保留已授予的权限。</string>
     <string name="grant_all_permissions_install">授予其请求的全部权限</string>
     <string name="legacy_extension_title">检测到旧版扩展</string>
     <string name="legacy_extension_desc">已安装旧版 Stormbringer 扩展（拼写错误为 \"Strombringer\"）。请将其卸载以避免冲突，并安装更新的 Stormbringer 扩展。</string>
@@ -633,7 +633,7 @@
     <string name="export_list_empty">此列表中没有可导出的应用</string>
     <string name="export_list_failed">无法保存列表</string>
     <string name="clear_all_caches_requires_usage_access">没有“使用情况访问权限”，Shizuku 无法清除所有应用的缓存。必须告诉 Android 需要释放多少字节，而只有该权限才能测量缓存的大小。请在系统设置中授予 Thor 使用情况访问权限后重试。</string>
-    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku 无法清除缓存。它没有可用于执行 Android 缓存清理的 shell，设备所有者 API 也没有对应的接口。请切换到 Root 或 Shizuku 模式。</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku 无法清除缓存。其设备所有者进程没有 Android 清除缓存所需的权限，设备所有者 API 也没有对应接口。请切换到 Root 或 Shizuku 模式。</string>
 
     <!-- 分类式设置页面 — 参见 values/strings_settings.xml -->
     <string name="settings_category_appearance">外观</string>
@@ -899,4 +899,8 @@
     <string name="task_log_item_busy">已跳过 %1$s，因为另一个操作正在使用它。</string>
     <string name="task_log_item_unknown">无法验证 %1$s 的最终状态。</string>
 
+    <string name="setting_requires_root_or_shizuku">当前模式下不可用。需要 Root 或 Shizuku。</string>
+    <string name="force_stop_unsupported_dhizuku">Dhizuku 无法强行停止应用。请切换到 Root 或 Shizuku。</string>
+    <string name="dhizuku_clear_data_failed">无法通过 Dhizuku 清除此应用的数据。</string>
+    <string name="dhizuku_uninstall_failed">无法通过 Dhizuku 卸载此应用。</string>
 </resources>

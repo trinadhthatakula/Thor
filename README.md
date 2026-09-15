@@ -40,8 +40,8 @@
 - Fingerprint Lock
 - Themes (dark, light, system) + AMOLED + Asgardian static theme
 - [Font presets](docs/font-presets.md) in Settings → Customization: Asgard (Outfit/Fira Code) or system fonts, applied across the app and installer
-- **Redesigned App Installer** — install packages with root, shizuku, or normal, featuring detailed UI states and associations for split formats (`.apkm`, `.apks`, and `.xapk`)
-- **Auto Reinstall** — sync and reinstall apps with custom install-time options
+- **Redesigned App Installer** — install packages with Root, Shizuku, Dhizuku, or Android’s normal installer, featuring detailed UI states and associations for split formats (`.apkm`, `.apks`, and `.xapk`)
+- **Auto Reinstall** — maintain Play Store installer attribution through Root or Shizuku
 - **Extension Manager** — an in-app catalog of optional add-ons, each signature-verified and SHA-256 checked before install
 - **Redesigned Home** — an adaptive bento grid with one-tap access to the Extension Manager
 - **Universal Android Debloater (UAD) Integration** — safety recommendation chips (Recommended, Advanced, Expert, Unsafe) dynamically shown for system packages
@@ -51,7 +51,7 @@
 - **Per-Component Control** — disable, enable or reset to default an individual activity, service, broadcast receiver or content provider; open an exported activity with no privilege at all, force-open an unexported or permission-guarded one, and stop a single running service. Every disable is recorded so **Restore all** can put components back to the state their developer shipped — across every app rather than just the one on screen, scoped to the Android user Thor is running in — and a component something else changed is labelled *Changed elsewhere* rather than silently reverted. Needs Root or a Shizuku started as root: the platform rejects per-component changes from the shell uid, and Dhizuku exposes no API for them
 - Root Support
 - Shizuku Support
-- Dhizuku Support
+- Dhizuku Support — device-owner app management; ordinary APK replacement is supported, while Fix Store, force-stop, and cache clearing require other modes
 - Fully reproducible, copyleft libre software (GPLv3.0)
 - Material 3 with optional dynamic colors (Material You)
 - Work Mode selection — manually choose between Root, Shizuku, or Dhizuku as the active privilege
@@ -74,7 +74,7 @@
 - Freeze/UnFreeze System apps
 - Sorting & filters
 - Layout preference persistence (grid/list mode preserved across restarts)
-- Clear Data/Cache (available in all privilege modes)
+- Clear app data through Root, Shizuku, or Dhizuku; clear one app’s cache with Root, or clear caches across the device with Root or Shizuku
 
 ## Upcoming Features
 

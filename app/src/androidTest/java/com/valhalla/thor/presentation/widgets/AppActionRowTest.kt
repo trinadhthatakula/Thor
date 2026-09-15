@@ -48,12 +48,13 @@ class AppActionRowTest {
      * Privileged, enabled, not suspended — the state in which all three explainable tiles render.
      * Freeze and Suspend are behind `hasPrivilege`; Force Stop additionally needs `enabled`.
      */
-    private fun setPrivilegedRow() = rule.setContent {
+    private fun setPrivilegedRow(canForceStop: Boolean = true) = rule.setContent {
         AppActionRow(
             appInfo = AppInfo(appName = "Demo", packageName = "com.example.demo"),
             isRoot = true,
             isShizuku = false,
             isDhizuku = false,
+            canForceStop = canForceStop,
             onLaunch = {},
             onSystemSettings = {},
             onFreezeToggle = { freezeRuns++ },
@@ -71,6 +72,15 @@ class AppActionRowTest {
 
     private fun awaitText(text: String) =
         rule.waitUntil(5_000) { rule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+
+    @Test fun forceStopIsAbsentWhenTheActiveModeCannotStopApps() {
+        // Root is available in the row's metadata, but the active mode can still be Dhizuku.
+        setPrivilegedRow(canForceStop = false)
+
+        rule.onNodeWithText(str(R.string.action_force_stop)).assertDoesNotExist()
+        rule.onNodeWithText(str(R.string.action_freeze)).assertExists()
+        assertEquals(0, forceStopRuns)
+    }
 
     /**
      * The row scrolls horizontally and holds more than a phone's width of 72 dp tiles, so anything

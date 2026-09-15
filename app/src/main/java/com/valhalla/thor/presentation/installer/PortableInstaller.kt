@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.supportsInstallTimePermissionGrants
 import com.valhalla.thor.data.manager.PendingInstallIntent
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.util.UiText
@@ -677,11 +678,9 @@ fun PortableInstaller(
                     // never taken orders from this box, and in EXTERNAL another app does the
                     // installing entirely. Shown there it would be a control that does nothing,
                     // and — worse for a privacy setting — one the user could reasonably read as
-                    // proof that Thor is granting everything.
-                    if (installerMode == InstallMode.ROOT ||
-                        installerMode == InstallMode.SHIZUKU ||
-                        installerMode == InstallMode.DHIZUKU
-                    ) {
+                    // proof that Thor is granting everything. Dhizuku's device-owner session also
+                    // lacks the install-time grant flag; its standalone policy grants are separate.
+                    if (supportsInstallTimePermissionGrants(installerMode)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

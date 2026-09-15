@@ -520,7 +520,7 @@
     <string name="auto_reinstall">إعادة التثبيت التلقائي للتطبيقات</string>
     <string name="auto_reinstall_desc">الحفاظ تلقائيًا على متجر Google Play كمثبت رئيسي لتمكين التحديثات في الخلفية</string>
     <string name="grant_all_permissions">منح كل الأذونات عند التثبيت</string>
-    <string name="grant_all_permissions_desc">منح التطبيق كل إذن يطلبه فور تثبيته، دون أي مطالبة — يقتصر ذلك على التثبيت عبر الروت أو Shizuku أو Dhizuku. مُعطَّل افتراضيًا، ويمكنك تغييره من المُثبِّت لعملية تثبيت واحدة؛ وفي الحالتين تحتفظ التحديثات بالأذونات التي سبق أن منحتها</string>
+    <string name="grant_all_permissions_desc">منح أذونات وقت التشغيل المطلوبة عند التثبيت باستخدام Root أو Shizuku. معطّل افتراضيًا؛ يمكنك تغييره لعملية تثبيت واحدة. تحتفظ التحديثات بالأذونات الممنوحة سابقًا.</string>
     <string name="grant_all_permissions_install">منح كل الأذونات المطلوبة</string>
     <string name="legacy_extension_title">تم اكتشاف امتداد قديم</string>
     <string name="legacy_extension_desc">تم تثبيت إصدار قديم من امتداد Stormbringer (باسم خاطئ \"Strombringer\") الملحق. يرجى إلغاء تثبيته لتجنب التعارض وتثبيت امتداد Stormbringer المحدث.</string>
@@ -691,7 +691,7 @@
     <string name="export_list_empty">لا توجد تطبيقات في هذه القائمة للتصدير</string>
     <string name="export_list_failed">تعذّر حفظ القائمة</string>
     <string name="clear_all_caches_requires_usage_access">لا يستطيع Shizuku مسح ذاكرة التخزين المؤقت لكل التطبيقات بدون إذن الوصول إلى الاستخدام. يجب إخبار Android بعدد البايتات المطلوب تحريرها، وهذا الإذن وحده هو ما يمكنه قياس حجم ذاكرة التخزين المؤقت. امنح Thor إذن الوصول إلى الاستخدام من الإعدادات ثم أعد المحاولة.</string>
-    <string name="clear_all_caches_unsupported_dhizuku">لا يستطيع Dhizuku مسح ذاكرة التخزين المؤقت. ليست لديه صدفة (shell) لتشغيل أداة تقليص ذاكرة التخزين المؤقت في Android، ولا تتضمن واجهة مالك الجهاز أي بديل لها. بدّل إلى وضع Root أو Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">لا يستطيع Dhizuku مسح ذاكرة التخزين المؤقت. لا تملك عملية مالك الجهاز إذن Android اللازم لمسحها، ولا توفر واجهة مالك الجهاز بديلاً لذلك. بدّل إلى وضع Root أو Shizuku.</string>
 
     <!-- شاشة الإعدادات المقسّمة إلى فئات — راجع values/strings_settings.xml -->
     <string name="settings_category_appearance">المظهر</string>
@@ -1013,4 +1013,8 @@
     <string name="task_log_item_busy">تم تخطي %1$s لأن عملية أخرى تستخدمه.</string>
     <string name="task_log_item_unknown">تعذّر التحقق من الحالة النهائية لـ %1$s.</string>
 
+    <string name="setting_requires_root_or_shizuku">غير نشط في الوضع الحالي. يتطلب Root أو Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">لا يستطيع Dhizuku فرض إيقاف التطبيقات. انتقل إلى Root أو Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">تعذّر محو بيانات هذا التطبيق باستخدام Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">تعذّر إلغاء تثبيت هذا التطبيق باستخدام Dhizuku.</string>
 </resources>

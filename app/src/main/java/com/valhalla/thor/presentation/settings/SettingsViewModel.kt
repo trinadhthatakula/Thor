@@ -15,6 +15,10 @@ import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.FixStoreRoute
+import com.valhalla.thor.domain.model.fixStoreRoute
+import com.valhalla.thor.domain.model.resolvePrivilegeMode
+import com.valhalla.thor.domain.model.supportsInstallTimePermissionGrants
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
@@ -79,7 +83,21 @@ class SettingsViewModel(
          * [AnyFileOpenerController] for why it is not mirrored into DataStore.
          */
         val anyFileOpenerEnabled: Boolean = false
-    )
+    ) {
+        private val activePrivilegeMode: PrivilegeMode
+            get() = resolvePrivilegeMode(
+                prefs.preferredPrivilegeMode,
+                isRootAvailable,
+                isShizukuAvailable,
+                isDhizukuAvailable,
+            )
+
+        val canFixStore: Boolean
+            get() = fixStoreRoute(activePrivilegeMode) == FixStoreRoute.PRIVILEGED
+
+        val canGrantPermissionsOnInstall: Boolean
+            get() = supportsInstallTimePermissionGrants(activePrivilegeMode)
+    }
 
     /** Off-main-thread snapshot of the available privilege engines. */
     private data class PrivilegeProbe(

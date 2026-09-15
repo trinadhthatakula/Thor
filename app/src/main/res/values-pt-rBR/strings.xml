@@ -39,7 +39,7 @@
     <string name="auto_reinstall">Reinstalar aplicativos automaticamente</string>
     <string name="auto_reinstall_desc">Preservar automaticamente a Google Play Store como instalador registrado, para permitir atualizações em segundo plano</string>
     <string name="grant_all_permissions">Conceder todas as permissões ao instalar</string>
-    <string name="grant_all_permissions_desc">Dar ao aplicativo todas as permissões que ele pede assim que for instalado, sem perguntar — apenas em instalações com root, Shizuku ou Dhizuku. Desativado por padrão, e o instalador permite alterar isso para uma única instalação; nos dois casos, as atualizações mantêm as permissões já concedidas</string>
+    <string name="grant_all_permissions_desc">Conceder as permissões de execução solicitadas durante a instalação com Root ou Shizuku. Desativado por padrão; você pode alterar isso para uma única instalação. As atualizações mantêm as permissões já concedidas.</string>
     <string name="grant_all_permissions_install">Conceder todas as permissões solicitadas</string>
     <string name="default_tab">Aba padrão</string>
     <string name="default_tab_desc">A tela que o Thor abre ao iniciar</string>
@@ -782,4 +782,9 @@
     <string name="task_log_item_busy">%1$s foi ignorado porque está sendo usado por outra operação.</string>
     <string name="task_log_item_unknown">Não foi possível verificar o estado final de %1$s.</string>
 
+    <string name="setting_requires_root_or_shizuku">Inativo no modo atual. Requer Root ou Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">O Dhizuku não pode limpar caches. O processo do proprietário do dispositivo não tem a permissão necessária do Android, e a API de proprietário do dispositivo não oferece uma alternativa. Mude para Root ou Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">O Dhizuku não pode forçar a parada de aplicativos. Mude para Root ou Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">Não foi possível limpar os dados deste aplicativo com o Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">Não foi possível desinstalar este aplicativo com o Dhizuku.</string>
 </resources>

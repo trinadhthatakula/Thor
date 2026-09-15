@@ -490,7 +490,7 @@
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="grant_all_permissions">Conceder todos los permisos al instalar</string>
-    <string name="grant_all_permissions_desc">Dar a la aplicación todos los permisos que solicita en cuanto se instala, sin preguntar; solo en instalaciones con root, Shizuku o Dhizuku. Desactivado de forma predeterminada, y el instalador permite cambiarlo para una sola instalación; en ambos casos, las actualizaciones conservan los permisos que ya habías concedido</string>
+    <string name="grant_all_permissions_desc">Concede los permisos de ejecución solicitados al instalar con Root o Shizuku. Desactivado de forma predeterminada; puedes cambiarlo para una sola instalación. Las actualizaciones conservan los permisos ya concedidos.</string>
     <string name="grant_all_permissions_install">Conceder todos los permisos solicitados</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
     <string name="legacy_extension_desc">Se ha detectado una versión heredada de la extensión Stormbringer (escrita incorrectamente como \"Strombringer\"). Por favor, desinstálala para evitar conflictos e instala la versión actualizada.</string>
@@ -644,7 +644,7 @@
     <string name="export_list_empty">No hay aplicaciones en esta lista para exportar</string>
     <string name="export_list_failed">No se pudo guardar la lista</string>
     <string name="clear_all_caches_requires_usage_access">Shizuku no puede borrar la caché de todas las apps sin acceso de uso. Hay que indicarle a Android cuántos bytes debe liberar, y solo ese permiso puede medir cuánta caché hay. Concede a Thor el acceso de uso en Ajustes e inténtalo de nuevo.</string>
-    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku no puede borrar cachés. No tiene una shell en la que ejecutar la limpieza de caché de Android, y la API de propietario del dispositivo no ofrece nada equivalente. Cambia a Root o a Shizuku.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku no puede borrar cachés. Su proceso de propietario del dispositivo no tiene el permiso necesario de Android, y la API de propietario del dispositivo no ofrece una función equivalente. Cambia a Root o a Shizuku.</string>
 
     <!-- Pantalla de ajustes por categorías — véase values/strings_settings.xml -->
     <string name="settings_category_appearance">Apariencia</string>
@@ -921,4 +921,8 @@
     <string name="task_log_item_busy">Se omitió %1$s porque otra operación lo está usando.</string>
     <string name="task_log_item_unknown">No se pudo verificar el estado final de %1$s.</string>
 
+    <string name="setting_requires_root_or_shizuku">Inactivo en el modo actual. Requiere Root o Shizuku.</string>
+    <string name="force_stop_unsupported_dhizuku">Dhizuku no puede forzar la detención de aplicaciones. Cambia a Root o Shizuku.</string>
+    <string name="dhizuku_clear_data_failed">No se pudieron borrar los datos de esta aplicación con Dhizuku.</string>
+    <string name="dhizuku_uninstall_failed">No se pudo desinstalar esta aplicación con Dhizuku.</string>
 </resources>
