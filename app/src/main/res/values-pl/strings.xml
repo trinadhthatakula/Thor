@@ -659,8 +659,8 @@
     <string name="error_downgrade_privilege">Instalacja starszej wersji jest obsługiwana tylko z dostępem uprzywilejowanym (Root, Shizuku lub Dhizuku).</string>
 
     <!-- Support Developer -->
-    <string name="support_thor">Wesprzyj Thor</string>
-    <string name="support_already_support">Już wspieram Thor</string>
+    <string name="support_thor">Wesprzyj Thora</string>
+    <string name="support_already_support">Już wspieram Thora</string>
     <string name="support_developer">Wesprzyj dewelopera</string>
     <string name="support_developer_desc">Wesprzyj dalszy rozwój aplikacji Thor</string>
     <string name="support_developer_desc_detailed">Thor jest oprogramowaniem open source i całkowicie bez reklam. Jeśli okazał się przydatny, rozważ wsparcie mojej pracy:</string>

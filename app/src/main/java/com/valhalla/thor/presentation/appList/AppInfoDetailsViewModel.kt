@@ -410,6 +410,7 @@ class AppInfoDetailsViewModel(
             withContext(ioDispatcher) { freezerRepository.add(packageName) }
             _uiState.update { it.copy(freezerPrompt = null, isInFreezer = true) }
             refreshDetails(packageName)
+            emitMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)
         }
     }
 

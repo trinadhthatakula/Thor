@@ -700,6 +700,32 @@ class AppInfoDetailsViewModelTest {
         assertTrue(freezer.added.isEmpty())
     }
 
+    @Test
+    fun `successful prompt confirmation reports the tracked app without freezing it again`() = runTest {
+        loaded(userApp("a", enabled = true))
+        val vm = viewModel()
+        val seen = mutableListOf<OperationMessage>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { seen += it } }
+
+        vm.toggleFreezerState("a", freeze = true, appName = "App A")
+        runCurrent()
+        assertNotNull(vm.uiState.value.freezerPrompt)
+        assertTrue(seen.isEmpty())
+        system.calls.clear()
+
+        vm.addToFreezer("a")
+        runCurrent()
+
+        assertTrue(freezer.contains("a"))
+        assertNull(vm.uiState.value.freezerPrompt)
+        assertTrue(vm.uiState.value.isInFreezer)
+        assertEquals(
+            listOf(OperationMessage(UiText.StringResource(R.string.added_to_freezer_success), isSuccess = true)),
+            seen,
+        )
+        assertTrue(system.calls.none { it.startsWith("setAppDisabled") || it.startsWith("setAppSuspended") })
+    }
+
     /**
      * The membership read that picks between two opposite actions, which is deliberately *not*
      * degraded the way the display read is.
