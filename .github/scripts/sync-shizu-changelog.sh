@@ -2,8 +2,8 @@
 # Refresh shizu_store.json's changelog from the release notes of the last
 # PRODUCTION release.
 #
-# Run this AFTER a production promotion, on master, and commit shizu_store.json
-# there - NOT during release prep on dev, and NOT in the commit that bumps
+# Run this AFTER a production promotion, on a topic branch from dev, and open
+# a PR targeting dev - NOT during release prep, and NOT in the commit that bumps
 # versionCode. The version comes from origin/production (the LOCKSTEP block
 # below explains why), so running it at release prep re-syncs the PREVIOUS
 # release and prints "changelog already current", which reads like success while
@@ -131,4 +131,4 @@ fi
 chmod 644 "$tmp"
 mv "$tmp" "$MANIFEST"
 printf 'changelog updated from %s (v%s)\n' "$notes" "$version_name"
-printf 'review the diff, then commit shizu_store.json with the version bump.\n'
+printf 'review the diff, then commit on a topic branch and open a PR targeting dev.\n'
