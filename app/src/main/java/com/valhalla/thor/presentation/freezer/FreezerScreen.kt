@@ -108,6 +108,12 @@ fun FreezerScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val operationFeedback = rememberOperationFeedback()
+    val profileAssignment: ProfileAssignmentViewModel = koinViewModel(key = "freezer-profile-assignment")
+    val assignmentState by profileAssignment.uiState.collectAsStateWithLifecycle()
+    ProfileAssignmentHost(profileAssignment) { message ->
+        viewModel.clearSelection()
+        operationFeedback.show(message)
+    }
     val hasPrivilege = state.isRoot || state.isShizuku || state.isDhizuku
     val noDisabledAppsFoundMessage = stringResource(R.string.no_disabled_apps_found)
 
@@ -505,6 +511,9 @@ fun FreezerScreen(
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp),
                     onCancel = { viewModel.clearSelection() },
+                    onAddToProfiles = if (assignmentState.profiles.isNotEmpty() && !assignmentState.profilesLoadFailed) {
+                        { profileAssignment.open(selectedApps) }
+                    } else null,
                     onRemoveFromFreezer = {
                         viewModel.removeFromFreezer(state.multiSelection)
                     },

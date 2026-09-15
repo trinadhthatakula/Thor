@@ -45,6 +45,7 @@ fun MultiSelectToolBox(
     onCancel: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {},
     canForceStop: Boolean = rememberCanForceStopApps(),
+    onAddToProfiles: (() -> Unit)? = null,
 ) {
     // Pure derivations of `selected`; computed directly in composition so the
     // buttons never lag a frame behind the selection (no stale-state flicker).
@@ -114,6 +115,14 @@ fun MultiSelectToolBox(
                         onClick = { onMultiAppAction(MultiAppAction.UnSuspend(selected)) }
                     )
                 }
+            }
+
+            if (onAddToProfiles != null) {
+                ToolBoxItem(
+                    icon = R.drawable.list_alt,
+                    label = stringResource(R.string.profile_assignment_title),
+                    onClick = onAddToProfiles,
+                )
             }
 
             // Root only, unlike everything above it. Per-package cache clearing needs the

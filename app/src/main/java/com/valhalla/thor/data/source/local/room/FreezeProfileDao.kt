@@ -8,6 +8,10 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import com.valhalla.thor.domain.model.MissingFreezeProfilesException
+import com.valhalla.thor.domain.model.ProfileAssignmentCount
+import com.valhalla.thor.domain.model.ProfileAssignmentResult
+import com.valhalla.thor.domain.model.isUsablePackageName
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -19,6 +23,9 @@ interface FreezeProfileDao {
 
     @Query("SELECT packageName FROM freeze_profile_apps WHERE profileId = :profileId")
     suspend fun packagesOf(profileId: Long): List<String>
+
+    @Query("SELECT * FROM freeze_profiles WHERE id IN (:profileIds) ORDER BY id ASC")
+    suspend fun profilesByIds(profileIds: List<Long>): List<FreezeProfileEntity>
 
     /** Every package that belongs to at least one profile — the restore gate's second source. */
     @Query("SELECT DISTINCT packageName FROM freeze_profile_apps")
@@ -37,7 +44,43 @@ interface FreezeProfileDao {
     suspend fun clearApps(profileId: Long)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertApps(entities: List<FreezeProfileAppEntity>)
+    suspend fun insertApps(entities: List<FreezeProfileAppEntity>): List<Long>
+
+    /**
+     * Append without replacing membership or renaming. Checking every target and inserting in
+     * one transaction prevents partial success if a selected profile has been deleted. SQLite
+     * serializes competing writes, so targets cannot disappear between this read and the append.
+     */
+    @Transaction
+    suspend fun addApps(
+        profileIds: Set<Long>,
+        packageNames: Set<String>,
+    ): ProfileAssignmentResult {
+        val targetIds = profileIds.toSet()
+        val requestedPackages = packageNames.toList()
+        require(targetIds.isNotEmpty() && targetIds.all { it > 0 }) {
+            "Select at least one existing profile with a positive id"
+        }
+        require(requestedPackages.isNotEmpty() && requestedPackages.all(::isUsablePackageName)) {
+            "Select at least one app with a valid package name"
+        }
+
+        // Stay below SQLite's bind-variable limit even for unusually large profile collections.
+        val targets = targetIds.sorted().chunked(900).flatMap { profilesByIds(it) }
+        val missingIds = targetIds - targets.map { it.id }.toSet()
+        if (missingIds.isNotEmpty()) throw MissingFreezeProfilesException(missingIds)
+
+        return ProfileAssignmentResult(targets.map { profile ->
+            val added = insertApps(requestedPackages.map { FreezeProfileAppEntity(profile.id, it) })
+                .count { it != -1L }
+            ProfileAssignmentCount(
+                profileId = profile.id,
+                profileName = profile.name,
+                addedCount = added,
+                alreadyPresentCount = requestedPackages.size - added,
+            )
+        })
+    }
 
     /**
      * Create a profile and its membership as one unit.

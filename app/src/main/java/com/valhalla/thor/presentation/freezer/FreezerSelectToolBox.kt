@@ -50,6 +50,7 @@ fun FreezerSelectToolBox(
     onCancel: () -> Unit = {},
     onRemoveFromFreezer: () -> Unit = {},
     onSaveAsProfile: () -> Unit = {},
+    onAddToProfiles: (() -> Unit)? = null,
     onMultiAppAction: (MultiAppAction) -> Unit = {},
     freezerMode: FreezerMode = FreezerMode.FREEZE
 ) {
@@ -92,6 +93,14 @@ fun FreezerSelectToolBox(
                         onClick = { onMultiAppAction(MultiAppAction.UnFreeze(selected)) }
                     )
                 }
+            }
+
+            if (onAddToProfiles != null) {
+                FreezerToolItem(
+                    icon = R.drawable.list_alt,
+                    label = stringResource(R.string.profile_assignment_title),
+                    onClick = onAddToProfiles,
+                )
             }
 
             // Needs no privilege: this only names the selection, it does not freeze it.
