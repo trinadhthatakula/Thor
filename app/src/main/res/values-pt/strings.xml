@@ -136,6 +136,8 @@
     <string name="view_mode">Modo de visualização</string>
     <string name="grid">Grelha</string>
     <string name="list">Lista</string>
+    <string name="scrollbar_scroll_apps">Percorrer a lista de aplicações</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d de %3$d</string>
     <string name="order">Ordem:</string>
     <string name="ascending">Crescente</string>
     <string name="descending">Decrescente</string>

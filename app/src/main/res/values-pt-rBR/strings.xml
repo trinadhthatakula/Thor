@@ -55,6 +55,8 @@
     <!-- Common Actions -->
     <string name="installed_label">INSTALADO</string>
     <string name="search_apps">Pesquisar aplicativos…</string>
+    <string name="scrollbar_scroll_apps">Rolar a lista de aplicativos</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d de %3$d</string>
 
     <!-- Home -->
     <string name="reinstall_all_subtitle">%1$d aplicativos %2$s não vieram da Play Store. Reparar?</string>

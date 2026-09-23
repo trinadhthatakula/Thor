@@ -108,6 +108,8 @@
     <string name="view_mode">Mode d\'affichage</string>
     <string name="grid">Grille</string>
     <string name="list">Liste</string>
+    <string name="scrollbar_scroll_apps">Faire défiler la liste des applications</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d sur %3$d</string>
     <string name="order">Ordre :</string>
     <string name="ascending">Croissant</string>
     <string name="descending">Décroissant</string>

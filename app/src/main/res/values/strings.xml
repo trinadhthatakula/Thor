@@ -132,6 +132,8 @@
     <string name="view_mode">View Mode</string>
     <string name="grid">Grid</string>
     <string name="list">List</string>
+    <string name="scrollbar_scroll_apps">Scroll apps</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d of %3$d</string>
     <string name="order">Order:</string>
     <string name="ascending">Ascending</string>
     <string name="descending">Descending</string>

@@ -133,6 +133,8 @@
     <string name="view_mode">Tryb widoku</string>
     <string name="grid">Siatka</string>
     <string name="list">Lista</string>
+    <string name="scrollbar_scroll_apps">Przewiń listę aplikacji</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d z %3$d</string>
     <string name="order">Kolejność:</string>
     <string name="ascending">Rosnąco</string>
     <string name="descending">Malejąco</string>

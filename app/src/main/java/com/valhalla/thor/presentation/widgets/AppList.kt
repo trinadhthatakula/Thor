@@ -13,7 +13,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -58,10 +57,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -74,6 +74,8 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -156,6 +158,7 @@ fun AppList(
     // selection would throw NotSerializableException on rotation/process death. The selection is
     // intentionally transient — it is cleared on appListType change and via BackHandler.
     var multiSelection by remember { mutableStateOf(emptyList<AppInfo>()) }
+    var multiSelectToolbarHeightPx by remember { mutableIntStateOf(0) }
     LaunchedEffect(clearSelectionRequest) { multiSelection = emptyList() }
 
     // Optimization: Use a Set for O(1) lookups
@@ -175,6 +178,10 @@ fun AppList(
     }
 
     // 3. UI Layout
+    // Keep the draggable thumb above the floating selection toolbar, including at the list end.
+    val scrollbarBottomInset = if (isMultiSelectMode) {
+        maxOf(120.dp, with(LocalDensity.current) { multiSelectToolbarHeightPx.toDp() }) + 40.dp
+    } else 0.dp
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
 
@@ -280,6 +287,7 @@ fun AppList(
                     filterType = filterType,
                     appListType = appListType,
                     searchQuery = searchQuery,
+                    scrollbarBottomInset = scrollbarBottomInset,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope
                 )
@@ -295,7 +303,8 @@ fun AppList(
                 onAddToProfiles = onAddToProfiles?.let { assign -> { assign(multiSelection) } },
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 32.dp)
-                    .align(Alignment.BottomEnd),
+                    .align(Alignment.BottomEnd)
+                    .onSizeChanged { multiSelectToolbarHeightPx = it.height },
                 isRoot = isRoot,
                 isShizuku = isShizuku,
                 isDhizuku = isDhizuku,
@@ -589,19 +598,15 @@ private fun AppListContent(
     filterType: FilterType = FilterType.Source,
     appListType: AppListType = AppListType.USER,
     searchQuery: String = "",
+    scrollbarBottomInset: Dp,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     // Shared padding for list/grid
     val padding = PaddingValues(bottom = 100.dp, top = 8.dp)
 
-    // Hoisted only so the scrollbar can read it. Both containers created their own identical state
-    // before, and both branches still mint a fresh one, so switching grid <-> list resets the scroll
-    // position exactly as it always did.
-    //
-    // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to null for states
-    // that drive no indicator; both lazy states override it with a real one, so the null branch is
-    // unreachable today. Branching beats `!!` — a future null then costs the scrollbar, not the list.
+    // Each view keeps its own lazy state, preserving the existing reset when switching grid/list.
+    // The scrollbar overlays only this list viewport, below search and filter controls.
     if (isGrid) {
         val metrics = gridMetricsFor(gridDensity)
         val gridState = rememberLazyGridState()
@@ -610,23 +615,29 @@ private fun AppListContent(
             gridState.scrollToItem(0)
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = metrics.minCellSize),
-            state = gridState,
-            contentPadding = padding,
-            modifier = gridState.scrollIndicatorState?.let {
-                Modifier.nonInteractiveScrollbar(state = it, orientation = Orientation.Vertical)
-            } ?: Modifier
-        ) {
-            items(list, key = { it.packageName }) { app ->
-                AppItemGrid(
-                    app = app,
-                    isSelected = selectedPackageNames.contains(app.packageName),
-                    onClick = { onAppClick(app) },
-                    onLongClick = { onAppLongClick(app) },
-                    metrics = metrics,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope
+        Box(Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = metrics.minCellSize),
+                state = gridState,
+                contentPadding = padding,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(list, key = { it.packageName }) { app ->
+                    AppItemGrid(
+                        app = app,
+                        isSelected = selectedPackageNames.contains(app.packageName),
+                        onClick = { onAppClick(app) },
+                        onLongClick = { onAppLongClick(app) },
+                        metrics = metrics,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope
+                    )
+                }
+            }
+            key(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery, gridDensity) {
+                DraggableLazyScrollbar(
+                    state = gridState,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset)
                 )
             }
         }
@@ -637,21 +648,27 @@ private fun AppListContent(
             listState.scrollToItem(0)
         }
 
-        LazyColumn(
-            state = listState,
-            contentPadding = padding,
-            modifier = listState.scrollIndicatorState?.let {
-                Modifier.nonInteractiveScrollbar(state = it, orientation = Orientation.Vertical)
-            } ?: Modifier
-        ) {
-            items(list, key = { it.packageName }) { app ->
-                AppItemList(
-                    app = app,
-                    isSelected = selectedPackageNames.contains(app.packageName),
-                    onClick = { onAppClick(app) },
-                    onLongClick = { onAppLongClick(app) },
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                contentPadding = padding,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(list, key = { it.packageName }) { app ->
+                    AppItemList(
+                        app = app,
+                        isSelected = selectedPackageNames.contains(app.packageName),
+                        onClick = { onAppClick(app) },
+                        onLongClick = { onAppLongClick(app) },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope
+                    )
+                }
+            }
+            key(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
+                DraggableLazyScrollbar(
+                    state = listState,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset)
                 )
             }
         }

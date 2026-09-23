@@ -108,6 +108,8 @@
     <string name="view_mode">وضع العرض</string>
     <string name="grid">شبكة</string>
     <string name="list">قائمة</string>
+    <string name="scrollbar_scroll_apps">تمرير قائمة التطبيقات</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d من %3$d</string>
     <string name="order">الترتيب:</string>
     <string name="ascending">تصاعدي</string>
     <string name="descending">تنازلي</string>

@@ -107,6 +107,8 @@
     <string name="view_mode">视图模式</string>
     <string name="grid">网格</string>
     <string name="list">列表</string>
+    <string name="scrollbar_scroll_apps">滚动应用列表</string>
+    <string name="scrollbar_visible_range">第 %1$d–%2$d 项，共 %3$d 项</string>
     <string name="order">排序：</string>
     <string name="ascending">升序</string>
     <string name="descending">降序</string>

@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,10 +43,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,7 +55,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -87,6 +88,7 @@ import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
+import com.valhalla.thor.presentation.widgets.DraggableLazyScrollbar
 import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.presentation.widgets.ScrollToTopOnChange
@@ -198,6 +200,16 @@ fun FreezerScreen(
         }
         filtered.sortedBy { it.appName }
     }
+
+    // The bottom toolbar stays over the list; reserve its measured height for the thumb so it
+    // remains draggable at the end of a long list. The minimum avoids a one-frame overlap while
+    // the selected toolbar is first measured.
+    val hasSelection = state.multiSelection.isNotEmpty()
+    var bottomToolbarHeightPx by remember(hasSelection) { mutableIntStateOf(0) }
+    val scrollbarBottomInset = maxOf(
+        if (hasSelection) 120.dp else 64.dp,
+        with(LocalDensity.current) { bottomToolbarHeightPx.toDp() }
+    ) + 24.dp
 
     // Apps the "Freeze all" / "Unfreeze all" toolbar acts on. These route through the
     // shared batch action (MultiAppAction), which owns durable task navigation; the unsafe/UAD
@@ -404,40 +416,36 @@ fun FreezerScreen(
                         gridState.scrollToItem(0)
                     }
 
-                    // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to
-                    // null for states that drive no indicator; both lazy states override it with a
-                    // real one, so the null branch is unreachable today. Branching beats `!!` — a
-                    // future null then costs the scrollbar, not the whole list.
-                    val gridScrollbar = gridState.scrollIndicatorState?.let {
-                        Modifier.nonInteractiveScrollbar(
-                            state = it,
-                            orientation = Orientation.Vertical
-                        )
-                    } ?: Modifier
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = metrics.minCellSize),
-                        state = gridState,
-                        contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .then(gridScrollbar)
-                    ) {
-                        items(
-                            displayedApps,
-                            key = { it.packageName }) { app ->
-                            AppItemGrid(
-                                app = app,
-                                isSelected = app.packageName in state.multiSelection,
-                                onClick = {
-                                    if (state.multiSelection.isNotEmpty())
-                                        viewModel.toggleSelection(app.packageName)
-                                    else
-                                        selectedPackageName = app.packageName
-                                },
-                                onLongClick = { viewModel.toggleSelection(app.packageName) },
-                                metrics = metrics,
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = metrics.minCellSize),
+                            state = gridState,
+                            contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(
+                                displayedApps,
+                                key = { it.packageName }) { app ->
+                                AppItemGrid(
+                                    app = app,
+                                    isSelected = app.packageName in state.multiSelection,
+                                    onClick = {
+                                        if (state.multiSelection.isNotEmpty())
+                                            viewModel.toggleSelection(app.packageName)
+                                        else
+                                            selectedPackageName = app.packageName
+                                    },
+                                    onLongClick = { viewModel.toggleSelection(app.packageName) },
+                                    metrics = metrics,
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope
+                                )
+                            }
+                        }
+                        key(state.searchQuery, state.appListType, state.gridDensity) {
+                            DraggableLazyScrollbar(
+                                state = gridState,
+                                modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset)
                             )
                         }
                     }
@@ -448,34 +456,34 @@ fun FreezerScreen(
                         listState.scrollToItem(0)
                     }
 
-                    val listScrollbar = listState.scrollIndicatorState?.let {
-                        Modifier.nonInteractiveScrollbar(
-                            state = it,
-                            orientation = Orientation.Vertical
-                        )
-                    } ?: Modifier
-                    LazyColumn(
-                        state = listState,
-                        contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .then(listScrollbar)
-                    ) {
-                        items(
-                            displayedApps,
-                            key = { it.packageName }) { app ->
-                            AppItemList(
-                                app = app,
-                                isSelected = app.packageName in state.multiSelection,
-                                onClick = {
-                                    if (state.multiSelection.isNotEmpty())
-                                        viewModel.toggleSelection(app.packageName)
-                                    else
-                                        selectedPackageName = app.packageName
-                                },
-                                onLongClick = { viewModel.toggleSelection(app.packageName) },
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        LazyColumn(
+                            state = listState,
+                            contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(
+                                displayedApps,
+                                key = { it.packageName }) { app ->
+                                AppItemList(
+                                    app = app,
+                                    isSelected = app.packageName in state.multiSelection,
+                                    onClick = {
+                                        if (state.multiSelection.isNotEmpty())
+                                            viewModel.toggleSelection(app.packageName)
+                                        else
+                                            selectedPackageName = app.packageName
+                                    },
+                                    onLongClick = { viewModel.toggleSelection(app.packageName) },
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope
+                                )
+                            }
+                        }
+                        key(state.searchQuery, state.appListType) {
+                            DraggableLazyScrollbar(
+                                state = listState,
+                                modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset)
                             )
                         }
                     }
@@ -511,7 +519,8 @@ fun FreezerScreen(
                     freezerMode = state.freezerMode,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp),
+                        .padding(bottom = 16.dp)
+                        .onSizeChanged { bottomToolbarHeightPx = it.height },
                     onCancel = { viewModel.clearSelection() },
                     onAddToProfiles = if (assignmentState.profiles.isNotEmpty() && !assignmentState.profilesLoadFailed) {
                         { profileAssignment.open(selectedApps) }
@@ -543,7 +552,8 @@ fun FreezerScreen(
                     ),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(bottom = 16.dp, end = 16.dp),
+                        .padding(bottom = 16.dp, end = 16.dp)
+                        .onSizeChanged { bottomToolbarHeightPx = it.height },
                     content = {
                         val iconButtonColors = IconButtonDefaults.iconButtonColors(
                             contentColor = MaterialTheme.colorScheme.onPrimary,
