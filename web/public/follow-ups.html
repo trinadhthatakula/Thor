@@ -115,7 +115,7 @@
         <article>
           <div class="top"><span class="number">03</span><span class="status">Feature</span></div>
           <h3>App tags for browsing and filtering</h3>
-          <p>Let people assign their own tags and filter the Apps list by them. The requester confirmed that filtering by tags is the desired behavior. Pair per-app notes with the same storage migration, then define the app-list and app-info entry points.</p>
+          <p>Let people assign their own tags and filter the Apps list by them. The requester confirmed that filtering by tags is the desired behavior. Pair per-app notes with the storage migration and coordinate the change/version history table, then define the app-list and app-info entry points.</p>
           <p class="meta">Issue #178 · unbuilt</p>
           <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/178">Request and clarification</a><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/README.md#band-c--real-and-expensive">Backlog item 24</a></div>
         </article>
@@ -156,6 +156,18 @@
           <h3>Bulk app-data backup and restore</h3>
           <p>Backlog item 32 needs a per-app failure model, passphrase handling, and interrupted-restore recovery. Begin its design after item 01 proves a single backup and restore on hardware.</p>
           <div class="links"><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/README.md#band-c--real-and-expensive">Backlog item 32</a></div>
+        </article>
+        <article>
+          <div class="top"><span class="status scope">Product decision</span></div>
+          <h3>Choose subscription downgrade behavior</h3>
+          <p>Support-tier changes currently use one replacement mode in both directions. Decide whether a cheaper tier takes effect immediately or at renewal, then verify the choice with a Play license tester before changing billing code.</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/subscription-downgrade-replacement-mode.md">Billing follow-up</a></div>
+        </article>
+        <article>
+          <div class="top"><span class="status scope">Product decision</span></div>
+          <h3>Handle a Freezer row that cannot thaw</h3>
+          <p>Thor already prunes uninstalled packages. For an installed app whose restore keeps failing, decide whether to retain the row, guide the user to a working privilege mode, or offer a clearly explained removal that could leave the app frozen.</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/freezer-removal-has-no-escape-hatch.md">Freezer follow-up</a></div>
         </article>
       </div>
     </section>
