@@ -59,6 +59,7 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
@@ -67,6 +68,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.roundToInt
+
+/** Grid thumb target and matching logical-end gutter; list thumb targets remain 48 dp wide. */
+internal val GridScrollbarGutterWidth = 32.dp
+private val ListScrollbarTouchTargetWidth = 48.dp
 
 /**
  * A draggable scrollbar for a vertical lazy list. Place it over the list as a sibling in a [Box],
@@ -101,10 +106,14 @@ fun DraggableLazyScrollbar(state: LazyListState, modifier: Modifier = Modifier) 
             )
         }
     }
-    DraggableLazyScrollbarContent(state, items, modifier)
+    DraggableLazyScrollbarContent(
+        state, items, modifier,
+        railCenterFromEnd = 19.dp,
+        touchTargetWidth = ListScrollbarTouchTargetWidth
+    )
 }
 
-/** The same scrollbar for a vertical lazy grid. The bubble counts visible apps, not grid rows. */
+/** A 32 dp thumb target for a vertical grid. The bubble counts visible apps, not grid rows. */
 @Composable
 fun DraggableLazyScrollbar(state: LazyGridState, modifier: Modifier = Modifier) {
     val items by remember(state) {
@@ -133,7 +142,11 @@ fun DraggableLazyScrollbar(state: LazyGridState, modifier: Modifier = Modifier) 
             )
         }
     }
-    DraggableLazyScrollbarContent(state, items, modifier)
+    DraggableLazyScrollbarContent(
+        state, items, modifier,
+        railCenterFromEnd = 16.dp,
+        touchTargetWidth = GridScrollbarGutterWidth
+    )
 }
 
 private data class VisibleItems(
@@ -166,7 +179,9 @@ private class ScrollbarGeometry {
 private fun DraggableLazyScrollbarContent(
     state: ScrollableState,
     items: VisibleItems,
-    modifier: Modifier
+    modifier: Modifier,
+    railCenterFromEnd: Dp,
+    touchTargetWidth: Dp
 ) {
     val indicator = state.scrollIndicatorState ?: return
     val contentSize = indicator.contentSize
@@ -247,7 +262,7 @@ private fun DraggableLazyScrollbarContent(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .width(48.dp)
+            .width(touchTargetWidth)
             .onSizeChanged { heightPx = it.height }
             .onGloballyPositioned { geometry.rootCoordinates = it }
     ) {
@@ -258,7 +273,7 @@ private fun DraggableLazyScrollbarContent(
             Modifier
                 .align(Alignment.TopEnd)
                 .offset {
-                    IntOffset((-(19.dp - trackWidth / 2)).roundToPx(), 8.dp.roundToPx())
+                    IntOffset((-(railCenterFromEnd - trackWidth / 2)).roundToPx(), 8.dp.roundToPx())
                 }
                 .width(trackWidth)
                 .height(trackHeight)
@@ -268,7 +283,7 @@ private fun DraggableLazyScrollbarContent(
         Box(
             Modifier
                 .align(Alignment.TopEnd)
-                .offset(x = (-54).dp, y = bubbleY)
+                .offset(x = -(railCenterFromEnd + 35.dp), y = bubbleY)
                 // Measure the whole localized range, then pin its trailing edge beside the rail.
                 .wrapContentWidth(align = Alignment.End, unbounded = true)
                 .onSizeChanged { bubbleHeightPx = it.height }
@@ -284,7 +299,7 @@ private fun DraggableLazyScrollbarContent(
             Modifier
                 .align(Alignment.TopEnd)
                 .offset(y = thumbY)
-                .width(48.dp)
+                .width(touchTargetWidth)
                 .height(thumbHeight)
                 .onGloballyPositioned { geometry.thumbCoordinates = it }
                 .onFocusChanged { focused = it.isFocused }
@@ -353,7 +368,7 @@ private fun DraggableLazyScrollbarContent(
                 Modifier
                     .align(Alignment.CenterEnd)
                     .offset {
-                        IntOffset((-(19.dp - thumbWidth / 2)).roundToPx(), 0)
+                        IntOffset((-(railCenterFromEnd - thumbWidth / 2)).roundToPx(), 0)
                     }
                     .width(thumbWidth)
                     .fillMaxHeight()

@@ -9,6 +9,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -89,6 +90,8 @@ import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import com.valhalla.thor.presentation.widgets.DraggableLazyScrollbar
+import com.valhalla.thor.presentation.widgets.GridScrollbarGutterWidth
+import com.valhalla.thor.presentation.widgets.appGridLayoutFor
 import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.presentation.widgets.ScrollToTopOnChange
@@ -416,11 +419,14 @@ fun FreezerScreen(
                         gridState.scrollToItem(0)
                     }
 
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                        val gridLayout = appGridLayoutFor(constraints.maxWidth, metrics, LocalDensity.current)
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = metrics.minCellSize),
+                            columns = GridCells.Fixed(gridLayout.columns),
                             state = gridState,
-                            contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
+                            contentPadding = PaddingValues(
+                                bottom = 100.dp, top = 8.dp, end = GridScrollbarGutterWidth
+                            ),
                             modifier = Modifier.fillMaxSize()
                         ) {
                             items(
@@ -437,6 +443,7 @@ fun FreezerScreen(
                                     },
                                     onLongClick = { viewModel.toggleSelection(app.packageName) },
                                     metrics = metrics,
+                                    horizontalInnerPadding = gridLayout.horizontalInnerPadding,
                                     sharedTransitionScope = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope
                                 )

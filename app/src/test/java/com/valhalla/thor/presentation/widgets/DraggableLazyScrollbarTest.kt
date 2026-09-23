@@ -41,6 +41,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.R
 import org.junit.Assert.assertEquals
@@ -180,6 +181,16 @@ class DraggableLazyScrollbarTest {
             assertEquals(21, state.layoutInfo.visibleItemsInfo.size)
         }
         scrollbar().assertDoesNotExist()
+    }
+
+    @Test
+    fun gridGutterKeepsTrailingCardTouchableInLtr() {
+        assertTrailingGridCardOutsideScrollbar(LayoutDirection.Ltr)
+    }
+
+    @Test
+    fun gridGutterKeepsTrailingCardTouchableInRtl() {
+        assertTrailingGridCardOutsideScrollbar(LayoutDirection.Rtl)
     }
 
     @Test
@@ -334,7 +345,9 @@ class DraggableLazyScrollbarTest {
             }
         }
 
-        val initialHeight = scrollbar().assertExists().getUnclippedBoundsInRoot().height
+        val initialBounds = scrollbar().assertExists().getUnclippedBoundsInRoot()
+        assertEquals(48.dp, initialBounds.width)
+        val initialHeight = initialBounds.height
         scrollbar().performTouchInput {
             down(center)
             moveTo(Offset(center.x, center.y + center.y * 8f))
@@ -359,6 +372,7 @@ class DraggableLazyScrollbarTest {
             assertTrue("The end drag should reach the bottom", !state.canScrollForward)
         }
         assertEquals(initialHeight, scrollbar().getUnclippedBoundsInRoot().height)
+        assertEquals(48.dp, scrollbar().getUnclippedBoundsInRoot().width)
     }
 
     @Test
@@ -414,6 +428,53 @@ class DraggableLazyScrollbarTest {
             click(Offset(center.x * 1.89f, center.y * 1.4f))
         }
         rule.runOnIdle { assertTrue("A track tap should reach an app row", clickedIndex >= 0) }
+    }
+
+    private fun assertTrailingGridCardOutsideScrollbar(layoutDirection: LayoutDirection) {
+        var clickedIndex = -1
+        rule.setContent {
+            CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                MaterialTheme {
+                    val state = rememberLazyGridState()
+                    Box(Modifier.size(width = 320.dp, height = 480.dp)) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            state = state,
+                            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp, end = GridScrollbarGutterWidth),
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                        ) {
+                            items(90) { index ->
+                                Text(
+                                    "App $index",
+                                    Modifier.fillMaxWidth().height(56.dp)
+                                        .clickable { clickedIndex = index }
+                                        .testTag("grid-card-$index"),
+                                )
+                            }
+                        }
+                        DraggableLazyScrollbar(state, Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+                    }
+                }
+            }
+        }
+
+        val target = scrollbar().assertExists().getUnclippedBoundsInRoot()
+        val cardNode = rule.onNodeWithTag("grid-card-2").assertExists()
+        val card = cardNode.getUnclippedBoundsInRoot()
+        assertEquals(GridScrollbarGutterWidth, target.width)
+        assertTrue("The trailing card should align vertically with the thumb", card.top < target.bottom && target.top < card.bottom)
+        if (layoutDirection == LayoutDirection.Rtl) {
+            assertTrue("RTL trailing card overlaps the drag target: $card, $target", card.left >= target.right)
+        } else {
+            assertTrue("LTR trailing card overlaps the drag target: $card, $target", card.right <= target.left)
+        }
+
+        val cardBoundsPx = cardNode.fetchSemanticsNode().boundsInRoot
+        cardNode.performTouchInput {
+            val trailingEdgeX = if (layoutDirection == LayoutDirection.Rtl) 1f else cardBoundsPx.right - cardBoundsPx.left - 1f
+            click(Offset(trailingEdgeX, center.y))
+        }
+        rule.runOnIdle { assertEquals(2, clickedIndex) }
     }
 
     private fun scrollbar() = rule.onNodeWithContentDescription(scrollbarLabel)
