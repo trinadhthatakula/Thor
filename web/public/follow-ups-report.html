@@ -960,29 +960,29 @@
     <section class="hero-section">
       <h2 class="hero-title">Technical Debt, Deferred Work & Roadmap Synthesis</h2>
       <p class="hero-subtitle">
-        Systematic assessment of 22 documented follow-up investigations and open backlog items in <code>docs/follow-ups/</code>, ranked by <strong>Impact × Ease of Implementation</strong> to guide development and release gates.
+        Earlier impact-and-ease assessment of follow-up investigations and backlog items. Several entries have since shipped; use the <a href="/follow-ups.html">current work list</a> for today's priorities and release status.
       </p>
 
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-value" id="kpiTotal">22</div>
-          <div class="kpi-label">Follow-Up Docs</div>
+          <div class="kpi-value" id="kpiTotal">—</div>
+          <div class="kpi-label">Tracked Topics</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-value success" id="kpiShipped">9</div>
+          <div class="kpi-value success" id="kpiShipped">—</div>
           <div class="kpi-label">Shipped / Closed</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-value warning" id="kpiPartial">3</div>
+          <div class="kpi-value warning" id="kpiPartial">—</div>
           <div class="kpi-label">Partially Addressed</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-value accent" id="kpiOpen">10</div>
-          <div class="kpi-label">Open / Actionable</div>
+          <div class="kpi-value accent" id="kpiOpen">—</div>
+          <div class="kpi-label">Open / Deferred / Declined</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-value info" id="kpiHwChecks">21</div>
-          <div class="kpi-label">Unrun Device Checks</div>
+          <div class="kpi-value info" id="kpiHwChecks">—</div>
+          <div class="kpi-label">Topics Needing Device Checks</div>
         </div>
       </div>
     </section>
@@ -993,9 +993,9 @@
         <div>
           <h3 class="section-title">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-            Top Recommended Action Items (Next Picks)
+            Earlier Recommended Action Items
           </h3>
-          <p class="section-desc">Ranked by <strong>Impact × Ease</strong>: highest engineering payoff for minimal friction.</p>
+          <p class="section-desc">Historical ranking. The <a href="/follow-ups.html">current list</a> reflects v1.96.0 and later implementation.</p>
         </div>
       </div>
 
@@ -1012,7 +1012,7 @@
             <span class="meta-chip">Issue #161</span>
           </div>
           <p class="card-body">
-            Band A #10 added an opt-in toggle on <code>AnyFileInstallerAlias</code>. Running one ADB diagnostic command on Samsung hardware to capture the exact MIME type returned by Samsung's MediaStore provider will allow adding a single targeted manifest string, permanently solving APK installs without requiring the broad opt-in toggle.
+            The typeless opener was broadened, but the affected Samsung device has not been retested. Capture Samsung My Files' provider MIME type and chooser result first; that evidence will show whether a narrow manifest type can complete the fix.
           </p>
           <div class="card-footer">
             <span>Target: <code>AndroidManifest.xml</code></span>
@@ -1032,7 +1032,7 @@
             <span class="meta-chip">Room Migration</span>
           </div>
           <p class="card-body">
-            User-requested capability on r/howtomen. Implements custom color tags and per-app notes with search filtering and batch assignment, sharing a single Room entity schema migration.
+            User-requested tags and per-app notes remain unbuilt. The requester confirmed tag filtering; define the storage migration and app-list entry points before choosing color or batch-assignment behavior.
           </p>
           <div class="card-footer">
             <span>Target: <code>ThorDatabase</code> / <code>AppList</code></span>
@@ -1052,7 +1052,7 @@
             <span class="meta-chip">Edge Case</span>
           </div>
           <p class="card-body">
-            Band B #15 automatically prunes uninstalled packages. For an installed app whose thaw command fails (e.g. OEM permission revoked or corrupted state), offer "Remove anyway" force-prune options 1 & 2 to prevent users being permanently stuck with an undeletable row.
+            Band B #15 already prunes uninstalled packages. For an installed app that cannot thaw, first decide whether to retain its watchlist row, offer a carefully explained removal, or guide recovery through a working privilege mode.
           </p>
           <div class="card-footer">
             <span>Target: <code>FreezerViewModel.kt</code></span>
@@ -1060,25 +1060,6 @@
           </div>
         </div>
 
-        <!-- Pick 4: Static Analysis :app SyntheticAccessor -->
-        <div class="action-card">
-          <span class="rank-badge">#4 SHIPPED 2026-08-26</span>
-          <div class="card-top">
-            <h4 class="card-title">Fix <code>SyntheticAccessor</code> Warnings in <code>:app</code> — done, 62 not 43</h4>
-          </div>
-          <div class="card-meta">
-            <span class="meta-chip">Impact: 1.0 / 5.0 (revised down)</span>
-            <span class="meta-chip ease-high">Effort: ≈ 1 Hour</span>
-            <span class="meta-chip">Rot prevention, not DEX optimization</span>
-          </div>
-          <p class="card-body">
-            Closed by widening 15 declarations from <code>private</code> to <code>internal</code> and enabling the check in <code>app/lint.xml</code>, following <code>:bypass</code> (Band A #12). The 15 are <strong>11 in <code>main</code>, 3 in the <code>store</code> flavour and 1 in test sources</strong> — that last one reported by neither <code>lintStoreRelease</code> nor a failing build, so it is invisible to CI. Two corrections to this card's original claim, both measured: the count was <strong>62 findings from 14 declarations</strong> (the 15th is the test one), not 43 — and the <strong>APK payoff was overstated by ~20x</strong>. The release dex holds 21 <code>access$</code> methods out of 30,682 against 3,563 in debug, so R8 had already inlined nearly all of them; the fix removed <strong>3</strong>. Worth doing to stop the count rotting, not as a 64K-limit lever.
-          </p>
-          <div class="card-footer">
-            <span>Target: <code>app/lint.xml</code>, <code>app/src/main</code>, <code>app/src/store</code>, <code>app/src/test</code></span>
-            <strong style="color: var(--primary);">Static Analysis</strong>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -1217,7 +1198,7 @@
                   <span class="matrix-item-scores">I: 2.0 · E: 2.5</span>
                 </button>
                 <button type="button" class="matrix-item-pill" data-key="app_ops" onclick="inspectItem('app_ops', this)">
-                  <span class="matrix-item-title">#28 App Ops Permission Revoke</span>
+                  <span class="matrix-item-title">#503 General App Ops Editor</span>
                   <span class="matrix-item-scores">I: 3.0 · E: 2.0</span>
                 </button>
                 <button type="button" class="matrix-item-pill" data-key="running_apps" onclick="inspectItem('running_apps', this)">
@@ -1263,10 +1244,10 @@
           <input type="text" id="searchInput" class="search-input" placeholder="Search by name, file, issue #, keyword...">
         </div>
         <div class="filter-chips">
-          <button class="filter-btn active" data-filter="all" id="filterAll">All (22)</button>
-          <button class="filter-btn" data-filter="open" id="filterOpen">Open (10)</button>
-          <button class="filter-btn" data-filter="partial" id="filterPartial">Partial (3)</button>
-          <button class="filter-btn" data-filter="shipped" id="filterShipped">Shipped (9)</button>
+          <button class="filter-btn active" data-filter="all" id="filterAll">All</button>
+          <button class="filter-btn" data-filter="open" id="filterOpen">Open / Deferred / Declined</button>
+          <button class="filter-btn" data-filter="partial" id="filterPartial">Partial</button>
+          <button class="filter-btn" data-filter="shipped" id="filterShipped">Shipped</button>
         </div>
       </div>
 
@@ -1282,9 +1263,9 @@
         <div>
           <h3 class="section-title" style="color: var(--error);">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-            Hardware Verification Gap Register
+            Post-release Device Evidence Register
           </h3>
-          <p class="section-desc">Critical actions verified only on JVM / desk tests that require physical device testing before <code>store</code> release.</p>
+          <p class="section-desc">Shipped behavior can still have unrecorded hardware acceptance. These rows identify evidence to reconcile or collect; they are not a claim that the release is blocked.</p>
         </div>
       </div>
 
@@ -1301,13 +1282,13 @@
           <tbody>
             <tr>
               <td><strong>#23 App Data Backup (PR #379)</strong></td>
-              <td><span class="status-tag shipped">Merged (1467 tests)</span></td>
-              <td>21 unrun device checks: Keystore biometric unlock, SELinux staging labels, non-ASCII passphrase UTF-8 surrogate streams, root tar replace.</td>
-              <td><span class="meta-chip impact-high" style="color: var(--error);">High Blocker</span></td>
+              <td><span class="status-tag shipped">Shipped v1.96.0</span></td>
+              <td>The older 21-item checklist has no recorded completion. Reconcile existing testing, then run missing archive, provider, and root restore checks.</td>
+              <td><span class="meta-chip impact-high" style="color: var(--error);">High-priority evidence</span></td>
             </tr>
             <tr>
               <td><strong>#164 .xapk OBB Placement (PR #378)</strong></td>
-              <td><span class="status-tag shipped">Merged to dev</span></td>
+              <td><span class="status-tag shipped">Shipped v1.96.0</span></td>
               <td>Verify subshell <code>( ... )</code> wrapper does not kill long-lived Odin root session on physical devices without OBB.</td>
               <td><span class="meta-chip ease-high">Medium</span></td>
             </tr>
@@ -1336,7 +1317,7 @@
 
     <!-- Page Footer -->
     <footer class="page-footer">
-      <p>Thor Android Debloater & Freezer // System Technical Report // Generated from <code>docs/follow-ups/</code></p>
+      <p>Earlier follow-up assessment · See the <a href="/follow-ups.html">current work list</a> for today's priorities.</p>
     </footer>
 
   </div>
@@ -1381,15 +1362,15 @@
         title: "#23 / #51 Phase 2: App Data Backup (.thorbak)",
         doc: "app-data-backup-and-xapk-export.md",
         files: "BackupRunner.kt, AppArchiveWorker.kt, ThorJobLauncher.kt",
-        status: "partial",
-        statusText: "Merged to Dev (Desk-Verified)",
+        status: "shipped",
+        statusText: "Shipped v1.96.0 · device checks open",
         impact: 5.0,
         ease: 2.0,
-        effort: "5–8 Days (Merged)",
+        effort: "Implementation shipped; device checks remain",
         category: "feature",
         summary: "Headline feature: complete offline AES-256-GCM encrypted backup of APKs and app data directories into .thorbak archives.",
         rootCause: "Requires root shell for tar extraction of /data/data, WorkManager foreground service, and Keystore key isolation.",
-        solution: "Merged to dev in PR #379 with 1467 unit tests. Play Store DataSync FGS approved. Blocked on 21 unrun hardware checks before release.",
+        solution: "Shipped in v1.96.0. The older 21-item device checklist has no recorded completion; reconcile prior testing and run the missing checks.",
         hardwareRequired: true
       },
       {
@@ -1826,18 +1807,18 @@
       },
       {
         id: "app_ops",
-        title: "#28 App Ops Style Permission Revoke",
-        doc: "README.md:271",
-        files: "AppOpsManager, SystemGateway.kt",
+        title: "#503 General App Ops Editor",
+        doc: "docs/analysis/community-feature-request-assessment-2026-09.md, issue #503",
+        files: "Permission Manager, privilege gateways",
         status: "deferred",
-        statusText: "Deferred (Large)",
+        statusText: "Scope needed",
         impact: 3.0,
         ease: 2.0,
-        effort: "Large (3–5 Days)",
+        effort: "Needs scope",
         category: "feature",
-        summary: "Granular appops command interface to grant and revoke individual permissions system greys out.",
-        rootCause: "Thor currently supports filtering and pm grant; lacks appops revoke surface.",
-        solution: "Build dedicated permission manager surface with privileged appops bridge.",
+        summary: "Manage App Ops modes beyond the supported runtime-permission grant/revoke controls Thor already exposes.",
+        rootCause: "The request needs an operation list, mode semantics, privilege behavior, readback, and recovery rules.",
+        solution: "Scope the general editor and its privilege boundaries before estimating or implementing it.",
         hardwareRequired: true
       },
       {
@@ -1914,7 +1895,7 @@
       const filterShipped = document.getElementById('filterShipped');
 
       if (filterAll) filterAll.innerText = `All (${total})`;
-      if (filterOpen) filterOpen.innerText = `Open (${open})`;
+      if (filterOpen) filterOpen.innerText = `Open / Deferred / Declined (${open})`;
       if (filterPartial) filterPartial.innerText = `Partial (${partial})`;
       if (filterShipped) filterShipped.innerText = `Shipped (${shipped})`;
     }
