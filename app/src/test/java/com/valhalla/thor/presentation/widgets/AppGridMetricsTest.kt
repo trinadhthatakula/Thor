@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.widgets
 
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.domain.model.AppGridDensity
 import org.junit.Assert.assertEquals
@@ -126,7 +127,7 @@ class AppGridMetricsTest {
         val density = Density(2.625f)
         val metrics = gridMetricsFor(AppGridDensity.DEFAULT)
         val widthPx = with(density) { 411.dp.roundToPx() }
-        val layout = appGridLayoutFor(widthPx, metrics, density)
+        val layout = appGridLayoutFor(widthPx, metrics, density, ScrollbarDraggingGutterWidth)
 
         assertEquals(4, layout.columns)
         assertTrue(layout.horizontalInnerPadding < metrics.innerPadding)
@@ -143,10 +144,36 @@ class AppGridMetricsTest {
             AppGridDensity.LARGE to 3,
         ).forEach { (gridDensity, expectedColumns) ->
             val metrics = gridMetricsFor(gridDensity)
-            val layout = appGridLayoutFor(widthPx, metrics, deviceDensity)
+            val layout = appGridLayoutFor(widthPx, metrics, deviceDensity, ScrollbarDraggingGutterWidth)
             assertEquals("$gridDensity at 411dp/420dpi", expectedColumns, layout.columns)
             assertIconFits(widthPx, metrics, layout, deviceDensity)
         }
+    }
+
+    @Test
+    fun restingGutterWidensCellsWithoutChangingDensityColumnsDuringDrag() {
+        val density = Density(420f / 160f)
+        val widthPx = with(density) { 411.dp.roundToPx() }
+        AppGridDensity.entries.forEach { gridDensity ->
+            val metrics = gridMetricsFor(gridDensity)
+            val resting = appGridLayoutFor(widthPx, metrics, density, ScrollbarRestingGutterWidth)
+            val dragging = appGridLayoutFor(widthPx, metrics, density, ScrollbarDraggingGutterWidth)
+
+            assertEquals("$gridDensity changed columns during drag", dragging.columns, resting.columns)
+            assertTrue(resting.horizontalInnerPadding >= dragging.horizontalInnerPadding)
+            assertIconFits(widthPx, metrics, resting, density, ScrollbarRestingGutterWidth)
+            assertIconFits(widthPx, metrics, dragging, density, ScrollbarDraggingGutterWidth)
+            with(density) {
+                val restingCellPx = (widthPx - ScrollbarRestingGutterWidth.roundToPx()) / resting.columns
+                val draggingCellPx = (widthPx - ScrollbarDraggingGutterWidth.roundToPx()) / dragging.columns
+                assertTrue("$gridDensity should regain cell width at rest", restingCellPx > draggingCellPx)
+            }
+        }
+
+        val metrics = gridMetricsFor(AppGridDensity.DEFAULT)
+        val resting = appGridLayoutFor(widthPx, metrics, density, ScrollbarRestingGutterWidth)
+        val dragging = appGridLayoutFor(widthPx, metrics, density, ScrollbarDraggingGutterWidth)
+        assertTrue("Default spacing should breathe at rest", resting.horizontalInnerPadding > dragging.horizontalInnerPadding)
     }
 
     @Test
@@ -155,7 +182,7 @@ class AppGridMetricsTest {
         val metrics = gridMetricsFor(AppGridDensity.DEFAULT)
         listOf(320.dp to 3, 260.dp to 2, 150.dp to 1).forEach { (width, expectedColumns) ->
             val widthPx = with(density) { width.roundToPx() }
-            val layout = appGridLayoutFor(widthPx, metrics, density)
+            val layout = appGridLayoutFor(widthPx, metrics, density, ScrollbarDraggingGutterWidth)
             assertEquals("Unexpected column count at $width", expectedColumns, layout.columns)
             assertIconFits(widthPx, metrics, layout, density)
         }
@@ -163,15 +190,21 @@ class AppGridMetricsTest {
         // If a density's baseline cell is tight, the gutter must drop a column before clipping icons.
         val tightMetrics = metrics.copy(minCellSize = 76.dp, innerPadding = 4.dp)
         val tightWidthPx = with(density) { 229.dp.roundToPx() }
-        val tightLayout = appGridLayoutFor(tightWidthPx, tightMetrics, density)
+        val tightLayout = appGridLayoutFor(tightWidthPx, tightMetrics, density, ScrollbarDraggingGutterWidth)
         assertEquals(3, with(density) { tightWidthPx / tightMetrics.minCellSize.roundToPx() })
         assertEquals(2, tightLayout.columns)
         assertIconFits(tightWidthPx, tightMetrics, tightLayout, density)
     }
 
-    private fun assertIconFits(widthPx: Int, metrics: AppGridMetrics, layout: AppGridLayout, density: Density) {
+    private fun assertIconFits(
+        widthPx: Int,
+        metrics: AppGridMetrics,
+        layout: AppGridLayout,
+        density: Density,
+        gutterWidth: Dp = ScrollbarDraggingGutterWidth
+    ) {
         with(density) {
-            val cellWidthPx = (widthPx - GridScrollbarGutterWidth.roundToPx()) / layout.columns
+            val cellWidthPx = (widthPx - gutterWidth.roundToPx()) / layout.columns
             val iconSpacePx = cellWidthPx - 2 * metrics.outerPadding.roundToPx() -
                 2 * layout.horizontalInnerPadding.roundToPx()
             assertTrue("The ${metrics.iconSize} icon has only $iconSpacePx px", iconSpacePx >= metrics.iconSize.roundToPx())

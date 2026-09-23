@@ -90,7 +90,8 @@ import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import com.valhalla.thor.presentation.widgets.DraggableLazyScrollbar
-import com.valhalla.thor.presentation.widgets.GridScrollbarGutterWidth
+import com.valhalla.thor.presentation.widgets.ScrollbarDraggingGutterWidth
+import com.valhalla.thor.presentation.widgets.ScrollbarRestingGutterWidth
 import com.valhalla.thor.presentation.widgets.appGridLayoutFor
 import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
@@ -414,18 +415,28 @@ fun FreezerScreen(
                 } else if (state.isGrid) {
                     val metrics = gridMetricsFor(state.gridDensity)
                     val gridState = rememberLazyGridState()
+                    var gridScrollbarDragging by remember(
+                        state.searchQuery, state.appListType, state.gridDensity
+                    ) { mutableStateOf(false) }
+                    val scrollbarGutterWidth = if (gridScrollbarDragging) {
+                        ScrollbarDraggingGutterWidth
+                    } else {
+                        ScrollbarRestingGutterWidth
+                    }
 
                     ScrollToTopOnChange(state.searchQuery, state.appListType) {
                         gridState.scrollToItem(0)
                     }
 
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                        val gridLayout = appGridLayoutFor(constraints.maxWidth, metrics, LocalDensity.current)
+                        val gridLayout = appGridLayoutFor(
+                            constraints.maxWidth, metrics, LocalDensity.current, scrollbarGutterWidth
+                        )
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(gridLayout.columns),
                             state = gridState,
                             contentPadding = PaddingValues(
-                                bottom = 100.dp, top = 8.dp, end = GridScrollbarGutterWidth
+                                bottom = 100.dp, top = 8.dp, end = scrollbarGutterWidth
                             ),
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -452,12 +463,21 @@ fun FreezerScreen(
                         key(state.searchQuery, state.appListType, state.gridDensity) {
                             DraggableLazyScrollbar(
                                 state = gridState,
-                                modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset)
+                                modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset),
+                                onDraggingChange = { gridScrollbarDragging = it }
                             )
                         }
                     }
                 } else {
                     val listState = rememberLazyListState()
+                    var listScrollbarDragging by remember(
+                        state.searchQuery, state.appListType
+                    ) { mutableStateOf(false) }
+                    val scrollbarGutterWidth = if (listScrollbarDragging) {
+                        ScrollbarDraggingGutterWidth
+                    } else {
+                        ScrollbarRestingGutterWidth
+                    }
 
                     ScrollToTopOnChange(state.searchQuery, state.appListType) {
                         listState.scrollToItem(0)
@@ -466,7 +486,9 @@ fun FreezerScreen(
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
+                            contentPadding = PaddingValues(
+                                bottom = 100.dp, top = 8.dp, end = scrollbarGutterWidth
+                            ),
                             modifier = Modifier.fillMaxSize()
                         ) {
                             items(
@@ -490,7 +512,8 @@ fun FreezerScreen(
                         key(state.searchQuery, state.appListType) {
                             DraggableLazyScrollbar(
                                 state = listState,
-                                modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset)
+                                modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset),
+                                onDraggingChange = { listScrollbarDragging = it }
                             )
                         }
                     }

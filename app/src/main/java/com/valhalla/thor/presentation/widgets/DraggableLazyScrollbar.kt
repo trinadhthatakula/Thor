@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,17 +70,21 @@ import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** Grid thumb target and matching logical-end gutter; list thumb targets remain 48 dp wide. */
-internal val GridScrollbarGutterWidth = 32.dp
-private val ListScrollbarTouchTargetWidth = 48.dp
+/** Logical-end list/grid gutter and matching thumb target before and during a drag. */
+internal val ScrollbarRestingGutterWidth = 16.dp
+internal val ScrollbarDraggingGutterWidth = 32.dp
 
 /**
  * A draggable scrollbar for a vertical lazy list. Place it over the list as a sibling in a [Box],
- * aligned to [Alignment.CenterEnd]. The 48 dp-wide pointer target follows only the thumb; the track does
- * not intercept taps on app rows underneath it.
+ * aligned to [Alignment.CenterEnd]. The pointer target follows only the thumb; callers reserve its
+ * current width as logical-end list padding so edge controls stay touchable.
  */
 @Composable
-fun DraggableLazyScrollbar(state: LazyListState, modifier: Modifier = Modifier) {
+fun DraggableLazyScrollbar(
+    state: LazyListState,
+    modifier: Modifier = Modifier,
+    onDraggingChange: (Boolean) -> Unit = {}
+) {
     val items by remember(state) {
         derivedStateOf {
             val info = state.layoutInfo
@@ -108,14 +113,21 @@ fun DraggableLazyScrollbar(state: LazyListState, modifier: Modifier = Modifier) 
     }
     DraggableLazyScrollbarContent(
         state, items, modifier,
-        railCenterFromEnd = 19.dp,
-        touchTargetWidth = ListScrollbarTouchTargetWidth
+        railCenterFromEnd = ScrollbarRestingGutterWidth / 2,
+        touchTargetWidth = ScrollbarRestingGutterWidth,
+        draggedRailCenterFromEnd = ScrollbarDraggingGutterWidth / 2,
+        draggedTouchTargetWidth = ScrollbarDraggingGutterWidth,
+        onDraggingChange = onDraggingChange
     )
 }
 
-/** A 32 dp thumb target for a vertical grid. The bubble counts visible apps, not grid rows. */
+/** A grid thumb that expands its target from 16 to 32 dp while dragged. */
 @Composable
-fun DraggableLazyScrollbar(state: LazyGridState, modifier: Modifier = Modifier) {
+fun DraggableLazyScrollbar(
+    state: LazyGridState,
+    modifier: Modifier = Modifier,
+    onDraggingChange: (Boolean) -> Unit = {}
+) {
     val items by remember(state) {
         derivedStateOf {
             val info = state.layoutInfo
@@ -144,8 +156,11 @@ fun DraggableLazyScrollbar(state: LazyGridState, modifier: Modifier = Modifier) 
     }
     DraggableLazyScrollbarContent(
         state, items, modifier,
-        railCenterFromEnd = 16.dp,
-        touchTargetWidth = GridScrollbarGutterWidth
+        railCenterFromEnd = ScrollbarRestingGutterWidth / 2,
+        touchTargetWidth = ScrollbarRestingGutterWidth,
+        draggedRailCenterFromEnd = ScrollbarDraggingGutterWidth / 2,
+        draggedTouchTargetWidth = ScrollbarDraggingGutterWidth,
+        onDraggingChange = onDraggingChange
     )
 }
 
@@ -181,7 +196,10 @@ private fun DraggableLazyScrollbarContent(
     items: VisibleItems,
     modifier: Modifier,
     railCenterFromEnd: Dp,
-    touchTargetWidth: Dp
+    touchTargetWidth: Dp,
+    draggedRailCenterFromEnd: Dp = railCenterFromEnd,
+    draggedTouchTargetWidth: Dp = touchTargetWidth,
+    onDraggingChange: (Boolean) -> Unit = {}
 ) {
     val indicator = state.scrollIndicatorState ?: return
     val contentSize = indicator.contentSize
@@ -198,7 +216,10 @@ private fun DraggableLazyScrollbarContent(
     var bubbleHeightPx by remember { mutableIntStateOf(0) }
     var dragging by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    val currentOnDraggingChange by rememberUpdatedState(onDraggingChange)
     val active = dragging || focused
+    val currentTouchTargetWidth = if (dragging) draggedTouchTargetWidth else touchTargetWidth
+    val currentRailCenterFromEnd = if (dragging) draggedRailCenterFromEnd else railCenterFromEnd
 
     val insetPx = with(density) { 8.dp.roundToPx() }
     val minThumbPx = with(density) { 52.dp.roundToPx() }
@@ -242,6 +263,8 @@ private fun DraggableLazyScrollbarContent(
         animationSpec = tween(160),
         label = "Scrollbar thumb width"
     )
+    // Keyboard focus can widen the thumb without a pointer drag; keep it inside the idle target.
+    val visibleThumbWidth = minOf(thumbWidth, currentTouchTargetWidth)
     val trackWidth by animateDpAsState(
         targetValue = if (active) 6.dp else 3.dp,
         animationSpec = tween(160),
@@ -262,7 +285,7 @@ private fun DraggableLazyScrollbarContent(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .width(touchTargetWidth)
+            .width(currentTouchTargetWidth)
             .onSizeChanged { heightPx = it.height }
             .onGloballyPositioned { geometry.rootCoordinates = it }
     ) {
@@ -273,7 +296,7 @@ private fun DraggableLazyScrollbarContent(
             Modifier
                 .align(Alignment.TopEnd)
                 .offset {
-                    IntOffset((-(railCenterFromEnd - trackWidth / 2)).roundToPx(), 8.dp.roundToPx())
+                    IntOffset((-(currentRailCenterFromEnd - trackWidth / 2)).roundToPx(), 8.dp.roundToPx())
                 }
                 .width(trackWidth)
                 .height(trackHeight)
@@ -283,7 +306,7 @@ private fun DraggableLazyScrollbarContent(
         Box(
             Modifier
                 .align(Alignment.TopEnd)
-                .offset(x = -(railCenterFromEnd + 35.dp), y = bubbleY)
+                .offset(x = -(currentRailCenterFromEnd + 35.dp), y = bubbleY)
                 // Measure the whole localized range, then pin its trailing edge beside the rail.
                 .wrapContentWidth(align = Alignment.End, unbounded = true)
                 .onSizeChanged { bubbleHeightPx = it.height }
@@ -299,7 +322,7 @@ private fun DraggableLazyScrollbarContent(
             Modifier
                 .align(Alignment.TopEnd)
                 .offset(y = thumbY)
-                .width(touchTargetWidth)
+                .width(currentTouchTargetWidth)
                 .height(thumbHeight)
                 .onGloballyPositioned { geometry.thumbCoordinates = it }
                 .onFocusChanged { focused = it.isFocused }
@@ -333,19 +356,20 @@ private fun DraggableLazyScrollbarContent(
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             down.consume()
-                            dragging = true
                             val grabOffset = (geometry.pointerYInRoot(down.position) -
                                 geometry.insetPx - geometry.thumbTopPx)
                                 .coerceIn(0f, geometry.thumbHeightPx.toFloat())
                             val targets = Channel<Float>(Channel.CONFLATED)
-                            gestureScope.launch {
-                                state.scroll(MutatePriority.UserInput) {
-                                    for (target in targets) {
-                                        seekToFraction(state, target)
+                            dragging = true
+                            currentOnDraggingChange(true)
+                            try {
+                                gestureScope.launch {
+                                    state.scroll(MutatePriority.UserInput) {
+                                        for (target in targets) {
+                                            seekToFraction(state, target)
+                                        }
                                     }
                                 }
-                            }
-                            try {
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -359,6 +383,7 @@ private fun DraggableLazyScrollbarContent(
                             } finally {
                                 targets.close()
                                 dragging = false
+                                currentOnDraggingChange(false)
                             }
                         }
                     }
@@ -368,9 +393,9 @@ private fun DraggableLazyScrollbarContent(
                 Modifier
                     .align(Alignment.CenterEnd)
                     .offset {
-                        IntOffset((-(railCenterFromEnd - thumbWidth / 2)).roundToPx(), 0)
+                        IntOffset((-(currentRailCenterFromEnd - visibleThumbWidth / 2)).roundToPx(), 0)
                     }
-                    .width(thumbWidth)
+                    .width(visibleThumbWidth)
                     .fillMaxHeight()
                     .background(thumbColor, CircleShape)
                     .then(

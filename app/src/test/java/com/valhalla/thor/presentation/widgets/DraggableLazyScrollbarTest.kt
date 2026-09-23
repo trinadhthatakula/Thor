@@ -24,6 +24,10 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -38,6 +42,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
@@ -194,6 +199,16 @@ class DraggableLazyScrollbarTest {
     }
 
     @Test
+    fun listGutterKeepsTrailingRowTouchableInLtr() {
+        assertTrailingListRowOutsideScrollbar(LayoutDirection.Ltr)
+    }
+
+    @Test
+    fun listGutterKeepsTrailingRowTouchableInRtl() {
+        assertTrailingListRowOutsideScrollbar(LayoutDirection.Rtl)
+    }
+
+    @Test
     fun partiallyOffscreenLastListRowKeepsScrollbar() {
         lateinit var state: LazyListState
         rule.setContent {
@@ -331,25 +346,36 @@ class DraggableLazyScrollbarTest {
     }
 
     @Test
-    fun draggingListThumbSeeksThroughTheListWithoutResizingItsTouchTarget() {
+    fun draggingListThumbExpandsItsTargetAndSeeksThroughTheList() {
         lateinit var state: LazyListState
         rule.setContent {
             MaterialTheme {
                 state = rememberLazyListState()
+                var dragging by remember { mutableStateOf(false) }
+                val gutterWidth = if (dragging) ScrollbarDraggingGutterWidth else ScrollbarRestingGutterWidth
                 Box(Modifier.size(width = 320.dp, height = 480.dp)) {
-                    LazyColumn(state = state, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+                    LazyColumn(
+                        state = state,
+                        contentPadding = PaddingValues(end = gutterWidth),
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                    ) {
                         items(120) { index -> AppRow(index) }
                     }
-                    DraggableLazyScrollbar(state, Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+                    DraggableLazyScrollbar(
+                        state,
+                        Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                        onDraggingChange = { dragging = it }
+                    )
                 }
             }
         }
 
         val initialBounds = scrollbar().assertExists().getUnclippedBoundsInRoot()
-        assertEquals(48.dp, initialBounds.width)
+        assertEquals(ScrollbarRestingGutterWidth, initialBounds.width)
         val initialHeight = initialBounds.height
+        scrollbar().performTouchInput { down(center) }
+        assertEquals(ScrollbarDraggingGutterWidth, scrollbar().getUnclippedBoundsInRoot().width)
         scrollbar().performTouchInput {
-            down(center)
             moveTo(Offset(center.x, center.y + center.y * 8f))
             up()
         }
@@ -372,7 +398,7 @@ class DraggableLazyScrollbarTest {
             assertTrue("The end drag should reach the bottom", !state.canScrollForward)
         }
         assertEquals(initialHeight, scrollbar().getUnclippedBoundsInRoot().height)
-        assertEquals(48.dp, scrollbar().getUnclippedBoundsInRoot().width)
+        assertEquals(ScrollbarRestingGutterWidth, scrollbar().getUnclippedBoundsInRoot().width)
     }
 
     @Test
@@ -382,11 +408,21 @@ class DraggableLazyScrollbarTest {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 MaterialTheme {
                     state = rememberLazyListState()
+                    var dragging by remember { mutableStateOf(false) }
+                    val gutterWidth = if (dragging) ScrollbarDraggingGutterWidth else ScrollbarRestingGutterWidth
                     Box(Modifier.size(width = 320.dp, height = 480.dp).testTag(VIEWPORT_TAG)) {
-                        LazyColumn(state = state, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+                        LazyColumn(
+                            state = state,
+                            contentPadding = PaddingValues(end = gutterWidth),
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        ) {
                             items(80) { index -> AppRow(index) }
                         }
-                        DraggableLazyScrollbar(state, Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+                        DraggableLazyScrollbar(
+                            state,
+                            Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            onDraggingChange = { dragging = it }
+                        )
                     }
                 }
             }
@@ -425,22 +461,93 @@ class DraggableLazyScrollbarTest {
         }
 
         rule.onNodeWithTag(VIEWPORT_TAG).performTouchInput {
-            click(Offset(center.x * 1.89f, center.y * 1.4f))
+            click(Offset(center.x * 1.95f, center.y * 1.4f))
         }
         rule.runOnIdle { assertTrue("A track tap should reach an app row", clickedIndex >= 0) }
     }
 
-    private fun assertTrailingGridCardOutsideScrollbar(layoutDirection: LayoutDirection) {
+    private fun assertTrailingListRowOutsideScrollbar(layoutDirection: LayoutDirection) {
         var clickedIndex = -1
+        lateinit var state: LazyListState
         rule.setContent {
             CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                 MaterialTheme {
-                    val state = rememberLazyGridState()
+                    state = rememberLazyListState()
+                    var dragging by remember { mutableStateOf(false) }
+                    val gutterWidth = if (dragging) ScrollbarDraggingGutterWidth else ScrollbarRestingGutterWidth
+                    Box(Modifier.size(width = 320.dp, height = 480.dp).testTag(VIEWPORT_TAG)) {
+                        LazyColumn(
+                            state = state,
+                            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp, end = gutterWidth),
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        ) {
+                            items(90) { index ->
+                                Text(
+                                    "App $index",
+                                    Modifier.fillMaxWidth().height(56.dp)
+                                        .clickable { clickedIndex = index }
+                                        .testTag("list-row-$index")
+                                )
+                            }
+                        }
+                        DraggableLazyScrollbar(
+                            state,
+                            Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            onDraggingChange = { dragging = it }
+                        )
+                    }
+                }
+            }
+        }
+
+        fun assertRowOutsideThumb(expectedWidth: Dp) {
+            val viewport = rule.onNodeWithTag(VIEWPORT_TAG).getUnclippedBoundsInRoot()
+            val target = scrollbar().assertExists().getUnclippedBoundsInRoot()
+            val row = rule.onNodeWithTag("list-row-0").assertExists().getUnclippedBoundsInRoot()
+            assertEquals(expectedWidth, target.width)
+            assertTrue("The first row should align vertically with the thumb", row.top < target.bottom && target.top < row.bottom)
+            if (layoutDirection == LayoutDirection.Rtl) {
+                assertEquals("RTL scrollbar should stay on the left", viewport.left, target.left)
+                assertTrue("RTL trailing row overlaps the drag target: $row, $target", row.left >= target.right)
+            } else {
+                assertEquals("LTR scrollbar should stay on the right", viewport.right, target.right)
+                assertTrue("LTR trailing row overlaps the drag target: $row, $target", row.right <= target.left)
+            }
+        }
+
+        assertRowOutsideThumb(ScrollbarRestingGutterWidth)
+        val rowNode = rule.onNodeWithTag("list-row-0").assertExists()
+        val rowBounds = rowNode.fetchSemanticsNode().boundsInRoot
+        rowNode.performTouchInput {
+            val trailingEdgeX = if (layoutDirection == LayoutDirection.Rtl) 1f else rowBounds.right - rowBounds.left - 1f
+            click(Offset(trailingEdgeX, center.y))
+        }
+        rule.runOnIdle { assertEquals(0, clickedIndex) }
+
+        scrollbar().performTouchInput { down(center) }
+        assertRowOutsideThumb(ScrollbarDraggingGutterWidth)
+        scrollbar().performTouchInput {
+            moveTo(Offset(center.x, center.y + center.y * 8f))
+            up()
+        }
+        rule.runOnIdle { assertTrue("The expanded list thumb must keep the gesture", state.firstVisibleItemIndex > 0) }
+        assertEquals(ScrollbarRestingGutterWidth, scrollbar().getUnclippedBoundsInRoot().width)
+    }
+
+    private fun assertTrailingGridCardOutsideScrollbar(layoutDirection: LayoutDirection) {
+        var clickedIndex = -1
+        lateinit var state: LazyGridState
+        rule.setContent {
+            CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                MaterialTheme {
+                    state = rememberLazyGridState()
+                    var dragging by remember { mutableStateOf(false) }
+                    val gutterWidth = if (dragging) ScrollbarDraggingGutterWidth else ScrollbarRestingGutterWidth
                     Box(Modifier.size(width = 320.dp, height = 480.dp)) {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(3),
                             state = state,
-                            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp, end = GridScrollbarGutterWidth),
+                            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp, end = gutterWidth),
                             modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                         ) {
                             items(90) { index ->
@@ -452,29 +559,46 @@ class DraggableLazyScrollbarTest {
                                 )
                             }
                         }
-                        DraggableLazyScrollbar(state, Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+                        DraggableLazyScrollbar(
+                            state,
+                            Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            onDraggingChange = { dragging = it }
+                        )
                     }
                 }
             }
         }
 
-        val target = scrollbar().assertExists().getUnclippedBoundsInRoot()
-        val cardNode = rule.onNodeWithTag("grid-card-2").assertExists()
-        val card = cardNode.getUnclippedBoundsInRoot()
-        assertEquals(GridScrollbarGutterWidth, target.width)
-        assertTrue("The trailing card should align vertically with the thumb", card.top < target.bottom && target.top < card.bottom)
-        if (layoutDirection == LayoutDirection.Rtl) {
-            assertTrue("RTL trailing card overlaps the drag target: $card, $target", card.left >= target.right)
-        } else {
-            assertTrue("LTR trailing card overlaps the drag target: $card, $target", card.right <= target.left)
+        fun assertCardOutsideThumb(expectedWidth: Dp) {
+            val target = scrollbar().assertExists().getUnclippedBoundsInRoot()
+            val card = rule.onNodeWithTag("grid-card-2").assertExists().getUnclippedBoundsInRoot()
+            assertEquals(expectedWidth, target.width)
+            assertTrue("The trailing card should align vertically with the thumb", card.top < target.bottom && target.top < card.bottom)
+            if (layoutDirection == LayoutDirection.Rtl) {
+                assertTrue("RTL trailing card overlaps the drag target: $card, $target", card.left >= target.right)
+            } else {
+                assertTrue("LTR trailing card overlaps the drag target: $card, $target", card.right <= target.left)
+            }
         }
 
+        assertCardOutsideThumb(ScrollbarRestingGutterWidth)
+        val cardNode = rule.onNodeWithTag("grid-card-2").assertExists()
         val cardBoundsPx = cardNode.fetchSemanticsNode().boundsInRoot
         cardNode.performTouchInput {
             val trailingEdgeX = if (layoutDirection == LayoutDirection.Rtl) 1f else cardBoundsPx.right - cardBoundsPx.left - 1f
             click(Offset(trailingEdgeX, center.y))
         }
         rule.runOnIdle { assertEquals(2, clickedIndex) }
+
+        scrollbar().performTouchInput { down(center) }
+        assertCardOutsideThumb(ScrollbarDraggingGutterWidth)
+        rule.runOnIdle { assertEquals("A drag should retain the grid column count", 3, state.layoutInfo.visibleItemsInfo.count { it.row == 0 }) }
+        scrollbar().performTouchInput {
+            moveTo(Offset(center.x, center.y + center.y * 8f))
+            up()
+        }
+        rule.runOnIdle { assertTrue("The expanded thumb must keep the gesture", state.firstVisibleItemIndex > 0) }
+        assertEquals(ScrollbarRestingGutterWidth, scrollbar().getUnclippedBoundsInRoot().width)
     }
 
     private fun scrollbar() = rule.onNodeWithContentDescription(scrollbarLabel)
