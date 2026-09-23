@@ -402,6 +402,46 @@ class DraggableLazyScrollbarTest {
     }
 
     @Test
+    fun changingItemCountDuringDragKeepsGestureActive() {
+        var itemCount by mutableStateOf(120)
+        val dragTransitions = mutableListOf<Boolean>()
+        lateinit var state: LazyListState
+        rule.setContent {
+            MaterialTheme {
+                state = rememberLazyListState()
+                Box(Modifier.size(width = 320.dp, height = 480.dp)) {
+                    LazyColumn(state = state, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+                        items(itemCount) { index -> AppRow(index) }
+                    }
+                    DraggableLazyScrollbar(
+                        state,
+                        Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                        onDraggingChange = { dragTransitions += it }
+                    )
+                }
+            }
+        }
+
+        scrollbar().assertExists().performTouchInput { down(center) }
+        assertEquals(ScrollbarDraggingGutterWidth, scrollbar().getUnclippedBoundsInRoot().width)
+        assertEquals(listOf(true), dragTransitions)
+
+        rule.runOnIdle { itemCount = 150 }
+        rule.runOnIdle { assertEquals(150, state.layoutInfo.totalItemsCount) }
+        assertEquals(ScrollbarDraggingGutterWidth, scrollbar().getUnclippedBoundsInRoot().width)
+        assertEquals(listOf(true), dragTransitions)
+
+        scrollbar().performTouchInput {
+            moveTo(Offset(center.x, center.y + center.y * 8f))
+            up()
+        }
+        rule.runOnIdle {
+            assertTrue("The drag should keep scrolling after the item count changes", state.firstVisibleItemIndex > 0)
+            assertEquals(listOf(true, false), dragTransitions)
+        }
+    }
+
+    @Test
     fun rtlScrollbarStaysOnTheTrailingEdgeAndCanSeek() {
         lateinit var state: LazyListState
         rule.setContent {

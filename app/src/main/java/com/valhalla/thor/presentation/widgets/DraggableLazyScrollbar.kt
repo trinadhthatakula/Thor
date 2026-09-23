@@ -350,7 +350,7 @@ private fun DraggableLazyScrollbarContent(
                     }
                 }
                 .focusable()
-                .pointerInput(state, items.total) {
+                .pointerInput(state) {
                     coroutineScope {
                         val gestureScope = this
                         awaitEachGesture {
