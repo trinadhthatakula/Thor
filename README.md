@@ -25,60 +25,49 @@
 
 ---
 
-* Kotlin + Material 3 Design
-* Jetpack Compose
-* Room DB App Caching
-* Custom Hidden API Bypass
-* Direct-download APK around 3 MB
-* FOSS - GPL-3.0
-* No Ads/Trackers
-* No network access except the optional Extensions store
+* Kotlin, Jetpack Compose, and Material 3
+* Room-backed app cache and custom hidden API bypass
+* Free software under GPL-3.0-or-later, with no ads or trackers
+* FOSS APK on [GitHub Releases](https://github.com/trinadhthatakula/Thor/releases); the FOSS build is reproducible
+* The FOSS app uses the network for the optional Extension Manager; the Store build also connects to Google Play Billing
 
 ## Working Features
 
-- High-performance app list loading with Room DB metadata caching
-- Fingerprint Lock
-- Themes (dark, light, system) + AMOLED + Asgardian static theme
-- [Font presets](docs/font-presets.md) in Settings → Customization: Asgard (Outfit/Fira Code) or system fonts, applied across the app and installer
-- **Redesigned App Installer** — install packages with Root, Shizuku, Dhizuku, or Android’s normal installer, featuring detailed UI states and associations for split formats (`.apkm`, `.apks`, and `.xapk`)
-- **Auto Reinstall** — maintain Play Store installer attribution through Root or Shizuku
-- **Extension Manager** — an in-app catalog of optional add-ons, each signature-verified and SHA-256 checked before install
-- **Redesigned Home** — an adaptive bento grid with one-tap access to the Extension Manager
-- **Universal Android Debloater (UAD) Integration** — safety recommendation chips (Recommended, Advanced, Expert, Unsafe) dynamically shown for system packages
-- **Safe System App Debloating & Freezing** — Root and Shizuku freeze apps by disabling them; Dhizuku uses Android’s device-owner hide/unhide API. Both keep the APK and app data. Thor also retains recovery for system apps removed for the current user by older versions.
-- **Adaptive UI Layouts** — vertical navigation rail for tablets/foldables, optimized viewport layouts, and split landscape detail screens
-- **Safety Gating** — blocks freezing of system apps marked as **Unsafe** by UAD to prevent bootloops, and warns on **Expert** packages
-- **Per-Component Control** — disable, enable or reset to default an individual activity, service, broadcast receiver or content provider; open an exported activity with no privilege at all, force-open an unexported or permission-guarded one, and stop a single running service. Every disable is recorded so **Restore all** can put components back to the state their developer shipped — across every app rather than just the one on screen, scoped to the Android user Thor is running in — and a component something else changed is labelled *Changed elsewhere* rather than silently reverted. Needs Root or a Shizuku started as root: the platform rejects per-component changes from the shell uid, and Dhizuku exposes no API for them
-- Root Support
-- Shizuku Support
-- Dhizuku Support — device-owner app management; ordinary APK replacement is supported, while Fix Store, force-stop, and cache clearing require other modes
-- Fully reproducible, copyleft libre software (GPLv3.0)
-- Material 3 with optional dynamic colors (Material You)
-- Work Mode selection — manually choose between Root, Shizuku, or Dhizuku as the active privilege
-  engine
-- Displays App List while sorting them based on Installation source
-- Search in App List and Freezer
-- Multi-language support (English, Spanish, French, Arabic, Chinese, Portuguese, Brazilian
-  Portuguese, Polish) with in-app language switcher
-- Launch App Activities
-- Install/Uninstall/Freeze/Unfreeze Apk files
-- Suspend/Unsuspend apps (shows custom Thor-branded system dialog)
-- Background Restriction (restrict app background activity)
-- Fix Store installer record (requires Root or Shizuku)
-- Share App Apk file
-- Batch Reinstall/Uninstall/Freeze/Unfreeze/Kill/Suspend/Clear Data
-- Split App Indicator
-- AppState Indicator (frozen / suspended / hidden)
-- Local icon caching and danger badges for user-uninstalled system apps
-- Uninstall System Apps
-- Freeze/UnFreeze System apps
-- Sorting & filters
-- Layout preference persistence (grid/list mode preserved across restarts)
-- Clear app data through Root, Shizuku, or Dhizuku; clear one app’s cache with Root, or clear caches across the device with Root or Shizuku
+### Apps and installation
+
+- Room-cached app lists with search, sorting, source and permission filters, split/frozen/suspended/hidden indicators, a scroll-position indicator, and a saved list or grid layout. Export the current list to CSV.
+- App Info quick actions can be reordered or hidden. Tap an app icon to launch it, or long-press it for Android's app settings.
+- Install APK, APKM, APKS, and XAPK packages (including supported OBB expansion assets) through Root, Shizuku, Dhizuku, or Android's installer. Eligible Root/Shizuku installs of older-target APKs require explicit consent unless the separate saved override is enabled; install-time runtime-permission grants are opt-in.
+- Per-app permission management can grant or revoke supported runtime permissions. App Ops beyond those controls are not a general-purpose editor.
+- Per-component control can open activities, stop running services, and disable, enable, or reset activities, services, receivers, and providers. Thor records its own disables for **Restore all** across apps for the current Android user. Component changes and forced launches require Root or Shizuku running as root; ordinary exported activities can open without privilege.
+- Clear app data through Root, Shizuku, or Dhizuku; clear one app's cache with Root, or clear caches across the device with Root or Shizuku. Background restriction and system-app uninstall are also available where the active privilege mode supports them.
+- **Fix Store** and Play installer attribution for eligible reinstall actions require Root or Shizuku. Dhizuku uses device-owner APIs for ordinary APK replacement, app removal, data clearing, suspension, and hide/unhide; it does not support Fix Store, force-stop, or whole-device cache clearing.
+
+### Freezer and bulk actions
+
+- Root and Shizuku freeze by disabling; Dhizuku uses Android's device-owner hide/unhide API. These paths retain the APK and app data. Thor also helps recover system apps removed for the current user by older versions.
+- Universal Android Debloater recommendations label system apps. Thor blocks **Unsafe** freeze targets and warns for **Expert** targets to reduce the risk of boot problems.
+- Freeze Profiles group apps for freeze/unfreeze, suspend, or force-stop actions. Assign selected apps to existing profiles from the App list or Freezer; App Info shows membership, and removing the last profile membership of a frozen app offers a recovery choice.
+- Batch reinstall, uninstall, freeze, unfreeze, force-stop, suspend, unsuspend, cache clearing, sharing, and APK/bundle export. Bulk Freeze asks whether successfully frozen apps should also be added to the Freezer list. **Batch clear data and batch install are not available.**
+
+### Backup, sharing, and Guardians
+
+- The **Backup & Restore Hub** finds APK/APKS/XAPK bundles and encrypted `.thorbak` archives, and lets you start backups, inspect, search, share, restore, or delete them. Restores authenticate archive contents before applying them. Root can back up and restore private app data; non-root Shizuku is limited to APKs and accessible shared storage. Backup passphrases cannot be recovered.
+- Export one app as APK/APKS/XAPK, export selected apps as installer bundles, share a single app, or prepare selected apps for sharing. Multi-app **Export** writes bundles; it is not bulk private app-data backup.
+- **Guardians** runs supported background work through two Room-backed foreground-service queues: a data queue for archive backup/restore, single-app export, and bulk-share preparation; and a privilege queue for supported freeze/unfreeze, suspend/unsuspend, per-app cache, and eligible Fix Store/reinstall actions. Each queue processes its own tasks in order.
+- The Guardians screen shows Running, Queued, and Recent tasks, with progress, logs, per-app results, and explicit cancellation. Groot, Rocket, and Star-Lord label the Root, Shizuku, and Dhizuku providers; these labels do not prove a provider is currently available. Accepted tasks can continue when the screen is dismissed; task history and recovery state remain visible after interruption. Completion after every reboot, force-stop, or lost privilege is not guaranteed. Single-app quick sharing and multi-app bundle export use separate direct paths.
+
+### Interface and personalization
+
+- Adaptive Home, Settings, App list, and detail layouts for phones, tablets, and foldables, including a navigation rail and landscape detail panes.
+- Material 3 themes (dark, light, system, AMOLED, and Asgardian), optional dynamic colors, and [font presets](docs/font-presets.md) that apply across Thor and its external installer.
+- Customize App Info actions and, separately, the App list and Freezer multi-app action toolbars. Reorder, hide, or restore their actions.
+- Biometric lock for Thor, with screenshot/recording protection and a hidden Recents preview while locked.
+- Eight app languages: English, Spanish, French, Arabic, Simplified Chinese, European Portuguese, Brazilian Portuguese, and Polish, with an in-app language switcher.
+- Work Mode selection between available Root, Shizuku, and Dhizuku providers. The Extension Manager offers an optional catalog of add-ons, with a pinned-signer check for every downloaded APK and a SHA-256 comparison when the catalog provides a digest, both before installation.
 
 ## Upcoming Features
 
-- BackUp App Data
 - Editing Packages.xml
 - Batch Install
 - Launcher-shortcut / deep-link triggering for automation extensions, via an authenticated handoff
@@ -91,11 +80,14 @@
 
 Thor is a labor of love, built to be **ad-free and tracker-free**. If this tool has
 made your Android management easier, consider supporting its continued development. Your
-contributions help keep the project alive and free for everyone.
+contributions help keep the project alive and free for everyone. Thor also offers optional support
+shortcuts after some successful actions.
 
 | Platform            | Link                                                        |
 |---------------------|-------------------------------------------------------------|
+| **GitHub Sponsors** | [Sponsor on GitHub](https://github.com/sponsors/trinadhthatakula) |
 | **Patreon**         | [Support on Patreon](https://www.patreon.com/trinadh)       |
+| **Ko-fi**           | [Support on Ko-fi](https://ko-fi.com/trinadh)               |
 | **Buy Me a Coffee** | [Buy me a coffee](https://www.buymeacoffee.com/trinadh)     |
 | **PayPal**          | [Donate via PayPal](https://www.paypal.me/trinadhthatakula) |
 
@@ -136,7 +128,9 @@ file for the full text.
 
 ### ⚠️ Official builds & unofficial forks
 
-Thor is **100% FOSS with no ads and no trackers**. Official, ad-free builds come **only** from
+Thor's source is licensed under GPL-3.0-or-later, and official builds have no ads or trackers.
+The FOSS APK excludes Google Play Billing; the Play build includes it for optional support.
+Official builds come **only** from
 [Google Play](https://play.google.com/store/apps/details?id=com.valhalla.thor),
 [IzzyOnDroid](https://apt.izzysoft.de/fdroid/index/apk/com.valhalla.thor),
 [Indus App Store](https://www.indusappstore.com/apps/productivity/thor/com.valhalla.thor/), and
