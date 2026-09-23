@@ -1,9 +1,9 @@
 # App-list bulk freeze consent and background suspend (QA-001)
 
-Status: implemented in Doctor on `feat/legacy-apk-install`, with basic bulk-action flows and the
-Recents polish physically confirmed by the maintainer on 2026-09-10. Ready for integration into
-`dev`; not yet merged or released. These changes are separate from PR #464's merged
-legacy-installer/settings changes and its disposable-emulator wording correction.
+Status: implemented on `dev` in `9ed5a4d8` and released in v1.96.0. The maintainer physically
+confirmed the basic bulk-action flows and Recents polish on 2026-09-10. The remaining device matrix
+below is additional acceptance coverage, not an unimplemented feature or release blocker established
+by this record. These changes are separate from PR #464's legacy-installer/settings changes.
 
 ## Tester request — 2026-09-10
 

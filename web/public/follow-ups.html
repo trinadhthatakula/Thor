@@ -85,7 +85,7 @@
 
     <section id="start" aria-labelledby="start-title">
       <h2 id="start-title">Start here: unblock and verify</h2>
-      <p class="section-intro">Some of this work shipped, while the Samsung file-opening fix is still partial. The linked device checks and diagnostics show what remains to verify.</p>
+      <p class="section-intro">Backup and restore still needs recorded device acceptance, while the Samsung file-opening fix is partial. The linked checks and diagnostics show what remains to verify.</p>
       <div class="grid">
         <article>
           <div class="top"><span class="number">01</span><span class="status check">Post-release validation</span></div>
@@ -101,14 +101,11 @@
           <p class="meta">Issue #161 · partially addressed</p>
           <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/161">Issue</a><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/161-apks-not-openable-from-file-managers.md#run-this-first">Diagnostic steps</a></div>
         </article>
-        <article>
-          <div class="top"><span class="number">03</span><span class="status check">Post-release validation</span></div>
-          <h3>Finish legacy-install and bulk-action checks</h3>
-          <p>These flows shipped in v1.96.0. Root legacy APK installation and the basic bulk-action flow were confirmed on a device; the documented Shizuku/Samsung, consent, failure, privilege-mode, and Store-policy checks remain open in their acceptance records.</p>
-          <p class="meta">TG-001 and QA-001 · shipped, partial device proof</p>
-          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/legacy-target-sdk-installation.md#device-acceptance-and-remaining-release-checks">Legacy-install checklist</a><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/app-list-bulk-freeze-and-suspend.md#remaining-physical-device-acceptance">Bulk-action checklist</a></div>
-        </article>
       </div>
+      <aside class="note" aria-label="Shipped installation and bulk actions">
+        <strong>Already shipped</strong>
+        <p>Legacy target-SDK installation and the improved bulk Freeze, Suspend, and Unsuspend flows shipped in v1.96.0. Root legacy installation and the main bulk-action flows were confirmed on a physical device. They are not new build tasks; their <a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/legacy-target-sdk-installation.md#device-acceptance-and-remaining-release-checks">legacy-install</a> and <a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/app-list-bulk-freeze-and-suspend.md#remaining-physical-device-acceptance">bulk-action</a> records retain additional device and policy checks beyond that proof.</p>
+      </aside>
     </section>
 
     <section id="build" aria-labelledby="build-title">
@@ -116,14 +113,14 @@
       <p class="section-intro">User-visible gaps with a clear first slice. Their order can change when the device results above arrive.</p>
       <div class="grid">
         <article>
-          <div class="top"><span class="number">04</span><span class="status">Feature</span></div>
+          <div class="top"><span class="number">03</span><span class="status">Feature</span></div>
           <h3>App tags for browsing and filtering</h3>
           <p>Let people assign their own tags and filter the Apps list by them. The requester confirmed that filtering by tags is the desired behavior. Pair per-app notes with the same storage migration, then define the app-list and app-info entry points.</p>
           <p class="meta">Issue #178 · unbuilt</p>
           <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/178">Request and clarification</a><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/README.md#band-c--real-and-expensive">Backlog item 24</a></div>
         </article>
         <article>
-          <div class="top"><span class="number">05</span><span class="status">UX feature</span></div>
+          <div class="top"><span class="number">04</span><span class="status">UX feature</span></div>
           <h3>Drag the app-list scrollbar</h3>
           <p>The Apps list and grid show a non-interactive scrollbar today. Make its thumb draggable for long lists, with a usable touch target and accessible list navigation; check filtered and reordered lists as well.</p>
           <p class="meta">Issue #496 · new request</p>
