@@ -13,11 +13,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -58,10 +58,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -74,6 +75,8 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -83,6 +86,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -156,6 +160,7 @@ fun AppList(
     // selection would throw NotSerializableException on rotation/process death. The selection is
     // intentionally transient — it is cleared on appListType change and via BackHandler.
     var multiSelection by remember { mutableStateOf(emptyList<AppInfo>()) }
+    var multiSelectToolbarHeightPx by remember { mutableIntStateOf(0) }
     LaunchedEffect(clearSelectionRequest) { multiSelection = emptyList() }
 
     // Optimization: Use a Set for O(1) lookups
@@ -175,6 +180,10 @@ fun AppList(
     }
 
     // 3. UI Layout
+    // Keep the draggable thumb above the floating selection toolbar, including at the list end.
+    val scrollbarBottomInset = if (isMultiSelectMode) {
+        maxOf(120.dp, with(LocalDensity.current) { multiSelectToolbarHeightPx.toDp() }) + 40.dp
+    } else 0.dp
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
 
@@ -280,6 +289,7 @@ fun AppList(
                     filterType = filterType,
                     appListType = appListType,
                     searchQuery = searchQuery,
+                    scrollbarBottomInset = scrollbarBottomInset,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope
                 )
@@ -295,7 +305,8 @@ fun AppList(
                 onAddToProfiles = onAddToProfiles?.let { assign -> { assign(multiSelection) } },
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 32.dp)
-                    .align(Alignment.BottomEnd),
+                    .align(Alignment.BottomEnd)
+                    .onSizeChanged { multiSelectToolbarHeightPx = it.height },
                 isRoot = isRoot,
                 isShizuku = isShizuku,
                 isDhizuku = isDhizuku,
@@ -589,69 +600,98 @@ private fun AppListContent(
     filterType: FilterType = FilterType.Source,
     appListType: AppListType = AppListType.USER,
     searchQuery: String = "",
+    scrollbarBottomInset: Dp,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
-    // Shared padding for list/grid
-    val padding = PaddingValues(bottom = 100.dp, top = 8.dp)
-
-    // Hoisted only so the scrollbar can read it. Both containers created their own identical state
-    // before, and both branches still mint a fresh one, so switching grid <-> list resets the scroll
-    // position exactly as it always did.
-    //
-    // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to null for states
-    // that drive no indicator; both lazy states override it with a real one, so the null branch is
-    // unreachable today. Branching beats `!!` — a future null then costs the scrollbar, not the list.
+    // Each view keeps its own lazy state, preserving the existing reset when switching grid/list.
+    // The scrollbar overlays only this list viewport, below search and filter controls.
     if (isGrid) {
         val metrics = gridMetricsFor(gridDensity)
         val gridState = rememberLazyGridState()
+        var gridScrollbarDragging by remember(
+            sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery, gridDensity
+        ) { mutableStateOf(false) }
+        val scrollbarGutterWidth = if (gridScrollbarDragging) {
+            ScrollbarDraggingGutterWidth
+        } else {
+            ScrollbarRestingGutterWidth
+        }
 
         ScrollToTopOnChange(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
             gridState.scrollToItem(0)
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = metrics.minCellSize),
-            state = gridState,
-            contentPadding = padding,
-            modifier = gridState.scrollIndicatorState?.let {
-                Modifier.nonInteractiveScrollbar(state = it, orientation = Orientation.Vertical)
-            } ?: Modifier
-        ) {
-            items(list, key = { it.packageName }) { app ->
-                AppItemGrid(
-                    app = app,
-                    isSelected = selectedPackageNames.contains(app.packageName),
-                    onClick = { onAppClick(app) },
-                    onLongClick = { onAppLongClick(app) },
-                    metrics = metrics,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val gridLayout = appGridLayoutFor(
+                constraints.maxWidth, metrics, LocalDensity.current, scrollbarGutterWidth
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(gridLayout.columns),
+                state = gridState,
+                contentPadding = PaddingValues(
+                    bottom = 100.dp, top = 8.dp, end = scrollbarGutterWidth
+                ),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(list, key = { it.packageName }) { app ->
+                    AppItemGrid(
+                        app = app,
+                        isSelected = selectedPackageNames.contains(app.packageName),
+                        onClick = { onAppClick(app) },
+                        onLongClick = { onAppLongClick(app) },
+                        metrics = metrics,
+                        horizontalInnerPadding = gridLayout.horizontalInnerPadding,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope
+                    )
+                }
+            }
+            key(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery, gridDensity) {
+                DraggableLazyScrollbar(
+                    state = gridState,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset),
+                    onDraggingChange = { gridScrollbarDragging = it }
                 )
             }
         }
     } else {
         val listState = rememberLazyListState()
+        var listScrollbarDragging by remember(
+            sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery
+        ) { mutableStateOf(false) }
+        val scrollbarGutterWidth = if (listScrollbarDragging) {
+            ScrollbarDraggingGutterWidth
+        } else {
+            ScrollbarRestingGutterWidth
+        }
 
         ScrollToTopOnChange(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
             listState.scrollToItem(0)
         }
 
-        LazyColumn(
-            state = listState,
-            contentPadding = padding,
-            modifier = listState.scrollIndicatorState?.let {
-                Modifier.nonInteractiveScrollbar(state = it, orientation = Orientation.Vertical)
-            } ?: Modifier
-        ) {
-            items(list, key = { it.packageName }) { app ->
-                AppItemList(
-                    app = app,
-                    isSelected = selectedPackageNames.contains(app.packageName),
-                    onClick = { onAppClick(app) },
-                    onLongClick = { onAppLongClick(app) },
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp, end = scrollbarGutterWidth),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(list, key = { it.packageName }) { app ->
+                    AppItemList(
+                        app = app,
+                        isSelected = selectedPackageNames.contains(app.packageName),
+                        onClick = { onAppClick(app) },
+                        onLongClick = { onAppLongClick(app) },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope
+                    )
+                }
+            }
+            key(sortBy, sortOrder, selectedFilter, filterType, appListType, searchQuery) {
+                DraggableLazyScrollbar(
+                    state = listState,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(bottom = scrollbarBottomInset),
+                    onDraggingChange = { listScrollbarDragging = it }
                 )
             }
         }
@@ -692,7 +732,8 @@ private val AppRowTierChipMaxWidth = 128.dp
  * is silently coerced smaller while [cornerRadius] stays put and the tile renders as a pill. The
  * invariant every row of [gridMetricsFor] satisfies is
  * `minCellSize - 2 * outerPadding - 2 * innerPadding >= iconSize` — which is exactly where today's
- * `100.dp` came from: `56 + 2 * 16 + 2 * 6`.
+ * `100.dp` came from: `56 + 2 * 16 + 2 * 6`. [appGridLayoutFor] may use a narrower cell after
+ * reserving the scrollbar gutter, reducing only horizontal inner padding to keep the icon full size.
  *
  * [outerPadding] is also the grid's gutter. None of the four grids passes a `horizontalArrangement`,
  * so the space between two tiles is these paddings back to back and nothing else.
@@ -702,7 +743,7 @@ private val AppRowTierChipMaxWidth = 128.dp
  * — so it needs no budget of its own; it takes whatever the tile has left.
  */
 internal data class AppGridMetrics(
-    /** `GridCells.Adaptive(minSize = )`. A cell is never narrower than this, only wider. */
+    /** Baseline adaptive width, used to choose the column count before reserving the scrollbar gutter. */
     val minCellSize: Dp,
     val iconSize: Dp,
     /** The tile's padding *outside* its background — i.e. the gap between two tiles. */
@@ -730,8 +771,8 @@ internal data class AppGridMetrics(
  * The dp table behind [AppGridDensity], kept here rather than in `domain/` because `Dp` is a Compose
  * type — the same split `settleDelayFor` uses for `AnimationIntensity`.
  *
- * [AppGridDensity.DEFAULT] is today's rendering to the dp, deliberately: a user who never opens the
- * setting must see the screen they had before it shipped.
+ * [AppGridDensity.DEFAULT] keeps the established metrics. The scrollbar gutter can reduce
+ * horizontal inner padding at widths where those metrics would otherwise lose a column.
  */
 internal fun gridMetricsFor(density: AppGridDensity): AppGridMetrics = when (density) {
     AppGridDensity.COMPACT -> AppGridMetrics(
@@ -763,6 +804,35 @@ internal fun gridMetricsFor(density: AppGridDensity): AppGridMetrics = when (den
         labelSpacing = 10.dp,
         badgeSize = 20.dp
     )
+}
+
+internal data class AppGridLayout(val columns: Int, val horizontalInnerPadding: Dp)
+
+/**
+ * Keep the column count based on the 32 dp drag gutter so a drag never adds or removes a column.
+ * Use the current gutter for cell width and inner padding so resting tiles regain the 16 dp space.
+ * Pixel math matches the measured grid width and avoids rounding a tight cell one pixel too small.
+ */
+internal fun appGridLayoutFor(
+    widthPx: Int,
+    metrics: AppGridMetrics,
+    density: Density,
+    scrollbarGutterWidth: Dp
+): AppGridLayout = with(density) {
+    val minCellPx = metrics.minCellSize.roundToPx().coerceAtLeast(1)
+    val desiredColumns = (widthPx / minCellPx).coerceAtLeast(1)
+    val columnBudgetPx = (widthPx - ScrollbarDraggingGutterWidth.roundToPx()).coerceAtLeast(0)
+    val availablePx = (widthPx - scrollbarGutterWidth.roundToPx()).coerceAtLeast(0)
+    val outerPx = metrics.outerPadding.roundToPx()
+    val iconPx = metrics.iconSize.roundToPx()
+    val minIconCellPx = (iconPx + 2 * outerPx).coerceAtLeast(1)
+    val columns = minOf(desiredColumns, (minOf(columnBudgetPx, availablePx) / minIconCellPx).coerceAtLeast(1))
+    val cellWidthPx = availablePx / columns
+    val horizontalInnerPx = minOf(
+        metrics.innerPadding.roundToPx(),
+        ((cellWidthPx - minIconCellPx) / 2).coerceAtLeast(0)
+    )
+    AppGridLayout(columns, horizontalInnerPx.toDp())
 }
 
 /**
@@ -964,6 +1034,7 @@ internal fun AppItemGrid(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     metrics: AppGridMetrics = gridMetricsFor(AppGridDensity.DEFAULT),
+    horizontalInnerPadding: Dp = metrics.innerPadding,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
@@ -983,7 +1054,7 @@ internal fun AppItemGrid(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(metrics.innerPadding)
+            .padding(horizontal = horizontalInnerPadding, vertical = metrics.innerPadding)
     ) {
         Box {
             AppIcon(

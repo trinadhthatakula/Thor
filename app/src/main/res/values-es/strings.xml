@@ -108,6 +108,8 @@
     <string name="view_mode">Modo de vista</string>
     <string name="grid">Cuadrícula</string>
     <string name="list">Lista</string>
+    <string name="scrollbar_scroll_apps">Desplazarse por la lista de aplicaciones</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d de %3$d</string>
     <string name="order">Orden:</string>
     <string name="ascending">Ascendente</string>
     <string name="descending">Descendente</string>

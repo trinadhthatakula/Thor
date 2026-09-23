@@ -285,7 +285,7 @@ Band B's Apps-tab half, and the last of this thread's asks. Same rule again — 
 | Ask from the table above | Shipped as |
 |---|---|
 | Fix Store is opaque, all-or-nothing and uncancellable | A picker listing every candidate with the installer Android currently records for it, all pre-ticked, the count in the confirm button; a stop that lands between apps; plainer confirm copy |
-| Quick scrollbar with sort-aware snapping | The position **indicator** on both long lists. The sort-aware scrubber is deferred |
+| Quick scrollbar with sort-aware snapping | Band B shipped a non-interactive position indicator on the Apps and Freezer lists. Issue #496 adds a draggable thumb and visible-range bubble to their list/grid views; release and physical-device acceptance remain pending. Sort-aware snapping is deferred |
 | Export the app list to CSV/MD | CSV of `displayedApps` verbatim, saved to the existing export target or shared straight out. MD dropped |
 
 > **Correction — "the target set is computed, never chosen" understates it: the set was also
@@ -306,11 +306,12 @@ Band B's Apps-tab half, and the last of this thread's asks. Same rule again — 
 > installers sharing a last segment were summed into one bar**. That is a wrong number on a chart,
 > which nothing in this thread reported and nobody would have noticed.
 >
-> **The scrollbar's cost was in the half that did not ship.** The row was sized medium on the
-> strength of sort-aware snapping, and band A #7 deliberately kept four `SortBy` predicates alive as
-> its seam. The *indicator* needs none of them: it is two lines per screen. Those predicates are
-> still there and still unspent, and the scrubber that will use them carries a constraint worth
-> recording now — A-Z buckets must be folded out of the list's actual order, never out of a human
+> **In August, the scrollbar's cost was in the half that did not ship.** The row was sized medium on
+> the strength of sort-aware snapping, and band A #7 deliberately kept four `SortBy` predicates
+> alive as its seam. The original *indicator* needed none of them; it was two lines per screen.
+> Issue #496's draggable thumb still does not use them: its bubble shows the visible item range,
+> without snapping. Those predicates remain unspent, and a future snapping scrubber carries a
+> constraint worth recording — A-Z buckets must be folded out of the list's actual order, never out of a human
 > alphabet, because switching the NAME comparator to a locale `Collator` silently reorders every
 > existing user's app list in every locale.
 >

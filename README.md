@@ -35,7 +35,7 @@
 
 ### Apps and installation
 
-- Room-cached app lists with search, sorting, source and permission filters, split/frozen/suspended/hidden indicators, a scroll-position indicator, and a saved list or grid layout. Export the current list to CSV.
+- Room-cached app lists with search, sorting, source and permission filters, split/frozen/suspended/hidden indicators, and a saved list or grid layout. Long Apps and Freezer lists/grids have a draggable scrollbar with a visible-range bubble. Export the current list to CSV.
 - App Info quick actions can be reordered or hidden. Tap an app icon to launch it, or long-press it for Android's app settings.
 - Install APK, APKM, APKS, and XAPK packages (including supported OBB expansion assets) through Root, Shizuku, Dhizuku, or Android's installer. Eligible Root/Shizuku installs of older-target APKs require explicit consent unless the separate saved override is enabled; install-time runtime-permission grants are opt-in.
 - Per-app permission management can grant or revoke supported runtime permissions. App Ops beyond those controls are not a general-purpose editor.
