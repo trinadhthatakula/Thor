@@ -1,12 +1,173 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0; url=/follow-ups-report.html">
-  <title>Redirecting to Follow-Ups Report — Thor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Thor's current next-work list: release checks, app-list improvements, and new feature requests.">
+  <title>What to work on next · Thor</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    :root { font-family: system-ui, -apple-system, sans-serif; color-scheme: dark; background: #0e0e0e; color: #e5e5e5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; line-height: 1.55; }
+    a { color: #d5f6ab; text-underline-offset: .2em; }
+    a:hover { color: #f0ffd7; }
+    a:focus-visible { outline: 2px solid #d5f6ab; outline-offset: 4px; border-radius: 2px; }
+    .shell { width: min(1100px, calc(100% - 2rem)); margin: auto; }
+    header { border-bottom: 1px solid #484848; padding: 1.2rem 0 1rem; }
+    nav { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .75rem 1.5rem; align-items: center; }
+    nav a { text-decoration: none; }
+    .brand { font-weight: 800; font-size: 1.3rem; letter-spacing: .08em; }
+    .nav-links { display: flex; flex-wrap: wrap; gap: .6rem 1.25rem; }
+    main { padding: 3rem 0 5rem; }
+    .eyebrow, .meta, .status { font-size: .82rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    .eyebrow { color: #c8bfff; }
+    h1 { font-size: clamp(2.2rem, 6vw, 4.2rem); line-height: 1.08; margin: .5rem 0 1rem; max-width: 18ch; }
+    h2 { font-size: clamp(1.5rem, 3vw, 2rem); margin: 0 0 .35rem; }
+    h3 { font-size: 1.2rem; line-height: 1.3; margin: .6rem 0; }
+    p { margin: .45rem 0; }
+    .lead { font-size: 1.15rem; max-width: 68ch; color: #c6c6c6; }
+    .intro-links { margin-top: 1.25rem; display: flex; flex-wrap: wrap; gap: .5rem 1.4rem; }
+    section { margin-top: 3.2rem; }
+    .section-intro { color: #b8b8b8; max-width: 75ch; margin-bottom: 1.25rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 1rem; }
+    article { background: #191919; border: 1px solid #484848; border-radius: 16px; padding: 1.25rem; }
+    article p { color: #c6c6c6; }
+    .top { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; }
+    .number { font-size: 1.5rem; font-weight: 800; color: #f0ffd7; }
+    .status { color: #c8bfff; }
+    .check { color: #fbbf24; }
+    .scope { color: #9ddac1; }
+    .meta { color: #a9a9a9; margin: 1rem 0 .5rem; }
+    .links { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .9rem; }
+    .note { margin-top: 2.4rem; padding: 1.2rem 1.4rem; background: #242436; border-left: 3px solid #c8bfff; border-radius: 0 12px 12px 0; }
+    .note p { color: #d5d2e4; }
+    footer { border-top: 1px solid #484848; padding: 1.5rem 0 2rem; color: #ababab; }
+    @media (prefers-color-scheme: light) {
+      :root { color-scheme: light; background: #f8faf3; color: #191c18; }
+      a, a:hover { color: #354e15; }
+      a:focus-visible { outline-color: #354e15; }
+      header, footer, article { border-color: #c7cdc0; }
+      article { background: #fff; }
+      .eyebrow, .status { color: #66355d; }
+      .lead, .section-intro, article p { color: #42473e; }
+      .number { color: #354e15; }
+      .check { color: #8a5200; }
+      .scope { color: #216245; }
+      .meta, footer { color: #555a52; }
+      .note { background: #ece8f4; border-color: #66355d; }
+      .note p { color: #352b44; }
+    }
+  </style>
 </head>
 <body>
-  <h1>Redirecting to Follow-Ups Report...</h1>
-  <p>Redirecting to <a href="/follow-ups-report.html">Follow-Ups Report</a>...</p>
+  <header>
+    <nav class="shell" aria-label="Page navigation">
+      <a class="brand" href="/">THOR</a>
+      <div class="nav-links">
+        <a href="#start">Start here</a>
+        <a href="#build">Build next</a>
+        <a href="#scope">Scope first</a>
+        <a href="/follow-ups-report.html">Earlier report</a>
+      </div>
+    </nav>
+  </header>
+  <main class="shell">
+    <p class="eyebrow">Follow-ups · checked 23 September 2026</p>
+    <h1>What should we work on next?</h1>
+    <p class="lead">A short queue drawn from the follow-up docs, current <code>dev</code>, and open GitHub requests. The numbered cards are the recommended order. Device checks are listed as checks; new capabilities are listed as builds.</p>
+    <div class="intro-links">
+      <a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/README.md">Full follow-up index</a>
+      <a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/analysis/community-feature-request-assessment-2026-09.md">Community assessment</a>
+      <a href="https://github.com/trinadhthatakula/Thor/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement">Open feature requests</a>
+    </div>
+
+    <section id="start" aria-labelledby="start-title">
+      <h2 id="start-title">Start here: unblock and verify</h2>
+      <p class="section-intro">These features are already in published releases, but the linked acceptance records still have gaps. Close those gaps before relying on them for larger work.</p>
+      <div class="grid">
+        <article>
+          <div class="top"><span class="number">01</span><span class="status check">Post-release validation</span></div>
+          <h3>Verify a real app-data backup and restore</h3>
+          <p>Encrypted backup and restore shipped in v1.96.0. The older 21-item device checklist has no recorded completion; reconcile it with any testing already done, then run the missing root backup and restore, archive, and provider checks. Bulk app-data backup should wait for a proven single-app path.</p>
+          <p class="meta">PR #379 · shipped, acceptance record incomplete</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/app-data-backup-and-xapk-export.md#phase-2s-own-checks--21-items-every-one-unrun">Acceptance checklist</a><a href="https://github.com/trinadhthatakula/Thor/pull/379">Merged PR</a></div>
+        </article>
+        <article>
+          <div class="top"><span class="number">02</span><span class="status check">Device diagnostic</span></div>
+          <h3>Find Samsung My Files’ <code>.apks</code> MIME type</h3>
+          <p>Run the documented provider and chooser checks on the affected Samsung device. The result decides whether one narrow manifest type can fix #161. The current broad opener is optional and has not been confirmed on that device.</p>
+          <p class="meta">Issue #161 · partially addressed</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/161">Issue</a><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/161-apks-not-openable-from-file-managers.md#run-this-first">Diagnostic steps</a></div>
+        </article>
+        <article>
+          <div class="top"><span class="number">03</span><span class="status check">Post-release validation</span></div>
+          <h3>Finish legacy-install and bulk-action checks</h3>
+          <p>These flows shipped in v1.96.0. Root legacy APK installation and the basic bulk-action flow were confirmed on a device; the documented Shizuku/Samsung, consent, failure, privilege-mode, and Store-policy checks remain open in their acceptance records.</p>
+          <p class="meta">TG-001 and QA-001 · shipped, partial device proof</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/legacy-target-sdk-installation.md#device-acceptance-and-remaining-release-checks">Legacy-install checklist</a><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/app-list-bulk-freeze-and-suspend.md#remaining-physical-device-acceptance">Bulk-action checklist</a></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="build" aria-labelledby="build-title">
+      <h2 id="build-title">Build next</h2>
+      <p class="section-intro">User-visible gaps with a clear first slice. Their order can change when the device results above arrive.</p>
+      <div class="grid">
+        <article>
+          <div class="top"><span class="number">04</span><span class="status">Feature</span></div>
+          <h3>App tags for browsing and filtering</h3>
+          <p>Let people assign their own tags and filter the Apps list by them. The requester confirmed that filtering by tags is the desired behavior. Pair per-app notes with the same storage migration, then define the app-list and app-info entry points.</p>
+          <p class="meta">Issue #178 · unbuilt</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/178">Request and clarification</a><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/README.md#band-c--real-and-expensive">Backlog item 24</a></div>
+        </article>
+        <article>
+          <div class="top"><span class="number">05</span><span class="status">UX feature</span></div>
+          <h3>Drag the app-list scrollbar</h3>
+          <p>The Apps list and grid show a non-interactive scrollbar today. Make its thumb draggable for long lists, with a usable touch target and accessible list navigation; check filtered and reordered lists as well.</p>
+          <p class="meta">Issue #496 · new request</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/496">Feature request</a></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="scope" aria-labelledby="scope-title">
+      <h2 id="scope-title">Scope or diagnose before building</h2>
+      <p class="section-intro">These are real requests, but a privilege boundary, product choice, or device result still determines the right implementation.</p>
+      <div class="grid">
+        <article>
+          <div class="top"><span class="status scope">New request</span></div>
+          <h3>App Ops controls in Permission Manager</h3>
+          <p>Issue #503 asks to manage operations beyond runtime permissions. Thor already has specific App Ops paths; a general editor needs an operation list, mode semantics, per-privilege behavior, readback, and recovery rules before it can be sized.</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/503">Feature request</a></div>
+        </article>
+        <article>
+          <div class="top"><span class="status scope">New request</span></div>
+          <h3>System settings database editor</h3>
+          <p>Issue #504 proposes editing System, Secure, and Global settings, and reading device properties. Decide which settings and tables belong in Thor, how privileged writes are authorized and reversed, and which values should remain read-only.</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/504">Feature request</a></div>
+        </article>
+        <article>
+          <div class="top"><span class="status scope">OEM diagnostic</span></div>
+          <h3>HyperOS system-app update failure</h3>
+          <p>For #390, compare the same failed install with Xiaomi’s “Update system apps” developer option off and on, recording ROM and privilege mode. Determine whether the remaining restriction concerns caller identity or installer attribution before considering an override.</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/390">Issue and maintainer guidance</a><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/analysis/community-feature-request-assessment-2026-09.md#gh-390--hyperosmiui-system-app-updates-configuration-and-diagnosis-first">Assessment</a></div>
+        </article>
+        <article>
+          <div class="top"><span class="status scope">Sequencing decision</span></div>
+          <h3>Bulk app-data backup and restore</h3>
+          <p>Backlog item 32 needs a per-app failure model, passphrase handling, and interrupted-restore recovery. Begin its design after item 01 proves a single backup and restore on hardware.</p>
+          <div class="links"><a href="https://github.com/trinadhthatakula/Thor/blob/dev/docs/follow-ups/README.md#band-c--real-and-expensive">Backlog item 32</a></div>
+        </article>
+      </div>
+    </section>
+
+    <aside class="note" aria-label="How to read this list">
+      <strong>How to use this page</strong>
+      <p>The earlier <a href="/follow-ups-report.html">interactive report</a> and linked backlog index preserve historical assessments; some entries predate later code and releases. This page is the current pick list. Issue labels such as “needs triage” are retained until the maintainer chooses scope; inclusion here does not promise a release.</p>
+    </aside>
+  </main>
+  <footer><div class="shell">Thor · Follow-up queue · 23 September 2026</div></footer>
 </body>
 </html>
