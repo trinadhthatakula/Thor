@@ -4,10 +4,10 @@
 package com.valhalla.thor.data.repository
 
 import com.valhalla.thor.data.appops.AppOpsCommands
+import com.valhalla.thor.data.appops.AppOpsParseResult
 import com.valhalla.thor.data.appops.AppOpsParser
 import com.valhalla.thor.data.gateway.userIdOf
 import com.valhalla.thor.domain.model.AppOpDefinition
-import com.valhalla.thor.domain.model.AppOpEntry
 import com.valhalla.thor.domain.model.AppOpMode
 import com.valhalla.thor.domain.model.AppOpScope
 import com.valhalla.thor.domain.model.AppOpsSnapshot
@@ -38,14 +38,15 @@ internal class AppOpsController(
         val target = checkedTarget(packageName)
         val definitions = loadCatalog()
         val session = openSession(packageName)
-        val entries = readEntries(session, packageName, target, definitions)
+        val parsed = readEntries(session, packageName, target, definitions)
         check(checkedTarget(packageName).uid == target.uid) { "The app changed while reading App Ops. Refresh and try again." }
         AppOpsSnapshot(
             userId = userIdOf(target.uid),
             uid = target.uid,
-            entries = entries,
+            entries = parsed.entries,
             canEdit = true,
             sharedUidPackages = target.sharedUidPackages,
+            unsupportedOperationCount = parsed.unsupportedOperationCount,
         )
     }
 
@@ -73,7 +74,7 @@ internal class AppOpsController(
         )
         check(output.isBlank()) { "Android returned an unexpected response while updating App Ops." }
         check(checkedTarget(packageName).uid == target.uid) { "The app changed while updating App Ops. Refresh and try again." }
-        val entry = readEntries(session, packageName, target, definitions).single { it.definition.code == code }
+        val entry = readEntries(session, packageName, target, definitions).entries.single { it.definition.code == code }
         check(checkedTarget(packageName).uid == target.uid) { "The app changed while verifying App Ops. Refresh and try again." }
         // Verify the requested scope, not the displayed/effective mode: a UID override can mask
         // a perfectly valid package write, and a package value cannot prove a UID write worked.
@@ -98,7 +99,7 @@ internal class AppOpsController(
         packageName: String,
         target: AppOpsTarget,
         definitions: List<AppOpDefinition>,
-    ): List<AppOpEntry> {
+    ): AppOpsParseResult {
         val userId = userIdOf(target.uid)
         val uidOutput = execute(session, AppOpsCommands.getUid(target.uid, userId))
         val packageOutput = execute(session, AppOpsCommands.getPackage(packageName, userId))

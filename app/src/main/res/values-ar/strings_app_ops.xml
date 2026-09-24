@@ -8,11 +8,12 @@
     <string name="permissions_filter_system">النظام</string>
 
     <string name="app_ops_explanation">تتحكم عمليات التطبيقات في الإجراءات بمعزل عن الأذونات الممنوحة. وقد يمنع إذن مرفوض عملية مسموحًا بها.</string>
-    <string name="app_ops_load_failed">تعذّرت قراءة عمليات هذا التطبيق. قد يكون الوصول عبر Root أو Shizuku مطلوبًا.</string>
+    <string name="app_ops_load_failed">تعذّرت قراءة عمليات هذا التطبيق. حدّث وحاول مرة أخرى.</string>
     <string name="app_ops_refresh_failed">تعذّر تحديث العمليات. قد تكون الأوضاع المعروضة قديمة.</string>
     <string name="app_ops_status_uncertain">ربما نُفّذ الأمر، لكن Thor لم يتمكن من تأكيد الوضع الحالي. حدّث البيانات قبل إجراء تغيير آخر.</string>
     <string name="app_ops_refresh_before_edit">حدّث عمليات التطبيقات قبل تغيير وضع آخر.</string>
     <string name="app_ops_read_only">يستطيع Thor قراءة هذه العمليات، لكن وضع الوصول الحالي لا يسمح بتغييرها.</string>
+    <string name="app_ops_rom_controls_notice">يتولى نظام الجهاز إدارة عناصر التحكم الإضافية من Xiaomi، وهي غير مدرجة هنا.</string>
     <string name="app_ops_search">البحث في العمليات&#8230;</string>
     <string name="app_ops_filter_relevant">ذات الصلة</string>
     <string name="app_ops_filter_changed">المعدّلة</string>

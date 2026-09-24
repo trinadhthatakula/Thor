@@ -38,6 +38,7 @@ data class AppOpDefinition(
     val relatedPermissions: List<String>,
     val platformDefault: AppOpMode,
     val allowsReset: Boolean,
+    val aliasCodes: List<Int> = emptyList(),
 )
 
 /** Modes actually recorded for each scope; null means no entry was returned. */
@@ -69,4 +70,5 @@ data class AppOpsSnapshot(
     val entries: List<AppOpEntry>,
     val canEdit: Boolean,
     val sharedUidPackages: List<String> = emptyList(),
+    val unsupportedOperationCount: Int = 0,
 )

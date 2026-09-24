@@ -167,6 +167,9 @@ internal fun AppOpsSection(
             if (!snapshot.canEdit) {
                 AppOpsNotice(message = stringResource(R.string.app_ops_read_only))
             }
+            if (snapshot.unsupportedOperationCount > 0) {
+                AppOpsNotice(message = stringResource(R.string.app_ops_rom_controls_notice))
+            }
             Text(
                 text = stringResource(R.string.app_ops_explanation),
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),

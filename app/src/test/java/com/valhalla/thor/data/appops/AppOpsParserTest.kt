@@ -154,9 +154,97 @@ class AppOpsParserTest {
         assertThrows(IllegalArgumentException::class.java) { parse("CAMERA: allow", "OEM_UNKNOWN: ignore") }
     }
 
+    @Test
+    fun xiaomiVendorRecordsDoNotHideStandardModesOrBecomeEditableOperations() {
+        val result = AppOpsParser.parseSnapshot(
+            "CAMERA: foreground; time=+2s ago\nMIUIOP(10004): ignore\nMIUIOP(10017): ask",
+            "No operations.", definitions, emptySet(),
+        )
+
+        assertEquals(2, result.unsupportedOperationCount)
+        assertEquals(definitions.size, result.entries.size)
+        assertEquals(AppOpMode.FOREGROUND, result.entries.single { it.definition.code == 26 }.packageMode)
+    }
+
+    @Test
+    fun vendorUidRecordsStayInBoundaryComparisonAndCountOnlyOnceAcrossScopes() {
+        val result = AppOpsParser.parseSnapshot(
+            """
+                Uid mode: MIUIOP(10004): ask
+                CAMERA: ignore
+                MIUIOP(10017): ignore
+                CAMERA: allow
+                MIUIOP(10004): ignore; time=+1s ago
+            """.trimIndent(),
+            "Uid mode: MIUIOP(10004): ask\nCAMERA: ignore\nMIUIOP(10017): ignore",
+            definitions, emptySet(),
+        )
+
+        assertEquals(2, result.unsupportedOperationCount)
+        val camera = result.entries.single { it.definition.code == 26 }
+        assertEquals(AppOpMode.IGNORE, camera.uidMode)
+        assertEquals(AppOpMode.ALLOW, camera.packageMode)
+    }
+
+    @Test
+    fun vendorOnlyUidDumpDoesNotInventPackageEntries() {
+        val output = "Uid mode: MIUIOP(10004): ask\nMIUIOP(10017): ignore"
+        val result = AppOpsParser.parseSnapshot(output, output, definitions, emptySet())
+
+        assertEquals(2, result.unsupportedOperationCount)
+        assertTrue(result.entries.all { it.packageMode == null && it.uidMode == null && !it.observed })
+    }
+
+    @Test
+    fun differentUnsupportedVendorModesStillDetectConcurrentUidChanges() {
+        assertThrows(IllegalArgumentException::class.java) {
+            parse("Uid mode: MIUIOP(10004): ask", "Uid mode: MIUIOP(10004): vendor")
+        }
+    }
+
+    @Test
+    fun rejectsVendorCollisionsDuplicatesAndMalformedRecords() {
+        listOf(
+            "MIUIOP(26): ask", "MIUIOP(9999): ignore", "MIUIOP(-10004): ask",
+            "MIUIOP(99999999999999999999): ask", "OTHEROP(10004): ignore",
+            "MIUIOP(10004): ask; unexpected=1", "MIUIOP(10004): ask\nMIUIOP(10004): ignore",
+            "MIUIOP(10004): ask\nMIUIOP(010004): ignore", "CAMERA: ask\nMIUIOP(10004): ask",
+            "UNKNOWN_OPERATION: allow\nMIUIOP(10004): ask",
+        ).forEach { output ->
+            assertThrows("Accepted unsafe vendor response: $output", IllegalArgumentException::class.java) {
+                parse(output)
+            }
+        }
+    }
+
+    @Test
+    fun vendorWrappersCannotConcealKnownControllersOrNumericAliases() {
+        listOf(
+            definitions + definitions[1].copy(code = 10004, debugName = "VENDOR_CAMERA", publicName = null),
+            listOf(definitions[1].copy(aliasCodes = listOf(10004))),
+            listOf(definitions[1].copy(aliases = listOf("MIUIOP(10004)"))),
+        ).forEach { catalog ->
+            assertThrows(IllegalArgumentException::class.java) {
+                AppOpsParser.parseSnapshot("MIUIOP(10004): ask", "No operations.", catalog, emptySet())
+            }
+        }
+    }
+
+    @Test
+    fun numericAliasHistoryDoesNotOverwriteControllerMode() {
+        val result = AppOpsParser.parseSnapshot(
+            "0: ignore\n1: allow", "No operations.",
+            listOf(definitions.first().copy(aliasCodes = listOf(1, 2))), emptySet(),
+        )
+
+        assertEquals(AppOpMode.IGNORE, result.entries.single().packageMode)
+        assertTrue(result.entries.single().observed)
+        assertEquals(0, result.unsupportedOperationCount)
+    }
+
     private fun parse(
         packages: String,
         uids: String = "No operations.",
         permissions: Set<String> = emptySet(),
-    ) = AppOpsParser.parseSnapshot(packages, uids, definitions, permissions)
+    ) = AppOpsParser.parseSnapshot(packages, uids, definitions, permissions).entries
 }

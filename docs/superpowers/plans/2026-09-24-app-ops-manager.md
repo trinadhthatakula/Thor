@@ -6,7 +6,7 @@ Feature request: [#503](https://github.com/trinadhthatakula/Thor/issues/503). Wo
 
 The per-app Permissions screen gains a separate App Ops tab. Runtime grants and App Ops modes answer different questions: an allowed operation can still be blocked by a denied permission or another platform restriction. Normal/signature permissions are status rows rather than grant/revoke switches.
 
-The default filter is **Relevant**, as chosen by the owner. It includes permission-linked operations and operations with recorded activity or changed modes. **All** exposes the device's remaining operations, with relevant entries first; **Changed** isolates overrides. Search covers operation names, aliases, and related permissions.
+The default filter is **Relevant**, as chosen by the owner. It includes permission-linked operations and operations with recorded activity or changed modes. **All** exposes the remaining operations in the device's Android catalog, with relevant entries first; **Changed** isolates overrides. Search covers operation names, aliases, and related permissions.
 
 An operation sheet shows its package mode, UID mode, platform default, and Android user. It offers Allow, Ignore, Deny, Default, and Foreground, with descriptions that retain Android's operation-specific limits. UID changes warn that apps sharing the UID can be affected. A package edit can be masked by a UID override, which remains visible.
 
@@ -25,6 +25,7 @@ An operation sheet shows its package mode, UID mode, platform default, and Andro
 - Commands target Thor's Android user and the package UID obtained for that user. Unsafe shell tokens, special UID/daemon names, unavailable operation codes, and unknown modes are rejected before a write.
 - One selected privileged transport is used throughout each read/write/readback sequence. Root and Shizuku are supported; an unavailable transport produces an error.
 - Modern package dumps mix UID and package records. A separate numeric-UID query establishes the boundary, and matching UID reads before and after the package query guard against concurrent changes. Unrecognized or ambiguous responses fail the read.
+- Xiaomi/HyperOS and xiaomi.eu can append `MIUIOP(...)` records outside Android's catalog, including the vendor-only `ask` mode. These records participate in scope-boundary checks but are omitted from Android controls with a visible notice. Their defaults and modes are not inferred or changed; catalog collisions and unknown Android records still fail the read.
 - A successful shell exit is insufficient. The repository rereads the chosen scope and compares it with the requested mode; a missing record means the operation's platform default. UID values cannot stand in for package verification, or vice versa.
 - The UI does not optimistically change modes. Loading, failed refreshes, and uncertain writes disable edits until current state is available. Switching apps cannot apply an old response to the new app.
 - Changes are individual and interactive. Bulk presets, scheduled enforcement, cross-user browsing, and whole-app reset are outside this first implementation.
@@ -33,15 +34,18 @@ An operation sheet shows its package mode, UID mode, platform default, and Andro
 
 | Coverage | Status |
 |---|---|
-| Pure catalog, API 28/36 parser, alias, command-validation tests | Passed, including retired-slot regressions |
+| Pure catalog, API 28/36 parser, alias, command-validation tests | Passed, including retired slots, Xiaomi vendor records, scope boundaries, and catalog-collision regressions |
 | Scope readback, silent refusal, wrong user, reset/default, cancellation tests | Passed, including package replacement during readback |
 | Relevant/Changed/All and ViewModel loading/failure/race tests | Passed; runtime-only permission switches also covered by Compose tests |
-| `./gradlew test lintFossDebug lintStoreRelease` | Passed 2026-09-24: 3,042 tests in each of FOSS and Store; no lint errors, MissingTranslation warnings, or SyntheticAccessor errors |
+| `./gradlew test lintFossDebug lintStoreRelease` | Passed 2026-09-24 after Xiaomi compatibility fix: 3,051 tests in each of FOSS and Store; no lint errors, MissingTranslation warnings, or SyntheticAccessor errors |
 | Rooted `Thor_Root_API36`: real device catalog, package/UID round trips and restoration | Passed 2026-09-24 through the production Koin repository and Root gateway |
 | Permissions/App Ops UI on rooted emulator | Checked 2026-09-24: navigation, Relevant/All, search, mode sheet, package/UID display, UID warning, and normal-permission status rows |
-| Physical-device Root, ordinary Shizuku and Shizuku running as root | Pending |
-| Android 9 device, secondary/work-profile user, shared UID, OEM operations | Pending; pure fixtures do not replace device acceptance |
+| Physical-device Root reads on xiaomi.eu Android 16 / KernelSU | Passed 2026-09-24: read-only production-repository test on Thor Debug, plus the App Ops screen for the installed release app; Android modes and the Xiaomi-controls notice are visible |
+| Physical-device scoped writes, ordinary Shizuku and Shizuku running as root | Pending |
+| Android 9 device, secondary/work-profile user, shared UID, additional OEM formats | Pending; pure fixtures do not replace device acceptance |
 
 Issue #503 remains open until review/merge and the required acceptance decision. This document records implementation and validation separately so unrun device checks are not mistaken for completed work.
 
 The opt-in device test is `com.valhalla.thor.data.appops.AppOpsIntegrationTest`, with runner argument `appOpsTestPackage=com.valhalla.thor.acceptance.fixture`. It changes only that disposable fixture's `READ_CLIPBOARD` operation, then restores and verifies both original scoped policies. It does not perform a whole-app reset. The latest FOSS debug APK was installed on the rooted emulator for the visual check; no release version was changed.
+
+For a read-only check without a fixture, run `com.valhalla.thor.data.appops.AppOpsReadIntegrationTest` with `appOpsReadTest=true`. It reads Thor Debug's own operations through the production repository and does not change permissions or modes. The Xiaomi compatibility build was installed and visually verified on the physical device.

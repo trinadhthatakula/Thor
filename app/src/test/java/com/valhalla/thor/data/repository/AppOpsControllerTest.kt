@@ -119,6 +119,35 @@ class AppOpsControllerTest {
         assertSame(cancellation, runCatching { fixture.controller().getAppOps(PACKAGE) }.exceptionOrNull())
     }
 
+    @Test
+    fun `vendor operations are reported while standard scope writes remain verified`() = runTest {
+        val fixture = Fixture().apply {
+            uidMode = AppOpMode.DENY
+            uidVendorRecords = listOf("MIUIOP(10004): ask")
+            packageVendorRecords = listOf("MIUIOP(10004): ignore", "MIUIOP(10017): ask")
+        }
+        val controller = fixture.controller()
+
+        assertTrue(controller.setMode(PACKAGE, 29, AppOpScope.PACKAGE, AppOpMode.IGNORE).isSuccess)
+        val snapshot = controller.getAppOps(PACKAGE).getOrThrow()
+        assertEquals(2, snapshot.unsupportedOperationCount)
+        assertEquals(AppOpMode.IGNORE, snapshot.entries.single().packageMode)
+        assertEquals(AppOpMode.DENY, snapshot.entries.single().uidMode)
+        assertFalse(controller.setMode(PACKAGE, 10004, AppOpScope.PACKAGE, AppOpMode.ALLOW).isSuccess)
+        assertFalse(fixture.commands.any { " 10004 " in it })
+    }
+
+    @Test
+    fun `vendor UID change between bracketed reads blocks standard writes`() = runTest {
+        val fixture = Fixture().apply {
+            uidVendorRecords = listOf("MIUIOP(10004): ask")
+            changeVendorDuringRead = true
+        }
+
+        assertTrue(fixture.controller().setMode(PACKAGE, 29, AppOpScope.PACKAGE, AppOpMode.IGNORE).isFailure)
+        assertFalse(fixture.commands.any { it.startsWith("appops set ") })
+    }
+
     private class Fixture {
         var userId = 0
         var uid = 12345
@@ -130,6 +159,9 @@ class AppOpsControllerTest {
         var replaceDuringVerification = false
         var packageReads = 0
         var changeUidDuringRead = false
+        var changeVendorDuringRead = false
+        var packageVendorRecords = emptyList<String>()
+        var uidVendorRecords = emptyList<String>()
         var forcedReply: Pair<Int, String?>? = null
         var failure: Exception? = null
         var sessions = 0
@@ -162,12 +194,18 @@ class AppOpsControllerTest {
                 if (replaceAfterWrite) uid++
                 return 0 to ""
             }
-            if (target != PACKAGE) return 0 to (uidMode?.let { "READ_CLIPBOARD: ${it.shellToken}" } ?: "No operations.")
+            val uidRecords = buildList {
+                uidMode?.let { add("READ_CLIPBOARD: ${it.shellToken}") }
+                addAll(uidVendorRecords)
+            }
+            if (target != PACKAGE) return 0 to uidRecords.joinToString("\n").ifEmpty { "No operations." }
             val output = buildList {
-                uidMode?.let { add("Uid mode: READ_CLIPBOARD: ${it.shellToken}") }
+                addAll(uidRecords.mapIndexed { index, record -> if (index == 0) "Uid mode: $record" else record })
                 packageMode?.let { add("READ_CLIPBOARD: ${it.shellToken}") }
+                addAll(packageVendorRecords)
             }.joinToString("\n").ifEmpty { "No operations." }
             if (changeUidDuringRead) uidMode = AppOpMode.IGNORE
+            if (changeVendorDuringRead) uidVendorRecords = listOf("MIUIOP(10004): ignore")
             packageReads++
             if (replaceDuringVerification && packageReads == 2) uid++
             return 0 to output

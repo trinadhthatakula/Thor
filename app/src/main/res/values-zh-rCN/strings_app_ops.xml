@@ -8,11 +8,12 @@
     <string name="permissions_filter_system">系统</string>
 
     <string name="app_ops_explanation">应用操作与权限授予分别控制行为。即使某项操作设为允许，权限被拒绝时仍可能无法执行。</string>
-    <string name="app_ops_load_failed">无法读取此应用的应用操作。可能需要 Root 或 Shizuku 权限。</string>
+    <string name="app_ops_load_failed">无法读取此应用的应用操作。请刷新后重试。</string>
     <string name="app_ops_refresh_failed">无法刷新应用操作。显示的模式可能不是最新状态。</string>
     <string name="app_ops_status_uncertain">命令可能已经执行，但 Thor 无法确认当前模式。请刷新后再进行其他更改。</string>
     <string name="app_ops_refresh_before_edit">请刷新应用操作后再更改其他模式。</string>
     <string name="app_ops_read_only">Thor 可以读取这些应用操作，但当前访问模式无法修改它们。</string>
+    <string name="app_ops_rom_controls_notice">额外的小米控制项由系统 ROM 管理，未列在此处。</string>
     <string name="app_ops_search">搜索操作&#8230;</string>
     <string name="app_ops_filter_relevant">相关</string>
     <string name="app_ops_filter_changed">已更改</string>

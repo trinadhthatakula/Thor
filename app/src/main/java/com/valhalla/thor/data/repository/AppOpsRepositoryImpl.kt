@@ -20,6 +20,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.AppOpsRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -54,7 +55,7 @@ class AppOpsRepositoryImpl(
                 commandClass = PrivilegeCommandClass("app_ops.manage"),
                 packageName = packageName,
             )
-            val gateway: SystemGateway = when (gatewayResolver.resolve(execution).getOrNull()) {
+            val gateway: SystemGateway = when (gatewayResolver.resolve(execution).getOrThrow()) {
                 PrivilegeMode.ROOT -> rootGateway
                 PrivilegeMode.SHIZUKU -> shizukuGateway
                 else -> error("App Ops requires Root or Shizuku. Dhizuku does not provide cross-app App Ops access.")
@@ -64,7 +65,9 @@ class AppOpsRepositoryImpl(
     )
 
     override suspend fun getAppOps(packageName: String): Result<AppOpsSnapshot> = withContext(ioDispatcher) {
-        controller.getAppOps(packageName)
+        controller.getAppOps(packageName).onFailure {
+            Logger.e("AppOpsRepository", "Could not read App Ops", it)
+        }
     }
 
     override suspend fun setAppOpMode(

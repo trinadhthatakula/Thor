@@ -23,6 +23,7 @@ class AppOpsCatalogTest {
         val location = definitions.first()
         assertEquals("COARSE_LOCATION", location.debugName)
         assertEquals(listOf("FINE_LOCATION", "android:fine_location", "GPS"), location.aliases)
+        assertEquals(listOf(1, 2), location.aliasCodes)
         assertEquals(listOf("android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"), location.relatedPermissions)
         assertEquals(AppOpMode.IGNORE, definitions.last().platformDefault)
     }

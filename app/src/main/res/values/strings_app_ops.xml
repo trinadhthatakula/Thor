@@ -8,11 +8,12 @@
     <string name="permissions_filter_system">System</string>
 
     <string name="app_ops_explanation">App Ops control actions separately from permission grants. A denied permission can still block an allowed operation.</string>
-    <string name="app_ops_load_failed">Could not read App Ops for this app. Root or Shizuku access may be required.</string>
+    <string name="app_ops_load_failed">Could not read App Ops for this app. Refresh and try again.</string>
     <string name="app_ops_refresh_failed">Could not refresh App Ops. Shown modes may be out of date.</string>
     <string name="app_ops_status_uncertain">The App Ops command may have run, but Thor could not confirm its current mode. Refresh before another change.</string>
     <string name="app_ops_refresh_before_edit">Refresh App Ops before changing another mode.</string>
     <string name="app_ops_read_only">Thor can read these App Ops, but the current access mode cannot change them.</string>
+    <string name="app_ops_rom_controls_notice">Additional Xiaomi controls are managed by the ROM and are not included here.</string>
     <string name="app_ops_search">Search operations&#8230;</string>
     <string name="app_ops_filter_relevant">Relevant</string>
     <string name="app_ops_filter_changed">Changed</string>

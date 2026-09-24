@@ -67,6 +67,7 @@ internal object AppOpsCatalog {
                 relatedPermissions = aliases.mapNotNull(CatalogOperation::permission).distinct(),
                 platformDefault = controller.defaultMode,
                 allowsReset = controller.allowsReset && controller.defaultMode != AppOpMode.UNKNOWN,
+                aliasCodes = aliases.map(CatalogOperation::code).filter { it != code },
             )
         }.sortedBy(AppOpDefinition::code)
     }
