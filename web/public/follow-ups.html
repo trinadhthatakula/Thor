@@ -127,13 +127,13 @@
     </section>
 
     <section id="scope" aria-labelledby="scope-title">
-      <h2 id="scope-title">Scope or diagnose before building</h2>
-      <p class="section-intro">These are real requests, but a privilege boundary, product choice, or device result still determines the right implementation.</p>
+      <h2 id="scope-title">Active work and scope decisions</h2>
+      <p class="section-intro">App Ops is ready for review. The remaining requests still need a privilege boundary, product choice, or device result to determine the implementation.</p>
       <div class="grid">
         <article>
-          <div class="top"><span class="status scope">New request</span></div>
+          <div class="top"><span class="status scope">Review pending</span></div>
           <h3>App Ops controls in Permission Manager</h3>
-          <p>Issue #503 asks to manage operations beyond runtime permissions. Thor already has specific App Ops paths; a general editor needs an operation list, mode semantics, per-privilege behavior, readback, and recovery rules before it can be sized.</p>
+          <p>Issue #503 now has a feature-branch implementation: a separate App Ops tab, a device-derived operation catalog, Relevant/Changed/All filters, package and UID modes, Root/Shizuku execution, verified writes, and platform-default reset. Local tests, lint, and Root-emulator round trips pass. Review and merge are pending; OEM and additional Android/privilege coverage remain acceptance work.</p>
           <div class="links"><a href="https://github.com/trinadhthatakula/Thor/issues/503">Feature request</a></div>
         </article>
         <article>

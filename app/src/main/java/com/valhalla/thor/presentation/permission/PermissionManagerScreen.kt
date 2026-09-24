@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.AsgardBadge
 import com.valhalla.asgard.components.AsgardBanner
@@ -60,9 +62,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.annotation.StringRes
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
@@ -96,6 +100,10 @@ fun PermissionManagerScreen(
     }
 
     val animatedVisibilityScope = LocalNavAnimatedContentScope.current
+    var selectedSection by rememberSaveable(packageName) { mutableIntStateOf(0) }
+    LaunchedEffect(selectedSection, packageName, state.packageName) {
+        if (selectedSection == 1 && state.packageName == packageName) viewModel.loadAppOps()
+    }
 
     Scaffold(
         topBar = {
@@ -114,6 +122,16 @@ fun PermissionManagerScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            PillSelector(
+                selectedTab = selectedSection,
+                tabs = listOf(
+                    stringResource(R.string.permissions_section),
+                    stringResource(R.string.app_ops_section),
+                ),
+                onTabSelected = { selectedSection = it },
+            )
+
+            if (selectedSection == 0) {
             // Read-Only mode banner
             AnimatedVisibility(
                 visible = !state.isPrivilegeMode && !state.isLoading,
@@ -124,15 +142,22 @@ fun PermissionManagerScreen(
             }
 
             // Search Bar
-            SearchBar(
+            PermissionManagerSearchBar(
                 query = state.searchQuery,
-                onQueryChange = viewModel::updateSearchQuery
+                onQueryChange = viewModel::updateSearchQuery,
+                placeholder = R.string.permissions_search,
             )
 
             // Category Filter Navigation
-            var selectedTab by remember { mutableIntStateOf(0) }
-            CategorySelector(
+            var selectedTab by rememberSaveable(packageName) { mutableIntStateOf(0) }
+            PillSelector(
                 selectedTab = selectedTab,
+                tabs = listOf(
+                    stringResource(R.string.permissions_filter_all),
+                    stringResource(R.string.permissions_filter_sensitive),
+                    stringResource(R.string.permissions_filter_standard),
+                    stringResource(R.string.permissions_filter_system),
+                ),
                 onTabSelected = { selectedTab = it }
             )
 
@@ -251,6 +276,16 @@ fun PermissionManagerScreen(
                     }
                 }
             }
+            } else {
+                AppOpsSection(
+                    state = state,
+                    onSearchQueryChange = viewModel::updateAppOpsSearchQuery,
+                    onFilterChange = viewModel::updateAppOpsFilter,
+                    onRefresh = { viewModel.loadAppOps(force = true) },
+                    onSetMode = viewModel::setAppOpMode,
+                    onResetMode = viewModel::resetAppOpMode,
+                )
+            }
         }
     }
 }
@@ -355,9 +390,10 @@ private fun ReadOnlyBanner() {
 }
 
 @Composable
-private fun SearchBar(
+internal fun PermissionManagerSearchBar(
     query: String,
-    onQueryChange: (String) -> Unit
+    onQueryChange: (String) -> Unit,
+    @StringRes placeholder: Int,
 ) {
     AsgardSearchBar(
         query = query,
@@ -365,7 +401,7 @@ private fun SearchBar(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        placeholder = stringResource(R.string.permissions_search),
+        placeholder = stringResource(placeholder),
         leadingIcon = ImageVector.vectorResource(R.drawable.round_search),
         clearIcon = ImageVector.vectorResource(R.drawable.round_close),
         shape = RoundedCornerShape(24.dp),
@@ -379,11 +415,11 @@ private fun SearchBar(
 }
 
 @Composable
-private fun CategorySelector(
+private fun PillSelector(
     selectedTab: Int,
+    tabs: List<String>,
     onTabSelected: (Int) -> Unit
 ) {
-    val tabs = listOf("All", "Sensitive", "Standard", "System")
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -404,7 +440,11 @@ private fun CategorySelector(
                     .weight(1f)
                     .clip(CircleShape)
                     .background(bgColor)
-                    .clickable { onTabSelected(index) }
+                    .selectable(
+                        selected = isSelected,
+                        role = Role.Tab,
+                        onClick = { onTabSelected(index) },
+                    )
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -438,7 +478,7 @@ private fun CategoryHeader(title: String) {
 }
 
 @Composable
-private fun PermissionRow(
+internal fun PermissionRow(
     permission: AppPermission,
     isPrivilegeMode: Boolean,
     onToggle: (Boolean) -> Unit
@@ -449,7 +489,7 @@ private fun PermissionRow(
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
-            .clickable(enabled = isPrivilegeMode) {
+            .clickable(enabled = isPrivilegeMode && permission.isRuntime) {
                 onToggle(!permission.isGranted)
             }
             .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -504,7 +544,7 @@ private fun PermissionRow(
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        if (isPrivilegeMode) {
+        if (isPrivilegeMode && permission.isRuntime) {
             Switch(
                 checked = permission.isGranted,
                 onCheckedChange = { isChecked ->
