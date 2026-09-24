@@ -13,6 +13,9 @@
     <string name="app_ops_status_uncertain">Es posible que se haya ejecutado el comando, pero Thor no pudo confirmar el modo actual. Actualiza antes de hacer otro cambio.</string>
     <string name="app_ops_refresh_before_edit">Actualiza las App Ops antes de cambiar otro modo.</string>
     <string name="app_ops_read_only">Thor puede leer estas App Ops, pero el modo de acceso actual no permite cambiarlas.</string>
+    <string name="app_ops_permission_controlled">Android controla esta operación mediante su permiso de tiempo de ejecución. Gestiónalo desde Permisos.</string>
+    <string name="app_ops_permission_not_requested">Android controla esta operación mediante un permiso de tiempo de ejecución que esta aplicación no solicita. No se puede conceder aquí.</string>
+    <string name="app_ops_open_permissions">Abrir Permisos</string>
     <string name="app_ops_rom_controls_notice">Los controles adicionales de Xiaomi los gestiona la ROM y no se incluyen aquí.</string>
     <string name="app_ops_search">Buscar operaciones&#8230;</string>
     <string name="app_ops_filter_relevant">Relevantes</string>

@@ -45,11 +45,14 @@ class AppOpsRepositoryImpl(
         dhizukuAvailable = { false },
         elapsedRealtimeMs = SystemClock::elapsedRealtime,
     )
-    private val catalog by lazy(AppOpsCatalog::load)
+    private val catalog = AppOpsCatalogProvider(
+        reflectedPolicy = AppOpsCatalog::reflectedRuntimePermissionMappingEnabled,
+        loadDefinitions = { enabled -> AppOpsCatalog.load(pm, enabled) },
+    )
     private val controller = AppOpsController(
         currentUserId = { thorUserId },
         loadTarget = ::loadTarget,
-        loadCatalog = { catalog },
+        loadCatalog = catalog::load,
         openSession = { packageName ->
             val execution = PrivilegeExecutionContext(
                 commandClass = PrivilegeCommandClass("app_ops.manage"),
@@ -76,7 +79,9 @@ class AppOpsRepositoryImpl(
         scope: AppOpScope,
         mode: AppOpMode,
     ): Result<Unit> = withContext(ioDispatcher) {
-        controller.setMode(packageName, code, scope, mode)
+        controller.setMode(packageName, code, scope, mode).onFailure {
+            Logger.e("AppOpsRepository", "Could not update App Ops code=$code scope=$scope mode=$mode", it)
+        }
     }
 
     override suspend fun resetAppOpMode(
@@ -84,7 +89,9 @@ class AppOpsRepositoryImpl(
         code: Int,
         scope: AppOpScope,
     ): Result<Unit> = withContext(ioDispatcher) {
-        controller.setMode(packageName, code, scope, null)
+        controller.setMode(packageName, code, scope, null).onFailure {
+            Logger.e("AppOpsRepository", "Could not reset App Ops code=$code scope=$scope", it)
+        }
     }
 
     @Suppress("DEPRECATION")

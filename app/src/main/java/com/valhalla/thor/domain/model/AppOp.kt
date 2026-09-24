@@ -39,6 +39,8 @@ data class AppOpDefinition(
     val platformDefault: AppOpMode,
     val allowsReset: Boolean,
     val aliasCodes: List<Int> = emptyList(),
+    /** This device derives the controlling operation's mode from runtime permission state. */
+    val isRuntimePermissionControlled: Boolean = false,
 )
 
 /** Modes actually recorded for each scope; null means no entry was returned. */

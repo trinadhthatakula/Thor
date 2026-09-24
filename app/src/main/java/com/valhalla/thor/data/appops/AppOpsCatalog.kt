@@ -3,20 +3,24 @@
 
 package com.valhalla.thor.data.appops
 
+import android.annotation.SuppressLint
 import android.app.AppOpsManager
+import android.content.pm.PackageManager
+import android.content.pm.PermissionInfo
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.domain.model.AppOpDefinition
 import com.valhalla.thor.domain.model.AppOpMode
+import com.valhalla.thor.util.Logger
 
 /** The running Android build, including OEM additions, owns the operation catalog. */
 internal object AppOpsCatalog {
-    private val cachedDefinitions: List<AppOpDefinition> by lazy {
+    private val cachedOperations: List<CatalogOperation> by lazy {
         // getNumOps/opToPublicName are not available on all supported releases. getOpStrs is
         // available on API 28 and its indices are the numeric operation codes, even for null names.
         val names = Bypass.invoke<Array<String?>>(
             AppOpsManager::class.java, null, "getOpStrs",
         )
-        fromOperations(names.mapIndexed { code, publicName ->
+        names.mapIndexed { code, publicName ->
             CatalogOperation(
                 code = code,
                 switchCode = invokeForCode("opToSwitch", code),
@@ -26,11 +30,66 @@ internal object AppOpsCatalog {
                 defaultMode = AppOpMode.fromPlatformValue(invokeForCode("opToDefaultMode", code)),
                 allowsReset = invokeForCode("opAllowsReset", code),
             )
-        })
+        }
     }
 
     /** Call off the main thread: first access resolves hidden framework metadata. */
-    fun load(): List<AppOpDefinition> = cachedDefinitions
+    fun load(packageManager: PackageManager, mappingEnabled: Boolean): List<AppOpDefinition> = fromOperations(
+        withRuntimePermissionPolicy(
+            operations = cachedOperations,
+            mappingEnabled = mappingEnabled,
+            runtimePermissionOpCode = { permission ->
+                try {
+                    @Suppress("DEPRECATION")
+                    val info = packageManager.getPermissionInfo(permission, 0)
+                    if ((info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) == PermissionInfo.PROTECTION_DANGEROUS) {
+                        Bypass.invoke<Int>(
+                            AppOpsManager::class.java, null, "permissionToOpCode",
+                            arrayOf(String::class.java), permission,
+                        )
+                    } else {
+                        null
+                    }
+                } catch (failure: PackageManager.NameNotFoundException) {
+                    // A vendor catalog may retain a permission removed from its package table.
+                    // Its runtime policy is unconfirmed; scoped write verification still applies.
+                    Logger.e("AppOpsCatalog", "Could not classify App Ops permission $permission", failure)
+                    null
+                }
+            },
+        ),
+    )
+
+    /**
+     * Mirror AppOpService's mapping, not SDK level or whether the selected app requested a
+     * permission. Android may derive an ignored mode even for apps that never requested it.
+     */
+    internal fun withRuntimePermissionPolicy(
+        operations: List<CatalogOperation>,
+        mappingEnabled: Boolean,
+        runtimePermissionOpCode: (String) -> Int?,
+    ): List<CatalogOperation> = operations.map { operation ->
+        operation.copy(
+            isRuntimePermissionControlled = mappingEnabled && operation.permission?.let {
+                runtimePermissionOpCode(it) == operation.code
+            } == true,
+        )
+    }
+
+    // Intentional hidden-API probe through Bypass; unavailable APIs use the privileged policy read.
+    @SuppressLint("PrivateApi")
+    fun reflectedRuntimePermissionMappingEnabled(): Boolean? = try {
+        Bypass.invoke(
+            Class.forName("android.permission.flags.Flags"), null,
+            "runtimePermissionAppopsMappingEnabled",
+        )
+    } catch (_: ClassNotFoundException) {
+        // Some devices expose this class only to system_server, even when the policy is active.
+        null
+    } catch (failure: Exception) {
+        Logger.e("AppOpsCatalog", "Could not determine runtime permission App Ops policy", failure)
+        null
+    }
 
     internal fun fromOperations(operations: List<CatalogOperation>): List<AppOpDefinition> {
         require(operations.isNotEmpty()) { "Android returned an empty App Ops catalog" }
@@ -68,6 +127,8 @@ internal object AppOpsCatalog {
                 platformDefault = controller.defaultMode,
                 allowsReset = controller.allowsReset && controller.defaultMode != AppOpMode.UNKNOWN,
                 aliasCodes = aliases.map(CatalogOperation::code).filter { it != code },
+                // AppOpsService resolves opToSwitch before attempting either scoped write.
+                isRuntimePermissionControlled = controller.isRuntimePermissionControlled,
             )
         }.sortedBy(AppOpDefinition::code)
     }
@@ -85,4 +146,5 @@ internal data class CatalogOperation(
     val permission: String?,
     val defaultMode: AppOpMode,
     val allowsReset: Boolean,
+    val isRuntimePermissionControlled: Boolean = false,
 )

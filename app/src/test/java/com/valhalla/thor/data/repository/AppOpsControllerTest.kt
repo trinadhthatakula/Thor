@@ -6,7 +6,17 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.domain.model.AppOpDefinition
 import com.valhalla.thor.domain.model.AppOpMode
 import com.valhalla.thor.domain.model.AppOpScope
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.ShellCommandTimedOut
+import com.valhalla.thor.domain.model.ShellLaneBusy
+import com.valhalla.thor.domain.model.ShellTransportDied
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,7 +24,119 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppOpsControllerTest {
+    @Test
+    fun `cold start lane contention retries with fresh sessions and target lookup`() = runTest {
+        val fixture = Fixture().apply {
+            beforeSession = {
+                if (sessions < 3) throw ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE)
+            }
+        }
+
+        assertTrue(fixture.controller().getAppOps(PACKAGE).isSuccess)
+        assertEquals(3, fixture.sessions)
+        assertEquals(1, fixture.catalogLoads)
+        assertEquals(4, fixture.targetReads) // One per attempt plus successful final validation.
+        assertEquals(200L, currentTime)
+    }
+
+    @Test
+    fun `lane contention during snapshot starts a new UID bracket for the current target`() = runTest {
+        val fixture = Fixture().apply {
+            beforeCommand = {
+                if (commands.size == 2) {
+                    uid++
+                    throw ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE)
+                }
+            }
+        }
+
+        val snapshot = fixture.controller().getAppOps(PACKAGE).getOrThrow()
+
+        assertEquals(12346, snapshot.uid)
+        assertEquals(listOf(
+            "appops get --user 0 12345",
+            "appops get --user 0 $PACKAGE",
+            "appops get --user 0 12346",
+            "appops get --user 0 $PACKAGE",
+            "appops get --user 0 12346",
+        ), fixture.commands)
+        assertEquals(2, fixture.sessions)
+        assertEquals(2, fixture.catalogLoads)
+        assertEquals(3, fixture.targetReads)
+    }
+
+    @Test
+    fun `persistent lane contention stops after the bounded retry budget`() = runTest {
+        val busy = ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE)
+        val fixture = Fixture().apply { failure = busy }
+
+        assertSame(busy, fixture.controller().getAppOps(PACKAGE).exceptionOrNull())
+        assertEquals(5, fixture.sessions)
+        assertEquals(5, fixture.commands.size)
+        assertEquals(400L, currentTime)
+    }
+
+    @Test
+    fun `timeouts transport failures malformed snapshots and cancellation are not retried`() = runTest {
+        for (failure in listOf(
+            ShellCommandTimedOut(PrivilegeCommandClass("app_ops.manage")),
+            ShellTransportDied(PrivilegeExecutionLane.INTERACTIVE),
+            IllegalStateException("unreadable response"),
+        )) {
+            val fixture = Fixture().apply { this.failure = failure }
+            assertSame(failure, fixture.controller().getAppOps(PACKAGE).exceptionOrNull())
+            assertEquals(1, fixture.sessions)
+        }
+        val malformed = Fixture().apply { forcedReply = 0 to "Permission denied" }
+        assertTrue(malformed.controller().getAppOps(PACKAGE).isFailure)
+        assertEquals(1, malformed.sessions)
+
+        val cancellation = CancellationException("stop")
+        val cancelled = Fixture().apply { failure = cancellation }
+        assertSame(cancellation, runCatching { cancelled.controller().getAppOps(PACKAGE) }.exceptionOrNull())
+        assertEquals(1, cancelled.sessions)
+        assertEquals(0L, currentTime)
+    }
+
+    @Test
+    fun `cancellation during lane backoff stops before opening another session`() = runTest {
+        val fixture = Fixture().apply { failure = ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE) }
+        var returnedResult = false
+        val read = launch {
+            fixture.controller().getAppOps(PACKAGE)
+            returnedResult = true
+        }
+        runCurrent()
+        assertEquals(1, fixture.sessions)
+
+        read.cancelAndJoin()
+
+        assertFalse(returnedResult)
+        assertTrue(read.isCancelled)
+        assertEquals(1, fixture.sessions)
+        assertEquals(0L, currentTime)
+    }
+
+    @Test
+    fun `lane contention never retries a write or its readback`() = runTest {
+        // The fourth command is the write; the fifth starts verification after the write applied.
+        for (busyAt in listOf(4, 5)) {
+            val busy = ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE)
+            val fixture = Fixture().apply {
+                beforeCommand = { if (commands.size == busyAt) throw busy }
+            }
+            val result = fixture.controller().setMode(PACKAGE, 29, AppOpScope.PACKAGE, AppOpMode.IGNORE)
+
+            assertSame(busy, result.exceptionOrNull())
+            assertEquals(1, fixture.sessions)
+            assertEquals(1, fixture.commands.count { it.startsWith("appops set ") })
+            assertEquals(busyAt, fixture.commands.size)
+        }
+        assertEquals(0L, currentTime)
+    }
+
     @Test
     fun `package write is verified independently of a masking UID override`() = runTest {
         val fixture = Fixture().apply { uidMode = AppOpMode.DENY }
@@ -79,6 +201,36 @@ class AppOpsControllerTest {
         fixture.definition = DEFINITION.copy(allowsReset = false)
         assertTrue(fixture.controller().setMode(PACKAGE, 29, AppOpScope.PACKAGE, null).isFailure)
         assertTrue(fixture.commands.isEmpty())
+    }
+
+    @Test
+    fun `runtime permission controlled operations reject writes and resets before App Ops commands`() = runTest {
+        val fixture = Fixture().apply {
+            definition = DEFINITION.copy(isRuntimePermissionControlled = true)
+        }
+        for (scope in AppOpScope.entries) {
+            for (mode in listOf(AppOpMode.ALLOW, AppOpMode.IGNORE, AppOpMode.DEFAULT, null)) {
+                val result = fixture.controller().setMode(PACKAGE, 29, scope, mode)
+                assertTrue(result.isFailure)
+                assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("runtime permissions"))
+            }
+        }
+
+        assertEquals(8, fixture.sessions)
+        assertTrue(fixture.commands.isEmpty())
+    }
+
+    @Test
+    fun `runtime permission controlled operations remain readable`() = runTest {
+        val fixture = Fixture().apply {
+            definition = DEFINITION.copy(isRuntimePermissionControlled = true)
+            uidMode = AppOpMode.IGNORE
+        }
+        val snapshot = fixture.controller().getAppOps(PACKAGE).getOrThrow()
+
+        assertTrue(snapshot.canEdit)
+        assertTrue(snapshot.entries.single().definition.isRuntimePermissionControlled)
+        assertEquals(AppOpMode.IGNORE, snapshot.entries.single().displayedMode)
     }
 
     @Test
@@ -165,16 +317,25 @@ class AppOpsControllerTest {
         var forcedReply: Pair<Int, String?>? = null
         var failure: Exception? = null
         var sessions = 0
+        var targetReads = 0
+        var catalogLoads = 0
+        var beforeSession: () -> Unit = {}
+        var beforeCommand: () -> Unit = {}
         val commands = mutableListOf<String>()
 
         fun controller() = AppOpsController(
             currentUserId = { userId },
-            loadTarget = { AppOpsTarget(uid, emptySet(), listOf(PACKAGE, "com.example.shared")) },
-            loadCatalog = { listOf(definition) },
+            loadTarget = {
+                targetReads++
+                AppOpsTarget(uid, emptySet(), listOf(PACKAGE, "com.example.shared"))
+            },
+            loadCatalog = { catalogLoads++; listOf(definition) },
             openSession = {
                 sessions++
+                beforeSession()
                 AppOpsCommandSession { command ->
                     commands += command
+                    beforeCommand()
                     failure?.let { throw it }
                     forcedReply ?: respond(command)
                 }

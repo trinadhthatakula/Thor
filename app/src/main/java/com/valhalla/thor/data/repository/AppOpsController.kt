@@ -11,6 +11,8 @@ import com.valhalla.thor.domain.model.AppOpDefinition
 import com.valhalla.thor.domain.model.AppOpMode
 import com.valhalla.thor.domain.model.AppOpScope
 import com.valhalla.thor.domain.model.AppOpsSnapshot
+import com.valhalla.thor.domain.model.ShellLaneBusy
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -29,18 +31,31 @@ internal fun interface AppOpsCommandSession {
 internal class AppOpsController(
     private val currentUserId: () -> Int,
     private val loadTarget: (String) -> AppOpsTarget,
-    private val loadCatalog: () -> List<AppOpDefinition>,
+    private val loadCatalog: suspend (AppOpsCommandSession) -> List<AppOpDefinition>,
     private val openSession: suspend (String) -> AppOpsCommandSession,
 ) {
     private val mutex = Mutex()
 
     suspend fun getAppOps(packageName: String): Result<AppOpsSnapshot> = guarded {
+        // A cold-start root probe can briefly occupy the immediate-admission interactive lane.
+        // Retry only read-only admission failures, rebuilding the whole snapshot each time.
+        repeat(READ_ATTEMPTS - 1) {
+            try {
+                return@guarded readSnapshot(packageName)
+            } catch (_: ShellLaneBusy) {
+                delay(READ_RETRY_DELAY_MS)
+            }
+        }
+        readSnapshot(packageName)
+    }
+
+    private suspend fun readSnapshot(packageName: String): AppOpsSnapshot {
         val target = checkedTarget(packageName)
-        val definitions = loadCatalog()
         val session = openSession(packageName)
+        val definitions = loadCatalog(session)
         val parsed = readEntries(session, packageName, target, definitions)
         check(checkedTarget(packageName).uid == target.uid) { "The app changed while reading App Ops. Refresh and try again." }
-        AppOpsSnapshot(
+        return AppOpsSnapshot(
             userId = userIdOf(target.uid),
             uid = target.uid,
             entries = parsed.entries,
@@ -57,14 +72,17 @@ internal class AppOpsController(
         mode: AppOpMode?,
     ): Result<Unit> = guarded {
         val target = checkedTarget(packageName)
-        val definitions = loadCatalog()
+        val session = openSession(packageName)
+        val definitions = loadCatalog(session)
         val definition = definitions.singleOrNull { it.code == code }
             ?: error("This operation is not available on this device.")
+        check(!definition.isRuntimePermissionControlled) {
+            "Android controls this App Ops mode through runtime permissions. Use the Permissions tab."
+        }
         val expected = mode ?: definition.platformDefault.also {
             check(definition.allowsReset) { "This operation cannot be reset to its platform default." }
         }
         require(expected != AppOpMode.UNKNOWN) { "Unknown App Ops mode cannot be written." }
-        val session = openSession(packageName)
         // Refuse to mutate if this platform's output cannot first be read unambiguously.
         readEntries(session, packageName, target, definitions)
         check(checkedTarget(packageName).uid == target.uid) { "The app changed before updating App Ops. Refresh and try again." }
@@ -116,4 +134,9 @@ internal class AppOpsController(
 
     private suspend fun <T> guarded(block: suspend () -> T): Result<T> =
         resultPreservingCancellation { mutex.withLock { Result.success(block()) } }
+
+    private companion object {
+        const val READ_ATTEMPTS = 5
+        const val READ_RETRY_DELAY_MS = 100L
+    }
 }

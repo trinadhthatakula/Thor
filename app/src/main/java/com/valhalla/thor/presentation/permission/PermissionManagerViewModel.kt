@@ -92,13 +92,29 @@ class PermissionManagerViewModel(
             togglePermissionUseCase(packageName, permissionName, grant)
                 .onSuccess {
                     if (_uiState.value.packageName != packageName) return@onSuccess
+                    val refreshAppOps = _uiState.value.let {
+                        it.appOpsSnapshot != null || it.isAppOpsLoading ||
+                            it.appOpsLoadFailed || it.appOpsStatusUncertain
+                    }
+                    // Runtime grants can determine App Ops modes. An older read must not
+                    // restore the pre-grant snapshot after we discard it here.
+                    ++appOpsLoadGeneration
                     // Update state locally first to avoid full reload lag
                     _uiState.update { state ->
                         val updated = state.permissions.map {
                             if (it.name == permissionName) it.copy(isGranted = grant) else it
                         }
-                        state.copy(permissions = updated)
+                        state.copy(
+                            permissions = updated,
+                            appOpsSnapshot = null,
+                            isAppOpsLoading = false,
+                            appOpsLoadFailed = false,
+                            appOpsStatusUncertain = false,
+                        )
                     }
+                    // Also cover a quick return to the App Ops tab while the grant was pending.
+                    // Keep catalog loading lazy if the user has never opened App Ops.
+                    if (refreshAppOps) loadAppOps()
                     _events.send(UiText.StringResource(R.string.permission_status_updated))
                 }
                 .onFailure { error ->
@@ -169,6 +185,7 @@ class PermissionManagerViewModel(
             current.appOpsLoadFailed || current.appOpsStatusUncertain
         ) return
         val entry = snapshot.entries.firstOrNull { it.definition.code == code } ?: return
+        if (entry.definition.isRuntimePermissionControlled) return
         if (reset && !entry.definition.allowsReset) return
         val packageName = current.packageName
         ++appOpsLoadGeneration // An older refresh must never overwrite the write's read-back.
@@ -196,8 +213,22 @@ class PermissionManagerViewModel(
             }
 
             // The mode shown to the user comes from a new system read, never from the tap itself.
+            val readBackGeneration = appOpsLoadGeneration
             val readBack = appOpsRepository.getAppOps(packageName)
             if (_uiState.value.packageName != packageName) return@launch
+            if (readBackGeneration != appOpsLoadGeneration) {
+                // A runtime grant changed the modes while this read was pending. Its refresh
+                // could not start while saving was set; release that guard and read again.
+                _uiState.update {
+                    it.copy(
+                        appOpsSnapshot = null,
+                        savingAppOpCode = null,
+                        appOpsStatusUncertain = true,
+                    )
+                }
+                loadAppOps(force = true)
+                return@launch
+            }
             readBack.fold(
                 onSuccess = { refreshed ->
                     _uiState.update {

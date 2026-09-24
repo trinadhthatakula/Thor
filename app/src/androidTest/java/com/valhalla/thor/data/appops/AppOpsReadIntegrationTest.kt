@@ -41,5 +41,21 @@ class AppOpsReadIntegrationTest {
             snapshot.entries.size,
             snapshot.entries.map { it.definition.code }.distinct().size,
         )
+        val expectedMapping = InstrumentationRegistry.getArguments()
+            .getString("appOpsExpectRuntimeMapping")?.toBooleanStrict()
+        if (expectedMapping != null) {
+            assertEquals(
+                "Handover must follow the device's runtime-permission policy",
+                expectedMapping,
+                snapshot.entries.single { it.definition.debugName == "ACCEPT_HANDOVER" }
+                    .definition.isRuntimePermissionControlled,
+            )
+            assertEquals(
+                "Usage access must remain independently editable",
+                false,
+                snapshot.entries.single { it.definition.debugName == "GET_USAGE_STATS" }
+                    .definition.isRuntimePermissionControlled,
+            )
+        }
     }
 }

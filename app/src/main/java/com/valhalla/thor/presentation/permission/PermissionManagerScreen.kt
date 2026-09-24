@@ -284,6 +284,7 @@ fun PermissionManagerScreen(
                     onRefresh = { viewModel.loadAppOps(force = true) },
                     onSetMode = viewModel::setAppOpMode,
                     onResetMode = viewModel::resetAppOpMode,
+                    onOpenPermissions = { selectedSection = 0 },
                 )
             }
         }

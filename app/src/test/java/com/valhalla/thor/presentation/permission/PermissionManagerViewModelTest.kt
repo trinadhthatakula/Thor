@@ -199,6 +199,141 @@ class PermissionManagerViewModelTest {
     }
 
     @Test
+    fun `runtime permission change refreshes derived App Ops before returning to the tab`() = runTest {
+        val appOps = FakeAppOpsRepository(snapshot(AppOpMode.IGNORE))
+        val permissions = FakePermissionRepository(
+            listOf(permission("android.permission.CAMERA", isRuntime = true)),
+        )
+        val vm = viewModel(appOps, permissions)
+        vm.loadPermissions(PACKAGE, "Example")
+        vm.loadAppOps()
+        advanceUntilIdle()
+
+        val refreshedRead = CompletableDeferred<Unit>()
+        appOps.nextReadGate = refreshedRead
+        appOps.current = snapshot(AppOpMode.ALLOW)
+        vm.togglePermission("android.permission.CAMERA", grant = true)
+        runCurrent()
+
+        assertTrue(vm.uiState.value.permissions.single().isGranted)
+        assertNull(vm.uiState.value.appOpsSnapshot)
+        assertTrue(vm.uiState.value.isAppOpsLoading)
+        assertFalse(vm.uiState.value.appOpsLoadFailed)
+        assertFalse(vm.uiState.value.appOpsStatusUncertain)
+
+        // The tab's ordinary load call joins the new read instead of reusing the old mode.
+        vm.loadAppOps()
+        refreshedRead.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(2, appOps.reads)
+        assertFalse(vm.uiState.value.isAppOpsLoading)
+        assertEquals(AppOpMode.ALLOW, vm.uiState.value.appOpsSnapshot!!.entries.single().displayedMode)
+    }
+
+    @Test
+    fun `refresh started before a runtime permission change cannot restore its stale mode`() = runTest {
+        val appOps = FakeAppOpsRepository(snapshot(AppOpMode.IGNORE))
+        val permissions = FakePermissionRepository(
+            listOf(permission("android.permission.CAMERA", isRuntime = true)),
+        )
+        val vm = viewModel(appOps, permissions)
+        vm.loadPermissions(PACKAGE, "Example")
+        vm.loadAppOps()
+        advanceUntilIdle()
+
+        val olderRead = CompletableDeferred<Unit>()
+        appOps.nextReadGate = olderRead
+        vm.loadAppOps(force = true)
+        runCurrent()
+
+        appOps.current = snapshot(AppOpMode.ALLOW)
+        vm.togglePermission("android.permission.CAMERA", grant = true)
+        advanceUntilIdle()
+        assertEquals(AppOpMode.ALLOW, vm.uiState.value.appOpsSnapshot!!.entries.single().displayedMode)
+
+        olderRead.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(3, appOps.reads)
+        assertEquals(AppOpMode.ALLOW, vm.uiState.value.appOpsSnapshot!!.entries.single().displayedMode)
+        assertFalse(vm.uiState.value.isAppOpsLoading)
+    }
+
+    @Test
+    fun `runtime permission change during write readback waits for a fresh snapshot`() = runTest {
+        val appOps = FakeAppOpsRepository(snapshot(AppOpMode.IGNORE))
+        val permissions = FakePermissionRepository(
+            listOf(permission("android.permission.CAMERA", isRuntime = true)),
+        )
+        val vm = viewModel(appOps, permissions)
+        vm.loadPermissions(PACKAGE, "Example")
+        vm.loadAppOps()
+        advanceUntilIdle()
+
+        val writeReadBack = CompletableDeferred<Unit>()
+        appOps.nextReadGate = writeReadBack
+        appOps.current = snapshot(AppOpMode.DENY)
+        vm.setAppOpMode(OP_CODE, AppOpScope.PACKAGE, AppOpMode.DENY)
+        runCurrent()
+
+        appOps.current = snapshot(AppOpMode.ALLOW)
+        vm.togglePermission("android.permission.CAMERA", grant = true)
+        runCurrent()
+        assertNull(vm.uiState.value.appOpsSnapshot)
+        assertEquals(OP_CODE, vm.uiState.value.savingAppOpCode)
+        assertEquals(2, appOps.reads)
+
+        val freshRead = CompletableDeferred<Unit>()
+        appOps.nextReadGate = freshRead
+        writeReadBack.complete(Unit)
+        runCurrent()
+
+        assertNull(vm.uiState.value.savingAppOpCode)
+        assertNull(vm.uiState.value.appOpsSnapshot)
+        assertTrue(vm.uiState.value.isAppOpsLoading)
+        assertTrue(vm.uiState.value.appOpsStatusUncertain)
+
+        freshRead.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(3, appOps.reads)
+        assertEquals(AppOpMode.ALLOW, vm.uiState.value.appOpsSnapshot!!.entries.single().displayedMode)
+        assertFalse(vm.uiState.value.appOpsStatusUncertain)
+        assertFalse(vm.uiState.value.appOpsLoadFailed)
+    }
+
+    @Test
+    fun `failed fresh read after a superseded write readback keeps modes uncertain`() = runTest {
+        val appOps = FakeAppOpsRepository(snapshot(AppOpMode.IGNORE))
+        val permissions = FakePermissionRepository(
+            listOf(permission("android.permission.CAMERA", isRuntime = true)),
+        )
+        val vm = viewModel(appOps, permissions)
+        vm.loadPermissions(PACKAGE, "Example")
+        vm.loadAppOps()
+        advanceUntilIdle()
+
+        val writeReadBack = CompletableDeferred<Unit>()
+        appOps.nextReadGate = writeReadBack
+        vm.setAppOpMode(OP_CODE, AppOpScope.PACKAGE, AppOpMode.DENY)
+        runCurrent()
+
+        vm.togglePermission("android.permission.CAMERA", grant = true)
+        runCurrent()
+        appOps.readFailure = IllegalStateException("read failed")
+        writeReadBack.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(3, appOps.reads)
+        assertNull(vm.uiState.value.savingAppOpCode)
+        assertNull(vm.uiState.value.appOpsSnapshot)
+        assertFalse(vm.uiState.value.isAppOpsLoading)
+        assertTrue(vm.uiState.value.appOpsStatusUncertain)
+        assertTrue(vm.uiState.value.appOpsLoadFailed)
+    }
+
+    @Test
     fun `read-only App Ops cannot initiate writes`() = runTest {
         val appOps = FakeAppOpsRepository(snapshot(AppOpMode.ALLOW, canEdit = false))
         val vm = viewModel(appOps)
@@ -213,6 +348,27 @@ class PermissionManagerViewModelTest {
         assertTrue(appOps.writes.isEmpty())
         assertTrue(appOps.resets.isEmpty())
         assertFalse(vm.uiState.value.isAppOpsLoading)
+    }
+
+    @Test
+    fun `permission controlled App Ops cannot initiate writes or resets`() = runTest {
+        val initial = snapshot(AppOpMode.IGNORE)
+        val entry = initial.entries.single()
+        val appOps = FakeAppOpsRepository(initial.copy(entries = listOf(
+            entry.copy(definition = entry.definition.copy(isRuntimePermissionControlled = true)),
+        )))
+        val vm = viewModel(appOps)
+        vm.loadPermissions(PACKAGE, "Example")
+        vm.loadAppOps()
+        advanceUntilIdle()
+
+        vm.setAppOpMode(OP_CODE, AppOpScope.UID, AppOpMode.ALLOW)
+        vm.resetAppOpMode(OP_CODE, AppOpScope.PACKAGE)
+        advanceUntilIdle()
+
+        assertTrue(appOps.writes.isEmpty())
+        assertTrue(appOps.resets.isEmpty())
+        assertNull(vm.uiState.value.savingAppOpCode)
     }
 
     private fun viewModel(

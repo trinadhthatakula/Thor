@@ -36,11 +36,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -123,11 +126,17 @@ internal fun AppOpsSection(
     onRefresh: () -> Unit,
     onSetMode: (Int, AppOpScope, AppOpMode) -> Unit,
     onResetMode: (Int, AppOpScope) -> Unit,
+    onOpenPermissions: () -> Unit = {},
 ) {
     val snapshot = state.appOpsSnapshot
     var selectedCode by rememberSaveable(state.packageName) { mutableIntStateOf(-1) }
     var selectedScope by rememberSaveable(state.packageName) { mutableStateOf(AppOpScope.PACKAGE) }
     val selectedEntry = snapshot?.entries?.firstOrNull { it.definition.code == selectedCode }
+
+    LaunchedEffect(snapshot == null) {
+        // A failed write discards the snapshot. Refresh must not resurrect its old editor.
+        if (snapshot == null) selectedCode = -1
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (snapshot == null) {
@@ -285,6 +294,10 @@ internal fun AppOpsSection(
             onDismiss = { selectedCode = -1 },
             onSetMode = { mode -> onSetMode(selectedEntry.definition.code, selectedScope, mode) },
             onResetMode = { onResetMode(selectedEntry.definition.code, selectedScope) },
+            onOpenPermissions = {
+                selectedCode = -1
+                onOpenPermissions()
+            },
         )
     }
 }
@@ -402,6 +415,7 @@ private fun AppOpEditorSheet(
     onDismiss: () -> Unit,
     onSetMode: (AppOpMode) -> Unit,
     onResetMode: () -> Unit,
+    onOpenPermissions: () -> Unit,
 ) {
     val currentScopeMode = (if (scope == AppOpScope.PACKAGE) entry.packageMode else entry.uidMode)
         ?: entry.definition.platformDefault
@@ -413,7 +427,13 @@ private fun AppOpEditorSheet(
     }
     val otherSharedPackages = snapshot.sharedUidPackages.filterNot { it == packageName }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // The long editor needs its full height. Avoid a partial-to-expanded transition that can
+    // leave descendant touch input captured by the sheet's drag gesture during anchor updates.
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+    )
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -427,6 +447,21 @@ private fun AppOpEditorSheet(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
+            if (entry.definition.isRuntimePermissionControlled) {
+                Text(
+                    text = stringResource(
+                        if (entry.permissionRequested) R.string.app_ops_permission_controlled
+                        else R.string.app_ops_permission_not_requested,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (entry.permissionRequested) {
+                    TextButton(onClick = onOpenPermissions) {
+                        Text(stringResource(R.string.app_ops_open_permissions))
+                    }
+                }
+            }
             Text(
                 text = stringResource(R.string.app_ops_technical_name, entry.definition.debugName, entry.definition.code),
                 style = MaterialTheme.typography.bodySmall,
@@ -481,101 +516,103 @@ private fun AppOpEditorSheet(
                 ),
                 style = MaterialTheme.typography.bodySmall,
             )
-            HorizontalDivider()
-            Text(
-                text = stringResource(R.string.app_ops_edit_scope),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppOpScope.entries.forEach { candidate ->
-                    FilterChip(
-                        selected = scope == candidate,
-                        onClick = { onScopeChange(candidate) },
-                        enabled = !editsBlocked,
-                        label = {
-                            Text(
-                                stringResource(
-                                    if (candidate == AppOpScope.PACKAGE) R.string.app_ops_scope_package
-                                    else R.string.app_ops_scope_uid,
-                                ),
-                            )
+            if (!entry.definition.isRuntimePermissionControlled) {
+                HorizontalDivider()
+                Text(
+                    text = stringResource(R.string.app_ops_edit_scope),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppOpScope.entries.forEach { candidate ->
+                        FilterChip(
+                            selected = scope == candidate,
+                            onClick = { onScopeChange(candidate) },
+                            enabled = !editsBlocked,
+                            label = {
+                                Text(
+                                    stringResource(
+                                        if (candidate == AppOpScope.PACKAGE) R.string.app_ops_scope_package
+                                        else R.string.app_ops_scope_uid,
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+                if (scope == AppOpScope.UID) {
+                    Text(
+                        text = if (otherSharedPackages.isEmpty()) {
+                            stringResource(R.string.app_ops_uid_warning)
+                        } else {
+                            stringResource(R.string.app_ops_shared_uid_warning, otherSharedPackages.joinToString(", "))
                         },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (entry.hasUidOverride) {
+                    Text(
+                        text = stringResource(R.string.app_ops_uid_override_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
-            }
-            if (scope == AppOpScope.UID) {
+                if (!snapshot.canEdit) {
+                    Text(
+                        text = stringResource(R.string.app_ops_read_only),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (statusUncertain) {
+                    Text(
+                        text = stringResource(R.string.app_ops_refresh_before_edit),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 Text(
-                    text = if (otherSharedPackages.isEmpty()) {
-                        stringResource(R.string.app_ops_uid_warning)
-                    } else {
-                        stringResource(R.string.app_ops_shared_uid_warning, otherSharedPackages.joinToString(", "))
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    text = stringResource(R.string.app_ops_choose_mode),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
                 )
-            } else if (entry.hasUidOverride) {
+                editableModes.forEach { mode ->
+                    AppOpModeOption(
+                        mode = mode,
+                        selected = selectedMode == mode,
+                        enabled = snapshot.canEdit && !editsBlocked,
+                        onClick = { selectedMode = mode },
+                    )
+                }
+                Button(
+                    onClick = { pendingAction = PendingAppOpAction.Set(selectedMode) },
+                    enabled = snapshot.canEdit && !editsBlocked && selectedMode != AppOpMode.UNKNOWN &&
+                        selectedMode != currentScopeMode,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.app_ops_apply_mode))
+                }
+                HorizontalDivider()
+                OutlinedButton(
+                    onClick = { pendingAction = PendingAppOpAction.Reset },
+                    enabled = snapshot.canEdit && !editsBlocked && entry.definition.allowsReset &&
+                        entry.definition.platformDefault != AppOpMode.UNKNOWN &&
+                        (if (scope == AppOpScope.PACKAGE) entry.packageMode != null else entry.uidMode != null),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.app_ops_reset_platform_default))
+                }
                 Text(
-                    text = stringResource(R.string.app_ops_uid_override_warning),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (!snapshot.canEdit) {
-                Text(
-                    text = stringResource(R.string.app_ops_read_only),
+                    text = stringResource(R.string.app_ops_reset_explanation),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (statusUncertain) {
-                Text(
-                    text = stringResource(R.string.app_ops_refresh_before_edit),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            Text(
-                text = stringResource(R.string.app_ops_choose_mode),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            editableModes.forEach { mode ->
-                AppOpModeOption(
-                    mode = mode,
-                    selected = selectedMode == mode,
-                    enabled = snapshot.canEdit && !editsBlocked,
-                    onClick = { selectedMode = mode },
-                )
-            }
-            Button(
-                onClick = { pendingAction = PendingAppOpAction.Set(selectedMode) },
-                enabled = snapshot.canEdit && !editsBlocked && selectedMode != AppOpMode.UNKNOWN &&
-                    selectedMode != currentScopeMode,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.app_ops_apply_mode))
-            }
-            HorizontalDivider()
-            OutlinedButton(
-                onClick = { pendingAction = PendingAppOpAction.Reset },
-                enabled = snapshot.canEdit && !editsBlocked && entry.definition.allowsReset &&
-                    entry.definition.platformDefault != AppOpMode.UNKNOWN &&
-                    (if (scope == AppOpScope.PACKAGE) entry.packageMode != null else entry.uidMode != null),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.app_ops_reset_platform_default))
-            }
-            Text(
-                text = stringResource(R.string.app_ops_reset_explanation),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 
     val action = pendingAction
-    if (action != null) {
+    if (action != null && !entry.definition.isRuntimePermissionControlled) {
         val scopeName = stringResource(
             if (scope == AppOpScope.PACKAGE) R.string.app_ops_scope_package else R.string.app_ops_scope_uid,
         )

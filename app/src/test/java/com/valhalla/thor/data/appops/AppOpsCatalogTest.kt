@@ -52,6 +52,64 @@ class AppOpsCatalogTest {
     }
 
     @Test
+    fun runtimePermissionPolicyRequiresEnabledFlagAndExactRuntimeMapping() {
+        val operations = listOf(
+            operation(74, "ACCEPT_HANDOVER", permission = "android.permission.ACCEPT_HANDOVER"),
+            operation(43, "GET_USAGE_STATS", permission = "android.permission.PACKAGE_USAGE_STATS"),
+            operation(29, "READ_CLIPBOARD"),
+            operation(200, "HANDOVER_HISTORY", permission = "android.permission.ACCEPT_HANDOVER"),
+        )
+        val definitions = AppOpsCatalog.fromOperations(AppOpsCatalog.withRuntimePermissionPolicy(
+            operations = operations,
+            mappingEnabled = true,
+            runtimePermissionOpCode = { permission ->
+                if (permission == "android.permission.ACCEPT_HANDOVER") 74 else null
+            },
+        )).associateBy { it.code }
+
+        assertTrue(definitions.getValue(74).isRuntimePermissionControlled)
+        assertFalse(definitions.getValue(43).isRuntimePermissionControlled)
+        assertFalse(definitions.getValue(29).isRuntimePermissionControlled)
+        assertFalse(definitions.getValue(200).isRuntimePermissionControlled)
+    }
+
+    @Test
+    fun absentRuntimeMappingPolicyDoesNotQueryPermissionsOrRestrictOperations() {
+        val definitions = AppOpsCatalog.fromOperations(AppOpsCatalog.withRuntimePermissionPolicy(
+            operations = listOf(operation(74, "ACCEPT_HANDOVER", permission = "android.permission.ACCEPT_HANDOVER")),
+            mappingEnabled = false,
+            runtimePermissionOpCode = { error("Older platforms must not query the runtime mapping") },
+        ))
+
+        assertFalse(definitions.single().isRuntimePermissionControlled)
+    }
+
+    @Test
+    fun runtimePermissionEditabilityFollowsTheSwitchUsedByBothWriteScopes() {
+        val definitions = AppOpsCatalog.fromOperations(AppOpsCatalog.withRuntimePermissionPolicy(
+            operations = listOf(
+                operation(0, "COARSE_LOCATION", permission = "android.permission.ACCESS_COARSE_LOCATION"),
+                operation(1, "FINE_LOCATION", switchCode = 0, permission = "android.permission.ACCESS_FINE_LOCATION"),
+                operation(29, "READ_CLIPBOARD"),
+                operation(200, "VENDOR_RUNTIME_ALIAS", switchCode = 29, permission = "android.permission.VENDOR_RUNTIME"),
+            ),
+            mappingEnabled = true,
+            runtimePermissionOpCode = { permission ->
+                when (permission) {
+                    "android.permission.ACCESS_COARSE_LOCATION" -> 0
+                    "android.permission.ACCESS_FINE_LOCATION" -> 1
+                    "android.permission.VENDOR_RUNTIME" -> 200
+                    else -> null
+                }
+            },
+        )).associateBy { it.code }
+
+        assertTrue(definitions.getValue(0).isRuntimePermissionControlled)
+        // Android converts 200 to its switch 29 before consulting the runtime mapping.
+        assertFalse(definitions.getValue(29).isRuntimePermissionControlled)
+    }
+
+    @Test
     fun skipsAndroid36RemovedSlotWithoutRenumberingLaterOperations() {
         val definitions = AppOpsCatalog.fromOperations(listOf(
             operation(95, "LOADER_USAGE_STATS"),
