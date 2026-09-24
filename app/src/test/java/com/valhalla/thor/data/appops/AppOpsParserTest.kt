@@ -77,27 +77,93 @@ class AppOpsParserTest {
 
     @Test
     fun explicitNoOperationsUsesDeviceDefaultsAndPermissionRelevance() {
-        val entries = parse("No operations.", "No operations.\nDefault mode: allow",
-            setOf("android.permission.ACCESS_FINE_LOCATION"))
+        for (permission in listOf("android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION")) {
+            val entries = parse("No operations.", "No operations.\nDefault mode: allow", setOf(permission))
 
-        assertTrue(entries.first().isRelevant)
-        assertFalse(entries.first().observed)
-        assertFalse(entries.first().isChanged)
-        assertNull(entries.first().packageMode)
-        assertNull(entries.first().uidMode)
-        assertEquals(AppOpMode.DEFAULT, entries.last().displayedMode)
-        assertFalse(entries.last().isRelevant)
+            // Requesting either the controlling operation's permission or an alias is sufficient.
+            assertTrue(entries.first().isRelevant)
+            assertFalse(entries.first().observed)
+            assertFalse(entries.first().isChanged)
+            assertNull(entries.first().packageMode)
+            assertNull(entries.first().uidMode)
+            assertEquals(AppOpMode.DEFAULT, entries.last().displayedMode)
+            assertFalse(entries.last().isRelevant)
+        }
     }
 
     @Test
-    fun aliasHistoryMarksRelevanceWithoutOverwritingControllerMode() {
+    fun aliasHistoryIsPreservedWithoutMakingAnUndeclaredPermissionRelevant() {
         val entries = parse("COARSE_LOCATION: ignore\nFINE_LOCATION: allow; time=+2s ago\nGPS: allow (running)")
         val location = entries.first()
 
         assertEquals(AppOpMode.IGNORE, location.packageMode)
         assertTrue(location.observed)
-        assertTrue(location.isRelevant)
+        assertFalse(location.permissionRequested)
+        assertFalse(location.isRelevant)
         assertEquals(1, entries.count { it.observed })
+    }
+
+    @Test
+    fun undeclaredHandoverDerivedUidIgnoreRemainsVisibleDataButIsNotRelevant() {
+        val handover = AppOpDefinition(
+            74, "ACCEPT_HANDOVER", "android:accept_handover", emptyList(),
+            listOf("android.permission.ACCEPT_HANDOVER"), AppOpMode.ALLOW, true,
+            isRuntimePermissionControlled = true,
+        )
+        val uidOutput = "Uid mode: ACCEPT_HANDOVER: ignore"
+        val entry = AppOpsParser.parseSnapshot(uidOutput, uidOutput, listOf(handover), emptySet()).entries.single()
+
+        assertNull(entry.packageMode)
+        assertEquals(AppOpMode.IGNORE, entry.uidMode)
+        assertTrue(entry.observed)
+        assertTrue(entry.isChanged)
+        assertFalse(entry.permissionRequested)
+        assertFalse(entry.isRelevant)
+    }
+
+    @Test
+    fun undeclaredPermissionHistoryAndOverridesDoNotMakeAnOperationRelevant() {
+        for ((packageOutput, uidOutput) in listOf(
+            "CAMERA: allow; time=+2s ago" to "No operations.",
+            "CAMERA: ignore" to "No operations.",
+            "No operations." to "CAMERA: foreground",
+        )) {
+            val camera = parse(packageOutput, uidOutput).single { it.definition.code == 26 }
+
+            assertTrue(camera.observed)
+            assertFalse(camera.permissionRequested)
+            assertFalse(camera.isRelevant)
+        }
+    }
+
+    @Test
+    fun declaredPermissionRemainsRelevantEvenWhenItsOperationIsIgnoredOrDenied() {
+        for (mode in listOf(AppOpMode.IGNORE, AppOpMode.DENY)) {
+            val camera = parse(
+                "CAMERA: ${mode.shellToken}",
+                permissions = setOf("android.permission.CAMERA"),
+            ).single { it.definition.code == 26 }
+
+            assertEquals(mode, camera.displayedMode)
+            assertTrue(camera.permissionRequested)
+            assertTrue(camera.isRelevant)
+        }
+    }
+
+    @Test
+    fun permissionlessActivityAndOverridesRemainRelevantWithoutManifestPermissions() {
+        for ((packageOutput, uidOutput) in listOf(
+            "RUN_IN_BACKGROUND: allow; time=+2s ago" to "No operations.",
+            "RUN_IN_BACKGROUND: ignore" to "No operations.",
+            "No operations." to "RUN_IN_BACKGROUND: foreground",
+        )) {
+            val operation = parse(packageOutput, uidOutput).single { it.definition.code == 63 }
+
+            assertTrue(operation.definition.relatedPermissions.isEmpty())
+            assertFalse(operation.permissionRequested)
+            assertTrue(operation.observed)
+            assertTrue(operation.isRelevant)
+        }
     }
 
     @Test

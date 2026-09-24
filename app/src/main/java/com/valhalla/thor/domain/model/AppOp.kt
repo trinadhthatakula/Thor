@@ -62,8 +62,13 @@ data class AppOpEntry(
         get() = (packageMode != null && packageMode != definition.platformDefault) ||
             (uidMode != null && uidMode != definition.platformDefault)
 
+    /** Manifest declarations decide relevance for permission-linked operations, not stored modes. */
     val isRelevant: Boolean
-        get() = permissionRequested || observed || isChanged
+        get() = if (definition.relatedPermissions.isNotEmpty()) {
+            permissionRequested
+        } else {
+            observed || isChanged
+        }
 }
 
 data class AppOpsSnapshot(

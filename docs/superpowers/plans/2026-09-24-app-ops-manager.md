@@ -6,7 +6,7 @@ Feature request: [#503](https://github.com/trinadhthatakula/Thor/issues/503). Wo
 
 The per-app Permissions screen gains a separate App Ops tab. Runtime grants and App Ops modes answer different questions: an allowed operation can still be blocked by a denied permission or another platform restriction. Normal/signature permissions are status rows rather than grant/revoke switches.
 
-The default filter is **Relevant**, as chosen by the owner. It includes permission-linked operations and operations with recorded activity or changed modes. **All** exposes the remaining operations in the device's Android catalog, with relevant entries first; **Changed** isolates overrides. Search covers operation names, aliases, and related permissions.
+The default filter is **Relevant**, as chosen by the owner. A permission-linked operation is relevant only when the app declares at least one of its linked permissions, including permissions from grouped aliases; grant state does not affect relevance. Recorded activity or changed modes make operations relevant only when they have no linked permission. **All** exposes the remaining operations under **Other operations**, with relevant entries first; **Changed** isolates overrides regardless of manifest declarations. Search covers operation names, aliases, and related permissions.
 
 An operation sheet shows its package mode, UID mode, platform default, and Android user. It offers Allow, Ignore, Deny, Default, and Foreground, with descriptions that retain Android's operation-specific limits. UID changes warn that apps sharing the UID can be affected. A package edit can be masked by a UID override, which remains visible.
 
@@ -40,13 +40,14 @@ On devices where Android maps runtime permissions directly to App Ops, those ope
 |---|---|
 | Pure catalog, API 28/36 parser, alias, command-validation tests | Passed, including retired slots, Xiaomi vendor records, scope boundaries, and catalog-collision regressions |
 | Scope readback, silent refusal, wrong user, reset/default, cancellation tests | Passed, including package replacement during readback |
-| Relevant/Changed/All and ViewModel loading/failure/race tests | Passed; runtime-only permission switches also covered by Compose tests |
-| `./gradlew test` | Passed 2026-09-24 after editor/runtime-policy fixes: 3,074 tests in each of FOSS and Store, with no failures or skips |
+| Relevant/Changed/All and ViewModel loading/failure/race tests | Passed, including undeclared permissions with history/package/UID modes, grouped aliases, and permissionless operations; runtime-only permission switches also covered by Compose tests |
+| `./gradlew test` | Passed 2026-09-24 after manifest-relevance filtering: 3,080 tests in each of FOSS and Store, with no failures or skips |
 | `./gradlew lintFossDebug lintStoreRelease` | Passed 2026-09-24: no lint errors, MissingTranslation warnings, or SyntheticAccessor errors. The intentional hidden-API probe has a scoped suppression and a privileged fallback |
 | Rooted `Thor_Root_API36`: real device catalog, package/UID round trips and restoration | Passed 2026-09-24 through the production Koin repository and Root gateway |
 | Permissions/App Ops UI on rooted emulator | Checked 2026-09-24: navigation, Relevant/All, search, mode sheet, package/UID display, UID warning, and normal-permission status rows |
 | Physical-device Root reads on xiaomi.eu Android 16 / KernelSU | Passed 2026-09-24: read-only production-repository test on Thor Debug, plus the App Ops screen for the installed release app; Android modes and the Xiaomi-controls notice are visible |
 | Physical-device runtime policy and editor interaction | Passed 2026-09-24: 7 device tests; production catalog marks Handover permission-controlled and Usage Stats independently editable. Normal navigation also verified the Handover explanation and Usage Stats selection/confirmation. Confirmation was cancelled; saved modes remained Handover Ignore and Usage Stats Allow |
+| Physical-device manifest relevance | Passed 2026-09-24: all 7 read/editor device tests rerun with manifest filtering. Normal navigation of release Thor confirmed Handover absent from Relevant search and present in All, while Usage Stats stays Relevant. Saved Handover Ignore and Usage Stats Allow modes were unchanged |
 | Physical-device scoped writes, ordinary Shizuku and Shizuku running as root | Pending |
 | Android 9 device, secondary/work-profile user, shared UID, additional OEM formats | Pending; pure fixtures do not replace device acceptance |
 

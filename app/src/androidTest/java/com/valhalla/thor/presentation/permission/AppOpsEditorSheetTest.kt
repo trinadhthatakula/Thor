@@ -132,7 +132,14 @@ class AppOpsEditorSheetTest {
     @Test
     fun aRuntimePermissionNotRequestedByTheAppExplainsWhyItCannotBeGranted() {
         var openedPermissions = 0
-        setSection(onOpenPermissions = { openedPermissions++ }) { handoverState(requested = false) }
+        var current by mutableStateOf(handoverState(requested = false))
+        setSection(
+            onOpenPermissions = { openedPermissions++ },
+            onFilterChange = { current = current.copy(appOpsFilter = it) },
+        ) { current }
+
+        rule.onNodeWithText("Accept Handover").assertDoesNotExist()
+        rule.onNodeWithText(str(R.string.app_ops_filter_all)).performClick()
         openOperation("Accept Handover")
 
         rule.onNodeWithText(str(R.string.app_ops_permission_not_requested))
@@ -174,13 +181,14 @@ class AppOpsEditorSheetTest {
 
     private fun setSection(
         onOpenPermissions: () -> Unit = {},
+        onFilterChange: (AppOpsFilter) -> Unit = {},
         state: () -> PermissionUiState,
     ) = rule.setContent {
         MaterialTheme {
             AppOpsSection(
                 state = state(),
                 onSearchQueryChange = {},
-                onFilterChange = {},
+                onFilterChange = onFilterChange,
                 onRefresh = {},
                 onSetMode = { code, scope, mode -> writes += Triple(code, scope, mode) },
                 onResetMode = { _, _ -> error("This test must not request a reset") },

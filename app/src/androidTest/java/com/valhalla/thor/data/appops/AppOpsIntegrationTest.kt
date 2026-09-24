@@ -165,7 +165,9 @@ class AppOpsIntegrationTest {
         snapshot.entries.forEach { entry ->
             val expected = entry.definition.relatedPermissions.any(requested::contains)
             assertEquals("Manifest relevance for ${entry.definition.debugName}", expected, entry.permissionRequested)
-            if (expected) assertTrue("Requested operation must be relevant", entry.isRelevant)
+            if (entry.definition.relatedPermissions.isNotEmpty()) {
+                assertEquals("Permission-linked relevance for ${entry.definition.debugName}", expected, entry.isRelevant)
+            }
         }
     }
 
