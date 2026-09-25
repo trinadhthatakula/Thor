@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -19,10 +20,14 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppOpDefinition
@@ -42,6 +47,34 @@ class AppOpsEditorSheetTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     private val writes = mutableListOf<Triple<Int, AppOpScope, AppOpMode>>()
+
+    @Test
+    fun swipingDownFromTheEditorTitleDismissesAndAllowsReopening() {
+        setSection { state() }
+        openUsageStats()
+
+        val title = rule.onNodeWithTag("app_ops_editor_title").assertIsDisplayed()
+        rule.waitForIdle()
+        title.performTouchInput {
+            swipe(center, center + Offset(0f, 300.dp.toPx()), durationMillis = 500)
+        }
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodesWithTag("app_ops_editor_title").fetchSemanticsNodes().isEmpty()
+        }
+
+        openUsageStats()
+        mode(R.string.app_ops_mode_ignore).performScrollTo().assertIsDisplayed()
+        title.assertIsDisplayed()
+        title.performTouchInput {
+            swipe(center, center + Offset(0f, 300.dp.toPx()), durationMillis = 500)
+        }
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodesWithTag("app_ops_editor_title").fetchSemanticsNodes().isEmpty()
+        }
+
+        openUsageStats()
+        title.assertIsDisplayed()
+    }
 
     @Test
     fun selectingAnotherUsageStatsModeEnablesApplyAndConfirmsThePackageWrite() {
