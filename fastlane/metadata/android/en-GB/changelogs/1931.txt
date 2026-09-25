@@ -1,0 +1,13 @@
+• 🧊 New: Freeze Profiles — save named groups of apps, freeze or unfreeze in one tap.
+
+• 💾 New: export several apps at once, to a folder you pick.
+
+• 📦 New: export as .xapk, alongside .apk and .apks.
+
+• 🔎 New: filter your apps by permission — Camera, Mic, Location and more.
+
+• 📱 App info is now one sheet, with the full details built in.
+
+• 🧊 Freezer rework: the tile and shortcuts are far more reliable.
+
+• 🔒 App lock can no longer lock you out.

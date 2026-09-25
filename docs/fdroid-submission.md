@@ -71,9 +71,11 @@ is a Google-signed blob that gets in the way of verification.
 **The benchmark build type is already confined to `store`**, so nothing about it can perturb a
 `foss` build. That was done for IzzyOnDroid reproducibility and it pays off again here.
 
-**Fastlane metadata exists** at `fastlane/metadata/android/{en-US,hi-IN}/` with title, short and full
-descriptions, icon, feature graphic and ten screenshots. `fdroid update` picks this up from the repo
-automatically — you do not re-enter it in the metadata file.
+**Fastlane metadata exists** at `fastlane/metadata/android/{en-US,en-GB,hi-IN}/` with title, short
+and full descriptions. The `en-US` listing also contains the icon, feature graphic and ten
+screenshots. `fdroid update` picks this up from the repo automatically — you do not re-enter it in
+the metadata file. Release lanes skip Play listing-metadata uploads; these copied titles and
+descriptions do not change the live Play listing.
 
 ---
 
@@ -201,8 +203,9 @@ document, copied from `release-notes/v1.93.1/playstore.txt`.
 The follow-up this section asked for — *"worth adding to the release script rather than the
 checklist"* — has since been done. `copy_playstore_notes` in `fastlane/Fastfile` copies
 `release-notes/v<name>/playstore.txt` into **every** locale under `fastlane/metadata/android/`
-before the production promotion, and `prepare_release_artifacts` does the en-US copy on the upload
-rung. The directory now runs 1600, 1931, 1932, 1933, 1940 with no gaps since 1931.
+before the production promotion, and `prepare_release_artifacts` makes the same all-locale copy
+on the upload rung. At the time of that fix, the directory ran 1600, 1931, 1932, 1933, 1940 with
+no gaps since 1931.
 
 **`hi-IN` is partially complete** — title, short and full description, and (since the automated copy)
 changelogs mirroring en-US, but still no images. Not a blocker; F-Droid falls back to `en-US` for

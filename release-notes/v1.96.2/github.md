@@ -58,9 +58,10 @@ the latest published release tag, through `e2bc5f01`, plus this release's prepar
   `3e58535b`) and [PR #508](https://github.com/trinadhthatakula/Thor/pull/508) (`ab3e98d6`,
   `fb214ae2`) refresh the README and follow-up reports to distinguish shipped work from
   remaining device checks. The 1.96.1 production history was also reconciled (`6e2df990`).
-- This release prepares complete Play/F-Droid notes for both Fastlane locales. It retires the
-  oldest curated notes directory, `v1.91.2`, to keep the last 20 releases; existing Fastlane
-  changelogs are retained.
+- This release prepares complete Play/F-Droid notes for all three Fastlane locales and mirrors
+  the English title and descriptions into `en-GB`, Play's primary locale. It retires the oldest
+  curated notes directory, `v1.91.2`, to keep the last 20 releases; existing Fastlane changelogs
+  are retained.
 
 ## 🧪 Validation scope
 
@@ -69,7 +70,7 @@ the latest published release tag, through `e2bc5f01`, plus this release's prepar
   and zero warnings.
 - All **13 release-script test suites** passed after retention pruning. Play notes use **464/500
   characters**; the assembled Telegram caption uses **693/1024 UTF-16 units** with the
-  conservative wrapper allowance. Both Fastlane locale files match the source notes, and the
+  conservative wrapper allowance. All three Fastlane locale files match the source notes, and the
   Shizu manifest check passes for production 1.96.1.
 - PRs #510 and #511 also report focused emulator and physical-device checks.
 - App Ops still needs broader device acceptance for scoped Shizuku writes, Android 9, secondary

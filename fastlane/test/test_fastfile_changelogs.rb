@@ -55,7 +55,7 @@ class TestFastfileChangelogs < Minitest::Test
     FileUtils.mkdir_p(File.dirname(@notes))
     File.write(@notes, NOTES)
     File.write(File.join(@root, 'gradle.properties'), "versionCode=1961\n")
-    %w[en-US hi-IN].each do |locale|
+    %w[en-US en-GB hi-IN].each do |locale|
       FileUtils.mkdir_p(File.dirname(changelog(locale)))
     end
     @fastfile = ChangelogFastfile.new
@@ -82,19 +82,21 @@ class TestFastfileChangelogs < Minitest::Test
   def test_dev_upload_copies_every_line_and_blank_line_for_every_locale
     dev_upload
 
-    %w[en-US hi-IN].each do |locale|
+    %w[en-US en-GB hi-IN].each do |locale|
       assert_equal NOTES.b, File.binread(changelog(locale))
     end
     refute @fastfile.uploads.first.fetch(:skip_upload_changelogs)
   end
 
-  def test_overwrites_truncated_english_and_preserves_translation
+  def test_overwrites_truncated_english_locales_and_preserves_translation
     translation = "• पहला बदलाव।\n\n• दूसरा बदलाव।\n"
     File.write(changelog('en-US'), NOTES.lines.first)
+    File.write(changelog('en-GB'), NOTES.lines.first)
     File.write(changelog('hi-IN'), translation)
 
     assert copy_notes
     assert_equal NOTES.b, File.binread(changelog('en-US'))
+    assert_equal NOTES.b, File.binread(changelog('en-GB'))
     assert_equal translation.b, File.binread(changelog('hi-IN'))
   end
 
