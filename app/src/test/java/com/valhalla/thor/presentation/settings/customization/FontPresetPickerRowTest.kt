@@ -239,6 +239,6 @@ class FontPresetPickerRowTest {
             R.string.font_preset_system,
             R.string.font_preview_title,
         ) + previewStrings
-        val localeTags = listOf("en", "ar", "es", "fr", "pl", "pt", "pt-BR", "zh-CN")
+        val localeTags = listOf("en", "ar", "es", "fr", "ja", "pl", "pt", "pt-BR", "zh-CN")
     }
 }

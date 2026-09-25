@@ -234,7 +234,7 @@ class SettingsExpandedSwitchRowTest {
     private companion object {
         const val VIEWPORT_TAG = "expanded-settings-viewport"
         val hasSwitchRole = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch)
-        val localeTags = listOf("en", "ar", "es", "fr", "pl", "pt", "pt-BR", "zh-CN")
+        val localeTags = listOf("en", "ar", "es", "fr", "ja", "pl", "pt", "pt-BR", "zh-CN")
         val expandedRows = listOf(
             ExpandedRow(R.drawable.frozen, R.string.auto_freeze, R.string.auto_freeze_desc),
             ExpandedRow(R.drawable.frozen, R.string.suspend_instead_of_freeze, R.string.suspend_instead_of_freeze_desc),

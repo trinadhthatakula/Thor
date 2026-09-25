@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="support_tab_play_store">Play Store</string>
+    <string name="support_tab_direct">直接</string>
+    <string name="rate_play_store_title">Play Store で評価する</string>
+    <string name="rate_play_store_desc">5 つ星のレビューを投稿して、Thor をほかの人に広めましょう</string>
+    <string name="explore_other_apps_title">ほかのアプリを見る</string>
+    <string name="explore_other_apps_desc">開発者ページでほかのアプリもお試しください</string>
+    <string name="billing_error">お支払いエラー</string>
+    <string name="change_support_plan_title">サポートプランを変更しますか？</string>
+    <string name="change_support_plan_desc">すでに有効なプランで開発者を支援しています。プランをアップグレードまたは変更すると、現在の定期購入は解約され、新しいプランに置き換わります。続行しますか？</string>
+    <string name="active_plan">利用中のプラン</string>
+    <string name="billing_purchase_pending">購入手続き中 — お支払いが完了すると有効になります</string>
+    <string name="billing_price_per_week">%1$s／週</string>
+    <string name="billing_price_per_month">%1$s／月</string>
+    <string name="billing_price_per_quarter">%1$s／3 か月</string>
+    <string name="billing_price_per_half_year">%1$s／6 か月</string>
+    <string name="billing_price_per_year">%1$s／年</string>
+</resources>

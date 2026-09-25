@@ -290,6 +290,7 @@ internal val AppLanguage.labelRes: Int
         AppLanguage.SystemDefault -> R.string.system_default
         AppLanguage.English -> R.string.english
         AppLanguage.Chinese -> R.string.chinese
+        AppLanguage.Japanese -> R.string.japanese
         AppLanguage.French -> R.string.french
         AppLanguage.Spanish -> R.string.spanish
         AppLanguage.Arabic -> R.string.arabic
