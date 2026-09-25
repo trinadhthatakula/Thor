@@ -82,6 +82,34 @@ class AppOpsCatalogTest {
         ))
 
         assertFalse(definitions.single().isRuntimePermissionControlled)
+        assertFalse(definitions.single().isRuntimePermissionControlUncertain)
+    }
+
+    @Test
+    fun unknownRuntimePolicyRestrictsOnlyMatchingControllingOperations() {
+        val definitions = AppOpsCatalog.fromOperations(AppOpsCatalog.withRuntimePermissionPolicy(
+            operations = listOf(
+                operation(74, "ACCEPT_HANDOVER", permission = "android.permission.ACCEPT_HANDOVER"),
+                operation(43, "GET_USAGE_STATS", permission = "android.permission.PACKAGE_USAGE_STATS"),
+                operation(29, "READ_CLIPBOARD"),
+                operation(200, "HANDOVER_HISTORY", permission = "android.permission.ACCEPT_HANDOVER"),
+                operation(201, "VENDOR_RUNTIME_ALIAS", switchCode = 29, permission = "android.permission.VENDOR_RUNTIME"),
+            ),
+            mappingEnabled = null,
+            runtimePermissionOpCode = { permission ->
+                when (permission) {
+                    "android.permission.ACCEPT_HANDOVER" -> 74
+                    "android.permission.VENDOR_RUNTIME" -> 201
+                    else -> null
+                }
+            },
+        )).associateBy { it.code }
+
+        assertTrue(definitions.getValue(74).isRuntimePermissionControlUncertain)
+        assertFalse(definitions.getValue(74).isRuntimePermissionControlled)
+        for (code in listOf(43, 29, 200)) {
+            assertFalse(definitions.getValue(code).isRuntimePermissionEditBlocked)
+        }
     }
 
     @Test

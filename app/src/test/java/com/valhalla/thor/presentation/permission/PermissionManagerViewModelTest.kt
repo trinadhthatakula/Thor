@@ -371,6 +371,27 @@ class PermissionManagerViewModelTest {
         assertNull(vm.uiState.value.savingAppOpCode)
     }
 
+    @Test
+    fun `uncertain runtime permission policy cannot initiate writes or resets`() = runTest {
+        val initial = snapshot(AppOpMode.IGNORE)
+        val entry = initial.entries.single()
+        val appOps = FakeAppOpsRepository(initial.copy(entries = listOf(
+            entry.copy(definition = entry.definition.copy(isRuntimePermissionControlUncertain = true)),
+        )))
+        val vm = viewModel(appOps)
+        vm.loadPermissions(PACKAGE, "Example")
+        vm.loadAppOps()
+        advanceUntilIdle()
+
+        vm.setAppOpMode(OP_CODE, AppOpScope.UID, AppOpMode.ALLOW)
+        vm.resetAppOpMode(OP_CODE, AppOpScope.PACKAGE)
+        advanceUntilIdle()
+
+        assertTrue(appOps.writes.isEmpty())
+        assertTrue(appOps.resets.isEmpty())
+        assertNull(vm.uiState.value.savingAppOpCode)
+    }
+
     private fun viewModel(
         appOps: FakeAppOpsRepository,
         permissions: FakePermissionRepository = FakePermissionRepository(),

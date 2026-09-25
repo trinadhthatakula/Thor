@@ -8,7 +8,7 @@ import com.valhalla.thor.domain.model.AppOpDefinition
 /** Resolve the boot-fixed policy through the same privileged session used for App Ops. */
 internal class AppOpsCatalogProvider(
     private val reflectedPolicy: () -> Boolean?,
-    private val loadDefinitions: (Boolean) -> List<AppOpDefinition>,
+    private val loadDefinitions: (Boolean?) -> List<AppOpDefinition>,
 ) {
     // Access is serialized by AppOpsController. Unknown policy must not become a cached false.
     private var confirmedCatalog: List<AppOpDefinition>? = null
@@ -16,7 +16,7 @@ internal class AppOpsCatalogProvider(
     suspend fun load(session: AppOpsCommandSession): List<AppOpDefinition> {
         confirmedCatalog?.let { return it }
         val policy = reflectedPolicy() ?: readPolicy(session)
-        return loadDefinitions(policy == true).also { definitions ->
+        return loadDefinitions(policy).also { definitions ->
             if (policy != null) confirmedCatalog = definitions
         }
     }

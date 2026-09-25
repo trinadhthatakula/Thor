@@ -101,6 +101,7 @@ fun PermissionManagerScreen(
 
     val animatedVisibilityScope = LocalNavAnimatedContentScope.current
     var selectedSection by rememberSaveable(packageName) { mutableIntStateOf(0) }
+    var selectedPermissionCategory by rememberSaveable(packageName) { mutableIntStateOf(0) }
     LaunchedEffect(selectedSection, packageName, state.packageName) {
         if (selectedSection == 1 && state.packageName == packageName) viewModel.loadAppOps()
     }
@@ -149,16 +150,15 @@ fun PermissionManagerScreen(
             )
 
             // Category Filter Navigation
-            var selectedTab by rememberSaveable(packageName) { mutableIntStateOf(0) }
             PillSelector(
-                selectedTab = selectedTab,
+                selectedTab = selectedPermissionCategory,
                 tabs = listOf(
                     stringResource(R.string.permissions_filter_all),
                     stringResource(R.string.permissions_filter_sensitive),
                     stringResource(R.string.permissions_filter_standard),
                     stringResource(R.string.permissions_filter_system),
                 ),
-                onTabSelected = { selectedTab = it }
+                onTabSelected = { selectedPermissionCategory = it }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -204,7 +204,7 @@ fun PermissionManagerScreen(
                 val (runtimePermissions, normalPermissions, signaturePermissions) = classified
                 val filteredIsEmpty =
                     runtimePermissions.isEmpty() && normalPermissions.isEmpty() && signaturePermissions.isEmpty()
-                val displayedLists = when (selectedTab) {
+                val displayedLists = when (selectedPermissionCategory) {
                     0 -> Triple(runtimePermissions, normalPermissions, signaturePermissions)
                     1 -> Triple(runtimePermissions, emptyList(), emptyList())
                     2 -> Triple(emptyList(), normalPermissions, emptyList())
@@ -284,7 +284,13 @@ fun PermissionManagerScreen(
                     onRefresh = { viewModel.loadAppOps(force = true) },
                     onSetMode = viewModel::setAppOpMode,
                     onResetMode = viewModel::resetAppOpMode,
-                    onOpenPermissions = { selectedSection = 0 },
+                    onOpenPermissions = {
+                        // The linked runtime permission may be hidden by an earlier search or
+                        // category choice. Show the full permission list when following this link.
+                        viewModel.updateSearchQuery("")
+                        selectedPermissionCategory = 0
+                        selectedSection = 0
+                    },
                 )
             }
         }

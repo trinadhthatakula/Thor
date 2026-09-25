@@ -153,6 +153,25 @@ class AppOpsEditorSheetTest {
     }
 
     @Test
+    fun anUnknownRuntimePermissionPolicyShowsReadOnlyExplanationWithoutPermissionLink() {
+        var openedPermissions = 0
+        setSection(onOpenPermissions = { openedPermissions++ }) {
+            handoverState(requested = true, policyUncertain = true)
+        }
+        openOperation("Accept Handover")
+
+        rule.onNodeWithText(str(R.string.app_ops_permission_policy_uncertain))
+            .performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(str(R.string.app_ops_permission_controlled)).assertDoesNotExist()
+        rule.onNodeWithText(str(R.string.app_ops_open_permissions)).assertDoesNotExist()
+        assertNoDirectEditorControls()
+        rule.runOnIdle {
+            assertEquals(0, openedPermissions)
+            assertTrue(writes.isEmpty())
+        }
+    }
+
+    @Test
     fun aFailedWriteClosesTheEditorAndRefreshDoesNotReopenItsStaleSelection() {
         var current by mutableStateOf(state())
         setSection { current }
@@ -219,7 +238,7 @@ class AppOpsEditorSheetTest {
 
     private fun str(id: Int, vararg args: Any) = rule.activity.getString(id, *args)
 
-    private fun handoverState(requested: Boolean): PermissionUiState {
+    private fun handoverState(requested: Boolean, policyUncertain: Boolean = false): PermissionUiState {
         val base = state()
         val snapshot = requireNotNull(base.appOpsSnapshot)
         val usage = snapshot.entries.single()
@@ -233,7 +252,8 @@ class AppOpsEditorSheetTest {
                             publicName = "android:accept_handover",
                             relatedPermissions = listOf("android.permission.ACCEPT_HANDOVER"),
                             platformDefault = AppOpMode.ALLOW,
-                            isRuntimePermissionControlled = true,
+                            isRuntimePermissionControlled = !policyUncertain,
+                            isRuntimePermissionControlUncertain = policyUncertain,
                         ),
                         packageMode = AppOpMode.IGNORE,
                         permissionRequested = requested,

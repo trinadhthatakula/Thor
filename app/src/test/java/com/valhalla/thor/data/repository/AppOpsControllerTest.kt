@@ -234,6 +234,28 @@ class AppOpsControllerTest {
     }
 
     @Test
+    fun `uncertain runtime permission policy remains readable but rejects writes and resets`() = runTest {
+        val fixture = Fixture().apply {
+            definition = DEFINITION.copy(isRuntimePermissionControlUncertain = true)
+            uidMode = AppOpMode.IGNORE
+        }
+        val controller = fixture.controller()
+        val snapshot = controller.getAppOps(PACKAGE).getOrThrow()
+        assertTrue(snapshot.entries.single().definition.isRuntimePermissionControlUncertain)
+        assertEquals(AppOpMode.IGNORE, snapshot.entries.single().displayedMode)
+        fixture.commands.clear()
+
+        for (scope in AppOpScope.entries) {
+            for (mode in listOf(AppOpMode.ALLOW, AppOpMode.IGNORE, AppOpMode.DEFAULT, null)) {
+                val result = controller.setMode(PACKAGE, 29, scope, mode)
+                assertTrue(result.isFailure)
+                assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("could not be determined"))
+            }
+        }
+        assertTrue(fixture.commands.isEmpty())
+    }
+
+    @Test
     fun `malformed read or shell failure prevents a write`() = runTest {
         for (reply in listOf(0 to "Permission denied", 1 to "No operations.")) {
             val fixture = Fixture().apply { forcedReply = reply }

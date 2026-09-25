@@ -185,7 +185,7 @@ class PermissionManagerViewModel(
             current.appOpsLoadFailed || current.appOpsStatusUncertain
         ) return
         val entry = snapshot.entries.firstOrNull { it.definition.code == code } ?: return
-        if (entry.definition.isRuntimePermissionControlled) return
+        if (entry.definition.isRuntimePermissionEditBlocked) return
         if (reset && !entry.definition.allowsReset) return
         val packageName = current.packageName
         ++appOpsLoadGeneration // An older refresh must never overwrite the write's read-back.

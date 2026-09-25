@@ -27,12 +27,13 @@ class AppOpsCatalogProviderTest {
             var builds = 0
             val provider = AppOpsCatalogProvider({ enabled }) {
                 builds++
-                listOf(DEFINITION.copy(isRuntimePermissionControlled = it))
+                listOf(definitionForPolicy(it))
             }
             val session = AppOpsCommandSession { error("Known reflection needs no policy shell query") }
             val first = provider.load(session)
 
             assertEquals(enabled, first.single().isRuntimePermissionControlled)
+            assertFalse(first.single().isRuntimePermissionControlUncertain)
             assertSame(first, provider.load(session))
             assertEquals(1, builds)
         }
@@ -84,8 +85,11 @@ class AppOpsCatalogProviderTest {
                 else 0 to value
             }
 
-            assertFalse(provider.load(session).single().isRuntimePermissionControlled)
-            assertFalse(provider.load(session).single().isRuntimePermissionControlled)
+            repeat(2) {
+                val definition = provider.load(session).single()
+                assertFalse(definition.isRuntimePermissionControlled)
+                assertTrue(definition.isRuntimePermissionControlUncertain)
+            }
             assertEquals(4, commands)
         }
     }
@@ -141,9 +145,36 @@ class AppOpsCatalogProviderTest {
         assertEquals(listOf(AppOpsCatalogProvider.AFLAGS_COMMAND), commands)
     }
 
-    private fun provider() = AppOpsCatalogProvider({ null }) {
-        listOf(DEFINITION.copy(isRuntimePermissionControlled = it))
+    @Test
+    fun `unresolved policy refuses writes before any appops command`() = runTest {
+        val commands = mutableListOf<String>()
+        val controller = AppOpsController(
+            currentUserId = { 0 },
+            loadTarget = { AppOpsTarget(12345, emptySet(), emptyList()) },
+            loadCatalog = provider()::load,
+            openSession = {
+                AppOpsCommandSession { command ->
+                    commands += command
+                    0 to if (command == AppOpsCatalogProvider.AFLAGS_COMMAND) "unrelated.flag enabled" else "null"
+                }
+            },
+        )
+
+        assertTrue(controller.setMode("com.example.app", 74, AppOpScope.UID, AppOpMode.ALLOW).isFailure)
+        assertEquals(listOf(
+            AppOpsCatalogProvider.AFLAGS_COMMAND,
+            AppOpsCatalogProvider.DEVICE_CONFIG_COMMAND,
+        ), commands)
     }
+
+    private fun provider() = AppOpsCatalogProvider({ null }) {
+        listOf(definitionForPolicy(it))
+    }
+
+    private fun definitionForPolicy(policy: Boolean?) = DEFINITION.copy(
+        isRuntimePermissionControlled = policy == true,
+        isRuntimePermissionControlUncertain = policy == null,
+    )
 
     private fun row(mode: String) = "${AppOpsCatalogProvider.POLICY_KEY} $mode - default read-only system"
 

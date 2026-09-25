@@ -34,7 +34,7 @@ internal object AppOpsCatalog {
     }
 
     /** Call off the main thread: first access resolves hidden framework metadata. */
-    fun load(packageManager: PackageManager, mappingEnabled: Boolean): List<AppOpDefinition> = fromOperations(
+    fun load(packageManager: PackageManager, mappingEnabled: Boolean?): List<AppOpDefinition> = fromOperations(
         withRuntimePermissionPolicy(
             operations = cachedOperations,
             mappingEnabled = mappingEnabled,
@@ -66,13 +66,15 @@ internal object AppOpsCatalog {
      */
     internal fun withRuntimePermissionPolicy(
         operations: List<CatalogOperation>,
-        mappingEnabled: Boolean,
+        mappingEnabled: Boolean?,
         runtimePermissionOpCode: (String) -> Int?,
     ): List<CatalogOperation> = operations.map { operation ->
+        val runtimeMapped = mappingEnabled != false && operation.permission?.let {
+            runtimePermissionOpCode(it) == operation.code
+        } == true
         operation.copy(
-            isRuntimePermissionControlled = mappingEnabled && operation.permission?.let {
-                runtimePermissionOpCode(it) == operation.code
-            } == true,
+            isRuntimePermissionControlled = mappingEnabled == true && runtimeMapped,
+            isRuntimePermissionControlUncertain = mappingEnabled == null && runtimeMapped,
         )
     }
 
@@ -129,6 +131,7 @@ internal object AppOpsCatalog {
                 aliasCodes = aliases.map(CatalogOperation::code).filter { it != code },
                 // AppOpsService resolves opToSwitch before attempting either scoped write.
                 isRuntimePermissionControlled = controller.isRuntimePermissionControlled,
+                isRuntimePermissionControlUncertain = controller.isRuntimePermissionControlUncertain,
             )
         }.sortedBy(AppOpDefinition::code)
     }
@@ -147,4 +150,5 @@ internal data class CatalogOperation(
     val defaultMode: AppOpMode,
     val allowsReset: Boolean,
     val isRuntimePermissionControlled: Boolean = false,
+    val isRuntimePermissionControlUncertain: Boolean = false,
 )

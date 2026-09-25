@@ -76,6 +76,9 @@ internal class AppOpsController(
         val definitions = loadCatalog(session)
         val definition = definitions.singleOrNull { it.code == code }
             ?: error("This operation is not available on this device.")
+        check(!definition.isRuntimePermissionControlUncertain) {
+            "Android's runtime permission App Ops policy could not be determined. Refresh and try again."
+        }
         check(!definition.isRuntimePermissionControlled) {
             "Android controls this App Ops mode through runtime permissions. Use the Permissions tab."
         }

@@ -15,6 +15,7 @@
     <string name="app_ops_read_only">Thor can read these App Ops, but the current access mode cannot change them.</string>
     <string name="app_ops_permission_controlled">Android controls this operation through its runtime permission. Manage it from Permissions.</string>
     <string name="app_ops_permission_not_requested">Android controls this operation through a runtime permission that this app does not request. It cannot be granted here.</string>
+    <string name="app_ops_permission_policy_uncertain">Thor could not determine whether Android controls this operation through its runtime permission. Its App Ops mode cannot be changed here.</string>
     <string name="app_ops_open_permissions">Open Permissions</string>
     <string name="app_ops_rom_controls_notice">Additional Xiaomi controls are managed by the ROM and are not included here.</string>
     <string name="app_ops_search">Search operations&#8230;</string>

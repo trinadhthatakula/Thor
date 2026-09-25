@@ -15,6 +15,7 @@
     <string name="app_ops_read_only">Thor 可以读取这些应用操作，但当前访问模式无法修改它们。</string>
     <string name="app_ops_permission_controlled">Android 通过运行时权限控制此操作。请前往“权限”进行管理。</string>
     <string name="app_ops_permission_not_requested">Android 通过运行时权限控制此操作，但此应用未请求该权限，无法在此授予。</string>
+    <string name="app_ops_permission_policy_uncertain">Thor 无法确定 Android 是否通过运行时权限控制此操作，因此无法在此更改其应用操作模式。</string>
     <string name="app_ops_open_permissions">打开权限</string>
     <string name="app_ops_rom_controls_notice">额外的小米控制项由系统 ROM 管理，未列在此处。</string>
     <string name="app_ops_search">搜索操作&#8230;</string>

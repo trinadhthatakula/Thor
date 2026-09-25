@@ -15,6 +15,7 @@
     <string name="app_ops_read_only">يستطيع Thor قراءة هذه العمليات، لكن وضع الوصول الحالي لا يسمح بتغييرها.</string>
     <string name="app_ops_permission_controlled">يتحكم Android في هذه العملية من خلال إذن وقت التشغيل الخاص بها. يمكنك إدارته من قسم الأذونات.</string>
     <string name="app_ops_permission_not_requested">يتحكم Android في هذه العملية من خلال إذن وقت التشغيل الذي لا يطلبه هذا التطبيق. لا يمكن منحه هنا.</string>
+    <string name="app_ops_permission_policy_uncertain">تعذّر على Thor تحديد ما إذا كان Android يتحكم في هذه العملية من خلال إذن وقت التشغيل. لا يمكن تغيير وضع عمليات التطبيقات لهذه العملية هنا.</string>
     <string name="app_ops_open_permissions">فتح الأذونات</string>
     <string name="app_ops_rom_controls_notice">يتولى نظام الجهاز إدارة عناصر التحكم الإضافية من Xiaomi، وهي غير مدرجة هنا.</string>
     <string name="app_ops_search">البحث في العمليات&#8230;</string>

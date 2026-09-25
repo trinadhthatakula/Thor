@@ -447,7 +447,13 @@ private fun AppOpEditorSheet(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
-            if (entry.definition.isRuntimePermissionControlled) {
+            if (entry.definition.isRuntimePermissionControlUncertain) {
+                Text(
+                    text = stringResource(R.string.app_ops_permission_policy_uncertain),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (entry.definition.isRuntimePermissionControlled) {
                 Text(
                     text = stringResource(
                         if (entry.permissionRequested) R.string.app_ops_permission_controlled
@@ -516,7 +522,7 @@ private fun AppOpEditorSheet(
                 ),
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (!entry.definition.isRuntimePermissionControlled) {
+            if (!entry.definition.isRuntimePermissionEditBlocked) {
                 HorizontalDivider()
                 Text(
                     text = stringResource(R.string.app_ops_edit_scope),
@@ -612,7 +618,7 @@ private fun AppOpEditorSheet(
     }
 
     val action = pendingAction
-    if (action != null && !entry.definition.isRuntimePermissionControlled) {
+    if (action != null && !entry.definition.isRuntimePermissionEditBlocked) {
         val scopeName = stringResource(
             if (scope == AppOpScope.PACKAGE) R.string.app_ops_scope_package else R.string.app_ops_scope_uid,
         )

@@ -47,7 +47,7 @@ class AppOpsRepositoryImpl(
     )
     private val catalog = AppOpsCatalogProvider(
         reflectedPolicy = AppOpsCatalog::reflectedRuntimePermissionMappingEnabled,
-        loadDefinitions = { enabled -> AppOpsCatalog.load(pm, enabled) },
+        loadDefinitions = { policy -> AppOpsCatalog.load(pm, policy) },
     )
     private val controller = AppOpsController(
         currentUserId = { thorUserId },
