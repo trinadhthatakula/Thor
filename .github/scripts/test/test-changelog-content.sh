@@ -20,14 +20,16 @@ checked = 0
 for source in sorted((root / 'release-notes').glob('*/playstore.txt')):
     major, minor, patch = map(int, source.parent.name.removeprefix('v').split('.'))
     code = major * 1000 + minor * 10 + patch
-    target = root / 'fastlane/metadata/android/en-US/changelogs' / f'{code}.txt'
+    reference = root / 'fastlane/metadata/android/en-US/changelogs' / f'{code}.txt'
     # Some historical releases predate the committed Fastlane changelogs.
-    # Existing pairs must agree, and the current release must have its copy.
-    if code != current_code and not target.exists():
+    # Existing pairs must agree, and the current release must have its copies.
+    if code != current_code and not reference.exists():
         continue
-    assert target.is_file(), f'Missing canonical changelog: {target}'
-    assert source.read_bytes() == target.read_bytes(), f'Truncated or stale changelog: {target}'
-    checked += 1
+    for locale in ('en-US', 'en-GB'):
+        target = root / 'fastlane/metadata/android' / locale / 'changelogs' / f'{code}.txt'
+        assert target.is_file(), f'Missing canonical changelog: {target}'
+        assert source.read_bytes() == target.read_bytes(), f'Truncated or stale changelog: {target}'
+        checked += 1
 assert checked > 0, 'No source/changelog pairs checked'
 print(f'  ok: {checked} canonical changelogs preserve all source bytes')
 print(f'  {checked} assertion(s)')

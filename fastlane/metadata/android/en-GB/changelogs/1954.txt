@@ -1,0 +1,9 @@
+• ⏳ Track backups, exports and bulk actions in Queue, with clearer progress and newest results first.
+
+• ❄️ Confirm bulk freezing and choose Freezer tracking. Suspend and unsuspend in the background.
+
+• 📦 Install older APKs with Root/Shizuku consent; permission grants are opt-in.
+
+• 🛠️ Clearer settings and startup compatibility improvements.
+
+• ⚠️ App-data backups from 1.95.2 or earlier cannot be restored here. Make fresh backups after updating while original app data is available.

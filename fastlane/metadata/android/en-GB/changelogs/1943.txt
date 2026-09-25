@@ -1,0 +1,11 @@
+• 💾 Back up an app and its data to one encrypted file, and restore it later. First test phase — try it on an app you can afford to lose.
+
+• 📤 Exporting an app now runs in the background and says when it's saved.
+
+• 🎮 Games with extra data export and install as one .xapk.
+
+• ⚙️ Settings has eight sections, a search box, and two panes on a tablet.
+
+• 🔑 Thor can remember your backup passphrase, or forget it on request.
+
+• 🧊 Unfreeze now unpauses too, and batches report what worked.
