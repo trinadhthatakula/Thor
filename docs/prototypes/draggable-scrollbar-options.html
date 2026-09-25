@@ -1,0 +1,384 @@
+<div id="thor-draggable-scrollbar-options-20260923" class="thor-scroll-options">
+  <div class="thor-preview-heading">
+    <h2>Hybrid scrollbar preview</h2>
+    <div class="thor-preview-controls" aria-label="Preview settings">
+      <div class="thor-view-switch" role="group" aria-label="Apps layout">
+        <button type="button" data-view="list" aria-pressed="true">List</button>
+        <button type="button" data-view="grid" aria-pressed="false">Grid</button>
+      </div>
+      <label class="thor-rtl-switch"><input type="checkbox" data-rtl> RTL</label>
+    </div>
+  </div>
+
+  <div class="thor-option-grid">
+    <section class="thor-option thor-option-hybrid" data-option="hybrid" aria-label="Hybrid scrollbar, quiet at rest and expressive while dragging">
+      <div class="thor-option-heading"><span class="thor-option-letter">H</span><div><h3>Quiet → expressive</h3><span>Slim at rest · capsule and count while dragging</span></div></div>
+      <div class="thor-phone" aria-label="Thor Apps with hybrid scrollbar">
+        <div class="thor-appbar"><div class="thor-app-title"><span class="thor-app-mark" aria-hidden="true">✦</span> Apps</div><div class="thor-type-switch"><span class="is-active">User</span><span>System</span></div></div>
+        <div class="thor-search-row"><div class="thor-search"><span aria-hidden="true">⌕</span> Search apps</div><span class="thor-filter-icon" aria-label="Filter and sort">☷</span></div>
+        <div class="thor-filter-row"><span class="is-active">All</span><span>Play Store</span><span>F-Droid</span></div>
+        <div class="thor-scroll-window"><div class="thor-app-scroller" id="thor-apps-hybrid" role="list" aria-label="Example installed apps"></div><div class="thor-rail" data-rail><div class="thor-track"></div><div class="thor-thumb" data-thumb><span class="thor-grip" aria-hidden="true"></span></div><div class="thor-bubble" data-bubble aria-hidden="true"></div><input class="thor-rail-input" data-range type="range" min="0" max="100" step="1" value="0" aria-label="Scroll Apps" aria-controls="thor-apps-hybrid" aria-orientation="vertical"><div class="thor-thumb-hit" data-thumb-hit aria-hidden="true"></div></div></div>
+        <div class="thor-navigation" aria-hidden="true"><span>Home</span><span class="is-active">Apps</span><span>Freezer</span><span>Settings</span></div>
+      </div>
+    </section>
+  </div>
+  <span class="thor-sr-only" data-live aria-live="polite"></span>
+</div>
+
+<style>
+  #thor-draggable-scrollbar-options-20260923 {
+    --thor-surface: light-dark(#f8faf3, #0e0e0e);
+    --thor-low: light-dark(#f2f4ed, #131313);
+    --thor-high: light-dark(#e7e9e2, #1f1f1f);
+    --thor-text: light-dark(#191c18, #e5e5e5);
+    --thor-muted: light-dark(#43493e, #ababab);
+    --thor-accent: light-dark(#354e15, #f0ffd7);
+    --thor-accent-ink: light-dark(#ffffff, #4c672c);
+    --thor-outline: light-dark(#c3c8bc, #484848);
+    --thor-rail-neutral: light-dark(#74796d, #ababab);
+    color-scheme: light dark;
+    color: var(--thor-text);
+    font-family: Roboto, Arial, sans-serif;
+    width: 100%;
+    max-width: 420px;
+    margin-inline: auto;
+    background: transparent;
+  }
+  #thor-draggable-scrollbar-options-20260923 *,
+  #thor-draggable-scrollbar-options-20260923 *::before,
+  #thor-draggable-scrollbar-options-20260923 *::after { box-sizing: border-box; }
+  #thor-draggable-scrollbar-options-20260923 .thor-preview-heading {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+  }
+  #thor-draggable-scrollbar-options-20260923 h2 { margin: 0; font-size: 20px; font-weight: 500; }
+  #thor-draggable-scrollbar-options-20260923 .thor-preview-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #thor-draggable-scrollbar-options-20260923 .thor-view-switch { display: inline-flex; padding: 3px; border-radius: 100px; background: var(--thor-high); }
+  #thor-draggable-scrollbar-options-20260923 .thor-view-switch button {
+    border: 0; border-radius: 100px; background: transparent; color: var(--thor-muted); padding: 7px 14px; min-height: 34px; font: inherit; font-size: 13px;
+  }
+  #thor-draggable-scrollbar-options-20260923 .thor-view-switch button[aria-pressed="true"] { background: var(--thor-accent); color: var(--thor-accent-ink); }
+  #thor-draggable-scrollbar-options-20260923 .thor-rtl-switch { display: inline-flex; align-items: center; gap: 5px; min-height: 36px; font-size: 13px; color: var(--thor-muted); }
+  #thor-draggable-scrollbar-options-20260923 .thor-rtl-switch input { accent-color: var(--thor-accent); width: 16px; height: 16px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-grid { display: block; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option { min-width: 0; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-heading { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-bottom: 8px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-letter {
+    display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--thor-high); color: var(--thor-accent); font-size: 15px; font-weight: 500;
+  }
+  #thor-draggable-scrollbar-options-20260923 h3 { margin: 0; font-size: 15px; font-weight: 500; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-heading span:not(.thor-option-letter) { color: var(--thor-muted); font-size: 12px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-phone {
+    display: flex; flex-direction: column; width: 100%; height: 520px; overflow: hidden; border: 1px solid var(--thor-outline); border-radius: 26px; background: var(--thor-surface);
+  }
+  #thor-draggable-scrollbar-options-20260923 .thor-appbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 58px; padding-inline: 16px 12px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-title { display: flex; align-items: center; gap: 6px; color: var(--thor-accent); font-size: 23px; font-weight: 500; letter-spacing: -0.5px; white-space: nowrap; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-mark { display: inline-grid; place-items: center; font-size: 18px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-type-switch { display: flex; padding: 3px; border-radius: 100px; background: var(--thor-high); font-size: 11px; white-space: nowrap; }
+  #thor-draggable-scrollbar-options-20260923 .thor-type-switch span { padding: 7px 8px; border-radius: 100px; color: var(--thor-muted); }
+  #thor-draggable-scrollbar-options-20260923 .thor-type-switch .is-active { background: var(--thor-accent); color: var(--thor-accent-ink); }
+  #thor-draggable-scrollbar-options-20260923 .thor-search-row { display: flex; gap: 10px; padding: 2px 16px 7px; align-items: center; }
+  #thor-draggable-scrollbar-options-20260923 .thor-search { display: flex; align-items: center; gap: 9px; min-width: 0; height: 42px; flex: 1; padding-inline: 14px; border-radius: 24px; background: var(--thor-low); color: var(--thor-muted); font-size: 13px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-search span { color: var(--thor-accent); font-size: 24px; line-height: 1; }
+  #thor-draggable-scrollbar-options-20260923 .thor-filter-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; background: var(--thor-low); color: var(--thor-accent); font-size: 20px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-filter-row { display: flex; gap: 7px; overflow: hidden; white-space: nowrap; padding: 1px 16px 8px; min-height: 43px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-filter-row span { display: inline-grid; place-items: center; height: 30px; flex: none; padding-inline: 11px; border: 1px solid var(--thor-outline); border-radius: 9px; color: var(--thor-text); font-size: 11px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-filter-row .is-active { border-color: transparent; background: var(--thor-accent); color: var(--thor-accent-ink); }
+  #thor-draggable-scrollbar-options-20260923 .thor-scroll-window { position: relative; flex: 1; min-height: 0; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-scroller {
+    position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding-block: 4px 100px; padding-inline: 10px var(--thor-gutter, 36px); touch-action: pan-y;
+  }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-scroller::-webkit-scrollbar { display: none; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-item {
+    display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 58px; margin-bottom: 4px; padding: 7px 9px; border-radius: 20px; background: var(--thor-low);
+  }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 13px; background: var(--icon-bg); color: var(--icon-fg); font-size: 18px; font-weight: 500; }
+  #thor-draggable-scrollbar-options-20260923 .thor-icon-0 { --icon-bg: light-dark(#dce8ff, #29446b); --icon-fg: light-dark(#1d4068, #d6e6ff); }
+  #thor-draggable-scrollbar-options-20260923 .thor-icon-1 { --icon-bg: light-dark(#f8d8ee, #653858); --icon-fg: light-dark(#66355d, #ffe0f2); }
+  #thor-draggable-scrollbar-options-20260923 .thor-icon-2 { --icon-bg: light-dark(#d9e7cb, #38512c); --icon-fg: light-dark(#354e15, #e4f6d1); }
+  #thor-draggable-scrollbar-options-20260923 .thor-icon-3 { --icon-bg: light-dark(#ffe3c0, #76522a); --icon-fg: light-dark(#6c4214, #ffebd2); }
+  #thor-draggable-scrollbar-options-20260923 .thor-icon-4 { --icon-bg: light-dark(#e6dfff, #473d76); --icon-fg: light-dark(#44356e, #e9e2ff); }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-copy { min-width: 0; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-name,
+  #thor-draggable-scrollbar-options-20260923 .thor-app-package { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-name { font-size: 13px; font-weight: 500; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-package { margin-top: 2px; color: var(--thor-muted); font-size: 11px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-scroller.is-grid { display: grid; align-content: start; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-scroller.is-grid .thor-app-item { flex-direction: column; justify-content: center; gap: 5px; min-height: 91px; margin: 0; padding: 7px 4px; border-radius: 21px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-scroller.is-grid .thor-app-icon { width: 39px; height: 39px; border-radius: 14px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-scroller.is-grid .thor-app-copy { width: 100%; text-align: center; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-scroller.is-grid .thor-app-name { font-size: 11px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-app-scroller.is-grid .thor-app-package { display: none; }
+  #thor-draggable-scrollbar-options-20260923 .thor-navigation { display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; min-height: 51px; padding: 4px 8px 5px; background: var(--thor-high); color: var(--thor-muted); font-size: 11px; text-align: center; }
+  #thor-draggable-scrollbar-options-20260923 .thor-navigation span { padding: 7px 2px; border-radius: 100px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-navigation .is-active { background: var(--thor-accent); color: var(--thor-accent-ink); font-weight: 500; }
+  #thor-draggable-scrollbar-options-20260923 .thor-rail { position: absolute; inset-block: 8px; inset-inline-end: 0; width: var(--thor-gutter, 36px); pointer-events: none; }
+  #thor-draggable-scrollbar-options-20260923 .thor-rail[hidden] { display: none; }
+  #thor-draggable-scrollbar-options-20260923 .thor-track { position: absolute; inset-block: 0; border-radius: 100px; background: color-mix(in srgb, var(--thor-rail-neutral) 26%, transparent); transition: width 180ms ease, inset-inline-end 180ms ease; }
+  #thor-draggable-scrollbar-options-20260923 .thor-thumb { position: absolute; top: 0; display: grid; place-items: center; height: 52px; border-radius: 100px; pointer-events: none; transition: width 180ms ease, inset-inline-end 180ms ease, background-color 180ms ease, box-shadow 180ms ease; }
+  #thor-draggable-scrollbar-options-20260923 .thor-grip { display: block; width: 3px; height: 22px; border-radius: 4px; background: currentColor; opacity: 0; transition: opacity 120ms ease; }
+  #thor-draggable-scrollbar-options-20260923 .thor-bubble {
+    position: absolute; z-index: 5; top: 24px; inset-inline-end: calc(100% + 7px); min-width: 63px; padding: 7px 9px; border-radius: 12px; background: var(--thor-accent); color: var(--thor-accent-ink); font-size: 12px; font-weight: 500; line-height: 1.2; text-align: center; white-space: nowrap; direction: ltr; unicode-bidi: isolate; opacity: 0; transform: translateY(-50%) scale(.95); transition: opacity 100ms ease, transform 100ms ease; pointer-events: none;
+  }
+  #thor-draggable-scrollbar-options-20260923 .thor-rail.is-active .thor-bubble,
+  #thor-draggable-scrollbar-options-20260923 .thor-rail.is-keyboard .thor-bubble { opacity: 1; transform: translateY(-50%) scale(1); }
+  #thor-draggable-scrollbar-options-20260923 .thor-rail-input { position: absolute; z-index: 2; inset-block: 0; inset-inline-end: 0; width: min(100%, 36px); height: 100%; margin: 0; opacity: 0; pointer-events: none; }
+  #thor-draggable-scrollbar-options-20260923 .thor-thumb-hit { position: absolute; z-index: 3; inset-inline-end: 0; top: 0; width: 48px; height: 52px; background: transparent; touch-action: none; pointer-events: auto; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-track { inset-inline-end: 17px; width: 3px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-rail.is-active .thor-track,
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-rail.is-keyboard .thor-track { inset-inline-end: 15.5px; width: 6px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-thumb { background: var(--thor-rail-neutral); color: var(--thor-accent-ink); }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-rail.is-active .thor-thumb,
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-rail.is-keyboard .thor-thumb { background: var(--thor-accent); box-shadow: 0 2px 7px color-mix(in srgb, var(--thor-text) 25%, transparent); }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-rail.is-active .thor-grip,
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-rail.is-keyboard .thor-grip { opacity: .5; }
+  #thor-draggable-scrollbar-options-20260923 .thor-option-hybrid .thor-rail.is-keyboard .thor-thumb { outline: 2px solid var(--thor-text); outline-offset: 3px; }
+  #thor-draggable-scrollbar-options-20260923 .thor-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  @media (max-width: 380px) { #thor-draggable-scrollbar-options-20260923 .thor-app-scroller.is-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (pointer: coarse) {
+    #thor-draggable-scrollbar-options-20260923 .thor-view-switch button,
+    #thor-draggable-scrollbar-options-20260923 .thor-rtl-switch { min-height: 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #thor-draggable-scrollbar-options-20260923 .thor-track,
+    #thor-draggable-scrollbar-options-20260923 .thor-thumb,
+    #thor-draggable-scrollbar-options-20260923 .thor-bubble { transition: none; }
+  }
+</style>
+
+<script>
+(() => {
+  const root = document.getElementById('thor-draggable-scrollbar-options-20260923');
+  if (!root) return;
+  root.querySelectorAll('button, label, .thor-rail-input, .thor-thumb-hit').forEach((element) => element.classList.add('cursor-interaction'));
+
+  const apps = [
+    ['Aegis', 'com.beemdevelopment.aegis'], ['AntennaPod', 'de.danoeh.antennapod'],
+    ['Aurora Store', 'com.aurora.store'], ['Bitwarden', 'com.x8bit.bitwarden'],
+    ['Brave', 'com.brave.browser'], ['Calculator', 'com.google.android.calculator'],
+    ['Calendar', 'com.google.android.calendar'], ['Camera', 'com.android.camera2'],
+    ['Chrome', 'com.android.chrome'], ['Clock', 'com.google.android.deskclock'],
+    ['Contacts', 'com.google.android.contacts'], ['Discord', 'com.discord'],
+    ['Drive', 'com.google.android.apps.docs'], ['F-Droid', 'org.fdroid.fdroid'],
+    ['Files', 'com.google.android.apps.nbu.files'], ['Firefox', 'org.mozilla.firefox'],
+    ['Gallery', 'org.fossify.gallery'], ['Gmail', 'com.google.android.gm'],
+    ['Google Maps', 'com.google.android.apps.maps'], ['Instagram', 'com.instagram.android'],
+    ['K-9 Mail', 'com.fsck.k9'], ['Keep Notes', 'com.google.android.keep'],
+    ['Kindle', 'com.amazon.kindle'], ['Lightroom', 'com.adobe.lrmobile'],
+    ['Messages', 'com.google.android.apps.messaging'], ['Music', 'org.fossify.musicplayer'],
+    ['Netflix', 'com.netflix.mediaclient'], ['NewPipe', 'org.schabi.newpipe'],
+    ['Notes', 'org.fossify.notes'], ['OneDrive', 'com.microsoft.skydrive'],
+    ['Open Camera', 'net.sourceforge.opencamera'], ['OsmAnd', 'net.osmand'],
+    ['Phone', 'com.google.android.dialer'], ['Photos', 'com.google.android.apps.photos'],
+    ['Proton Mail', 'ch.protonmail.android'], ['Reddit', 'com.reddit.frontpage'],
+    ['Settings', 'com.android.settings'], ['Signal', 'org.thoughtcrime.securesms'],
+    ['Spotify', 'com.spotify.music'], ['Telegram', 'org.telegram.messenger'],
+    ['Thor', 'com.valhalla.thor'], ['VLC', 'org.videolan.vlc'],
+    ['WhatsApp', 'com.whatsapp'], ['YouTube', 'com.google.android.youtube'],
+    ['YT Music', 'com.google.android.apps.youtube.music'], ['Zoom', 'us.zoom.videomeetings']
+  ];
+  const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+  const panels = [...root.querySelectorAll('[data-option]')];
+  const saved = window.openai && window.openai.widgetState && window.openai.widgetState.privateContent;
+  let view = saved && saved.view === 'grid' ? 'grid' : 'list';
+  let rtl = !!(saved && saved.rtl);
+
+  function makeItems(scroller) {
+    const fragment = document.createDocumentFragment();
+    apps.forEach(([name, packageName], index) => {
+      const row = document.createElement('div');
+      row.className = 'thor-app-item';
+      row.setAttribute('role', 'listitem');
+      const icon = document.createElement('span');
+      icon.className = `thor-app-icon thor-icon-${index % 5}`;
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = name.charAt(0);
+      const copy = document.createElement('span');
+      copy.className = 'thor-app-copy';
+      const title = document.createElement('span');
+      title.className = 'thor-app-name';
+      title.textContent = name;
+      const detail = document.createElement('span');
+      detail.className = 'thor-app-package';
+      detail.textContent = packageName;
+      copy.append(title, detail);
+      row.append(icon, copy);
+      fragment.append(row);
+    });
+    scroller.append(fragment);
+  }
+
+  function visibleRange(scroller) {
+    const viewport = scroller.getBoundingClientRect();
+    let first = -1;
+    let last = -1;
+    [...scroller.children].forEach((row, index) => {
+      const bounds = row.getBoundingClientRect();
+      if (bounds.bottom > viewport.top && bounds.top < viewport.bottom) {
+        if (first < 0) first = index;
+        last = index;
+      }
+    });
+    return [Math.max(0, first) + 1, Math.max(0, last) + 1];
+  }
+
+  function update(panel) {
+    const scroller = panel.querySelector('.thor-app-scroller');
+    const rail = panel.querySelector('[data-rail]');
+    const thumb = panel.querySelector('[data-thumb]');
+    const hit = panel.querySelector('[data-thumb-hit]');
+    const bubble = panel.querySelector('[data-bubble]');
+    const range = panel.querySelector('[data-range]');
+    const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    rail.hidden = maxScroll < 1;
+    range.disabled = rail.hidden;
+    if (rail.hidden) return;
+    const trackHeight = rail.clientHeight;
+    const minLength = panel.thorSpec.minLength;
+    const length = Math.min(trackHeight, Math.max(minLength, trackHeight * scroller.clientHeight / scroller.scrollHeight));
+    const travel = Math.max(0, trackHeight - length);
+    const ratio = maxScroll ? clamp(scroller.scrollTop / maxScroll, 0, 1) : 0;
+    const top = ratio * travel;
+    thumb.style.height = `${length}px`;
+    thumb.style.top = `${top}px`;
+    const isExpressive = rail.classList.contains('is-active') || rail.classList.contains('is-keyboard');
+    const width = isExpressive ? panel.thorSpec.activeWidth : panel.thorSpec.idleWidth;
+    thumb.style.width = `${width}px`;
+    thumb.style.insetInlineEnd = `${panel.thorSpec.center - width / 2}px`;
+    hit.style.height = `${Math.max(48, length)}px`;
+    hit.style.top = `${clamp(top + length / 2 - Math.max(48, length) / 2, 0, trackHeight - Math.max(48, length))}px`;
+    bubble.style.top = `${clamp(top + length / 2, 18, trackHeight - 18)}px`;
+    const [first, last] = visibleRange(scroller);
+    bubble.textContent = `${first}–${last} of ${apps.length}`;
+    range.setAttribute('aria-valuetext', `Apps ${first} to ${last} of ${apps.length}`);
+    range.value = String(Math.round(ratio * 100));
+    panel.thorMetrics = { length, travel, maxScroll };
+  }
+
+  function scrollFromPointer(panel, clientY, gripOffset) {
+    const scroller = panel.querySelector('.thor-app-scroller');
+    const rail = panel.querySelector('[data-rail]');
+    const metrics = panel.thorMetrics;
+    if (!metrics || metrics.maxScroll <= 0) return;
+    const desiredTop = clamp(clientY - rail.getBoundingClientRect().top - gripOffset, 0, metrics.travel);
+    const ratio = metrics.travel ? desiredTop / metrics.travel : 0;
+    scroller.scrollTop = ratio * metrics.maxScroll;
+    update(panel);
+  }
+
+  panels.forEach((panel) => {
+    const scroller = panel.querySelector('.thor-app-scroller');
+    const range = panel.querySelector('[data-range]');
+    const thumb = panel.querySelector('[data-thumb]');
+    const hit = panel.querySelector('[data-thumb-hit]');
+    const rail = panel.querySelector('[data-rail]');
+    panel.thorSpec = { idleWidth: 6, activeWidth: 17, minLength: 58, center: 19 };
+    makeItems(scroller);
+    scroller.addEventListener('scroll', () => update(panel), { passive: true });
+    let drag = null;
+    const beginDrag = (event) => {
+      if (event.button !== 0 && event.pointerType === 'mouse') return;
+      event.preventDefault();
+      range.blur();
+      rail.classList.remove('is-keyboard');
+      rail.classList.add('is-active');
+      update(panel);
+      const railTop = rail.getBoundingClientRect().top;
+      const thumbTop = parseFloat(thumb.style.top) || 0;
+      const gripOffset = clamp(event.clientY - railTop - thumbTop, 0, panel.thorMetrics.length);
+      drag = { pointerId: event.pointerId, gripOffset };
+      hit.setPointerCapture(event.pointerId);
+      scrollFromPointer(panel, event.clientY, gripOffset);
+    };
+    const moveDrag = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      event.preventDefault();
+      scrollFromPointer(panel, event.clientY, drag.gripOffset);
+    };
+    const endDrag = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      drag = null;
+      rail.classList.remove('is-active');
+      update(panel);
+    };
+    hit.addEventListener('pointerdown', beginDrag);
+    hit.addEventListener('pointermove', moveDrag);
+    hit.addEventListener('pointerup', endDrag);
+    hit.addEventListener('pointercancel', endDrag);
+    hit.addEventListener('lostpointercapture', endDrag);
+    range.addEventListener('focus', () => {
+      rail.classList.add('is-keyboard');
+      update(panel);
+    });
+    range.addEventListener('blur', () => {
+      rail.classList.remove('is-keyboard');
+      update(panel);
+    });
+    range.addEventListener('input', () => {
+      if (drag) return;
+      const ratio = Number(range.value) / 100;
+      scroller.scrollTop = ratio * Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      update(panel);
+    });
+    range.addEventListener('keydown', (event) => {
+      const steps = {
+        ArrowUp: -64,
+        ArrowDown: 64,
+        PageUp: -scroller.clientHeight,
+        PageDown: scroller.clientHeight,
+        Home: -Infinity,
+        End: Infinity
+      };
+      if (!(event.key in steps)) return;
+      event.preventDefault();
+      const amount = steps[event.key];
+      scroller.scrollTop = Number.isFinite(amount) ? scroller.scrollTop + amount : amount < 0 ? 0 : scroller.scrollHeight;
+      update(panel);
+    });
+    const observer = new ResizeObserver(() => update(panel));
+    observer.observe(scroller);
+    observer.observe(rail);
+    if (globalThis.Tweak) {
+      const tweak = new Tweak({ container: panel.querySelector('.thor-phone'), onChange: () => update(panel) });
+      tweak.addSlider(panel.thorSpec, 'idleWidth', { label: 'Quiet thumb width', min: 4, max: 10, unit: 'px' });
+      tweak.addSlider(panel.thorSpec, 'activeWidth', { label: 'Drag capsule width', min: 12, max: 28, unit: 'px' });
+      tweak.addSlider(panel.thorSpec, 'minLength', { label: 'Minimum thumb height', min: 40, max: 100, unit: 'px' });
+    }
+  });
+
+  function applyPreview() {
+    root.dir = rtl ? 'rtl' : 'ltr';
+    root.querySelector('[data-rtl]').checked = rtl;
+    root.querySelectorAll('[data-view]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
+    panels.forEach((panel) => {
+      const scroller = panel.querySelector('.thor-app-scroller');
+      scroller.classList.toggle('is-grid', view === 'grid');
+      scroller.scrollTop = 0;
+      update(panel);
+    });
+    root.querySelector('[data-live]').textContent = `${view === 'grid' ? 'Grid' : 'List'} preview, ${rtl ? 'right-to-left' : 'left-to-right'}`;
+  }
+  function savePreview() {
+    if (window.openai && typeof window.openai.setWidgetState === 'function') {
+      window.openai.setWidgetState({ modelContent: { layout: view, direction: rtl ? 'RTL' : 'LTR' }, privateContent: { view, rtl } }).catch(() => {});
+    }
+  }
+  root.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => {
+    view = button.dataset.view;
+    applyPreview();
+    savePreview();
+  }));
+  root.querySelector('[data-rtl]').addEventListener('change', (event) => {
+    rtl = event.target.checked;
+    applyPreview();
+    savePreview();
+  });
+  window.addEventListener('openai:set_globals', (event) => {
+    const state = event.detail && event.detail.globals && event.detail.globals.widgetState && event.detail.globals.widgetState.privateContent;
+    if (!state) return;
+    view = state.view === 'grid' ? 'grid' : 'list';
+    rtl = !!state.rtl;
+    applyPreview();
+  });
+  applyPreview();
+})();
+</script>

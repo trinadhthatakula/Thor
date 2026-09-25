@@ -218,7 +218,7 @@ internal fun WorkInfo?.toThorJobStatus(): ThorJobStatus = when (this?.state) {
     WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> ThorJobStatus.Pending
     WorkInfo.State.RUNNING -> ThorJobStatus.Running
     WorkInfo.State.SUCCEEDED -> ThorJobStatus.Succeeded(
-        outputData.getStringArray(JOB_WARNINGS_KEY)?.toList().orEmpty()
+        outputData.getNullableStringArray(JOB_WARNINGS_KEY)?.filterNotNull().orEmpty()
     )
 
     WorkInfo.State.CANCELLED -> ThorJobStatus.Cancelled
