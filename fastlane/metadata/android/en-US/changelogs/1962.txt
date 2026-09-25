@@ -1,0 +1,5 @@
+• 🛡️ New App Ops tab in Permission Manager: inspect Android operations and edit supported package or UID modes with Root or Shizuku. Thor verifies each change.
+
+• 🔎 Search or filter Relevant, Changed and All operations. See related permissions and platform defaults; shared UID edits warn when other apps may be affected.
+
+• ↕️ Drag the scrollbar through long Apps and Freezer lists or grids. A range bubble shows your place while rows and cards stay easy to tap.
