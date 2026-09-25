@@ -42,7 +42,7 @@ internal object AppOpsCatalog {
                 try {
                     @Suppress("DEPRECATION")
                     val info = packageManager.getPermissionInfo(permission, 0)
-                    if ((info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) == PermissionInfo.PROTECTION_DANGEROUS) {
+                    if (info.protection == PermissionInfo.PROTECTION_DANGEROUS) {
                         Bypass.invoke<Int>(
                             AppOpsManager::class.java, null, "permissionToOpCode",
                             arrayOf(String::class.java), permission,
