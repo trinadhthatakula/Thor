@@ -63,7 +63,7 @@
 - Material 3 themes (dark, light, system, AMOLED, and Asgardian), optional dynamic colors, and [font presets](docs/font-presets.md) that apply across Thor and its external installer.
 - Customize App Info actions and, separately, the App list and Freezer multi-app action toolbars. Reorder, hide, or restore their actions.
 - Biometric lock for Thor, with screenshot/recording protection and a hidden Recents preview while locked.
-- Eight app languages: English, Spanish, French, Arabic, Simplified Chinese, European Portuguese, Brazilian Portuguese, and Polish, with an in-app language switcher.
+- Nine app languages: English, Spanish, French, Arabic, Simplified Chinese, Japanese, European Portuguese, Brazilian Portuguese, and Polish, with an in-app language switcher.
 - Work Mode selection between available Root, Shizuku, and Dhizuku providers. The Extension Manager offers an optional catalog of add-ons, with a pinned-signer check for every downloaded APK and a SHA-256 comparison when the catalog provides a digest, both before installation.
 
 ## Upcoming Features

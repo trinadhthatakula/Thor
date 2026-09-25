@@ -98,9 +98,9 @@ class TaskDetailLoggerTest {
         assertEquals(UiText.StringResource(R.string.task_reason_root_lane_degraded), projected[17])
     }
 
-    @Test fun quantitiesAreDefinedAndResolveAcrossAllEightLocales() {
+    @Test fun quantitiesAreDefinedAndResolveAcrossAllNineLocales() {
         val locales = mapOf("values" to "en", "values-ar" to "ar", "values-es" to "es",
-            "values-fr" to "fr", "values-pl" to "pl", "values-pt" to "pt",
+            "values-fr" to "fr", "values-ja" to "ja", "values-pl" to "pl", "values-pt" to "pt",
             "values-pt-rBR" to "pt-BR", "values-zh-rCN" to "zh-CN")
         val resRoot = listOf(File("src/main/res"), File("app/src/main/res")).first { it.isDirectory }
         val names = listOf("task_log_pending_queued", "task_log_pending_neutral",

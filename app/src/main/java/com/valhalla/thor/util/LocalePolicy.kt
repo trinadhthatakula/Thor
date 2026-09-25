@@ -6,7 +6,7 @@ package com.valhalla.thor.util
 import java.util.Locale
 
 /**
- * The eight translations Thor ships, and the one entry that means "do not override anything".
+ * The nine translations Thor ships, and the one entry that means "do not override anything".
  *
  * This list is the Kotlin-side twin of `res/xml/locales_config.xml`, which is what Android 13+
  * reads to populate its own per-app language screen (Settings → Apps → Thor → Language), and of
@@ -41,6 +41,7 @@ enum class AppLanguage(val tag: String?) {
     SystemDefault(null),
     English("en"),
     Chinese("zh"),
+    Japanese("ja"),
     French("fr"),
     Spanish("es"),
     Arabic("ar"),

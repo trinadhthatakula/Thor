@@ -171,6 +171,7 @@ class LocalePolicyTest {
         "values-ar",
         "values-es",
         "values-fr",
+        "values-ja",
         "values-pl",
         "values-pt",
         "values-pt-rBR",
@@ -235,6 +236,7 @@ class LocalePolicyTest {
         assertEquals(AppLanguage.French, languageForTag("fr-FR"))
         assertEquals(AppLanguage.Chinese, languageForTag("zh-Hans-CN"))
         assertEquals(AppLanguage.Chinese, languageForTag("zh-CN"))
+        assertEquals(AppLanguage.Japanese, languageForTag("ja-JP"))
         assertEquals(AppLanguage.Spanish, languageForTag("es-419"))
         assertEquals(AppLanguage.Arabic, languageForTag("ar-EG"))
         assertEquals(AppLanguage.English, languageForTag("en-GB"))
@@ -358,6 +360,7 @@ class LocalePolicyTest {
             AppLanguage.SystemDefault to false,
             AppLanguage.English to false,
             AppLanguage.Chinese to false,
+            AppLanguage.Japanese to false,
             AppLanguage.French to false,
             AppLanguage.Spanish to false,
             AppLanguage.Arabic to true,
@@ -529,7 +532,7 @@ class LocalePolicyTest {
             AppLanguage.PICKER_ORDER.distinct().size
         )
         assertEquals(
-            listOf(null, "en", "zh", "fr", "es", "ar", "pt-PT", "pt-BR", "pl"),
+            listOf(null, "en", "zh", "ja", "fr", "es", "ar", "pt-PT", "pt-BR", "pl"),
             AppLanguage.PICKER_ORDER.map { it.tag }
         )
     }
@@ -670,7 +673,7 @@ class LocalePolicyTest {
      */
     @Test
     fun theStoreThatWinsDependsOnlyOnWhoOwnsTheLocale() {
-        val tags = listOf(null, "en", "fr", "fr-FR", "zh", "ar", "de", "pt", "pt-PT", "pt-BR", "pl")
+        val tags = listOf(null, "en", "fr", "fr-FR", "zh", "ja", "ja-JP", "ar", "de", "pt", "pt-PT", "pt-BR", "pl")
         for (persisted in tags) {
             for (inEffect in tags) {
                 val below33 = startupLocaleSync(persisted, inEffect, platformOwnsLocale = false)
@@ -838,7 +841,7 @@ class LocalePolicyTest {
             val expectedCategories = when (directory) {
                 "values-ar" -> setOf("zero", "one", "two", "few", "many", "other")
                 "values-pl" -> setOf("one", "few", "many", "other")
-                "values-zh-rCN" -> setOf("other")
+                "values-zh-rCN", "values-ja" -> setOf("other")
                 else -> setOf("one", "other")
             }
             val localized = pluralResources(directory)
