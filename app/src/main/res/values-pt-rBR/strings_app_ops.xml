@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brazilian Portuguese overrides; other App Ops strings inherit values-pt. -->
+<resources>
+    <string name="app_ops_load_failed">Não foi possível ler as App Ops deste aplicativo. Atualize e tente novamente.</string>
+    <string name="app_ops_read_only">O Thor consegue ler estas App Ops, mas o modo de acesso atual não permite alterá-las.</string>
+    <string name="app_ops_permission_controlled">O Android controla esta operação pela permissão de tempo de execução correspondente. Gerencie-a em Permissões.</string>
+    <string name="app_ops_permission_not_requested">O Android controla esta operação por uma permissão de tempo de execução que este aplicativo não solicita. Não é possível concedê-la aqui.</string>
+    <string name="app_ops_permission_policy_uncertain">O Thor não conseguiu determinar se o Android controla esta operação pela permissão de tempo de execução correspondente. Não é possível alterar o modo App Ops dela aqui.</string>
+    <string name="app_ops_open_permissions">Abrir Permissões</string>
+    <string name="app_ops_rom_controls_notice">Os controles adicionais da Xiaomi são gerenciados pela ROM e não estão incluídos aqui.</string>
+    <string name="app_ops_uid_user">Usuário %1$d · UID %2$d</string>
+    <string name="app_ops_uid_warning">O modo do UID pode afetar outros aplicativos que compartilhem este UID.</string>
+    <string name="app_ops_shared_uid_warning">Este UID é compartilhado com %1$s. Alterar seu modo pode afetar esses aplicativos.</string>
+    <string name="app_ops_mode_default">Padrão</string>
+    <string name="app_ops_mode_foreground_desc">Permitir quando o aplicativo estiver em primeiro plano, se houver suporte.</string>
+    <string name="app_ops_reset_explanation">Restaura o valor base da plataforma neste escopo. É diferente de escolher o modo Padrão.</string>
+    <string name="app_ops_edit_scope">Escopo da alteração</string>
+    <string name="app_ops_confirm_set">Definir %3$s como %1$s no escopo %2$s?</string>
+    <string name="app_ops_confirm_reset">Restaurar %2$s ao valor base da plataforma no escopo %1$s?</string>
+</resources>
