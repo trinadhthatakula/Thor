@@ -22,17 +22,17 @@
     "build": "npm run check:types && astro build && npm run check:links && npm run check:claims && npm run check:markup && npm run check:sitemap && npm run check:screenshots"
   },
   "dependencies": {
-    "@astrojs/mdx": "^8.0.1",
+    "@astrojs/mdx": "^8.0.2",
     "@astrojs/sitemap": "^3.7.4",
-    "astro": "^7.3.2"
+    "astro": "^7.3.4"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@astrojs/compiler": "^4.0.0",
-    "@types/node": "^26.6.1",
+    "@types/node": "^26.6.2",
     "axe-core": "^4.13.0",
-    "jsdom": "^30.0.1",
-    "smol-toml": "^1.8.0",
+    "jsdom": "^30.1.1",
+    "smol-toml": "^1.9.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1"
   }
