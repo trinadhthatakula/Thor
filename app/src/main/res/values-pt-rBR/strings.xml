@@ -832,4 +832,7 @@
     <string name="profile_removal_write_failed">Não foi possível salvar as alterações do perfil. Tente novamente.</string>
     <string name="profile_removal_profile_changed">Este perfil não está mais disponível. Nenhuma alteração foi salva.</string>
     <string name="profile_removal_state_unknown">Estado indisponível</string>
+    <string name="unfreeze_system_app_failed">Não foi possível descongelar %1$s com o Shizuku. Falha ao restaurar ou ativar o app. Consulte os registros de diagnóstico para ver a resposta do dispositivo.</string>
+    <string name="system_app_removal_fallback">Remoção alternativa de apps do sistema</string>
+    <string name="system_app_removal_fallback_desc">Se o Shizuku não tiver permissão para desativar um app do sistema, permite removê-lo para o usuário Android atual, mantendo os arquivos de dados. As contas gerenciadas pelo app podem ser perdidas. Aplica-se ao congelamento manual e automático. Descongelar reinstala o app. Este consentimento fica apenas neste dispositivo.</string>
 </resources>

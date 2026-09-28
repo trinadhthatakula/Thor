@@ -120,14 +120,13 @@ internal val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
  * empty, it switched off the one affordance built to rebuild that watchlist, silently. See
  * `docs/follow-ups/restored-prompt-flag-suppresses-watchlist-recovery.md`.
  *
- * A user *setting* does not belong here, however local it feels — settings are what the backup is
- * for.
+ * Ordinary settings belong in the backed-up store. Explicit consent to remove system apps is
+ * device-local: restoring it onto a different ROM must not authorize removal there.
  *
  * Corruption-handled for the same reason as [dataStore]: this file cannot arrive corrupted from a
  * restore, but an interrupted write or a bad block can still leave it unreadable, and the default
- * handler would then rethrow forever. No equivalent of [settingsFileReplaced] here — the one flag
- * this file holds falls back to "we have not offered yet", which re-offers the recovery prompt
- * rather than withholding anything.
+ * handler would then rethrow forever. Defaults re-offer the recovery prompt and revoke removal
+ * consent rather than authorizing a destructive fallback after corruption.
  */
 // internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
 internal val Context.localState: DataStore<Preferences> by preferencesDataStore(
@@ -226,6 +225,7 @@ class PreferenceRepositoryImpl(
 
     /** Keys in [localState] — see that store's doc for what earns a place here. */
     internal object LocalKeys {
+        val ALLOW_SYSTEM_APP_REMOVAL_FALLBACK = booleanPreferencesKey("allow_system_app_removal_fallback")
         /** "We have already offered to import the frozen apps we found." A fact about the watchlist. */
         val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
     }
@@ -351,6 +351,12 @@ class PreferenceRepositoryImpl(
     override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             it[Keys.ADD_FREEZER_TO_LAUNCHER] = enabled
+        }
+    }
+
+    override suspend fun setAllowSystemAppRemovalFallback(enabled: Boolean) {
+        context.localState.guardedWrite(LOCAL_STORE) {
+            it[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK] = enabled
         }
     }
 
@@ -760,6 +766,7 @@ internal fun Preferences.toUserPreferences(
         addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
         // Defaults to false: an unreadable settings file must not silently stop asking before a
         // system freeze. Same fail-closed reading as every other flag on this snapshot.
+        allowSystemAppRemovalFallback = local[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK] ?: false,
         skipRoutineFreezeConfirmation =
             prefs[Keys.SKIP_ROUTINE_FREEZE_CONFIRMATION] ?: false,
         // From `local`, never from `prefs`: a `true` in the settings file is either a pre-1.93

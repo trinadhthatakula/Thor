@@ -132,6 +132,11 @@ enum class SettingsRowId(
         R.string.suspend_instead_of_freeze,
         R.string.suspend_instead_of_freeze_desc,
     ),
+    SYSTEM_APP_REMOVAL_FALLBACK(
+        SettingsCategory.FREEZER,
+        R.string.system_app_removal_fallback,
+        R.string.system_app_removal_fallback_desc,
+    ),
     SKIP_ROUTINE_FREEZE_CONFIRMATION(
         SettingsCategory.FREEZER,
         R.string.skip_routine_freeze_confirmation,

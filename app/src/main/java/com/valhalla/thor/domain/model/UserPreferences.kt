@@ -50,6 +50,8 @@ data class UserPreferences(
     // debloating a fresh device answers forty times in a row. Reaches nothing else: EXPERT still
     // warns and BLOCKED is still refused. See `freezeNeedsConfirmation`.
     val skipRoutineFreezeConfirmation: Boolean = false,
+    /** Device-local consent to remove a system app for this user after Shizuku cannot disable it. */
+    val allowSystemAppRemovalFallback: Boolean = false,
 
     // Freezer Prompts
     val hasShownDisabledAppsPrompt: Boolean = false,

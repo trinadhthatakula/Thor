@@ -161,38 +161,10 @@ enum class FreezeMechanic {
 /**
  * May a failed [FreezeMechanic.DISABLE] escalate to [FreezeMechanic.UNINSTALL] for this package?
  *
- * **No — under every privilege mode, refused or not.** Every branch below answers `false`. A
- * system-app freeze the platform refuses to disable now ends in a visible failure with the package
- * left installed, instead of quietly swapping in a mechanic that removes it for the current user.
- * Root already answered that way; Shizuku and Dhizuku were the two modes that still escalated, and
- * they no longer do.
- *
- * Failing loudly is the whole point. A freeze that reports an error costs the user an annoyance and
- * Thor a bug report; a freeze that quietly swaps one mechanic for another produces no report at
- * all, because from the outside it looked like it worked. That was true when the gate only stopped
- * a binder timeout from escalating, and it is true of the refusal case too: "the platform refused
- * to disable this" is a fact the user can act on, and removing the package is not a stronger form
- * of disabling it. `-k` keeps the app's data, but nothing keeps `FLAG_INSTALLED`, so the package
- * still vanishes from every query that omits `MATCH_UNINSTALLED_PACKAGES` — and the user was never
- * asked whether that was the trade they wanted.
- *
- * ### Why this function survives answering `false` everywhere
- *
- * Because the decision is deferred, not settled. What is removed is the *automatic* escalation. An
- * explicit "remove it for this user anyway" path — one the user asks for, having been told what it
- * costs — is a separate change with its own open questions, and when it lands it re-opens exactly
- * one branch here. Collapsing this to a bare `false` (or deleting it) would push that decision back
- * into the two gateways, which is the state it was written to get out of: the one freeze decision
- * that changes what a package looks like to the rest of the system gets a single home, reachable
- * from a plain JVM test. The `when` stays exhaustive for the same reason — a new [PrivilegeMode] is
- * a compile error here rather than a mode that silently inherits somebody else's answer — and the
- * two guard branches stay because they state rules that outlive the current answer (a user app is
- * never in scope; a mechanical failure is never a refusal), each pinned by its own test.
- *
- * The rung it gates is still live code in all three gateways, and deliberately so: it is what the
- * explicit path will call, and every device that carries a system app frozen by an older build
- * still needs the unfreeze half of it. See `RootSystemGateway.freezeSystemApp`, whose rung 2 has
- * been unreachable-but-kept on exactly this reasoning since root's branch went `false`.
+ * Disabled by default. Only Shizuku may use this fallback, after a platform refusal and
+ * explicit device-local consent in Settings. Removal keeps data files but changes package
+ * registration and may remove accounts. It applies to foreground and background freezes;
+ * Unfreeze restores the package with install-existing. Root and Dhizuku never use this fallback.
  *
  * ### Why this is not a version check
  *
@@ -252,73 +224,8 @@ fun uninstallFreezeFallbackAllowed(
     isSystem: Boolean,
     privilegeMode: PrivilegeMode,
     disableRefusedByPolicy: Boolean,
-): Boolean = when {
-    // A user app disables under every privilege mode on every supported release, so there is no
-    // platform gap to work around and no reason to ever reach for the destructive mechanic.
-    !isSystem -> false
-
-    // Nothing refused us, so nothing is unavailable. Whatever went wrong is a failure to report,
-    // not a restriction to work around — this is the branch that stopped a binder timeout from
-    // removing someone's package, and it stays the boundary an explicit removal path may never
-    // cross.
-    !disableRefusedByPolicy -> false
-
-    else -> when (privilegeMode) {
-        // The one real gap, and the only one measured: an OEM (Xiaomi HyperOS, first reported on
-        // Android 14) that refuses to let the shell uid disable its system packages. This branch
-        // answered `true` for as long as that gap was read as "so use the other mechanic".
-        //
-        // It no longer does, because the substitution was never Thor's to make silently. The user
-        // asked for a freeze — a reversible thing that keeps the app where it is — and got a
-        // package removed for their user, with no dialog, no message naming the mechanic, and a
-        // success toast. `-k` kept the data directories; nothing kept `FLAG_INSTALLED`, which is
-        // what an app needs to stay visible to anything that manages accounts or sync for it.
-        //
-        // The cost of shutting it is stated rather than hidden: on those OEM builds, Shizuku users
-        // cannot freeze system apps at all until an explicit, asked-for removal path lands. That is
-        // the trade — a capability lost on some devices, in exchange for no device ever losing a
-        // package the user did not agree to lose. `ShizukuSystemGateway.freezeSystemApp` now ends
-        // in a failure that says which of the two happened, so those users get an accurate sentence
-        // instead of a wrong state.
-        PrivilegeMode.SHIZUKU -> false
-
-        // Root is uid 0, and the two refusals this fallback was built for — AOSP's shell guard and
-        // Xiaomi's vendor one — both key on the *shell* uid (2000), so neither can reach root.
-        //
-        // One refusal genuinely can: `ProtectedPackages` (device provisioning package, device or
-        // profile owner, DPM owner-protected) throws `Cannot disable a protected package: <pkg>`
-        // and is *not* uid-gated, so it refuses root identically. Reported on Amazon Fire and on
-        // Infinix XOS. That case still answers false, and deliberately: a package the platform
-        // protects this hard is one where "uninstall it for the user instead" is the wrong reading
-        // of the refusal, not a workaround for it. Surface it and let the user decide.
-        //
-        // That reading is what the other two branches have now adopted. Root reached it first only
-        // because its refusals are rarer, not because the argument was ever root-specific.
-        PrivilegeMode.ROOT -> false
-
-        // Dhizuku answers like Shizuku, as it has since it started consulting this policy at all —
-        // it has a disable rung the platform can *refuse*, so it faced the same question and gets
-        // the same answer. Exactly one of its three rungs can say so, and the route is worth
-        // keeping named because a future consent path is only as honest as that signal:
-        // `pm disable-user` runs inside the device-owner app (`DhizukuAPI.newProcess`), which holds
-        // no CHANGE_COMPONENT_ENABLED_STATE, so a refusing `PackageManagerService` answers the way
-        // it answers any `pm` caller — the SecurityException is printed to the process's own output
-        // and `pm` exits non-zero. That pair — ran, spoke, refused — is what `shellRungResult`
-        // reads.
-        //
-        // The other two rungs answer FAILED whatever they throw. Neither reaches PMS as the device
-        // owner (the reflection rung's binder is double-wrapped through Shizuku's transport; the
-        // unprivileged rung is Thor's own uid), so a SecurityException from either describes a
-        // transport Thor could not set up, not a policy the platform applied. See their notes in
-        // `Dhizuku.setAppDisabledDetailed`.
-        //
-        // The escalation was never verified on hardware here — no device with Dhizuku was
-        // available — so this branch is the only one whose `true` was never observed doing anything
-        // at all. It shuts on the argument, not on a measurement, and the argument is the same one
-        // as Shizuku's: a package removed for the user is not what "freeze" was asked for.
-        PrivilegeMode.DHIZUKU -> false
-
-        // No privilege means no freeze at all; nothing can reach the destructive rung from here.
-        PrivilegeMode.NONE -> false
-    }
+    removalFallbackConsent: Boolean = false,
+): Boolean = isSystem && disableRefusedByPolicy && removalFallbackConsent && when (privilegeMode) {
+    PrivilegeMode.SHIZUKU -> true
+    PrivilegeMode.ROOT, PrivilegeMode.DHIZUKU, PrivilegeMode.NONE -> false
 }

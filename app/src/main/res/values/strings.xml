@@ -1024,4 +1024,7 @@
     <string name="profile_removal_write_failed">Could not save profile changes. Try again.</string>
     <string name="profile_removal_profile_changed">This profile is no longer available. No changes were saved.</string>
     <string name="profile_removal_state_unknown">State unavailable</string>
+    <string name="unfreeze_system_app_failed">Could not unfreeze %1$s with Shizuku. Restoring or enabling the app failed. Check the diagnostic logs for the device response.</string>
+    <string name="system_app_removal_fallback">System app removal fallback</string>
+    <string name="system_app_removal_fallback_desc">If Shizuku is refused permission to disable a system app, allow removing it for the current Android user while keeping data files. Accounts managed by the app may be lost. Applies to manual and automatic freezes. Unfreeze reinstalls the app. This consent stays on this device.</string>
 </resources>

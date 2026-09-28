@@ -319,7 +319,16 @@ private fun TaskLogLine.displayText(): UiText? {
 
         "TASK_ITEM_FAILED",
         "SWEEP_TARGET_FAILED",
-            -> target?.let { UiText.StringResource(R.string.task_log_item_failed, it) }
+            -> target?.let {
+                val reason = if (messageCode == "SWEEP_TARGET_FAILED") arguments.getOrNull(1) else null
+                val resource = when (reason) {
+                    "SYSTEM_APP_DISABLE_REFUSED" -> R.string.freeze_system_app_disable_refused
+                    "SYSTEM_APP_DISABLE_FAILED" -> R.string.freeze_system_app_disable_failed
+                    "SYSTEM_APP_RESTORE_FAILED" -> R.string.unfreeze_system_app_failed
+                    else -> R.string.task_log_item_failed
+                }
+                UiText.StringResource(resource, it)
+            }
 
         "TASK_ITEM_CANCELLED",
         "SWEEP_TARGET_CANCELLED",

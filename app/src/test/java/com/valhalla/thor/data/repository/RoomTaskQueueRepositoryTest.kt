@@ -44,6 +44,15 @@ import org.junit.Test
 class RoomTaskQueueRepositoryTest {
 
     @Test
+    fun `sweep projection retains the stable system app failure reason`() {
+        val failed = target(0, PrivilegeSweepTargetState.FAILED).copy(
+            resultCode = PrivilegeSweepResultCode("SYSTEM_APP_DISABLE_REFUSED"))
+        val line = sweep(targets = listOf(failed)).toQueuedDetail().lines.single()
+        assertEquals("SWEEP_TARGET_FAILED", line.messageCode)
+        assertEquals(listOf(failed.packageName, "SYSTEM_APP_DISABLE_REFUSED"), line.arguments)
+    }
+
+    @Test
     fun `independent queues retain their own fifo while both may run`() = runTest {
         val dataFirst = dataTask(sequence = 1, state = DataTaskState.RUNNING)
         val dataSecond = dataTask(sequence = 2, state = DataTaskState.QUEUED)

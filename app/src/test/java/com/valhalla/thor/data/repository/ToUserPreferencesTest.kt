@@ -29,6 +29,14 @@ import org.junit.Test
  */
 class ToUserPreferencesTest {
 
+    @Test
+    fun `system app removal consent defaults closed and cannot arrive from restored settings`() {
+        val consent = preferencesOf(LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK to true)
+        assertFalse(emptyPreferences().toUserPreferences().allowSystemAppRemovalFallback)
+        assertFalse(consent.toUserPreferences().allowSystemAppRemovalFallback)
+        assertTrue(emptyPreferences().toUserPreferences(consent).allowSystemAppRemovalFallback)
+    }
+
     /**
      * The bug this split exists for.
      *

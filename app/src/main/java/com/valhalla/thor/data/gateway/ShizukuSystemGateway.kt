@@ -32,6 +32,8 @@ import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.SystemAppFreezeFailure
+import com.valhalla.thor.domain.model.SystemAppFreezeFailureReason
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import kotlinx.coroutines.CancellationException
@@ -157,8 +159,8 @@ class ShizukuSystemGateway internal constructor(
      * availability check, and the alternative — assuming root — paints working controls that throw a
      * `SecurityException` on every press.
      *
-     * [ShizukuHelper.executeCombined] rather than `execute`, and this is the only caller of it in
-     * the codebase. `execute` returns stdout *or* stderr, preferring stdout whenever it has
+     * Uses [ShizukuHelper.executeCombined] rather than `execute`, which returns stdout *or* stderr,
+     * preferring stdout whenever it has
      * anything — and every command here writes its *outcome* to stderr while writing a content-free
      * echo ("Starting: Intent { … }", "Stopping service: Intent { … }") to stdout. Through `execute`
      * the verdict never sees the sentence it exists to read, which made every "Stop now" report a
@@ -275,43 +277,9 @@ class ShizukuSystemGateway internal constructor(
     }
 
     /**
-     * Freeze a *preinstalled* app, least destructive rung first:
-     *
-     *  1. **Bypass reflection** straight at `IPackageManager.setApplicationEnabledSetting`.
-     *  2. **Shell** — `pm disable-user --user N <pkg>`.
-     *  3. **Uninstall for this user** — only where [uninstallFreezeFallbackAllowed] permits it,
-     *     which is now **nowhere**.
-     *
-     * Rungs 1 and 2 both live inside `Shizuku.setAppDisabled` so the reflection block has
-     * exactly one copy in the codebase; [EnableRungOrder.REFLECTION_FIRST] flips its default order
-     * for this path only. Both are genuinely reversible: the package keeps its data and unfreezing
-     * simply re-enables it. Neither is version-gated — Shizuku users on Android 15 and below freeze
-     * system apps exactly as before, they just do it without ever reaching rung 3.
-     *
-     * Rung 3 removes the package for this user. It ran *first* and *unconditionally* two changes
-     * ago, and without `-k`, which is why freezing a preinstalled app silently cost the user their
-     * data; then it ran only where the platform had refused to disable. It now does not run at all:
-     * [uninstallFreezeFallbackAllowed] answers `false` for every privilege mode, so a refused
-     * disable ends this method in a `Result.failure` with the package left installed, exactly as
-     * `RootSystemGateway.freezeSystemApp` has ended for root all along. Removing a package is not a
-     * stronger form of disabling it, and Thor no longer substitutes one for the other without being
-     * asked. The rung's code stays because the gate — not this gateway — owns that decision, and
-     * because the explicit "remove it for this user anyway" path that is deferred to its own change
-     * is what will re-open it.
-     *
-     * The consequence, stated rather than hidden: on an OEM build that refuses rung 2 (Xiaomi
-     * HyperOS, reported on Android 14) a Shizuku user can no longer freeze system apps at all. They
-     * now get a message saying the device refused, instead of a success toast for a package that
-     * had quietly been removed for them.
-     *
-     * Rung 3 was also **unavailable at shell uid on API 37** before it became unavailable
-     * everywhere: `pm uninstall -k --user N` on a system app returns `Failure [only root can delete
-     * system app for a particular user]` on Android 17, where the identical command succeeds on API
-     * 36. That is why [systemFreezeFailureMessage] can name Root mode — and it is still what the
-     * explicit path will meet. Read the scope of that restriction narrowly: Android 17 took away
-     * *removal* at shell uid, not freezing. Rungs 1 and 2 are measurably unaffected there
-     * (`pm disable-user --user 0` lands on `enabled=3` on a stock A17 build), so a stock Android 17
-     * device never reached rung 3 in the first place — only an OEM that refuses rung 2 did.
+     * Disable first through Binder then per-user shell. If the platform refuses, removal for
+     * this user is allowed only with the explicit device-local setting. It preserves data files
+     * with -k, but does not promise to preserve accounts or package registration.
      */
     private suspend fun freezeSystemApp(packageName: String): Result<Unit> {
         // Rungs 1 + 2. setAppEnabledDetailed already re-reads ApplicationInfo after each rung and
@@ -331,14 +299,12 @@ class ShizukuSystemGateway internal constructor(
             return Result.success(Unit)
         }
 
-        // The rung-3 gate. It answers `false` for every privilege mode now, so in practice this is
-        // where the chain ends — but it is still asked rather than assumed, because the gate owns
-        // the rule and the explicit removal path will re-open it in one place. isSystem is true by
-        // construction here and is passed explicitly for the same reason.
+        // Read consent at execution time, so turning it off also protects queued work.
         if (!uninstallFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.SHIZUKU,
                 disableRefusedByPolicy = disable.refusedByPolicy,
+                removalFallbackConsent = preferenceRepository.userPreferences.first().allowSystemAppRemovalFallback,
             )
         ) {
             // Two different facts, two different sentences — and both localised. An earlier
@@ -350,8 +316,13 @@ class ShizukuSystemGateway internal constructor(
             // nothing on screen marking the difference. The diagnostic detail that justified the
             // English prose is not lost — it is in the Logger.e below, in more depth than a Toast
             // could carry.
-            val refused = java.io.IOException(
-                if (disable.refusedByPolicy) {
+            val refused = SystemAppFreezeFailure(
+                reason = if (disable.refusedByPolicy) {
+                    SystemAppFreezeFailureReason.SYSTEM_APP_DISABLE_REFUSED
+                } else {
+                    SystemAppFreezeFailureReason.SYSTEM_APP_DISABLE_FAILED
+                },
+                message = if (disable.refusedByPolicy) {
                     context.getString(R.string.freeze_system_app_disable_refused, packageName)
                 } else {
                     context.getString(R.string.freeze_system_app_disable_failed, packageName)
@@ -368,10 +339,6 @@ class ShizukuSystemGateway internal constructor(
             return Result.failure(refused)
         }
 
-        // Unreachable while the gate above is shut, and kept for the reason its KDoc gives: the
-        // decision lives in the policy, not here, and the deferred "remove it for this user anyway"
-        // path calls exactly this. RootSystemGateway.freezeSystemApp's rung 2 has been kept on the
-        // same terms since root's branch went `false`.
         Logger.w(
             "ShizukuSystemGateway",
             "freeze($packageName): this device refuses to let the shell uid disable system " +
@@ -450,7 +417,7 @@ class ShizukuSystemGateway internal constructor(
      *  - **uninstalled for this user** — FLAG_INSTALLED is clear while `enabled` stays `true`.
      *    Builds before the disable chain existed produced this shape for *every* system app on
      *    *every* release, and the build after that one still produced it wherever rung 3 fired.
-     *    This build produces it nowhere, and still has to undo it everywhere;
+     *    This build only produces it with explicit removal-fallback consent;
      *  - **disabled** (rungs 1 and 2 above) — FLAG_INSTALLED is set while `enabled` is `false`.
      *
      * So: reinstall only when the package is actually missing, re-read, then enable only when it is
@@ -500,10 +467,13 @@ class ShizukuSystemGateway internal constructor(
             Result.success(Unit)
         } else {
             Result.failure(
-                Exception(
-                    "Shizuku: $packageName is still frozen after unfreeze " +
-                        "(installed=$installed, enabled=${end?.enabled})"
-                )
+                SystemAppFreezeFailure(
+                    SystemAppFreezeFailureReason.SYSTEM_APP_RESTORE_FAILED,
+                    context.getString(R.string.unfreeze_system_app_failed, packageName),
+                ).also {
+                    Logger.e("ShizukuSystemGateway",
+                        "unfreeze($packageName): installed=$installed, enabled=${end?.enabled}", it)
+                }
             )
         }
     }

@@ -3,6 +3,9 @@
 
 package com.valhalla.thor.data.freezer
 
+import com.valhalla.thor.domain.model.SystemAppFreezeFailure
+import com.valhalla.thor.domain.model.SystemAppFreezeFailureReason
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PackageLeaseResult
@@ -38,6 +41,7 @@ internal class DefaultPrivilegeSweepPackageStateReader(
 internal data class PrivilegeSweepItemExecutionResult(
     val outcome: SweepAttemptOutcome,
     val rootLaneDegraded: Boolean,
+    val failureReason: SystemAppFreezeFailureReason? = null,
 )
 
 internal fun interface PrivilegeSweepItemExecutor {
@@ -66,6 +70,12 @@ internal class DefaultPrivilegeSweepItemExecutor(
             sweepRequestId = snapshot.requestId,
             commandTimeout = PrivilegeExecutionTimeouts.SWEEP_COMMAND,
         )
+        var failureReason: SystemAppFreezeFailureReason? = null
+        fun recordFailure(failure: Throwable) {
+            failureReason = (failure as? SystemAppFreezeFailure)?.reason
+            Logger.e("PrivilegeSweepItemExecutor",
+                "${snapshot.operation} failed for $packageName", failure)
+        }
         val outcome = try {
             when (
                 val lease = manageApp.withPackageOperation(
@@ -81,11 +91,11 @@ internal class DefaultPrivilegeSweepItemExecutor(
                             FreezeState.ACTIVE -> when (snapshot.freezerMode) {
                                 FreezerMode.FREEZE -> manageApp
                                     .setAppDisabledUncoordinated(packageName, true, execution)
-                                    .toAttemptOutcome()
+                                    .toAttemptOutcome(::recordFailure)
 
                                 FreezerMode.SUSPEND -> manageApp
                                     .setAppSuspendedUncoordinated(packageName, true, execution)
-                                    .toAttemptOutcome()
+                                    .toAttemptOutcome(::recordFailure)
 
                                 null -> SweepAttemptOutcome.FAILED
                             }
@@ -96,7 +106,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
                             FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
                             FreezeState.FROZEN -> manageApp
                                 .forceUnfreezeUncoordinated(packageName, execution)
-                                .toAttemptOutcome()
+                                .toAttemptOutcome(::recordFailure)
                         }
 
                         PrivilegeSweepOperation.SUSPEND,
@@ -108,7 +118,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
                                 suspended == desired -> SweepAttemptOutcome.SUCCEEDED
                                 else -> manageApp
                                     .setAppSuspendedUncoordinated(packageName, desired, execution)
-                                    .toAttemptOutcome()
+                                    .toAttemptOutcome(::recordFailure)
                             }
                         }
 
@@ -116,12 +126,12 @@ internal class DefaultPrivilegeSweepItemExecutor(
                             FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
                             FreezeState.ACTIVE, FreezeState.FROZEN -> manageApp
                                 .clearCacheUncoordinated(packageName, execution)
-                                .toAttemptOutcome()
+                                .toAttemptOutcome(::recordFailure)
                         }
 
                         PrivilegeSweepOperation.REINSTALL -> manageApp
                             .reinstallAppWithGoogleUncoordinated(packageName, execution)
-                            .toAttemptOutcome()
+                            .toAttemptOutcome(::recordFailure)
                     }
                     // Tracking is part of the durable request, after a successful/idempotent
                     // freeze and inside its package lease. An unchecked request never removes
@@ -139,21 +149,26 @@ internal class DefaultPrivilegeSweepItemExecutor(
             throw e
         } catch (_: PackageOperationBusy) {
             SweepAttemptOutcome.BUSY
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            recordFailure(failure)
             SweepAttemptOutcome.FAILED
         }
         return PrivilegeSweepItemExecutionResult(
             outcome = outcome,
             rootLaneDegraded = execution.provenance.usedDegradedRootFallback,
+            failureReason = failureReason,
         )
     }
 
-    private fun Result<*>.toAttemptOutcome(): SweepAttemptOutcome {
+    private fun Result<*>.toAttemptOutcome(recordFailure: (Throwable) -> Unit): SweepAttemptOutcome {
         val failure = exceptionOrNull() ?: return SweepAttemptOutcome.SUCCEEDED
         return when (failure) {
             is CancellationException -> throw failure
             is PackageOperationBusy -> SweepAttemptOutcome.BUSY
-            else -> SweepAttemptOutcome.FAILED
+            else -> {
+                recordFailure(failure)
+                SweepAttemptOutcome.FAILED
+            }
         }
     }
 

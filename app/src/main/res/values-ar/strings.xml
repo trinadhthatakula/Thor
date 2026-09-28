@@ -1061,4 +1061,7 @@
     <string name="profile_removal_write_failed">تعذر حفظ تغييرات الملف. حاول مرة أخرى.</string>
     <string name="profile_removal_profile_changed">لم يعد هذا الملف متاحًا. لم تُحفظ أي تغييرات.</string>
     <string name="profile_removal_state_unknown">الحالة غير متاحة</string>
+    <string name="unfreeze_system_app_failed">تعذّر إلغاء تجميد %1$s باستخدام Shizuku. فشلت استعادة التطبيق أو تفعيله. راجع سجلات التشخيص لمعرفة استجابة الجهاز.</string>
+    <string name="system_app_removal_fallback">الإزالة كبديل لتجميد تطبيقات النظام</string>
+    <string name="system_app_removal_fallback_desc">إذا مُنع Shizuku من تعطيل تطبيق نظام، اسمح بإزالته لمستخدم Android الحالي مع الاحتفاظ بملفات البيانات. قد تُفقد الحسابات التي يديرها التطبيق. ينطبق على التجميد اليدوي والتلقائي. إلغاء التجميد يعيد تثبيت التطبيق. تُحفظ هذه الموافقة على هذا الجهاز فقط.</string>
 </resources>
