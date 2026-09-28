@@ -91,3 +91,11 @@ persistence. The screenshot shows the re-enable confirmation from the initial im
 
 After the default change, `test lintFossDebug lintStoreRelease :app:assembleFossDebug` passed
 on JDK 21, with 3,093 unit tests per flavor and no test failures or errors.
+
+## Review follow-up
+
+Unreadable local preferences disable the removal fallback instead of treating the lost choice as
+an absent key. Corruption recovery writes an explicit false to the replacement local store, so
+restarting Thor cannot turn removal back on. Healthy missing keys still default on. Regression
+tests cover the flow's failed-read path and the replacement preferences on subsequent reads.
+The Japanese error and fallback description now use the existing 凍結解除 terminology.
