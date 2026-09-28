@@ -5,15 +5,12 @@ package com.valhalla.thor.data.freezer
 
 import com.valhalla.thor.data.service.ServiceStartFailure
 import com.valhalla.thor.data.service.ServiceStartResult
-import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepSpec
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
-import com.valhalla.thor.domain.model.RootLaneMode
-import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.model.normalizeSweepTargets
 import com.valhalla.thor.domain.model.profileIdsFromSourceAssociations
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
@@ -26,7 +23,7 @@ import com.valhalla.thor.domain.repository.StoredSweepTerminal
 import com.valhalla.thor.domain.repository.SweepCreateResult
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import org.koin.core.annotation.Single
 
 /** Foreground-service-backed implementation of the durable privilege-sweep boundary. */
@@ -37,16 +34,10 @@ class DefaultPrivilegeSweepController internal constructor(
     private val gate: PrivilegeSweepProcessGate,
     private val wakeSignal: PrivilegeQueueWakeSignal,
     private val queueCanceller: SweepQueueCanceller,
-    private val rootLaneStatusSource: RootLaneStatusSource,
 ) : PrivilegeSweepController {
 
-    override val activeRequests: Flow<List<PrivilegeSweepStatus>> = combine(
-        store.observeRetained(),
-        rootLaneStatusSource.statuses,
-    ) { snapshots, lanes ->
-        val degraded = lanes[PrivilegeExecutionLane.SWEEP]?.mode == RootLaneMode.DEGRADED
-        snapshots.map { it.toStatus(degraded) }
-    }
+    override val activeRequests: Flow<List<PrivilegeSweepStatus>> =
+        store.observeRetained().map { snapshots -> snapshots.map { it.toStatus() } }
 
     override suspend fun launch(spec: PrivilegeSweepSpec): PrivilegeSweepLaunchResult =
         launch(UUID.randomUUID(), spec)
@@ -116,25 +107,13 @@ class DefaultPrivilegeSweepController internal constructor(
         queueCanceller.cancel(requestId)
     }
 
-    override fun observe(requestId: UUID): Flow<PrivilegeSweepStatus?> = combine(
-        store.observe(requestId),
-        rootLaneStatusSource.statuses,
-    ) { snapshot, lanes ->
-        snapshot?.toStatus(
-            lanes[PrivilegeExecutionLane.SWEEP]?.mode == RootLaneMode.DEGRADED
-        )
-    }
+    override fun observe(requestId: UUID): Flow<PrivilegeSweepStatus?> =
+        store.observe(requestId).map { it?.toStatus() }
 
-    override fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?> = combine(
-        store.observeRetained(source),
-        rootLaneStatusSource.statuses,
-    ) { snapshots, lanes ->
-        snapshots.firstOrNull()?.toStatus(
-            lanes[PrivilegeExecutionLane.SWEEP]?.mode == RootLaneMode.DEGRADED
-        )
-    }
+    override fun observeLatest(source: PrivilegeSweepSource): Flow<PrivilegeSweepStatus?> =
+        store.observeRetained(source).map { it.firstOrNull()?.toStatus() }
 
-    private fun StoredPrivilegeSweep.toStatus(rootLaneDegraded: Boolean): PrivilegeSweepStatus =
+    private fun StoredPrivilegeSweep.toStatus(): PrivilegeSweepStatus =
         PrivilegeSweepStatus(
             requestId = requestId,
             workId = executionId,
@@ -146,7 +125,8 @@ class DefaultPrivilegeSweepController internal constructor(
             failed = failed,
             busy = busy,
             unresolved = unresolved,
-            rootLaneDegraded = rootLaneDegraded || targetSnapshots.any { it.rootLaneDegraded },
+            // Only commands executed for this task can establish root fallback use.
+            rootLaneDegraded = targetSnapshots.any { it.rootLaneDegraded },
             profileIds = profileIdsFromSourceAssociations(sourceAssociations),
         )
 

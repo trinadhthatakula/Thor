@@ -810,4 +810,7 @@
     <string name="profile_removal_write_failed">プロファイルの変更を保存できませんでした。もう一度やり直してください。</string>
     <string name="profile_removal_profile_changed">このプロファイルは利用できなくなりました。変更は保存されませんでした。</string>
     <string name="profile_removal_state_unknown">状態を確認できません</string>
+    <string name="unfreeze_system_app_failed">Shizuku で %1$s を凍結解除できませんでした。アプリの復元または有効化に失敗しました。端末の応答は診断ログで確認してください。</string>
+    <string name="system_app_removal_fallback">システムアプリの削除による代替凍結</string>
+    <string name="system_app_removal_fallback_desc">Shizuku によるシステムアプリの無効化が拒否された場合、データファイルを保持したまま現在の Android ユーザーからアプリを削除することを許可します。アプリが管理するアカウントは失われる場合があります。手動と自動の凍結に適用され、凍結解除すると再インストールされます。この設定はこの端末にのみ適用されます。</string>
 </resources>

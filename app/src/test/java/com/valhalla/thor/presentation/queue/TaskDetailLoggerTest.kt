@@ -24,6 +24,20 @@ import org.robolectric.annotation.Config
 class TaskDetailLoggerTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
 
+    @Test fun systemAppFailuresRenderTheirReasonAndUnknownCodesRemainGeneric() {
+        val reasons = mapOf(
+            "SYSTEM_APP_DISABLE_REFUSED" to R.string.freeze_system_app_disable_refused,
+            "SYSTEM_APP_DISABLE_FAILED" to R.string.freeze_system_app_disable_failed,
+            "SYSTEM_APP_RESTORE_FAILED" to R.string.unfreeze_system_app_failed,
+            "UNKNOWN_FUTURE_CODE" to R.string.task_log_item_failed,
+        )
+        for ((reason, resource) in reasons) {
+            val line = TaskLogLine(0, "SWEEP_TARGET_FAILED", listOf("app.test", reason))
+            assertEquals(context.getString(resource, "app.test"),
+                state(lines = listOf(line)).loggerLines().last().asString(context))
+        }
+    }
+
     @Test fun aggregateUsesFullQuantityOnceAndDoesNotAccumulate() {
         for (count in listOf(1, 63, 64, 65, 80)) {
             val state = state(lines = listOf(line("TASK_PENDING_COUNT", count.toString())))

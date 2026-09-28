@@ -209,7 +209,7 @@ internal class RoomPrivilegeSweepDrainRuntime(
         )
         SweepAttemptOutcome.FAILED -> PrivilegeSweepTargetResult(
             PrivilegeSweepTargetTerminalState.FAILED,
-            PrivilegeSweepResultCode("FAILED"),
+            PrivilegeSweepResultCode(failureReason?.name ?: "FAILED"),
             rootLaneDegraded = rootLaneDegraded,
             finishedAtEpochMs = nowMs,
         )

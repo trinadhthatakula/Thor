@@ -740,6 +740,10 @@ class FakePreferenceRepository(
         write { it.copy(freezerMode = mode) }
     }
 
+    override suspend fun setAllowSystemAppRemovalFallback(enabled: Boolean) {
+        write { it.copy(allowSystemAppRemovalFallback = enabled) }
+    }
+
     override suspend fun setSkipRoutineFreezeConfirmation(enabled: Boolean) {
         write { it.copy(skipRoutineFreezeConfirmation = enabled) }
     }

@@ -5,16 +5,12 @@ package com.valhalla.thor.data.freezer
 
 import com.valhalla.thor.data.service.ServiceStartFailure
 import com.valhalla.thor.data.service.ServiceStartResult
-import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepSpec
-import com.valhalla.thor.domain.model.RootLaneMode
-import com.valhalla.thor.domain.model.RootLaneStatus
-import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
 import com.valhalla.thor.domain.repository.PrivilegeSweepBlockReason
 import com.valhalla.thor.domain.repository.PrivilegeSweepCancellationDecision
@@ -163,25 +159,20 @@ class DefaultPrivilegeSweepControllerTest {
     }
 
     @Test
-    fun `observation derives phase from Room and degradation from sweep lane`() = runTest {
+    fun `observation does not attribute root fallback without recorded root commands`() = runTest {
         val fixture = Fixture()
         val accepted = fixture.controller.launch(spec()) as PrivilegeSweepLaunchResult.Accepted
         fixture.store.update(accepted.requestId) {
             it.copy(requestState = PrivilegeSweepRequestState.RUNNING, succeeded = 1, unresolved = 1)
         }
-        fixture.rootStatuses.value = fixture.rootStatuses.value + (
-                PrivilegeExecutionLane.SWEEP to RootLaneStatus(
-                    PrivilegeExecutionLane.SWEEP,
-                    RootLaneMode.DEGRADED,
-                )
-                )
-
         val status = fixture.controller.observe(accepted.requestId).first()
 
         assertEquals(PrivilegeSweepPhase.RUNNING, status?.phase)
         assertEquals(1, status?.succeeded)
         assertEquals(1, status?.unresolved)
-        assertEquals(true, status?.rootLaneDegraded)
+        assertEquals(false, status?.rootLaneDegraded)
+        assertEquals(false, fixture.controller.activeRequests.first().single().rootLaneDegraded)
+        assertEquals(false, fixture.controller.observeLatest(spec().source).first()?.rootLaneDegraded)
     }
 
     @Test
@@ -220,11 +211,6 @@ class DefaultPrivilegeSweepControllerTest {
         val events = mutableListOf<String>()
         val store = FakeStore(events)
         val wakes = mutableListOf<UUID>()
-        val rootStatuses = MutableStateFlow(
-            PrivilegeExecutionLane.entries.associateWith { lane ->
-                RootLaneStatus(lane, RootLaneMode.ISOLATED)
-            }
-        )
         private val cancellation = PrivilegeSweepCancellationCoordinator(
             requestCancellation = { PrivilegeSweepCancellationDecision.NotFound },
             cancelActive = { false },
@@ -232,9 +218,6 @@ class DefaultPrivilegeSweepControllerTest {
             reconcileStaleClaim = {},
         )
         private val canceller = SweepQueueCanceller(cancellation)
-        private val rootLaneStatusSource = object : RootLaneStatusSource {
-            override val statuses = rootStatuses
-        }
         val controller = DefaultPrivilegeSweepController(
             store = store,
             clock = object : PrivilegeSweepClock {
@@ -247,7 +230,6 @@ class DefaultPrivilegeSweepControllerTest {
                 startResult
             },
             queueCanceller = canceller,
-            rootLaneStatusSource = rootLaneStatusSource,
         )
     }
 

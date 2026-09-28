@@ -311,6 +311,12 @@ class SettingsViewModel(
         }
     }
 
+    fun setAllowSystemAppRemovalFallback(enabled: Boolean) {
+        viewModelScope.launch {
+            preferenceRepository.setAllowSystemAppRemovalFallback(enabled)
+        }
+    }
+
     fun setSkipRoutineFreezeConfirmation(enabled: Boolean) {
         viewModelScope.launch {
             preferenceRepository.setSkipRoutineFreezeConfirmation(enabled)

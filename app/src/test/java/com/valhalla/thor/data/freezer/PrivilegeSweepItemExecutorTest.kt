@@ -31,6 +31,19 @@ import org.junit.Test
 class PrivilegeSweepItemExecutorTest {
 
     @Test
+    fun `system app refusal survives execution without being replaced by generic failure`() = runTest {
+        val repository = FakeSystemRepository()
+        val reason = com.valhalla.thor.domain.model.SystemAppFreezeFailureReason.SYSTEM_APP_DISABLE_REFUSED
+        repository.failWith("setAppDisabled:$PACKAGE:true",
+            com.valhalla.thor.domain.model.SystemAppFreezeFailure(reason, "device refused"))
+        val result = executor(repository).execute(
+            stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE), PACKAGE)
+        assertEquals(SweepAttemptOutcome.FAILED, result.outcome)
+        assertEquals(reason, result.failureReason)
+        assertFalse(result.rootLaneDegraded)
+    }
+
+    @Test
     fun `freeze dispatches configured disable action with complete sweep context`() = runTest {
         val trace = mutableListOf<String>()
         val repository = FakeSystemRepository(trace)

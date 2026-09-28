@@ -969,4 +969,7 @@
     <string name="profile_removal_write_failed">Impossible d\'enregistrer les modifications du profil. Réessayez.</string>
     <string name="profile_removal_profile_changed">Ce profil n\'est plus disponible. Aucune modification n\'a été enregistrée.</string>
     <string name="profile_removal_state_unknown">État indisponible</string>
+    <string name="unfreeze_system_app_failed">Impossible de dégeler %1$s avec Shizuku. La restauration ou l’activation de l’application a échoué. Consultez les journaux de diagnostic pour voir la réponse de l’appareil.</string>
+    <string name="system_app_removal_fallback">Suppression alternative des applications système</string>
+    <string name="system_app_removal_fallback_desc">Si Shizuku ne peut pas désactiver une application système, autorise sa suppression pour l’utilisateur Android actuel en conservant ses fichiers de données. Les comptes gérés par l’application peuvent être perdus. S’applique aux gels manuels et automatiques. Dégeler réinstalle l’application. Ce réglage ne s’applique qu’à cet appareil.</string>
 </resources>

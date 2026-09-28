@@ -947,4 +947,7 @@
     <string name="profile_removal_write_failed">无法保存配置更改。请重试。</string>
     <string name="profile_removal_profile_changed">此配置已不可用。未保存任何更改。</string>
     <string name="profile_removal_state_unknown">状态不可用</string>
+    <string name="unfreeze_system_app_failed">无法通过 Shizuku 解冻 %1$s。恢复或启用应用失败。请查看诊断日志中的设备响应。</string>
+    <string name="system_app_removal_fallback">系统应用移除备用方案</string>
+    <string name="system_app_removal_fallback_desc">如果系统拒绝 Shizuku 停用系统应用，允许为当前 Android 用户移除该应用，同时保留数据文件。该应用管理的账号可能丢失。适用于手动和自动冻结。解冻时会重新安装应用。此设置仅适用于本设备。</string>
 </resources>
