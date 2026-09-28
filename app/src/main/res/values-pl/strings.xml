@@ -1060,5 +1060,5 @@
     <string name="profile_removal_state_unknown">Stan niedostępny</string>
     <string name="unfreeze_system_app_failed">Nie udało się odmrozić %1$s za pomocą Shizuku. Przywracanie lub włączanie aplikacji nie powiodło się. Sprawdź odpowiedź urządzenia w dziennikach diagnostycznych.</string>
     <string name="system_app_removal_fallback">Usuwanie aplikacji systemowych jako metoda zastępcza</string>
-    <string name="system_app_removal_fallback_desc">Jeśli system odmówi Shizuku wyłączenia aplikacji systemowej, zezwól na usunięcie jej dla bieżącego użytkownika Androida z zachowaniem plików danych. Konta zarządzane przez aplikację mogą zostać utracone. Dotyczy zamrażania ręcznego i automatycznego. Odmrożenie ponownie instaluje aplikację. Ta zgoda pozostaje tylko na tym urządzeniu.</string>
+    <string name="system_app_removal_fallback_desc">Jeśli system odmówi Shizuku wyłączenia aplikacji systemowej, zezwól na usunięcie jej dla bieżącego użytkownika Androida z zachowaniem plików danych. Konta zarządzane przez aplikację mogą zostać utracone. Dotyczy zamrażania ręcznego i automatycznego. Odmrożenie ponownie instaluje aplikację. To ustawienie dotyczy tylko tego urządzenia.</string>
 </resources>

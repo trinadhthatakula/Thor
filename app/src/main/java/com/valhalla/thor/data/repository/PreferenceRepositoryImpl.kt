@@ -120,13 +120,13 @@ internal val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
  * empty, it switched off the one affordance built to rebuild that watchlist, silently. See
  * `docs/follow-ups/restored-prompt-flag-suppresses-watchlist-recovery.md`.
  *
- * Ordinary settings belong in the backed-up store. Explicit consent to remove system apps is
- * device-local: restoring it onto a different ROM must not authorize removal there.
+ * The system-app removal fallback preference is device-local because ROM restrictions differ.
+ * An absent key uses the product default; an explicit false remains false across app updates.
  *
  * Corruption-handled for the same reason as [dataStore]: this file cannot arrive corrupted from a
  * restore, but an interrupted write or a bad block can still leave it unreadable, and the default
- * handler would then rethrow forever. Defaults re-offer the recovery prompt and revoke removal
- * consent rather than authorizing a destructive fallback after corruption.
+ * handler would then rethrow forever. Replacing an unreadable file restores the product defaults,
+ * including re-offering the recovery prompt.
  */
 // internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
 internal val Context.localState: DataStore<Preferences> by preferencesDataStore(
@@ -764,9 +764,10 @@ internal fun Preferences.toUserPreferences(
         autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
         freezerMode = freezerMode,
         addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
+        // Only an absent key uses the default. Never overwrite a saved opt-out.
+        allowSystemAppRemovalFallback = local[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK] ?: true,
         // Defaults to false: an unreadable settings file must not silently stop asking before a
-        // system freeze. Same fail-closed reading as every other flag on this snapshot.
-        allowSystemAppRemovalFallback = local[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK] ?: false,
+        // system freeze.
         skipRoutineFreezeConfirmation =
             prefs[Keys.SKIP_ROUTINE_FREEZE_CONFIRMATION] ?: false,
         // From `local`, never from `prefs`: a `true` in the settings file is either a pre-1.93

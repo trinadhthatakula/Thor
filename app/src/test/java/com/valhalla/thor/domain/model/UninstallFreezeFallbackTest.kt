@@ -25,8 +25,8 @@ class UninstallFreezeFallbackTest {
                 for (refused in listOf(false, true)) {
                     val expected = mode == PrivilegeMode.SHIZUKU && system && refused
                     assertEquals(expected,
-                        uninstallFreezeFallbackAllowed(system, mode, refused, removalFallbackConsent = true))
-                    assertFalse(uninstallFreezeFallbackAllowed(system, mode, refused, removalFallbackConsent = false))
+                        uninstallFreezeFallbackAllowed(system, mode, refused, removalFallbackEnabled = true))
+                    assertFalse(uninstallFreezeFallbackAllowed(system, mode, refused, removalFallbackEnabled = false))
                 }
             }
         }

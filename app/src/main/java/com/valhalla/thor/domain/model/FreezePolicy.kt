@@ -161,8 +161,8 @@ enum class FreezeMechanic {
 /**
  * May a failed [FreezeMechanic.DISABLE] escalate to [FreezeMechanic.UNINSTALL] for this package?
  *
- * Disabled by default. Only Shizuku may use this fallback, after a platform refusal and
- * explicit device-local consent in Settings. Removal keeps data files but changes package
+ * Only Shizuku may use this fallback, after a platform refusal and while the device-local
+ * setting is enabled (the product default). A saved opt-out must be respected. Removal keeps data files but changes package
  * registration and may remove accounts. It applies to foreground and background freezes;
  * Unfreeze restores the package with install-existing. Root and Dhizuku never use this fallback.
  *
@@ -224,8 +224,8 @@ fun uninstallFreezeFallbackAllowed(
     isSystem: Boolean,
     privilegeMode: PrivilegeMode,
     disableRefusedByPolicy: Boolean,
-    removalFallbackConsent: Boolean = false,
-): Boolean = isSystem && disableRefusedByPolicy && removalFallbackConsent && when (privilegeMode) {
+    removalFallbackEnabled: Boolean = false,
+): Boolean = isSystem && disableRefusedByPolicy && removalFallbackEnabled && when (privilegeMode) {
     PrivilegeMode.SHIZUKU -> true
     PrivilegeMode.ROOT, PrivilegeMode.DHIZUKU, PrivilegeMode.NONE -> false
 }

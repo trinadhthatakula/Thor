@@ -4,10 +4,11 @@
 **Status:** implemented on the issue #519 branch (2026-09-28); see
 [implementation and device validation](../issues/519-shizuku-freeze.md).
 
-The implementation uses explicit device-local consent in Settings → Freezer rather than a new
-per-app removal action. With consent, Shizuku may use its existing `-k --user N` fallback only after
+The implementation uses a device-local setting in Settings → Freezer rather than a new
+per-app removal action. It defaults on when absent and preserves explicit opt-outs across updates.
+While enabled, Shizuku may use its existing `-k --user N` fallback only after
 a refused disable. The watchlist keeps its existing frozen classification and Unfreeze restores
-the package. The same setting covers headless freezes, with consent read at execution time.
+the package. The same setting covers headless freezes, with the setting read at execution time.
 Root and Dhizuku do not inherit this option. The earlier design discussion below is historical.
 
 ## What changed under this

@@ -3,12 +3,12 @@
 ## Behavior
 
 - Keep Binder `DISABLED_USER` and `pm disable-user --user N` as the initial Shizuku freeze paths.
-- Settings → Freezer → **System app removal fallback** is off by default. Enabling it requires a
+- Settings → Freezer → **System app removal fallback** is on by default when no device-local choice exists. A saved off choice is never overridden. Re-enabling it after an opt-out requires a
   confirmation explaining removal for the current Android user, retained data files, possible
   account loss, application to manual/automatic freezes, and reinstalling on Unfreeze.
-- Consent is in the non-backed-up local DataStore. A restore onto another device cannot enable it.
+- The preference is in the non-backed-up local DataStore. Existing explicit off choices survive app updates.
   It is read when the operation executes; switching it off protects queued work too.
-- Only an opted-in, policy-refused **Shizuku system-app** disable may reach `pm uninstall -k
+- Only an enabled, policy-refused **Shizuku system-app** disable may reach `pm uninstall -k
   --user N`. Generic transport failures, user apps, Root and Dhizuku cannot use this fallback.
 - Unfreeze still restores legacy removed packages whether consent is on or off.
 - Queue history retains stable disable-refused, disable-failed, and restore-failed reasons.
@@ -80,3 +80,14 @@ without explicit consent for that package.
   enables it, and switching off revokes it without another confirmation. Left off after testing.
 - POCO cleanup verified again: Carousel `installed=false`, `enabled=0`. Shizuku remains in ADB mode
   as requested. The existing release Thor installation was not replaced by the debug APK.
+
+## Default change
+
+The initial implementation was opt-in. The subsequent product decision makes the fallback on by
+default for an absent local key, including upgrades without a saved choice. Explicit false values
+remain false; no freeze operation writes or re-enables the setting. The earlier device tests above
+cover enabled and disabled behavior; preference regression tests cover the new default and opt-out
+persistence. The screenshot shows the re-enable confirmation from the initial implementation.
+
+After the default change, `test lintFossDebug lintStoreRelease :app:assembleFossDebug` passed
+on JDK 21, with 3,093 unit tests per flavor and no test failures or errors.

@@ -278,7 +278,7 @@ class ShizukuSystemGateway internal constructor(
 
     /**
      * Disable first through Binder then per-user shell. If the platform refuses, removal for
-     * this user is allowed only with the explicit device-local setting. It preserves data files
+     * this user is allowed only while the device-local setting is enabled. It preserves data files
      * with -k, but does not promise to preserve accounts or package registration.
      */
     private suspend fun freezeSystemApp(packageName: String): Result<Unit> {
@@ -299,12 +299,12 @@ class ShizukuSystemGateway internal constructor(
             return Result.success(Unit)
         }
 
-        // Read consent at execution time, so turning it off also protects queued work.
+        // Read the setting at execution time, so turning it off also protects queued work.
         if (!uninstallFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.SHIZUKU,
                 disableRefusedByPolicy = disable.refusedByPolicy,
-                removalFallbackConsent = preferenceRepository.userPreferences.first().allowSystemAppRemovalFallback,
+                removalFallbackEnabled = preferenceRepository.userPreferences.first().allowSystemAppRemovalFallback,
             )
         ) {
             // Two different facts, two different sentences — and both localised. An earlier
@@ -417,7 +417,7 @@ class ShizukuSystemGateway internal constructor(
      *  - **uninstalled for this user** — FLAG_INSTALLED is clear while `enabled` stays `true`.
      *    Builds before the disable chain existed produced this shape for *every* system app on
      *    *every* release, and the build after that one still produced it wherever rung 3 fired.
-     *    This build only produces it with explicit removal-fallback consent;
+     *    This build only produces it with the removal-fallback setting enabled;
      *  - **disabled** (rungs 1 and 2 above) — FLAG_INSTALLED is set while `enabled` is `false`.
      *
      * So: reinstall only when the package is actually missing, re-read, then enable only when it is

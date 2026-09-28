@@ -30,11 +30,28 @@ import org.junit.Test
 class ToUserPreferencesTest {
 
     @Test
-    fun `system app removal consent defaults closed and cannot arrive from restored settings`() {
-        val consent = preferencesOf(LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK to true)
-        assertFalse(emptyPreferences().toUserPreferences().allowSystemAppRemovalFallback)
-        assertFalse(consent.toUserPreferences().allowSystemAppRemovalFallback)
-        assertTrue(emptyPreferences().toUserPreferences(consent).allowSystemAppRemovalFallback)
+    fun `system app removal fallback defaults on for existing and new installs without a saved choice`() {
+        assertTrue(emptyPreferences().toUserPreferences().allowSystemAppRemovalFallback)
+        assertTrue(com.valhalla.thor.domain.model.UserPreferences().allowSystemAppRemovalFallback)
+        val existingSettings = preferencesOf(Keys.LEGACY_DISABLED_APPS_PROMPT to true)
+        assertTrue(existingSettings.toUserPreferences().allowSystemAppRemovalFallback)
+    }
+
+    @Test
+    fun `explicit system app removal opt out remains off on subsequent reads`() {
+        val savedOff = preferencesOf(LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK to false)
+        repeat(3) {
+            assertFalse(emptyPreferences().toUserPreferences(savedOff).allowSystemAppRemovalFallback)
+        }
+        val savedOn = preferencesOf(LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK to true)
+        assertTrue(emptyPreferences().toUserPreferences(savedOn).allowSystemAppRemovalFallback)
+    }
+
+    @Test
+    fun `restored settings cannot overwrite the device local removal choice`() {
+        val restoredOn = preferencesOf(LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK to true)
+        val savedOff = preferencesOf(LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK to false)
+        assertFalse(restoredOn.toUserPreferences(savedOff).allowSystemAppRemovalFallback)
     }
 
     /**
