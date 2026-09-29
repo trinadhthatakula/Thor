@@ -147,3 +147,12 @@ internals are not device-validated here. Platform validation can reject keys or 
 may ignore/overwrite saved values; verified storage never promises a behavioral effect.
 App preferences editing is deferred in `docs/follow-ups/app-preference-editor.md`.
 The maintainer confirmed Sett Edit is working on 2026-09-30.
+
+## Recovery limits confirmed during review
+
+Process death or a failed final journal save can leave a PENDING record after a mutation.
+PENDING/UNKNOWN records remain unverified and cannot use guarded undo; inspect the current
+table value before submitting a separate reviewed edit. Root INTERACTIVE execution does not
+enforce a settings-helper deadline, so a hung helper can keep the editor and lane busy.
+Explicit reconciliation and safe execution bounds are recorded in
+[follow-ups](../../follow-ups/settings-editor-recovery.md).

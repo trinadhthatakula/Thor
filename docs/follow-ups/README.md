@@ -11,6 +11,7 @@ when they were written; they are not a current release gate.
 | Work | Status | Scope |
 | --- | --- | --- |
 | [App preference editor](app-preference-editor.md) | Deferred by maintainer; not implemented | Edit the selected app's own preference files from app details surfaces. Separate from the global Sett Edit extension in #504; provider access and supported formats need assessment. |
+| [Sett Edit recovery and execution bounds](settings-editor-recovery.md) | Proposed; not implemented | Explicit reconciliation of unverified history and a safely terminable Root helper deadline. Current unverified records cannot use undo; Root INTERACTIVE execution has no helper deadline. |
 
 **Historical tiers.** `0/1` meant being built · `2` approved, not scheduled · `3` filed, decision still open ·
 *declined* ruled out, do not re-raise. Where a row also carries a roadmap colour (🟢 do-first ·
