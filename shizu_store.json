@@ -24,7 +24,7 @@
   "repo_url": "https://github.com/trinadhthatakula/Thor",
   "app_website": "https://thor.trinadhthatakula.com",
   "download_url": "https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk",
-  "changelog": "• 🧊 Restored Shizuku freezing on devices that refuse disabling system apps. Fallback is on by default; saved opt-outs stay off.\n\n• ⚠️ Fallback removes the app for your Android user, keeps data files and reinstalls on Unfreeze. Accounts may be lost. Control it in Settings → Freezer.\n\n• 📜 Extensions confirmation now scrolls on small screens and in landscape.\n\n• 🛡️ App Ops, draggable app scrollbars, Japanese support and clearer errors.",
+  "changelog": "• 🧊 Restored the Shizuku freezer fallback only when policy refuses to disable a system app. Fallback is on by default; saved opt-outs stay off.\n\n• ⚠️ Fallback removes the app for your Android user, keeps data files and reinstalls on Unfreeze. Accounts may be lost. Control it in Settings → Freezer.\n\n• 📜 Extensions confirmation now scrolls on small screens and in landscape.\n\n• 🛡️ App Ops, draggable app scrollbars, Japanese support and clearer errors.",
   "store_issue_number": 279,
   "category": "Tools",
   "license": "GPL-3.0-or-later",
