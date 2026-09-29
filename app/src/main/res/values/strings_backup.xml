@@ -4,8 +4,8 @@
   behind a file-level MissingTranslation exemption; every translated locale now
   carries them, so the exemption is gone and lint guards this file like any
   other. Adding a string here therefore obliges you to add it to all seven
-  values-<locale>/strings_backup.xml (and values-pt-rBR only if Brazilian usage
-  differs) — that is the point of removing the marker. The tools namespace stays
+  fully translated values-<locale>/strings_backup.xml files (and values-pt-rBR
+  only if Brazilian usage differs) — that is the point of removing the marker. The tools namespace stays
   for the two element-level PluralsCandidate suppressions further down.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools">

@@ -13,7 +13,6 @@ import com.valhalla.thor.data.gateway.ReinstallFinalState
 import com.valhalla.thor.data.gateway.ReinstallPostconditionVerifier
 import com.valhalla.thor.data.gateway.ReinstallStateReader
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
-import com.valhalla.thor.data.gateway.root.DefaultRootLaneStatusSource
 import com.valhalla.thor.data.repository.installerPackageNameOf
 import com.valhalla.thor.data.source.local.thorUserId
 import org.robolectric.Shadows.shadowOf
@@ -54,6 +53,17 @@ class RoomPrivilegeSweepDrainRuntimeTest {
         store = RoomPrivilegeSweepStore(db.privilegeSweepDao())
     }
     @After fun close() { db.close() }
+
+    @Test fun `system app failure reason is committed to Room`() = runBlocking {
+        val request = create("disable-refused")
+        val reason = com.valhalla.thor.domain.model.SystemAppFreezeFailureReason.SYSTEM_APP_DISABLE_REFUSED
+        drain(runtime(execute = { _, _ ->
+            PrivilegeSweepItemExecutionResult(SweepAttemptOutcome.FAILED, false, reason)
+        }))
+        val completed = requireNotNull(store.load(request))
+        assertEquals(StoredSweepTerminal.FAILED, completed.terminalState)
+        assertTrue(completed.targetSnapshots.all { it.resultCode?.value == reason.name })
+    }
 
     @Test fun `load failure settles unstarted owned request to explicit retry block`() = runBlocking {
         val request = create()
@@ -159,9 +169,8 @@ class RoomPrivilegeSweepDrainRuntimeTest {
 
         val completed = requireNotNull(store.load(request))
         assertEquals(listOf(true, false), completed.targetSnapshots.map { it.rootLaneDegraded })
-        val fresh = DefaultRootLaneStatusSource()
         val cancellation = PrivilegeSweepCancellationCoordinator({ PrivilegeSweepCancellationDecision.NotFound }, { false }, { ServiceStartResult.AlreadyRunning }, {})
-        val controller = DefaultPrivilegeSweepController(store, clock, gate, PrivilegeQueueWakeSignal { ServiceStartResult.AlreadyRunning }, SweepQueueCanceller(cancellation), fresh)
+        val controller = DefaultPrivilegeSweepController(store, clock, gate, PrivilegeQueueWakeSignal { ServiceStartResult.AlreadyRunning }, SweepQueueCanceller(cancellation))
         assertTrue(requireNotNull(controller.observe(request).first()).rootLaneDegraded)
     }
 

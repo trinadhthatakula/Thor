@@ -1,0 +1,11 @@
+Major backend improvements for root operations
+Initial support for Android 16
+New filters: filter apps by state or installation source
+Sorting options: sort apps by name, install date, last updated, version, etc.,
+Removed integrity checks, downloadable fonts, and unused dependencies
+Added new grid view for app lists
+Switched to Material Expressive Theme
+Frozen app icons are now greyed out
+
+Bug Fixes:
+Fixed system app uninstaller bug; system apps can now be uninstalled individually

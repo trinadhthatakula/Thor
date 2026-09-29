@@ -209,6 +209,21 @@ class ActiveGatewayResolverTest {
         assertEquals(2, rootCalls)
     }
 
+    @Test
+    fun `failed root probe does not attribute root fallback to Shizuku work`() = runTest {
+        val execution = PrivilegeExecutionContext(lane = PrivilegeExecutionLane.SWEEP)
+        val resolver = resolver(
+            root = { probe ->
+                probe.provenance.recordDegradedRootFallback()
+                false
+            },
+            shizuku = { true },
+        )
+
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve(execution).getOrThrow())
+        assertEquals(false, execution.provenance.usedDegradedRootFallback)
+    }
+
     private fun resolver(
         preferred: suspend () -> PrivilegeMode? = { null },
         root: suspend (PrivilegeExecutionContext) -> Boolean = { true },
@@ -233,7 +248,7 @@ class ActiveGatewayResolverTest {
         private var active = 0
 
         suspend fun probe(execution: PrivilegeExecutionContext): Boolean {
-            assertSame(EXECUTION, execution)
+            assertEquals(EXECUTION, execution)
             calls++
             active++
             maximumConcurrent = maxOf(maximumConcurrent, active)

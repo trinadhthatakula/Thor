@@ -93,21 +93,23 @@ itself refuses. If a track label ever gets longer, this default moves with it;
 
 ```
 release-notes/v<version>/
-├── playstore.txt ──┬─→ Google Play  "What's new"      (fastlane supply, via Fastfile)
+├── playstore.txt ──┬─→ Google Play  "What's new"      (en-GB primary, via Fastfile)
 │                   ├─→ F-Droid      fastlane/metadata/android/en-US/changelogs/<versionCode>.txt
 │                   └─→ Shizu Store  shizu_store.json → .changelog
 ├── telegram.md ──────→ Telegram broadcast             (sendDocument *caption*)
 └── github.md ────────→ GitHub Release body
 ```
 
-**`playstore.txt` is the single source for three channels.** The `fastlane/` copy must stay
-byte-identical; the decoded Shizu `.changelog` must match apart from trailing newlines. Each
-consumer reads its own copy: F-Droid reads `fastlane/`, the Shizu store reads `shizu_store.json`.
+**`playstore.txt` is the single source for three channels.** The `en-US` and `en-GB` Fastlane
+copies must stay byte-identical; the decoded Shizu `.changelog` must match apart from trailing
+newlines. Each consumer reads its own copy: F-Droid reads `fastlane/`, the Shizu store reads
+`shizu_store.json`.
 Write the text once, then propagate it (Step 5).
 
-`.github/scripts/test/test-changelog-content.sh` checks retained source/en-US pairs and requires
-the current version's canonical copy. This catches first-line truncation that a non-empty-file
-check misses. It also exercises the actual Fastfile copy with multiple bullets and blank lines.
+`.github/scripts/test/test-changelog-content.sh` checks retained source/en-US and source/en-GB
+pairs and requires the current version's canonical copies. This catches first-line truncation that
+a non-empty-file check misses. It also exercises the actual Fastfile copy with multiple bullets and
+blank lines.
 `test-shizu-changelog-roundtrip.sh` runs the actual Shizu sync in an isolated fixture, verifying
 all lines survive JSON encoding, including quotes and literal backslashes.
 
@@ -279,29 +281,37 @@ should never be told about dependency bumps or documentation.
 release-notes/v<version>/{playstore.txt,telegram.md,github.md}
 ```
 
-### Step 5 — Propagate `playstore.txt` to the other two channels
+### Step 5 — Propagate `playstore.txt` to Fastlane locales
 ```bash
-cp release-notes/v<version>/playstore.txt \
-   fastlane/metadata/android/en-US/changelogs/<versionCode>.txt   # F-Droid + Play
+for locale in en-US en-GB; do
+  cp release-notes/v<version>/playstore.txt \
+     "fastlane/metadata/android/$locale/changelogs/<versionCode>.txt"
+done
+# en-GB is Play's primary listing; en-US remains F-Droid's English changelog.
+# Shizu syncs directly from playstore.txt after production promotion.
 
-# EVERY locale needs the file, not just en-US
+# EVERY locale needs the file, not just the two English listings
 for d in fastlane/metadata/android/*/; do
   [ -f "$d/changelogs/<versionCode>.txt" ] ||
     cp release-notes/v<version>/playstore.txt "$d/changelogs/<versionCode>.txt"
 done
 ```
 
-⚠️ **`en-US` alone is not enough.** supply enumerates locales from the metadata directory and
-emits an *empty* what's-new for any locale with no file for this code — it blanks those users'
+The release lanes upload these changelogs but skip Play listing titles and descriptions. The
+`en-GB` listing text in this repository mirrors `en-US`; copying it does not rewrite the live Play
+listing.
+
+⚠️ **The two English files alone are not enough.** supply enumerates locales from the metadata
+directory and emits an *empty* what's-new for any locale with no file for this code — it blanks those users'
 release notes rather than leaving the previous one standing. `test-changelog-locale-parity.sh`
 enforces this, and `pr-ci.yml` runs it on every PR, so a missing locale is a red check on the
 release PR rather than a store regression found later.
 
 Translate if you can; if you cannot, English is the correct placeholder — a translated release
 would still beat a blank one, and a blank one is the failure mode this prevents. A translation
-added later is safe: `copy_playstore_notes` in `fastlane/Fastfile` overwrites `en-US` only and
-skips any other locale whose file is already non-empty, so neither the dev upload nor production
-promotion overwrites a contributed translation with English. Both use whole-file copying and
+added later is safe: `copy_playstore_notes` in `fastlane/Fastfile` overwrites `en-US` and `en-GB`
+but skips any other locale whose file is already non-empty, so neither the dev upload nor
+production promotion overwrites a contributed translation with English. Both use whole-file copying and
 stop before publishing if copying fails. Copy the complete file when preparing release artifacts;
 a first-line read or single-line environment assignment loses every bullet after the first newline.
 
@@ -349,6 +359,7 @@ says "different" is the expected state, not a defect.
 
 # Fastlane matches the version being prepared; Shizu matches published production
 diff release-notes/v<version>/playstore.txt fastlane/metadata/android/en-US/changelogs/<versionCode>.txt
+diff release-notes/v<version>/playstore.txt fastlane/metadata/android/en-GB/changelogs/<versionCode>.txt
 .github/scripts/check-shizu-manifest.sh                 # add --network for the URL tier
 
 # what pr-ci.yml will run — includes the locale-parity gate from Step 5
@@ -362,8 +373,8 @@ git add release-notes/v<version>/ \
         shizu_store.json gradle.properties
 ```
 
-The `*/` is deliberate — staging only `en-US` is how a locale goes missing. Never `git add -A`:
-`docs/audit/` is untracked on purpose and must stay that way.
+The `*/` is deliberate — staging only one English locale is how a locale goes missing. Never
+`git add -A`: `docs/audit/` is untracked on purpose and must stay that way.
 
 ---
 

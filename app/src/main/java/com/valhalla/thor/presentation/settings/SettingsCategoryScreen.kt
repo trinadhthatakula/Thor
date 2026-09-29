@@ -120,6 +120,7 @@ fun SettingsCategoryScreen(
 
     var showLanguageSheet by remember { mutableStateOf(false) }
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
+    var showRemovalFallbackConfirmation by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
     var showPassphrase by remember { mutableStateOf(false) }
 
@@ -179,6 +180,25 @@ fun SettingsCategoryScreen(
     // the second caller it was extracted for. `deepLinkWhenBlocked = true` because the user tapped
     // this row: doing nothing here would leave a switch that snaps back with no explanation.
     val notifications = rememberNotificationPermissionRequest(deepLinkWhenBlocked = true)
+
+    if (showRemovalFallbackConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showRemovalFallbackConfirmation = false },
+            title = { Text(stringResource(R.string.system_app_removal_fallback)) },
+            text = { Text(stringResource(R.string.system_app_removal_fallback_desc)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setAllowSystemAppRemovalFallback(true)
+                    showRemovalFallbackConfirmation = false
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemovalFallbackConfirmation = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
 
     if (showUnfreezeConfirmation) {
         AlertDialog(
@@ -423,6 +443,18 @@ fun SettingsCategoryScreen(
                                 if (it) FreezerMode.SUSPEND else FreezerMode.FREEZE
                             )
                         }
+                    )
+
+                    SettingsRowId.SYSTEM_APP_REMOVAL_FALLBACK -> SettingsExpandedSwitchRow(
+                        icon = R.drawable.danger,
+                        title = stringResource(R.string.system_app_removal_fallback),
+                        subtitle = stringResource(R.string.system_app_removal_fallback_desc),
+                        checked = prefs.allowSystemAppRemovalFallback,
+                        highlighted = lit,
+                        onCheckedChange = { enabled ->
+                            if (enabled) showRemovalFallbackConfirmation = true
+                            else viewModel.setAllowSystemAppRemovalFallback(false)
+                        },
                     )
 
                     SettingsRowId.SKIP_ROUTINE_FREEZE_CONFIRMATION -> SettingsExpandedSwitchRow(

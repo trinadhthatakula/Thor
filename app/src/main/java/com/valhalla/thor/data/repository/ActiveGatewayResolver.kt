@@ -30,7 +30,11 @@ internal class ActiveGatewayResolver(
     private var cached: CacheEntry? = null
 
     suspend fun isRootAvailable(execution: PrivilegeExecutionContext): Boolean =
-        rootProbeMutex.withLock { rootAvailable(execution) }
+        rootProbeMutex.withLock {
+            // A capability probe may try an unavailable root lane before selecting Shizuku.
+            // Keep its provenance separate from the actual task's commands.
+            rootAvailable(execution.copy())
+        }
 
     suspend fun resolve(execution: PrivilegeExecutionContext): Result<PrivilegeMode> {
         freshCachedMode()?.let { return Result.success(it) }

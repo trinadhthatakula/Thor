@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -310,7 +312,7 @@ fun ExtensionManagerScreen(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExtensionConsentSheet(
+internal fun ExtensionConsentSheet(
     onConsent: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -333,6 +335,7 @@ private fun ExtensionConsentSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)

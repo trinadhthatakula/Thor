@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -120,23 +121,26 @@ internal val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
  * empty, it switched off the one affordance built to rebuild that watchlist, silently. See
  * `docs/follow-ups/restored-prompt-flag-suppresses-watchlist-recovery.md`.
  *
- * A user *setting* does not belong here, however local it feels — settings are what the backup is
- * for.
+ * The system-app removal fallback preference is device-local because ROM restrictions differ.
+ * An absent key uses the product default; an explicit false remains false across app updates.
  *
  * Corruption-handled for the same reason as [dataStore]: this file cannot arrive corrupted from a
  * restore, but an interrupted write or a bad block can still leave it unreadable, and the default
- * handler would then rethrow forever. No equivalent of [settingsFileReplaced] here — the one flag
- * this file holds falls back to "we have not offered yet", which re-offers the recovery prompt
- * rather than withholding anything.
+ * handler would then rethrow forever. Recovery disables removal persistently because the lost
+ * choice may have been an opt-out, and re-offers the recovery prompt.
  */
 // internal, not private — reached from another class here; see SyntheticAccessor in app/lint.xml.
 internal val Context.localState: DataStore<Preferences> by preferencesDataStore(
     name = LOCAL_STORE,
     corruptionHandler = ReplaceFileCorruptionHandler {
-        Logger.e(TAG, "$LOCAL_STORE was unreadable; replacing it with an empty file", it)
-        emptyPreferences()
+        Logger.e(TAG, "$LOCAL_STORE was unreadable; resetting with removal disabled", it)
+        recoveredLocalPreferences()
     }
 )
+
+/** Persist a safe choice after corruption so a later process cannot re-enable removal. */
+internal fun recoveredLocalPreferences(): Preferences =
+    preferencesOf(LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK to false)
 
 @Single(binds = [PreferenceRepository::class])
 class PreferenceRepositoryImpl(
@@ -226,6 +230,7 @@ class PreferenceRepositoryImpl(
 
     /** Keys in [localState] — see that store's doc for what earns a place here. */
     internal object LocalKeys {
+        val ALLOW_SYSTEM_APP_REMOVAL_FALLBACK = booleanPreferencesKey("allow_system_app_removal_fallback")
         /** "We have already offered to import the frozen apps we found." A fact about the watchlist. */
         val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
     }
@@ -351,6 +356,12 @@ class PreferenceRepositoryImpl(
     override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             it[Keys.ADD_FREEZER_TO_LAUNCHER] = enabled
+        }
+    }
+
+    override suspend fun setAllowSystemAppRemovalFallback(enabled: Boolean) {
+        context.localState.guardedWrite(LOCAL_STORE) {
+            it[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK] = enabled
         }
     }
 
@@ -584,7 +595,10 @@ internal fun userPreferencesFlow(
         settings.guardedRead("thor_preferences"),
         local.guardedRead("thor_local_state")
     ) { prefs, localPrefs ->
-        prefs.preferences.toUserPreferences(localPrefs.preferences)
+        prefs.preferences.toUserPreferences(
+            local = localPrefs.preferences,
+            localStateDegraded = localPrefs.degraded
+        )
             .copy(settingsLost = prefs.degraded || settingsReplaced.value)
     }
 
@@ -692,7 +706,8 @@ internal suspend fun DataStore<Preferences>.guardedWrite(
  * caller that only cares about settings need not conjure one.
  */
 internal fun Preferences.toUserPreferences(
-    local: Preferences = emptyPreferences()
+    local: Preferences = emptyPreferences(),
+    localStateDegraded: Boolean = false
 ): UserPreferences {
     val prefs = this
 
@@ -758,8 +773,11 @@ internal fun Preferences.toUserPreferences(
         autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
         freezerMode = freezerMode,
         addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
+        // Only a healthy absent key uses the default; an unreadable choice cannot authorize removal.
+        allowSystemAppRemovalFallback = !localStateDegraded &&
+            (local[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK] ?: true),
         // Defaults to false: an unreadable settings file must not silently stop asking before a
-        // system freeze. Same fail-closed reading as every other flag on this snapshot.
+        // system freeze.
         skipRoutineFreezeConfirmation =
             prefs[Keys.SKIP_ROUTINE_FREEZE_CONFIRMATION] ?: false,
         // From `local`, never from `prefs`: a `true` in the settings file is either a pre-1.93

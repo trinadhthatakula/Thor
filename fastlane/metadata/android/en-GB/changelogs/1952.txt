@@ -1,0 +1,9 @@
+• 🧩 Per-component control: open, force-open, stop or disable individual activities, services, receivers and providers from App Info. Needs root or a root-mode Shizuku.
+
+• ↩️ Restore all puts every component Thor disabled back the way it shipped.
+
+• 🔧 Silent install on Shizuku and Dhizuku no longer falls through to the system installer dialog.
+
+• ❄️ A failed Freezer watchlist write no longer closes the app.
+
+• 💬 Error messages show the real reason instead of a class name.

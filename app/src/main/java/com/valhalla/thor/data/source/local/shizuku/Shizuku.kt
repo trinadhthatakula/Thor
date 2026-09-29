@@ -427,7 +427,8 @@ object Shizuku {
             } else {
                 "pm enable --user $userId $escapedPackage"
             }
-            val (code, output) = execute(command)
+            val (code, output) = executeCombined(command)
+            if (code != 0) Logger.e("Shizuku", "$command exited $code: $output")
             shellRungResult(code, output)
         }
 
@@ -1360,8 +1361,11 @@ object Shizuku {
         return try {
             // Escape the package identifier before interpolating it (#40).
             val escapedPackage = packageName.escapeForShell()
-            execute("pm install-existing --user $thorUserId $escapedPackage").first == 0
-        } catch (_: Exception) {
+            val (code, output) = executeCombined("pm install-existing --user $thorUserId $escapedPackage")
+            if (code != 0) Logger.e("Shizuku", "install-existing($packageName) exited $code: $output")
+            code == 0
+        } catch (failure: Exception) {
+            Logger.e("Shizuku", "install-existing($packageName) failed", failure)
             false
         }
     }
@@ -1375,8 +1379,8 @@ object Shizuku {
      * `am` writes "Starting: Intent { … }" to stdout and the permission denial to stderr, so this
      * function returns the echo and drops the reason.
      */
-    fun execute(command: String, root: Boolean = isRoot): Pair<Int, String?> =
-        executeStreams(command, root).let { (code, out, err) -> code to out.ifBlank { err } }
+    fun execute(command: String): Pair<Int, String?> =
+        executeStreams(command).let { (code, out, err) -> code to out.ifBlank { err } }
 
     /**
      * The exit code and **both** streams, stdout first, blank ones dropped.
@@ -1385,8 +1389,8 @@ object Shizuku {
      * carries a content-free echo of the intent. See [execute] for why that one cannot simply be
      * changed to do this: its stdout-or-stderr contract is what every other caller reads.
      */
-    fun executeCombined(command: String, root: Boolean = isRoot): Pair<Int, String> =
-        executeStreams(command, root).let { (code, out, err) ->
+    fun executeCombined(command: String): Pair<Int, String> =
+        executeStreams(command).let { (code, out, err) ->
             code to sequenceOf(out, err).filter { it.isNotBlank() }.joinToString("\n") { it.trim() }
         }
 
@@ -1396,11 +1400,12 @@ object Shizuku {
      */
     private fun executeStreams(
         command: String,
-        root: Boolean,
     ): Triple<Int, String, String> = runCatching {
         val binder = Shizuku.getBinder() ?: return Triple(-1, "", "Shizuku binder is null")
         IShizukuService.Stub.asInterface(binder)
-            .newProcess(arrayOf(if (root) "su" else "sh"), null, null)
+            // The child already inherits the Shizuku server's uid (shell or root).
+            // A nested su is unnecessary and fails when the root manager hides that binary.
+            .newProcess(arrayOf("sh"), null, null)
             .run {
                 // Volatile via AtomicReference: the reader threads publish into these, and the
                 // timeout path may read them after a join() that timed out (no happens-before),

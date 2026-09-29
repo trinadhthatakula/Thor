@@ -59,6 +59,7 @@
     <string name="system_default">Domyślny systemu</string>
     <string name="english">Angielski</string>
     <string name="chinese">Chiński</string>
+    <string name="japanese">Japoński</string>
     <string name="french">Francuski</string>
     <string name="spanish">Hiszpański</string>
     <string name="arabic">Arabski</string>
@@ -133,6 +134,8 @@
     <string name="view_mode">Tryb widoku</string>
     <string name="grid">Siatka</string>
     <string name="list">Lista</string>
+    <string name="scrollbar_scroll_apps">Przewiń listę aplikacji</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d z %3$d</string>
     <string name="order">Kolejność:</string>
     <string name="ascending">Rosnąco</string>
     <string name="descending">Malejąco</string>
@@ -1055,4 +1058,7 @@
     <string name="profile_removal_write_failed">Nie udało się zapisać zmian profilu. Spróbuj ponownie.</string>
     <string name="profile_removal_profile_changed">Ten profil nie jest już dostępny. Nie zapisano żadnych zmian.</string>
     <string name="profile_removal_state_unknown">Stan niedostępny</string>
+    <string name="unfreeze_system_app_failed">Nie udało się odmrozić %1$s za pomocą Shizuku. Przywracanie lub włączanie aplikacji nie powiodło się. Sprawdź odpowiedź urządzenia w dziennikach diagnostycznych.</string>
+    <string name="system_app_removal_fallback">Usuwanie aplikacji systemowych jako metoda zastępcza</string>
+    <string name="system_app_removal_fallback_desc">Jeśli system odmówi Shizuku wyłączenia aplikacji systemowej, zezwól na usunięcie jej dla bieżącego użytkownika Androida z zachowaniem plików danych. Konta zarządzane przez aplikację mogą zostać utracone. Dotyczy zamrażania ręcznego i automatycznego. Odmrożenie ponownie instaluje aplikację. To ustawienie dotyczy tylko tego urządzenia.</string>
 </resources>

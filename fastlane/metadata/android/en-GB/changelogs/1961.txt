@@ -1,0 +1,9 @@
+• 🛠️ Bug fixes and groundwork for the full customization update in 1.97.0.
+
+• ❄️ Dhizuku freeze/unfreeze keeps apps and data, with clearer action limits.
+
+• 📦 More reliable Dhizuku installs, app removal and data clearing.
+
+• 🗂️ Add selected apps to Freezer profiles, see memberships and choose how to recover frozen apps when removing them.
+
+• 🎛️ Reorder or hide multi-app actions in App list and Freezer, with separate saved layouts for each.

@@ -1,9 +1,9 @@
 # Legacy target-SDK installation (TG-001)
 
 Status: merged into `dev` via [PR #464](https://github.com/trinadhthatakula/Thor/pull/464)
-(`50dd13c3`, 2026-09-10). The maintainer confirmed successful legacy APK installation on a physical
-device through Root. The remaining device matrix and Store-policy review stay open; this record
-does not establish a release.
+(`50dd13c3`, 2026-09-10) and released in v1.96.0. The maintainer confirmed successful legacy APK
+installation on a physical device through Root. The remaining device matrix and Store-policy review
+are additional acceptance checks; this record does not establish their completion.
 Baseline: `dev` at `504e3418`, 2026-09-09.
 
 ## Request and boundaries
