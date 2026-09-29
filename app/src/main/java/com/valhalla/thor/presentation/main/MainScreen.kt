@@ -1009,8 +1009,15 @@ fun MainScreen(
                             },
                             onBrowse = {
                                 currentBackStack.add(ThorRoute.ExtensionBrowse)
-                            }
+                            },
+                            onSettingsEditor = { currentBackStack.add(ThorRoute.SettingsEditor) }
                         )
+                    }
+
+                    entry<ThorRoute.SettingsEditor>(metadata = ListDetailSceneStrategy.detailPane()) {
+                        com.valhalla.thor.presentation.settingseditor.SettingsEditorScreen(onBack = {
+                            if (currentBackStack.size > 1) currentBackStack.removeLastOrNull()
+                        })
                     }
 
                     entry<ThorRoute.ExtensionBrowse>(

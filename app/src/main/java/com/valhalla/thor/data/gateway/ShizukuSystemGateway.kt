@@ -93,7 +93,7 @@ class ShizukuSystemGateway internal constructor(
     ): Result<Pair<Int, String?>> {
         // Runs through Shizuku's privileged process (shell uid), same path as in-app actions.
         return try {
-            Result.success(ShizukuHelper.execute(command))
+            Result.success(if (execution.commandClass.value.startsWith("settings_editor.")) ShizukuHelper.executePrivate(command) else ShizukuHelper.execute(command))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {

@@ -6,6 +6,12 @@ feature-request roadmap, and the standing promises in the project `README.md`. T
 acceptance, and new work. Older ranked tables below preserve the decisions and evidence available
 when they were written; they are not a current release gate.
 
+## New follow-ups (2026-09-30)
+
+| Work | Status | Scope |
+| --- | --- | --- |
+| [App preference editor](app-preference-editor.md) | Deferred by maintainer; not implemented | Edit the selected app's own preference files from app details surfaces. Separate from the global Sett Edit extension in #504; provider access and supported formats need assessment. |
+
 **Historical tiers.** `0/1` meant being built · `2` approved, not scheduled · `3` filed, decision still open ·
 *declined* ruled out, do not re-raise. Where a row also carries a roadmap colour (🟢 do-first ·
 🟡 scope carefully · 🔴 defer), that colour is the roadmap's own verdict, not a second opinion.
