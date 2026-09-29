@@ -16,6 +16,9 @@ sealed interface ThorRoute : NavKey {
     data object Apps : ThorRoute
 
     @Serializable
+    data object SuspendedApps : ThorRoute
+
+    @Serializable
     data object Freezer : ThorRoute
 
     @Serializable

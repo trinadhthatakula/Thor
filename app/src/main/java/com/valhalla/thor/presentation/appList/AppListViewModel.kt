@@ -90,6 +90,8 @@ data class AppListUiState(
     // Freezer membership (the watchlist), not freeze state: an app can be frozen without being in
     // the freezer and vice versa. Drives the sheet's "Add to / Remove from Freezer" action.
     val freezerPackageNames: Set<String> = emptySet(),
+    // A dedicated session view; it never changes the persisted Apps filter.
+    val suspendedOnly: Boolean = false,
     // Filter State
     val appListType: AppListType = AppListType.USER,
     val filterType: FilterType = FilterType.Source,
@@ -210,8 +212,8 @@ class AppListViewModel(
         val mergedState = state.copy(
             sortBy = prefs.appSortBy,
             sortOrder = prefs.appSortOrder,
-            filterType = prefs.appFilterType,
-            selectedFilter = prefs.appSelectedFilter,
+            filterType = if (state.suspendedOnly) FilterType.State else prefs.appFilterType,
+            selectedFilter = if (state.suspendedOnly) "Suspended" else prefs.appSelectedFilter,
             isGrid = prefs.appListIsGrid,
             gridDensity = prefs.appGridDensity,
             multiActionsOrder = prefs.appListMultiActionsOrder,
@@ -907,6 +909,10 @@ class AppListViewModel(
         }
     }
 
+    fun showSuspendedApps() {
+        _rawState.update { it.copy(suspendedOnly = true) }
+    }
+
     fun clearSelection() {
         _rawState.update { it.copy(selectedAppDetails = null) }
     }
@@ -1044,8 +1050,11 @@ class AppListViewModel(
 
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
-        val rawList =
-            if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
+        val rawList = when {
+            state.suspendedOnly -> state.allUserApps + state.allSystemApps
+            state.appListType == AppListType.USER -> state.allUserApps
+            else -> state.allSystemApps
+        }
 
         // 2. Filter by Search Query (Early out for performance)
         val searched = if (state.searchQuery.isBlank()) {

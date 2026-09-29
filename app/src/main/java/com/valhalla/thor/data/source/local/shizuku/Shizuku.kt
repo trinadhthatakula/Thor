@@ -657,7 +657,14 @@ object Shizuku {
 
         // The post-read is the only evidence that counts; see firstRungThatSticks, whose types are
         // named for their first caller (the enable/disable chain) rather than for that chain alone.
-        val outcome = firstRungThatSticks(listOf(shellRung, reflectionRung)) {
+        // pm suspend has no Unpause option. On Android 11+ install the dialog through Binder
+        // first; keep shell as a compatibility fallback when an OEM rejects the reflection call.
+        val rungs = if (suspended && sdkInt >= android.os.Build.VERSION_CODES.R) {
+            listOf(reflectionRung, shellRung)
+        } else {
+            listOf(shellRung, reflectionRung)
+        }
+        val outcome = firstRungThatSticks(rungs) {
             reachedSuspendState(pkgs, packageName, escapedPackage, userId, suspended)
         }
         if (outcome.winner != null) {
@@ -810,7 +817,10 @@ object Shizuku {
     ) {
         val pm = asInterface("android.content.pm.IPackageManager", "package")
         val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
-        val dialogInfo = if (suspended) buildSuspendDialogInfo(context) else null
+        val dialogInfo = if (suspended) com.valhalla.thor.data.source.local.buildSuspendDialogInfo(
+            context.getString(com.valhalla.thor.R.string.suspended_app_dialog_message),
+            context.getString(com.valhalla.thor.R.string.suspended_app_dialog_title),
+        ) else null
         val targets = arrayOf(packageName)
 
         val stringArrayType = Array<String>::class.java
@@ -819,93 +829,31 @@ object Shizuku {
         val bundleType = android.os.PersistableBundle::class.java
         val stringType = String::class.java
 
-        // API 35+ — 9 args.
-        try {
-            Bypass.invoke<Any?>(
-                pm.javaClass,
-                pm,
-                "setPackagesSuspendedAsUser",
-                arrayOf(
-                    stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
-                    intType, stringType, intType, intType
-                ),
-                targets, suspended, null, null, dialogInfo, 0, caller, userId, userId
-            )
-            return
-        } catch (_: NoSuchMethodException) {
-            // Older platform; fall through.
-        }
-
-        // API 33-34 — 8 args.
-        try {
-            Bypass.invoke<Any?>(
-                pm.javaClass,
-                pm,
-                "setPackagesSuspendedAsUser",
-                arrayOf(
-                    stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
-                    intType, stringType, intType
-                ),
-                targets, suspended, null, null, dialogInfo, 0, caller, userId
-            )
-            return
-        } catch (_: NoSuchMethodException) {
-            // Older platform; fall through.
-        }
-
-        // API 29-32 — 7 args. Uncaught on purpose: there is no overload left to try, so a
-        // NoSuchMethodException here is real news and belongs to the caller's log line.
-        Bypass.invoke<Any?>(
-            pm.javaClass,
-            pm,
-            "setPackagesSuspendedAsUser",
-            arrayOf(
-                stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
-                stringType, intType
-            ),
-            targets, suspended, null, null, dialogInfo, caller, userId
+        // Look up signatures with normal reflection. Passing an absent overload to Bypass.invoke
+        // enters Unsafe method enumeration, which crashes ART on some older platforms. Thor's
+        // package-manager hidden API exemptions are already installed at application startup.
+        val signatures = listOf(
+            arrayOf(stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
+                intType, stringType, intType, intType) to
+                arrayOf(targets, suspended, null, null, dialogInfo, 0, caller, userId, userId),
+            arrayOf(stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
+                intType, stringType, intType) to
+                arrayOf(targets, suspended, null, null, dialogInfo, 0, caller, userId),
+            arrayOf(stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
+                stringType, intType) to
+                arrayOf(targets, suspended, null, null, dialogInfo, caller, userId),
         )
-    }
-
-    /**
-     * The custom pause dialog, or null when this platform will not build one.
-     *
-     * Null is a supported argument — the system falls back to its own generic dialog — so a failure
-     * here must never fail the suspend itself. It is logged rather than swallowed all the same,
-     * because a silently-null dialogInfo is invisible until a user asks why the dialog is generic.
-     *
-     * The overloads are picky and the wrong one throws `NoSuchMethodException` for the whole
-     * builder: `setMessage(String)` exists from API 29, `setTitle(String)` only from API 31 — asking
-     * for `setTitle` on 29 or 30 used to take the entire reflection rung down with it. The
-     * `@StringRes int` overloads are deliberately not used even though they go back to 29: the
-     * dialog is rendered by the system's `SuspendedAppActivity` against the *suspending* package's
-     * resources, which for a shell-uid Shizuku is `com.android.shell` — Thor's resource ids mean
-     * nothing there.
-     */
-    @SuppressLint("PrivateApi")
-    private fun buildSuspendDialogInfo(context: Context): Any? = runCatching {
-        val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
-        val builder = Bypass.newInstance<Any>(builderClass)
-        Bypass.invoke<Any?>(
-            builderClass,
-            builder,
-            "setMessage",
-            arrayOf(String::class.java),
-            context.getString(com.valhalla.thor.R.string.suspended_app_dialog_message)
-        )
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            Bypass.invoke<Any?>(
-                builderClass,
-                builder,
-                "setTitle",
-                arrayOf(String::class.java),
-                context.getString(com.valhalla.thor.R.string.suspended_app_dialog_title)
-            )
+        for ((types, args) in signatures) {
+            val method = try {
+                pm.javaClass.getDeclaredMethod("setPackagesSuspendedAsUser", *types)
+            } catch (_: NoSuchMethodException) {
+                continue
+            }
+            method.isAccessible = true
+            method.invoke(pm, *args)
+            return
         }
-        Bypass.invoke<Any>(builderClass, builder, "build")
-    }.getOrElse { e ->
-        Logger.e("Shizuku", "SuspendDialogInfo.Builder failed; suspending without a custom dialog", e)
-        null
+        throw NoSuchMethodException("setPackagesSuspendedAsUser on ${pm.javaClass.name}")
     }
 
     /**

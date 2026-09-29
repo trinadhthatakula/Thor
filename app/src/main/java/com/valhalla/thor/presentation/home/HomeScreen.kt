@@ -61,6 +61,7 @@ import org.koin.androidx.compose.koinViewModel
 fun HomeScreen(
     onNavigateToApps: () -> Unit,
     onNavigateToFreezer: () -> Unit,
+    onNavigateToSuspendedApps: () -> Unit,
     onNavigateToQueue: () -> Unit,
     onReinstallAll: () -> Unit,
     /**
@@ -168,7 +169,7 @@ fun HomeScreen(
                         suspendedCount = state.suspendedAppCount,
                         onActiveClick = onNavigateToApps,
                         onFrozenClick = onNavigateToFreezer,
-                        onSuspendedClick = onNavigateToFreezer,
+                        onSuspendedClick = onNavigateToSuspendedApps,
                         modifier = Modifier.padding(horizontal = 0.dp)
                     )
 
@@ -249,7 +250,7 @@ fun HomeScreen(
                 suspendedCount = state.suspendedAppCount,
                 onActiveClick = onNavigateToApps,
                 onFrozenClick = onNavigateToFreezer,
-                onSuspendedClick = onNavigateToFreezer,
+                onSuspendedClick = onNavigateToSuspendedApps,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
 

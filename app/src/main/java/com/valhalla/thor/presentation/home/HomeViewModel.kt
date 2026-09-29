@@ -282,7 +282,8 @@ class HomeViewModel(
 
         val activeCount = filteredApps.count { it.enabled && !it.isSuspended }
         val frozenCount = filteredApps.count { !it.enabled }
-        val suspendedCount = filteredApps.count { it.isSuspended && it.enabled }
+        // Suspended opens a combined list, so its count must include both sources too.
+        val suspendedCount = (userApps + systemApps).count { it.isSuspended }
 
         // The badge on the Fix Store card counts exactly what the picker will list — same predicate,
         // one definition. It had its own copy before, which knew nothing of AOSP's package
