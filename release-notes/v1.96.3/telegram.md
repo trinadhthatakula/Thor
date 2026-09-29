@@ -4,4 +4,6 @@
 
 • 🛠️ **Clearer results:** improved freeze/restore errors and removal of unrelated root warnings from Shizuku tasks.
 
+• 📜 **Small-screen fix:** scroll through Extensions confirmation to reach its answer and buttons, including in landscape.
+
 • 🛡️ **Also new since 1.96.1:** App Ops controls with verified changes, draggable Apps and Freezer scrollbars, and Japanese support.

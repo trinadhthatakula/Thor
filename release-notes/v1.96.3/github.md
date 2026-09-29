@@ -3,6 +3,8 @@
 Version **1.96.3 (1963)** is a hotfix for Shizuku system-app freezing on affected devices,
 including Xiaomi builds that refuse disabling a system app for the current Android user.
 It restores the removal fallback with a persistent opt-out and improves freeze/restore diagnostics.
+It also makes the Extensions confirmation sheet scrollable on small screens and in landscape
+([issue #518](https://github.com/trinadhthatakula/Thor/issues/518)).
 
 These public release notes include all changes since
 [v1.96.1](https://github.com/trinadhthatakula/Thor/releases/tag/v1.96.1) through `7994cf40`,
@@ -21,6 +23,8 @@ reconciles dependency updates already merged to the beta branch.
 - ⚠️ **Understand the fallback.** It retains the app's data files, but app-managed accounts
   may be lost. It applies to manual and automatic freezes. Turning the option back on after
   opting out requires confirmation.
+- 📜 **Reach the Extensions confirmation controls.** The warning, answer field and buttons
+  scroll together when the screen is too short to display them all, including in landscape.
 - 🛡️ **App Ops in Permission Manager.** Inspect Android operations and change supported
   package or UID modes with Root or Shizuku. Thor reads changes back before confirming them.
 - ↕️ **Draggable scrollbars** help navigate long Apps and Freezer lists or grids.
@@ -49,6 +53,15 @@ reconciles dependency updates already merged to the beta branch.
   mark Shizuku tasks as degraded; task warnings follow commands actually executed for that target.
 - Shizuku launches `sh` for either server identity, allowing the child process to inherit the
   server UID without an unnecessary nested `su` dependency.
+
+### 📜 Extensions confirmation on small screens
+
+[PR #523](https://github.com/trinadhthatakula/Thor/pull/523), addressing
+[issue #518](https://github.com/trinadhthatakula/Thor/issues/518) (`a1d522bf`):
+
+- The Extensions acknowledgement sheet now scrolls vertically, so its warning, answer field,
+  Accept button and Cancel control remain reachable in short windows and landscape.
+- The arithmetic confirmation and saved consent behavior are unchanged.
 
 ### 🛡️ App Ops in Permission Manager
 
@@ -114,11 +127,19 @@ reconciles dependency updates already merged to the beta branch.
 ## 🧪 Validation scope and remaining device checks
 
 For release preparation, `./gradlew test lintFossDebug lintStoreRelease` passed on
-Zulu JDK 21.0.12.1: **3,095 unit tests per flavor**, zero failures, errors or skips,
+Zulu JDK 21.0.12.1: **3,098 unit tests per flavor**, zero failures, errors or skips,
 and no lint warnings or errors. The release-note budgets, 13 shell test files, and
 35 release-routing tests also passed. After reconciling the beta branch, the Android gates
 passed again; the website passed all 304 tests and its production build with no diagnostics.
-No additional device checks were run for release preparation.
+The Shizuku hardware checks recorded below were not repeated for release preparation.
+The Extensions regression tests verify scrolling to the answer and controls, incorrect-answer
+rejection and correct-answer acceptance in portrait, landscape and reduced-height viewports.
+On a disposable API 37.2 emulator at 480 × 854 pixels and 240 dpi, the old build reproduced the
+clipped controls. The fix allowed scrolling to both actions in portrait and landscape and
+successful acceptance; the challenge and answer survived rotation. Portrait also worked with
+the keyboard open. In landscape, Gboard left only a 51-pixel viewport, so pressing Done to hide
+the keyboard was needed to fully expose the controls. The reporter's Android 13 Jelly Star has
+not been tested; the reporter has been asked to verify the next build.
 
 The [issue #519 device record](https://github.com/trinadhthatakula/Thor/blob/7994cf40/docs/issues/519-shizuku-freeze.md)
 and PR #521 report these checks for the hotfix:
@@ -181,3 +202,7 @@ Additional beta-branch history reconciled for promotion:
 
 - `6ed949d2` chore(deps): bump devalue
 - `37f97ae6` chore(deps): bump rubyzip in the bundler group across 1 directory
+
+Hotfix added during release preparation:
+
+- `a1d522bf` fix(extensions): make consent sheet scrollable on small screens
