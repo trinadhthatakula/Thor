@@ -1,6 +1,6 @@
 # Sett Edit recovery and execution bounds
 
-Status: follow-up proposals from PR #530 review; not implemented in this PR.
+Status: explicit recovery remains a follow-up. A bridge process deadline is now implemented in PR #530.
 
 ## Verified behavior
 
@@ -15,9 +15,9 @@ Status: follow-up proposals from PR #530 review; not implemented in this PR.
   `a1c6e4ef`. Stream cleanup and process destruction do not establish a bound for every Binder call.
 - Sett Edit uses the Root INTERACTIVE lane. `RootFallbackCoordinator.executeInteractive` calls
   MainShell directly; `MainShellCommandExecutor` drains a submitted callback even on cancellation.
-  No settings-helper execution deadline is enforced on this path. The shell initialization
-  timeout does not bound an already running command. A hung helper can leave the editor busy and
-  occupy the interactive Root lane.
+  The bridge launch now runs under `/system/bin/toybox timeout -s KILL 30`: the watchdog kills
+  and reaps only the helper before Odin drains the job callback and releases the lease. Its getprop
+  child has a separate five-second watchdog so inherited pipes cannot remain open indefinitely.
 
 ## Proposed recovery flow
 
@@ -27,12 +27,13 @@ claiming the original write succeeded. Matching the requested value does not est
 it or whether all side effects completed. A restore must be a separately confirmed mutation with
 fresh conflict checks and the existing before-image journal. Never replay the uncertain command.
 
-## Proposed Root execution bound
+## Remaining execution limits
 
-Assess a dedicated, safely terminable helper/session with a command deadline. Merely wrapping the
-current shared MainShell call in a coroutine timeout cannot guarantee callback drain or release.
-Avoid destroying a shared shell used by unrelated commands. Preserve uncertainty after dispatch,
-even when termination succeeds.
+The process watchdog supplies the current bound without destroying the shared shell or changing
+provider routing. Missing/incompatible Toybox fails the command instead of running it unbounded.
+A nonzero exit leaves dispatched mutation outcomes UNKNOWN. Kernel tasks that cannot respond to
+SIGKILL or a broken shell transport still cannot be promised a strict wall-clock bound.
+[Per-job cancellation in Odin](odin-per-job-cancellation.md) is requested for the next Odin update.
 
 ## Acceptance for future implementation
 

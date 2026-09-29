@@ -110,7 +110,9 @@ public final class SettingsEditorBridge {
     }
     @android.annotation.SuppressLint({"PrivateApi", "BlockedPrivateApi"})
     private static JSONArray properties() throws Exception {
-        java.lang.Process process = new ProcessBuilder("/system/bin/getprop").start();
+        // This is the helper's only child. Bound it separately so it cannot retain Odin's
+        // inherited output pipes after the outer watchdog terminates app_process.
+        java.lang.Process process = new ProcessBuilder("/system/bin/toybox", "timeout", "-s", "KILL", "5", "/system/bin/getprop").start();
         java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
         try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;

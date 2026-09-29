@@ -25,6 +25,12 @@ internal data class SettingsBridgeRequest(val operation: String, val table: Stri
 @Serializable
 internal data class SettingsBridgeResponse(val status: String, val entries: List<SettingEntry>)
 
+/** Kill and reap the helper before the shell job completes; cancellation alone cannot stop Odin. */
+internal fun settingsEditorProcessDeadline(command: String, seconds: Int = 30): String {
+    require(seconds > 0)
+    return "/system/bin/toybox timeout -s KILL $seconds $command"
+}
+
 @Single
 class SettingsEditorRepository(
     context: Context,
@@ -60,7 +66,11 @@ class SettingsEditorRepository(
             }
             private suspend fun execute(request: SettingsBridgeRequest): SettingsBridgeResponse {
                 val payload = Base64.encodeToString(json.encodeToString(request).toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-                val command = "CLASSPATH=${quote(apk)} /system/bin/app_process /system/bin com.valhalla.thor.data.settingseditor.SettingsEditorBridge ${quote(payload)}"
+                // The watchdog owns only this helper, never the shared Odin shell. Odin still
+                // drains its callback before releasing the interactive lease, including on cancel.
+                val command = "CLASSPATH=${quote(apk)} " + settingsEditorProcessDeadline(
+                    "/system/bin/app_process /system/bin com.valhalla.thor.data.settingseditor.SettingsEditorBridge ${quote(payload)}"
+                )
                 val (code, output) = gateway.executeShellCommand(command, execution).getOrThrow()
                 check(code == 0) { "provider_error" }
                 val encoded = output.orEmpty().lineSequence().filter { it.startsWith("THOR_SETTINGS:") }.singleOrNull()?.removePrefix("THOR_SETTINGS:") ?: error("provider_error")

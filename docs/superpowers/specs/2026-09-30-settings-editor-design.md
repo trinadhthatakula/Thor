@@ -152,7 +152,22 @@ The maintainer confirmed Sett Edit is working on 2026-09-30.
 
 Process death or a failed final journal save can leave a PENDING record after a mutation.
 PENDING/UNKNOWN records remain unverified and cannot use guarded undo; inspect the current
-table value before submitting a separate reviewed edit. Root INTERACTIVE execution does not
-enforce a settings-helper deadline, so a hung helper can keep the editor and lane busy.
-Explicit reconciliation and safe execution bounds are recorded in
+table value before submitting a separate reviewed edit. The bridge now has a 30-second Toybox
+SIGKILL watchdog through the existing Root/Shizuku gateway. Its getprop child is bounded to five
+seconds. Root still drains the submitted Odin callback before releasing the interactive lease.
+Explicit reconciliation and remaining execution limits are recorded in
 [follow-ups](../../follow-ups/settings-editor-recovery.md).
+
+## Process deadline validation
+
+The bridge watchdog was exercised with a disposable, test-APK-only stalled app_process.
+On API 30 and API 36 emulators, the existing Odin execution path kept the interactive lease
+until termination and callback drain; the helper PID was gone and subsequent jobs succeeded.
+Cancellation of an already submitted job also drained until the watchdog fired. These emulator
+checks exercised Odin routing without claiming emulator app-root permission. On the POCO F7,
+the same deadline/cancellation checks passed through granted Root. Shizuku settings roundtrips
+passed again on both emulators with the watchdog enabled. The POCO F7 full Root roundtrip
+also passed (two device tests, including the deadline probe; all disposable settings restored).
+
+Odin per-job cancellation is requested for the next maintainer-owned Odin update in
+[follow-ups](../../follow-ups/odin-per-job-cancellation.md).
