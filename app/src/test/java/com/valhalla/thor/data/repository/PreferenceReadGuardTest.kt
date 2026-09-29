@@ -46,6 +46,30 @@ import java.io.IOException
  */
 class PreferenceReadGuardTest {
 
+    @Test
+    fun `unreadable local choice disables removal while healthy missing choice defaults on`() = runTest {
+        val unreadable = flow<Preferences> { throw IOException("local choice unavailable") }
+        val degraded = userPreferencesFlow(flowOf(emptyPreferences()), unreadable, intact()).first()
+        assertFalse(degraded.allowSystemAppRemovalFallback)
+
+        val healthy = userPreferencesFlow(
+            flowOf(emptyPreferences()), flowOf(emptyPreferences()), intact()
+        ).first()
+        assertTrue(healthy.allowSystemAppRemovalFallback)
+    }
+
+    @Test
+    fun `corruption recovery persists removal off across subsequent reads`() = runTest {
+        val recovered = recoveredLocalPreferences()
+        assertEquals(false, recovered[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK])
+        repeat(2) {
+            val prefs = userPreferencesFlow(
+                flowOf(emptyPreferences()), flowOf(recovered), intact()
+            ).first()
+            assertFalse(prefs.allowSystemAppRemovalFallback)
+        }
+    }
+
     /** The crash loop itself, at the shape the collectors actually use. */
     @Test
     fun `an unreadable settings store yields the defaults instead of throwing`() = runTest {
@@ -116,8 +140,7 @@ class PreferenceReadGuardTest {
 
         assertEquals("the readable store still answers", ThemeMode.DARK, prefs.themeMode)
         assertFalse("the unreadable one falls back", prefs.hasShownDisabledAppsPrompt)
-        // The per-install store holds no setting the user chose, so losing it is not the loss the
-        // security path is warned about.
+        // Local-state loss does not imply that the backed-up app-lock settings were lost.
         assertFalse("and it is not reported as a settings loss", prefs.settingsLost)
     }
 

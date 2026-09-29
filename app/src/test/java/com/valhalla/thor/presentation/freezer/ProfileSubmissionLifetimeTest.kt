@@ -21,7 +21,6 @@ import com.valhalla.thor.data.repository.RoomPrivilegeSweepStore
 import com.valhalla.thor.data.service.ServiceStartResult
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.NewPrivilegeSweepSnapshot
 import com.valhalla.thor.domain.repository.PrivilegeSweepCancellationDecision
@@ -85,7 +84,6 @@ class ProfileSubmissionLifetimeTest {
                 cancelActive = { false }, wake = { ServiceStartResult.AlreadyRunning },
                 reconcileStaleClaim = {},
             )),
-            object : RootLaneStatusSource { override val statuses = MutableStateFlow(emptyMap<com.valhalla.thor.domain.model.PrivilegeExecutionLane, com.valhalla.thor.domain.model.RootLaneStatus>()) },
         )
         profiles.create("Morning", listOf("com.example.app"))
         val vm = viewModel(controller)

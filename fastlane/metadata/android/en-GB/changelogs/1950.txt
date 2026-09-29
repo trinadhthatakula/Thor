@@ -1,0 +1,11 @@
+• 📦 Backup & Restore Hub: browse, manage, share and restore backups & bundles from one dedicated screen
+
+• 💾 Offline encrypted app data backup (.thorbak) with AES-256-GCM & WorkManager background sync
+
+• ⚙️ Customize App Info actions: drag-and-drop reordering and visibility controls
+
+• 🎮 Full .xapk & OBB split support for games and large apps
+
+• ❄️ Differentiated freezer actions & watchlist auto-cleanup
+
+• 🌐 Full translations in 8 languages: EN, AR, ES, FR, PL, PT, PT-BR, ZH

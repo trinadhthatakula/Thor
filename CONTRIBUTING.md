@@ -28,29 +28,30 @@ All contributors and AI agents must follow this workflow:
 We want Thor to be accessible to everyone worldwide. You can help by translating either the **In-App Strings** or the **Store Metadata (Fastlane)**.
 
 ### 1. In-App Strings Translation
-In-app strings are stored in standard Android resources, split across **three** files:
+In-app strings are stored in standard Android resources, split across **four** files:
 * **Base Strings**: [values/strings.xml](app/src/main/res/values/strings.xml) (the bulk),
-  [values/strings_settings.xml](app/src/main/res/values/strings_settings.xml) and
-  [values/strings_backup.xml](app/src/main/res/values/strings_backup.xml)
-* **Localized Strings**: the same three file names under `app/src/main/res/values-<locale-code>/`
+  [values/strings_settings.xml](app/src/main/res/values/strings_settings.xml),
+  [values/strings_backup.xml](app/src/main/res/values/strings_backup.xml), and
+  [values/strings_app_ops.xml](app/src/main/res/values/strings_app_ops.xml)
+* **Localized Strings**: the same four file names under `app/src/main/res/values-<locale-code>/`
   (e.g. [values-pt/](app/src/main/res/values-pt) for Portuguese).
 
 `values/non-translatable.xml` is the one file you should *not* copy — everything in it is marked
 `translatable="false"` on purpose.
 
 The file names carry no meaning to the resource merger: it keys on `name=`, so what matters is that
-the union of your files covers the union of the base ones. Mirror the three-file split anyway — the
+the union of your files covers the union of the base ones. Mirror the four-file split anyway — the
 four oldest locales (`ar`, `es`, `fr`, `zh-rCN`) predate it and fold the settings strings into their
 `strings.xml`, which is why their `strings.xml` is longer than the base one.
 
 **How to contribute:**
 1. Identify your target language code (e.g., `hi` for Hindi, `de` for German).
 2. Create the directory `app/src/main/res/values-<locale-code>/` if it doesn't exist.
-3. Copy the three base files into it and translate the text inside the `<string>` tags. Every
+3. Copy the four base files into it and translate the text inside the `<string>` tags. Every
    `name=` must survive: lint runs with `warningsAsErrors`, so **one missing string fails the
    build**, not just your locale.
 4. Get the `<plurals>` categories right for your language — the ones CLDR defines for it, no more
-   and no fewer. Polish needs `one/few/many/other`; Chinese needs only `other`; a category your
+   and no fewer. Polish needs `one/few/many/other`; Chinese and Japanese need only `other`; a category your
    language does not have is a lint error too.
 5. Leave every `%1$s`, `%1$d` and `\n` exactly as the English has them, and escape a literal
    apostrophe as `\'`.

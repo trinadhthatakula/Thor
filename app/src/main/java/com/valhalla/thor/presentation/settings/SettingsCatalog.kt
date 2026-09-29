@@ -132,6 +132,11 @@ enum class SettingsRowId(
         R.string.suspend_instead_of_freeze,
         R.string.suspend_instead_of_freeze_desc,
     ),
+    SYSTEM_APP_REMOVAL_FALLBACK(
+        SettingsCategory.FREEZER,
+        R.string.system_app_removal_fallback,
+        R.string.system_app_removal_fallback_desc,
+    ),
     SKIP_ROUTINE_FREEZE_CONFIRMATION(
         SettingsCategory.FREEZER,
         R.string.skip_routine_freeze_confirmation,
@@ -290,6 +295,7 @@ internal val AppLanguage.labelRes: Int
         AppLanguage.SystemDefault -> R.string.system_default
         AppLanguage.English -> R.string.english
         AppLanguage.Chinese -> R.string.chinese
+        AppLanguage.Japanese -> R.string.japanese
         AppLanguage.French -> R.string.french
         AppLanguage.Spanish -> R.string.spanish
         AppLanguage.Arabic -> R.string.arabic

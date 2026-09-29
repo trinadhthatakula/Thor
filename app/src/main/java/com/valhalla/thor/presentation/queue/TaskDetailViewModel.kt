@@ -201,7 +201,7 @@ class TaskDetailViewModel(
             TaskDetailObservation.Value(
                 detail = detail,
                 completedWhileObserved = phase == TaskLifecyclePhase.SUCCEEDED &&
-                    observedActiveTask && detail?.hasWarnings == false,
+                    observedActiveTask && !detail.hasWarnings,
             )
         },
         progressOverlaySource.observe(taskId)

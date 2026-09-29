@@ -45,6 +45,7 @@
     <string name="system_default">افتراضي النظام</string>
     <string name="english">الإنجليزية</string>
     <string name="chinese">الصينية</string>
+    <string name="japanese">اليابانية</string>
     <string name="french">الفرنسية</string>
     <string name="spanish">الإسبانية</string>
     <string name="arabic">العربية</string>
@@ -108,6 +109,8 @@
     <string name="view_mode">وضع العرض</string>
     <string name="grid">شبكة</string>
     <string name="list">قائمة</string>
+    <string name="scrollbar_scroll_apps">تمرير قائمة التطبيقات</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d من %3$d</string>
     <string name="order">الترتيب:</string>
     <string name="ascending">تصاعدي</string>
     <string name="descending">تنازلي</string>
@@ -1058,4 +1061,7 @@
     <string name="profile_removal_write_failed">تعذر حفظ تغييرات الملف. حاول مرة أخرى.</string>
     <string name="profile_removal_profile_changed">لم يعد هذا الملف متاحًا. لم تُحفظ أي تغييرات.</string>
     <string name="profile_removal_state_unknown">الحالة غير متاحة</string>
+    <string name="unfreeze_system_app_failed">تعذّر إلغاء تجميد %1$s باستخدام Shizuku. فشلت استعادة التطبيق أو تفعيله. راجع سجلات التشخيص لمعرفة استجابة الجهاز.</string>
+    <string name="system_app_removal_fallback">الإزالة كبديل لتجميد تطبيقات النظام</string>
+    <string name="system_app_removal_fallback_desc">إذا مُنع Shizuku من تعطيل تطبيق نظام، اسمح بإزالته لمستخدم Android الحالي مع الاحتفاظ بملفات البيانات. قد تُفقد الحسابات التي يديرها التطبيق. ينطبق على التجميد اليدوي والتلقائي. إلغاء التجميد يعيد تثبيت التطبيق. ينطبق هذا الإعداد على هذا الجهاز فقط.</string>
 </resources>

@@ -1,12 +1,12 @@
 # Follow-up: app-**data** backup (#51 phase 2), and what phase 1 + `.xapk` left to verify
 
-**Status:** OPEN — narrowed. `.xapk` export (#164b) and backup **phase 1** shipped together as
-planned; what remains is the root-only **data** half of #51 plus two device checks the desk cannot
-do.
-**Severity:** Not a defect. One public promise now kept (#164), one still half-kept — `README.md`
-promises "BackUp App Data", and only the APK half of that exists.
-**Effort:** Backup phase 2 (root data) 5–8 days. The two open verifications: under an hour each, on
-a device.
+**Current status (2026-09-23):** Root app-data backup and restore, `.xapk` export, and the Backup &
+Restore Hub shipped in v1.96.0. The historical implementation account below predates that release.
+The phase-2 21-item device checklist has no recorded completion; reconcile any maintainer testing
+and run the missing checks. Do not read the old "do not ship" language below as today's release
+status. Bulk *private app-data* backup and restore is a separate, unbuilt follow-up.
+**Severity:** Post-release acceptance evidence remains incomplete; the feature is implemented.
+**Effort:** Reconcile and complete the remaining device checks.
 **Raised by:** the deferred-items audit (2026-07-29); the owner asked for both to be filed and built
 in the same session. Narrowed 2026-07-30 when phase 1 landed.
 

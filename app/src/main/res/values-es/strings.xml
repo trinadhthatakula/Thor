@@ -45,6 +45,7 @@
     <string name="system_default">Predeterminado del sistema</string>
     <string name="english">Inglés</string>
     <string name="chinese">Chino</string>
+    <string name="japanese">Japonés</string>
     <string name="french">Francés</string>
     <string name="spanish">Español</string>
     <string name="arabic">Árabe</string>
@@ -108,6 +109,8 @@
     <string name="view_mode">Modo de vista</string>
     <string name="grid">Cuadrícula</string>
     <string name="list">Lista</string>
+    <string name="scrollbar_scroll_apps">Desplazarse por la lista de aplicaciones</string>
+    <string name="scrollbar_visible_range">%1$d–%2$d de %3$d</string>
     <string name="order">Orden:</string>
     <string name="ascending">Ascendente</string>
     <string name="descending">Descendente</string>
@@ -966,4 +969,7 @@
     <string name="profile_removal_write_failed">No se pudieron guardar los cambios del perfil. Inténtalo de nuevo.</string>
     <string name="profile_removal_profile_changed">Este perfil ya no está disponible. No se ha guardado ningún cambio.</string>
     <string name="profile_removal_state_unknown">Estado no disponible</string>
+    <string name="unfreeze_system_app_failed">No se pudo descongelar %1$s con Shizuku. No se pudo restaurar o habilitar la aplicación. Consulta los registros de diagnóstico para ver la respuesta del dispositivo.</string>
+    <string name="system_app_removal_fallback">Alternativa de eliminación de apps del sistema</string>
+    <string name="system_app_removal_fallback_desc">Si se deniega a Shizuku deshabilitar una aplicación del sistema, permite eliminarla para el usuario actual de Android conservando sus archivos de datos. Pueden perderse las cuentas que gestiona. Se aplica a congelaciones manuales y automáticas. Descongelar reinstala la aplicación. Este ajuste solo se aplica a este dispositivo.</string>
 </resources>

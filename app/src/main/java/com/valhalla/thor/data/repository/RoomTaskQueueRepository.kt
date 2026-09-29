@@ -204,7 +204,9 @@ internal fun StoredPrivilegeSweep.toQueuedDetail(): QueuedTaskDetail = QueuedTas
         TaskLogLine(
             order = target.ordinal.toLong(),
             messageCode = "SWEEP_TARGET_${target.state.name}",
-            arguments = listOf(target.packageName),
+            arguments = listOfNotNull(target.packageName, target.resultCode?.value?.takeIf {
+                target.state == PrivilegeSweepTargetState.FAILED && it != "FAILED"
+            }),
             level = when (target.state) {
                 PrivilegeSweepTargetState.SUCCEEDED -> TaskLogLevel.SUCCESS
                 PrivilegeSweepTargetState.FAILED -> TaskLogLevel.ERROR
