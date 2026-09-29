@@ -202,6 +202,29 @@ class AppListViewModelTest {
         return vm
     }
 
+    @Test
+    fun `suspended view combines user and system apps and stays live without changing normal filters`() = runTest {
+        appRepository.apps.value = listOf(
+            userApp("user.paused", isSuspended = true),
+            userApp("system.paused", isSuspended = true).copy(isSystem = true),
+            userApp("disabled", enabled = false),
+            userApp("active"),
+        )
+        val normal = viewModel()
+        val suspended = viewModel()
+        suspended.showSuspendedApps()
+        normal.loadApps()
+        suspended.loadApps()
+        runCurrent()
+        assertEquals(setOf("user.paused", "system.paused"),
+            suspended.uiState.value.displayedApps.map { it.packageName }.toSet())
+        assertEquals(FilterType.Source, normal.uiState.value.filterType)
+        assertEquals("All", normal.uiState.value.selectedFilter)
+        appRepository.apps.value = appRepository.apps.value.map { it.copy(isSuspended = false) }
+        runCurrent()
+        assertTrue(suspended.uiState.value.displayedApps.isEmpty())
+    }
+
     // --- Who pays the settle delay ---------------------------------------------------------
 
     @Test

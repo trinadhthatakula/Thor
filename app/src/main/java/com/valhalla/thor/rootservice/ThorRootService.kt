@@ -222,7 +222,9 @@ class ThorRootService : RootService() {
             if (suspended) {
                 suspendAsAnyOf(
                     pmClass, pm, dialogInfoClass, packageName,
-                    dialogInfo = buildSuspendDialogInfo(),
+                    dialogInfo = com.valhalla.thor.data.source.local.buildSuspendDialogInfo(
+                        "This app has been suspended by Thor.", "Thor",
+                    ),
                     identities = suspendIdentities(suspendingPackage),
                     userId = userId
                 )
@@ -587,44 +589,6 @@ class ThorRootService : RootService() {
     }.onFailure { e ->
         Logger.e("Odin", "Failed to dump package $targetPackage", e)
     }.getOrNull()
-
-    /**
-     * A `SuspendDialogInfo` carrying Thor's title and message, or `null` when this platform's builder
-     * does not expose the setters it needs.
-     *
-     * **This never worked.** Both lookups asked for `CharSequence` overloads that do not exist —
-     * `SuspendDialogInfo.Builder` takes `String` (and `@StringRes int`) — so the very first
-     * `getMethod` threw `NoSuchMethodException` into a bare `catch` that returned `null`, and every
-     * suspension Thor has ever made carried a null `dialogInfo`. Hence the [Logger.w] below: a
-     * reflective lookup that degrades in silence is indistinguishable from one that works, and that
-     * is how this hid for as long as it did.
-     *
-     * Worth knowing while reading this: the user-visible "managed by Thor" line on the paused-app
-     * dialog is **not** produced here. The system derives that from the suspending package name,
-     * which the root path already records correctly; this builder only adds a custom title and
-     * message on top of it.
-     */
-    private fun buildSuspendDialogInfo(): Any? = try {
-        val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
-        val builder = builderClass.getDeclaredConstructor().newInstance()
-        // setMessage(String) has been there since API 29, but setTitle(String) only arrived in API
-        // 31 — before that a title had to be a @StringRes int, and one of *our* resource ids would
-        // not resolve inside the system's dialog anyway. Asking for it unguarded on 29/30 throws and
-        // costs us the message too, since a single catch covers the whole builder.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builderClass.getMethod("setTitle", String::class.java).invoke(builder, "Thor")
-        }
-        builderClass.getMethod("setMessage", String::class.java)
-            .invoke(builder, "This app has been suspended by Thor.")
-        // No setNeutralButtonAction call: its only valid arguments are BUTTON_ACTION_MORE_DETAILS (0)
-        // and BUTTON_ACTION_UNSUSPEND (1), and the one this replaced passed 2. MORE_DETAILS is
-        // already the platform default and the button is hidden when nothing handles the intent, so
-        // leaving it unset is both correct and the smallest change.
-        builderClass.getMethod("build").invoke(builder)
-    } catch (e: Exception) {
-        Logger.w("Odin", "SuspendDialogInfo.Builder unusable, suspending without a dialog: $e")
-        null
-    }
 
     /**
      * Wipes [packageName]'s data **for [userId]**, which the caller has to name.

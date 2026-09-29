@@ -120,6 +120,7 @@ fun AppList(
     appList: List<AppInfo>,
     selectedFilter: String?,
     filterType: FilterType = FilterType.Source,
+    fixedStateFilter: Boolean = false,
     sortBy: SortBy = SortBy.NAME,
     sortOrder: SortOrder = SortOrder.ASCENDING,
     searchQuery: String = "",
@@ -226,7 +227,7 @@ fun AppList(
 
             // Headers (Control Bar)
             this@Column.AnimatedVisibility(
-                visible = !isMultiSelectMode,
+                visible = !isMultiSelectMode && !fixedStateFilter,
                 enter = expandVertically(),
                 exit = shrinkVertically()
             ) {
@@ -261,7 +262,7 @@ fun AppList(
                         ContainedLoadingIndicator()
                     } else {
                         EmptyStatePlaceholder(
-                            isFiltering = searchQuery.isNotEmpty() || selectedFilter != "All"
+                            isFiltering = searchQuery.isNotEmpty() || (!fixedStateFilter && selectedFilter != "All")
                         )
                     }
                 }
@@ -323,6 +324,7 @@ fun AppList(
         AppFilterSheet(
             onDismiss = { showFilterSheet = false },
             filterType = filterType,
+            fixedStateFilter = fixedStateFilter,
             sortBy = sortBy,
             sortOrder = sortOrder,
             isGrid = isGrid,
@@ -1210,6 +1212,7 @@ private enum class SheetTab { FILTERS, SORT }
 private fun AppFilterSheet(
     onDismiss: () -> Unit,
     filterType: FilterType,
+    fixedStateFilter: Boolean,
     sortBy: SortBy,
     sortOrder: SortOrder,
     isGrid: Boolean,
@@ -1222,7 +1225,7 @@ private fun AppFilterSheet(
     onExportList: () -> Unit,
     onShareList: () -> Unit
 ) {
-    var activeTab by remember { mutableStateOf(SheetTab.FILTERS) }
+    var activeTab by remember { mutableStateOf(if (fixedStateFilter) SheetTab.SORT else SheetTab.FILTERS) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1245,34 +1248,37 @@ private fun AppFilterSheet(
             )
             Spacer(Modifier.height(24.dp))
 
-            // 1. App Type Selector (Top Row)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    stringResource(R.string.app_source),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-                ConnectedButtonGroup(
-                    items = AppListType.entries.map { type ->
-                        ConnectedButtonGroupItem.Icon(
-                            icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                            contentDescription = stringResource(
-                                if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+            // The dedicated Suspended list includes both user and system apps.
+            if (!fixedStateFilter) {
+                // 1. App Type Selector (Top Row)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(R.string.app_source),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                    ConnectedButtonGroup(
+                        items = AppListType.entries.map { type ->
+                            ConnectedButtonGroupItem.Icon(
+                                icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
+                                contentDescription = stringResource(
+                                    if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                                )
                             )
-                        )
-                    },
-                    selectedIndex = AppListType.entries.indexOf(appListType),
-                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) },
-                    modifier = Modifier.width(IntrinsicSize.Max)
-                )
+                        },
+                        selectedIndex = AppListType.entries.indexOf(appListType),
+                        onItemSelected = { onListTypeChanged(AppListType.entries[it]) },
+                        modifier = Modifier.width(IntrinsicSize.Max)
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
             }
-
-            Spacer(Modifier.height(24.dp))
-
             // 2. View Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1303,7 +1309,7 @@ private fun AppFilterSheet(
 
             Spacer(Modifier.height(32.dp))
 
-            ConnectedButtonGroup(
+            if (!fixedStateFilter) ConnectedButtonGroup(
                 items = SheetTab.entries.map { ConnectedButtonGroupItem.Label(stringResource(if (it == SheetTab.FILTERS) R.string.filters else R.string.sort_by)) },
                 selectedIndex = SheetTab.entries.indexOf(activeTab),
                 onItemSelected = { activeTab = SheetTab.entries[it] },

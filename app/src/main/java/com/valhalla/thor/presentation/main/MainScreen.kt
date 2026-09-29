@@ -704,6 +704,9 @@ fun MainScreen(
                             onNavigateToFreezer = {
                                 activeDestination = AppDestinations.FREEZER
                             },
+                            onNavigateToSuspendedApps = {
+                                homeBackStack.add(ThorRoute.SuspendedApps)
+                            },
                             // No confirmation dialog: the action now scans, then opens a picker that
                             // names every app it would touch. Confirming a list beats confirming a
                             // warning about a list you were never shown.
@@ -792,6 +795,32 @@ fun MainScreen(
                                 onNavigateToQueue = openQueue,
                             )
                         }
+                    }
+
+                    entry<ThorRoute.SuspendedApps> {
+                        val suspendedViewModel: AppListViewModel = koinViewModel(key = "suspended-apps")
+                        LaunchedEffect(suspendedViewModel) {
+                            suspendedViewModel.showSuspendedApps()
+                        }
+                        AppListScreen(
+                            title = stringResource(R.string.suspended),
+                            icon = R.drawable.warning,
+                            viewModel = suspendedViewModel,
+                            onBack = { currentBackStack.removeLastOrNull() },
+                            onAppAction = { action ->
+                                if (action is AppClickAction.ManagePermissions) {
+                                    currentBackStack.add(ThorRoute.PermissionManager(
+                                        action.appInfo.packageName, action.appInfo.appName ?: "",
+                                    ))
+                                } else {
+                                    checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                        mainViewModel.onAppAction(it)
+                                    }
+                                }
+                            },
+                            onMultiAppAction = { pendingMultiAction = it },
+                            onNavigateToQueue = openQueue,
+                        )
                     }
 
                     entry<ThorRoute.Freezer>(
