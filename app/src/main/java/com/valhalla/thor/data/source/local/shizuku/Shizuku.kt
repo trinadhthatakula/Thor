@@ -1419,7 +1419,11 @@ object Shizuku {
                         timedOut = true
                         Logger.e(
                             "Shizuku",
-                            "Command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process: $command"
+                            if (logCommand) {
+                                "Command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process: $command"
+                            } else {
+                                "Private command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process"
+                            }
                         )
                         // Close the FDs first: this unblocks the reader threads immediately,
                         // even if destroy() (a binder call) later hangs. Killing before closing
