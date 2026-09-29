@@ -3,7 +3,7 @@
 ## Behavior
 
 - Home → **Suspended** opens a dedicated list containing suspended user and system apps.
-  The tile remains available at zero. Its count matches this combined list.
+  The counter is hidden when zero. Its count matches this combined list.
 - Search, sorting, grid/list view, single-app actions, bulk actions and queue navigation reuse the
   existing app-list controls. The fixed suspension filter and combined source cannot be changed
   from this screen. The ordinary Apps filter is preserved.

@@ -47,12 +47,13 @@ fun SummaryStatRow(
                 valueColor = MaterialTheme.colorScheme.secondary,
                 onClick = onFrozenClick,
             )
-        StatTile(
-            label = stringResource(R.string.suspended),
-            count = suspendedCount,
-            valueColor = MaterialTheme.colorScheme.tertiary,
-            onClick = onSuspendedClick,
-        )
+        if (suspendedCount > 0)
+            StatTile(
+                label = stringResource(R.string.suspended),
+                count = suspendedCount,
+                valueColor = MaterialTheme.colorScheme.tertiary,
+                onClick = onSuspendedClick,
+            )
     }
 }
 
