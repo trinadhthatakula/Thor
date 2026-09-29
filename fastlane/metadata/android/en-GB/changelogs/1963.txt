@@ -1,0 +1,7 @@
+• 🧊 Restored Shizuku freezing on devices that refuse disabling system apps. Fallback is on by default; saved opt-outs stay off.
+
+• ⚠️ Fallback removes the app for your Android user, keeps data files and reinstalls on Unfreeze. Accounts may be lost. Control it in Settings → Freezer.
+
+• 📜 Extensions confirmation now scrolls on small screens and in landscape.
+
+• 🛡️ App Ops, draggable app scrollbars, Japanese support and clearer errors.
