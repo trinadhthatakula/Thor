@@ -9,7 +9,8 @@ These public release notes include all changes since
 including the App Ops, scrollbar and Japanese-language changes delivered in 1.96.2 development
 builds. Since the latest development release,
 [v1.96.2-dev-89](https://github.com/trinadhthatakula/Thor/releases/tag/v1.96.2-dev-89),
-the range contains the Shizuku hotfix and web/CI dependency updates.
+the range contains the Shizuku hotfix and web/CI dependency updates. The release also
+reconciles dependency updates already merged to the beta branch.
 
 ## ✨ Highlights
 
@@ -96,6 +97,11 @@ the range contains the Shizuku hotfix and web/CI dependency updates.
   dependencies, removes compiler warnings and records scrollbar design prototypes.
   [PR #499](https://github.com/trinadhthatakula/Thor/pull/499) (`265d3b0e`) updates Fastlane;
   [PR #507](https://github.com/trinadhthatakula/Thor/pull/507) (`c358263f`) updates Coil.
+- Release reconciliation includes [PR #498](https://github.com/trinadhthatakula/Thor/pull/498)
+  (`6ed949d2`), retaining the beta branch's devalue 5.9.2 fix.
+  [PR #515](https://github.com/trinadhthatakula/Thor/pull/515) (`37f97ae6`) is also joined
+  into the release history; development already carries its Fastlane update and a newer
+  compatible Rubyzip version, which are retained when resolving the lockfile.
 - Web dependency updates are in [PR #500](https://github.com/trinadhthatakula/Thor/pull/500)
   (`45f3eb83`) and [PR #516](https://github.com/trinadhthatakula/Thor/pull/516) (`fe319596`).
   CI action updates are in [PR #501](https://github.com/trinadhthatakula/Thor/pull/501)
@@ -110,7 +116,9 @@ the range contains the Shizuku hotfix and web/CI dependency updates.
 For release preparation, `./gradlew test lintFossDebug lintStoreRelease` passed on
 Zulu JDK 21.0.12.1: **3,095 unit tests per flavor**, zero failures, errors or skips,
 and no lint warnings or errors. The release-note budgets, 13 shell test files, and
-35 release-routing tests also passed. No additional device checks were run for the version bump.
+35 release-routing tests also passed. After reconciling the beta branch, the Android gates
+passed again; the website passed all 304 tests and its production build with no diagnostics.
+No additional device checks were run for release preparation.
 
 The [issue #519 device record](https://github.com/trinadhthatakula/Thor/blob/7994cf40/docs/issues/519-shizuku-freeze.md)
 and PR #521 report these checks for the hotfix:
@@ -168,3 +176,8 @@ The release-preparation commit adds version 1963 and these notes.
 - `04d51a5e` fix(shizuku): restore consented system-app freeze fallback
 - `d17ac998` fix(shizuku): enable removal fallback by default and preserve opt-outs
 - `63f31e43` fix(shizuku): preserve removal opt-out on preference read failures
+
+Additional beta-branch history reconciled for promotion:
+
+- `6ed949d2` chore(deps): bump devalue
+- `37f97ae6` chore(deps): bump rubyzip in the bundler group across 1 directory
