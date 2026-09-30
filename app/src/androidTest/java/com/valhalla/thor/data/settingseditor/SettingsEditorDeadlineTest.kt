@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.*
+import java.io.File
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -54,16 +55,27 @@ class SettingsEditorDeadlineTest {
         assertNull(statuses.statuses.value.getValue(PrivilegeExecutionLane.INTERACTIVE).activeCommandClass)
 
         // Cancellation still drains the submitted Odin job. Its process watchdog supplies the bound.
-        val cancelled = async { gateway.executeShellCommand(command, execution) }
-        withTimeout(10_000) {
-            statuses.statuses.first { it.getValue(PrivilegeExecutionLane.INTERACTIVE).activeCommandClass == execution.commandClass }
+        val acknowledgement = File.createTempFile("sett_deadline_", ".txt", InstrumentationRegistry.getInstrumentation().targetContext.cacheDir)
+        val acknowledgementPath = "'" + acknowledgement.absolutePath.replace("'", "'\\''") + "'"
+        try {
+            val cancelled = async {
+                gateway.executeShellCommand(
+                    "echo submitted > $acknowledgementPath; $command; " +
+                        "if ! pidof $processName >/dev/null; then echo reaped >> $acknowledgementPath; fi",
+                    execution
+                )
+            }
+            withTimeout(10_000) {
+                while ("submitted" !in acknowledgement.readLines()) delay(10)
+            }
+            withTimeout(15_000) { cancelled.cancelAndJoin() }
+            // This marker is written after the process check, before the job can release its lease.
+            assertTrue("The helper must be gone before lease release", "reaped" in acknowledgement.readLines())
+            assertNull(statuses.statuses.value.getValue(PrivilegeExecutionLane.INTERACTIVE).activeCommandClass)
+            assertTrue(gateway.executeShellCommand("pidof $processName", execution).getOrThrow().first != 0)
+            assertEquals(0, gateway.executeShellCommand("true", execution).getOrThrow().first)
+        } finally {
+            acknowledgement.delete()
         }
-        delay(500)
-        val cancellationStarted = SystemClock.elapsedRealtime()
-        withTimeout(15_000) { cancelled.cancelAndJoin() }
-        assertTrue("Submitted cancellation must drain until the watchdog fires", SystemClock.elapsedRealtime() - cancellationStarted >= 1_500)
-        assertNull(statuses.statuses.value.getValue(PrivilegeExecutionLane.INTERACTIVE).activeCommandClass)
-        assertTrue(gateway.executeShellCommand("pidof $processName", execution).getOrThrow().first != 0)
-        assertEquals(0, gateway.executeShellCommand("true", execution).getOrThrow().first)
     }
 }
