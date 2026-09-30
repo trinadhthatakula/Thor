@@ -1330,6 +1330,10 @@ object Shizuku {
     fun execute(command: String): Pair<Int, String?> =
         executeStreams(command).let { (code, out, err) -> code to out.ifBlank { err } }
 
+    /** Settings payloads contain private values, so never include the command in failure logs. */
+    fun executePrivate(command: String): Pair<Int, String?> =
+        executeStreams(command, logCommand = false).let { (code, out, err) -> code to out.ifBlank { err } }
+
     /**
      * The exit code and **both** streams, stdout first, blank ones dropped.
      *
@@ -1348,6 +1352,7 @@ object Shizuku {
      */
     private fun executeStreams(
         command: String,
+        logCommand: Boolean = true,
     ): Triple<Int, String, String> = runCatching {
         val binder = Shizuku.getBinder() ?: return Triple(-1, "", "Shizuku binder is null")
         IShizukuService.Stub.asInterface(binder)
@@ -1400,7 +1405,7 @@ object Shizuku {
                         waitForTimeout(EXECUTE_TIMEOUT_MS, TimeUnit.MILLISECONDS.name)
                     } catch (e: InterruptedException) {
                         Thread.currentThread().interrupt()
-                        Logger.e("Shizuku", "Command wait interrupted: $command", e)
+                        Logger.e("Shizuku", if (logCommand) "Command wait interrupted: $command" else "Private command wait interrupted", e)
                         false
                     }
 
@@ -1414,7 +1419,11 @@ object Shizuku {
                         timedOut = true
                         Logger.e(
                             "Shizuku",
-                            "Command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process: $command"
+                            if (logCommand) {
+                                "Command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process: $command"
+                            } else {
+                                "Private command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process"
+                            }
                         )
                         // Close the FDs first: this unblocks the reader threads immediately,
                         // even if destroy() (a binder call) later hangs. Killing before closing
@@ -1453,7 +1462,7 @@ object Shizuku {
                 }
             }
     }.getOrElse { err ->
-        Logger.e("Shizuku", "Command execution failed: $command", err)
+        Logger.e("Shizuku", if (logCommand) "Command execution failed: $command" else "Private command execution failed", err)
         Triple(-1, "", err.stackTraceToString())
     }
 
