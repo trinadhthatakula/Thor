@@ -2,6 +2,9 @@
 
 Status: explicit recovery remains a follow-up. A bridge process deadline is now implemented in PR #530.
 
+Implementation and acceptance progress are tracked in the approved
+[Odin 1.1.0 plan](odin-1.1.0-implementation-plan.md), especially M2-01 and M3-01.
+
 ## Verified behavior
 
 - `SettingsEditorController` saves the original state as PENDING before dispatch. Normal screen
@@ -15,9 +18,10 @@ Status: explicit recovery remains a follow-up. A bridge process deadline is now 
   `a1c6e4ef`. Stream cleanup and process destruction do not establish a bound for every Binder call.
 - Sett Edit uses the Root INTERACTIVE lane. `RootFallbackCoordinator.executeInteractive` calls
   MainShell directly; `MainShellCommandExecutor` drains a submitted callback even on cancellation.
-  The bridge launch now runs under `/system/bin/toybox timeout -s KILL 30`: the watchdog kills
-  and reaps only the helper before Odin drains the job callback and releases the lease. Its getprop
-  child has a separate five-second watchdog so inherited pipes cannot remain open indefinitely.
+  The bridge launch runs under `/system/bin/toybox timeout --foreground -s KILL 30`, alongside
+  Odin isolated execution adopted in PR #531. The getprop child has a separate five-second
+  watchdog. Thor still needs complete handling of unconfirmed termination and output-drain
+  outcomes; a terminal callback alone is not proof of safe cleanup.
 
 ## Proposed recovery flow
 
@@ -33,7 +37,8 @@ The process watchdog supplies the current bound without destroying the shared sh
 provider routing. Missing/incompatible Toybox fails the command instead of running it unbounded.
 A nonzero exit leaves dispatched mutation outcomes UNKNOWN. Kernel tasks that cannot respond to
 SIGKILL or a broken shell transport still cannot be promised a strict wall-clock bound.
-[Per-job cancellation in Odin](odin-per-job-cancellation.md) is requested for the next Odin update.
+[Per-job cancellation in Odin](odin-per-job-cancellation.md) shipped in 1.1.0. The implementation
+plan tracks remaining outcome propagation, recovery, and consumer validation.
 
 ## Acceptance for future implementation
 

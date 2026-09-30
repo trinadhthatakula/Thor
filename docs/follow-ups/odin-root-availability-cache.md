@@ -1,11 +1,16 @@
 # Follow-up: root availability is cached for the process lifetime
 
-**Status:** Deferred — narrow, and the fix belongs in Odin rather than Thor.
-**Severity:** Minor (stale privilege state after a revocation, until restart).
-**Effort:** small in Thor (add a re-probe), medium in Odin (invalidate the cache).
+**Status:** Odin 1.1.0 invalidation and initial Thor refresh adoption are merged. Typed refresh,
+cache coordination, and admission remain in the approved
+[implementation plan and progress checklist](odin-1.1.0-implementation-plan.md).
+**Historical severity:** Minor (stale privilege state after a revocation, until restart).
+**Historical effort:** small in Thor (add a re-probe), medium in Odin (invalidate the cache).
 **Raised by:** assessment during the FreezerTileService rework (2026-07-28).
 
-## Problem
+The original problem and proposal below describe pre-1.1.0 behavior. They are retained as context,
+not as current implementation instructions. See the dated adoption section and the linked plan.
+
+## Historical problem
 
 Odin's `MainShell.cached` (`MainShell.kt:75-79`) returns the same `ShellImpl` until its
 `status < 0`, and `status` is computed **once at construction** (`ShellImpl.kt:88`/`:98`) via
@@ -20,7 +25,7 @@ The reverse direction — denying root at first ask — works correctly: the bui
 `sh`, `isRoot` is false, and privileged UI disables itself. That was verified on device
 during the tile assessment, which is why the tile rework does not treat this as a blocker.
 
-## Sketch
+## Historical proposal
 
 Not a decision, just the shape:
 
