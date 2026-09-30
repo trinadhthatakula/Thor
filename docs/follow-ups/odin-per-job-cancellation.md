@@ -1,6 +1,17 @@
 # Odin per-job cancellation API
 
-Status: requested by the maintainer for Odin's next update on 2026-09-30.
+Status: implemented in Odin 1.1.0; Thor adoption in topic branch, 2026-09-30.
+
+Odin PR [#15](https://github.com/trinadhthatakula/Odin/pull/15) adds opt-in `prepareIsolatedJob` /
+`submitIsolated` and JobHandle cancellation/termination acknowledgement. Settings Editor adopts it;
+legacy persistent jobs keep wait-only coroutine cancellation. Same-process-group descendants are
+covered; deliberately detached descendants remain outside the guarantee. Nested toybox watchdogs
+must use `--foreground`. Thor retains the process deadline as defense in depth.
+
+Maven Local evidence: full unit/lint gates, 10 lifecycle checks on physical API36 root and dedicated
+Magisk SDK36.1 emulator, Settings Editor deadline tests on both, Magisk deny/grant refresh and
+Settings Editor disposable-key round trip. Published artifact verification is recorded in the
+adoption PR. Journal recovery remains a separate Thor follow-up.
 Owner: the Thor maintainer also owns Odin. Implement in Odin, then adopt its published API in Thor.
 
 ## Motivation

@@ -142,7 +142,10 @@ class PrivilegeManager(
                 coroutineScope {
                     val root = async {
                         trace.timeProbe(PrivilegeProbeTier.ROOT) {
-                            safeProbe { systemRepository.isRootAvailable() }
+                            safeProbe {
+                                if (generation > 0) com.valhalla.superuser.Shell.invalidateRootAvailability()
+                                systemRepository.isRootAvailable()
+                            }
                         }
                     }
                     val shizuku = async {

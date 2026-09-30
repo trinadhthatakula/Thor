@@ -25,10 +25,10 @@ internal data class SettingsBridgeRequest(val operation: String, val table: Stri
 @Serializable
 internal data class SettingsBridgeResponse(val status: String, val entries: List<SettingEntry>)
 
-/** Kill and reap the helper before the shell job completes; cancellation alone cannot stop Odin. */
+/** Keep the process watchdog as defense in depth alongside Odin isolated-job cancellation. */
 internal fun settingsEditorProcessDeadline(command: String, seconds: Int = 30): String {
     require(seconds > 0)
-    return "/system/bin/toybox timeout -s KILL $seconds $command"
+    return "/system/bin/toybox timeout --foreground -s KILL $seconds $command"
 }
 
 @Single
@@ -66,8 +66,9 @@ class SettingsEditorRepository(
             }
             private suspend fun execute(request: SettingsBridgeRequest): SettingsBridgeResponse {
                 val payload = Base64.encodeToString(json.encodeToString(request).toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-                // The watchdog owns only this helper, never the shared Odin shell. Odin still
-                // drains its callback before releasing the interactive lease, including on cancel.
+                // Settings Editor uses Odin's isolated cancellable job; keep this watchdog until
+                // the full supported root-manager/device matrix establishes its replacement.
+                // The executor awaits termination and output drain before releasing its lease.
                 val command = "CLASSPATH=${quote(apk)} " + settingsEditorProcessDeadline(
                     "/system/bin/app_process /system/bin com.valhalla.thor.data.settingseditor.SettingsEditorBridge ${quote(payload)}"
                 )

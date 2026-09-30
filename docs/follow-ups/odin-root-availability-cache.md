@@ -31,3 +31,13 @@ Not a decision, just the shape:
 
 Deferring is reasonable: revoking root mid-session is rare, and the failure mode is a
 privileged action that fails with a clear error rather than silent corruption.
+
+
+## 2026-09-30 Odin 1.1 adoption
+
+Odin PR [#15](https://github.com/trinadhthatakula/Odin/pull/15) provides explicit invalidation and
+bounded fresh acquisition after graceful retirement. Thor's user-triggered privilege refresh now
+invalidates cached Odin observations before its existing provider probes. A live Magisk test
+verified that an existing shell can retain UID0 after policy denial while a fresh acquisition
+returns NON_ROOT; re-grant restores ROOT. BUSY/TIMED_OUT/FAILED remain distinct Odin observations;
+the legacy Boolean gateway stays a convenience view and preserves provider-selection rules.

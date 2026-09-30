@@ -15,6 +15,7 @@ import org.koin.core.annotation.Single
 
 internal fun interface MainShellPendingCommand {
     fun submit(completion: (Result<ShellResult>) -> Unit)
+    fun cancel() {}
 }
 
 internal fun interface MainShellJobFactory {
@@ -25,6 +26,21 @@ internal fun interface MainShellJobFactory {
 internal class OdinMainShellJobFactory : MainShellJobFactory {
     override suspend fun create(command: RootCommand): MainShellPendingCommand {
         val shell = getShellAwait()
+        if (command.execution.commandClass.value.startsWith("settings_editor.")) {
+            val handle = shell.prepareIsolatedJob(command.text)
+            return object : MainShellPendingCommand {
+                override fun submit(completion: (Result<ShellResult>) -> Unit) {
+                    handle.completion.whenComplete { outcome, failure ->
+                        if (failure != null) completion(Result.failure(failure))
+                        else if (outcome.kind == com.valhalla.superuser.JobOutcomeKind.EXITED && outcome.terminationConfirmed && outcome.outputDrained) {
+                            completion(Result.success(ShellResult(requireNotNull(outcome.exitCode), outcome.stdout, outcome.stderr)))
+                        } else completion(Result.failure(java.io.IOException(outcome.failure ?: "Isolated shell job ${outcome.kind}")))
+                    }
+                    handle.submit()
+                }
+                override fun cancel() { handle.cancel() }
+            }
+        }
         val stdout = ArrayList<String?>()
         val stderr = ArrayList<String?>()
         val job = shell.newJob().add(command.text).to(stdout, stderr)
@@ -73,6 +89,7 @@ internal class MainShellCommandExecutor(
             return toCommandResult(command, outcome)
         } catch (cancelled: CancellationException) {
             if (submissionWon) {
+                pending.cancel()
                 withContext(NonCancellable) { completion.await() }
             }
             throw cancelled

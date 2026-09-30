@@ -35,6 +35,8 @@ class ThorTestRunner : AndroidJUnitRunner() {
     private companion object {
         const val CLASS_ARGUMENT = "class"
         val ISOLATED_TESTS = setOf(
+            "com.valhalla.thor.data.gateway.root.OdinLifecycleIntegrationTest",
+            "com.valhalla.thor.data.gateway.root.OdinRootPolicyIntegrationTest",
             "com.valhalla.thor.data.freezer.PrivilegeSweepWorkerIntegrationTest",
             "com.valhalla.thor.data.freezer.PrivilegeSweepServiceIntegrationTest",
             "com.valhalla.thor.data.service.LegacyWorkManagerCutoverIntegrationTest",
