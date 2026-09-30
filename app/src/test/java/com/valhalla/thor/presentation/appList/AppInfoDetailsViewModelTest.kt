@@ -12,6 +12,8 @@ import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
@@ -24,6 +26,7 @@ import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakeFreezeProfileRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
+import com.valhalla.thor.presentation.FakePrivilegeStateProvider
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
@@ -76,6 +79,7 @@ class AppInfoDetailsViewModelTest {
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var shortcuts: FakeAppShortcutController
     private lateinit var preferences: FakePreferenceRepository
+    private lateinit var privileges: FakePrivilegeStateProvider
 
     @Before
     fun setUp() {
@@ -84,6 +88,9 @@ class AppInfoDetailsViewModelTest {
         freezer = FakeFreezerRepository()
         shortcuts = FakeAppShortcutController()
         preferences = FakePreferenceRepository()
+        privileges = FakePrivilegeStateProvider(
+            PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true),
+        )
     }
 
     private fun viewModel(): AppInfoDetailsViewModel {
@@ -97,8 +104,60 @@ class AppInfoDetailsViewModelTest {
             freezeProfileRepository = FakeFreezeProfileRepository(),
             appShortcuts = shortcuts,
             preferenceRepository = preferences,
+            privilegeState = privileges,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
+    }
+
+    @Test
+    fun `details load without direct root probes even when the shell is unavailable`() = runTest {
+        loaded(userApp("a"))
+        for (failure in listOf(
+            ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE),
+            ShellTransportDied(PrivilegeExecutionLane.INTERACTIVE),
+        )) {
+            system.calls.clear()
+            system.onCall = { call -> if (call == "isRootAvailable") throw failure }
+            val vm = viewModel()
+
+            vm.loadAppDetails("a")
+            runCurrent()
+
+            assertFalse(vm.uiState.value.isLoading)
+            assertSame(appRepository.details.getValue("a"), vm.uiState.value.detailedInfo)
+            assertTrue(vm.uiState.value.isRoot)
+            assertFalse(system.calls.contains("isRootAvailable"))
+        }
+    }
+
+    @Test
+    fun `shared privilege changes update open details without reloading content`() = runTest {
+        privileges.emit(PrivilegeState())
+        loaded(userApp("a"))
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        val details = vm.uiState.value.detailedInfo
+        val calls = system.calls.toList()
+        assertFalse(vm.uiState.value.isLoading)
+        assertNotNull(details)
+        assertFalse(vm.uiState.value.isRoot)
+
+        privileges.emit(PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true))
+        runCurrent()
+        assertTrue(vm.uiState.value.isRoot)
+
+        privileges.emit(
+            PrivilegeState(shizuku = true, dhizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true),
+        )
+        runCurrent()
+        assertFalse(vm.uiState.value.isRoot)
+        assertTrue(vm.uiState.value.isShizuku)
+        assertTrue(vm.uiState.value.isDhizuku)
+        assertFalse(vm.uiState.value.isLoading)
+        assertSame(details, vm.uiState.value.detailedInfo)
+        assertEquals(calls, system.calls)
     }
 
     @Test

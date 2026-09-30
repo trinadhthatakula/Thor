@@ -34,7 +34,7 @@ import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
-import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
 import com.valhalla.thor.presentation.queue.ProvisionalTaskIdentity
 import com.valhalla.thor.presentation.security.biometricRefusalMessage
@@ -51,8 +51,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -63,7 +61,7 @@ import org.koin.core.annotation.Named
 @KoinViewModel
 class SettingsViewModel(
     private val preferenceRepository: PreferenceRepository,
-    private val systemRepository: SystemRepository,
+    private val privilegeState: PrivilegeStateProvider,
     private val biometricHelper: AuthCapability,
     private val localeManager: LocaleManager,
     private val sweepResolver: PrivilegeSweepTargetResolver,
@@ -102,13 +100,6 @@ class SettingsViewModel(
             get() = supportsInstallTimePermissionGrants(activePrivilegeMode)
     }
 
-    /** Off-main-thread snapshot of the available privilege engines. */
-    private data class PrivilegeProbe(
-        val root: Boolean,
-        val shizuku: Boolean,
-        val dhizuku: Boolean
-    )
-
     /**
      * One-off UI feedback (Toasts) that must fire exactly once — kept off the UiState StateFlow so it
      * isn't re-delivered on recomposition/config change. Collected in SettingsScreen via ObserveAsEvents.
@@ -122,9 +113,7 @@ class SettingsViewModel(
     /**
      * Live component state of the any-file alias, re-read rather than remembered.
      *
-     * A MutableStateFlow instead of a `flow { emit(...) }` like the privilege probe below, because
-     * this one is written from the screen: the probe only ever needs its first value, this needs a
-     * new one after every toggle. Seeded off the main thread by [refreshAnyFileOpener].
+     * Updated after every toggle and seeded off the main thread by [refreshAnyFileOpener].
      */
     private val anyFileOpenerEnabled = MutableStateFlow(false)
 
@@ -146,24 +135,13 @@ class SettingsViewModel(
     private val _systemStatus = combine(
         preferenceRepository.userPreferences,
         anyFileOpenerEnabled,
-        flow {
-            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI). flowOn(io) below
-            // keeps them off the Main thread to avoid janking the first subscription / every
-            // WhileSubscribed restart.
-            emit(
-                PrivilegeProbe(
-                    root = systemRepository.isRootAvailable(),
-                    shizuku = systemRepository.isShizukuAvailable(),
-                    dhizuku = systemRepository.isDhizukuAvailable()
-                )
-            )
-        }.flowOn(ioDispatcher)
+        privilegeState.state,
     ) { prefs, anyFileOpener, status ->
         SettingsUiState(
             prefs = prefs,
-            isRootAvailable = status.root,
-            isShizukuAvailable = status.shizuku,
-            isDhizukuAvailable = status.dhizuku,
+            isRootAvailable = status.isReady && status.root,
+            isShizukuAvailable = status.isReady && status.shizuku,
+            isDhizukuAvailable = status.isReady && status.dhizuku,
             canUseBiometric = biometricHelper.canAuthenticate(),
             hasBiometricHardware = biometricHelper.hasHardware(),
             anyFileOpenerEnabled = anyFileOpener

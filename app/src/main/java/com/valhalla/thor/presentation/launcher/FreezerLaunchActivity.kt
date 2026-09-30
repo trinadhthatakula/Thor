@@ -20,7 +20,7 @@ import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
-import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.AppLocale
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -51,10 +52,17 @@ internal fun shortcutBulkMessageRes(result: PrivilegeSweepLaunchResult): Int = w
     }
 }
 
+/** Null permits launch; startup timeout is not evidence that the user denied privilege. */
+internal suspend fun shortcutPrivilegeFailureRes(privilege: PrivilegeStateProvider): Int? {
+    val ready = withTimeoutOrNull(10_000L) { privilege.state.first { it.isReady } }
+        ?: return R.string.freezer_launch_failed
+    return if (ready.hasAnyPrivilege) null else R.string.tile_grant_privilege_toast
+}
+
 @SuppressLint("CustomSplashScreen")
 class FreezerLaunchActivity : Activity() {
 
-    private val systemRepository: SystemRepository by inject()
+    private val privilege: PrivilegeStateProvider by inject()
     private val manageAppUseCase: ManageAppUseCase by inject()
     private val freezerShortcutManager: FreezerShortcutManager by inject()
     private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
@@ -133,8 +141,9 @@ class FreezerLaunchActivity : Activity() {
             // still enabled (the intent resolves, yet launching it pops the system "app paused"
             // dialog). Handle both: forceUnfreeze unsuspends AND enables before we launch.
             if (launchIntent == null || isSuspended(pkg)) {
-                if (!hasPrivilege()) {
-                    toast(getString(R.string.tile_grant_privilege_toast))
+                val privilegeFailure = shortcutPrivilegeFailureRes(privilege)
+                if (privilegeFailure != null) {
+                    toast(getString(privilegeFailure))
                     finish(); return@launch
                 }
                 val restored = withContext(Dispatchers.IO) { manageAppUseCase.forceUnfreeze(pkg) }
@@ -168,12 +177,6 @@ class FreezerLaunchActivity : Activity() {
     } catch (_: Exception) {
         // Unreadable package: treat as not-suspended and let the launch path fail visibly.
         false
-    }
-
-    private suspend fun hasPrivilege(): Boolean = withContext(Dispatchers.IO) {
-        systemRepository.isRootAvailable() ||
-                systemRepository.isShizukuAvailable() ||
-                systemRepository.isDhizukuAvailable()
     }
 
     private fun toast(msg: String) =

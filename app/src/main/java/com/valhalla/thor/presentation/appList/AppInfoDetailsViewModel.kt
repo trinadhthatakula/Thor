@@ -18,6 +18,7 @@ import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -28,7 +29,6 @@ import com.valhalla.thor.util.asUiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -94,6 +94,7 @@ class AppInfoDetailsViewModel(
     // whole view model out of reach of a JVM test. Same dependency AppListViewModel already takes.
     private val appShortcuts: AppShortcutController,
     private val preferenceRepository: PreferenceRepository,
+    private val privilegeState: PrivilegeStateProvider,
     // Injected rather than a baked-in Dispatchers.IO, so a test can put this work on its own
     // scheduler — otherwise every action below escapes the test dispatcher and nothing here is
     // deterministically assertable.
@@ -107,6 +108,19 @@ class AppInfoDetailsViewModel(
     private var detailLoadJob: Job? = null
 
     init {
+        // Availability belongs to the shared probe. Loading a manifest must not contend for a
+        // root-shell lease, and grants made while this sheet is open must update its controls.
+        viewModelScope.launch {
+            privilegeState.state.collect { privileges ->
+                _uiState.update {
+                    it.copy(
+                        isRoot = privileges.isReady && privileges.root,
+                        isShizuku = privileges.isReady && privileges.shizuku,
+                        isDhizuku = privileges.isReady && privileges.dhizuku,
+                    )
+                }
+            }
+        }
         // Collected for the view model's whole life rather than read once, so flipping the setting
         // takes effect on a sheet that is already open.
         viewModelScope.launch {
@@ -256,36 +270,13 @@ class AppInfoDetailsViewModel(
             )
         }
         detailLoadJob = viewModelScope.launch {
-            // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku) and a
-            // potentially slow root check; run them off the Main thread. Each probe is an
-            // independent round-trip, so launch them concurrently and let their latency
-            // overlap (alongside the freezer lookup) instead of stacking sequentially.
-            val (probes, inFreezer) = withContext(ioDispatcher) {
-                val rootProbe = async { systemRepository.isRootAvailable() }
-                val shizukuProbe = async { systemRepository.isShizukuAvailable() }
-                val dhizukuProbe = async { systemRepository.isDhizukuAvailable() }
-                // [isInFreezer], not the repository directly: this read is one input to a load the
-                // user asked for, and a Room throw here would take the whole detail sheet — probes,
-                // manifest, components and all — down with the process. Falling back to "not in the
-                // freezer" costs the freezer toggle its accuracy and nothing else.
-                val freezer = isInFreezer(packageName)
-                Triple(
-                    rootProbe.await(),
-                    shizukuProbe.await(),
-                    dhizukuProbe.await()
-                ) to freezer
-            }
-            val (hasRoot, hasShizuku, hasDhizuku) = probes
-
+            val inFreezer = withContext(ioDispatcher) { isInFreezer(packageName) }
             val details = appRepository.getDetailedAppInfo(packageName)
             currentCoroutineContext().ensureActive()
             if (details != null) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        isRoot = hasRoot,
-                        isShizuku = hasShizuku,
-                        isDhizuku = hasDhizuku,
                         detailedInfo = details,
                         // The watchlist may have changed while heavy details were loading.
                         isInFreezer = it.profileMembership
@@ -314,9 +305,8 @@ class AppInfoDetailsViewModel(
 
     /**
      * Lighter reload used after a mutating action succeeds. Re-reads the detailed info and freezer
-     * membership so the UI reflects the new state, but deliberately skips the Root / Shizuku /
-     * Dhizuku availability probes (privilege mode doesn't change mid-session — it's probed once by
-     * [loadAppDetails]) and never flips [AppInfoDetailsUiState.isLoading], so the screen doesn't
+     * membership so the UI reflects the new state. Privilege availability is observed independently
+     * from [PrivilegeStateProvider]. Never flips [AppInfoDetailsUiState.isLoading], so the screen doesn't
      * flash the loader after every freeze / suspend / force-stop / clear action.
      */
     // suspend (not a nested viewModelScope.launch): every caller already runs inside a
