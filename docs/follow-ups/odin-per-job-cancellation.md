@@ -1,6 +1,11 @@
 # Odin per-job cancellation API
 
-Status: implemented in Odin 1.1.0; Thor adoption in topic branch, 2026-09-30.
+Status: implemented in Odin 1.1.0; initial Thor adoption merged in PR #531, 2026-09-30.
+
+Track remaining Thor work in the approved
+[implementation plan and progress checklist](odin-1.1.0-implementation-plan.md). The API design
+requirements below are historical; complete outcome handling and broader workload adoption remain
+pending in Thor.
 
 Odin PR [#15](https://github.com/trinadhthatakula/Odin/pull/15) adds opt-in `prepareIsolatedJob` /
 `submitIsolated` and JobHandle cancellation/termination acknowledgement. Settings Editor adopts it;
@@ -12,16 +17,16 @@ Maven Local evidence: full unit/lint gates, 10 lifecycle checks on physical API3
 Magisk SDK36.1 emulator, Settings Editor deadline tests on both, Magisk deny/grant refresh and
 Settings Editor disposable-key round trip. Published artifact verification is recorded in the
 adoption PR. Journal recovery remains a separate Thor follow-up.
-Owner: the Thor maintainer also owns Odin. Implement in Odin, then adopt its published API in Thor.
+Owner: the Thor maintainer also owns Odin. Follow the linked plan for remaining consumer work.
 
-## Motivation
+## Historical motivation (Odin 1.0.0)
 
 Odin 1.0.0 exposes no supported API for terminating one submitted `Shell.Job`. Coroutine
 cancellation stops awaiting or collecting while the command continues on the shared serial shell.
 Thor currently drains submitted MainShell callbacks before releasing an interactive lease. A
 stalled job therefore needs a process watchdog, as used for Sett Edit, to let the queue progress.
 
-## API requirements to design in Odin
+## Historical API requirements
 
 - Provide an explicit cancellation handle for a submitted job, with completion that distinguishes
   queued cancellation, terminated execution, ordinary exit and transport failure.
@@ -36,7 +41,7 @@ stalled job therefore needs a process watchdog, as used for Sett Edit, to let th
 - Preserve existing `submit`, `await`, `asFlow` and Java interoperability contracts; make the
   relationship between explicit job cancellation and coroutine cancellation clear.
 
-## Acceptance
+## Original API acceptance scope
 
 Test cancellation before submission, while queued, during execution, after completion and repeated
 cancellation. Cover command trees, ignored TERM, inherited pipes, shell death, callback races and
