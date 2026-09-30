@@ -243,8 +243,8 @@ Start in root gateway admission, `RootCommandRouter`, `RootFallbackCoordinator`,
 - [x] Validate that accepted work survives refresh and subsequent work follows the new state.
 
 **M1-02/M1-03 validation, 2026-10-01:** implementation commit
-`f13450dd1ec12bb06b26d7785a4665f97938e223`, external Odin `1.1.0`, in draft
-[#535](https://github.com/trinadhthatakula/Thor/pull/535). The later tracker commit changes docs only.
+`f13450dd1ec12bb06b26d7785a4665f97938e223`, external Odin `1.1.0`, in
+[#535](https://github.com/trinadhthatakula/Thor/pull/535). Later tracker commits change docs only.
 JDK 21 `test lintFossDebug lintStoreRelease` and FOSS debug/app-test APK assembly passed
 (`--no-parallel --max-workers=2`). Each FOSS/Store debug variant ran 3,174 tests with zero
 failures, errors, or skips. Lint has zero errors/warnings and no MissingTranslation or
@@ -287,7 +287,12 @@ Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
 `resukisu-policy.log`, and manager/UI screenshots. `tested-code-files.sha256` records the exact
 source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
-The PR remains a draft while the separate physical AIDL compatibility failure is outstanding.
+
+**Next task, agreed 2026-10-01:** after #535 merges, fix the physical-firmware AIDL clear-data
+compatibility gap recorded under M1-04, before continuing M1-05/M1-06. Start a dedicated fix
+branch from the updated `dev`, verify the platform API contract, and rerun the affected tests on
+the ReSuKiSU device and Magisk emulator. The existing failure remains recorded and its checklist
+item stays open; it is deferred to that follow-up rather than blocking review of #535.
 
 ### M1-04: Data-clear fallback correction
 
