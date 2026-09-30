@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
+import com.valhalla.thor.domain.model.PrivilegeMode
 
 /**
  * Read-only questions about another app's private data, answered through the active privilege
@@ -30,6 +31,15 @@ interface AppDataProbe {
      * True for Root, root-started Shizuku, or plain Shizuku with shell access.
      */
     suspend fun probeDataArchiveCapability(): Boolean
+
+    /**
+     * Measure the provider captured by a capability cache, even if the preference changes meanwhile.
+     * Implementations that route among providers override these overloads; fixed-provider probes
+     * can use the defaults.
+     */
+    suspend fun probePrivateDataCapability(mode: PrivilegeMode): Boolean = probePrivateDataCapability()
+
+    suspend fun probeDataArchiveCapability(mode: PrivilegeMode): Boolean = probeDataArchiveCapability()
 
     /**
      * Apparent size of **what a backup of this class would contain**, via `du -s -k`.

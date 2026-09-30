@@ -26,6 +26,7 @@ internal fun interface MainShellJobFactory {
 internal class OdinMainShellJobFactory : MainShellJobFactory {
     override suspend fun create(command: RootCommand): MainShellPendingCommand {
         val shell = getShellAwait()
+        if (!shell.isRoot) throw RootShellTransportException()
         if (command.execution.commandClass.value.startsWith("settings_editor.")) {
             val handle = shell.prepareIsolatedJob(command.text)
             return object : MainShellPendingCommand {

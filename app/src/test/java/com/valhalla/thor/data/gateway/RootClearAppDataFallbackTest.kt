@@ -8,6 +8,7 @@ import android.os.Binder
 import android.os.IBinder
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.data.source.local.thorUserId
@@ -121,6 +122,7 @@ class RootClearAppDataFallbackTest {
         },
         preferenceRepository = FakePreferenceRepository(),
         ioDispatcher = Dispatchers.Unconfined,
+        rootAdmission = TestRootAdmission(),
     ).also { gateway ->
         // Supply an already-bound daemon so the test observes the actual fallback call without
         // starting Odin's root process or replacing the gateway's production binding behavior.

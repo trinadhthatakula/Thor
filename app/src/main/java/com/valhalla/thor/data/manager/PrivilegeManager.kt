@@ -5,9 +5,13 @@ package com.valhalla.thor.data.manager
 
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.domain.model.RootAvailabilityState
+import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.model.resolvePrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.RootRefreshController
+import com.valhalla.thor.domain.repository.RootRefreshRequest
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.PrivilegeProbeTier
@@ -39,8 +43,8 @@ import rikka.shizuku.Shizuku
  * Single reactive source of truth for privilege availability + the active mode.
  *
  * Re-probes root/Shizuku/Dhizuku off the main thread on init, on [refresh], on
- * Shizuku binder/permission events (it owns those listeners), and whenever the
- * preferred mode changes. As a process-lifetime @Single it never unregisters its
+ * Shizuku binder/permission events (it owns those listeners). Preferred-mode changes reuse the
+ * latest observations. As a process-lifetime @Single it never unregisters its
  * Shizuku listeners (they live for the app), so consumers created before a
  * first-launch grant still see it once granted.
  */
@@ -55,15 +59,21 @@ class PrivilegeManager(
     // android.jar answers `Binder.attachInterface` with "not mocked" — construction throws
     // ExceptionInInitializerError before any dispatcher matters.
     @Named("default") private val defaultDispatcher: CoroutineDispatcher,
-    @Named("io") private val ioDispatcher: CoroutineDispatcher
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    private val rootRefresh: RootRefreshController,
+    private val rootLanes: RootLaneStatusSource,
 ) : PrivilegeStateProvider {
     private val scope = CoroutineScope(SupervisorJob() + defaultDispatcher)
 
     private val _state = MutableStateFlow(PrivilegeState())
     override val state: StateFlow<PrivilegeState> = _state.asStateFlow()
 
-    // Bumped to force a re-probe; StateFlow<Int> emits on every distinct value.
-    private val refreshTrigger = MutableStateFlow(0)
+    private data class RefreshRequest(
+        val generation: Int = 0,
+        val rootAttempt: RootRefreshRequest? = null,
+    )
+
+    private val refreshTrigger = MutableStateFlow(RefreshRequest())
     private val completedRefreshGeneration = MutableStateFlow(-1)
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener { refresh() }
@@ -75,28 +85,46 @@ class PrivilegeManager(
         Shizuku.addRequestPermissionResultListener(permissionResultListener)
 
         scope.launch {
+            var wasBusy = false
+            rootLanes.statuses.collect { lanes ->
+                val busy = lanes.values.any { it.activeCommandClass != null }
+                if (wasBusy && !busy) rootRefresh.onRootWorkIdle()
+                wasBusy = busy
+            }
+        }
+
+        scope.launch {
             // Cold-start marker, present only in traced builds. Every later emission (refresh,
             // preference change) also
             // carries isReady = true, so the first one has to be latched; a collector-local flag
             // rather than re-reading _state, which would race a concurrent refresh() emission.
             var firstReadyLogged = false
-            combine(availabilityFlow(), preferenceRepository.userPreferences) { avail, prefs ->
-                avail.generation to PrivilegeState(
-                    root = avail.root,
-                    shizuku = avail.shizuku,
-                    dhizuku = avail.dhizuku,
-                    active = resolvePrivilegeMode(
-                        prefs.preferredPrivilegeMode,
-                        avail.root,
-                        avail.shizuku,
-                        avail.dhizuku
+            combine(availabilityFlow(), preferenceRepository.userPreferences, rootRefresh.state) { avail, prefs, root ->
+                Triple(
+                    avail.generation,
+                    avail.rootRevision,
+                    PrivilegeState(
+                        root = root.isConfirmedRoot,
+                        shizuku = avail.shizuku,
+                        dhizuku = avail.dhizuku,
+                        active = resolvePrivilegeMode(
+                            prefs.preferredPrivilegeMode,
+                            root,
+                            avail.shizuku,
+                            avail.dhizuku
+                        ),
+                        isReady = root.hasCompletedRefresh,
+                        rootAvailability = root,
                     ),
-                    isReady = true
                 )
-            }.collect { (generation, newState) ->
+            }.collect { (generation, rootRevision, newState) ->
                 _state.value = newState
-                completedRefreshGeneration.value =
-                    maxOf(completedRefreshGeneration.value, generation)
+                // The attempt's completion and its StateFlow emission reach combine independently.
+                // Only release waiters after this public state includes that completed observation.
+                if (newState.rootAvailability.revision >= rootRevision) {
+                    completedRefreshGeneration.value =
+                        maxOf(completedRefreshGeneration.value, generation)
+                }
                 // Logged after publishing, because it is the publish that releases the loaders
                 // every isLoading = !priv.isReady consumer is holding.
                 if (BuildConfig.PRIVILEGE_TRACE && !firstReadyLogged && newState.isReady) {
@@ -112,12 +140,16 @@ class PrivilegeManager(
         // Called from Shizuku's binder/permission listeners on arbitrary threads, so the
         // bump must be atomic — `value +=` is a non-atomic read-modify-write that can drop
         // a concurrent trigger.
-        refreshTrigger.update { it + 1 }
+        val rootAttempt = rootRefresh.requestRefresh()
+        refreshTrigger.update { RefreshRequest(it.generation + 1, rootAttempt) }
     }
 
     /** Re-probes and waits for that generation even when the resulting StateFlow value is equal. */
     suspend fun refreshAndAwait(): PrivilegeState {
-        val generation = refreshTrigger.updateAndGet { it + 1 }
+        val rootAttempt = rootRefresh.requestRefresh()
+        val generation = refreshTrigger.updateAndGet {
+            RefreshRequest(it.generation + 1, rootAttempt)
+        }.generation
         completedRefreshGeneration.filter { it >= generation }.first()
         return state.value
     }
@@ -125,13 +157,14 @@ class PrivilegeManager(
     private data class Availability(
         val generation: Int,
         val root: Boolean,
+        val rootRevision: Long,
         val shizuku: Boolean,
         val dhizuku: Boolean,
     )
 
     private fun availabilityFlow(): Flow<Availability> =
         refreshTrigger
-            .map { generation ->
+            .map { request ->
                 // Started before the coroutineScope so `total` includes the async dispatch — that
                 // is latency the caller waits for, and hiding it would flatter the measurement.
                 // Null (and compiled out) in release; see PrivilegeProbeTrace.
@@ -141,12 +174,13 @@ class PrivilegeManager(
                 // max(probe) instead of the sum.
                 coroutineScope {
                     val root = async {
+                        lateinit var observation: RootAvailabilityState
                         trace.timeProbe(PrivilegeProbeTier.ROOT) {
-                            safeProbe {
-                                if (generation > 0) com.valhalla.superuser.Shell.invalidateRootAvailability()
-                                systemRepository.isRootAvailable()
-                            }
+                            observation = request.rootAttempt?.await()
+                                ?: rootRefresh.awaitInitialObservation()
+                            observation.isConfirmedRoot
                         }
+                        observation
                     }
                     val shizuku = async {
                         trace.timeProbe(PrivilegeProbeTier.SHIZUKU) {
@@ -158,7 +192,14 @@ class PrivilegeManager(
                             safeProbe { systemRepository.isDhizukuAvailable() }
                         }
                     }
-                    Availability(generation, root.await(), shizuku.await(), dhizuku.await())
+                    val observation = root.await()
+                    Availability(
+                        request.generation,
+                        observation.isConfirmedRoot,
+                        observation.revision,
+                        shizuku.await(),
+                        dhizuku.await(),
+                    )
                         .also { trace?.logRun(it.root, it.shizuku, it.dhizuku) }
                 }
             }

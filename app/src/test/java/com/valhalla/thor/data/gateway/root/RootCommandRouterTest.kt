@@ -4,25 +4,39 @@
 package com.valhalla.thor.data.gateway.root
 
 import com.valhalla.superuser.ktx.ShellResult
+import com.valhalla.thor.data.gateway.RootSystemGateway
+import com.valhalla.thor.data.privilege.RootAvailabilityCoordinator
+import com.valhalla.thor.data.privilege.RootAvailabilityProbe
+import com.valhalla.thor.data.privilege.RootProbeOutcome
+import com.valhalla.thor.data.privilege.RootProbeResult
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.RootLaneMode
+import com.valhalla.thor.domain.model.RootAdmissionUnavailable
+import com.valhalla.thor.domain.model.RootConfirmation
+import com.valhalla.thor.domain.model.RootRefreshStatus
+import com.valhalla.thor.domain.repository.RootAdmissionController
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
 import com.valhalla.thor.domain.model.ShellTransportDied
+import com.valhalla.thor.presentation.FakeContext
+import com.valhalla.thor.presentation.FakePreferenceRepository
+import java.io.File
 import java.util.concurrent.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -36,6 +50,234 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RootCommandRouterTest {
+
+    @Test
+    fun `unresolved root observation rejects every lane before command dispatch`() = runTest {
+        val admission = TestRootAdmission()
+        val fixture = fixture(rootAdmission = admission)
+        admission.state.value = admission.state.value.copy(refreshStatus = RootRefreshStatus.CHECKING)
+
+        for (lane in PrivilegeExecutionLane.entries) {
+            captureFailure<RootAdmissionUnavailable> {
+                fixture.router.execute(command(lane, "test.blocked"))
+            }
+        }
+
+        assertEquals(0, fixture.main.submissionCount)
+        assertEquals(0, fixture.archiveFactory.openCount)
+        assertEquals(0, fixture.sweepFactory.openCount)
+        assertTrue(fixture.statuses.statuses.value.values.all { it.activeCommandClass == null })
+    }
+
+    @Test
+    fun `queued archive command checks fresh admission after obtaining its lane`() = runTest {
+        val completion = CompletableDeferred<RootCommandResult>()
+        val session = FakeRootShellSession { completion.await() }
+        val admission = TestRootAdmission()
+        val fixture = fixture(
+            archiveFactory = RecordingSessionFactory { session },
+            rootAdmission = admission,
+        )
+        val accepted = async { fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.accepted")) }
+        runCurrent()
+        val queued = async {
+            captureFailure<RootAdmissionUnavailable> {
+                fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.queued"))
+            }
+        }
+        runCurrent()
+        admission.state.value = admission.state.value.copy(refreshStatus = RootRefreshStatus.BUSY)
+        completion.complete(success())
+
+        assertEquals(0, accepted.await().exitCode)
+        queued.await()
+        assertEquals(1, session.submissionCount)
+        assertEquals(0, fixture.main.submissionCount)
+    }
+
+    @Test
+    fun `gateway operations accepted before refresh retain admission while queued on a lane`() = runTest {
+        var probes = 0
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val admission = RootAvailabilityCoordinator(
+            RootAvailabilityProbe { probes++; RootProbeResult(RootProbeOutcome.ROOT) },
+            dispatcher,
+        )
+        admission.refreshAndAwait()
+        val firstCompletion = CompletableDeferred<RootCommandResult>()
+        val secondCompletion = CompletableDeferred<RootCommandResult>()
+        val session = FakeRootShellSession { text ->
+            when (text) {
+                "first" -> firstCompletion.await()
+                "second" -> secondCompletion.await()
+                else -> error("Unexpected command: $text")
+            }
+        }
+        val fixture = fixture(
+            archiveFactory = RecordingSessionFactory { session },
+            rootAdmission = admission,
+        )
+        val gateway = RootSystemGateway(
+            context = FakeContext(File(".")),
+            rootCommands = fixture.router,
+            preferenceRepository = FakePreferenceRepository(),
+            ioDispatcher = dispatcher,
+            rootAdmission = admission,
+        )
+        val execution = PrivilegeExecutionContext(lane = PrivilegeExecutionLane.ARCHIVE)
+        val first = async { gateway.executeShellCommand("first", execution).getOrThrow() }
+        runCurrent()
+        val second = async { gateway.executeShellCommand("second", execution).getOrThrow() }
+        runCurrent()
+
+        assertEquals(RootRefreshStatus.BUSY, admission.refreshAndAwait().refreshStatus)
+        assertTrue(gateway.executeShellCommand("rejected", execution).exceptionOrNull() is RootAdmissionUnavailable)
+        firstCompletion.complete(success())
+        first.await()
+        runCurrent()
+
+        assertEquals(listOf("first", "second"), session.commands)
+        assertEquals("Refresh waits for the already accepted queue", 1, probes)
+        assertEquals(RootRefreshStatus.BUSY, admission.state.value.refreshStatus)
+        assertEquals(0, session.closeCount)
+
+        secondCompletion.complete(success())
+        second.await()
+        runCurrent()
+
+        assertEquals(2, probes)
+        assertTrue(admission.state.value.canAdmitRoot)
+        assertEquals(1, session.closeCount)
+    }
+
+    @Test
+    fun `immediate idle refresh retires a session after the routing lock is released`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        var probes = 0
+        val admission = RootAvailabilityCoordinator(
+            RootAvailabilityProbe { probes++; RootProbeResult(RootProbeOutcome.ROOT) }, dispatcher,
+        )
+        admission.refreshAndAwait()
+        val session = FakeRootShellSession {
+            assertEquals(RootRefreshStatus.BUSY, admission.refreshAndAwait().refreshStatus)
+            success()
+        }
+        val fixture = fixture(
+            archiveFactory = RecordingSessionFactory { session },
+            rootAdmission = admission,
+            dispatcher = dispatcher,
+        )
+
+        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.fast-refresh"))
+
+        assertEquals(2, probes)
+        assertTrue(admission.state.value.canAdmitRoot)
+        assertEquals("No later command or observation is needed to retire the old session", 1, session.closeCount)
+    }
+
+    @Test
+    fun `fresh equal root observation recovers degraded lane without replaying old work`() = runTest {
+        val admission = TestRootAdmission()
+        val replacement = FakeRootShellSession { success() }
+        var failOpen = true
+        val factory = RecordingSessionFactory {
+            if (failOpen) throw RootShellTransportException()
+            replacement
+        }
+        val fixture = fixture(archiveFactory = factory, rootAdmission = admission)
+        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.first", "first"))
+        assertTrue(fixture.statuses.isDegraded(PrivilegeExecutionLane.ARCHIVE))
+        failOpen = false
+        admission.state.value = admission.state.value.copy(revision = 2, confirmedRevision = 2)
+        runCurrent()
+
+        assertFalse(fixture.statuses.isDegraded(PrivilegeExecutionLane.ARCHIVE))
+        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.next", "next"))
+
+        assertEquals(2, factory.openCount)
+        assertEquals(listOf("first"), fixture.main.commands)
+        assertEquals(listOf("next"), replacement.commands)
+        assertNull(fixture.statuses.degradationCause(PrivilegeExecutionLane.ARCHIVE))
+    }
+
+    @Test
+    fun `confirmed observation retires idle sessions and later work owns new generations`() = runTest {
+        val admission = TestRootAdmission()
+        val sessions = mutableListOf<FakeRootShellSession>()
+        val factory = RecordingSessionFactory { FakeRootShellSession { success() }.also(sessions::add) }
+        val fixture = fixture(archiveFactory = factory, rootAdmission = admission)
+        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.first"))
+
+        admission.state.value = admission.state.value.copy(revision = 2, confirmedRevision = 2)
+        runCurrent()
+        assertEquals(1, sessions.single().closeCount)
+        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.next"))
+        runCurrent()
+
+        assertEquals(2, sessions.size)
+        assertEquals(1, sessions.first().closeCount)
+        assertEquals(0, sessions.last().closeCount)
+        assertTrue(sessions.last().isAlive)
+    }
+
+    @Test
+    fun `revision cleanup waits until active lane work completes`() = runTest {
+        val completion = CompletableDeferred<RootCommandResult>()
+        val session = FakeRootShellSession { completion.await() }
+        val admission = TestRootAdmission()
+        val fixture = fixture(
+            sweepFactory = RecordingSessionFactory { session },
+            rootAdmission = admission,
+        )
+        val accepted = async { fixture.router.execute(command(PrivilegeExecutionLane.SWEEP, "sweep.active")) }
+        runCurrent()
+        admission.state.value = admission.state.value.copy(revision = 2, confirmedRevision = 2)
+        runCurrent()
+        assertEquals(0, session.closeCount)
+
+        completion.complete(success())
+        accepted.await()
+
+        assertEquals(1, session.closeCount)
+        assertNull(fixture.statuses.statuses.value.getValue(PrivilegeExecutionLane.SWEEP).activeCommandClass)
+    }
+
+    @Test
+    fun `confirmed nonroot retires idle root shell and refuses a new command`() = runTest {
+        val session = FakeRootShellSession { success() }
+        val admission = TestRootAdmission()
+        val fixture = fixture(sweepFactory = RecordingSessionFactory { session }, rootAdmission = admission)
+        fixture.router.execute(command(PrivilegeExecutionLane.SWEEP, "sweep.first"))
+        admission.state.value = admission.state.value.copy(
+            confirmation = RootConfirmation.NON_ROOT,
+            revision = 2,
+            confirmedRevision = 2,
+        )
+        runCurrent()
+
+        assertEquals(1, session.closeCount)
+        captureFailure<RootAdmissionUnavailable> {
+            fixture.router.execute(command(PrivilegeExecutionLane.SWEEP, "sweep.next"))
+        }
+        assertEquals(1, session.submissionCount)
+    }
+
+    @Test
+    fun `failed reopen after refresh degrades again without retrying a submitted command`() = runTest {
+        val admission = TestRootAdmission()
+        val fixture = fixture(
+            archiveFactory = unavailableFactory("root session unavailable"),
+            rootAdmission = admission,
+        )
+        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.first", "first"))
+        admission.state.value = admission.state.value.copy(revision = 2, confirmedRevision = 2)
+        runCurrent()
+        fixture.router.execute(command(PrivilegeExecutionLane.ARCHIVE, "archive.next", "next"))
+
+        assertEquals(2, fixture.archiveFactory.openCount)
+        assertEquals(listOf("first", "next"), fixture.main.commands)
+        assertTrue(fixture.statuses.isDegraded(PrivilegeExecutionLane.ARCHIVE))
+    }
 
     @Test
     fun `interactive always routes to MainShell`() = runTest {
@@ -803,12 +1045,13 @@ class RootCommandRouterTest {
         sweepFactory: RecordingSessionFactory = RecordingSessionFactory {
             FakeRootShellSession { success() }
         },
+        rootAdmission: RootAdmissionController = TestRootAdmission(),
+        dispatcher: CoroutineDispatcher = StandardTestDispatcher(testScheduler),
     ): Fixture {
-        val dispatcher = StandardTestDispatcher(testScheduler)
         val statuses = DefaultRootLaneStatusSource()
         main.attach(this)
         val mainExecutor = MainShellCommandExecutor(main)
-        val fallback = RootFallbackCoordinator(statuses)
+        val fallback = RootFallbackCoordinator(statuses, rootAdmission)
         val router = RootCommandRouter(
             main = mainExecutor,
             archive = OwnedRootShellExecutor(
@@ -823,6 +1066,8 @@ class RootCommandRouterTest {
             ),
             fallback = fallback,
             statuses = statuses,
+            rootAdmission = rootAdmission,
+            ioDispatcher = dispatcher,
         )
         return Fixture(router, statuses, main, archiveFactory, sweepFactory)
     }
@@ -885,6 +1130,8 @@ class RootCommandRouterTest {
         private val executeBlock: suspend (String) -> RootCommandResult,
     ) : RootShellSession {
         private var alive = true
+        var closeCount = 0
+            private set
         val commands = mutableListOf<String>()
         val submissionCount: Int get() = commands.size
 
@@ -896,6 +1143,7 @@ class RootCommandRouterTest {
         }
 
         override fun close() {
+            closeCount++
             alive = false
         }
     }

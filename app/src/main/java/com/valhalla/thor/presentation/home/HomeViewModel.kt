@@ -16,6 +16,7 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.InstalledManagerInfo
 import com.valhalla.thor.domain.model.PrivilegeManagerApp
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.RootAvailabilityState
 import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -50,6 +51,7 @@ data class HomeUiState(
     val distribution: List<InstallerSlice> = emptyList(),
     // Status
     val isRootAvailable: Boolean = false,
+    val rootAvailability: RootAvailabilityState = RootAvailabilityState(),
     val isShizukuAvailable: Boolean = false,
     val isShizukuBinderAlive: Boolean = false,
     val isDhizukuAvailable: Boolean = false,
@@ -111,6 +113,7 @@ class HomeViewModel(
             showInstallerTile = prefs.showInstallerTile,
             showExtensionsTile = prefs.showExtensionsTile,
             isRootAvailable = priv.root,
+            rootAvailability = priv.rootAvailability,
             isShizukuAvailable = priv.shizuku,
             isShizukuBinderAlive = runCatching { Shizuku.pingBinder() }.getOrDefault(false),
             isDhizukuAvailable = priv.dhizuku,
@@ -185,8 +188,6 @@ class HomeViewModel(
      */
     fun refreshPrivileges() {
         privilegeManager.refresh()
-        AppScanRevision.bump()
-        loadDashboardData()
     }
 
     fun requestShizuku() {

@@ -15,10 +15,31 @@ data class PrivilegeState(
     val shizuku: Boolean = false,
     val dhizuku: Boolean = false,
     val active: PrivilegeMode = PrivilegeMode.NONE,
-    val isReady: Boolean = false
+    val isReady: Boolean = false,
+    val rootAvailability: RootAvailabilityState = RootAvailabilityState(
+        confirmation = when {
+            root -> RootConfirmation.ROOT
+            isReady -> RootConfirmation.NON_ROOT
+            else -> RootConfirmation.UNKNOWN
+        },
+        hasCompletedRefresh = isReady,
+    ),
 ) {
     val hasAnyPrivilege: Boolean get() = active != PrivilegeMode.NONE
 }
+
+/** Keep the route based on the last confirmation while a new root observation is unresolved. */
+fun resolvePrivilegeMode(
+    preferred: PrivilegeMode?,
+    rootAvailability: RootAvailabilityState,
+    shizuku: Boolean,
+    dhizuku: Boolean,
+): PrivilegeMode = resolvePrivilegeMode(
+    preferred = preferred,
+    root = rootAvailability.confirmation != RootConfirmation.NON_ROOT,
+    shizuku = shizuku,
+    dhizuku = dhizuku,
+)
 
 /**
  * Resolve the effective privilege mode: the user's [preferred] mode when it is

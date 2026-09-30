@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
-import com.valhalla.superuser.Shell
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.rootservice.IThorRootService
@@ -51,6 +50,7 @@ import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.RootAdmissionController
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -112,6 +112,7 @@ class RootSystemGateway internal constructor(
     private val rootCommands: RootCommandExecutor,
     private val preferenceRepository: PreferenceRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    private val rootAdmission: RootAdmissionController,
     private val reinstallPostconditionVerifier: ReinstallPostconditionVerifier =
         ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
 ) : SystemGateway {
@@ -289,24 +290,10 @@ class RootSystemGateway internal constructor(
         }
     }
 
-    // A root check is strictly asynchronous. Invalidate any cached non-root shell so fresh su grants are recognized.
+    // Availability is observed centrally; this read must never retire an accepted operation's shell.
     override suspend fun isRootAvailable(
         execution: PrivilegeExecutionContext,
-    ): Boolean {
-        try {
-            val cached = Shell.cachedShell
-            if (cached != null && !cached.isRoot) {
-                cached.close()
-            }
-        } catch (_: Throwable) {
-        }
-        val result = execute(
-            "id -u",
-            execution.forRootCommand(ROOT_AVAILABILITY),
-        )
-        return result.exitCode == 0 &&
-            result.stdout.singleOrNull { it.isNotBlank() }?.trim() == ROOT_UID
-    }
+    ): Boolean = rootAdmission.awaitInitialObservation().isConfirmedRoot
 
     override suspend fun isShizukuAvailable(): Boolean = false
     override suspend fun isDhizukuAvailable(): Boolean = false
@@ -317,9 +304,9 @@ class RootSystemGateway internal constructor(
     override suspend fun forceStopApp(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
 
@@ -356,7 +343,7 @@ class RootSystemGateway internal constructor(
         if (hasExplicitArchiveRoute &&
             shellResult.exceptionOrNull() is PrivilegeExecutionException
         ) {
-            return shellResult
+            return@admittedResult shellResult
         }
         // The exit code alone decided this, and it cannot say no:
         // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so it
@@ -372,10 +359,10 @@ class RootSystemGateway internal constructor(
         // the command names [thorUserId] and `getApplicationInfo` can only ever answer for Thor's
         // own user. A shell 0 with a package that did not stop now falls through to the
         // unprivileged rung rather than being reported as done.
-        if (shellResult.isSuccess && isStoppedNow()) return shellResult
+        if (shellResult.isSuccess && isStoppedNow()) return@admittedResult shellResult
 
         // Unprivileged check/fallback
-        if (isStoppedNow()) return Result.success(Unit)
+        if (isStoppedNow()) return@admittedResult Result.success(Unit)
 
         runCatching {
             val am =
@@ -390,7 +377,7 @@ class RootSystemGateway internal constructor(
         if (postKillInfo != null &&
             (postKillInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
         ) {
-            return Result.success(Unit)
+            return@admittedResult Result.success(Unit)
         }
 
         // Two ways to arrive here now, and a bug report has to be able to tell them apart: the
@@ -411,7 +398,7 @@ class RootSystemGateway internal constructor(
         } else {
             "FLAG_STOPPED is still clear after killBackgroundProcesses, so it is still running"
         }
-        return Result.failure(
+        return@admittedResult Result.failure(
             Exception("Root force stop of $packageName failed: $shellVerdict, and $stateVerdict.")
         )
     }
@@ -433,14 +420,14 @@ class RootSystemGateway internal constructor(
     suspend fun clearCache(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
         val command =
             "rm -rf ${clearCachePaths(escapedPackage, userIdProvider()).joinToString(" ")}"
-        return runCommand(command, execution, CACHE_CLEAR)
+        return@admittedResult runCommand(command, execution, CACHE_CLEAR)
     }
 
     /**
@@ -474,7 +461,7 @@ class RootSystemGateway internal constructor(
     override suspend fun clearAllCaches(
         targetFreeBytes: Long?,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (targetFreeBytes != null) {
             // The verdict is logged and then dropped on the floor, and that is the fix. This used to
             // `return trim` on success, which made the sweep below unreachable: `runTrimCaches` waits
@@ -485,7 +472,7 @@ class RootSystemGateway internal constructor(
             val trim = runCommand(
                 "pm trim-caches $targetFreeBytes", execution, CACHE_TRIM,
             )
-            if (trim.exceptionOrNull() is PrivilegeExecutionException) return trim
+            if (trim.exceptionOrNull() is PrivilegeExecutionException) return@admittedResult trim
             if (trim.isFailure) {
                 Logger.w(
                     "RootSystemGateway",
@@ -498,15 +485,15 @@ class RootSystemGateway internal constructor(
         // cannot reach outside the three parents.
         val sweep =
             clearCachePaths(escapedPackage = "*", userId = userIdProvider()).joinToString(" ")
-        return runCommand("rm -rf $sweep", execution, CACHE_SWEEP)
+        return@admittedResult runCommand("rm -rf $sweep", execution, CACHE_SWEEP)
     }
 
     override suspend fun clearAppData(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = withContext(ioDispatcher) {
+    ): Result<Unit> = admittedResult(ioDispatcher) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
         val shellResult = runCommand(
@@ -514,8 +501,8 @@ class RootSystemGateway internal constructor(
         )
         // A transport failure or deadline may follow a dispatched wipe. Preserve its typed
         // outcome instead of issuing the destructive operation again through the daemon.
-        if (shellResult.exceptionOrNull() is PrivilegeExecutionException) return@withContext shellResult
-        if (shellResult.isSuccess) return@withContext shellResult
+        if (shellResult.exceptionOrNull() is PrivilegeExecutionException) return@admittedResult shellResult
+        if (shellResult.isSuccess) return@admittedResult shellResult
 
         // Fallback to ThorRootService AIDL daemon. `clearAppDataForUser` and not the older
         // `clearAppData`: the daemon runs as uid 0 in user 0, so it cannot read Thor's user for
@@ -550,7 +537,7 @@ class RootSystemGateway internal constructor(
                 Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
             }
             if (aidlCall.getOrDefault(false)) {
-                return@withContext Result.success(Unit)
+                return@admittedResult Result.success(Unit)
             }
             daemonVerdict = aidlCall.fold(
                 onSuccess = { "the root daemon answered no" },
@@ -560,7 +547,7 @@ class RootSystemGateway internal constructor(
             daemonVerdict = "the root daemon would not bind, so it was never asked"
         }
 
-        return@withContext Result.failure(
+        return@admittedResult Result.failure(
             Exception("Root clear app data of $packageName failed: the shell step failed and $daemonVerdict.")
         )
     }
@@ -634,9 +621,9 @@ class RootSystemGateway internal constructor(
         packageName: String,
         isDisabled: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val appInfo = getApplicationInfoCompat(packageName)
         val isSystem = appInfo != null && (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
@@ -649,12 +636,12 @@ class RootSystemGateway internal constructor(
         if (!isDisabled && readHiddenForUser(packageName) == true) {
             runCommand("pm unhide --user $currentUser $escapedPackage", execution, APP_ENABLED_STATE)
             if (readHiddenForUser(packageName) != false) {
-                return Result.failure(Exception("Root: $packageName is still hidden after unfreeze."))
+                return@admittedResult Result.failure(Exception("Root: $packageName is still hidden after unfreeze."))
             }
         }
 
         if (isSystem) {
-            return if (isDisabled) {
+            return@admittedResult if (isDisabled) {
                 freezeSystemApp(packageName, escapedPackage, currentUser, execution)
             } else {
                 unfreezeSystemApp(packageName, escapedPackage, currentUser, execution)
@@ -671,11 +658,11 @@ class RootSystemGateway internal constructor(
         // A null read is unverified, including when `pm` reports success.
         if (shellResult.isSuccess) {
             val enabled = readEffectivelyEnabled(packageName)
-            if (enabled == !isDisabled) return shellResult
+            if (enabled == !isDisabled) return@admittedResult shellResult
         }
 
         // Check if already in the target state
-        if (readEffectivelyEnabled(packageName) == !isDisabled) return Result.success(Unit)
+        if (readEffectivelyEnabled(packageName) == !isDisabled) return@admittedResult Result.success(Unit)
 
         // Try unprivileged API as fallback. Still "only for non-system apps" — that used to be an
         // `if (!isSystem)` here; system apps now return above, before this point, so the guard is
@@ -689,10 +676,10 @@ class RootSystemGateway internal constructor(
             context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
         }
         if (unprivilegedResult.isSuccess) {
-            if (readEffectivelyEnabled(packageName) == !isDisabled) return Result.success(Unit)
+            if (readEffectivelyEnabled(packageName) == !isDisabled) return@admittedResult Result.success(Unit)
         }
 
-        return Result.failure(Exception("Root setAppDisabled failed."))
+        return@admittedResult Result.failure(Exception("Root setAppDisabled failed."))
     }
 
     /**
@@ -975,9 +962,9 @@ class RootSystemGateway internal constructor(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = withContext(ioDispatcher) {
+    ): Result<Unit> = admittedResult(ioDispatcher) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val hasReflection = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
         val escapedPackage = packageName.escapeForShell()
@@ -1011,10 +998,10 @@ class RootSystemGateway internal constructor(
                     // cannot be read, and "could not tell" must not stand in for the daemon's own
                     // verified success.
                     if (taskResult || readSuspendedFlag(packageName) == true) {
-                        return@withContext Result.success(Unit)
+                        return@admittedResult Result.success(Unit)
                     }
                 }
-                return@withContext Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
+                return@admittedResult Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
             }
             // API < 29 has no SuspendDialogInfo reflection path, so the shell is the whole rung and
             // it has to name the user itself. `PackageManagerShellCommand.runSuspend` seeds
@@ -1043,7 +1030,7 @@ class RootSystemGateway internal constructor(
             val shell = runCommand(
                 "pm suspend --user $SUSPEND_USER_ID $escapedPackage", execution, APP_SUSPEND,
             )
-            return@withContext if (shell.isSuccess && readSuspendedFlag(packageName) == true) shell
+            return@admittedResult if (shell.isSuccess && readSuspendedFlag(packageName) == true) shell
             else Result.failure(
                 Exception(
                     if (shell.isSuccess) {
@@ -1056,7 +1043,7 @@ class RootSystemGateway internal constructor(
             )
         }
 
-        return@withContext unsuspendPackage(packageName, escapedPackage, hasReflection, execution)
+        return@admittedResult unsuspendPackage(packageName, escapedPackage, hasReflection, execution)
     }
 
     /**
@@ -1243,9 +1230,9 @@ class RootSystemGateway internal constructor(
         packageName: String,
         isRestricted: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
         // Not the `pm` trap: `appops` seeds USER_CURRENT and resolves it, inside system_server, to
@@ -1253,7 +1240,7 @@ class RootSystemGateway internal constructor(
         // every user — it landed on whoever happened to be in the foreground when the shell ran,
         // which on a work-profile device is the parent while Thor and the app it is restricting
         // live in the profile. See [backgroundRestrictionCommand] for the AOSP path.
-        return runCommand(
+        return@admittedResult runCommand(
             backgroundRestrictionCommand(escapedPackage, userIdProvider(), isRestricted),
             execution, BACKGROUND_RESTRICTION,
         )
@@ -1262,10 +1249,10 @@ class RootSystemGateway internal constructor(
     override suspend fun rebootDevice(
         reason: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         val escapedReason = reason.escapeForShell()
         // executeResult returns success if ANY of the commands succeed in the chain logic
-        return runCommand(
+        return@admittedResult runCommand(
             "svc power reboot $escapedReason || reboot $escapedReason",
             execution, DEVICE_REBOOT,
         )
@@ -1274,9 +1261,9 @@ class RootSystemGateway internal constructor(
     override suspend fun uninstallApp(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
         // Through the shared builder rather than the byte-identical string this used to hold: the
@@ -1284,7 +1271,7 @@ class RootSystemGateway internal constructor(
         // [uninstallCommand], and `Shizuku.uninstallApp` already reaches it the same way. Two
         // gateways spelling the destructive command themselves is how one of them keeps the `--user`
         // and the other loses it.
-        return runCommand(
+        return@admittedResult runCommand(
             uninstallCommand(escapedPackage, userIdProvider()), execution, UNINSTALL,
         )
     }
@@ -1294,8 +1281,8 @@ class RootSystemGateway internal constructor(
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        return installViaSession(listOf(apkPath), canDowngrade, grantAllPermissions, execution)
+    ): Result<Unit> = admittedResult {
+        return@admittedResult installViaSession(listOf(apkPath), canDowngrade, grantAllPermissions, execution)
     }
 
     suspend fun installMultipleApks(
@@ -1304,8 +1291,8 @@ class RootSystemGateway internal constructor(
         grantAllPermissions: Boolean? = null,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
         bypassLowTargetSdkBlock: Boolean = false,
-    ): Result<Unit> {
-        return installViaSession(
+    ): Result<Unit> = admittedResult {
+        return@admittedResult installViaSession(
             apkPaths,
             canDowngrade,
             grantAllPermissions,
@@ -1385,14 +1372,14 @@ class RootSystemGateway internal constructor(
     override suspend fun reinstallAppWithGoogle(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (packageName == BuildConfig.APPLICATION_ID)
-            return Result.failure(Exception("Cannot reinstall Thor"))
+            return@admittedResult Result.failure(Exception("Cannot reinstall Thor"))
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
 
-        return withContext(ioDispatcher) {
+        return@admittedResult withContext(ioDispatcher) {
             try {
                 // 1. Get the APK path(s)
                 val paths = getAppPaths(packageName, execution)
@@ -1430,7 +1417,7 @@ class RootSystemGateway internal constructor(
         source: String,
         destination: String,
         execution: PrivilegeExecutionContext,
-    ) {
+    ) = rootAdmission.withRootAdmission {
         val escapedSource = source.escapeForShell()
         val escapedDest = destination.escapeForShell()
         val command = "cp $escapedSource $escapedDest"
@@ -1454,9 +1441,9 @@ class RootSystemGateway internal constructor(
     suspend fun getAppPaths(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): List<String> {
+    ): List<String> = rootAdmission.withRootAdmission {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return emptyList()
+            return@withRootAdmission emptyList()
         }
         val escapedPackage = packageName.escapeForShell()
         val result = execute(
@@ -1465,7 +1452,7 @@ class RootSystemGateway internal constructor(
         )
         val lines = if (result.exitCode == 0) result.stdout else emptyList()
 
-        return lines
+        return@withRootAdmission lines
             .filter { it.isNotBlank() }
             .map { it.removePrefix("package:").trim() }
     }
@@ -1475,18 +1462,18 @@ class RootSystemGateway internal constructor(
         packageName: String,
         permissionName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         val userId = getPackageUserId(packageName)
-            ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to grant on user 0."))
+            ?: return@admittedResult Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to grant on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
         val res = runCommand(
             "pm grant --user $userId $escapedPackage $escapedPerm", execution, PERMISSION_GRANT,
         )
-        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
+        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return@admittedResult res
 
         // The app-ops are a *parallel route* to package visibility, not a follow-up to the grant,
         // so they run whatever `pm grant` returned. On the ROMs this permission exists for —
@@ -1529,7 +1516,7 @@ class RootSystemGateway internal constructor(
         // denied until something refreshes it. That disagreement is with the runtime permission,
         // not with what the app can now do, and unlike the alternative it leaves the toggle able to
         // undo itself.
-        return if (res.isSuccess || appOpsTaken > 0) {
+        return@admittedResult if (res.isSuccess || appOpsTaken > 0) {
             Result.success(Unit)
         } else {
             res
@@ -1540,18 +1527,18 @@ class RootSystemGateway internal constructor(
         packageName: String,
         permissionName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         val userId = getPackageUserId(packageName)
-            ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
+            ?: return@admittedResult Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
         val res = runCommand(
             "pm revoke --user $userId $escapedPackage $escapedPerm", execution, PERMISSION_REVOKE,
         )
-        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
+        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return@admittedResult res
 
         // The revoke half of the parallel route, and the reason it cannot be left out: the app-op
         // grant above outlives `pm revoke`, so a revoke that only ran `pm revoke` reported success
@@ -1573,7 +1560,7 @@ class RootSystemGateway internal constructor(
         // And unlike the grant, the fold stays narrow: `pm revoke` is the verdict. All three app-op
         // resets failing is the ordinary outcome on any device that does not define this op, so
         // reading that as a failed revoke would report one on every AOSP device.
-        return res
+        return@admittedResult res
     }
 
     /**
@@ -1607,12 +1594,12 @@ class RootSystemGateway internal constructor(
         state: ComponentEnabledState,
         userId: Int,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         val spec = escapedComponentSpecOrNull(packageName, className)
-            ?: return Result.failure(
+            ?: return@admittedResult Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(
+        return@admittedResult runComponentCommand(
             setComponentStateCommand(spec, userId, state.asComponentState()),
             execution, COMPONENT_STATE,
         )
@@ -1623,12 +1610,12 @@ class RootSystemGateway internal constructor(
         className: String,
         userId: Int,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         val spec = escapedComponentSpecOrNull(packageName, className)
-            ?: return Result.failure(
+            ?: return@admittedResult Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(
+        return@admittedResult runComponentCommand(
             startActivityCommand(spec, userId), execution, ACTIVITY_LAUNCH,
         )
     }
@@ -1638,12 +1625,12 @@ class RootSystemGateway internal constructor(
         className: String,
         userId: Int,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         val spec = escapedComponentSpecOrNull(packageName, className)
-            ?: return Result.failure(
+            ?: return@admittedResult Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(
+        return@admittedResult runComponentCommand(
             stopServiceCommand(spec, userId),
             execution,
             SERVICE_STOP,
@@ -1690,7 +1677,7 @@ class RootSystemGateway internal constructor(
     override suspend fun executeShellCommand(
         command: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Pair<Int, String?>> {
+    ): Result<Pair<Int, String?>> = admittedResult {
         val routedExecution =
             if (execution.commandClass.value == DEFAULT_COMMAND_CLASS) {
                 execution.forRootCommand(RAW_SHELL)
@@ -1702,10 +1689,24 @@ class RootSystemGateway internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            return Result.failure(failure)
+            return@admittedResult Result.failure(failure)
         }
         val output = result.stdout.joinToString("\n").ifBlank { result.stderr.joinToString("\n") }
-        return Result.success(result.exitCode to output)
+        return@admittedResult Result.success(result.exitCode to output)
+    }
+
+    /** One accepted gateway operation owns its nested shell and Binder work through completion. */
+    private suspend fun <T> admittedResult(
+        dispatcher: CoroutineDispatcher? = null,
+        block: suspend () -> Result<T>,
+    ): Result<T> = try {
+        rootAdmission.withRootAdmission {
+            if (dispatcher == null) block() else withContext(dispatcher) { block() }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: PrivilegeExecutionException) {
+        Result.failure(failure)
     }
 
     private suspend fun runCommand(
@@ -1745,10 +1746,8 @@ class RootSystemGateway internal constructor(
     ): RootCommandResult = rootCommands.execute(RootCommand(command, context))
 
     private companion object {
-        const val ROOT_UID = "0"
         const val DEFAULT_COMMAND_CLASS = "interactive.command"
         val ROOT_SERVICE_RESET = PrivilegeCommandClass("root.service.reset")
-        val ROOT_AVAILABILITY = PrivilegeCommandClass("root.availability")
         val FORCE_STOP = PrivilegeCommandClass("package.force-stop")
         val CACHE_CLEAR = PrivilegeCommandClass("package.cache-clear")
         val CACHE_TRIM = PrivilegeCommandClass("cache.trim")

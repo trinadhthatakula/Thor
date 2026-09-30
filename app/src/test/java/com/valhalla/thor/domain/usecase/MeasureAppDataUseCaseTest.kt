@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.domain.usecase
 
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
@@ -58,7 +59,7 @@ private fun makeCase(
     probe: AppDataProbe,
     privilegeState: PrivilegeState = rooted(),
 ): MeasureAppDataUseCase {
-    val cache = DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState))
+    val cache = DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState), TestRootAdmission().apply { state.value = privilegeState.rootAvailability })
     return MeasureAppDataUseCase(cache, probe)
 }
 

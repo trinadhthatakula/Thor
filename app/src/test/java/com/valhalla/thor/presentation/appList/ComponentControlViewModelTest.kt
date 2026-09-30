@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.appList
 
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.source.local.ComponentCapabilityProvider
 import com.valhalla.thor.domain.model.ComponentDetail
 import com.valhalla.thor.domain.model.ComponentOverride
@@ -250,7 +251,8 @@ class ComponentControlViewModelTest {
             capabilityProvider = ComponentCapabilityProvider(
                 FakePrivilegeStateProvider(
                     PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true)
-                )
+                ),
+                TestRootAdmission(),
             ),
             consentSession = session,
             ioDispatcher = UnconfinedTestDispatcher(),

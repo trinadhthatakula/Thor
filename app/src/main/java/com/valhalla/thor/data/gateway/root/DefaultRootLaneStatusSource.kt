@@ -40,6 +40,16 @@ internal class DefaultRootLaneStatusSource : RootLaneStatusSource {
         }
     }
 
+    fun markRecovered(lane: PrivilegeExecutionLane) {
+        require(lane != PrivilegeExecutionLane.INTERACTIVE)
+        degradationCauses.remove(lane)
+        mutableStatuses.update { current ->
+            val previous = current.getValue(lane)
+            check(previous.activeCommandClass == null) { "Cannot recover an active root lane" }
+            current + (lane to previous.copy(mode = RootLaneMode.ISOLATED))
+        }
+    }
+
     fun commandStarted(
         lane: PrivilegeExecutionLane,
         commandClass: PrivilegeCommandClass,

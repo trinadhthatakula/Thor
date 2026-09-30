@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.gateway
 
 import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
@@ -11,6 +12,8 @@ import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.RootConfirmation
+import com.valhalla.thor.domain.model.RootRefreshStatus
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellLaneBusy
 import com.valhalla.thor.domain.model.ShellTransportDied
@@ -180,7 +183,7 @@ class RootSystemGatewayRoutingTest {
     }
 
     @Test
-    fun `permission app-op probe preserves context and throws typed routing failure`() = runTest {
+    fun `permission app-op probe preserves context and returns typed routing failure`() = runTest {
         val failure = ShellLaneBusy(PrivilegeExecutionLane.ARCHIVE)
         val executor = RecordingRootCommandExecutor(failure = failure)
         val execution = execution("caller.permission")
@@ -188,18 +191,13 @@ class RootSystemGatewayRoutingTest {
             it.packageUserIdProvider = { 10 }
         }
 
-        val caught = try {
-            gateway.grantPermission(
-                packageName = "com.example.target",
-                permissionName = GET_INSTALLED_APPS_PERMISSION,
-                execution = execution,
-            )
-            null
-        } catch (actual: Throwable) {
-            actual
-        }
+        val result = gateway.grantPermission(
+            packageName = "com.example.target",
+            permissionName = GET_INSTALLED_APPS_PERMISSION,
+            execution = execution,
+        )
 
-        assertSame(failure, caught)
+        assertSame(failure, result.exceptionOrNull())
         assertEquals(2, executor.commands.size)
         assertEquals(
             execution.copy(commandClass = PrivilegeCommandClass("permission.app-op-grant")),
@@ -282,27 +280,23 @@ class RootSystemGatewayRoutingTest {
     }
 
     @Test
-    fun `Root availability uses caller metadata and does not collapse typed failure`() = runTest {
+    fun `Root availability reads confirmed shared state without a shell command`() = runTest {
         val execution = execution("caller.preflight")
-        val availableExecutor = RecordingRootCommandExecutor(
-            result = RootCommandResult(0, listOf("0"), emptyList()),
-        )
+        val executor = RecordingRootCommandExecutor(failure = ShellLaneBusy(PrivilegeExecutionLane.ARCHIVE))
+        val admission = TestRootAdmission()
+        val gateway = gateway(executor, admission)
 
-        assertTrue(gateway(availableExecutor).isRootAvailable(execution))
-        assertEquals(
-            execution.copy(commandClass = PrivilegeCommandClass("root.availability")),
-            availableExecutor.commands.single().execution,
-        )
-
-        val failure = ShellLaneBusy(PrivilegeExecutionLane.ARCHIVE)
-        val failedExecutor = RecordingRootCommandExecutor(failure = failure)
-        val caught = try {
-            gateway(failedExecutor).isRootAvailable(execution)
-            null
-        } catch (actual: Throwable) {
-            actual
+        assertTrue(gateway.isRootAvailable(execution))
+        for (status in listOf(RootRefreshStatus.CHECKING, RootRefreshStatus.BUSY, RootRefreshStatus.TIMED_OUT, RootRefreshStatus.FAILED)) {
+            admission.state.value = admission.state.value.copy(refreshStatus = status)
+            assertTrue(gateway.isRootAvailable(execution))
         }
-        assertSame(failure, caught)
+        admission.state.value = admission.state.value.copy(
+            confirmation = RootConfirmation.NON_ROOT,
+            refreshStatus = RootRefreshStatus.IDLE,
+        )
+        assertFalse(gateway.isRootAvailable(execution))
+        assertEquals(0, executor.commands.size)
     }
 
     @Test
@@ -368,11 +362,15 @@ class RootSystemGatewayRoutingTest {
         commandTimeout = 23.seconds,
     )
 
-    private fun gateway(executor: RootCommandExecutor) = RootSystemGateway(
+    private fun gateway(
+        executor: RootCommandExecutor,
+        admission: TestRootAdmission = TestRootAdmission(),
+    ) = RootSystemGateway(
         context = FakeContext(File(".")),
         rootCommands = executor,
         preferenceRepository = FakePreferenceRepository(),
         ioDispatcher = Dispatchers.Unconfined,
+        rootAdmission = admission,
     ).also { gateway ->
         gateway.userIdProvider = { 0 }
     }

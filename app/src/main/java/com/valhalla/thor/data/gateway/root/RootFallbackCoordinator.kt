@@ -7,6 +7,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
+import com.valhalla.thor.domain.repository.RootAdmissionController
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -18,6 +19,7 @@ import org.koin.core.annotation.Single
 @Single
 internal class RootFallbackCoordinator(
     private val statuses: DefaultRootLaneStatusSource,
+    private val rootAdmission: RootAdmissionController,
 ) {
     private val coordinationState = MutableStateFlow<MainShellLease?>(null)
 
@@ -32,7 +34,7 @@ internal class RootFallbackCoordinator(
             commandClass = command.execution.commandClass,
         )
         try {
-            return main.execute(command)
+            return rootAdmission.withRootAdmission { main.execute(command) }
         } catch (cancelled: CancellationException) {
             if (cancelled is ShellCommandCancelled) throw cancelled
             throw ShellCommandCancelled(command.execution.commandClass, cancelled)
@@ -59,7 +61,7 @@ internal class RootFallbackCoordinator(
                 commandClass = command.execution.commandClass,
                 fallbackOwner = lane,
             )
-            return executeSubmittedCommandToDrain(main, command)
+            return rootAdmission.withRootAdmission { executeSubmittedCommandToDrain(main, command) }
         } finally {
             statuses.commandFinished(lane)
             release(lease)
