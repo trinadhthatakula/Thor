@@ -66,7 +66,7 @@ interface IThorRootService {
      *
      * <p>The daemon cannot work the user out for itself. It runs as uid 0 in user 0, so
      * {@code Process.myUserHandle()} answers 0 there no matter which user the app that bound it
-     * belongs to -- and IPackageManager.clearApplicationUserData takes the user id as an argument,
+     * belongs to -- and IActivityManager.clearApplicationUserData takes the user id as an argument,
      * so the one-argument {@link #clearAppData} above could only ever pass 0. For Thor in a work
      * profile or a Xiaomi Second Space that wipes the *primary* user's copy of the package, which is
      * irreversible and reported as a success.
