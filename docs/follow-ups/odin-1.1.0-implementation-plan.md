@@ -55,7 +55,8 @@ Root state must keep these facts separate:
 | --- | --- |
 | Last confirmed availability | Unknown, root available, non-root |
 | Refresh status | Idle, checking, busy, timed out, failed |
-| Observation revision | Changes on each completed observation, including ROOT to ROOT |
+| Observation revision | Changes on invalidation and completion, including ROOT to ROOT |
+| Confirmed revision | Changes only after ROOT or NON_ROOT; governs idle shell retirement |
 
 Root/non-root describes the latest completed acquisition. Busy, timeout, or failure does not prove
 denial. Preserve initial-loading semantics separately from availability; completing the first
@@ -129,10 +130,10 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 
 | ID | Package | Dependency | Owner | PR | Status |
 | --- | --- | --- | --- | --- | --- |
-| M1-01 | Shared privilege state in screens | None | Codex | [#534](https://github.com/trinadhthatakula/Thor/pull/534) | In review |
-| M1-02 | Typed refresh and cache coordination | Coordinate with M1-01 | Unassigned | — | Not started |
-| M1-03 | Root admission and lane recovery | M1-02 | Unassigned | — | Not started |
-| M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533) | In review |
+| M1-01 | Shared privilege state in screens | None | Codex | [#534](https://github.com/trinadhthatakula/Thor/pull/534) | Merged — validation pending |
+| M1-02 | Typed refresh and cache coordination | Coordinate with M1-01 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | In review |
+| M1-03 | Root admission and lane recovery | M1-02 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | In review |
+| M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533) | Merged — validation pending |
 | M1-05 | RootService connection ownership | None | Unassigned | — | Not started |
 | M1-06 | RootService profile isolation | M1-05 test fixture recommended | Unassigned | — | Not started |
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Unassigned | — | Not started |
@@ -185,41 +186,113 @@ Local evidence: `~/.codex/artifacts/thor-odin-m1-2026-09-30/` —
 `shared-ui-ksu-launch.log`. Reproduce the contention check by selecting
 `SharedPrivilegeContentionIntegrationTest` with `odinRoot=true`.
 
+**Combined validation, 2026-09-30–2026-10-01:** #533 and #534 are merged into `dev` at
+`b8a8df68b8faebd8e4c47301977ad9a3c7898098`; its tree exactly matches the combined tested
+commit `7d6b41739638d050d5f1b87df94a2e103069d625`. Required host gates passed with 3,126
+app tests per FOSS/Store debug variant and no lint errors or warnings. The FOSS debug build
+passed 13 instrumentation tests on `Odin_Magisk_API36_1` and 12 on the physical KernelSU
+Android 16 device: shared-view-model contention, Odin lifecycle, and normal disposable-app
+clearing on both, plus ordinary-refusal/real-AIDL fallback on the emulator. Home, Settings,
+expanded App Details, and installer previews rendered on both devices. UI navigation ran
+without held contention, so the stronger visual acceptance box above remains open; actual
+post-dispatch data-clear fault injection also remains unrun. Evidence is recorded in
+[#533](https://github.com/trinadhthatakula/Thor/pull/533#issuecomment-5917410851) and
+[#534](https://github.com/trinadhthatakula/Thor/pull/534#issuecomment-5917411218), with local
+logs/screenshots/APKs in `~/.codex/artifacts/thor-odin-combined-device-validation-2026-09-30/`.
+
 ### M1-02: Typed refresh and cache coordination
 
 Start in `PrivilegeManager`, `PrivilegeState`, `ActiveGatewayResolver`,
 `DataArchiveCapabilityCache`, and capability probes in `SystemRepositoryImpl`.
 
-- [ ] Add the injected Odin refresh adapter and the confirmed-availability/refresh-status model.
-- [ ] Preserve ROOT/NON_ROOT/BUSY/TIMED_OUT/FAILED and initial-loading semantics through Thor.
-- [ ] Publish observation revisions, including successful equal-value refreshes; complete
+- [x] Add the injected Odin refresh adapter and the confirmed-availability/refresh-status model.
+- [x] Preserve ROOT/NON_ROOT/BUSY/TIMED_OUT/FAILED and initial-loading semantics through Thor.
+- [x] Publish observation revisions, including successful equal-value refreshes; complete
   `refreshAndAwait()` for those results and prevent older in-flight observations from replacing
   newer state.
-- [ ] Invalidate gateway selection by revision and preference; invalidate measured capability
+- [x] Invalidate gateway selection by revision and preference; invalidate measured capability
   caches by revision/provider, including the component-capability cache where applicable.
-- [ ] Keep failed capability measurements unknown; cache only measured supported/unsupported.
-- [ ] Implement one coalesced idle retry after busy and explicit Retry after timeout/failure.
-- [ ] Test all observation transitions, concurrent refresh, one cancelled waiter, same-value
+- [x] Keep failed capability measurements unknown; cache only measured supported/unsupported.
+- [x] Implement one coalesced idle retry after busy and explicit Retry after timeout/failure.
+- [x] Test all observation transitions, concurrent refresh, one cancelled waiter, same-value
   cache recovery, and immediate routing after preference changes.
-- [ ] Validate host-controlled revoke/regrant through `PrivilegeManager.refreshAndAwait()` and
+- [x] Validate host-controlled revoke/regrant through `PrivilegeManager.refreshAndAwait()` and
   actual UI/routing, rather than only calling Odin directly.
+
+**Implementation:** root coordination lives in an independent `RootAvailabilityCoordinator`,
+with `PrivilegeManager` publishing the combined state. This avoids a dependency cycle through
+repository/gateway selection. Automatic routing follows the last confirmed availability; a
+confirmed NON_ROOT observation keeps the existing Shizuku/Dhizuku fallback throughout an
+unresolved refresh. Root-only calls still reach a typed admission refusal.
 
 ### M1-03: Root admission and lane recovery
 
 Start in root gateway admission, `RootCommandRouter`, `RootFallbackCoordinator`,
 `OwnedRootShellExecutor`, and `DefaultRootLaneStatusSource`.
 
-- [ ] Coordinate revision checks with new shell and Binder mutation admission, including direct
+- [x] Coordinate revision checks with new shell and Binder mutation admission, including direct
   root-only gateway paths that do not pass through ordinary provider selection.
-- [ ] Preserve accepted work and existing leases during refresh; return a recoverable state for
+- [x] Preserve accepted work and existing leases during refresh; return a recoverable state for
   new root mutations while freshness remains unresolved.
-- [ ] Recover degraded ARCHIVE/SWEEP capacity after a confirmed successful refresh at an idle
+- [x] Recover degraded ARCHIVE/SWEEP capacity after a confirmed successful refresh at an idle
   boundary, without replaying a previously dispatched command.
-- [ ] Retire stale dedicated sessions only when idle. Treat existing RootService lifetime
+- [x] Retire stale dedicated sessions only when idle. Treat existing RootService lifetime
   separately from MainShell refresh; do not kill accepted IPC work.
-- [ ] Test refresh/dispatch races, idle/active recovery, failed reopen, exact-generation cleanup,
+- [x] Test refresh/dispatch races, idle/active recovery, failed reopen, exact-generation cleanup,
   and independently available alternative providers.
-- [ ] Validate that accepted work survives refresh and subsequent work follows the new state.
+- [x] Validate that accepted work survives refresh and subsequent work follows the new state.
+
+**M1-02/M1-03 validation, 2026-10-01:** implementation commit
+`f13450dd1ec12bb06b26d7785a4665f97938e223`, external Odin `1.1.0`, in
+[#535](https://github.com/trinadhthatakula/Thor/pull/535). Later tracker commits change docs only.
+JDK 21 `test lintFossDebug lintStoreRelease` and FOSS debug/app-test APK assembly passed
+(`--no-parallel --max-workers=2`). Each FOSS/Store debug variant ran 3,174 tests with zero
+failures, errors, or skips. Lint has zero errors/warnings and no MissingTranslation or
+SyntheticAccessor findings; existing hint-only reports remain.
+
+| Selected instrumentation | Odin Magisk API 36.1 emulator | POCO F7 / ReSuKiSU API 36 device |
+| --- | --- | --- |
+| Refresh/admission and dedicated-shell replacement | 2 passed | 2 passed |
+| Shared-view-model contention | 1 passed | 1 passed |
+| Odin lifecycle | 10 passed | 10 passed |
+| Normal disposable-app clearing | 1 passed | 1 passed |
+| Ordinary shell refusal followed by real AIDL clear | 1 passed | **1 failed**; see M1-04 below |
+| Host-controlled manager revoke/regrant | 1 passed | 1 passed |
+| Total | **16 passed** | **15 passed, 1 failed** |
+
+`RootRefreshAdmissionIntegrationTest` holds an acknowledged production gateway helper, observes
+BUSY through `PrivilegeManager.refreshAndAwait()`, verifies new work cannot dispatch, then checks
+normal completion, one idle refresh, and subsequent admission. A second test records separate
+ARCHIVE/SWEEP shell PIDs and proves both are replaced after a confirmed refresh.
+`RootRefreshPolicyIntegrationTest` uses private-cache handshakes while the host manually changes
+only Thor debug's grant in Magisk/ReSuKiSU. It verifies NON_ROOT and ROOT through
+`refreshAndAwait()`, refused mutation admission during denial, and successful UID 0 work after
+grant restoration. Both tests require `odinRoot=true`; policy coordination additionally requires
+`odinPolicyToggle=true` and must never run unattended without its host handshake.
+
+Emulator Home, Settings, and Privilege Check reflected revocation and regrant in the same app
+process, retained loaded content, and kept the dialog open after manual Refresh. The physical
+ReSuKiSU v4.2.0-rc2 (35159/4) device passed the new API-level acceptance checks; final Home and
+Settings rendered with both Root and Shizuku available and the original Shizuku preference
+preserved. This does not establish live Shizuku/Dhizuku operation coverage; independent-provider
+routing is covered by JVM tests. The stronger held-contention visual check in M1-01 remains open.
+Thor debug's root grants were restored, both current debug APKs were left installed, and the
+only destructive target, `com.valhalla.thor.audit.cleardata`, was removed. No `adb root` or shell-root
+grant was used.
+
+Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
+`build-gates-with-policy.log`, `host-validation.json`, `emulator-admission-contention-clear.log`,
+`emulator-odin-lifecycle.log`, `emulator-manager-policy.log`, `resukisu-refresh-admission.log`,
+`resukisu-contention.log`, `resukisu-lifecycle.log`, `resukisu-clear-data.log`,
+`resukisu-policy.log`, and manager/UI screenshots. `tested-code-files.sha256` records the exact
+source inputs; its manifest digest is
+`1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
+
+**Next task, agreed 2026-10-01:** after #535 merges, fix the physical-firmware AIDL clear-data
+compatibility gap recorded under M1-04, before continuing M1-05/M1-06. Start a dedicated fix
+branch from the updated `dev`, verify the platform API contract, and rerun the affected tests on
+the ReSuKiSU device and Magisk emulator. The existing failure remains recorded and its checklist
+item stays open; it is deferred to that follow-up rather than blocking review of #535.
 
 ### M1-04: Data-clear fallback correction
 
@@ -236,6 +309,25 @@ structured execution failures before considering ordinary-failure fallback.
   what was actually exercised and leave untested failure injection open.
 - [ ] Inject actual post-dispatch transport loss/deadline failure on a device; current no-replay
   coverage supplies the typed failures at the gateway executor boundary.
+- [ ] Fix the confirmed physical-firmware AIDL clear-data compatibility gap found on 2026-10-01.
+  Preserve the Android user, observer confirmation, and no-replay rule; determine the additional
+  platform flag's semantics or use a verified alternative API before changing dispatch.
+
+**New compatibility evidence, 2026-10-01:** the forced ordinary-shell-refusal test passes on the
+Magisk emulator but fails on the POCO F7 / Android 16 / ReSuKiSU device. The root daemon returns
+false because looking up `IPackageManager.clearApplicationUserData(String, IPackageDataObserver,
+int)` throws `NoSuchMethodException`, before that AIDL clear can be dispatched. Offline inspection
+of the device's actual `framework.jar` confirms its interface instead declares
+`clearApplicationUserData(String, IPackageDataObserver, int, boolean)`; the three-argument overload
+is absent. Do not infer the additional boolean's semantics from its type.
+
+The same test reproduced the identical lookup failure on the paired baseline APKs whose tree
+matches merged `dev` at `b8a8df68`; `ThorRootService` and its AIDL are unchanged in #535. This is an
+existing compatibility defect exposed by broader validation, not a missing ReSuKiSU grant or a
+new admission refusal. Keep it open; do not skip the test or describe the full physical suite as
+passing. Evidence: `resukisu-baseline-clear-data-aidl.log`, `resukisu-root-service-logcat.log`,
+`resukisu-clear-api-signatures.txt`, and `resukisu-framework.jar` in the artifact directory above.
+Both current APKs were restored after the baseline comparison.
 
 **Validation, 2026-09-30:** tested code `a1a23f7ffa2f6bf6377445c6620e679f3c3bedc1`,
 external Odin `1.1.0`. JDK 21 `test lintFossDebug lintStoreRelease` and FOSS debug/app-test APK

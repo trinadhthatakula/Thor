@@ -972,4 +972,10 @@
     <string name="unfreeze_system_app_failed">No se pudo descongelar %1$s con Shizuku. No se pudo restaurar o habilitar la aplicación. Consulta los registros de diagnóstico para ver la respuesta del dispositivo.</string>
     <string name="system_app_removal_fallback">Alternativa de eliminación de apps del sistema</string>
     <string name="system_app_removal_fallback_desc">Si se deniega a Shizuku deshabilitar una aplicación del sistema, permite eliminarla para el usuario actual de Android conservando sus archivos de datos. Pueden perderse las cuentas que gestiona. Se aplica a congelaciones manuales y automáticas. Descongelar reinstala la aplicación. Este ajuste solo se aplica a este dispositivo.</string>
+
+    <!-- Root refresh status; availability remains the last confirmed observation. -->
+    <string name="root_refresh_checking">Comprobando el acceso root…</string>
+    <string name="root_refresh_busy">Esperando a que terminen las operaciones root. Las nuevas acciones root están en pausa.</string>
+    <string name="root_refresh_timed_out">La comprobación de root agotó el tiempo de espera. Las nuevas acciones root están en pausa.</string>
+    <string name="root_refresh_failed">No se pudo comprobar el acceso root. Las nuevas acciones root están en pausa.</string>
 </resources>

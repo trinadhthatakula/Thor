@@ -28,6 +28,7 @@ import com.valhalla.thor.domain.model.parseCapabilityProbe
 import com.valhalla.thor.domain.model.parseClassSize
 import com.valhalla.thor.domain.model.sharedDataCapabilityProbeCommand
 import com.valhalla.thor.domain.repository.AppDataProbe
+import com.valhalla.thor.domain.repository.RootAvailabilityProvider
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -38,6 +39,16 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+
+/** Only a completed capability measurement may become a cached Boolean. */
+internal fun measuredCapability(result: Result<Pair<Int, String?>>): Boolean {
+    val (exitCode, output) = result.getOrThrow()
+    val supported = parseCapabilityProbe(exitCode, output)
+    check(supported || exitCode == 1) {
+        "Capability measurement did not complete (exit=$exitCode)"
+    }
+    return supported
+}
 
 internal fun Throwable.rethrowIfPrivilegeExecutionFailure() {
     if (this is CancellationException || this is PrivilegeExecutionException) throw this
@@ -75,6 +86,7 @@ class SystemRepositoryImpl(
     private val dhizukuGateway: DhizukuSystemGateway,
     private val preferenceRepository: PreferenceRepository,
     private val storageStats: StorageStatsProvider,
+    rootAvailability: RootAvailabilityProvider,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemRepository, AppDataProbe {
 
@@ -82,7 +94,7 @@ class SystemRepositoryImpl(
         preferredMode = {
             preferenceRepository.userPreferences.first().preferredPrivilegeMode
         },
-        rootAvailable = { execution -> rootGateway.isRootAvailable(execution) },
+        rootAvailability = rootAvailability,
         shizukuAvailable = shizukuGateway::isShizukuAvailable,
         dhizukuAvailable = dhizukuGateway::isDhizukuAvailable,
         elapsedRealtimeMs = SystemClock::elapsedRealtime,
@@ -91,7 +103,7 @@ class SystemRepositoryImpl(
     override suspend fun isRootAvailable(
         execution: PrivilegeExecutionContext,
     ): Boolean = withContext(ioDispatcher) {
-        activeGatewayResolver.isRootAvailable(execution)
+        activeGatewayResolver.isRootAvailable()
     }
 
     // The gateway probes confine their blocking binder IPC to IO themselves, so no extra
@@ -102,7 +114,7 @@ class SystemRepositoryImpl(
 
     private suspend fun getActiveGateway(
         execution: PrivilegeExecutionContext,
-    ): Result<SystemGateway> = activeGatewayResolver.resolve(execution).map { mode ->
+    ): Result<SystemGateway> = activeGatewayResolver.resolve().map { mode ->
         when (mode) {
             PrivilegeMode.ROOT -> rootGateway
             PrivilegeMode.SHIZUKU -> shizukuGateway
@@ -140,7 +152,7 @@ class SystemRepositoryImpl(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Long?> = withContext(ioDispatcher) {
-        if (!activeGatewayResolver.isRootAvailable(execution)) {
+        if (!activeGatewayResolver.canSelectRoot()) {
             return@withContext Result.failure(
                 Exception("Clearing one app's cache requires Root. Shizuku can clear caches across the device; Dhizuku cannot clear caches.")
             )
@@ -243,7 +255,7 @@ class SystemRepositoryImpl(
         reason: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        if (activeGatewayResolver.isRootAvailable(execution)) {
+        if (activeGatewayResolver.canSelectRoot()) {
             rootGateway.rebootDevice(reason, execution)
         } else {
             Result.failure(Exception("Reboot requires Root access"))
@@ -271,7 +283,7 @@ class SystemRepositoryImpl(
         destinationPath: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = withContext(ioDispatcher) {
-        if (activeGatewayResolver.isRootAvailable(execution)) {
+        if (activeGatewayResolver.canSelectRoot()) {
             try {
                 rootGateway.copyFile(sourcePath, destinationPath, execution)
                 Result.success(Unit)
@@ -290,7 +302,7 @@ class SystemRepositoryImpl(
         execution: PrivilegeExecutionContext,
     ): Result<List<String>> = withContext(ioDispatcher) {
         try {
-            if (activeGatewayResolver.isRootAvailable(execution)) {
+            if (activeGatewayResolver.canSelectRoot()) {
                 val paths = rootGateway.getAppPaths(packageName, execution)
                 if (paths.isNotEmpty()) Result.success(paths)
                 else Result.failure(Exception("No paths found"))
@@ -435,22 +447,50 @@ class SystemRepositoryImpl(
     }
 
     override suspend fun probePrivateDataCapability(): Boolean {
-        val command = capabilityProbeCommand(BuildConfig.APPLICATION_ID, thorUserId) ?: return false
-        return executeShellCommand(command).fold(
-            onSuccess = { (exitCode, output) -> parseCapabilityProbe(exitCode, output) },
-            onFailure = { false }
-        )
+        val command = requireNotNull(capabilityProbeCommand(BuildConfig.APPLICATION_ID, thorUserId)) {
+            "Private-data capability probe could not be constructed"
+        }
+        return measuredCapability(executeShellCommand(command))
     }
 
     override suspend fun probeDataArchiveCapability(): Boolean {
         if (probePrivateDataCapability()) return true
         val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath.orEmpty()
-        val command = sharedDataCapabilityProbeCommand(externalRoot) ?: return false
-        return executeShellCommand(command).fold(
-            onSuccess = { (exitCode, output) -> parseCapabilityProbe(exitCode, output) },
-            onFailure = { false }
-        )
+        val command = requireNotNull(sharedDataCapabilityProbeCommand(externalRoot)) {
+            "Shared storage is unavailable for a capability measurement"
+        }
+        return measuredCapability(executeShellCommand(command))
     }
+
+    override suspend fun probePrivateDataCapability(mode: PrivilegeMode): Boolean {
+        val command = requireNotNull(capabilityProbeCommand(BuildConfig.APPLICATION_ID, thorUserId)) {
+            "Private-data capability probe could not be constructed"
+        }
+        return measureSelectedCapability(mode, command)
+    }
+
+    override suspend fun probeDataArchiveCapability(mode: PrivilegeMode): Boolean {
+        if (probePrivateDataCapability(mode)) return true
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath.orEmpty()
+        val command = requireNotNull(sharedDataCapabilityProbeCommand(externalRoot)) {
+            "Shared storage is unavailable for a capability measurement"
+        }
+        return measureSelectedCapability(mode, command)
+    }
+
+    private suspend fun measureSelectedCapability(mode: PrivilegeMode, command: String): Boolean =
+        withContext(ioDispatcher) {
+            // The result belongs to this provider; a newer preference must not redirect the probe.
+            val gateway: SystemGateway = when (mode) {
+                PrivilegeMode.ROOT -> rootGateway
+                PrivilegeMode.SHIZUKU -> shizukuGateway
+                PrivilegeMode.DHIZUKU -> dhizukuGateway
+                PrivilegeMode.NONE -> error("A capability measurement requires a selected provider")
+            }
+            measuredCapability(resultPreservingCancellation {
+                gateway.executeShellCommand(command, PrivilegeExecutionContext())
+            })
+        }
 
     override suspend fun measureDataClass(
         packageName: String,

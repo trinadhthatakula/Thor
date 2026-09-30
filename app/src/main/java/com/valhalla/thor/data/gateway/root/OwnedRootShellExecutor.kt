@@ -26,6 +26,11 @@ internal class OwnedRootShellExecutor(
     private val mutex = Mutex()
     private val generationOwner = RootShellGenerationOwner(sessionFactory, ioDispatcher)
 
+    /** Called at a lane's idle boundary; active work keeps its exact generation until completion. */
+    suspend fun retireIdleSession() = mutex.withLock {
+        generationOwner.retireCurrentGeneration()
+    }
+
     override suspend fun execute(command: RootCommand): RootCommandResult = mutex.withLock {
         var lease: RootShellGenerationOwner.SessionLease? = null
         try {
@@ -84,6 +89,10 @@ internal class RootShellGenerationOwner(
 ) {
     private var currentLease: SessionLease? = null
     private var generation: Long = 0
+
+    suspend fun retireCurrentGeneration() {
+        currentLease?.let { invalidateExactGeneration(it) }
+    }
 
     suspend fun healthySessionOrOpen(): SessionLease {
         currentLease?.let { lease ->

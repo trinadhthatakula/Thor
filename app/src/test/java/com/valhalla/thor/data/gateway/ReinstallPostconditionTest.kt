@@ -8,6 +8,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
 import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
@@ -176,6 +177,7 @@ class ReinstallPostconditionTest {
         rootCommands = commands,
         preferenceRepository = FakePreferenceRepository(),
         ioDispatcher = Dispatchers.Unconfined,
+        rootAdmission = TestRootAdmission(),
         reinstallPostconditionVerifier = verifier,
     ).also { gateway ->
         gateway.userIdProvider = { USER_ID }

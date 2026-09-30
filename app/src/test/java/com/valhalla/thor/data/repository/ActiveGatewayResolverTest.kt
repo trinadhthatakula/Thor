@@ -3,268 +3,189 @@
 
 package com.valhalla.thor.data.repository
 
-import com.valhalla.thor.domain.model.PrivilegeExecutionContext
-import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeMode
-import com.valhalla.thor.domain.model.ShellLaneBusy
-import java.util.concurrent.CancellationException
+import com.valhalla.thor.domain.model.RootAvailabilityState
+import com.valhalla.thor.domain.model.RootConfirmation
+import com.valhalla.thor.domain.model.RootRefreshStatus
+import com.valhalla.thor.domain.repository.RootAvailabilityProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class ActiveGatewayResolverTest {
-
-    @Test
-    fun `concurrent cold resolutions share one root probe and cache winner`() = runTest {
-        val root = GatedRootProbe()
-        val resolver = resolver(root = root::probe)
-
-        val first = async { resolver.resolve(EXECUTION) }
-        root.entered.await()
-        val second = async { resolver.resolve(EXECUTION) }
-        runCurrent()
-
-        assertEquals(1, root.calls)
-        root.release.complete(Unit)
-
-        assertEquals(PrivilegeMode.ROOT, first.await().getOrThrow())
-        assertEquals(PrivilegeMode.ROOT, second.await().getOrThrow())
-        assertEquals(1, root.calls)
+    private class Root(initial: RootAvailabilityState = ready(RootConfirmation.ROOT)) : RootAvailabilityProvider {
+        override val state = MutableStateFlow(initial)
+        var initialWaits = 0
+        override suspend fun awaitInitialObservation(): RootAvailabilityState {
+            initialWaits++
+            return state.value
+        }
     }
 
     @Test
-    fun `direct and active root probes never overlap`() = runTest {
-        suspend fun verify(directFirst: Boolean) {
-            val root = GatedRootProbe()
-            val resolver = resolver(root = root::probe)
-            val direct = if (directFirst) {
-                async { resolver.isRootAvailable(EXECUTION) }
-            } else {
-                async { resolver.resolve(EXECUTION).getOrThrow() == PrivilegeMode.ROOT }
-            }
-            root.entered.await()
-            val active = if (directFirst) {
-                async { resolver.resolve(EXECUTION).getOrThrow() == PrivilegeMode.ROOT }
-            } else {
-                async { resolver.isRootAvailable(EXECUTION) }
-            }
-            runCurrent()
+    fun `same-value root refresh invalidates a measured alternative route`() = runTest {
+        val root = Root(ready(RootConfirmation.NON_ROOT))
+        var calls = 0
+        val resolver = resolver(root, shizuku = { calls++; true })
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
+        assertEquals(1, calls)
 
-            assertEquals(1, root.calls)
-            assertEquals(1, root.maximumConcurrent)
-            root.release.complete(Unit)
+        root.state.value = ready(RootConfirmation.NON_ROOT, revision = 2)
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
+        assertEquals(2, calls)
+    }
 
-            assertTrue(direct.await())
-            assertTrue(active.await())
-            assertEquals(1, root.maximumConcurrent)
+    @Test
+    fun `changing preference takes effect before cache expiry`() = runTest {
+        var preferred: PrivilegeMode? = null
+        val resolver = resolver(preferred = { preferred }, shizuku = { true }, dhizuku = { true })
+        assertEquals(PrivilegeMode.ROOT, resolver.resolve().getOrThrow())
+        preferred = PrivilegeMode.SHIZUKU
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
+        preferred = PrivilegeMode.DHIZUKU
+        assertEquals(PrivilegeMode.DHIZUKU, resolver.resolve().getOrThrow())
+        preferred = null
+        assertEquals(PrivilegeMode.ROOT, resolver.resolve().getOrThrow())
+    }
+
+    @Test
+    fun `unresolved root freshness preserves auto route without claiming confirmed root`() = runTest {
+        for (status in listOf(RootRefreshStatus.CHECKING, RootRefreshStatus.BUSY, RootRefreshStatus.TIMED_OUT, RootRefreshStatus.FAILED)) {
+            for (confirmation in listOf(RootConfirmation.UNKNOWN, RootConfirmation.ROOT)) {
+                val root = Root(RootAvailabilityState(confirmation, status, hasCompletedRefresh = true))
+                val resolver = resolver(root, shizuku = { error("automatic fallback during unresolved root") })
+                assertEquals(PrivilegeMode.ROOT, resolver.resolve().getOrThrow())
+                assertEquals(confirmation == RootConfirmation.ROOT, resolver.isRootAvailable())
+                assertTrue(resolver.canSelectRoot())
+            }
+        }
+    }
+
+    @Test
+    fun `automatic Shizuku survives unresolved refresh until root is confirmed`() = runTest {
+        val root = Root(ready(RootConfirmation.NON_ROOT))
+        val resolver = resolver(root, shizuku = { true })
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
+        assertFalse(resolver.canSelectRoot())
+
+        for (status in listOf(RootRefreshStatus.CHECKING, RootRefreshStatus.BUSY, RootRefreshStatus.TIMED_OUT, RootRefreshStatus.FAILED)) {
+            root.state.value = root.state.value.copy(refreshStatus = status, revision = root.state.value.revision + 1)
+            assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
+            assertFalse(resolver.isRootAvailable())
+            assertTrue("Root-only actions still need a typed admission refusal", resolver.canSelectRoot())
         }
 
-        verify(directFirst = true)
-        verify(directFirst = false)
+        root.state.value = ready(RootConfirmation.ROOT, revision = root.state.value.revision + 1)
+        assertEquals(PrivilegeMode.ROOT, resolver.resolve().getOrThrow())
+        assertTrue(resolver.isRootAvailable())
+        assertTrue(resolver.canSelectRoot())
     }
 
     @Test
-    fun `cancelling a resolution waiter does not cancel the owner`() = runTest {
-        val root = GatedRootProbe()
-        val resolver = resolver(root = root::probe)
-        val owner = async { resolver.resolve(EXECUTION) }
-        root.entered.await()
-        val waiter = async { resolver.resolve(EXECUTION) }
-        runCurrent()
-
-        waiter.cancelAndJoin()
-        root.release.complete(Unit)
-
-        assertEquals(PrivilegeMode.ROOT, owner.await().getOrThrow())
-        assertTrue(waiter.isCancelled)
-        assertEquals(1, root.calls)
+    fun `explicit independent provider remains usable during root failure`() = runTest {
+        val root = Root(RootAvailabilityState(refreshStatus = RootRefreshStatus.FAILED, hasCompletedRefresh = true))
+        assertEquals(PrivilegeMode.SHIZUKU, resolver(root, preferred = { PrivilegeMode.SHIZUKU }, shizuku = { true }).resolve().getOrThrow())
+        assertEquals(PrivilegeMode.DHIZUKU, resolver(root, preferred = { PrivilegeMode.DHIZUKU }, dhizuku = { true }).resolve().getOrThrow())
     }
 
     @Test
-    fun `typed and ordinary probe failures are returned and not cached`() = runTest {
-        listOf(
-            ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE),
-            IllegalStateException("root probe failed"),
-        ).forEach { failure ->
+    fun `explicit alternative does not start or wait for initial root acquisition`() = runTest {
+        val root = Root(RootAvailabilityState())
+        val resolver = resolver(root, preferred = { PrivilegeMode.SHIZUKU }, shizuku = { true })
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
+        assertEquals(0, root.initialWaits)
+    }
+
+    @Test
+    fun `confirmed non-root follows automatic provider order`() = runTest {
+        val calls = mutableListOf<String>()
+        val resolver = resolver(Root(ready(RootConfirmation.NON_ROOT)),
+            shizuku = { calls += "shizuku"; false }, dhizuku = { calls += "dhizuku"; true })
+        assertEquals(PrivilegeMode.DHIZUKU, resolver.resolve().getOrThrow())
+        assertEquals(listOf("shizuku", "dhizuku"), calls)
+        assertFalse(resolver.canSelectRoot())
+    }
+
+    @Test
+    fun `a suspended old revision cannot return or cache its provider choice`() = runTest {
+        val root = Root(ready(RootConfirmation.NON_ROOT))
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val resolver = resolver(root, shizuku = { entered.complete(Unit); release.await(); true })
+        val resolving = async { resolver.resolve() }
+        entered.await()
+        root.state.value = ready(RootConfirmation.ROOT, revision = 2)
+        release.complete(Unit)
+        assertEquals(PrivilegeMode.ROOT, resolving.await().getOrThrow())
+        assertEquals(PrivilegeMode.ROOT, resolver.resolve().getOrThrow())
+    }
+
+    @Test
+    fun `a suspended old preference cannot return or cache its provider choice`() = runTest {
+        var preferred = PrivilegeMode.SHIZUKU
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val resolver = resolver(preferred = { preferred }, shizuku = { entered.complete(Unit); release.await(); true }, dhizuku = { true })
+        val resolving = async { resolver.resolve() }
+        entered.await()
+        preferred = PrivilegeMode.DHIZUKU
+        release.complete(Unit)
+        assertEquals(PrivilegeMode.DHIZUKU, resolving.await().getOrThrow())
+    }
+
+    @Test
+    fun `provider failure is not cached and cancellation propagates`() = runTest {
+        for (failure in listOf(IllegalStateException("failed"), CancellationException("cancelled"))) {
             var calls = 0
-            val resolver = resolver(
-                root = {
-                    calls++
-                    if (calls == 1) throw failure
-                    true
-                },
-            )
-
-            assertSame(failure, resolver.resolve(EXECUTION).exceptionOrNull())
-            assertEquals(PrivilegeMode.ROOT, resolver.resolve(EXECUTION).getOrThrow())
-            assertEquals(2, calls)
+            val resolver = resolver(preferred = { PrivilegeMode.SHIZUKU }, shizuku = {
+                if (calls++ == 0) throw failure
+                true
+            })
+            val caught = runCatching { resolver.resolve().getOrThrow() }.exceptionOrNull()
+            assertSame(failure, caught)
+            assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
         }
     }
 
     @Test
-    fun `resolution cancellation is rethrown and not cached`() = runTest {
-        val cancellation = CancellationException("cancel root probe")
-        var calls = 0
-        val resolver = resolver(
-            root = {
-                calls++
-                if (calls == 1) throw cancellation
-                true
-            },
-        )
-
-        val caught = runCatching { resolver.resolve(EXECUTION) }.exceptionOrNull()
-
-        assertSame(cancellation, caught)
-        assertEquals(PrivilegeMode.ROOT, resolver.resolve(EXECUTION).getOrThrow())
-        assertEquals(2, calls)
+    fun `alternative availability still expires within a revision`() = runTest {
+        var now = 0L
+        var available = true
+        val resolver = resolver(preferred = { PrivilegeMode.SHIZUKU }, shizuku = { available }, clock = { now })
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
+        available = false
+        now = 3_000L
+        assertEquals(PrivilegeMode.ROOT, resolver.resolve().getOrThrow())
     }
 
     @Test
-    fun `failed direct probe cannot clear a successful resolution`() = runTest {
-        var calls = 0
-        var directFailure: Throwable? = null
-        val resolver = resolver(
-            root = {
-                calls++
-                if (directFailure != null) throw directFailure!!
-                true
-            },
-        )
-
-        assertEquals(PrivilegeMode.ROOT, resolver.resolve(EXECUTION).getOrThrow())
-        directFailure = ShellLaneBusy(PrivilegeExecutionLane.INTERACTIVE)
-        assertSame(
-            directFailure,
-            runCatching { resolver.isRootAvailable(EXECUTION) }.exceptionOrNull(),
-        )
-        assertEquals(PrivilegeMode.ROOT, resolver.resolve(EXECUTION).getOrThrow())
-        assertEquals(2, calls)
-    }
-
-    @Test
-    fun `cache expiry starts after successful resolution`() = runTest {
-        var nowMs = 100L
-        val root = GatedRootProbe()
-        val resolver = resolver(root = root::probe, clockMs = { nowMs })
-        val first = async { resolver.resolve(EXECUTION) }
-        root.entered.await()
-
-        nowMs = 10_000L
-        root.release.complete(Unit)
-        assertEquals(PrivilegeMode.ROOT, first.await().getOrThrow())
-
-        nowMs = 12_999L
-        assertEquals(PrivilegeMode.ROOT, resolver.resolve(EXECUTION).getOrThrow())
-        assertEquals(1, root.calls)
-
-        nowMs = 13_000L
-        assertEquals(PrivilegeMode.ROOT, resolver.resolve(EXECUTION).getOrThrow())
-        assertEquals(2, root.calls)
-    }
-
-    @Test
-    fun `preferred gateway and automatic fallback order are preserved`() = runTest {
-        val preferredCalls = mutableListOf<String>()
-        val preferred = resolver(
-            preferred = { PrivilegeMode.SHIZUKU },
-            root = { preferredCalls += "root"; true },
-            shizuku = { preferredCalls += "shizuku"; false },
-            dhizuku = { preferredCalls += "dhizuku"; true },
-        )
-
-        assertEquals(PrivilegeMode.ROOT, preferred.resolve(EXECUTION).getOrThrow())
-        assertEquals(listOf("shizuku", "root"), preferredCalls)
-
-        val automaticCalls = mutableListOf<String>()
-        val automatic = resolver(
-            root = { automaticCalls += "root"; false },
-            shizuku = { automaticCalls += "shizuku"; false },
-            dhizuku = { automaticCalls += "dhizuku"; true },
-        )
-
-        assertEquals(PrivilegeMode.DHIZUKU, automatic.resolve(EXECUTION).getOrThrow())
-        assertEquals(listOf("root", "shizuku", "dhizuku"), automaticCalls)
-    }
-
-    @Test
-    fun `no available gateway is a failed result and is not cached`() = runTest {
-        var rootCalls = 0
-        val resolver = resolver(
-            root = { rootCalls++; false },
-            shizuku = { false },
-            dhizuku = { false },
-        )
-
-        assertTrue(resolver.resolve(EXECUTION).isFailure)
-        assertTrue(resolver.resolve(EXECUTION).isFailure)
-        assertEquals(2, rootCalls)
-    }
-
-    @Test
-    fun `failed root probe does not attribute root fallback to Shizuku work`() = runTest {
-        val execution = PrivilegeExecutionContext(lane = PrivilegeExecutionLane.SWEEP)
-        val resolver = resolver(
-            root = { probe ->
-                probe.provenance.recordDegradedRootFallback()
-                false
-            },
-            shizuku = { true },
-        )
-
-        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve(execution).getOrThrow())
-        assertEquals(false, execution.provenance.usedDegradedRootFallback)
+    fun `no available gateway is not cached`() = runTest {
+        var available = false
+        val resolver = resolver(Root(ready(RootConfirmation.NON_ROOT)), shizuku = { available })
+        assertTrue(resolver.resolve().isFailure)
+        available = true
+        assertEquals(PrivilegeMode.SHIZUKU, resolver.resolve().getOrThrow())
     }
 
     private fun resolver(
+        root: Root = Root(),
         preferred: suspend () -> PrivilegeMode? = { null },
-        root: suspend (PrivilegeExecutionContext) -> Boolean = { true },
         shizuku: suspend () -> Boolean = { false },
         dhizuku: suspend () -> Boolean = { false },
-        clockMs: () -> Long = { 0L },
-    ) = ActiveGatewayResolver(
-        preferredMode = preferred,
-        rootAvailable = root,
-        shizukuAvailable = shizuku,
-        dhizukuAvailable = dhizuku,
-        elapsedRealtimeMs = clockMs,
-    )
-
-    private class GatedRootProbe {
-        val entered = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        var calls = 0
-            private set
-        var maximumConcurrent = 0
-            private set
-        private var active = 0
-
-        suspend fun probe(execution: PrivilegeExecutionContext): Boolean {
-            assertEquals(EXECUTION, execution)
-            calls++
-            active++
-            maximumConcurrent = maxOf(maximumConcurrent, active)
-            try {
-                if (calls == 1) {
-                    entered.complete(Unit)
-                    release.await()
-                }
-                return true
-            } finally {
-                active--
-            }
-        }
-    }
+        clock: () -> Long = { 0L },
+    ) = ActiveGatewayResolver(preferred, root, shizuku, dhizuku, clock)
 
     private companion object {
-        val EXECUTION = PrivilegeExecutionContext()
+        fun ready(confirmation: RootConfirmation, revision: Long = 1) = RootAvailabilityState(
+            confirmation = confirmation, revision = revision, confirmedRevision = revision, hasCompletedRefresh = true,
+        )
     }
 }

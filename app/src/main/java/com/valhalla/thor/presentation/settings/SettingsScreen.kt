@@ -45,6 +45,7 @@ import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.presentation.components.RootRefreshNotice
 import com.valhalla.thor.domain.usecase.ObserveInterruptedRestoreUseCase
 import com.valhalla.thor.presentation.main.toDestination
 import com.valhalla.thor.presentation.queue.QueueNavigationButton
@@ -220,6 +221,8 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(16.dp))
         }
+
+        RootRefreshNotice(status = state.rootRefreshStatus)
 
         if (query.isBlank()) {
             // The engine picker, unconditional where it used to need two engines to appear.

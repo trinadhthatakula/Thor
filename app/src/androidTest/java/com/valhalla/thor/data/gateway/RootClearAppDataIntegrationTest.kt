@@ -19,6 +19,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.RootAdmissionController
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -109,7 +110,10 @@ class RootClearAppDataIntegrationTest {
                 return executor.execute(command)
             }
         }
-        val gateway = RootSystemGateway(context, observedExecutor, preferences, Dispatchers.IO)
+        val gateway = RootSystemGateway(
+            context, observedExecutor, preferences, Dispatchers.IO,
+            requireNotNull(GlobalContext.get().getOrNull<RootAdmissionController>()),
+        )
         val marker = "thor-clear-${UUID.randomUUID()}"
         val dataDirectory = fixtureShell("pwd")
         assertTrue("run-as must reach the fixture", dataDirectory.endsWith(TARGET))

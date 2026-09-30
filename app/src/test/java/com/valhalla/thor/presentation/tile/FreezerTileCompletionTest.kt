@@ -9,6 +9,11 @@ import com.valhalla.thor.data.freezer.PrivilegeSweepResolutionRuntime
 import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
 import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.data.gateway.root.DefaultRootLaneStatusSource
+import com.valhalla.thor.data.privilege.RootAvailabilityCoordinator
+import com.valhalla.thor.data.privilege.RootAvailabilityProbe
+import com.valhalla.thor.data.privilege.RootProbeOutcome
+import com.valhalla.thor.data.privilege.RootProbeResult
 import com.valhalla.thor.domain.model.*
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
@@ -72,7 +77,12 @@ class FreezerTileCompletionTest {
                     FreezeCandidate(if (frozen) FreezeState.FROZEN else FreezeState.ACTIVE)
                 }
             })
-        val manager = PrivilegeManager(FakeSystemRepository(), prefs, main.dispatcher, main.dispatcher)
+        val root = RootAvailabilityCoordinator(
+            RootAvailabilityProbe { RootProbeResult(RootProbeOutcome.ROOT) }, main.dispatcher,
+        )
+        val manager = PrivilegeManager(
+            FakeSystemRepository(), prefs, main.dispatcher, main.dispatcher, root, DefaultRootLaneStatusSource(),
+        )
         startKoin { modules(module {
             single { resolver }
             single<PrivilegeSweepController> { controller }

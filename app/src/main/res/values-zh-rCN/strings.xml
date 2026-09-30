@@ -950,4 +950,10 @@
     <string name="unfreeze_system_app_failed">无法通过 Shizuku 解冻 %1$s。恢复或启用应用失败。请查看诊断日志中的设备响应。</string>
     <string name="system_app_removal_fallback">系统应用移除备用方案</string>
     <string name="system_app_removal_fallback_desc">如果系统拒绝 Shizuku 停用系统应用，允许为当前 Android 用户移除该应用，同时保留数据文件。该应用管理的账号可能丢失。适用于手动和自动冻结。解冻时会重新安装应用。此设置仅适用于本设备。</string>
+
+    <!-- Root refresh status; availability remains the last confirmed observation. -->
+    <string name="root_refresh_checking">正在检查 root 权限…</string>
+    <string name="root_refresh_busy">正在等待 root 操作完成。新的 root 操作已暂停。</string>
+    <string name="root_refresh_timed_out">root 权限检查超时。新的 root 操作已暂停。</string>
+    <string name="root_refresh_failed">无法检查 root 权限。新的 root 操作已暂停。</string>
 </resources>

@@ -26,6 +26,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.RootRefreshStatus
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
@@ -75,6 +76,7 @@ class SettingsViewModel(
     data class SettingsUiState(
         val prefs: UserPreferences = UserPreferences(),
         val isRootAvailable: Boolean = false,
+        val rootRefreshStatus: RootRefreshStatus = RootRefreshStatus.IDLE,
         val isShizukuAvailable: Boolean = false,
         val isDhizukuAvailable: Boolean = false,
         val canUseBiometric: Boolean = false,
@@ -140,6 +142,7 @@ class SettingsViewModel(
         SettingsUiState(
             prefs = prefs,
             isRootAvailable = status.isReady && status.root,
+            rootRefreshStatus = status.rootAvailability.refreshStatus,
             isShizukuAvailable = status.isReady && status.shizuku,
             isDhizukuAvailable = status.isReady && status.dhizuku,
             canUseBiometric = biometricHelper.canAuthenticate(),

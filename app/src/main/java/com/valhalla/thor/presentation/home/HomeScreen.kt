@@ -45,6 +45,8 @@ import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.RootRefreshStatus
+import com.valhalla.thor.presentation.components.RootRefreshNotice
 import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
 import com.valhalla.thor.presentation.home.components.HomeActionsBento
@@ -150,6 +152,12 @@ fun HomeScreen(
             extensionsUnlocked = state.extensionsUnlocked,
             onCrack = { viewModel.crackEasterEgg() },
             onShowSupport = { showSupportSheet = true }
+        )
+
+        RootRefreshNotice(
+            status = state.rootAvailability.refreshStatus,
+            onRetry = viewModel::refreshPrivileges,
+            modifier = Modifier.padding(horizontal = 24.dp)
         )
 
         Spacer(Modifier.height(8.dp))
@@ -348,6 +356,7 @@ fun HomeScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.privilege_check_desc))
+                    RootRefreshNotice(status = state.rootAvailability.refreshStatus)
 
                     if (state.installedManagers.isNotEmpty()) {
                         androidx.compose.material3.HorizontalDivider()
@@ -371,7 +380,20 @@ fun HomeScreen(
                                     fontWeight = FontWeight.SemiBold
                                 )
 
-                                if (isGranted) {
+                                if (info.app.mode == PrivilegeMode.ROOT &&
+                                    state.rootAvailability.refreshStatus != RootRefreshStatus.IDLE
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            if (state.rootAvailability.refreshStatus == RootRefreshStatus.CHECKING) {
+                                                R.string.tile_checking
+                                            } else {
+                                                R.string.unknown
+                                            }
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                } else if (isGranted) {
                                     Text(
                                         text = stringResource(R.string.permission_state_granted),
                                         style = MaterialTheme.typography.bodySmall,
@@ -407,11 +429,17 @@ fun HomeScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    viewModel.refreshPrivileges()
-                    showPrivilegeDialog = false
-                }) {
-                    Text(stringResource(R.string.refresh))
+                Button(
+                    onClick = viewModel::refreshPrivileges,
+                    enabled = state.rootAvailability.refreshStatus != RootRefreshStatus.CHECKING
+                ) {
+                    Text(stringResource(
+                        if (state.rootAvailability.refreshStatus == RootRefreshStatus.IDLE) {
+                            R.string.refresh
+                        } else {
+                            R.string.retry_label
+                        }
+                    ))
                 }
             },
             dismissButton = {
