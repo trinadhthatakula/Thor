@@ -512,6 +512,9 @@ class RootSystemGateway internal constructor(
         val shellResult = runCommand(
             clearAppDataCommand(escapedPackage, thorUserId), execution, CLEAR_APP_DATA,
         )
+        // A transport failure or deadline may follow a dispatched wipe. Preserve its typed
+        // outcome instead of issuing the destructive operation again through the daemon.
+        if (shellResult.exceptionOrNull() is PrivilegeExecutionException) return@withContext shellResult
         if (shellResult.isSuccess) return@withContext shellResult
 
         // Fallback to ThorRootService AIDL daemon. `clearAppDataForUser` and not the older
