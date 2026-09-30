@@ -18,6 +18,8 @@ import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
@@ -30,7 +32,7 @@ import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
-import com.valhalla.thor.presentation.FakeSystemRepository
+import com.valhalla.thor.presentation.FakePrivilegeStateProvider
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.util.UiText
 import java.io.IOException
@@ -40,6 +42,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -66,6 +69,194 @@ class InstallerViewModelTest {
     val temporaryFolder = TemporaryFolder()
 
     private var fixtureNumber = 0
+
+    @Test
+    fun `parsing waits for shared readiness and discovers non-root providers`() = runTest {
+        val privileges = FakePrivilegeStateProvider()
+        val fixture = fixture(privileges = privileges)
+        fixture.viewModel.parsePackage(fixture.uri)
+        runCurrent()
+
+        assertTrue(fixture.eventBus.latest is InstallState.Parsing)
+        assertEquals(listOf(InstallMode.NORMAL), fixture.viewModel.availableModes.value)
+
+        privileges.emit(
+            PrivilegeState(shizuku = true, dhizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true),
+        )
+        runCurrent()
+
+        assertTrue(fixture.eventBus.latest is InstallState.ReadyToInstall)
+        assertEquals(
+            listOf(InstallMode.NORMAL, InstallMode.SHIZUKU, InstallMode.DHIZUKU),
+            fixture.viewModel.availableModes.value,
+        )
+        assertEquals(InstallMode.DHIZUKU, fixture.viewModel.installMode.value)
+    }
+
+    @Test
+    fun `slow shared readiness offers normal installation and accepts a later provider update`() = runTest {
+        val privileges = FakePrivilegeStateProvider()
+        val fixture = fixture(privileges = privileges)
+        fixture.viewModel.parsePackage(fixture.uri)
+        runCurrent()
+        advanceTimeBy(10_001)
+        runCurrent()
+
+        assertTrue(fixture.eventBus.latest is InstallState.ReadyToInstall)
+        assertEquals(listOf(InstallMode.NORMAL), fixture.viewModel.availableModes.value)
+        assertEquals(InstallMode.NORMAL, fixture.viewModel.installMode.value)
+
+        privileges.emit(PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true))
+        runCurrent()
+        assertEquals(listOf(InstallMode.NORMAL, InstallMode.SHIZUKU), fixture.viewModel.availableModes.value)
+        assertEquals(InstallMode.SHIZUKU, fixture.viewModel.installMode.value)
+        assertTrue(fixture.eventBus.latest is InstallState.ReadyToInstall)
+        assertEquals(listOf(fixture.uri), fixture.analyzer.analyzedUris)
+    }
+
+    @Test
+    fun `provider updates retain installer ranking and valid explicit choices`() = runTest {
+        val privileges = FakePrivilegeStateProvider(
+            PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true),
+        )
+        val fixture = fixture(privileges = privileges)
+        fixture.parseReadyPackage()
+        assertEquals(InstallMode.ROOT, fixture.viewModel.installMode.value)
+        val ready = fixture.eventBus.latest
+
+        val allAvailable = PrivilegeState(
+            root = true, shizuku = true, dhizuku = true, active = PrivilegeMode.ROOT, isReady = true,
+        )
+        privileges.emit(allAvailable)
+        runCurrent()
+        assertEquals(InstallMode.DHIZUKU, fixture.viewModel.installMode.value)
+
+        for (choice in listOf(InstallMode.SHIZUKU, InstallMode.NORMAL, InstallMode.EXTERNAL)) {
+            fixture.viewModel.setInstallMode(choice)
+            privileges.emit(allAvailable.copy(dhizuku = false))
+            runCurrent()
+            privileges.emit(allAvailable)
+            runCurrent()
+            assertEquals(choice, fixture.viewModel.installMode.value)
+        }
+        assertSame(ready, fixture.eventBus.latest)
+        assertEquals(listOf(fixture.uri), fixture.analyzer.analyzedUris)
+        assertTrue(fixture.repository.calls.isEmpty())
+    }
+
+    @Test
+    fun `new provider preserves an install waiting for its legacy preference read`() = runTest {
+        val privileges = FakePrivilegeStateProvider(
+            PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true),
+        )
+        val gate = CompletableDeferred<Boolean>()
+        val fixture = fixture(targetSdk = 23, privileges = privileges, legacyReadHook = { gate.await() })
+        fixture.parseReadyPackage()
+        fixture.viewModel.startInstallation()
+        runCurrent()
+        assertEquals(1, fixture.preferences.legacyReadCalls)
+
+        privileges.emit(
+            PrivilegeState(root = true, shizuku = true, active = PrivilegeMode.ROOT, isReady = true),
+        )
+        runCurrent()
+        gate.complete(true)
+        runCurrent()
+
+        assertEquals(InstallMode.ROOT, fixture.viewModel.installMode.value)
+        assertEquals(InstallMode.ROOT, fixture.repository.calls.single().mode)
+        assertTrue(fixture.repository.calls.single().bypassLowTargetSdkBlock)
+    }
+
+    @Test
+    fun `new provider preserves an open legacy confirmation for the displayed mode`() = runTest {
+        val privileges = FakePrivilegeStateProvider(
+            PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true),
+        )
+        val fixture = fixture(targetSdk = 23, privileges = privileges)
+        fixture.parseReadyPackage()
+        fixture.viewModel.startInstallation()
+        runCurrent()
+        val confirmation = fixture.viewModel.legacyInstallConfirmation.value!!
+
+        privileges.emit(
+            PrivilegeState(root = true, shizuku = true, active = PrivilegeMode.ROOT, isReady = true),
+        )
+        runCurrent()
+        assertEquals(InstallMode.ROOT, fixture.viewModel.installMode.value)
+        assertSame(confirmation, fixture.viewModel.legacyInstallConfirmation.value)
+        fixture.viewModel.confirmLegacyInstallation(confirmation.id)
+        runCurrent()
+        assertEquals(InstallMode.ROOT, fixture.repository.calls.single().mode)
+        assertTrue(fixture.repository.calls.single().bypassLowTargetSdkBlock)
+    }
+
+    @Test
+    fun `losing selected provider invalidates pending confirmation without starting an install`() = runTest {
+        val privileges = FakePrivilegeStateProvider(
+            PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true),
+        )
+        val fixture = fixture(targetSdk = 23, privileges = privileges)
+        fixture.parseReadyPackage()
+        fixture.viewModel.setInstallMode(InstallMode.ROOT)
+        fixture.viewModel.startInstallation()
+        runCurrent()
+        val confirmation = fixture.viewModel.legacyInstallConfirmation.value!!
+
+        privileges.emit(PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true))
+        runCurrent()
+        assertEquals(InstallMode.SHIZUKU, fixture.viewModel.installMode.value)
+        assertNull(fixture.viewModel.legacyInstallConfirmation.value)
+        fixture.viewModel.confirmLegacyInstallation(confirmation.id)
+        runCurrent()
+        assertTrue(fixture.repository.calls.isEmpty())
+    }
+
+    @Test
+    fun `cancelling during shared readiness prevents a later parse completion`() = runTest {
+        val privileges = FakePrivilegeStateProvider()
+        val fixture = fixture(privileges = privileges)
+        fixture.viewModel.parsePackage(fixture.uri)
+        runCurrent()
+        val scopeJob = fixture.viewModel.viewModelScope.coroutineContext[Job]!!
+        scopeJob.cancel()
+        runCurrent()
+
+        privileges.emit(PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true))
+        runCurrent()
+        assertTrue(scopeJob.isCancelled)
+        assertTrue(fixture.eventBus.latest is InstallState.Parsing)
+        assertEquals(InstallMode.NORMAL, fixture.viewModel.installMode.value)
+        assertTrue(fixture.repository.calls.isEmpty())
+    }
+
+    @Test
+    fun `provider change does not cancel or replay an accepted install`() = runTest {
+        val privileges = FakePrivilegeStateProvider(
+            PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true),
+        )
+        val fixture = fixture(privileges = privileges)
+        val finishInstall = CompletableDeferred<Unit>()
+        fixture.repository.onInstall = {
+            finishInstall.await()
+            fixture.eventBus.emit(InstallState.Success)
+        }
+        fixture.parseReadyPackage()
+        fixture.viewModel.startInstallation()
+        runCurrent()
+        assertTrue(fixture.viewModel.isInstallCallActive.value)
+
+        privileges.emit(PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true))
+        runCurrent()
+        assertTrue(fixture.viewModel.isInstallCallActive.value)
+        assertEquals(InstallMode.ROOT, fixture.repository.calls.single().mode)
+
+        finishInstall.complete(Unit)
+        runCurrent()
+        assertTrue(fixture.eventBus.latest is InstallState.Success)
+        assertFalse(fixture.viewModel.isInstallCallActive.value)
+        assertEquals(1, fixture.repository.calls.size)
+    }
 
     @Test
     fun `early APK success stays active until game data work settles`() = runTest {
@@ -419,6 +610,9 @@ class InstallerViewModelTest {
         targetSdk: Int? = null,
         allowLegacyApkInstall: Boolean = false,
         legacyReadHook: (suspend () -> Boolean)? = null,
+        privileges: FakePrivilegeStateProvider = FakePrivilegeStateProvider(
+            PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true),
+        ),
     ): Fixture {
         val uri = "content://com.example.provider/package.apk".toUri()
         val staged = StagedPackage(
@@ -446,7 +640,7 @@ class InstallerViewModelTest {
             analyzer = analyzer,
             eventBus = eventBus,
             packageManager = application.packageManager,
-            systemRepository = FakeSystemRepository(),
+            privilegeState = privileges,
             preferenceRepository = preferences,
             ioDispatcher = mainDispatcherRule.dispatcher,
         )

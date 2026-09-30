@@ -17,6 +17,7 @@ import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezeProfileRepository
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
+import com.valhalla.thor.presentation.FakePrivilegeStateProvider
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
@@ -74,6 +75,7 @@ class AppInfoProfileMembershipViewModelTest {
             freezeProfileRepository = profileRepository,
             appShortcuts = FakeAppShortcutController(),
             preferenceRepository = FakePreferenceRepository(),
+            privilegeState = FakePrivilegeStateProvider(),
             ioDispatcher = main.dispatcher,
         )
     }

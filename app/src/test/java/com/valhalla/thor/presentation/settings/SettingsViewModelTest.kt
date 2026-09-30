@@ -9,6 +9,8 @@ import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.MultiAppActionId
 import com.valhalla.thor.domain.model.MultiAppActionLayout
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -24,7 +26,7 @@ import com.valhalla.thor.presentation.FakeFreezeProfileRepository
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeSweepController
-import com.valhalla.thor.presentation.FakeSystemRepository
+import com.valhalla.thor.presentation.FakePrivilegeStateProvider
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.navigation.TaskNavigationRequest
 import com.valhalla.thor.presentation.navigation.TaskNavigationTargets
@@ -41,6 +43,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -49,6 +52,44 @@ import org.junit.Test
 class SettingsViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule(StandardTestDispatcher())
+
+    @Test
+    fun `settings render preferences before readiness and follow shared privilege changes`() = runTest {
+        val initial = UserPreferences(themeMode = ThemeMode.DARK, preferredPrivilegeMode = PrivilegeMode.ROOT)
+        val privileges = FakePrivilegeStateProvider()
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = FakePreferenceRepository(initial),
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+            privileges = privileges,
+        )
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
+        runCurrent()
+        assertEquals(initial, vm.uiState.value.prefs)
+        assertFalse(vm.uiState.value.isRootAvailable)
+
+        privileges.emit(PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true))
+        runCurrent()
+        assertTrue(vm.uiState.value.isRootAvailable)
+        assertTrue(vm.uiState.value.canFixStore)
+
+        privileges.emit(
+            PrivilegeState(shizuku = true, dhizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true),
+        )
+        runCurrent()
+        assertFalse(vm.uiState.value.isRootAvailable)
+        assertTrue(vm.uiState.value.isShizukuAvailable)
+        assertTrue(vm.uiState.value.isDhizukuAvailable)
+        assertTrue(vm.uiState.value.canGrantPermissionsOnInstall)
+        assertEquals(initial, vm.uiState.value.prefs)
+
+        privileges.emit(PrivilegeState(isReady = true))
+        runCurrent()
+        assertFalse(vm.uiState.value.canFixStore)
+        assertFalse(vm.uiState.value.canGrantPermissionsOnInstall)
+    }
 
     @Test
     fun `restore all opens provisional before resolving and accepts canonical task`() = runTest {
@@ -307,9 +348,10 @@ class SettingsViewModelTest {
         candidates: Map<String, FreezeCandidate>,
         targets: TaskNavigationTargets,
         profiles: FakeFreezeProfileRepository = FakeFreezeProfileRepository(),
+        privileges: FakePrivilegeStateProvider = FakePrivilegeStateProvider(),
     ): SettingsViewModel = SettingsViewModel(
         preferenceRepository = preferences,
-        systemRepository = FakeSystemRepository(),
+        privilegeState = privileges,
         biometricHelper = FakeAuthCapability(),
         localeManager = LocaleManager(FakeContext(File("/tmp"))),
         sweepResolver = privilegeSweepResolver(
