@@ -597,8 +597,8 @@ class ThorRootService : RootService() {
      * belongs to — `Process.myUserHandle()` here answers 0 for a Thor sitting in a work profile just
      * as it does for one in the primary user. The user id therefore arrives over the binder
      * ([IThorRootService.clearAppDataForUser]) and is passed straight through to
-     * `clearApplicationUserData`, whose third argument is exactly this number. It used to be the
-     * literal 0, which is the difference between wiping the app the user tapped and wiping the
+     * `IActivityManager.clearApplicationUserData`, whose fourth argument is this number. It used to
+     * be the literal 0, which is the difference between wiping the app the user tapped and wiping the
      * primary user's same-named app — irreversibly, and reported as a success.
      *
      * **The return value is now a confirmation, not a dispatch receipt.** This is the one site in
@@ -612,30 +612,34 @@ class ThorRootService : RootService() {
     // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
     internal fun clearAppData(packageName: String, userId: Int): Boolean {
         val outcome = runCatching {
-            val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
+            val amStub = Class.forName("android.app.IActivityManager\$Stub")
             val serviceManager = Class.forName("android.os.ServiceManager")
             val getService = serviceManager.getMethod("getService", String::class.java)
-            val binder = getService.invoke(null, "package") as IBinder
-            val asInterface = pmStub.getMethod("asInterface", IBinder::class.java)
-            val pm = asInterface.invoke(null, binder)
-            val pmClass = Class.forName("android.content.pm.IPackageManager")
+            val binder = getService.invoke(null, "activity") as IBinder
+            val asInterface = amStub.getMethod("asInterface", IBinder::class.java)
+            val am = asInterface.invoke(null, binder)
+            val amClass = Class.forName("android.app.IActivityManager")
 
+            // Use the same entry point as `pm clear`. Some firmware changes IPackageManager's
+            // signature by adding an undocumented boolean; do not guess that flag's semantics.
             // Still looked up by name rather than as IPackageDataObserver::class.java. Both resolve
             // to the same framework class while parent-first delegation holds, and if it ever stops
             // holding this spelling keeps the failure where it belongs — a lookup that cannot find
             // the framework's method, rather than an invoke that silently takes our shadow copy.
-            val method = pmClass.getDeclaredMethod(
+            val method = amClass.getDeclaredMethod(
                 "clearApplicationUserData",
                 String::class.java,
+                Boolean::class.javaPrimitiveType,
                 Class.forName("android.content.pm.IPackageDataObserver"),
                 Int::class.javaPrimitiveType
             )
-            // clearApplicationUserData returns void: the verdict only ever arrives asynchronously on
-            // IPackageDataObserver.onRemoveCompleted, so a real observer is what makes it readable.
-            // The observer is constructed before the invoke, inside awaitDataObserver, so the
-            // callback cannot land before there is something to receive it.
+            // keepState=false matches `pm clear`. The Boolean only acknowledges the request;
+            // only the observer can confirm success. Resolve before dispatch, invoke once, and
+            // never try another API after a refusal, exception or missing callback.
             awaitDataObserver("Odin", packageName) { observer ->
-                method.invoke(pm, packageName, observer, userId)
+                check(method.invoke(am, packageName, false, observer, userId) == true) {
+                    "ActivityManager did not accept the clear-data request for $packageName"
+                }
             }
         }.getOrElse { e ->
             // Only the reflective lookup can land here — awaitDataObserver already absorbs whatever
@@ -658,7 +662,7 @@ class ThorRootService : RootService() {
             DataClearOutcome.UNVERIFIED ->
                 Logger.w(
                     "Odin",
-                    "clearAppData($packageName, user $userId): issued but never confirmed — the " +
+                    "clearAppData($packageName, user $userId): completion not confirmed — the " +
                         "data may or may not be gone, so this reports failure"
                 )
         }

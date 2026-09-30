@@ -131,9 +131,9 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | ID | Package | Dependency | Owner | PR | Status |
 | --- | --- | --- | --- | --- | --- |
 | M1-01 | Shared privilege state in screens | None | Codex | [#534](https://github.com/trinadhthatakula/Thor/pull/534) | Merged — validation pending |
-| M1-02 | Typed refresh and cache coordination | Coordinate with M1-01 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | In review |
-| M1-03 | Root admission and lane recovery | M1-02 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | In review |
-| M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533) | Merged — validation pending |
+| M1-02 | Typed refresh and cache coordination | Coordinate with M1-01 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | Done |
+| M1-03 | Root admission and lane recovery | M1-02 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | Done |
+| M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533), [#536](https://github.com/trinadhthatakula/Thor/pull/536) | In review |
 | M1-05 | RootService connection ownership | None | Unassigned | — | Not started |
 | M1-06 | RootService profile isolation | M1-05 test fixture recommended | Unassigned | — | Not started |
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Unassigned | — | Not started |
@@ -244,7 +244,9 @@ Start in root gateway admission, `RootCommandRouter`, `RootFallbackCoordinator`,
 
 **M1-02/M1-03 validation, 2026-10-01:** implementation commit
 `f13450dd1ec12bb06b26d7785a4665f97938e223`, external Odin `1.1.0`, in
-[#535](https://github.com/trinadhthatakula/Thor/pull/535). Later tracker commits change docs only.
+[#535](https://github.com/trinadhthatakula/Thor/pull/535), merged as `ce95c787`.
+Later tracker commits change docs only. The results below record that PR's validation;
+the subsequent physical clear-data compatibility fix is recorded under M1-04.
 JDK 21 `test lintFossDebug lintStoreRelease` and FOSS debug/app-test APK assembly passed
 (`--no-parallel --max-workers=2`). Each FOSS/Store debug variant ran 3,174 tests with zero
 failures, errors, or skips. Lint has zero errors/warnings and no MissingTranslation or
@@ -288,11 +290,11 @@ Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
 source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
 
-**Next task, agreed 2026-10-01:** after #535 merges, fix the physical-firmware AIDL clear-data
-compatibility gap recorded under M1-04, before continuing M1-05/M1-06. Start a dedicated fix
-branch from the updated `dev`, verify the platform API contract, and rerun the affected tests on
-the ReSuKiSU device and Magisk emulator. The existing failure remains recorded and its checklist
-item stays open; it is deferred to that follow-up rather than blocking review of #535.
+**Next task, updated 2026-10-01:** #535 has merged. The physical-firmware AIDL clear-data
+compatibility fix is in [#536](https://github.com/trinadhthatakula/Thor/pull/536), with the affected
+tests passing on ReSuKiSU and Magisk as recorded under M1-04. After that fix merges, continue
+M1-05 connection ownership, then M1-06 profile isolation. Actual post-dispatch transport/deadline
+fault injection remains an unchecked M1-04 follow-up.
 
 ### M1-04: Data-clear fallback correction
 
@@ -309,12 +311,59 @@ structured execution failures before considering ordinary-failure fallback.
   what was actually exercised and leave untested failure injection open.
 - [ ] Inject actual post-dispatch transport loss/deadline failure on a device; current no-replay
   coverage supplies the typed failures at the gateway executor boundary.
-- [ ] Fix the confirmed physical-firmware AIDL clear-data compatibility gap found on 2026-10-01.
-  Preserve the Android user, observer confirmation, and no-replay rule; determine the additional
-  platform flag's semantics or use a verified alternative API before changing dispatch.
+- [x] Fix the confirmed physical-firmware AIDL clear-data compatibility gap found on 2026-10-01.
+  Use the verified ActivityManager API while preserving the Android user, observer confirmation,
+  and no-replay rule; validate both clear-data paths on ReSuKiSU and Magisk.
 
-**New compatibility evidence, 2026-10-01:** the forced ordinary-shell-refusal test passes on the
-Magisk emulator but fails on the POCO F7 / Android 16 / ReSuKiSU device. The root daemon returns
+**Compatibility fix and validation, 2026-10-01:**
+[#536](https://github.com/trinadhthatakula/Thor/pull/536), implementation commit
+`8c6e57749497e8c9c5f3fc577e29794909a86756`, based on merged #535 (`ce95c787`), external Odin
+`1.1.0`. The daemon now uses
+`IActivityManager.clearApplicationUserData(String, boolean, IPackageDataObserver, int)` with
+`keepState=false`, following Android's `pm clear`. The explicit user ID is argument four.
+The Boolean result means request acceptance; only the existing observer confirms successful
+completion. Refusal, invocation failure, or missing confirmation returns failure, with no
+second API attempt or replay. Thor's AIDL wire contract is unchanged.
+
+The matching ActivityManager signature was verified in the physical framework and AOSP Android
+9–16: [Android 9 declaration](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-9.0.0_r1/core/java/android/app/IActivityManager.aidl#L220),
+[Android 16 declaration](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/core/java/android/app/IActivityManager.aidl#L335),
+and [Android 16 pm clear](https://github.com/aosp-mirror/platform_frameworks_base/blob/android16-release/services/core/java/com/android/server/pm/PackageManagerShellCommand.java#L2356).
+The firmware-specific PackageManager boolean is neither used nor inferred.
+
+JDK 21 `test lintFossDebug lintStoreRelease` and FOSS debug/app-test APK assembly passed
+(`--no-parallel --max-workers=2`): 3,174 tests per FOSS/Store debug variant, zero failures,
+errors, or skips. Both lint gates have zero errors/warnings, including no MissingTranslation
+or SyntheticAccessor findings; existing hints remain.
+
+| `RootClearAppDataIntegrationTest` | Normal root clear | Ordinary shell refusal → real daemon |
+| --- | --- | --- |
+| POCO F7 / Android 16 / ReSuKiSU v4.2.0-rc2 (35159/4) | Passed | Passed; observer confirmed |
+| Odin Magisk API 36.1 / Magisk 30.7 emulator | Passed | Passed; observer confirmed |
+
+Both devices ran the unchanged two-test regression suite against the exact built APKs.
+The tests check fixture-marker removal, one shell attempt, and the expected daemon reset count;
+both daemon logs report observer-confirmed `CLEARED`. The first physical fixture installation
+was blocked by Android; it succeeded when retried at the user's request, before any physical
+clear-data test ran. No clear-data mutation was retried. The only destructive target was
+`com.valhalla.thor.audit.cleardata`, removed afterward on both devices. Installed app/test APK
+hashes match the validated build. Thor's existing app grants were used without `adb root`,
+ADB shell-root grants, or manager changes.
+
+These device runs cover the primary Android user. AOSP signature compatibility is not runtime
+validation of every supported Android version. Actual post-dispatch transport/deadline fault
+injection and broader profile/lifecycle acceptance remain open; the earlier full-suite failure
+below is retained as historical evidence.
+
+Local evidence: `~/.codex/artifacts/thor-root-clear-api-compat-2026-10-01/` — `build-gates.log`,
+`host-validation.json`, `API-CONTRACT.md`, `emulator-clear-data.log`, `resukisu-clear-data.log`,
+`emulator-root-service-logcat.log`, `resukisu-clear-data-odin-logcat.log`,
+`emulator-install-verification.log`, and `resukisu-retry-install-verification.log`.
+`tested-code-files.sha256` records the exact source inputs; its manifest digest is
+`eed5f85c1f6da10b1e8ffd490f28542259b8d709554a48a0dd854519fe209173`.
+
+**Original compatibility failure, 2026-10-01:** the forced ordinary-shell-refusal test passed on the
+Magisk emulator but failed on the POCO F7 / Android 16 / ReSuKiSU device. The root daemon returned
 false because looking up `IPackageManager.clearApplicationUserData(String, IPackageDataObserver,
 int)` throws `NoSuchMethodException`, before that AIDL clear can be dispatched. Offline inspection
 of the device's actual `framework.jar` confirms its interface instead declares
@@ -324,9 +373,10 @@ is absent. Do not infer the additional boolean's semantics from its type.
 The same test reproduced the identical lookup failure on the paired baseline APKs whose tree
 matches merged `dev` at `b8a8df68`; `ThorRootService` and its AIDL are unchanged in #535. This is an
 existing compatibility defect exposed by broader validation, not a missing ReSuKiSU grant or a
-new admission refusal. Keep it open; do not skip the test or describe the full physical suite as
-passing. Evidence: `resukisu-baseline-clear-data-aidl.log`, `resukisu-root-service-logcat.log`,
-`resukisu-clear-api-signatures.txt`, and `resukisu-framework.jar` in the artifact directory above.
+new admission refusal. The historical full physical suite remains recorded as 15 passed, 1 failed.
+Evidence: `resukisu-baseline-clear-data-aidl.log`, `resukisu-root-service-logcat.log`,
+`resukisu-clear-api-signatures.txt`, and `resukisu-framework.jar` in the original
+`~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` directory.
 Both current APKs were restored after the baseline comparison.
 
 **Validation, 2026-09-30:** tested code `a1a23f7ffa2f6bf6377445c6620e679f3c3bedc1`,
@@ -348,7 +398,7 @@ Local evidence: `~/.codex/artifacts/thor-odin-m1-2026-09-30/` —
 `data-clear-final-gates.log`, `data-clear-ksu-final.log`, `data-clear-magisk-final.log`, and
 `odin-dependency.log`. Reproduce instrumentation with `odinRoot=true` and
 `odinClearDataTestPackage=com.valhalla.thor.audit.cleardata` after installing that disposable
-fixture; select `RootClearAppDataIntegrationTest` (or its normal-clear method for KernelSU).
+fixture; select `RootClearAppDataIntegrationTest` on either root manager.
 
 ### M1-05: RootService connection ownership
 
@@ -477,6 +527,7 @@ baseline row with results from a later commit.
 | Package / scope | Commit / PR | Environment | Command / scenario | Result / evidence |
 | --- | --- | --- | --- | --- |
 | Audit baseline only | `e16285b1` | Host, FOSS debug | Six focused root-routing/privilege test classes; dependency insight | 93 passed; external Odin 1.1.0 resolved; no device run |
+| M1-04 compatibility | `8c6e5774` / #536 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; normal clear and real-daemon fallback | 3,174 JVM tests per variant; lint passed; 2/2 device tests each; details above |
 | Milestone 1 | — | — | — | Pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
