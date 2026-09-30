@@ -37,7 +37,7 @@ class OdinLifecycleIntegrationTest {
             val dir = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
             val marker = File(dir, "odin-ready-${System.nanoTime()}")
             try {
-                val handle = s.submitIsolated("trap '' TERM", "echo ready > '${marker.path}'", "echo before", "echo error >&2", "sleep 120 & wait")
+                val handle = s.submitIsolated("trap '' TERM", "echo before", "echo error >&2", "sleep 120 &", "echo ready > '${marker.path}'", "wait")
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
                 while (!marker.exists() && !handle.completion.toCompletableFuture().isDone && System.nanoTime() < deadline) Thread.sleep(20)
                 assertTrue("Helper must start: ${handle.completion.toCompletableFuture().getNow(null)}", marker.exists())

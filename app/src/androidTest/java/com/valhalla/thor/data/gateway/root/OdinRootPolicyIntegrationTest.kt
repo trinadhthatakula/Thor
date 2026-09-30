@@ -6,6 +6,7 @@ import com.valhalla.superuser.*
 import java.io.File
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -13,7 +14,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class OdinRootPolicyIntegrationTest {
     @Test fun magiskRevocationAndGrantRefreshFollowFreshPolicy() {
-        check(InstrumentationRegistry.getArguments().getString("odinPolicyToggle") == "true") { "Explicit host policy coordination required" }
+        assumeTrue("Explicit host policy coordination required", InstrumentationRegistry.getArguments().getString("odinPolicyToggle") == "true")
         val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
         val ready = File(cache, "odin-policy-ready")
         val denied = File(cache, "odin-policy-denied")
