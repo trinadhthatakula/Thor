@@ -134,7 +134,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M1-02 | Typed refresh and cache coordination | Coordinate with M1-01 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | Done |
 | M1-03 | Root admission and lane recovery | M1-02 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | Done |
 | M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533), [#536](https://github.com/trinadhthatakula/Thor/pull/536) | Merged — validation pending |
-| M1-05 | RootService connection ownership | None | Codex | [#537 (draft)](https://github.com/trinadhthatakula/Thor/pull/537) | In progress |
+| M1-05 | RootService connection ownership | None | Codex | [#537](https://github.com/trinadhthatakula/Thor/pull/537) | In review |
 | M1-06 | RootService profile isolation | M1-05 test fixture recommended | Unassigned | — | Not started |
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Unassigned | — | Not started |
 | M2-02 | Cancellable export staging copy | M2-01 | Unassigned | — | Not started |
@@ -291,8 +291,8 @@ source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
 
 **Next task, updated 2026-10-01:** #536 has merged as `711a018c`. M1-05 connection ownership is
-in draft [#537](https://github.com/trinadhthatakula/Thor/pull/537), awaiting physical validation
-after the ReSuKiSU phone reconnects. After that package merges, continue M1-06 profile isolation.
+in [#537](https://github.com/trinadhthatakula/Thor/pull/537), validated on Magisk and ReSuKiSU.
+After that package merges, continue M1-06 profile isolation.
 Actual post-dispatch transport/deadline fault injection remains an unchecked M1-04 follow-up.
 
 ### M1-04: Data-clear fallback correction
@@ -411,8 +411,8 @@ unbind found no established connection.
 - [x] Add a small binding facade and deterministic tests for late connection, duplicate cleanup,
   timeout/cancellation, replacement, and old callbacks after replacement.
 - [x] Exercise delayed startup and bind/unbind/rebind with Odin on the rooted Magisk emulator.
-- [ ] Repeat binding lifecycle and clear-data regression checks on the physical ReSuKiSU device
-  before marking #537 ready for review; the phone disconnected before validation could start.
+- [x] Repeat binding lifecycle and clear-data regression checks on the physical ReSuKiSU device;
+  all three checks passed after the phone reconnected.
 
 **Implementation:** `RootServiceConnectionOwner` owns the cached Binder and each unique
 `ServiceConnection` on main. The gateway delegates binding through `RootServiceBinding`;
@@ -432,7 +432,7 @@ client connection record for `unbind` to release. These need separate Odin lifec
 the Thor fix does not substitute a service stop or process-pattern kill for per-attempt cleanup.
 
 **M1-05 validation, 2026-10-01:** implementation commit
-`7a8c9ac18fe1d51fdd0394deb91de48da1c8b525`, based on merged #536 (`711a018c`), in draft
+`7a8c9ac18fe1d51fdd0394deb91de48da1c8b525`, based on merged #536 (`711a018c`), in
 [#537](https://github.com/trinadhthatakula/Thor/pull/537). External Odin `1.1.0` was confirmed
 by dependency insight. Subsequent tracker commits change documentation only.
 
@@ -441,10 +441,10 @@ JDK 21 `test lintFossDebug lintStoreRelease` and FOSS debug/app-test APK assembl
 14 new ownership tests, with zero failures, errors, or skips. Both lint gates have zero
 errors/warnings, no MissingTranslation or SyntheticAccessor findings, and existing hints only.
 
-| Scenario | Odin Magisk API 36.1 / Magisk 30.7 | Physical POCO F7 / ReSuKiSU |
+| Scenario | Odin Magisk API 36.1 / Magisk 30.7 | POCO F7 / API 36 / ReSuKiSU v4.2.0-rc2 (35159) |
 | --- | --- | --- |
-| Real delayed startup, cancellation, timeout, late cleanup, cache, and unbind/rebind | 1 passed | Not run — disconnected |
-| Normal clear and ordinary-shell-refusal → real daemon | 2 passed | Not run — disconnected |
+| Real delayed startup, cancellation, timeout, late cleanup, cache, and unbind/rebind | 1 passed | 1 passed |
+| Normal clear and ordinary-shell-refusal → real daemon | 2 passed | 2 passed |
 
 `OdinRootServiceBindingIntegrationTest` holds the startup task returned by Odin's public
 `bindOrTask`. One acknowledged pending request is cancelled and another reaches the owner's
@@ -455,17 +455,22 @@ harmless `dumpPackage` reads. Select this class alone with `odinRoot=true` so th
 runtime starts with a fresh Odin client manager. The clear-data suite runs in a separate
 instrumentation invocation with its disposable fixture opt-in.
 
-Emulator app/test APK hashes match the built artifacts, and
-`com.valhalla.thor.audit.cleardata` was removed afterward. The physical phone was absent from
-ADB before any install or instrumentation; its installed hashes and fixture state are unverified
-for this implementation. No `adb root`, shell-root grant, or root-manager toggle was used.
-Physical acceptance remains open, as do the separate multi-user/minified-runtime matrix items
-and actual post-dispatch fault injection.
+Installed app/test APK hashes match the built artifacts on both devices, and the sole
+clear-data target, `com.valhalla.thor.audit.cleardata`, was removed afterward on both. The first
+physical attempt stopped before installation because the phone disconnected; after it
+reconnected, binding and clearing passed with no skips. During explicit physical unbind/rebind,
+Odin caught a `DeadObjectException` from the retiring server and recovered; replacement read/cache
+assertions passed. Both devices logged observer-confirmed fixture clearing. No `adb root`,
+shell-root grant, or root-manager toggle was used. These checks cover the primary Android user;
+the separate multi-user/minified-runtime matrix items and actual post-dispatch fault injection
+remain open.
 
 Local evidence: `~/.codex/artifacts/thor-root-service-binding-2026-10-01/` — `build-gates.log`,
 `host-validation.json`, `odin-dependency.log`, `emulator-binding.log`, `emulator-clear-data.log`,
-`emulator-odin-logcat.log`, `emulator-install-verification.log`, `resukisu-validation.json`,
-and `resukisu-install-cleanup-verification.log`. `tested-code-files.sha256` has manifest digest
+`emulator-odin-logcat.log`, `emulator-install-verification.log`, `resukisu-binding.log`,
+`resukisu-clear-data.log`, `resukisu-odin-logcat.log`, `resukisu-validation.json`,
+`resukisu-install-cleanup-verification.log`, and both `*-environment.txt` records.
+`tested-code-files.sha256` has manifest digest
 `0293d1212005efb4ac0f31e75791e86e83676a172585db80196325625eaa4764`.
 
 ### M1-06: RootService profile isolation
@@ -583,7 +588,7 @@ baseline row with results from a later commit.
 | --- | --- | --- | --- | --- |
 | Audit baseline only | `e16285b1` | Host, FOSS debug | Six focused root-routing/privilege test classes; dependency insight | 93 passed; external Odin 1.1.0 resolved; no device run |
 | M1-04 compatibility | `8c6e5774` / #536 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; normal clear and real-daemon fallback | 3,174 JVM tests per variant; lint passed; 2/2 device tests each; details above |
-| M1-05 ownership | `7a8c9ac1` / #537 (draft) | Host; Magisk API 36.1 | Required gates; binding lifecycle; clear-data regression | 3,188 JVM tests per variant; lint passed; 3/3 emulator tests; physical unrun |
+| M1-05 ownership | `7a8c9ac1` / #537 | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; binding lifecycle; clear-data regression | 3,188 JVM tests per variant; lint passed; 3/3 tests on each device |
 | Milestone 1 | — | — | — | Pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
