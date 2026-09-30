@@ -1,6 +1,6 @@
 # Odin 1.1.0 implementation plan and progress tracker
 
-**Status:** Approved plan; implementation work below has not started.
+**Status:** Implementation underway; the work-package rows and evidence below track progress.
 **Priority:** Reliability and accurate root status first; broader cancellation adoption follows.
 **Approved:** 2026-09-30.
 **Audit baseline:** Thor `e16285b102213a4780b7e98f0775852da97fdd88` (`dev`, after PR #531).
@@ -129,10 +129,10 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 
 | ID | Package | Dependency | Owner | PR | Status |
 | --- | --- | --- | --- | --- | --- |
-| M1-01 | Shared privilege state in screens | None | Unassigned | — | Not started |
+| M1-01 | Shared privilege state in screens | None | Codex | [#534](https://github.com/trinadhthatakula/Thor/pull/534) | In review |
 | M1-02 | Typed refresh and cache coordination | Coordinate with M1-01 | Unassigned | — | Not started |
 | M1-03 | Root admission and lane recovery | M1-02 | Unassigned | — | Not started |
-| M1-04 | Data-clear fallback correction | None | Unassigned | — | Not started |
+| M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533) | In review |
 | M1-05 | RootService connection ownership | None | Unassigned | — | Not started |
 | M1-06 | RootService profile isolation | M1-05 test fixture recommended | Unassigned | — | Not started |
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Unassigned | — | Not started |
@@ -150,17 +150,40 @@ parallel. Design M1-02/M1-03 together so state, routing, and admission use the s
 
 ### M1-01: Shared privilege state in screens
 
-Current problem: App Details and Settings call root probes that can throw `ShellLaneBusy` during
-ordinary contention, aborting loading. Start in `AppInfoDetailsViewModel`, `SettingsViewModel`,
-and their privilege dependencies.
+At the baseline, App Details and Settings called root probes that could throw `ShellLaneBusy`
+during ordinary contention, aborting loading. PR #534 moves those screens, the installer, and
+the launcher to shared privilege observation. Typed refresh and admission remain M1-02/M1-03.
 
-- [ ] Replace direct display probes with shared `PrivilegeStateProvider` observation.
-- [ ] Keep content/loading/error transitions correct during busy or failed refresh.
-- [ ] Review remaining installer/launcher probes; one provider's failure must not skip discovery
+- [x] Replace direct display probes with shared `PrivilegeStateProvider` observation.
+- [x] Keep content/loading/error transitions correct during busy or failed refresh.
+- [x] Review remaining installer/launcher probes; one provider's failure must not skip discovery
   of independently available providers. Preserve structured cancellation.
-- [ ] Add regression tests for busy and transport-failed root observation in both screens.
+- [x] Add regression tests for busy and transport-failed root observation in both screens.
 - [ ] On an emulator/device, hold an acknowledged MainShell job, open both screens, release the
   job, and verify no crash, stuck loader, or stale status.
+- [x] Exercise the production App Details and Settings view models under acknowledged MainShell
+  contention on the emulator and connected device, including release/recovery.
+
+**Validation, 2026-09-30:** tested code `c5921e498be224be95afd410d1c578fd2f98653a`,
+external Odin `1.1.0`. JDK 21 `test lintFossDebug lintStoreRelease` and FOSS debug/app-test APK
+assembly passed (`--no-parallel --max-workers=2`). Each FOSS/Store debug variant ran 3,122 tests
+with zero failures, errors, or skips; lint had no errors, MissingTranslation warnings, or
+SyntheticAccessor findings. Coverage includes content preservation and shared provider updates,
+installer readiness timeout/recovery, provider selection and confirmation, accepted installs,
+launcher timeout versus confirmed absence, and cancellation.
+
+`SharedPrivilegeContentionIntegrationTest` passed on both the KernelSU API 36 device and Magisk
+API 36.1 emulator. A real routed helper publishes readiness, holds MainShell while both production
+Koin view models load, and releases before recovery is checked. Startup can compete for admission;
+only `ShellLaneBusy`, raised before helper dispatch, is retried. Execution/transport failures are
+never replayed. The test constructs/observes view models rather than rendering screens, so the
+full navigation/visual acceptance box remains open. The FOSS debug app was also installed and
+successfully launched on the connected device. Tests use Thor's root grant, without `adb root`.
+
+Local evidence: `~/.codex/artifacts/thor-odin-m1-2026-09-30/` —
+`shared-ui-validated-gates.log`, `shared-ui-ksu-final.log`, `shared-ui-magisk-final.log`, and
+`shared-ui-ksu-launch.log`. Reproduce the contention check by selecting
+`SharedPrivilegeContentionIntegrationTest` with `odinRoot=true`.
 
 ### M1-02: Typed refresh and cache coordination
 
@@ -200,16 +223,40 @@ Start in root gateway admission, `RootCommandRouter`, `RootFallbackCoordinator`,
 
 ### M1-04: Data-clear fallback correction
 
-Start in `RootSystemGateway.clearAppData`. Current code falls from every failed shell result into
-AIDL, including a transport failure after the destructive command may have run.
+The baseline `RootSystemGateway.clearAppData` fell from every failed shell result into AIDL,
+including a transport failure after the destructive command may have run. PR #533 preserves
+structured execution failures before considering ordinary-failure fallback.
 
-- [ ] Stop fallback on structured uncertain execution failures, following existing gateway
+- [x] Stop fallback on structured uncertain execution failures, following existing gateway
   handling of `PrivilegeExecutionException`.
-- [ ] Preserve explicitly supported ordinary-failure fallback, Android user identity, real
+- [x] Preserve explicitly supported ordinary-failure fallback, Android user identity, real
   observer confirmation, and structured cancellation.
-- [ ] Test post-dispatch transport loss and timeout-class failure with zero AIDL replays.
-- [ ] Validate normal data clear and permitted fallback using a disposable fixture app; record
+- [x] Test post-dispatch transport loss and timeout-class failure with zero AIDL replays.
+- [x] Validate normal data clear and permitted fallback using a disposable fixture app; record
   what was actually exercised and leave untested failure injection open.
+- [ ] Inject actual post-dispatch transport loss/deadline failure on a device; current no-replay
+  coverage supplies the typed failures at the gateway executor boundary.
+
+**Validation, 2026-09-30:** tested code `a1a23f7ffa2f6bf6377445c6620e679f3c3bedc1`,
+external Odin `1.1.0`. JDK 21 `test lintFossDebug lintStoreRelease` and FOSS debug/app-test APK
+assembly passed (`--no-parallel --max-workers=2`). Each FOSS/Store debug variant ran 3,111 tests
+with zero failures, errors, or skips; lint had no errors, MissingTranslation warnings, or
+SyntheticAccessor findings.
+
+`RootClearAppDataIntegrationTest` passed normal clearing on the connected KernelSU device and
+both normal clearing and the real AIDL fallback on the Magisk API 36.1 emulator. The fallback
+test substitutes one ordinary shell refusal before using the production root daemon. Both paths
+verify removal of a unique marker in the debuggable disposable package
+`com.valhalla.thor.audit.cleardata`; neither touches another app's data. The physical-device
+AIDL fallback was not exercised. Startup lane contention was observed on the first physical run;
+the final test waits for idle before its single wipe and never retries that mutation. Root was
+verified through Thor's app grant, without `adb root`.
+
+Local evidence: `~/.codex/artifacts/thor-odin-m1-2026-09-30/` —
+`data-clear-final-gates.log`, `data-clear-ksu-final.log`, `data-clear-magisk-final.log`, and
+`odin-dependency.log`. Reproduce instrumentation with `odinRoot=true` and
+`odinClearDataTestPackage=com.valhalla.thor.audit.cleardata` after installing that disposable
+fixture; select `RootClearAppDataIntegrationTest` (or its normal-clear method for KernelSU).
 
 ### M1-05: RootService connection ownership
 
