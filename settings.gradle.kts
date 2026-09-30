@@ -18,6 +18,13 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
+        val odinLocalVersion = providers.gradleProperty("odinLocalVersion").orNull
+        if (odinLocalVersion != null) {
+            exclusiveContent {
+                forRepository { mavenLocal() }
+                filter { includeVersion("com.trinadhthatakula", "odin", odinLocalVersion) }
+            }
+        }
         mavenCentral()
         maven("https://jitpack.io")
     }
@@ -75,7 +82,7 @@ if (asgardDir != null) {
 // publishes the `odin` artifact, so we map it explicitly via dependencySubstitution (same pattern as
 // thor-extension-api / asgard above).
 val odinDir = providers.gradleProperty("odinDir").orNull
-if (odinDir != null) {
+if (odinDir != null && providers.gradleProperty("odinLocalVersion").orNull == null) {
     includeBuild(odinDir) {
         dependencySubstitution {
             substitute(module("com.trinadhthatakula:odin"))

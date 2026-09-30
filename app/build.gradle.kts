@@ -381,7 +381,9 @@ androidComponents {
 }
 
 dependencies {
-    implementation(libs.odin) // published com.trinadhthatakula:odin (was project(":suCore"))
+    val odinLocalVersion = providers.gradleProperty("odinLocalVersion").orNull
+    if (odinLocalVersion != null) implementation("com.trinadhthatakula:odin:$odinLocalVersion")
+    else implementation(libs.odin) // published com.trinadhthatakula:odin (was project(":suCore"))
     implementation(project(":bypass"))
     implementation(libs.thor.extension.api)
     implementation(libs.asgard)

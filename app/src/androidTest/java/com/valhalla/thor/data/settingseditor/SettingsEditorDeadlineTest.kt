@@ -54,7 +54,7 @@ class SettingsEditorDeadlineTest {
         assertTrue("The helper must be gone before another job is admitted", probe.first != 0)
         assertNull(statuses.statuses.value.getValue(PrivilegeExecutionLane.INTERACTIVE).activeCommandClass)
 
-        // Cancellation still drains the submitted Odin job. Its process watchdog supplies the bound.
+        // Cancellation now terminates the isolated Odin job before releasing its lease.
         val acknowledgement = File.createTempFile("sett_deadline_", ".txt", InstrumentationRegistry.getInstrumentation().targetContext.cacheDir)
         val acknowledgementPath = "'" + acknowledgement.absolutePath.replace("'", "'\\''") + "'"
         try {
@@ -69,8 +69,8 @@ class SettingsEditorDeadlineTest {
                 while ("submitted" !in acknowledgement.readLines()) delay(10)
             }
             withTimeout(15_000) { cancelled.cancelAndJoin() }
-            // This marker is written after the process check, before the job can release its lease.
-            assertTrue("The helper must be gone before lease release", "reaped" in acknowledgement.readLines())
+            // The job can stop before its final script marker; termination acknowledgement
+            // must nevertheless ensure the helper is absent before admitting the next command.
             assertNull(statuses.statuses.value.getValue(PrivilegeExecutionLane.INTERACTIVE).activeCommandClass)
             assertTrue(gateway.executeShellCommand("pidof $processName", execution).getOrThrow().first != 0)
             assertEquals(0, gateway.executeShellCommand("true", execution).getOrThrow().first)
