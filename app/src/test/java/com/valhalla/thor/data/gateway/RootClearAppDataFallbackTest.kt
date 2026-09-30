@@ -4,10 +4,13 @@
 package com.valhalla.thor.data.gateway
 
 import android.app.Application
+import android.content.ServiceConnection
 import android.os.Binder
 import android.os.IBinder
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.RootServiceBinding
+import com.valhalla.thor.data.gateway.root.RootServiceConnectionOwner
 import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
@@ -23,6 +26,8 @@ import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.rootservice.IThorRootService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -46,7 +51,7 @@ class RootClearAppDataFallbackTest {
         for (failure in failures) {
             val service = RecordingRootService()
             val commands = mutableListOf<RootCommand>()
-            val gateway = gateway(service, commands) { throw failure }
+            val gateway = gateway(service, commands, StandardTestDispatcher(testScheduler)) { throw failure }
 
             val result = gateway.clearAppData(PACKAGE, PrivilegeExecutionContext())
 
@@ -62,7 +67,7 @@ class RootClearAppDataFallbackTest {
         ShadowProcess.setUid(10 * 100_000 + 10_000)
         val service = RecordingRootService()
         val commands = mutableListOf<RootCommand>()
-        val gateway = gateway(service, commands) { RootCommandResult(1, emptyList(), emptyList()) }
+        val gateway = gateway(service, commands, StandardTestDispatcher(testScheduler)) { RootCommandResult(1, emptyList(), emptyList()) }
 
         gateway.clearAppData(PACKAGE, PrivilegeExecutionContext()).getOrThrow()
 
@@ -76,7 +81,7 @@ class RootClearAppDataFallbackTest {
     fun `successful shell clear does not consult the root daemon`() = runTest {
         val service = RecordingRootService()
         val commands = mutableListOf<RootCommand>()
-        val gateway = gateway(service, commands) { RootCommandResult(0, emptyList(), emptyList()) }
+        val gateway = gateway(service, commands, StandardTestDispatcher(testScheduler)) { RootCommandResult(0, emptyList(), emptyList()) }
 
         gateway.clearAppData(PACKAGE, PrivilegeExecutionContext()).getOrThrow()
 
@@ -93,7 +98,7 @@ class RootClearAppDataFallbackTest {
         )
         val service = RecordingRootService()
         val commands = mutableListOf<RootCommand>()
-        val gateway = gateway(service, commands) { throw failure }
+        val gateway = gateway(service, commands, StandardTestDispatcher(testScheduler)) { throw failure }
 
         val caught = try {
             gateway.clearAppData(PACKAGE, PrivilegeExecutionContext())
@@ -111,6 +116,7 @@ class RootClearAppDataFallbackTest {
     private fun gateway(
         service: RecordingRootService,
         commands: MutableList<RootCommand>,
+        mainDispatcher: CoroutineDispatcher,
         execute: () -> RootCommandResult,
     ) = RootSystemGateway(
         context = ApplicationProvider.getApplicationContext<Application>(),
@@ -123,15 +129,24 @@ class RootClearAppDataFallbackTest {
         preferenceRepository = FakePreferenceRepository(),
         ioDispatcher = Dispatchers.Unconfined,
         rootAdmission = TestRootAdmission(),
+        rootServiceConnection = RootServiceConnectionOwner(
+            object : RootServiceBinding {
+                override fun bind(connection: ServiceConnection) {
+                    connection.onServiceConnected(null, service.asBinder())
+                }
+                override fun unbind(connection: ServiceConnection) = Unit
+            },
+            mainDispatcher,
+        ),
     ).also { gateway ->
-        // Supply an already-bound daemon so the test observes the actual fallback call without
-        // starting Odin's root process or replacing the gateway's production binding behavior.
-        ReflectionHelpers.setField(gateway, "rootService", service)
+        // Exercise the real connection owner with a local Binder, without starting a root process.
         ReflectionHelpers.setField(gateway, "isDaemonReset", true)
     }
 
     private class RecordingRootService : IThorRootService.Default() {
-        private val binder = Binder()
+        private val binder = Binder().apply {
+            attachInterface(this@RecordingRootService, "com.valhalla.thor.rootservice.IThorRootService")
+        }
         var binderRequests = 0
         val clearCalls = mutableListOf<Pair<String, Int>>()
 
