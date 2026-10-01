@@ -11,8 +11,10 @@ import com.valhalla.thor.domain.model.RootExecutionObserver
 import com.valhalla.thor.domain.model.RootExecutionPolicy
 import com.valhalla.thor.domain.model.RootJobOutcome
 import com.valhalla.thor.domain.model.RootJobOutcomeKind
+import com.valhalla.thor.domain.repository.VerifiedProgress
 import java.io.File
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
@@ -71,8 +73,9 @@ internal data class RootExportStagingRecord(
 
 /**
  * Root never writes into a bundle tree that callers or launch sweeps can delete. Each invocation
- * owns a new private directory, durably records its submission, then atomically promotes a completed
- * payload onto the ordinary cache volume. There is deliberately no copy fallback for that move.
+ * owns a new private directory, durably records its submission, then promotes a completed payload
+ * onto the ordinary cache volume. If atomic move is unsupported, an app-owned cancellable copy
+ * verifies the payload size before returning it to the caller.
  *
  * A missing acknowledgement leaves the payload and receipt here, even across process restart.
  * Reclamation requires acknowledged cleanup or a different known kernel boot. Unknown/corrupt
@@ -131,8 +134,7 @@ internal class RootExportStaging(
                 !outcome.started || !outcome.cleanupConfirmed) {
                 throw IsolatedRootExecutionException(outcome)
             }
-            currentCoroutineContext().ensureActive()
-            Files.move(payload.toPath(), destination.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
+            promoteRootExportPayload(payload, destination)
         } catch (failure: Throwable) {
             primary = failure
             throw failure
@@ -228,6 +230,42 @@ internal class RootExportStaging(
         internal val json = Json { encodeDefaults = true }
         internal val activeLock = Any()
         internal val activeDirectories = mutableSetOf<String>()
+    }
+}
+
+/** Called only after the root writer has acknowledged successful termination and output drain. */
+internal suspend fun promoteRootExportPayload(
+    payload: File,
+    destination: File,
+    move: (File, File) -> Unit = { source, target ->
+        Files.move(source.toPath(), target.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
+    },
+    copy: suspend (File, File) -> Unit = { source, target ->
+        Files.deleteIfExists(target.toPath())
+        copyFileWithVerifiedProgress(source, target, VerifiedProgress.NONE)
+    },
+) {
+    currentCoroutineContext().ensureActive()
+    try {
+        move(payload, destination)
+    } catch (_: AtomicMoveNotSupportedException) {
+        // Cache project quotas can reject rename even within the same app storage volume.
+        currentCoroutineContext().ensureActive()
+        val expectedBytes = Files.size(payload.toPath())
+        try {
+            copy(payload, destination)
+            currentCoroutineContext().ensureActive()
+            if (Files.size(destination.toPath()) != expectedBytes) {
+                throw IOException("Root export promotion copy was incomplete")
+            }
+        } catch (failure: Throwable) {
+            try {
+                Files.deleteIfExists(destination.toPath())
+            } catch (cleanup: Exception) {
+                failure.addSuppressed(cleanup)
+            }
+            throw failure
+        }
     }
 }
 

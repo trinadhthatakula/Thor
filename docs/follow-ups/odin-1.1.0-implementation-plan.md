@@ -726,7 +726,7 @@ Earlier failed/unfinished runs are retained separately; they are not the accepta
   unrelated lane's ability to work. Measure aggregate isolated-copy overhead (including control
   shell setup) and temporary storage; record the limits of timing attribution.
 
-**Implementation:** `53d7a3a6df4bf5d8f41efc0ba59b82140b4577a0` in
+**Initial implementation:** `53d7a3a6df4bf5d8f41efc0ba59b82140b4577a0` in
 [#540](https://github.com/trinadhthatakula/Thor/pull/540), based on #539's merge (`1014a467`).
 The direct and durable export use cases select `buildExportWithProgress`.
 Only that entry point's APK root-copy fallback adopts isolated execution on ARCHIVE; app-readable
@@ -742,9 +742,12 @@ identity, kernel boot UUID, and recovery metadata. Terminal metadata is persiste
 external observer returns and before lane release. Receipts omit source paths, commands, output,
 and raw failure text; non-regular receipt files and malformed records fail closed.
 
-The payload moves atomically into the bundle cache only after a recorded `EXITED`, exit zero,
-started, termination-confirmed and output-drained outcome. The move has no whole-file-copy
-fallback, so successful promotion adds no second complete staging copy. The existing verified
+The payload is promoted into the bundle cache only after a recorded `EXITED`, exit zero,
+started, termination-confirmed and output-drained outcome. Promotion first attempts an atomic
+move. If Android reports `AtomicMoveNotSupportedException` (including cache project-quota
+boundaries), a cancellable app-side copy replaces the destination and verifies its size against
+the confirmed payload. A failed, incomplete, or cancelled fallback removes its destination and
+preserves the original failure. Other move errors propagate without fallback. The existing verified
 operation boundary and byte checks follow promotion, before publication. Cancellation preserves
 its original exception and acknowledgement; confirmed cleanup removes the private workspace.
 Missing or uncertain completion and terminal-persistence failure retain it without promotion,
@@ -810,7 +813,8 @@ drain; it does not isolate control-shell acquisition time. Both devices observed
 payload plus a 365-byte terminal receipt for success, and a 1,024-byte partial payload plus a
 370-byte receipt for cancellation. These are logical file sizes observed at acknowledgement,
 not filesystem allocation peaks or the size of transient AtomicFile replacement files. Atomic
-promotion adds no second whole-payload copy. These small fixtures do not establish large-export
+promotion adds no second whole-payload copy; the compatibility fallback can temporarily retain
+both the confirmed payload and a complete destination. These small fixtures do not establish large-export
 throughput or a bound on storage retained by unresolved attempts.
 
 Forced process death, reboot/power loss, and control-shell denial were not injected on hardware;
@@ -830,6 +834,31 @@ The tested app APK SHA-256 is
 `6e311ddd6309b8d9a12a72520fb55090fda133f9759c9322a91114878d2ecea1`.
 `tested-code-files.sha256` covers 1,009 source/build inputs and matches the committed implementation;
 its manifest digest is `252c85a878d5d03dcfde4e0809552d54a8ef9055fed9c8f253190cf9fe581c5b`.
+
+**Promotion compatibility follow-up, 2026-10-02:** The
+[review finding](https://github.com/trinadhthatakula/Thor/pull/540#discussion_r4158891243)
+identified that same-volume placement alone does not guarantee atomic rename. ext4/F2FS can
+return `EXDEV` across inherited project-quota boundaries; Android maps this to
+`AtomicMoveNotSupportedException`. The fallback above handles that exception after confirmed root
+completion, without rerunning root work. Seven new `RootExportPromotionTest` cases force the
+exception and cover successful replacement, empty payloads, missing/short destinations, partial
+I/O failure, cancellation after the first actual copy chunk, and unrelated move failures.
+
+The full local test/lint/build command above passed again: **3,251 JVM tests per FOSS/Store debug
+variant**, zero failures/errors/skips, zero lint errors/warnings (14 FOSS / 13 Store hints).
+The rebuilt debug APK passed the same **7/7 instrumentation tests on each device**, with no skips;
+fixture/recovery cleanup and Home launch also passed. This revalidates the root-export lifecycle.
+The unsupported-move exception is injected in JVM tests; neither device reproduced an actual
+project-quota boundary failure. Current stock AOSP disables the internal project-ID feature, so
+this is a compatibility case rather than a claim about every Android device.
+
+Follow-up evidence: `~/.codex/artifacts/thor-root-export-promotion-2026-10-02/` —
+`review-rationale.md`, `build-gates-final.log`, `host-validation.json`, and both device validation
+JSON/instrumentation/cleanup/launch logs. The installed app APK SHA-256 is
+`340d412ad1365f89169bff8331be4e63cfad92875fa4513109a5d64f4ebcf9af`; the unchanged test APK is
+`6e311ddd6309b8d9a12a72520fb55090fda133f9759c9322a91114878d2ecea1`.
+The follow-up source manifest covers 1,010 inputs with digest
+`482d5023b25e150eb205bde1c7a2d44f24f88b862ced7059eb97a5cd92371865`.
 
 ### M2-03: OBB context and cancellable placement
 
