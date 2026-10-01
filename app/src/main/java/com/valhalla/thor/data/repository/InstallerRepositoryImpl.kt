@@ -27,11 +27,17 @@ import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.PackageLeaseResult
+import com.valhalla.thor.domain.model.PackageOperationBusy
+import com.valhalla.thor.domain.model.PackageOperationOwner
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.model.supportsLowTargetSdkBypass
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
+import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
@@ -79,6 +85,7 @@ class InstallerRepositoryImpl(
     private val preferenceRepository: PreferenceRepository,
     // The only part of the install path that writes outside app storage; see ObbInstaller.
     private val obbInstaller: ObbInstaller,
+    private val packageOperationCoordinator: PackageOperationCoordinator,
     // Carries the session writes, the APK extraction and the hashing.
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
     // Only installWithExternal() uses this: handing the URI to the system's installer chooser is a
@@ -145,6 +152,7 @@ class InstallerRepositoryImpl(
         onInvocationStarted: () -> Unit,
         onInstallSucceeded: () -> Unit,
         bypassLowTargetSdkBlock: Boolean,
+        packageLeaseHeldFor: String?,
     ) =
         withContext(ioDispatcher) {
             if (
@@ -156,7 +164,6 @@ class InstallerRepositoryImpl(
                 )
                 return@withContext
             }
-            onInvocationStarted()
             try {
                 // Refuse before installing, not after. An archive whose game data cannot be placed
                 // would otherwise leave an installed game that starts and immediately fails — the
@@ -166,78 +173,121 @@ class InstallerRepositoryImpl(
                 // is what keeps a plain APK, an .apks and an .apkm on exactly the path they were on
                 // before: one extra read of the central directory and no shell command at all.
                 val packageName = resolvePackageNameForObb(staged.file)
-                if (packageName != null) {
-                    obbInstaller.refusalReason(staged.file, packageName)?.let { reason ->
-                        eventBus.emit(InstallState.Error(UiText.DynamicString(reason)))
-                        return@withContext
-                    }
-                }
-
-                // Read *before* installing, because for an update the answer changes and nothing
-                // afterwards can reconstruct it. See [awaitInstalled].
-                val stampBefore = packageName?.let { installStamp(it) }
-
-                when (mode) {
-                    InstallMode.ROOT -> {
-                        installWithRoot(
-                            staged,
-                            canDowngrade,
-                            grantAllPermissions,
-                            execution,
-                            onInstallSucceeded,
-                            bypassLowTargetSdkBlock,
-                        )
+                withInstallerPackageLease(packageName, mode, execution, packageLeaseHeldFor) operation@{
+                    onInvocationStarted()
+                    if (packageName != null) {
+                        obbInstaller.refusalReason(staged.file, packageName)?.let { reason ->
+                            eventBus.emit(InstallState.Error(UiText.DynamicString(reason)))
+                            return@operation
+                        }
                     }
 
-                    InstallMode.SHIZUKU -> {
-                        // 1. Try Shell command first
-                        val shellAttempt = try {
-                            installWithShizuku(
+                    // Read *before* installing, because for an update the answer changes and nothing
+                    // afterwards can reconstruct it. See [awaitInstalled].
+                    val stampBefore = packageName?.let { installStamp(it) }
+
+                    when (mode) {
+                        InstallMode.ROOT -> {
+                            installWithRoot(
                                 staged,
                                 canDowngrade,
                                 grantAllPermissions,
+                                execution,
                                 onInstallSucceeded,
                                 bypassLowTargetSdkBlock,
                             )
-                        } catch (e: Throwable) {
-                            if (e is CancellationException) throw e
-                            // A refusal is a verdict about the archive, not a failure of this rung.
-                            // Every rung below reads the same staged bytes and reaches it again,
-                            // after re-writing however many gigabytes it took to get there — so it
-                            // goes straight out to the sheet with its own message. Every session
-                            // fallback preserves this refusal; ROOT and NORMAL already propagate.
-                            if (e is InstallRefusedException) throw e
-                            Logger.e("InstallerRepo", "Shizuku shell install failed with exception", e)
-                            ShizukuInstallAttempt(false, e.message)
                         }
 
-                        if (!shellAttempt.succeeded) {
-                            if (bypassLowTargetSdkBlock) {
-                                eventBus.emit(
-                                    InstallState.Error(
-                                        UiText.DynamicString(
-                                            shellAttempt.failureReason
-                                                ?.takeIf { it.isNotBlank() }
-                                                ?: "Shizuku install failed"
-                                        )
-                                    )
+                        InstallMode.SHIZUKU -> {
+                            // 1. Try Shell command first
+                            val shellAttempt = try {
+                                installWithShizuku(
+                                    staged,
+                                    canDowngrade,
+                                    grantAllPermissions,
+                                    onInstallSucceeded,
+                                    bypassLowTargetSdkBlock,
                                 )
-                                return@withContext
-                            }
-                            Logger.d("InstallerRepo", "Shizuku shell install failed. Trying reflection fallback...")
-                            // 2. Try Reflection
-                            val privilegedInstaller = try {
-                                privilegedInstallerHandle(InstallMode.SHIZUKU)
                             } catch (e: Throwable) {
                                 if (e is CancellationException) throw e
-                                Logger.e("InstallerRepo", "Failed to get Shizuku privileged installer: ${e.message}")
+                                // A refusal is a verdict about the archive, not a failure of this rung.
+                                // Every rung below reads the same staged bytes and reaches it again,
+                                // after re-writing however many gigabytes it took to get there — so it
+                                // goes straight out to the sheet with its own message. Every session
+                                // fallback preserves this refusal; ROOT and NORMAL already propagate.
+                                if (e is InstallRefusedException) throw e
+                                Logger.e("InstallerRepo", "Shizuku shell install failed with exception", e)
+                                ShizukuInstallAttempt(false, e.message)
+                            }
+
+                            if (!shellAttempt.succeeded) {
+                                if (bypassLowTargetSdkBlock) {
+                                    eventBus.emit(
+                                        InstallState.Error(
+                                            UiText.DynamicString(
+                                                shellAttempt.failureReason
+                                                    ?.takeIf { it.isNotBlank() }
+                                                    ?: "Shizuku install failed"
+                                            )
+                                        )
+                                    )
+                                    return@operation
+                                }
+                                Logger.d("InstallerRepo", "Shizuku shell install failed. Trying reflection fallback...")
+                                // 2. Try Reflection
+                                val privilegedInstaller = try {
+                                    privilegedInstallerHandle(InstallMode.SHIZUKU)
+                                } catch (e: Throwable) {
+                                    if (e is CancellationException) throw e
+                                    Logger.e("InstallerRepo", "Failed to get Shizuku privileged installer: ${e.message}")
+                                    null
+                                }
+
+                                var reflectionSuccess = false
+                                if (privilegedInstaller != null) {
+                                    try {
+                                        reflectionSuccess = performPackageInstallerInstall(
+                                            staged,
+                                            privilegedInstaller,
+                                            canDowngrade,
+                                            emitErrors = false
+                                        )
+                                    } catch (e: Throwable) {
+                                        if (e is CancellationException) throw e
+                                        if (e is InstallRefusedException) throw e
+                                        Logger.e("InstallerRepo", "Shizuku reflection install failed: ${e.message}")
+                                    }
+                                }
+
+                                if (!reflectionSuccess) {
+                                    Logger.d("InstallerRepo", "Shizuku reflection install failed. Falling back to normal installer...")
+                                    // 3. Fallback to Normal
+                                    performPackageInstallerInstall(
+                                        staged,
+                                        defaultInstaller,
+                                        canDowngrade,
+                                        emitErrors = true
+                                    )
+                                }
+                            }
+                        }
+
+                        InstallMode.DHIZUKU -> {
+                            // Device-owner installs need the owner's PackageInstaller identity.
+                            // A Dhizuku shell still has an app UID: pm install cannot borrow Play's
+                            // identity, and cannot read Thor's staged APKs on modern Android.
+                            val privilegedInstaller = try {
+                                privilegedInstallerHandle(InstallMode.DHIZUKU)
+                            } catch (e: Throwable) {
+                                if (e is CancellationException) throw e
+                                Logger.e("InstallerRepo", "Failed to get Dhizuku installer", e)
                                 null
                             }
 
-                            var reflectionSuccess = false
+                            var committed = false
                             if (privilegedInstaller != null) {
                                 try {
-                                    reflectionSuccess = performPackageInstallerInstall(
+                                    committed = performPackageInstallerInstall(
                                         staged,
                                         privilegedInstaller,
                                         canDowngrade,
@@ -246,13 +296,13 @@ class InstallerRepositoryImpl(
                                 } catch (e: Throwable) {
                                     if (e is CancellationException) throw e
                                     if (e is InstallRefusedException) throw e
-                                    Logger.e("InstallerRepo", "Shizuku reflection install failed: ${e.message}")
+                                    Logger.e("InstallerRepo", "Dhizuku session install failed", e)
                                 }
                             }
 
-                            if (!reflectionSuccess) {
-                                Logger.d("InstallerRepo", "Shizuku reflection install failed. Falling back to normal installer...")
-                                // 3. Fallback to Normal
+                            // Once committed, InstallReceiver owns the asynchronous outcome. Retry
+                            // only setup/write/commit submission failures via the normal installer.
+                            if (!committed) {
                                 performPackageInstallerInstall(
                                     staged,
                                     defaultInstaller,
@@ -261,39 +311,8 @@ class InstallerRepositoryImpl(
                                 )
                             }
                         }
-                    }
 
-                    InstallMode.DHIZUKU -> {
-                        // Device-owner installs need the owner's PackageInstaller identity.
-                        // A Dhizuku shell still has an app UID: pm install cannot borrow Play's
-                        // identity, and cannot read Thor's staged APKs on modern Android.
-                        val privilegedInstaller = try {
-                            privilegedInstallerHandle(InstallMode.DHIZUKU)
-                        } catch (e: Throwable) {
-                            if (e is CancellationException) throw e
-                            Logger.e("InstallerRepo", "Failed to get Dhizuku installer", e)
-                            null
-                        }
-
-                        var committed = false
-                        if (privilegedInstaller != null) {
-                            try {
-                                committed = performPackageInstallerInstall(
-                                    staged,
-                                    privilegedInstaller,
-                                    canDowngrade,
-                                    emitErrors = false
-                                )
-                            } catch (e: Throwable) {
-                                if (e is CancellationException) throw e
-                                if (e is InstallRefusedException) throw e
-                                Logger.e("InstallerRepo", "Dhizuku session install failed", e)
-                            }
-                        }
-
-                        // Once committed, InstallReceiver owns the asynchronous outcome. Retry
-                        // only setup/write/commit submission failures via the normal installer.
-                        if (!committed) {
+                        InstallMode.NORMAL -> {
                             performPackageInstallerInstall(
                                 staged,
                                 defaultInstaller,
@@ -301,70 +320,61 @@ class InstallerRepositoryImpl(
                                 emitErrors = true
                             )
                         }
+
+                        InstallMode.EXTERNAL -> {
+                            // The only mode that still needs the URI: we install nothing here, we
+                            // hand the job to whichever installer the user picks, and it does its
+                            // own read behind its own confirmation.
+                            installWithExternal(uri)
+                        }
                     }
 
-                    InstallMode.NORMAL -> {
-                        performPackageInstallerInstall(
-                            staged,
-                            defaultInstaller,
-                            canDowngrade,
-                            emitErrors = true
-                        )
-                    }
-
-                    InstallMode.EXTERNAL -> {
-                        // The only mode that still needs the URI: we install nothing here, we
-                        // hand the job to whichever installer the user picks, and it does its
-                        // own read behind its own confirmation.
-                        installWithExternal(uri)
-                    }
-                }
-
-                // The install rungs emit InstallState.Success themselves and do not reliably throw
-                // on failure, so "did it install?" is answered by asking the package manager rather
-                // than by the absence of an exception.
-                //
-                // EXTERNAL is excluded because nothing has been installed yet on that path: the
-                // chooser has only just been handed the URI, so the package manager there answers
-                // about whatever copy was already on the device, and placing game data for a version
-                // the user has not confirmed yet would hand it to an install that is entitled to
-                // wipe Android/obb/<pkg> when it runs.
-                //
-                // The carriesExpansions() gate comes first so that an archive with no game data pays
-                // one central-directory read and nothing else — in particular, never the wait below.
-                if (mode != InstallMode.EXTERNAL && packageName != null &&
-                    obbInstaller.carriesExpansions(staged.file, packageName)
-                ) {
-                    val name = staged.displayName ?: packageName
-                    when (awaitInstalled(packageName, stampBefore)) {
-                        InstallWait.INSTALLED ->
-                            when (val placement = obbInstaller.place(staged.file, packageName)) {
-                                is ObbPlacement.Failed -> eventBus.emit(
-                                    InstallState.Error(
-                                        UiText.DynamicString(
-                                            "$name installed, but its game data could not be " +
-                                                "placed: ${placement.reason}"
+                    // The install rungs emit InstallState.Success themselves and do not reliably throw
+                    // on failure, so "did it install?" is answered by asking the package manager rather
+                    // than by the absence of an exception.
+                    //
+                    // EXTERNAL is excluded because nothing has been installed yet on that path: the
+                    // chooser has only just been handed the URI, so the package manager there answers
+                    // about whatever copy was already on the device, and placing game data for a version
+                    // the user has not confirmed yet would hand it to an install that is entitled to
+                    // wipe Android/obb/<pkg> when it runs.
+                    //
+                    // The carriesExpansions() gate comes first so that an archive with no game data pays
+                    // one central-directory read and nothing else — in particular, never the wait below.
+                    if (mode != InstallMode.EXTERNAL && packageName != null &&
+                        obbInstaller.carriesExpansions(staged.file, packageName)
+                    ) {
+                        val name = staged.displayName ?: packageName
+                        when (awaitInstalled(packageName, stampBefore)) {
+                            InstallWait.INSTALLED ->
+                                when (val placement = obbInstaller.place(staged.file, packageName, execution)) {
+                                    is ObbPlacement.Failed -> eventBus.emit(
+                                        InstallState.Error(
+                                            UiText.DynamicString(
+                                                "$name installed, but its game data could not be " +
+                                                    "placed: ${placement.reason}"
+                                            )
                                         )
                                     )
-                                )
 
-                                is ObbPlacement.Placed, ObbPlacement.NotNeeded -> Unit
-                            }
+                                    is ObbPlacement.Placed, ObbPlacement.NotNeeded -> Unit
+                                }
 
-                        // Silent on purpose. The install itself failed — a declined confirmation
-                        // dialog is the common way — and InstallReceiver has already put the real
-                        // reason on the bus. A second error about game data would bury the cause
-                        // under one of its consequences.
-                        InstallWait.FAILED -> Unit
+                            // Silent on purpose. The install itself failed — a declined confirmation
+                            // dialog is the common way — and InstallReceiver has already put the real
+                            // reason on the bus. A second error about game data would bury the cause
+                            // under one of its consequences.
+                            InstallWait.FAILED -> Unit
 
-                        InstallWait.UNCONFIRMED -> eventBus.emit(
-                            InstallState.Error(
-                                UiText.DynamicString(
-                                    "Thor could not confirm $name finished installing, so its game " +
-                                        "data was not placed. Install it again to place the game data."
+                            InstallWait.UNCONFIRMED -> eventBus.emit(
+                                InstallState.Error(
+                                    UiText.DynamicString(
+                                        "Thor could not confirm $name finished installing, so its game " +
+                                            "data was not placed. Install it again to place the game data."
+                                    )
                                 )
                             )
-                        )
+                        }
                     }
                 }
             } catch (e: Throwable) {
@@ -376,6 +386,35 @@ class InstallerRepositoryImpl(
                 eventBus.emit(InstallState.Error(UiText.DynamicString(e.message ?: "Unknown error during installation")))
             }
         }
+
+    private suspend fun withInstallerPackageLease(
+        packageName: String?,
+        mode: InstallMode,
+        execution: PrivilegeExecutionContext,
+        packageLeaseHeldFor: String?,
+        operation: suspend () -> Unit,
+    ) {
+        if (packageName != null && packageLeaseHeldFor != null && packageName != packageLeaseHeldFor) {
+            throw InstallRefusedException("the archive's game data package does not match the held package operation")
+        }
+        // External mode only launches a chooser; Thor cannot own the other installer's lifetime.
+        // Inputs without a resolved XAPK OBB target retain their existing installation behavior.
+        if (mode == InstallMode.EXTERNAL || packageName == null || packageLeaseHeldFor != null) {
+            operation()
+            return
+        }
+        val admissionTimeout = when (execution.lane) {
+            PrivilegeExecutionLane.INTERACTIVE -> PrivilegeExecutionTimeouts.INTERACTIVE_ADMISSION
+            PrivilegeExecutionLane.ARCHIVE -> PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION
+            PrivilegeExecutionLane.SWEEP -> PrivilegeExecutionTimeouts.SWEEP_ADMISSION
+        }
+        when (val lease = packageOperationCoordinator.withPackageLease(
+            packageName, PackageOperationOwner.REINSTALL, admissionTimeout, operation,
+        )) {
+            is PackageLeaseResult.Acquired -> Unit
+            is PackageLeaseResult.Busy -> throw PackageOperationBusy(lease.owner)
+        }
+    }
 
     /**
      * The package an archive installs, from its own manifest — null when it cannot be read.

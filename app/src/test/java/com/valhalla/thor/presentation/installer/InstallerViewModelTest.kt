@@ -742,6 +742,7 @@ class InstallerViewModelTest {
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
             bypassLowTargetSdkBlock: Boolean,
+            packageLeaseHeldFor: String?,
         ) {
             onInvocationStarted()
             calls += InstallCall(staged, uri, mode, canDowngrade, grantAllPermissions, bypassLowTargetSdkBlock)

@@ -46,6 +46,9 @@ interface InstallerRepository {
      * @param bypassLowTargetSdkBlock requests Android's low-target SDK install bypass. It is valid
      *   only for the Root and shell-backed Shizuku paths on Android 14 and later; unsupported modes
      *   are rejected before the install starts.
+     * @param packageLeaseHeldFor the package whose operation lease the caller already owns for
+     *   this whole call. Only the archive restore adapter may supply this; standalone installs
+     *   leave it null. A resolved OBB package must match before acquisition can be bypassed.
      */
     suspend fun installPackage(
         staged: StagedPackage,
@@ -57,5 +60,6 @@ interface InstallerRepository {
         onInvocationStarted: () -> Unit = {},
         onInstallSucceeded: () -> Unit = {},
         bypassLowTargetSdkBlock: Boolean = false,
+        packageLeaseHeldFor: String? = null,
     )
 }

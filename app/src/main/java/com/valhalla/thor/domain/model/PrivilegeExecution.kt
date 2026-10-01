@@ -93,6 +93,9 @@ sealed class PrivilegeExecutionException(
 class PackageOperationBusy(val owner: PackageOperationOwner) :
     PrivilegeExecutionException("Package operation busy: $owner")
 
+class ObbPlacementUnresolved(val packageName: String, cause: Throwable? = null) :
+    PrivilegeExecutionException("Game data placement could not be confirmed for $packageName", cause)
+
 class ShellLaneUnavailable(val lane: PrivilegeExecutionLane, cause: Throwable? = null) :
     PrivilegeExecutionException("Root shell lane unavailable: $lane", cause)
 

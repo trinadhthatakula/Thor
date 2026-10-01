@@ -137,8 +137,8 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M1-05 | RootService connection ownership | None | Codex | [#537](https://github.com/trinadhthatakula/Thor/pull/537) | Done |
 | M1-06 | RootService profile isolation | M1-05 test fixture recommended | Codex | [#538](https://github.com/trinadhthatakula/Thor/pull/538) | Done |
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | Done |
-| M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | In review — validated |
-| M2-03 | OBB context and cancellable placement | M2-02 | Unassigned | — | Not started |
+| M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
+| M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | In review |
 | M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Unassigned | — | Not started |
 | M3-01 | Settings Editor reconciliation | M2-01 | Unassigned | — | Not started |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
@@ -290,11 +290,13 @@ Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
 source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
 
-**Next task, updated 2026-10-01:** M2-01 execution policy and complete outcomes merged in
-[#539](https://github.com/trinadhthatakula/Thor/pull/539) as `1014a467`. M2-02 is validated in
-[#540](https://github.com/trinadhthatakula/Thor/pull/540). After it merges, continue M2-03 OBB context and placement;
-the broader device acceptance matrix remains open.
-Actual post-dispatch transport/deadline fault injection remains an unchecked M1-04 follow-up.
+**Next task, updated 2026-10-02:** M2-02 export staging merged in
+[#540](https://github.com/trinadhthatakula/Thor/pull/540) as `1fdda745`. M2-03 OBB placement is
+implemented and validated on the Magisk emulator and ReSuKiSU phone in
+[#541](https://github.com/trinadhthatakula/Thor/pull/541). After it merges, continue M2-04 selected
+archive/cache/import adoption, starting with each workload's ownership and recovery contract.
+The broader device acceptance matrix, live Shizuku OBB placement, and M1-04 post-dispatch
+transport/deadline fault injection remain open.
 
 ### M1-04: Data-clear fallback correction
 
@@ -728,6 +730,7 @@ Earlier failed/unfinished runs are retained separately; they are not the accepta
 
 **Initial implementation:** `53d7a3a6df4bf5d8f41efc0ba59b82140b4577a0` in
 [#540](https://github.com/trinadhthatakula/Thor/pull/540), based on #539's merge (`1014a467`).
+**Merged:** `1fdda7450ed5332a5625939f17f59cc26f3d438b` on 2026-10-02 (local date).
 The direct and durable export use cases select `buildExportWithProgress`.
 Only that entry point's APK root-copy fallback adopts isolated execution on ARCHIVE; app-readable
 copies retain their existing byte-copy path. Share, backup/archive builders, OBB probes, OBB copies,
@@ -862,13 +865,205 @@ The follow-up source manifest covers 1,010 inputs with digest
 
 ### M2-03: OBB context and cancellable placement
 
-- [ ] Carry `PrivilegeExecutionContext` through `AppArchiveInstaller.placeBundleObb`, its
-  implementation, and both `ObbInstaller` placement paths.
-- [ ] Route owned OBB work to ARCHIVE with explicit command classes and an appropriate deadline.
-- [ ] Opt shell copies into the validated isolated contract; retain one-file-at-a-time extraction,
-  size verification, package/work identity, and other providers' semantics.
-- [ ] Test archive routing, interactive responsiveness, cancellation before staging deletion,
-  partial-copy failure, and unchanged Shizuku placement behavior.
+- [x] Carry `PrivilegeExecutionContext` through `AppArchiveInstaller.placeBundleObb`, its
+  implementation, and both `ObbInstaller` placement paths, including restore/install callers.
+- [x] Route owned OBB work to ARCHIVE with `obb.mkdir`/`obb.copy` and the shorter of the caller's
+  deadline or nine minutes; preserve package/work/sweep identity, provenance, and observers.
+- [x] Opt root placement commands into isolated execution; preserve destination guards, size
+  verification, one-file-at-a-time streaming extraction, and other providers' semantics.
+- [x] Add unique source ownership, durable receipts, acknowledgement-gated cleanup, same-package
+  admission, and automatic rollback refusal for active/unresolved OBB work.
+- [x] Preserve unresolved OBB state when the archive installer's outer timeout consumes a
+  cancellation, so restore does not clear its interruption breadcrumb as an ordinary failure.
+- [x] Test archive routing, interactive responsiveness, partial-copy cancellation before source
+  deletion, nonzero copy failure, recovery, and non-root placement compatibility without root callbacks.
+- [x] Hold standalone XAPK package admission before OBB preflight through install and placement;
+  explicitly reuse the restore caller's matching lease.
+- [x] Publish checked OBB copies from unique temporary siblings, preserving previous files on
+  pre-publication failure and cleaning temporary files on acknowledged catchable cancellation.
+- [x] Pass required host gates and root device acceptance on the Magisk emulator and ReSuKiSU phone.
+- [ ] Validate live Shizuku OBB placement separately; JVM compatibility coverage does not establish
+  its process lifecycle or firmware behavior.
+
+**Implementation:** `592995622039e4517fd93ee0802fe81b717cdb9a` in
+[#541](https://github.com/trinadhthatakula/Thor/pull/541), based on #540's merge (`1fdda745`).
+Subsequent review fixes and their validation are recorded below.
+
+`ObbPlacementStaging` owns unique sources at `externalFilesDir/obb_placement/<UUID>/` outside
+cache cleanup, with private receipts at `noBackupFilesDir/obb_placement/<package>/receipt.json`.
+The external source location preserves access for the existing Shizuku path. Metadata includes
+operation/package identity, work/sweep IDs, canonical boot identity when available, and root
+lifecycle flags; it omits commands, source paths, output, and raw failure details.
+
+Each command persists and verifies fresh pending state before root dispatch. Terminal metadata
+is persisted before forwarding the caller's outcome observer, and placement waits for that
+observer before continuing or deleting a source. A process-local registry excludes another
+same-package placement throughout the active session, including a paused terminal observer.
+Confirmed termination/drain permits source cleanup after success, failure, or cancellation;
+it does not undo writes already made to the final OBB file. Missing/uncertain completion or
+terminal-persistence failure retains sources and receipts without replay. A subsequent placement
+raises `ObbPlacementUnresolved` before dispatch. OBB-bearing install preflight and automatic
+archive rollback also refuse active/unresolved ownership.
+
+Recovery reclaims valid prepared records, acknowledged completion, or a record from a different
+known canonical kernel boot. Process restart, root refresh, new shells, stable size, and readback
+alone cannot clear submitted unresolved work. Missing/corrupt metadata or unknown boot identity
+can leave it retained indefinitely. Cleanup touches only owned sources and receipts, avoids
+following symlinks, and preserves the receipt when source deletion fails. Legacy `obb_in` cache
+leftovers remain outside this receipt-aware cleanup.
+
+The ten-minute archive install budget can expire during an OBB command after earlier install
+work consumes part of it. When that outer `withTimeoutOrNull` returns null with unresolved OBB
+ownership, the adapter raises a typed failure before converting to ordinary `Unconfirmed`.
+Virtual-time regressions exercise the real isolated-command adapter for unconfirmed completion,
+acknowledged cancellation, and a timeout with no OBB ownership; the latter two retain their
+existing ordinary timeout result.
+
+**Validation, 2026-10-02:** The implementation SHA above resolves published
+`com.trinadhthatakula:odin:1.1.0` as an external AAR, with no local substitution.
+
+- Zulu JDK 21.0.12: `./gradlew test lintFossDebug lintStoreRelease :app:assembleFossDebug
+  :app:assembleFossDebugAndroidTest --no-parallel --max-workers=2` passed. FOSS/Store debug each
+  report **3,281 JVM tests**, zero failures/errors/skips. Both lint reports have zero
+  errors/warnings, including no `MissingTranslation` or `SyntheticAccessor` findings; existing
+  hints remain 14 FOSS / 13 Store.
+- New deterministic coverage: 17 ownership/recovery tests, 12 placement/adapter tests, and one
+  restore-context regression. This covers observer sequencing, durable-write failures, corrupt or
+  missing receipts, reboot/restart admission, deadline/context preservation, uncertain completion,
+  concurrent refusal, ordinary copy failure, streaming bounds, rollback refusal, and no-hook
+  non-root compatibility.
+- **Magisk emulator:** `Odin_Magisk_API36_1`, API 36.1, ARM64/16 KiB, Magisk 30.7 (30700):
+  **9/9 instrumentation tests passed**, zero skips.
+- **Physical ReSuKiSU phone:** POCO F7 (`25053PC47G`), API 36, ARM64/4 KiB,
+  ReSuKiSU v4.2.0-rc2 (35159): **9/9 instrumentation tests passed**, zero skips.
+- Each ran `ObbPlacementIntegrationTest` (2), `RootExportStagingIntegrationTest` (2), and
+  `OdinExecutionPolicyIntegrationTest` (5), through
+  `com.valhalla.thor.debug.test/com.valhalla.thor.ThorTestRunner` with `-e odinRoot true`.
+  Both devices kept their existing Thor app grant; no `adb root`, shell-root grants, manager
+  policy changes, or user/profile creation were used.
+- The same final app/test APKs were installed and hash-verified on both devices. Home launch and
+  visual inspection passed. Private fixture/recovery snapshots were empty afterward.
+  Instrumentation verifies external source and exact-owned target cleanup. Host `run-as` cannot
+  inspect the external source tree on either device; that host observation remains unavailable.
+
+The regular OBB scenario places two files (256 KiB and 128 KiB) through each entry point, checks
+exact bytes via root readback, and preserves an unrelated sentinel. The streaming cancellation
+scenario uses actual `cp` with only its source operand replaced by an app-created private FIFO
+(external FUSE does not support FIFO creation). After 1,024 known bytes reach the target, it
+checks INTERACTIVE work, cancellation acknowledgement, source retention while the outcome
+observer is paused, subsequent ARCHIVE shell PID reuse, and no replay or second-file copy.
+Fixtures use fresh UUID leaves under the installed instrumentation package; cleanup never
+removes the package's OBB directory.
+
+Single-run descriptive measurements, in milliseconds; these are not performance thresholds:
+
+| OBB measurement | Magisk emulator | ReSuKiSU phone |
+|---|---:|---:|
+| Eager placement, two files | 775.5 | 1,244.1 |
+| Streaming placement, two files | 777.9 | 1,219.1 |
+| INTERACTIVE command during blocked copy | 19.8 | 18.5 |
+| Cancellation request to terminal acknowledgement | 230.4 | 289.5 |
+
+Both devices observed 393,216 logical source bytes for eager placement and a 262,144-byte
+streaming peak. Cancellation retained a 4,096-byte extracted source and 382-byte receipt through
+acknowledgement, with a 1,024-byte partial destination. These are fixture observations, not
+filesystem-allocation peaks, large-archive throughput, or bounds on unresolved retained storage.
+
+**Limits:** Admission covers these placement paths, OBB-bearing install preflight, and automatic
+archive rollback. It does not block every unrelated APK update, uninstall, or data-clear operation.
+Final OBB content is not automatically deleted, restored, or reconciled; cancelled/failed writes
+may leave partial files. Non-root Shizuku lifecycle behavior is unchanged. Live Shizuku placement,
+hardware process death/reboot/power loss, ENOSPC, control denial, and cross-profile fault injection
+remain unrun. No detached-producer or Binder cancellation guarantee is inferred from these tests.
+
+Local evidence: `~/.codex/artifacts/thor-odin-obb-placement-2026-10-02/` —
+`build-gates-acceptance.log`, `dependency-insight.log`, `host-validation.json`, `review-rationale.md`,
+`tested-code-files.sha256`, both `*-validation.json`, `*-root-acceptance.log`, environment,
+fixture/launch logs, and `*-debug-home.png` files. Earlier host-only fixture/lint failures remain
+in separate logs and are excluded from acceptance counts.
+The app APK SHA-256 is
+`225376cbe5b140a331a9c9b657203009c1c5b9d9fd23387c0a9aa1f849ba5c84`; the test APK is
+`256ccd68689183277502396ba378192a480cd60389bc71ced14d6e6ab6196270`.
+The source manifest covers 1,014 inputs and matches the committed implementation; its digest is
+`b81b99670528ab88d195a7a99fec4ae931c244b9f899ae62a10899671be6f618`.
+
+**Review fixes, 2026-10-02:** `99134fefba978c57b428f73364398abc64d5dfca` addresses both
+reported issues. Cleanup-only exceptions no longer replace a completed OBB placement result;
+cleanup errors remain suppressed on a primary failure, and source-cleanup failure keeps its
+receipt for later recovery. Existing-app restores with OBB enabled now consult the read-only
+`AppArchiveInstaller.hasUnresolvedObbPlacement` preflight before the first force-stop or data
+replacement. Prior unresolved work returns an ordinary refusal without writing or clearing a
+breadcrumb. Uncertainty from the current placement still throws `ObbPlacementUnresolved` and
+retains the interruption breadcrumb. Disabled OBB and install-first paths retain their behavior.
+
+The full JDK 21 test/lint/build command above passed again on this fix commit: **3,286 JVM tests
+per FOSS/Store debug variant**, zero failures/errors/skips; zero lint errors/warnings and the same
+14 FOSS / 13 Store hints. Five new restore regressions cover early refusal (including archives
+without a bundle), unchanged breadcrumbs, normal admission, disabled/install-first behavior,
+and current-attempt uncertainty; existing adapter coverage now checks the preflight delegation.
+Both the Magisk emulator and physical ReSuKiSU phone passed the same **9/9 instrumentation
+tests**, zero skips, with matching installed APK hashes, empty private fixture/recovery snapshots,
+and successful Home launch/visual inspection. External cleanup is asserted in instrumentation;
+host `run-as` observation remains unavailable. No manager-policy changes or `adb root` were used.
+The new restore preflight is covered on the JVM; cleanup I/O failure was not injected on hardware.
+
+Review-fix evidence: `~/.codex/artifacts/thor-odin-obb-review-fixes-2026-10-02/` —
+`build-gates-acceptance.log`, `host-validation.json`, `tested-code-files.sha256`, both device
+validation JSON/instrumentation/environment/fixture/launch logs, and Home screenshots.
+The app APK SHA-256 is
+`7823a0143c71ef1d1d9eb5706a477f6555d69b70e571f7584480b8e8b53eb31f`; the test APK remains
+`256ccd68689183277502396ba378192a480cd60389bc71ced14d6e6ab6196270`.
+The 1,014-input source manifest digest is
+`d03cbe351d49bf0c11ea3bc8a9c5a2c050f9f5960ae7cfedd321787a54c825d5`.
+
+**Installer admission and publication review fixes, 2026-10-02:**
+`3d484edead88dd1fa5b03990f0c8d3c365fdd60d` fixes both additional findings in #541.
+Standalone installs with a resolved XAPK package now acquire `REINSTALL` package admission before
+`refusalReason` and retain it through installation, the existing confirmation wait, OBB placement,
+outcome observation and source cleanup. Archive restore explicitly supplies its already-held
+package name; a resolved OBB-target mismatch refuses before invocation or preflight. Execution
+metadata alone never bypasses admission. Seven new JVM regressions cover busy admission,
+callback ordering, ownership through paused install/outcome observation, independent packages,
+matching restore reuse, mismatches, cancellation/failure release and external handoff.
+
+Each copy uses an exclusively created UUID temporary sibling directory beneath the destination,
+with the final OBB basename. `chmod 644` and the existing optional size check run on that staged
+file, then `mv -f <temporary>/<leaf> <destination-directory>/` publishes it on the same filesystem.
+The matching-basename form replaces file and directory symlinks themselves without `mv -T`,
+which older supported Android toybox versions lack; actual directory destinations are refused.
+The prior final file is preserved until publication. Normal exit and catchable signals call the
+same cleanup function directly: device tests exposed Android mksh skipping an EXIT trap when a
+subshell exits from a signal handler. Repeated catchable signals are ignored during cleanup.
+
+The full JDK 21 test/lint/build gates passed on this commit: **3,294 JVM tests per FOSS/Store debug
+variant**, zero failures/errors/skips; both lint reports have zero errors/warnings, with unchanged
+14 FOSS / 13 Store hints. Published `com.trinadhthatakula:odin:1.1.0` remains resolved without local
+substitution. Both the Magisk 30.7 API 36.1 emulator and physical ReSuKiSU v4.2.0-rc2 POCO F7
+passed **11/11 instrumentation tests**, zero skips: OBB placement (4), root export (2), execution
+policy (5). New device checks cover copy/size failure preservation, replacement, directory refusal,
+symlink-target preservation and removal of the temporary sibling after FIFO cancellation. The
+previous OBB is intact while 1,024 bytes exist only in the temporary file and after cancellation;
+source/receipt ownership remains held through outcome observation. Installed APK hashes match
+the host, private recovery/fixture snapshots are empty, and Home launch/visual inspection passed.
+External source and target cleanup is asserted in instrumentation; host `run-as` external access
+remains unavailable. Existing Thor app grants were used without root-policy changes.
+
+**Remaining limits:** Borrowing a lease is a documented caller precondition. Coordination covers
+resolved XAPK targets, not every package mutation or external installer. Accepted PackageInstaller/
+Binder work can outlive cancellation or the existing confirmation timeout. A cancellation racing
+publication may leave either complete version, and previously published files are not rolled back.
+SIGKILL, power loss or cleanup I/O failure can retain a unique temporary directory; shell path-swap
+races and the optional stat-unavailable behavior remain. Live Shizuku placement, old-API device
+execution and forced-KILL/crash/reboot/ENOSPC/control-denial/cross-profile fault injection remain
+unrun. Initial failed cancellation runs were diagnostic and are excluded from the final counts.
+
+Evidence: `~/.codex/artifacts/thor-odin-obb-publication-review-2026-10-02/` —
+`build-gates-acceptance.log`, `host-validation.json`, `dependency-insight.log`, `review-rationale.md`,
+`tested-code-files.sha256`, both `*-final-validation.json`, instrumentation/fixture/launch logs,
+environment records and Home screenshots. The 1,015-input source manifest digest is
+`947bdea4d062309c7c889a37765fb573b9702374fe3195aa9074b050a1306f60`.
+App APK SHA-256: `4d63cf1bf92db687f4debfd837598dd0a0acdf2595b68bf07695ccb3a07d95d8`.
+Test APK SHA-256: `04ec82ac1d7ec9e250735c696bafb4be06c8981ddb93b81cee9ee622a10e9485`.
 
 ### M2-04: Selected archive/cache/import adoption
 

@@ -83,6 +83,8 @@ interface AppArchiveInstaller {
      *
      * Waits on the install result rather than polling `isInstalled()`: §8.2. Returns only once the
      * install has landed, failed, or the wait has run out.
+     * The caller must hold [packageName]'s package-operation lease until this call returns;
+     * the restore use case owns it across installation, data restoration, and rollback.
      */
     suspend fun installBundle(
         bundle: File,
@@ -101,6 +103,12 @@ interface AppArchiveInstaller {
     ): ArchiveRollbackOutcome
 
     /**
+     * Read-only preflight for a previous or active game-data writer. True also covers recovery
+     * metadata that cannot establish completion. The placement itself must still check admission.
+     */
+    suspend fun hasUnresolvedObbPlacement(packageName: String): Boolean
+
+    /**
      * Place [bundle]'s expansions into `Android/obb/<pkg>/` for an app that is **already installed**
      * (§8.4), one file at a time.
      *
@@ -112,5 +120,6 @@ interface AppArchiveInstaller {
         bundle: File,
         packageName: String,
         onFile: (String, Int, Int) -> Unit = { _, _, _ -> },
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): ObbPlacement
 }
