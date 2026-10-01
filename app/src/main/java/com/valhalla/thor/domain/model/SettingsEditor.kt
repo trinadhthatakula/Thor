@@ -20,7 +20,7 @@ data class SettingValue(val present: Boolean, val value: String? = null) {
 @Serializable
 data class SettingEntry(val key: String, val value: String?)
 @Serializable
-enum class SettingsEditOutcome { PENDING, VERIFIED, REJECTED, CONFLICT, UNKNOWN }
+enum class SettingsEditOutcome { PENDING, VERIFIED, REJECTED, CONFLICT, UNKNOWN, UNCONFIRMED }
 @Serializable
 data class SettingsEditRecord(
     val id: String,

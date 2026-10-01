@@ -135,8 +135,8 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M1-03 | Root admission and lane recovery | M1-02 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | Done |
 | M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533), [#536](https://github.com/trinadhthatakula/Thor/pull/536) | Merged — validation pending |
 | M1-05 | RootService connection ownership | None | Codex | [#537](https://github.com/trinadhthatakula/Thor/pull/537) | Done |
-| M1-06 | RootService profile isolation | M1-05 test fixture recommended | Codex | [#538](https://github.com/trinadhthatakula/Thor/pull/538) | In review — validated |
-| M2-01 | Execution policy and complete outcomes | Milestone 1 | Unassigned | — | Not started |
+| M1-06 | RootService profile isolation | M1-05 test fixture recommended | Codex | [#538](https://github.com/trinadhthatakula/Thor/pull/538) | Done |
+| M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | In review — validated |
 | M2-02 | Cancellable export staging copy | M2-01 | Unassigned | — | Not started |
 | M2-03 | OBB context and cancellable placement | M2-02 | Unassigned | — | Not started |
 | M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Unassigned | — | Not started |
@@ -290,11 +290,11 @@ Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
 source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
 
-**Next task, updated 2026-10-01:** M1-05 connection ownership merged in
-[#537](https://github.com/trinadhthatakula/Thor/pull/537) as `447ce79e`. M1-06 profile isolation
-is implemented and validated in [#538](https://github.com/trinadhthatakula/Thor/pull/538).
-After it merges, continue M2-01 execution policy and
-complete outcomes; the broader device acceptance matrix remains open.
+**Next task, updated 2026-10-01:** M1-06 profile isolation merged in
+[#538](https://github.com/trinadhthatakula/Thor/pull/538) as `316c5892`. M2-01 execution policy
+and complete outcomes is validated in [#539](https://github.com/trinadhthatakula/Thor/pull/539).
+After it merges, continue M2-02 with one bounded export
+staging copy; the broader device acceptance matrix remains open.
 Actual post-dispatch transport/deadline fault injection remains an unchecked M1-04 follow-up.
 
 ### M1-04: Data-clear fallback correction
@@ -488,8 +488,8 @@ to other Android users. The gateway now delegates directly to its connection own
 - [x] Check for stale code before adding an owned-retirement or version-handshake workaround.
   No stale-code case occurred in the tested normal lifecycle; a new AIDL handshake was unnecessary.
 
-**Implementation:** `eff6de65` in [#538](https://github.com/trinadhthatakula/Thor/pull/538), based
-on #537's merge (`447ce79e`). The reset command, mutex,
+**Implementation:** `eff6de65` in [#538](https://github.com/trinadhthatakula/Thor/pull/538), merged
+as `316c5892`, based on #537's merge (`447ce79e`). The reset command, mutex,
 flag, and command class are removed. Existing clear-data tests no longer bypass or allow a
 reset, and require exactly one shell wipe attempt before an ordinary-refusal Binder fallback.
 The new debug-only fixture verifies compiled code identity, root process/instance continuity,
@@ -615,16 +615,107 @@ warning and retain any unavailable case as unverified.
 
 ### M2-01: Execution policy and complete outcomes
 
-- [ ] Replace the `settings_editor.*` policy convention with an explicit persistent/isolated
+- [x] Replace the `settings_editor.*` policy convention with an explicit persistent/isolated
   contract independent of lane and command class.
-- [ ] Preserve all relevant Odin outcome fields in Thor, including cancellation cleanup outcomes.
-- [ ] Define uncertainty recording/admission and staging-cleanup behavior before releasing
+- [x] Preserve all relevant Odin outcome fields in Thor, including cancellation cleanup outcomes.
+- [x] Define uncertainty recording/admission and staging-cleanup behavior before releasing
   ownership. Preserve original coroutine cancellation after recording the outcome.
-- [ ] Apply the contract to existing Settings Editor isolation first; preserve its watchdog and
+- [x] Apply the contract to existing Settings Editor isolation first; preserve its watchdog and
   mutation/readback/journal finalization on screen dismissal.
-- [ ] Test the terminal-outcome matrix, pre-dispatch cancellation, drain/termination flags,
+- [x] Test the terminal-outcome matrix, pre-dispatch cancellation, drain/termination flags,
   unusable transport, unconfirmed termination, next admission, and no automatic replay.
-- [ ] Test real acknowledgement ordering with readiness markers and a TERM-resistant child.
+- [x] Test real acknowledgement ordering with readiness markers and a TERM-resistant child.
+
+**Implementation:** `ad1fd5ee853144031ef885d7a93508f1a4d628a5` in
+[#539](https://github.com/trinadhthatakula/Thor/pull/539), based on #538's merge (`316c5892`).
+Scheduling lane and diagnostic command class no longer select execution
+policy. `PrivilegeExecutionContext.rootExecutionPolicy` defaults to `PERSISTENT`; Settings Editor
+explicitly selects `ISOLATED`. MainShell and owned ARCHIVE/SWEEP sessions share the same isolated
+adapter. Thor retains every Odin terminal field, including stdout/stderr separately, nullable exit
+code, failure, started, termination/drain confirmation, and shell reuse. Ordinary nonzero exits
+remain command results. Cancellation awaits acknowledgement and records it under `NonCancellable`
+before releasing the lane, then rethrows the received cancellation with outcome metadata attached.
+Local timeout exceptions also retain the acknowledgement. Only an unusable owned transport retires
+its exact generation; isolated failure or uncertainty never replays through fallback.
+
+`RootJobOutcome.cleanupConfirmed` requires both termination and output drain and is always false
+for `TERMINATION_UNCONFIRMED`, even if its flags disagree. Workload observers persist ownership
+before submission and consume completion before lease release. This defines the staging rule for
+M2-02: delete or reuse a destination only after cleanup is confirmed; otherwise retain its recovery
+record and resources. No archive workload has opted into isolation in M2-01.
+
+Settings Editor writes persist a UUID and exact table/effective-user/key identity in an AtomicFile
+under `noBackupFilesDir` before root submission. The sidecar stores terminal metadata, without
+commands, setting values, output, or failure text. An unresolved record blocks that same setting's
+Root and Shizuku writes, including undo, while reads and independent settings remain usable.
+Only the owning execution's confirmed acknowledgement or a different known kernel boot UUID
+clears it. Matching readback, a new shell, provider switch, root refresh, and app process restart
+provide no clearance. Kernel identity comes from `/proc/sys/kernel/random/boot_id`; the editable
+`Settings.Global.BOOT_COUNT` is not termination evidence. Missing or malformed boot identity and
+unreadable/corrupt persistence fail closed; an unavailable boot identity cannot promise automatic
+recovery even after reboot. The gate coordinates this Thor installation, not separate installations
+or Android profiles. Settings Editor records unconfirmed execution distinctly in history and
+shows a localized blocking message; its watchdog and protected mutation/readback/journal sequence
+remain intact. Read-only history reconciliation is still M3-01.
+
+Isolated process-group acknowledgement is not rollback and does not prove completion of detached
+children or accepted Binder/system-server work. Device coverage below must not be extrapolated
+to every OEM, policy-denied control shell, minified build, or archive workload.
+
+**M2-01 validation, 2026-10-01:** JDK 21 `test lintFossDebug lintStoreRelease`, FOSS debug/app-test
+APK assembly, and dependency insight passed with published external Odin `1.1.0` and no local
+substitution. Each FOSS/Store debug variant ran **3,223 JVM tests**, with zero failures, errors,
+or skips. Both lint gates have zero errors/warnings, no MissingTranslation or SyntheticAccessor
+findings, and existing hints only. The tests cover the terminal flag matrix, cancellation before
+submission and during outcome recording, exact-generation retirement/reuse, ownership-safe
+persistence, invalid boot identities, and cancellation cause/suppressed metadata after coroutine
+stack-trace recovery. Source manifest SHA-256:
+`4b8bcdd2bed9febafbfb53e2a681faaa9c8f503a221b9708942ad99faaab1f49`.
+
+| Scenario | Magisk 30.7 / Odin API 36.1 emulator | POCO F7 / API 36 / ReSuKiSU v4.2.0-rc2 (35159) |
+| --- | --- | --- |
+| Explicit persistent/isolated policy independent of command name on all three lanes | 1 passed | 1 passed |
+| TERM-resistant child cancellation on INTERACTIVE, ARCHIVE, and SWEEP | 3 passed | 3 passed |
+| App-domain canonical boot UUID matches authenticated root observation | 1 passed | 1 passed |
+| Settings Editor watchdog, acknowledged helper start, and reap before next admission | 1 passed | 1 passed |
+| Disposable SYSTEM/SECURE/GLOBAL edit, delete, undo, conflict, and diagnostic reads | 1 passed | 1 passed |
+| Installed app/test APK hash verification and final debug Home launch | Passed | Passed |
+
+Totals: **7 emulator and 7 physical instrumentation passes, zero skips**. Cancellation callbacks
+held the lane while recording acknowledgement; the child was no longer live before subsequent
+work, stdout/stderr remained separate, the reusable shell PID was retained, and submission/next
+command markers proved no replay or stale output. Both devices ran user 0 only. Settings Editor
+used unique disposable keys, verified their removal, restored the original preference/consent and
+history, and left its recovery sidecar empty. The original history hash matched after each run.
+Marker directories were removed only after confirmed cleanup. The final debug app/test APKs remain
+installed. Root-manager policies were unchanged; no `adb root` or shell-root grant was used.
+
+The three test classes ran separately through
+`com.valhalla.thor.debug.test/com.valhalla.thor.ThorTestRunner` using
+`adb -s <serial> shell am instrument -w -r -e class <class> <arguments> <runner>`:
+
+- `com.valhalla.thor.data.gateway.root.OdinExecutionPolicyIntegrationTest`: `-e odinRoot true`.
+- `com.valhalla.thor.data.settingseditor.SettingsEditorDeadlineTest`: `-e settingsEditorMode ROOT`.
+- `com.valhalla.thor.data.settingseditor.SettingsEditorIntegrationTest`: `-e settingsEditorMode ROOT`.
+
+The app-domain boot-ID test confirms access on these two devices. JVM tests cover uncertain/failure
+outcome handling, persistence reopening and corruption, and simulated boot changes. Actual
+unconfirmed termination/control-shell denial, forced process-death recovery, and reboot recovery
+were not fault-injected on the devices. Live Shizuku/Dhizuku operations, cross-profile coordination,
+detached producers, and archive staging remain outside this validation. The broader acceptance
+matrix below remains open.
+
+Both devices matched these built APK SHA-256 values:
+
+- FOSS debug app: `b50f7b9e875ef09e74e16ce0609cf8083d3af52be4b079a8b02a41bca52190e6`.
+- FOSS debug test: `fc7d902e3ac38d0c73e8dfa8f47af9ea8ea5d3e563681ac85e17d393abaf267d`.
+
+Local evidence: `~/.codex/artifacts/thor-odin-execution-policy-2026-10-01/` —
+`build-gates-verified.log`, `dependency-insight.log`, `host-validation.json`,
+`tested-code-files.sha256`, `emulator-validation.json`, `resukisu-validation.json`,
+each device's `OdinExecutionPolicyIntegrationTest`, `SettingsEditorDeadlineTest`, and
+`SettingsEditorIntegrationTest` logs, history hashes, cleanup checks, and final Home screenshots.
+Earlier failed/unfinished runs are retained separately; they are not the acceptance evidence.
 
 ### M2-02: Cancellable export staging copy
 
@@ -714,6 +805,7 @@ baseline row with results from a later commit.
 | M1-04 compatibility | `8c6e5774` / #536 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; normal clear and real-daemon fallback | 3,174 JVM tests per variant; lint passed; 2/2 device tests each; details above |
 | M1-05 ownership | `7a8c9ac1` / #537 | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; binding lifecycle; clear-data regression | 3,188 JVM tests per variant; lint passed; 3/3 tests on each device |
 | M1-06 isolation | `eff6de65` / #538 | Host; Magisk API 36.1 users 0/10; ReSuKiSU API 36 user 0 | Required gates; replacement/death/rebind; cross-user held work; binding/clear regressions | 3,188 JVM tests per variant; lint passed; 12 emulator and 6 physical passes; expected interruptions separate |
+| M2-01 execution policy | `ad1fd5ee` / #539 | Host; Magisk API 36.1 user 0; ReSuKiSU API 36 user 0 | Required gates; explicit policy; cancellation/lease ordering on all lanes; boot identity; Settings watchdog and edit round trips | 3,223 JVM tests per variant; lint passed; 7 emulator and 7 physical passes; full evidence above |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |

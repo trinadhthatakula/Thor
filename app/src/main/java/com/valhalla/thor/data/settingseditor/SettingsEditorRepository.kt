@@ -46,7 +46,10 @@ class SettingsEditorRepository(
     private val controller = SettingsEditorController({ thorUserId }, { store.consent.first() }, ::openSession, store.history)
     private suspend fun openSession(): SettingsEditorSession {
         val mode = settingsEditorMode(privileges.state.value, preferences.userPreferences.first().preferredPrivilegeMode) ?: error("unavailable")
-        val execution = PrivilegeExecutionContext(commandClass = PrivilegeCommandClass("settings_editor.manage"))
+        val execution = PrivilegeExecutionContext(
+            commandClass = PrivilegeCommandClass("settings_editor.manage"),
+            rootExecutionPolicy = RootExecutionPolicy.ISOLATED,
+        )
         val gateway: SystemGateway = when (mode) {
             PrivilegeMode.ROOT -> root.also { check(it.isRootAvailable(execution)) { "unavailable" } }
             PrivilegeMode.SHIZUKU -> shizuku.also { check(it.isShizukuAvailable()) { "unavailable" } }
@@ -54,11 +57,15 @@ class SettingsEditorRepository(
         }
         return object : SettingsEditorSession {
             override val provider = mode
+            override suspend fun ensureWriteAllowed(view: SettingsEditorView, userId: Int, key: String) {
+                store.rootExecutions.ensureWriteAllowed(SettingsRootResource(view, userId, key))
+            }
             override suspend fun read(view: SettingsEditorView, userId: Int): List<SettingEntry> =
                 execute(SettingsBridgeRequest("read", requireNotNull(view.table), userId)).entries
             override suspend fun properties(): List<SettingEntry> =
                 execute(SettingsBridgeRequest("properties", "system", 0)).entries
             override suspend fun write(view: SettingsEditorView, userId: Int, key: String, expected: SettingValue, desired: SettingValue): SettingsBridgeResult {
+                ensureWriteAllowed(view, userId, key)
                 // Recheck selected mode before dispatch. Verification itself stays on this provider.
                 check(settingsEditorMode(privileges.state.value, preferences.userPreferences.first().preferredPrivilegeMode) == mode) { "unavailable" }
                 val reply = execute(SettingsBridgeRequest("write", requireNotNull(view.table), userId, key, expected, desired))
@@ -72,7 +79,19 @@ class SettingsEditorRepository(
                 val command = "CLASSPATH=${quote(apk)} " + settingsEditorProcessDeadline(
                     "/system/bin/app_process /system/bin com.valhalla.thor.data.settingseditor.SettingsEditorBridge ${quote(payload)}"
                 )
-                val (code, output) = gateway.executeShellCommand(command, execution).getOrThrow()
+                val observer = if (mode == PrivilegeMode.ROOT && request.operation == "write") {
+                    store.rootExecutions.observer(SettingsRootResource(
+                        SettingsEditorView.entries.single { it.table == request.table },
+                        request.userId,
+                        requireNotNull(request.key),
+                    ))
+                } else null
+                val (code, output) = try {
+                    gateway.executeShellCommand(command, execution.copy(rootExecutionObserver = observer)).getOrThrow()
+                } catch (failure: IsolatedRootExecutionException) {
+                    if (!failure.outcome.cleanupConfirmed) throw SettingsExecutionUncertain(failure)
+                    throw failure
+                }
                 check(code == 0) { "provider_error" }
                 val encoded = output.orEmpty().lineSequence().filter { it.startsWith("THOR_SETTINGS:") }.singleOrNull()?.removePrefix("THOR_SETTINGS:") ?: error("provider_error")
                 val reply = json.decodeFromString<SettingsBridgeResponse>(String(Base64.decode(encoded, Base64.NO_WRAP), Charsets.UTF_8))

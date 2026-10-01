@@ -50,4 +50,5 @@
     <string name="sett_empty_value">Empty string</string>
     <string name="sett_back">Back</string>
     <string name="sett_answer">Answer</string>
+    <string name="sett_execution_unconfirmed">A previous operation may still be running. Restart your device before changing this setting.</string>
 </resources>

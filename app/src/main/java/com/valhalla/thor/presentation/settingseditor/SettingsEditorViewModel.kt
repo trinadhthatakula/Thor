@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.settingseditor.SettingsEditorRepository
 import com.valhalla.thor.data.settingseditor.SettingsEditorStore
+import com.valhalla.thor.data.settingseditor.SettingsExecutionUncertain
 import com.valhalla.thor.domain.model.*
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -23,6 +24,7 @@ internal data class SettingsEditorUiState(
     val busy: Boolean = false,
     val error: Boolean = false,
     val conflict: Boolean = false,
+    val executionUnconfirmed: Boolean = false,
     val outcome: SettingsEditOutcome? = null,
     val consentWriteFailed: Boolean = false,
 )
@@ -68,7 +70,7 @@ class SettingsEditorViewModel(
         if (mutationRunning || state.value.mode == null) return
         readJob?.cancel()
         val view = state.value.view
-        state.update { it.copy(busy = true, error = false, conflict = false) }
+        state.update { it.copy(busy = true, error = false, conflict = false, executionUnconfirmed = false) }
         readJob = viewModelScope.launch {
             val entries = repository.read(view)
             val history = repository.history()
@@ -83,7 +85,7 @@ class SettingsEditorViewModel(
         if (state.value.busy || state.value.mode == null || state.value.consent != true) return
         readJob?.cancel()
         mutationRunning = true
-        state.update { it.copy(busy = true, error = false, conflict = false, outcome = null) }
+        state.update { it.copy(busy = true, error = false, conflict = false, executionUnconfirmed = false, outcome = null) }
         viewModelScope.launch {
             try {
                 val result = operation()
@@ -93,6 +95,7 @@ class SettingsEditorViewModel(
                     it.copy(entries = if (it.mode == null) emptyList() else entries.getOrDefault(it.entries),
                         history = history.getOrDefault(it.history), busy = false,
                         outcome = result.getOrNull()?.outcome,
+                        executionUnconfirmed = result.exceptionOrNull() is SettingsExecutionUncertain,
                         conflict = result.exceptionOrNull()?.message == "conflict",
                         error = result.isFailure && result.exceptionOrNull()?.message != "conflict" || entries.isFailure || history.isFailure)
                 }

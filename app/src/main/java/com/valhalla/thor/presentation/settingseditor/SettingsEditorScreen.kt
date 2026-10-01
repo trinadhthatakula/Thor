@@ -84,8 +84,9 @@ fun SettingsEditorScreen(onBack: () -> Unit, viewModel: SettingsEditorViewModel 
                     }
                 } else Text(stringResource(R.string.sett_history_note), Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (state.error || state.conflict || state.outcome != null) {
+                if (state.error || state.conflict || state.executionUnconfirmed || state.outcome != null) {
                     Text(stringResource(when {
+                        state.executionUnconfirmed || state.outcome == SettingsEditOutcome.UNCONFIRMED -> R.string.sett_execution_unconfirmed
                         state.conflict || state.outcome == SettingsEditOutcome.CONFLICT -> R.string.sett_conflict
                         state.outcome == SettingsEditOutcome.VERIFIED -> R.string.sett_verified
                         state.outcome == SettingsEditOutcome.REJECTED -> R.string.sett_rejected
@@ -222,6 +223,7 @@ internal fun SettingsEditorView.titleRes(): Int = when (this) {
     SettingsEditorView.ENVIRONMENT -> R.string.sett_environment
 }
 private fun SettingsEditOutcome.titleRes(): Int = when (this) {
+    SettingsEditOutcome.UNCONFIRMED -> R.string.sett_execution_unconfirmed
     SettingsEditOutcome.PENDING -> R.string.sett_unknown
     SettingsEditOutcome.VERIFIED -> R.string.sett_verified
     SettingsEditOutcome.REJECTED -> R.string.sett_rejected

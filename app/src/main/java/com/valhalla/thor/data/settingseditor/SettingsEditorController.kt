@@ -3,15 +3,19 @@
 package com.valhalla.thor.data.settingseditor
 
 import com.valhalla.thor.domain.model.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.UUID
 
 internal data class SettingsBridgeResult(val entries: List<SettingEntry>, val conflict: Boolean = false)
 internal interface SettingsEditorSession {
     val provider: PrivilegeMode
+    suspend fun ensureWriteAllowed(view: SettingsEditorView, userId: Int, key: String) = Unit
     suspend fun read(view: SettingsEditorView, userId: Int): List<SettingEntry>
     suspend fun properties(): List<SettingEntry> = error("unsupported")
     suspend fun write(view: SettingsEditorView, userId: Int, key: String, expected: SettingValue, desired: SettingValue): SettingsBridgeResult
@@ -48,6 +52,7 @@ internal class SettingsEditorController(
         check(allowed()) { "consent_required" }
         val session = openSession()
         val userId = view.userId(currentUserId())
+        session.ensureWriteAllowed(view, userId, key)
         val entries = session.read(view, userId)
         check(valueOf(entries, key) == expected) { "conflict" }
         check(allowed()) { "consent_required" }
@@ -57,6 +62,7 @@ internal class SettingsEditorController(
         history.save(listOf(record) + records)
         // Once dispatch starts, finish readback + journal even if the screen is dismissed. Never replay.
         return withContext(NonCancellable) {
+            var cancellation: CancellationException? = null
             val outcome = try {
                 val result = session.write(view, userId, key, expected, desired)
                 when {
@@ -64,13 +70,42 @@ internal class SettingsEditorController(
                     valueOf(result.entries, key) == desired -> SettingsEditOutcome.VERIFIED
                     else -> SettingsEditOutcome.REJECTED
                 }
+            } catch (cancelled: CancellationException) {
+                cancellation = cancelled
+                if (hasUnconfirmedRootOutcome(cancelled)) {
+                    SettingsEditOutcome.UNCONFIRMED
+                } else {
+                    SettingsEditOutcome.UNKNOWN
+                }
+            } catch (_: SettingsExecutionUncertain) {
+                SettingsEditOutcome.UNCONFIRMED
             } catch (_: Exception) { SettingsEditOutcome.UNKNOWN }
             val finished = record.copy(outcome = outcome)
-            history.save(listOf(finished) + records)
+            try {
+                history.save(listOf(finished) + records)
+            } catch (failure: Exception) {
+                val cancelled = cancellation ?: throw failure
+                if (failure !== cancelled) cancelled.addSuppressed(failure)
+            }
+            cancellation?.let { throw it }
             finished
         }
     }
     companion object {
+        internal fun hasUnconfirmedRootOutcome(cancellation: CancellationException): Boolean {
+            val visited = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
+            var remaining = 64
+            fun visit(failure: Throwable): Boolean {
+                // Stack-trace recovery may move acknowledgement metadata into a cause. Avoid
+                // cycles and conservatively retain uncertainty if a graph exceeds this bound.
+                if (remaining-- == 0) return true
+                if (!visited.add(failure)) return false
+                if (failure is IsolatedRootExecutionException && !failure.outcome.cleanupConfirmed) return true
+                if (failure.cause?.let(::visit) == true) return true
+                return failure.suppressed.any(::visit)
+            }
+            return visit(cancellation)
+        }
         internal fun valueOf(entries: List<SettingEntry>, key: String): SettingValue =
             entries.singleOrNull { it.key == key }?.let { SettingValue(true, it.value) } ?: SettingValue.ABSENT
     }

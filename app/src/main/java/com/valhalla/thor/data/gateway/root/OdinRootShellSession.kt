@@ -5,6 +5,7 @@ package com.valhalla.thor.data.gateway.root
 
 import com.valhalla.superuser.Shell
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.RootExecutionPolicy
 import java.util.Collections
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
@@ -85,8 +86,17 @@ private suspend fun closePendingShell(
 
 internal class OdinRootShellSession(
     private val shell: Shell,
+    private val prepareIsolated: (String) -> IsolatedRootJob = {
+        OdinIsolatedRootJob(shell.prepareIsolatedJob(it))
+    },
 ) : RootShellSession {
     override val isAlive: Boolean get() = shell.isAlive
+
+    override suspend fun execute(command: RootCommand): RootCommandResult =
+        when (command.execution.rootExecutionPolicy) {
+            RootExecutionPolicy.PERSISTENT -> execute(command.text)
+            RootExecutionPolicy.ISOLATED -> executeIsolatedRootCommand(command, prepareIsolated(command.text))
+        }
 
     override suspend fun execute(command: String): RootCommandResult =
         suspendCancellableCoroutine { continuation ->

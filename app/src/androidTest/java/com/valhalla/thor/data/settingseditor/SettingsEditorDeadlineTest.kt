@@ -32,7 +32,10 @@ class SettingsEditorDeadlineTest {
         val statuses = requireNotNull(koin.getOrNull<RootLaneStatusSource>())
         // Let the application's startup privilege probe release its interactive lease first.
         requireNotNull(koin.getOrNull<PrivilegeManager>()).refreshAndAwait()
-        val execution = PrivilegeExecutionContext(commandClass = PrivilegeCommandClass("settings_editor.deadline_test"))
+        val execution = PrivilegeExecutionContext(
+            commandClass = PrivilegeCommandClass("settings_editor.deadline_test"),
+            rootExecutionPolicy = RootExecutionPolicy.ISOLATED,
+        )
         if (mode == "ROOT") assertTrue(gateway.isRootAvailable(execution))
         val apk = InstrumentationRegistry.getInstrumentation().context.applicationInfo.sourceDir
         val processName = "thor_sett_deadline_" + java.util.UUID.randomUUID().toString().replace("-", "")
@@ -60,7 +63,10 @@ class SettingsEditorDeadlineTest {
         try {
             val cancelled = async {
                 gateway.executeShellCommand(
-                    "echo submitted > $acknowledgementPath; $command; " +
+                    "$command & watchdog=\$!; " +
+                        "while kill -0 \"\$watchdog\" 2>/dev/null; do " +
+                        "if pidof $processName >/dev/null; then echo submitted > $acknowledgementPath; break; fi; " +
+                        "sleep 0.01; done; wait \"\$watchdog\"; " +
                         "if ! pidof $processName >/dev/null; then echo reaped >> $acknowledgementPath; fi",
                     execution
                 )
