@@ -877,13 +877,17 @@ The follow-up source manifest covers 1,010 inputs with digest
   cancellation, so restore does not clear its interruption breadcrumb as an ordinary failure.
 - [x] Test archive routing, interactive responsiveness, partial-copy cancellation before source
   deletion, nonzero copy failure, recovery, and non-root placement compatibility without root callbacks.
+- [x] Hold standalone XAPK package admission before OBB preflight through install and placement;
+  explicitly reuse the restore caller's matching lease.
+- [x] Publish checked OBB copies from unique temporary siblings, preserving previous files on
+  pre-publication failure and cleaning temporary files on acknowledged catchable cancellation.
 - [x] Pass required host gates and root device acceptance on the Magisk emulator and ReSuKiSU phone.
 - [ ] Validate live Shizuku OBB placement separately; JVM compatibility coverage does not establish
   its process lifecycle or firmware behavior.
 
 **Implementation:** `592995622039e4517fd93ee0802fe81b717cdb9a` in
 [#541](https://github.com/trinadhthatakula/Thor/pull/541), based on #540's merge (`1fdda745`).
-Later tracker commits change documentation only.
+Subsequent review fixes and their validation are recorded below.
 
 `ObbPlacementStaging` owns unique sources at `externalFilesDir/obb_placement/<UUID>/` outside
 cache cleanup, with private receipts at `noBackupFilesDir/obb_placement/<package>/receipt.json`.
@@ -1011,6 +1015,55 @@ The app APK SHA-256 is
 `256ccd68689183277502396ba378192a480cd60389bc71ced14d6e6ab6196270`.
 The 1,014-input source manifest digest is
 `d03cbe351d49bf0c11ea3bc8a9c5a2c050f9f5960ae7cfedd321787a54c825d5`.
+
+**Installer admission and publication review fixes, 2026-10-02:**
+`3d484edead88dd1fa5b03990f0c8d3c365fdd60d` fixes both additional findings in #541.
+Standalone installs with a resolved XAPK package now acquire `REINSTALL` package admission before
+`refusalReason` and retain it through installation, the existing confirmation wait, OBB placement,
+outcome observation and source cleanup. Archive restore explicitly supplies its already-held
+package name; a resolved OBB-target mismatch refuses before invocation or preflight. Execution
+metadata alone never bypasses admission. Seven new JVM regressions cover busy admission,
+callback ordering, ownership through paused install/outcome observation, independent packages,
+matching restore reuse, mismatches, cancellation/failure release and external handoff.
+
+Each copy uses an exclusively created UUID temporary sibling directory beneath the destination,
+with the final OBB basename. `chmod 644` and the existing optional size check run on that staged
+file, then `mv -f <temporary>/<leaf> <destination-directory>/` publishes it on the same filesystem.
+The matching-basename form replaces file and directory symlinks themselves without `mv -T`,
+which older supported Android toybox versions lack; actual directory destinations are refused.
+The prior final file is preserved until publication. Normal exit and catchable signals call the
+same cleanup function directly: device tests exposed Android mksh skipping an EXIT trap when a
+subshell exits from a signal handler. Repeated catchable signals are ignored during cleanup.
+
+The full JDK 21 test/lint/build gates passed on this commit: **3,294 JVM tests per FOSS/Store debug
+variant**, zero failures/errors/skips; both lint reports have zero errors/warnings, with unchanged
+14 FOSS / 13 Store hints. Published `com.trinadhthatakula:odin:1.1.0` remains resolved without local
+substitution. Both the Magisk 30.7 API 36.1 emulator and physical ReSuKiSU v4.2.0-rc2 POCO F7
+passed **11/11 instrumentation tests**, zero skips: OBB placement (4), root export (2), execution
+policy (5). New device checks cover copy/size failure preservation, replacement, directory refusal,
+symlink-target preservation and removal of the temporary sibling after FIFO cancellation. The
+previous OBB is intact while 1,024 bytes exist only in the temporary file and after cancellation;
+source/receipt ownership remains held through outcome observation. Installed APK hashes match
+the host, private recovery/fixture snapshots are empty, and Home launch/visual inspection passed.
+External source and target cleanup is asserted in instrumentation; host `run-as` external access
+remains unavailable. Existing Thor app grants were used without root-policy changes.
+
+**Remaining limits:** Borrowing a lease is a documented caller precondition. Coordination covers
+resolved XAPK targets, not every package mutation or external installer. Accepted PackageInstaller/
+Binder work can outlive cancellation or the existing confirmation timeout. A cancellation racing
+publication may leave either complete version, and previously published files are not rolled back.
+SIGKILL, power loss or cleanup I/O failure can retain a unique temporary directory; shell path-swap
+races and the optional stat-unavailable behavior remain. Live Shizuku placement, old-API device
+execution and forced-KILL/crash/reboot/ENOSPC/control-denial/cross-profile fault injection remain
+unrun. Initial failed cancellation runs were diagnostic and are excluded from the final counts.
+
+Evidence: `~/.codex/artifacts/thor-odin-obb-publication-review-2026-10-02/` —
+`build-gates-acceptance.log`, `host-validation.json`, `dependency-insight.log`, `review-rationale.md`,
+`tested-code-files.sha256`, both `*-final-validation.json`, instrumentation/fixture/launch logs,
+environment records and Home screenshots. The 1,015-input source manifest digest is
+`947bdea4d062309c7c889a37765fb573b9702374fe3195aa9074b050a1306f60`.
+App APK SHA-256: `4d63cf1bf92db687f4debfd837598dd0a0acdf2595b68bf07695ccb3a07d95d8`.
+Test APK SHA-256: `04ec82ac1d7ec9e250735c696bafb4be06c8981ddb93b81cee9ee622a10e9485`.
 
 ### M2-04: Selected archive/cache/import adoption
 
