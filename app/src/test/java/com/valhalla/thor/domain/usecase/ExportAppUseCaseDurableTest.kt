@@ -15,16 +15,45 @@ import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
 import com.valhalla.thor.domain.repository.AppExportPublicationStatus
 import com.valhalla.thor.domain.repository.VerifiedOperationBoundary
 import com.valhalla.thor.domain.repository.VerifiedProgress
+import com.valhalla.thor.presentation.FakeAppBundleFileStore
+import com.valhalla.thor.presentation.FakePreferenceRepository
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExportAppUseCaseDurableTest {
+
+    @Test
+    fun `direct export selects the export builder contract and cleans its staged file`() = runTest {
+        val root = Files.createTempDirectory("direct_export_").toFile()
+        try {
+            val builder = RecordingBuilder(root)
+            val store = FakeAppBundleFileStore()
+            val useCase = ExportAppUseCase(
+                builder, FakePreferenceRepository(), store, StandardTestDispatcher(testScheduler),
+            )
+
+            val result = useCase.exportInto(
+                appInfo("Foo", "1.0"), BundleFormat.APK,
+                ExportSession(ExportTargetChoice.Downloads, "direct-item"), fileName = "direct.apk",
+            ).getOrThrow()
+
+            assertEquals("Downloads/Thor", result)
+            assertEquals(1, builder.buildCount)
+            assertEquals(listOf("direct.apk"), builder.requestedNames)
+            assertEquals(mapOf("direct.apk" to "payload"), store.written)
+            assertFalse(File(root, "direct.apk").exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 
     @Test
     fun `replay after visible publication reuses the task identity without rebuilding or writing`() =
@@ -151,9 +180,19 @@ class ExportAppUseCaseDurableTest {
             format: BundleFormat,
             fileName: String?,
             execution: PrivilegeExecutionContext,
-        ): Result<File> = error("durable export must use the progress-aware builder contract")
+        ): Result<File> = error("export must select the export-specific builder contract")
 
         override suspend fun buildWithProgress(
+            appInfo: AppInfo,
+            cacheSubDir: String,
+            format: BundleFormat,
+            fileName: String?,
+            execution: PrivilegeExecutionContext,
+            progress: VerifiedProgress,
+            operationBoundary: VerifiedOperationBoundary,
+        ): Result<File> = error("export must select the export-specific builder contract")
+
+        override suspend fun buildExportWithProgress(
             appInfo: AppInfo,
             cacheSubDir: String,
             format: BundleFormat,
