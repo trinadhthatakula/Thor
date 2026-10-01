@@ -100,11 +100,6 @@ class RootClearAppDataIntegrationTest {
                             return RootCommandResult(1, emptyList(), listOf("forced ordinary refusal"))
                         }
                     }
-                    "root.service.reset" -> assertEquals(
-                        "Only Thor's own daemon may be reset for the real AIDL bind",
-                        "pkill -f ${context.packageName}:root",
-                        command.text,
-                    )
                     else -> error("Unexpected root operation in clear-data test: ${command.execution.commandClass.value}")
                 }
                 return executor.execute(command)
@@ -147,9 +142,9 @@ class RootClearAppDataIntegrationTest {
             assertEquals(1, commands.count { it.text == expectedClear })
             assertEquals(if (forceShellFailure) 1 else 0, simulatedFailures)
             assertEquals(
-                "Only a refused shell wipe should enter the real daemon fallback",
-                if (forceShellFailure) 1 else 0,
-                commands.count { it.execution.commandClass.value == "root.service.reset" },
+                "The real daemon fallback must not submit a process reset or replay the wipe",
+                1,
+                commands.size,
             )
         } finally {
             // Cleanup removes only this test's marker; it never issues a second data clear.

@@ -36,7 +36,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowProcess
-import org.robolectric.util.ReflectionHelpers
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [36])
@@ -138,10 +137,7 @@ class RootClearAppDataFallbackTest {
             },
             mainDispatcher,
         ),
-    ).also { gateway ->
-        // Exercise the real connection owner with a local Binder, without starting a root process.
-        ReflectionHelpers.setField(gateway, "isDaemonReset", true)
-    }
+    )
 
     private class RecordingRootService : IThorRootService.Default() {
         private val binder = Binder().apply {

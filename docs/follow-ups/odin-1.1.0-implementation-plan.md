@@ -134,8 +134,8 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M1-02 | Typed refresh and cache coordination | Coordinate with M1-01 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | Done |
 | M1-03 | Root admission and lane recovery | M1-02 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | Done |
 | M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533), [#536](https://github.com/trinadhthatakula/Thor/pull/536) | Merged — validation pending |
-| M1-05 | RootService connection ownership | None | Codex | [#537](https://github.com/trinadhthatakula/Thor/pull/537) | In review |
-| M1-06 | RootService profile isolation | M1-05 test fixture recommended | Unassigned | — | Not started |
+| M1-05 | RootService connection ownership | None | Codex | [#537](https://github.com/trinadhthatakula/Thor/pull/537) | Done |
+| M1-06 | RootService profile isolation | M1-05 test fixture recommended | Codex | [#538](https://github.com/trinadhthatakula/Thor/pull/538) | In review — validated |
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Unassigned | — | Not started |
 | M2-02 | Cancellable export staging copy | M2-01 | Unassigned | — | Not started |
 | M2-03 | OBB context and cancellable placement | M2-02 | Unassigned | — | Not started |
@@ -290,9 +290,11 @@ Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
 source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
 
-**Next task, updated 2026-10-01:** #536 has merged as `711a018c`. M1-05 connection ownership is
-in [#537](https://github.com/trinadhthatakula/Thor/pull/537), validated on Magisk and ReSuKiSU.
-After that package merges, continue M1-06 profile isolation.
+**Next task, updated 2026-10-01:** M1-05 connection ownership merged in
+[#537](https://github.com/trinadhthatakula/Thor/pull/537) as `447ce79e`. M1-06 profile isolation
+is implemented and validated in [#538](https://github.com/trinadhthatakula/Thor/pull/538).
+After it merges, continue M2-01 execution policy and
+complete outcomes; the broader device acceptance matrix remains open.
 Actual post-dispatch transport/deadline fault injection remains an unchecked M1-04 follow-up.
 
 ### M1-04: Data-clear fallback correction
@@ -475,17 +477,139 @@ Local evidence: `~/.codex/artifacts/thor-root-service-binding-2026-10-01/` — `
 
 ### M1-06: RootService profile isolation
 
-Start with the broad `pkill -f <applicationId>:root` in `RootSystemGateway`. It matches Odin
-servers belonging to other Android users.
+The former `pkill -f <applicationId>:root` in `RootSystemGateway` matched Odin servers belonging
+to other Android users. The gateway now delegates directly to its connection owner.
 
-- [ ] Test removal of the blanket reset against Odin's existing APK-update/client-death lifecycle.
-- [ ] Verify ordinary startup, APK replacement, app-process death, and rebind load the expected
+- [x] Test removal of the blanket reset against Odin's existing APK-update/client-death lifecycle.
+- [x] Verify ordinary startup, APK replacement, app-process death, and rebind load the expected
   code without process-pattern killing.
-- [ ] Bind harmless fixture operations in two Android users; initialize/rebind one and verify
-  the other's binder and acknowledged work survive.
-- [ ] If a stale-code case remains, document and fix that specific case using owned retirement.
-  Add an append-only AIDL version/capability handshake only if it solves the reproduced case;
-  otherwise record that it was unnecessary.
+- [x] Bind harmless fixture operations in two Android users; initialize/rebind one and verify
+  the other's Binder and acknowledged work survive, in both directions.
+- [x] Check for stale code before adding an owned-retirement or version-handshake workaround.
+  No stale-code case occurred in the tested normal lifecycle; a new AIDL handshake was unnecessary.
+
+**Implementation:** `eff6de65` in [#538](https://github.com/trinadhthatakula/Thor/pull/538), based
+on #537's merge (`447ce79e`). The reset command, mutex,
+flag, and command class are removed. Existing clear-data tests no longer bypass or allow a
+reset, and require exactly one shell wipe attempt before an ordinary-refusal Binder fallback.
+The new debug-only fixture verifies compiled code identity, root process/instance continuity,
+and the caller's full UID and user-specific package context. Instrumentation initializes the
+actual gateway, performs harmless package reads, and asserts zero attempted shell commands.
+
+**Odin contract checked:** published Odin `1.1.0`, source commit
+`1741da74bd0154d984eb780b2cbd1a02b0d3e1ac`. Thor uses ordinary service mode. Odin names ordinary
+servers `<package>:root:<userId>`, launches with the full app UID and installed APK path, binds
+clients by full UID, and exits on APK replacement or loss of its last ordinary client/service.
+Ordinary startup does not rediscover a daemon from an earlier app process. See
+[RootServiceManager](https://github.com/trinadhthatakula/Odin/blob/1741da74bd0154d984eb780b2cbd1a02b0d3e1ac/odin/src/main/java/com/valhalla/superuser/internal/RootServiceManager.kt),
+[RootServiceServer](https://github.com/trinadhthatakula/Odin/blob/1741da74bd0154d984eb780b2cbd1a02b0d3e1ac/odin/src/main/java/com/valhalla/superuser/internal/RootServiceServer.kt),
+and [RootServerMain](https://github.com/trinadhthatakula/Odin/blob/1741da74bd0154d984eb780b2cbd1a02b0d3e1ac/odin/src/main/java/com/valhalla/superuser/internal/RootServerMain.kt).
+
+**M1-06 validation, 2026-10-01:** JDK 21 `test lintFossDebug lintStoreRelease`, FOSS debug/app-test
+APK assembly, and dependency insight passed with published Odin `1.1.0` and no local substitution.
+Each FOSS/Store debug variant ran 3,188 JVM tests with zero failures, errors, or skips. Both lint
+gates have zero errors/warnings, no MissingTranslation or SyntheticAccessor findings, and existing
+hints only. Source manifest SHA-256:
+`4a5185aba601f37233ce1098d7fa75e2ab73727e3fe34a619466df4fb6a1faa4`.
+
+| Scenario | Magisk 30.7 / Odin API 36.1 emulator | POCO F7 / API 36 / ReSuKiSU v4.2.0-rc2 (35159) |
+| --- | --- | --- |
+| A cold bind/rebind, B bind/rebind after APK replacement, B bind/rebind after client death | 3 passed | 3 passed |
+| Acknowledged hold interrupted by replacement; acknowledged hold interrupted by app force-stop | 2 expected interruptions; old PIDs retired | 2 expected interruptions; old PIDs retired |
+| Hold in user 10 while user 0 binds/rebinds and restarts, then reverse users | 6 passed; 2 expected other-client interruptions | Not run; physical user 0 only |
+| Existing delayed-binding ownership lifecycle | 1 passed | 1 passed |
+| Normal fixture clear and ordinary shell refusal → real daemon clear | 2 passed | 2 passed |
+| Final debug cold launch and installed app/test APK hash verification | Passed | Passed |
+
+Totals: **12 emulator and 6 physical instrumentation passes, zero skips**. Six deliberately
+interrupted invocations are recorded separately, not counted as passing JUnit tests. Both
+cross-user survivors completed only after explicit release and retained their original PID and
+instance UUID. User 10 reported UID `1010225` and `/data/user/10/com.valhalla.thor.debug`; owner
+reported UID `10225` and its user-0 directory. The phone reported app UID `10392`. No user-context
+fallback warning was observed. Existing binding regression runs logged a caught `DeadObjectException`
+while retiring an old connection; replacement reads and all assertions passed.
+
+Build A used `-PversionName=1.96.3-m106-old` as an update stimulus. Build B uses normal `1.96.3`
+and the final test assertions; `versionCode` remained `1963`. The compiled fixture constant
+changed from A to B, and old root PIDs exited before fresh B identities were accepted.
+
+| APK | SHA-256 |
+| --- | --- |
+| A app | `5a130d9d97a5960e08931dcb2d7a775ccecea240b7eec03548ba874eefbf66ea` |
+| A test | `a711d4b99bd8bfa87f889581dd9bb9c7ca0259d8ebc704a19180a7fd4cfd3c12` |
+| B app | `bff9dc8040aa32d08785176518e95a2847e1c5b206db8d1bb0a8ec80c7912386` |
+| B test | `218cf1bbaeebd2ef6b6a0b92945354557ecdc9da71d8a9d149ed800264520cce` |
+
+The disposable emulator user was removed; Magisk's temporary **Device owner managed** setting
+was restored to **Device owner only**. Thor's grant remains enabled and Shell's disabled. The
+phone's root policy was unchanged. Both clear-data fixtures and all per-run marker directories
+were removed; both devices retain build B. Initial phone installs were rejected with
+`INSTALL_FAILED_USER_RESTRICTED`; installation succeeded after waking the screen and using
+`--no-incremental` for the disposable fixture. These were installer failures before their tests,
+not root-validation failures. No `adb root` or shell-root grant was used.
+
+Local evidence: `~/.codex/artifacts/thor-root-service-profile-isolation-2026-10-01/` contains
+`build-gates-final.log`, `host-validation.json`, `tested-code-files.sha256`, `apk-sha256.json`,
+`*-results.json`, per-invocation logs, installed-hash verification, and Magisk before/after UI
+captures. `lifecycle-check.py` and `regression-check.py` retain the bounded host orchestration.
+The final physical logs use `resukisu-owner-retry` and `resukisu-retry`; earlier failed installation
+logs remain as evidence. The following procedure describes the committed test interfaces.
+
+**Reproduction.** The fixture lives only in the debug APK; it has no exported manifest component
+or production AIDL additions. It reports the inlined `BuildConfig.VERSION_NAME`, root PID,
+instance UUID, caller UID, attached package UID/data directory, and loaded APK path.
+
+Build and retain both app/test APKs for A, then rebuild B from the same source and versionCode:
+
+```bash
+./gradlew :app:assembleFossDebug :app:assembleFossDebugAndroidTest -PversionName=1.96.3-m106-old
+./gradlew :app:assembleFossDebug :app:assembleFossDebugAndroidTest
+```
+
+Copy A's outputs before building B. The outputs are `app/build/outputs/apk/foss/debug/`
+and `app/build/outputs/apk/androidTest/foss/debug/`. B uses the normal version name from its
+`output-metadata.json` (`1.96.3` for this snapshot). Preserve APK hashes and installed hashes;
+the A override distinguishes loaded bytecode without changing versionCode or production AIDL.
+
+Run one method per `am instrument --user N -w -r` invocation using
+`com.valhalla.thor.debug.test/com.valhalla.thor.ThorTestRunner`. Class:
+`com.valhalla.thor.data.gateway.root.OdinRootServiceLifecycleIntegrationTest`.
+
+- `#probeGatewayRebindAndReportIdentity`: bind the fixture, initialize the real gateway,
+  read Thor's own package, unbind its exact connection, rebind, and verify fixture continuity.
+- `#holdAcknowledgedWorkUntilHostRelease`: keep one bounded Binder operation active for host coordination.
+- Required arguments: `odinRoot=true`, fresh canonical UUID `odinRunId`,
+  `odinExpectedBuild=<A or B version name>`, and `odinExpectedUserId=N`.
+  Optional `odinHoldTimeoutMs` is bounded to 120000 ms; that is also the default.
+
+Each invocation precreates app-owned files under `cache/odin-root-lifecycle/<UUID>/`.
+Use `run-as com.valhalla.thor.debug --user N` to read them without shell root.
+Wait for valid, nonempty `entered.json` before acting: the root process writes this acknowledgment.
+Release the hold by writing exactly the UUID to `release`. Require successful instrumentation,
+`completed.json` with `released=true`, and `result.json` with `status=passed`.
+The result marker is written after connection cleanup succeeds. Compare PID and instance UUID,
+as well as build/context identity; a dispatch receipt alone does not establish survival.
+
+For same-user lifecycle checks, probe A, then replace A with B while an acknowledged user-0 hold
+is active. Verify the old root PID exits and a fresh B probe reports the expected compiled build.
+Separately force-stop only user 0's app during a hold, verify its root PID exits, and probe again.
+The interrupted held instrumentation is expected in these two cases; do not count it as a pass.
+
+For profile isolation, use one APK build and a disposable emulator user, installed with
+`pm install-existing --user N`; start the user in the background without switching the foreground.
+Hold acknowledged work in B while A initializes/rebinds, then force-stop/restart only A's app.
+Release B and require unchanged Binder lifetime/PID/instance plus successful completion.
+Repeat with the users reversed. APK installation/replacement changes shared package code across
+users, so run that stage separately; it is valid for replacement to retire both users' old servers.
+
+Release outstanding holds, finish or explicitly account for interrupted invocations, capture
+markers/logs, and remove only their UUID directories. Stop/remove only the disposable test user,
+verify removal, restore any temporary emulator configuration, and verify the final installed APKs.
+Use app-owned root grants; these checks require neither `adb root` nor shell-root grants.
+Physical-device scope is user 0; extra-user checks belong to the disposable emulator.
+This procedure covers ordinary debug RootService lifetime, not daemon mode, minified loading,
+every OEM/root manager, or an in-place APK hot-swap. Watch for Odin's package-context fallback
+warning and retain any unavailable case as unverified.
 
 ## Milestone 2 — acknowledged cancellation for selected workloads
 
@@ -589,7 +713,8 @@ baseline row with results from a later commit.
 | Audit baseline only | `e16285b1` | Host, FOSS debug | Six focused root-routing/privilege test classes; dependency insight | 93 passed; external Odin 1.1.0 resolved; no device run |
 | M1-04 compatibility | `8c6e5774` / #536 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; normal clear and real-daemon fallback | 3,174 JVM tests per variant; lint passed; 2/2 device tests each; details above |
 | M1-05 ownership | `7a8c9ac1` / #537 | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; binding lifecycle; clear-data regression | 3,188 JVM tests per variant; lint passed; 3/3 tests on each device |
-| Milestone 1 | — | — | — | Pending |
+| M1-06 isolation | `eff6de65` / #538 | Host; Magisk API 36.1 users 0/10; ReSuKiSU API 36 user 0 | Required gates; replacement/death/rebind; cross-user held work; binding/clear regressions | 3,188 JVM tests per variant; lint passed; 12 emulator and 6 physical passes; expected interruptions separate |
+| Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
 
