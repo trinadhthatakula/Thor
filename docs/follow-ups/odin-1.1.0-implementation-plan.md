@@ -135,7 +135,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M1-03 | Root admission and lane recovery | M1-02 | Codex | [#535](https://github.com/trinadhthatakula/Thor/pull/535) | Done |
 | M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533), [#536](https://github.com/trinadhthatakula/Thor/pull/536) | Merged — validation pending |
 | M1-05 | RootService connection ownership | None | Codex | [#537](https://github.com/trinadhthatakula/Thor/pull/537) | Done |
-| M1-06 | RootService profile isolation | M1-05 test fixture recommended | Codex | — | Validated — PR pending |
+| M1-06 | RootService profile isolation | M1-05 test fixture recommended | Codex | [#538](https://github.com/trinadhthatakula/Thor/pull/538) | In review — validated |
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Unassigned | — | Not started |
 | M2-02 | Cancellable export staging copy | M2-01 | Unassigned | — | Not started |
 | M2-03 | OBB context and cancellable placement | M2-02 | Unassigned | — | Not started |
@@ -292,7 +292,8 @@ source inputs; its manifest digest is
 
 **Next task, updated 2026-10-01:** M1-05 connection ownership merged in
 [#537](https://github.com/trinadhthatakula/Thor/pull/537) as `447ce79e`. M1-06 profile isolation
-is implemented and validated below. After its PR merges, continue M2-01 execution policy and
+is implemented and validated in [#538](https://github.com/trinadhthatakula/Thor/pull/538).
+After it merges, continue M2-01 execution policy and
 complete outcomes; the broader device acceptance matrix remains open.
 Actual post-dispatch transport/deadline fault injection remains an unchecked M1-04 follow-up.
 
@@ -487,7 +488,8 @@ to other Android users. The gateway now delegates directly to its connection own
 - [x] Check for stale code before adding an owned-retirement or version-handshake workaround.
   No stale-code case occurred in the tested normal lifecycle; a new AIDL handshake was unnecessary.
 
-**Implementation:** `eff6de65`, based on #537's merge (`447ce79e`). The reset command, mutex,
+**Implementation:** `eff6de65` in [#538](https://github.com/trinadhthatakula/Thor/pull/538), based
+on #537's merge (`447ce79e`). The reset command, mutex,
 flag, and command class are removed. Existing clear-data tests no longer bypass or allow a
 reset, and require exactly one shell wipe attempt before an ordinary-refusal Binder fallback.
 The new debug-only fixture verifies compiled code identity, root process/instance continuity,
@@ -711,7 +713,7 @@ baseline row with results from a later commit.
 | Audit baseline only | `e16285b1` | Host, FOSS debug | Six focused root-routing/privilege test classes; dependency insight | 93 passed; external Odin 1.1.0 resolved; no device run |
 | M1-04 compatibility | `8c6e5774` / #536 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; normal clear and real-daemon fallback | 3,174 JVM tests per variant; lint passed; 2/2 device tests each; details above |
 | M1-05 ownership | `7a8c9ac1` / #537 | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; binding lifecycle; clear-data regression | 3,188 JVM tests per variant; lint passed; 3/3 tests on each device |
-| M1-06 isolation | `eff6de65` | Host; Magisk API 36.1 users 0/10; ReSuKiSU API 36 user 0 | Required gates; replacement/death/rebind; cross-user held work; binding/clear regressions | 3,188 JVM tests per variant; lint passed; 12 emulator and 6 physical passes; expected interruptions separate |
+| M1-06 isolation | `eff6de65` / #538 | Host; Magisk API 36.1 users 0/10; ReSuKiSU API 36 user 0 | Required gates; replacement/death/rebind; cross-user held work; binding/clear regressions | 3,188 JVM tests per variant; lint passed; 12 emulator and 6 physical passes; expected interruptions separate |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
