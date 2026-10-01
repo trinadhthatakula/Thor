@@ -983,6 +983,35 @@ The app APK SHA-256 is
 The source manifest covers 1,014 inputs and matches the committed implementation; its digest is
 `b81b99670528ab88d195a7a99fec4ae931c244b9f899ae62a10899671be6f618`.
 
+**Review fixes, 2026-10-02:** `99134fefba978c57b428f73364398abc64d5dfca` addresses both
+reported issues. Cleanup-only exceptions no longer replace a completed OBB placement result;
+cleanup errors remain suppressed on a primary failure, and source-cleanup failure keeps its
+receipt for later recovery. Existing-app restores with OBB enabled now consult the read-only
+`AppArchiveInstaller.hasUnresolvedObbPlacement` preflight before the first force-stop or data
+replacement. Prior unresolved work returns an ordinary refusal without writing or clearing a
+breadcrumb. Uncertainty from the current placement still throws `ObbPlacementUnresolved` and
+retains the interruption breadcrumb. Disabled OBB and install-first paths retain their behavior.
+
+The full JDK 21 test/lint/build command above passed again on this fix commit: **3,286 JVM tests
+per FOSS/Store debug variant**, zero failures/errors/skips; zero lint errors/warnings and the same
+14 FOSS / 13 Store hints. Five new restore regressions cover early refusal (including archives
+without a bundle), unchanged breadcrumbs, normal admission, disabled/install-first behavior,
+and current-attempt uncertainty; existing adapter coverage now checks the preflight delegation.
+Both the Magisk emulator and physical ReSuKiSU phone passed the same **9/9 instrumentation
+tests**, zero skips, with matching installed APK hashes, empty private fixture/recovery snapshots,
+and successful Home launch/visual inspection. External cleanup is asserted in instrumentation;
+host `run-as` observation remains unavailable. No manager-policy changes or `adb root` were used.
+The new restore preflight is covered on the JVM; cleanup I/O failure was not injected on hardware.
+
+Review-fix evidence: `~/.codex/artifacts/thor-odin-obb-review-fixes-2026-10-02/` —
+`build-gates-acceptance.log`, `host-validation.json`, `tested-code-files.sha256`, both device
+validation JSON/instrumentation/environment/fixture/launch logs, and Home screenshots.
+The app APK SHA-256 is
+`7823a0143c71ef1d1d9eb5706a477f6555d69b70e571f7584480b8e8b53eb31f`; the test APK remains
+`256ccd68689183277502396ba378192a480cd60389bc71ced14d6e6ab6196270`.
+The 1,014-input source manifest digest is
+`d03cbe351d49bf0c11ea3bc8a9c5a2c050f9f5960ae7cfedd321787a54c825d5`.
+
 ### M2-04: Selected archive/cache/import adoption
 
 - [ ] Inventory each candidate's state needs, affected resources, output bounds, deadlines, and
