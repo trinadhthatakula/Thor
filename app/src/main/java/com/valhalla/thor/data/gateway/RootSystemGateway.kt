@@ -4,12 +4,7 @@
 package com.valhalla.thor.data.gateway
 
 import android.annotation.SuppressLint
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
-import android.os.IBinder
-import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.thor.BuildConfig
@@ -37,6 +32,8 @@ import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.OdinRootServiceBinding
+import com.valhalla.thor.data.gateway.root.RootServiceConnectionOwner
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
@@ -54,22 +51,14 @@ import com.valhalla.thor.domain.repository.RootAdmissionController
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
-import kotlin.coroutines.resume
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
-
-// Upper bound for the RootService bind handshake. A null binder or a callback that never
-// arrives must not pin connectionMutex forever and deadlock every later privileged op (H2).
-private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
 
 internal fun PrivilegeExecutionContext.forRootCommand(
     commandClass: PrivilegeCommandClass,
@@ -115,83 +104,22 @@ class RootSystemGateway internal constructor(
     private val rootAdmission: RootAdmissionController,
     private val reinstallPostconditionVerifier: ReinstallPostconditionVerifier =
         ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
+    private val rootServiceConnection: RootServiceConnectionOwner =
+        RootServiceConnectionOwner(OdinRootServiceBinding(context)),
 ) : SystemGateway {
 
-    private var rootService: IThorRootService? = null
     internal var userIdProvider: () -> Int = { thorUserId }
     internal var packageUserIdProvider: (String) -> Int? = { packageName ->
         getApplicationInfoCompat(packageName)?.let { userIdOf(it.uid) }
     }
-    private val connectionMutex = Mutex()
+    private val daemonResetMutex = Mutex()
     private var isDaemonReset = false
-    private var activeConnection: ServiceConnection? = null
 
-    /**
-     * Drop a stale [ServiceConnection], on the main thread because Odin requires it.
-     *
-     * `RootService.unbind` is `@MainThread` and enforces that at runtime — `RootServiceManager`
-     * opens it with `enforceMainThread()`, which throws `IllegalStateException` unless
-     * `Looper.myLooper()` is the main looper. [getRootService]'s callers arrive under
-     * `withContext(ioDispatcher)`, so both cleanup sites below were throwing that exception into a
-     * `runCatching` that discarded it, then nulling `activeConnection` regardless: the binding was
-     * never actually released and the reference to it was thrown away, which is a leak that
-     * survives until the process dies. `invokeOnCancellation` already got this right by posting to
-     * the main looper; the two cleanup paths never had the same treatment applied.
-     *
-     * Suspending rather than posting, so the unbind is ordered strictly before the rebind that
-     * follows it instead of racing that rebind from a queued Runnable. A failure is now logged
-     * rather than silently swallowed — if this ever throws again it should be visible.
-     *
-     * Bounded for the same reason the bind below is (H2): this runs inside `connectionMutex`, so a
-     * main looper that never gets round to us must not pin that mutex and deadlock every later
-     * privileged op. `withTimeoutOrNull` returns rather than throws, so on timeout the caller
-     * carries on to the bind.
-     *
-     * That timeout cannot simply give up, though, which is why there is a fallback below. It
-     * cancels the main-dispatched block, so `conn` is never handed back to `RootServiceManager`,
-     * and the caller then nulls `activeConnection` and drops the last reference to it. What that
-     * strands is not a bare object leak: `RootServiceManager.connections` is refcounted per
-     * `ServiceConnection`, and `services` is keyed by intent rather than by connection, so a
-     * record that is never removed holds the service's `refCount` above zero for the life of the
-     * process — after which no unbind of any *later* connection can reach the `refCount == 0`
-     * branch that actually releases the service inside the root process.
-     */
-    private suspend fun unbindStaleConnection(conn: ServiceConnection) {
-        val unbound = withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
-            withContext(Dispatchers.Main) { unbindOnMain(conn) }
-        }
-        if (unbound == true) return
-
-        // Not observed to have happened, so hand it to the looper to do whenever it catches up.
-        // This keeps the ordering claim above intact rather than reintroducing the race it warns
-        // about: the post is enqueued here, *before* the bind that follows queues its own main
-        // dispatch, so a looper that recovers still runs this unbind first.
-        //
-        // Deliberately does not touch `activeConnection` — by the time this runs, that field may
-        // legitimately hold a newer connection, and clearing it would strand that one instead.
-        //
-        // Also covers the (near-unreachable) throwing path rather than only the timeout, so this
-        // does not rest on the order of statements inside Odin's `unbind`; a redundant retry there
-        // is a no-op, since removing an absent connection does nothing.
-        android.os.Handler(android.os.Looper.getMainLooper()).post { unbindOnMain(conn) }
-    }
-
-    /** The unbind itself, factored out only so the timeout fallback above can reuse it. */
-    private fun unbindOnMain(conn: ServiceConnection): Boolean =
-        runCatching { RootService.unbind(conn) }
-            .onFailure {
-                Logger.w(
-                    "RootSystemGateway",
-                    "unbind of stale root connection failed: ${it.message.orEmpty()}"
-                )
-            }
-            .isSuccess
-
-    private suspend fun getRootService(execution: PrivilegeExecutionContext): IThorRootService? =
-        connectionMutex.withLock {
+    private suspend fun getRootService(execution: PrivilegeExecutionContext): IThorRootService? {
+        daemonResetMutex.withLock {
             if (!isDaemonReset) {
                 isDaemonReset = true
-                // Kill any old daemon so the newly compiled root service is loaded and executed
+                // Existing reset policy is handled separately by the profile-isolation follow-up.
                 try {
                     execute(
                         "pkill -f ${context.packageName}:root",
@@ -203,91 +131,8 @@ class RootSystemGateway internal constructor(
                     // A stale daemon is optional; binding below remains the source of truth.
                 }
             }
-
-        rootService?.let { binder ->
-            if (binder.asBinder().isBinderAlive) {
-                return binder
-            } else {
-                rootService = null
-                activeConnection?.let { oldConn ->
-                    unbindStaleConnection(oldConn)
-                    activeConnection = null
-                }
-            }
         }
-
-        // Clean up any stale connection before creating a new one
-        activeConnection?.let { oldConn ->
-            unbindStaleConnection(oldConn)
-            activeConnection = null
-        }
-
-        // Bind under a timeout so a null binder or a callback that never arrives can't hold
-        // connectionMutex forever (H2). withTimeoutOrNull RETURNS null on timeout — it does not
-        // throw — so on every path (success, null-binding, or timeout) withLock unwinds and the
-        // mutex is released. On timeout the child coroutine is cancelled, which fires
-        // invokeOnCancellation below to unbind the stale connection; the caller then falls back.
-        withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
-            // Hardcoded, and the one place in this class that must stay so. Odin's RootService.bind
-            // is @MainThread and enforces it at runtime — RootServiceManager.bindInternal opens with
-            // enforceMainThread(), which throws IllegalStateException unless Looper.myLooper() is
-            // the main looper. An injectable "main" here would look like a test seam while being
-            // the opposite: any dispatcher a test substituted would throw rather than bind.
-            withContext(Dispatchers.Main) {
-                suspendCancellableCoroutine { continuation ->
-                    val intent = Intent(context, com.valhalla.thor.rootservice.ThorRootService::class.java)
-                    val conn = object : ServiceConnection {
-                        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                            val binder = IThorRootService.Stub.asInterface(service)
-                            // Publish/resume only if the bind hasn't already timed out. A late
-                            // connect (continuation cancelled by withTimeoutOrNull) would otherwise
-                            // cache a service whose ServiceConnection is about to be unbound by
-                            // invokeOnCancellation, leaving rootService dangling (-> intermittent
-                            // DeadObjectException on the next call).
-                            if (continuation.isActive) {
-                                rootService = binder
-                                continuation.resume(binder)
-                            }
-                        }
-
-                        override fun onServiceDisconnected(name: ComponentName?) {
-                            rootService = null
-                            if (activeConnection === this) {
-                                activeConnection = null
-                            }
-                        }
-
-                        // The root process returned a null binder — the service refused to bind.
-                        // Resume with null (and unbind) instead of hanging until the timeout fires.
-                        override fun onNullBinding(name: ComponentName?) {
-                            rootService = null
-                            runCatching { RootService.unbind(this) }
-                            if (activeConnection === this) {
-                                activeConnection = null
-                            }
-                            if (continuation.isActive) {
-                                continuation.resume(null)
-                            }
-                        }
-                    }
-
-                    activeConnection = conn
-
-                    continuation.invokeOnCancellation {
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            runCatching {
-                                RootService.unbind(conn)
-                            }
-                            if (activeConnection === conn) {
-                                activeConnection = null
-                            }
-                        }
-                    }
-
-                    RootService.bind(intent, conn)
-                }
-            }
-        }
+        return rootServiceConnection.getService()
     }
 
     // Availability is observed centrally; this read must never retire an accepted operation's shell.
