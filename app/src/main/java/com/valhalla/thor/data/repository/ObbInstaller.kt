@@ -246,7 +246,9 @@ class ObbInstaller(
         } finally {
             try { session.close() } catch (cleanup: Exception) {
                 val failure = primary
-                if (failure != null) failure.addSuppressed(cleanup) else throw cleanup
+                // Failed source cleanup retains its receipt for a later attempt; preserve the
+                // completed placement result when cleanup is the only failure.
+                if (failure != null) failure.addSuppressed(cleanup)
             }
         }
     }

@@ -101,6 +101,12 @@ interface AppArchiveInstaller {
     ): ArchiveRollbackOutcome
 
     /**
+     * Read-only preflight for a previous or active game-data writer. True also covers recovery
+     * metadata that cannot establish completion. The placement itself must still check admission.
+     */
+    suspend fun hasUnresolvedObbPlacement(packageName: String): Boolean
+
+    /**
      * Place [bundle]'s expansions into `Android/obb/<pkg>/` for an app that is **already installed**
      * (§8.4), one file at a time.
      *

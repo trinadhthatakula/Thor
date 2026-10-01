@@ -334,6 +334,12 @@ internal class RestoreAppArchiveUseCase(
                 )
             }
 
+            if (restoreObb && !installFirst && installer.hasUnresolvedObbPlacement(pkg)) {
+                return failRestore(
+                    "Thor could not confirm an earlier game data copy finished, so this restore was not started"
+                )
+            }
+
             Logger.d(TAG, "Force stopping $pkg")
             gateway.forceStop(pkg)
             markRestoreStarted()

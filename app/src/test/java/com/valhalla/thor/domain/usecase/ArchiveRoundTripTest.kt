@@ -237,6 +237,8 @@ class ArchiveRoundTripTest {
             execution: PrivilegeExecutionContext,
         ): ArchiveRollbackOutcome = ArchiveRollbackOutcome.CLEAN
 
+        override suspend fun hasUnresolvedObbPlacement(packageName: String): Boolean = false
+
         override suspend fun placeBundleObb(
             bundle: File,
             packageName: String,

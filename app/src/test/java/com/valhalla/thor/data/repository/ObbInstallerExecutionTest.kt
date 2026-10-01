@@ -345,6 +345,8 @@ class ObbInstallerExecutionTest {
             Dispatchers.Unconfined,
         )
         try {
+            assertTrue(archiveInstaller.hasUnresolvedObbPlacement(PACKAGE))
+            assertFalse(archiveInstaller.hasUnresolvedObbPlacement("com.example.other"))
             assertEquals(ArchiveRollbackOutcome.REFUSED, archiveInstaller.rollbackNewInstall(ArchiveRollbackReceipt(PACKAGE, 5_000L)))
             assertTrue(recording.calls.isEmpty())
             assertEquals(5_000L, context.packageManager.getPackageInfo(PACKAGE, 0).lastUpdateTime)

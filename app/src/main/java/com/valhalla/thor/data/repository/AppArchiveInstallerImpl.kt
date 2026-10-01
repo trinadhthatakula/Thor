@@ -311,6 +311,9 @@ class AppArchiveInstallerImpl(
         }
     }
 
+    override suspend fun hasUnresolvedObbPlacement(packageName: String): Boolean =
+        withContext(ioDispatcher) { obbInstaller.hasUnresolvedPlacement(packageName) }
+
     override suspend fun placeBundleObb(
         bundle: File,
         packageName: String,
