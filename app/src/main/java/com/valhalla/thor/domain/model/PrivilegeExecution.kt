@@ -29,6 +29,8 @@ data class PrivilegeExecutionContext(
     val workRequestId: UUID? = null,
     val sweepRequestId: UUID? = null,
     val commandTimeout: Duration? = null,
+    val rootExecutionPolicy: RootExecutionPolicy = RootExecutionPolicy.PERSISTENT,
+    val rootExecutionObserver: RootExecutionObserver? = null,
 ) {
     internal var provenance = PrivilegeExecutionProvenance()
 }
@@ -103,7 +105,10 @@ class ShellLaneDegraded(val lane: PrivilegeExecutionLane, cause: Throwable? = nu
 class ShellTransportDied(val lane: PrivilegeExecutionLane, cause: Throwable? = null) :
     PrivilegeExecutionException("Root shell transport died: $lane", cause)
 
-class ShellCommandTimedOut(val commandClass: PrivilegeCommandClass) :
+class ShellCommandTimedOut(
+    val commandClass: PrivilegeCommandClass,
+    val rootOutcome: RootJobOutcome? = null,
+) :
     PrivilegeExecutionException("Root command timed out: ${commandClass.value}")
 
 class ReinstallPostconditionFailed(val packageName: String) :

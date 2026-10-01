@@ -6,9 +6,11 @@ package com.valhalla.thor.data.gateway.root
 import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.superuser.ktx.getShellAwait
 import com.valhalla.thor.domain.model.ShellTransportDied
+import com.valhalla.thor.domain.model.RootExecutionPolicy
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
@@ -16,6 +18,8 @@ import org.koin.core.annotation.Single
 internal fun interface MainShellPendingCommand {
     fun submit(completion: (Result<ShellResult>) -> Unit)
     fun cancel() {}
+    val isolatedJob: IsolatedRootJob? get() = null
+    suspend fun retireTransport() {}
 }
 
 internal fun interface MainShellJobFactory {
@@ -27,19 +31,16 @@ internal class OdinMainShellJobFactory : MainShellJobFactory {
     override suspend fun create(command: RootCommand): MainShellPendingCommand {
         val shell = getShellAwait()
         if (!shell.isRoot) throw RootShellTransportException()
-        if (command.execution.commandClass.value.startsWith("settings_editor.")) {
-            val handle = shell.prepareIsolatedJob(command.text)
+        if (command.execution.rootExecutionPolicy == RootExecutionPolicy.ISOLATED) {
+            val prepared = OdinIsolatedRootJob(shell.prepareIsolatedJob(command.text))
             return object : MainShellPendingCommand {
+                override val isolatedJob: IsolatedRootJob = prepared
                 override fun submit(completion: (Result<ShellResult>) -> Unit) {
-                    handle.completion.whenComplete { outcome, failure ->
-                        if (failure != null) completion(Result.failure(failure))
-                        else if (outcome.kind == com.valhalla.superuser.JobOutcomeKind.EXITED && outcome.terminationConfirmed && outcome.outputDrained) {
-                            completion(Result.success(ShellResult(requireNotNull(outcome.exitCode), outcome.stdout, outcome.stderr)))
-                        } else completion(Result.failure(java.io.IOException(outcome.failure ?: "Isolated shell job ${outcome.kind}")))
-                    }
-                    handle.submit()
+                    error("An isolated command must use its acknowledged execution contract")
                 }
-                override fun cancel() { handle.cancel() }
+                override suspend fun retireTransport() {
+                    withContext(NonCancellable + Dispatchers.IO) { shell.close() }
+                }
             }
         }
         val stdout = ArrayList<String?>()
@@ -73,7 +74,23 @@ internal class MainShellCommandExecutor(
     private val jobFactory: MainShellJobFactory,
 ) : RootCommandExecutor {
     override suspend fun execute(command: RootCommand): RootCommandResult {
+        command.rootOutcome = null
         val pending = prepare(command)
+        if (command.execution.rootExecutionPolicy == RootExecutionPolicy.ISOLATED) {
+            try {
+                return executeIsolatedRootCommand(command, checkNotNull(pending.isolatedJob))
+            } finally {
+                if (command.rootOutcome?.shellReusable == false) {
+                    withContext(NonCancellable) {
+                        try {
+                            pending.retireTransport()
+                        } catch (_: Exception) {
+                            // The outcome already describes an unusable transport; preserve it.
+                        }
+                    }
+                }
+            }
+        }
         val completion = CompletableDeferred<Result<ShellResult>>()
         val submissionGate = CompletableDeferred(Unit)
         var submissionWon = false

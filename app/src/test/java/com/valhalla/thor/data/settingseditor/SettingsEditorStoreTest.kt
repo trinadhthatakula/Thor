@@ -20,6 +20,27 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [30], application = android.app.Application::class)
 class SettingsEditorStoreTest {
+    @Test fun `root recovery metadata survives reopening and corrupt state fails closed`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File(context.noBackupFilesDir, "settings_root_test_${java.util.UUID.randomUUID()}.json")
+        try {
+            val record = SettingsRootExecutionRecord(
+                "execution", SettingsRootResource(SettingsEditorView.GLOBAL, 0, "test_key"), "boot-a",
+                kind = "TERMINATION_UNCONFIRMED", started = true,
+                terminationConfirmed = false, outputDrained = false, shellReusable = false,
+                hasFailure = true,
+            )
+            FileSettingsRootExecutions(file).save(listOf(record))
+            assertEquals(listOf(record), FileSettingsRootExecutions(file).load())
+            val serialized = file.readText()
+            assertFalse(serialized.contains("stdout"))
+            assertFalse(serialized.contains("stderr"))
+            assertFalse(serialized.contains("desired"))
+            assertFalse(serialized.contains("command"))
+            file.writeText("broken recovery metadata")
+            assertTrue(runCatching { FileSettingsRootExecutions(file).load() }.isFailure)
+        } finally { file.delete() }
+    }
     @Test fun `consent is stored only in device local preferences`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val key = booleanPreferencesKey("settings_editor_consent_accepted")

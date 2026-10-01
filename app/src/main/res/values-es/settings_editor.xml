@@ -50,4 +50,5 @@
     <string name="sett_empty_value">Cadena vacía</string>
     <string name="sett_back">Atrás</string>
     <string name="sett_answer">Respuesta</string>
+    <string name="sett_execution_unconfirmed">Una operación anterior podría seguir en ejecución. Reinicia el dispositivo antes de cambiar este ajuste.</string>
 </resources>

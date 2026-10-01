@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 
 @Single
 class SettingsEditorStore(context: Context) {
@@ -31,6 +32,25 @@ class SettingsEditorStore(context: Context) {
 
     // Excluded from both cloud backup and device transfer. Values never leave this device.
     internal val history: SettingsEditHistory = FileSettingsEditHistory(File(context.noBackupFilesDir, "settings_editor_history.json"))
+    internal val rootExecutions = SettingsRootExecutionGate(
+        FileSettingsRootExecutions(File(context.noBackupFilesDir, "settings_editor_root_executions.json")),
+        bootId = ::readSettingsBootId,
+    )
+}
+
+internal class FileSettingsRootExecutions(file: File) : SettingsRootExecutions {
+    private val atomic = AtomicFile(file)
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    override fun load(): List<SettingsRootExecutionRecord> {
+        if (!atomic.baseFile.exists() && !File(atomic.baseFile.path + ".bak").exists()) return emptyList()
+        return json.decodeFromString(atomic.openRead().bufferedReader().use { it.readText() })
+    }
+    override fun save(records: List<SettingsRootExecutionRecord>) {
+        val encoded = json.encodeToString(records).toByteArray(Charsets.UTF_8)
+        val stream = atomic.startWrite()
+        try { stream.write(encoded); atomic.finishWrite(stream) }
+        catch (failure: Exception) { atomic.failWrite(stream); throw failure }
+    }
 }
 internal class FileSettingsEditHistory(file: File) : SettingsEditHistory {
     private val atomic = AtomicFile(file)
@@ -46,3 +66,10 @@ internal class FileSettingsEditHistory(file: File) : SettingsEditHistory {
         catch (failure: Exception) { atomic.failWrite(stream); throw failure }
     }
 }
+
+/** Kernel identity is read-only; Settings.Global.BOOT_COUNT can itself be edited by root. */
+internal fun readSettingsBootId(): String? = try {
+    File("/proc/sys/kernel/random/boot_id").readText().trim().let { value ->
+        value.takeIf { UUID.fromString(it).toString() == it }
+    }
+} catch (_: Exception) { null }

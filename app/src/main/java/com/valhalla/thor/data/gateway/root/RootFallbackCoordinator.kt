@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.gateway.root
 
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.RootExecutionPolicy
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
@@ -36,6 +37,7 @@ internal class RootFallbackCoordinator(
         try {
             return rootAdmission.withRootAdmission { main.execute(command) }
         } catch (cancelled: CancellationException) {
+            if (command.execution.rootExecutionPolicy == RootExecutionPolicy.ISOLATED) throw cancelled
             if (cancelled is ShellCommandCancelled) throw cancelled
             throw ShellCommandCancelled(command.execution.commandClass, cancelled)
         } finally {
@@ -89,9 +91,10 @@ internal class RootFallbackCoordinator(
             currentCoroutineContext().ensureActive()
             return when (outcome) {
                 is CommandOutcome.Completed -> outcome.result
-                CommandOutcome.TimedOut -> throw ShellCommandTimedOut(command.execution.commandClass)
+                CommandOutcome.TimedOut -> throw ShellCommandTimedOut(command.execution.commandClass, command.rootOutcome)
             }
         } catch (cancelled: CancellationException) {
+            if (command.execution.rootExecutionPolicy == RootExecutionPolicy.ISOLATED) throw cancelled
             if (cancelled is ShellCommandCancelled) throw cancelled
             throw ShellCommandCancelled(command.execution.commandClass, cancelled)
         }
