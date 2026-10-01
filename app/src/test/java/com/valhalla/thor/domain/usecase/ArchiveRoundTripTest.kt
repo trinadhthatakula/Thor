@@ -241,6 +241,7 @@ class ArchiveRoundTripTest {
             bundle: File,
             packageName: String,
             onFile: (String, Int, Int) -> Unit,
+            execution: PrivilegeExecutionContext,
         ): ObbPlacement = ObbPlacement.NotNeeded
     }
 

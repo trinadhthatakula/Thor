@@ -6,6 +6,10 @@ package com.valhalla.thor.data.repository
 import android.content.Context
 import android.os.Environment
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.ObbPlacementUnresolved
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -13,6 +17,10 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import kotlin.time.Duration.Companion.minutes
 
 /** Where the install side unpacks an archive's expansions before the shell moves them into place. */
 internal const val OBB_INSTALL_STAGING_DIR = "obb_in"
@@ -52,6 +60,10 @@ class ObbInstaller(
         withContext(ioDispatcher) {
             val expansions = declaredExpansions(bundle, packageName)
             if (expansions.isEmpty()) return@withContext null
+            if (hasUnresolvedPlacement(packageName)) {
+                return@withContext "an earlier game data placement is still unresolved, " +
+                    "so Thor cannot safely place this archive's game data."
+            }
 
             if (!canListObbRoot()) {
                 return@withContext "this file carries game data, and the current access mode " +
@@ -91,74 +103,38 @@ class ObbInstaller(
      * copy keeps whatever the archive does not replace; deleting the directory would throw away
      * data an already-installed game depends on to satisfy a tidiness nobody asked for.
      *
-     * The staging directory is cleared on the way in as well as on the way out. `extractExpansions`
-     * creates it but does not empty it, so a run killed mid-install leaves files there that are not
-     * in the list this method iterates — invisible to the placement loop, and (before the leading
-     * clear) still on shared storage after it.
+     * Each attempt owns a unique shared-storage source workspace. A private receipt gates cleanup
+     * and subsequent placement for the package when root completion is uncertain.
      */
-    suspend fun place(bundle: File, packageName: String): ObbPlacement = withContext(ioDispatcher) {
+    suspend fun place(
+        bundle: File,
+        packageName: String,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): ObbPlacement = withContext(ioDispatcher) {
         val resolved = declaredExpansions(bundle, packageName)
         if (resolved.isEmpty()) return@withContext ObbPlacement.NotNeeded
-
         val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath
             ?: return@withContext ObbPlacement.Failed("shared storage is unavailable")
         val mkdirCommand = obbMkdirCommand(externalRoot, packageName)
-            ?: return@withContext ObbPlacement.Failed(
-                "this app's game data folder is not a path Thor will create"
-            )
-
-        val externalCache = context.externalCacheDir
-            ?: return@withContext ObbPlacement.Failed("shared storage is unavailable")
-        // Distinct from the export side's obb_out/<pkg>, deliberately: sharing one directory would
-        // let an install race an export's cleanup and delete bytes the other one is still reading.
-        val staging = File(externalCache, "$OBB_INSTALL_STAGING_DIR/$packageName")
-        if (!staging.deleteRecursively()) {
-            return@withContext ObbPlacement.Failed(
-                "the leftovers of an earlier attempt could not be cleared"
-            )
-        }
-
-        try {
-            val extracted = extractExpansions(bundle, resolved, staging)
+            ?: return@withContext ObbPlacement.Failed("this app's game data folder is not a path Thor will create")
+        withPlacementOwnership(packageName, execution) { session ->
+            val extracted = extractExpansions(bundle, resolved, session.directory)
             val totalBytes = extracted.sumOf { it.file.length() }
-            // Measured after extraction, so this is the second copy — the one the shell is about to
-            // write into Android/obb — being checked against what is left.
             if (totalBytes > 0 && usableBytes(File(externalRoot)) < totalBytes) {
-                return@withContext ObbPlacement.Failed(
-                    "there is not enough free space for the game data"
-                )
+                return@withPlacementOwnership ObbPlacement.Failed("there is not enough free space for the game data")
             }
-
-            val mkdir = systemRepository.executeShellCommand(mkdirCommand).getOrNull()
-            if (mkdir == null || mkdir.first != 0) {
-                return@withContext ObbPlacement.Failed("the game data folder could not be created")
+            if (!executePlacementCommand(mkdirCommand, OBB_MKDIR, packageName, execution, session)) {
+                return@withPlacementOwnership ObbPlacement.Failed("the game data folder could not be created")
             }
-
-            extracted.forEach { item ->
-                val command = obbPlaceCommand(
-                    externalStorageDir = externalRoot,
-                    packageName = packageName,
-                    leaf = item.leafName,
-                    sourcePath = item.file.absolutePath,
-                    expectedBytes = item.file.length()
-                ) ?: return@withContext ObbPlacement.Failed(
-                    "the archive names a game data file Thor will not create"
-                )
-
-                val move = systemRepository.executeShellCommand(command).getOrNull()
-                if (move == null || move.first != 0) {
-                    return@withContext ObbPlacement.Failed(
-                        "${item.leafName} could not be copied into place"
-                    )
+            for (item in extracted) {
+                val command = obbPlaceCommand(externalRoot, packageName, item.leafName,
+                    item.file.absolutePath, item.file.length())
+                    ?: return@withPlacementOwnership ObbPlacement.Failed("the archive names a game data file Thor will not create")
+                if (!executePlacementCommand(command, OBB_COPY, packageName, execution, session)) {
+                    return@withPlacementOwnership ObbPlacement.Failed("${item.leafName} could not be copied into place")
                 }
             }
             ObbPlacement.Placed(extracted.size)
-        } catch (e: InstallRefusedException) {
-            ObbPlacement.Failed(e.message ?: "the game data in this file could not be unpacked")
-        } catch (e: Exception) {
-            ObbPlacement.Failed(e.message ?: "the game data in this file could not be unpacked")
-        } finally {
-            staging.deleteRecursively()
         }
     }
 
@@ -199,77 +175,99 @@ class ObbInstaller(
         bundle: File,
         packageName: String,
         onFile: (String, Int, Int) -> Unit = { _, _, _ -> },
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): ObbPlacement = withContext(ioDispatcher) {
         val resolved = readDeclaredExpansions(bundle, packageName)
             ?: return@withContext ObbPlacement.Failed(
-                "the app bundle in this archive could not be read, so its game data could not be placed"
-            )
+                "the app bundle in this archive could not be read, so its game data could not be placed")
         if (resolved.isEmpty()) return@withContext ObbPlacement.NotNeeded
         if (resolved.size > MAX_EXPANSION_ENTRIES) {
-            return@withContext ObbPlacement.Failed(
-                "this archive lists more game data files than Thor will unpack"
-            )
+            return@withContext ObbPlacement.Failed("this archive lists more game data files than Thor will unpack")
         }
-
         val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath
             ?: return@withContext ObbPlacement.Failed("shared storage is unavailable")
         val mkdirCommand = obbMkdirCommand(externalRoot, packageName)
-            ?: return@withContext ObbPlacement.Failed(
-                "this app's game data folder is not a path Thor will create"
-            )
-        val externalCache = context.externalCacheDir
-            ?: return@withContext ObbPlacement.Failed("shared storage is unavailable")
-
-        val staging = File(externalCache, "$OBB_INSTALL_STAGING_DIR/$packageName")
-        if (!staging.deleteRecursively()) {
-            return@withContext ObbPlacement.Failed(
-                "the leftovers of an earlier attempt could not be cleared"
-            )
-        }
-        val mkdir = systemRepository.executeShellCommand(mkdirCommand).getOrNull()
-        if (mkdir == null || mkdir.first != 0) {
-            return@withContext ObbPlacement.Failed("the game data folder could not be created")
-        }
-
-        try {
+            ?: return@withContext ObbPlacement.Failed("this app's game data folder is not a path Thor will create")
+        withPlacementOwnership(packageName, execution) { session ->
+            if (!executePlacementCommand(mkdirCommand, OBB_MKDIR, packageName, execution, session)) {
+                return@withPlacementOwnership ObbPlacement.Failed("the game data folder could not be created")
+            }
             streamObbEntries(
                 leafNames = resolved.map { it.leafName },
-                staging = staging,
+                staging = session.directory,
+                canDeleteSource = { session.canCleanup },
                 onFile = onFile,
                 step = object : ObbStreamStep {
                     override suspend fun extract(leafName: String, into: File): File? =
                         extractExpansions(bundle, resolved.filter { it.leafName == leafName }, into)
-                            .firstOrNull()
-                            ?.file
+                            .firstOrNull()?.file
 
                     override suspend fun place(source: File, leafName: String): Boolean {
-                        val command = obbPlaceCommand(
-                            externalStorageDir = externalRoot,
-                            packageName = packageName,
-                            leaf = leafName,
-                            sourcePath = source.absolutePath,
-                            expectedBytes = source.length(),
-                        ) ?: return false
-                        val move = systemRepository.executeShellCommand(command).getOrNull()
-                        return move != null && move.first == 0
+                        val command = obbPlaceCommand(externalRoot, packageName, leafName,
+                            source.absolutePath, source.length()) ?: return false
+                        return executePlacementCommand(command, OBB_COPY, packageName, execution, session)
                     }
                 },
             )
-        } catch (e: CancellationException) {
-            // Physically before the `Exception` catch or it is dead code, and swallowing it would
-            // report a cancelled restore as a game-data failure while leaving the coroutine looking
-            // as though it completed.
-            throw e
-        } catch (e: Exception) {
-            // `extractExpansions` refuses an unusable archive by throwing, and this returns an
-            // `ObbPlacement` across a domain port that has a `Failed` case for exactly that. Letting
-            // the throw out would hand the restore use case an `internal` data-layer exception type
-            // to interpret instead of the reason string it is meant to render. [place] converts the
-            // same throws for the same reason.
-            ObbPlacement.Failed(e.message ?: "the game data in this file could not be unpacked")
-        } finally {
-            staging.deleteRecursively()
         }
+    }
+
+    /** Automatic rollback must not uninstall a package whose OBB writer may still be running. */
+    internal fun hasUnresolvedPlacement(packageName: String): Boolean = try {
+        val staging = placementStaging()
+        if (!isUsablePackageName(packageName)) true
+        else if (staging != null) staging.hasUnresolvedPlacement(packageName)
+        else Files.exists(File(context.noBackupFilesDir, "obb_placement/$packageName").toPath(), NOFOLLOW_LINKS)
+    } catch (_: Exception) { true }
+
+    private fun placementStaging(): ObbPlacementStaging? = context.getExternalFilesDir(null)?.let {
+        ObbPlacementStaging(File(context.noBackupFilesDir, "obb_placement"), File(it, "obb_placement"))
+    }
+
+    private suspend fun withPlacementOwnership(
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+        action: suspend (ObbPlacementStaging.Session) -> ObbPlacement,
+    ): ObbPlacement {
+        val staging = placementStaging() ?: return ObbPlacement.Failed("shared storage is unavailable")
+        val session = try { staging.open(packageName, execution) }
+        catch (failure: IOException) { throw ObbPlacementUnresolved(packageName, failure) }
+        var primary: Throwable? = null
+        try {
+            return action(session)
+        } catch (failure: Throwable) {
+            primary = failure
+            failure.rethrowIfPrivilegeExecutionFailure()
+            if (!session.canCleanup) {
+                throw ObbPlacementUnresolved(packageName, failure).also { primary = it }
+            }
+            if (failure !is Exception) throw failure
+            return ObbPlacement.Failed(failure.message ?: "the game data in this file could not be unpacked")
+        } finally {
+            try { session.close() } catch (cleanup: Exception) {
+                val failure = primary
+                if (failure != null) failure.addSuppressed(cleanup) else throw cleanup
+            }
+        }
+    }
+
+    private suspend fun executePlacementCommand(
+        command: String,
+        commandClass: PrivilegeCommandClass,
+        packageName: String,
+        execution: PrivilegeExecutionContext,
+        session: ObbPlacementStaging.Session,
+    ): Boolean {
+        val routed = execution.copy(
+            lane = PrivilegeExecutionLane.ARCHIVE,
+            commandClass = commandClass,
+            packageName = execution.packageName ?: packageName,
+            commandTimeout = execution.commandTimeout?.coerceAtMost(9.minutes) ?: 9.minutes,
+        ).also { it.provenance = execution.provenance }
+        val result = systemRepository.executeShellCommand(command, session.observe(routed))
+            .getOrNullPreservingPrivilegeExecution()
+        if (!session.canCleanup) throw ObbPlacementUnresolved(packageName)
+        return result != null && result.first == 0
     }
 
     /**
@@ -314,6 +312,11 @@ class ObbInstaller(
      */
     @Suppress("UsableSpace")
     private fun usableBytes(dir: File): Long = dir.usableSpace
+
+    private companion object {
+        val OBB_MKDIR = PrivilegeCommandClass("obb.mkdir")
+        val OBB_COPY = PrivilegeCommandClass("obb.copy")
+    }
 }
 
 /**
@@ -365,7 +368,8 @@ internal interface ObbStreamStep {
 /**
  * Extract → place → **delete**, one expansion at a time (§8.4).
  *
- * The delete is in a `finally` inside the loop. That single placement is what holds peak disk at one
+ * The delete is in a `finally` inside the loop, gated by acknowledged root cleanup. Uncertain
+ * work retains its source and stops the run. That placement is what holds normal peak disk at one
  * expansion file: move it after the loop and a 4 GB game needs 8 GB, which is the behaviour this
  * function exists to avoid.
  *
@@ -385,6 +389,7 @@ internal suspend fun streamObbEntries(
     leafNames: List<String>,
     staging: File,
     step: ObbStreamStep,
+    canDeleteSource: () -> Boolean = { true },
     onFile: (String, Int, Int) -> Unit = { _, _, _ -> },
 ): ObbPlacement {
     if (leafNames.isEmpty()) return ObbPlacement.NotNeeded
@@ -399,7 +404,7 @@ internal suspend fun streamObbEntries(
                 return ObbPlacement.Failed("$leafName could not be copied into place")
             }
         } finally {
-            extracted?.delete()
+            if (canDeleteSource()) extracted?.delete()
         }
     }
     return ObbPlacement.Placed(leafNames.size)

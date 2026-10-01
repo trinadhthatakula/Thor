@@ -338,7 +338,7 @@ class InstallerRepositoryImpl(
                     val name = staged.displayName ?: packageName
                     when (awaitInstalled(packageName, stampBefore)) {
                         InstallWait.INSTALLED ->
-                            when (val placement = obbInstaller.place(staged.file, packageName)) {
+                            when (val placement = obbInstaller.place(staged.file, packageName, execution)) {
                                 is ObbPlacement.Failed -> eventBus.emit(
                                     InstallState.Error(
                                         UiText.DynamicString(

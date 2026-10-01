@@ -18,6 +18,8 @@ import com.valhalla.thor.domain.model.PackageOperationOwner
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.RootExecutionObserver
+import com.valhalla.thor.domain.model.RootJobOutcome
 import com.valhalla.thor.domain.model.ShellLaneUnavailable
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
@@ -61,6 +63,7 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.Base64
 import javax.crypto.SecretKey
+import kotlin.time.Duration.Companion.minutes
 
 class RestoreAppArchiveUseCaseTest {
 
@@ -274,6 +277,7 @@ class RestoreAppArchiveUseCaseTest {
         private val beforeRollback: suspend () -> Unit = {},
     ) : AppArchiveInstaller {
         var installExecution: PrivilegeExecutionContext? = null
+        var obbExecution: PrivilegeExecutionContext? = null
         var installedBundle: File? = null
         var installSet: List<String>? = null
         val rollbackReceipts = mutableListOf<ArchiveRollbackReceipt>()
@@ -305,8 +309,10 @@ class RestoreAppArchiveUseCaseTest {
             bundle: File,
             packageName: String,
             onFile: (String, Int, Int) -> Unit,
+            execution: PrivilegeExecutionContext,
         ): ObbPlacement {
             calls += "obb"
+            obbExecution = execution
             return placement
         }
     }
@@ -946,6 +952,41 @@ class RestoreAppArchiveUseCaseTest {
 
         assertTrue(calls.toString(), calls.contains("obb"))
         assertEquals(ObbPlacement.Placed(2), (outcome as ArchiveRestoreOutcome.Completed).obb)
+    }
+
+    @Test
+    fun `OBB restore forwards the complete execution context and provenance`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(calls = calls)
+        val observer = object : RootExecutionObserver {
+            override suspend fun onOutcome(outcome: RootJobOutcome) = Unit
+        }
+        val execution = PrivilegeExecutionContext(
+            lane = PrivilegeExecutionLane.ARCHIVE,
+            commandClass = PrivilegeCommandClass("archive.restore"),
+            packageName = header.packageName,
+            workRequestId = UUID.fromString("11111111-1111-1111-1111-111111111111"),
+            sweepRequestId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
+            commandTimeout = 2.minutes,
+            rootExecutionObserver = observer,
+        )
+        execution.provenance.recordDegradedRootFallback()
+
+        val outcome = useCase(FakeGateway(), installer, RecordingBreadcrumbs())(
+            source = source,
+            header = header,
+            key = key,
+            classes = listOf(DataClass.CE),
+            installFirst = false,
+            restoreObb = true,
+            execution = execution,
+        )
+
+        assertEquals(ObbPlacement.Placed(2), (outcome as ArchiveRestoreOutcome.Completed).obb)
+        assertSame(execution, installer.obbExecution)
+        assertSame(execution.provenance, installer.obbExecution?.provenance)
+        assertTrue(installer.obbExecution!!.provenance.usedDegradedRootFallback)
+        assertSame(observer, installer.obbExecution?.rootExecutionObserver)
     }
 
     @Test

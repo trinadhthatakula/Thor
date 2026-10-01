@@ -112,5 +112,6 @@ interface AppArchiveInstaller {
         bundle: File,
         packageName: String,
         onFile: (String, Int, Int) -> Unit = { _, _, _ -> },
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): ObbPlacement
 }

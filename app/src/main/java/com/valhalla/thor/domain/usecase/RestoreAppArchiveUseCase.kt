@@ -386,7 +386,7 @@ internal class RestoreAppArchiveUseCase(
             if (restoreObb && !installFirst && bundle != null) {
                 onProgress(restoring(appLabel, doneBytes, totalBytes))
                 Logger.i(TAG, "Placing OBB game data...")
-                val placement = installer.placeBundleObb(bundle, pkg)
+                val placement = installer.placeBundleObb(bundle, pkg, execution = execution)
                 if (placement is ObbPlacement.Failed) {
                     Logger.e(TAG, "OBB placement failed: ${placement.reason}")
                     warnings += "the game data could not be placed: ${placement.reason}"

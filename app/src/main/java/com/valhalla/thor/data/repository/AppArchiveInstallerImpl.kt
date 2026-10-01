@@ -9,6 +9,7 @@ import androidx.core.net.toUri
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.ObbPlacementUnresolved
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.StagedPackage
@@ -228,6 +229,12 @@ class AppArchiveInstallerImpl(
             return ArchiveInstallResult(outcome)
         }
 
+        // The outer install budget can expire during OBB placement after earlier install work.
+        // withTimeoutOrNull consumes that cancellation, but must not consume its retained root
+        // uncertainty and let the restore caller clear its interruption breadcrumb.
+        if (settled == null && obbInstaller.hasUnresolvedPlacement(packageName)) {
+            throw ObbPlacementUnresolved(packageName)
+        }
         val stampAfter = installStamp(packageName)
         val outcome = archiveInstallOutcome(
             settled = settled,
@@ -281,6 +288,9 @@ class AppArchiveInstallerImpl(
         receipt: ArchiveRollbackReceipt,
         execution: PrivilegeExecutionContext,
     ): ArchiveRollbackOutcome = withContext(ioDispatcher) {
+        if (obbInstaller.hasUnresolvedPlacement(receipt.packageName)) {
+            return@withContext ArchiveRollbackOutcome.REFUSED
+        }
         when (rollbackAction(receipt, installStamp(receipt.packageName))) {
             RollbackAction.ALREADY_ABSENT -> ArchiveRollbackOutcome.CLEAN
             RollbackAction.REFUSE -> ArchiveRollbackOutcome.REFUSED
@@ -305,7 +315,8 @@ class AppArchiveInstallerImpl(
         bundle: File,
         packageName: String,
         onFile: (String, Int, Int) -> Unit,
-    ): ObbPlacement = obbInstaller.placeStreaming(bundle, packageName, onFile)
+        execution: PrivilegeExecutionContext,
+    ): ObbPlacement = obbInstaller.placeStreaming(bundle, packageName, onFile, execution)
 
     companion object {
         private const val TAG = "AppArchiveInstaller"
