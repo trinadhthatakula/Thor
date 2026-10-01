@@ -37,6 +37,7 @@ class ThorTestRunner : AndroidJUnitRunner() {
         val ISOLATED_TESTS = setOf(
             "com.valhalla.thor.data.gateway.root.OdinLifecycleIntegrationTest",
             "com.valhalla.thor.data.gateway.root.OdinRootServiceBindingIntegrationTest",
+            "com.valhalla.thor.data.gateway.root.OdinRootServiceLifecycleIntegrationTest",
             "com.valhalla.thor.data.gateway.root.OdinRootPolicyIntegrationTest",
             "com.valhalla.thor.data.freezer.PrivilegeSweepWorkerIntegrationTest",
             "com.valhalla.thor.data.freezer.PrivilegeSweepServiceIntegrationTest",

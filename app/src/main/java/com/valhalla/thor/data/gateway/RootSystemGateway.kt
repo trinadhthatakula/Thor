@@ -51,8 +51,6 @@ import com.valhalla.thor.domain.repository.RootAdmissionController
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
@@ -112,28 +110,8 @@ class RootSystemGateway internal constructor(
     internal var packageUserIdProvider: (String) -> Int? = { packageName ->
         getApplicationInfoCompat(packageName)?.let { userIdOf(it.uid) }
     }
-    private val daemonResetMutex = Mutex()
-    private var isDaemonReset = false
-
-    private suspend fun getRootService(execution: PrivilegeExecutionContext): IThorRootService? {
-        daemonResetMutex.withLock {
-            if (!isDaemonReset) {
-                isDaemonReset = true
-                // Existing reset policy is handled separately by the profile-isolation follow-up.
-                try {
-                    execute(
-                        "pkill -f ${context.packageName}:root",
-                        execution.forRootCommand(ROOT_SERVICE_RESET),
-                    )
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    // A stale daemon is optional; binding below remains the source of truth.
-                }
-            }
-        }
-        return rootServiceConnection.getService()
-    }
+    // Odin owns ordinary servers per Android user and retires them on APK/client death.
+    internal suspend fun getRootService(): IThorRootService? = rootServiceConnection.getService()
 
     // Availability is observed centrally; this read must never retire an accepted operation's shell.
     override suspend fun isRootAvailable(
@@ -354,7 +332,7 @@ class RootSystemGateway internal constructor(
         // itself and the one-argument entry point wipes user 0 unconditionally. A daemon left over
         // from an older build has no such transaction code and answers false, which lands on the
         // failure below — the right way round for a call that destroys data.
-        val service = getRootService(execution)
+        val service = getRootService()
         // The failure below now names *which* way the AIDL rung produced nothing. "AIDL failed" —
         // the whole of what it used to say — folded three different diagnoses into one sentence of
         // a bug report about data that is still there: no daemon at all (the bind was refused or
@@ -832,7 +810,7 @@ class RootSystemGateway internal constructor(
             // Thor's. A daemon left over from an older build has no transaction code for this and
             // answers false, which lands on the failure below rather than on another user's app.
             if (hasReflection) {
-                val service = getRootService(execution)
+                val service = getRootService()
                 if (service != null) {
                     val taskResult = runCatching {
                         service.setAppSuspendedAsForUser(packageName, true, null, SUSPEND_USER_ID)
@@ -926,7 +904,7 @@ class RootSystemGateway internal constructor(
         // `PackageManagerService.java:6689`), which the app process does not hold — and the only
         // thing that can name an arbitrary owner, since the reflective overload it calls does not
         // exist before API 29.
-        val service = if (hasReflection) getRootService(execution) else null
+        val service = if (hasReflection) getRootService() else null
 
         // Past the early return above, the package is either suspended or unreadable — so a parse
         // that names nobody contradicts the flag and cannot be taken at face value. A dump in a
@@ -1592,7 +1570,6 @@ class RootSystemGateway internal constructor(
 
     private companion object {
         const val DEFAULT_COMMAND_CLASS = "interactive.command"
-        val ROOT_SERVICE_RESET = PrivilegeCommandClass("root.service.reset")
         val FORCE_STOP = PrivilegeCommandClass("package.force-stop")
         val CACHE_CLEAR = PrivilegeCommandClass("package.cache-clear")
         val CACHE_TRIM = PrivilegeCommandClass("cache.trim")
