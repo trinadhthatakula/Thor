@@ -625,6 +625,7 @@ class PrivilegeExecutionProductionPathTest {
             it.userIdProvider = { 0 }
         }
         return SystemRepositoryImpl(
+            context = context,
             rootGateway = root,
             shizukuGateway = ShizukuSystemGateway(
                 context,

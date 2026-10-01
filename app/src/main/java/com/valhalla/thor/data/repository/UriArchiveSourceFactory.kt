@@ -7,11 +7,14 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.net.toUri
-import com.valhalla.thor.domain.model.escapeShellArg
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -21,6 +24,7 @@ import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
 import java.util.zip.ZipException
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * Turns a `content://` URI into a randomly-accessible zip.
@@ -51,10 +55,16 @@ class UriArchiveSourceFactory(
         val name = displayNameOf(uri) ?: uri.lastPathSegment ?: "backup"
 
         val descriptor = runCatching { context.contentResolver.openFileDescriptor(uri, "r") }
-            .getOrNull()
+            .getOrElse {
+                if (it is CancellationException) throw it
+                null
+            }
 
         if (descriptor == null) {
-            return@withContext copyThenOpen(uri, name)
+            return@withContext openOrRelease(
+                build = { copyThenOpen(uri, name) },
+                release = { outcome -> (outcome as? ArchiveOpenOutcome.Opened)?.source?.close() },
+            )
         }
 
         openOrRelease(
@@ -124,39 +134,24 @@ class UriArchiveSourceFactory(
             return ArchiveOpenOutcome.Unreadable
         }
         return runCatching {
-            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrElse {
+                if (it is CancellationException) throw it
+                null
+            }
             if (input != null) {
                 input.use { src -> copy.outputStream().use(src::copyTo) }
             } else {
                 val path = uri.path
                 if (!path.isNullOrBlank()) {
-                    val tempToken = java.util.UUID.randomUUID().toString()
-                    val tmpPath = "/data/local/tmp/thor_read_$tempToken"
-                    val src = path.escapeShellArg()
-                    val dst = tmpPath.escapeShellArg()
-                    val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
-                    // One uncancellable `finally` covering every exit, replacing two removals that
-                    // between them missed the path that matters: `cat` can have produced the file
-                    // even when this coroutine is cancelled before the call returns, and a `finally`
-                    // whose body is a suspend call is a no-op once cancellation is in progress.
-                    // `ArchiveOrphanSweeper` does not sweep `/data/local/tmp`, so anything left
-                    // there is a full-size, `chmod 666` copy of the user's archive that nothing in
-                    // the app can reclaim. Same shape as `ArchiveIconFetcher.extractIcon`.
-                    try {
-                        val res = systemRepository.executeShellCommand(cmd).getOrNull()
-                        if (res != null && res.first == 0) {
-                            val tmpFile = File(tmpPath)
-                            if (tmpFile.exists() && tmpFile.length() > 0) {
-                                tmpFile.inputStream().use { input ->
-                                    copy.outputStream().use(input::copyTo)
-                                }
-                            }
-                        }
-                    } finally {
-                        withContext(NonCancellable) {
-                            systemRepository.executeShellCommand("rm -f $dst")
-                        }
-                    }
+                    systemRepository.copyFileForRead(
+                        sourcePath = path,
+                        destination = copy,
+                        execution = PrivilegeExecutionContext(
+                            lane = PrivilegeExecutionLane.ARCHIVE,
+                            commandClass = PrivilegeCommandClass("input.archive"),
+                            commandTimeout = 9.minutes,
+                        ),
+                    ).getOrThrow()
                 }
             }
             if (!copy.exists() || copy.length() == 0L) {
@@ -166,8 +161,9 @@ class UriArchiveSourceFactory(
             // Deletes *this* copy, by identity — the whole point of the unique name.
             ArchiveOpenOutcome.Opened(ZipArchiveSource(copy, name, onClose = { copy.delete() }))
         }.getOrElse {
-            Logger.e(TAG, "could not read $name", it)
             copy.delete()
+            if (it is CancellationException) throw it
+            Logger.e(TAG, "could not read $name", it)
             // A `ZipException` here is the same statement the fd path makes with
             // `ArchiveOpenOutcome.NotAnArchive`: the copy completed and the bytes are not a zip. The
             // rest — the stream that would not open, the volume that filled up — is access.
@@ -213,7 +209,7 @@ class UriArchiveSourceFactory(
  * Run [build] and hand its result to the caller — unless this coroutine was cancelled while [build]
  * was running, in which case [release] frees the result and the cancellation is rethrown.
  *
- * **This exists because [build] holds no suspension points.** Cancellation in Kotlin is cooperative:
+ * **This also covers [build] paths without suspension points.** Cancellation in Kotlin is cooperative:
  * it is observable only at a suspension point or at an explicit check, and constructing a
  * [ZipArchiveSource] or copying a file to cache is neither. A plain `try`/`finally` around such a
  * block therefore never enters its `finally` on the cancellation path — the block runs to

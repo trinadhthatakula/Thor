@@ -90,6 +90,7 @@ internal class RootExportStaging(
         source: String,
         destination: File,
         execution: PrivilegeExecutionContext,
+        validatePayload: (File) -> Unit = {},
         copy: suspend (String, String, PrivilegeExecutionContext) -> Result<Unit>,
     ) {
         currentCoroutineContext().ensureActive()
@@ -134,6 +135,7 @@ internal class RootExportStaging(
                 !outcome.started || !outcome.cleanupConfirmed) {
                 throw IsolatedRootExecutionException(outcome)
             }
+            validatePayload(payload)
             promoteRootExportPayload(payload, destination)
         } catch (failure: Throwable) {
             primary = failure

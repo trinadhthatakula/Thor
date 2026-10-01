@@ -111,6 +111,13 @@ private class RecordingSystemRepository : SystemRepository {
     ): Result<Unit> =
         error("off the freeze path")
 
+    override suspend fun copyFileForRead(
+        sourcePath: String,
+        destination: java.io.File,
+        maxBytes: Long?,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = Result.failure(UnsupportedOperationException("No staged read configured"))
+
     override suspend fun copyFileWithRoot(
         sourcePath: String,
         destinationPath: String,
