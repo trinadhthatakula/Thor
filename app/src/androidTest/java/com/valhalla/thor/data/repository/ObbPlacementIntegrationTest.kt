@@ -27,6 +27,7 @@ import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.repository.SystemRepository
 import java.io.File
 import java.io.FileDescriptor
+import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
@@ -69,6 +70,7 @@ class ObbPlacementIntegrationTest {
         val secondBytes = ByteArray(128 * 1024) { (it % 127).toByte() }
         val sentinel = destination(fixture, "sentinel-${UUID.randomUUID()}.obb")
         val targets = mutableListOf<String>()
+        val publicationFiles = ConcurrentLinkedQueue<File>()
         val submissions = AtomicInteger()
         val outcomes = ConcurrentLinkedQueue<RootJobOutcome>()
         val commands = ConcurrentLinkedQueue<ObservedCommand>()
@@ -123,6 +125,9 @@ class ObbPlacementIntegrationTest {
                         val source = if (execution.commandClass == COPY) copySource(command) else null
                         if (source != null) {
                             assertStagedSource(fixture, source)
+                            val publication = publicationFile(command)
+                            assertPublicationPath(publication, File(destination(fixture, source.name)))
+                            publicationFiles += publication
                             if (streaming) assertTrue(sourceFiles.all { !it.exists() })
                             sourceFiles += source
                             peaks += requireNotNull(source.parentFile).listFiles().orEmpty()
@@ -150,6 +155,7 @@ class ObbPlacementIntegrationTest {
                 assertEquals(2, sourceFiles.size)
                 assertTrue(sourceFiles.all { !it.exists() && it.parentFile?.exists() == false })
                 assertFalse(receipt(fixture).exists())
+                assertTargetsAbsent(fixture, publicationFiles.map { requireNotNull(it.parentFile).absolutePath })
                 if (streaming) {
                     assertEquals(listOf(firstBytes.size.toLong(), secondBytes.size.toLong()), peaks)
                     assertEquals(listOf(Triple(firstLeaf, 1, 2), Triple(secondLeaf, 2, 2)), progress)
@@ -163,6 +169,7 @@ class ObbPlacementIntegrationTest {
         } finally {
             withContext(NonCancellable) {
                 if (outcomes.size == submissions.get() && outcomes.all { it.cleanupConfirmed }) {
+                    removePublicationTemps(fixture, publicationFiles)
                     removeTargets(fixture, targets)
                     assertTrue(files.deleteRecursively())
                 } else report("retained", mapOf("fixture" to files.absolutePath, "receipt" to receipt(fixture).absolutePath))
@@ -185,6 +192,7 @@ class ObbPlacementIntegrationTest {
         val prefix = ByteArray(1024) { (it % 127).toByte() }
         val archive = archive(files, fixture.packageName, leaf to ByteArray(4096), unstartedLeaf to ByteArray(2048))
         val source = AtomicReference<File>()
+        val publication = AtomicReference<File>()
         val current = AtomicReference<ObservedCommand>()
         val submissions = AtomicInteger()
         val outcomes = ConcurrentLinkedQueue<RootJobOutcome>()
@@ -198,6 +206,8 @@ class ObbPlacementIntegrationTest {
         try {
             assertTargetsAbsent(fixture, listOf(target, unstartedTarget))
             targets += listOf(target, unstartedTarget)
+            rootCommand(fixture, requireNotNull(obbMkdirCommand(externalRoot(), fixture.packageName)))
+            rootCommand(fixture, "printf 'previous expansion' > ${target.escapeForShell()}")
             // FUSE shared storage does not support FIFOs. App creation here preserves SELinux
             // categories; only the generated command's source operand is replaced below.
             Os.mkfifo(fifo.absolutePath, OsConstants.S_IRUSR or OsConstants.S_IWUSR)
@@ -242,7 +252,9 @@ class ObbPlacementIntegrationTest {
                     source.set(original)
                     current.set(ObservedCommand(execution, original))
                     val match = requireNotNull(COPY_OPERANDS.find(command))
-                    assertEquals(target, match.groupValues[2])
+                    val staged = publicationFile(command)
+                    assertPublicationPath(staged, File(target))
+                    publication.set(staged)
                     val sourceOperand = requireNotNull(match.groups[1])
                     val substituted = command.replaceRange(sourceOperand.range, fifo.absolutePath)
                     return fixture.gateway.executeShellCommand(substituted, execution)
@@ -262,13 +274,16 @@ class ObbPlacementIntegrationTest {
             withTimeout(15_000) {
                 while (true) {
                     assertFalse("cp must write the prefix before completing", running.isCompleted)
-                    val size = rootCommand(fixture, "if [ -f ${target.escapeForShell()} ]; then " +
-                        "stat -c %s ${target.escapeForShell()}; else printf 0; fi").second?.trim()?.toLongOrNull()
+                    val path = publication.get()?.absolutePath
+                    val size = if (path == null) null else rootCommand(fixture,
+                        "if [ -f ${path.escapeForShell()} ]; then stat -c %s ${path.escapeForShell()}; else printf 0; fi")
+                        .second?.trim()?.toLongOrNull()
                     if (size == prefix.size.toLong()) break
                     delay(10)
                 }
             }
-            assertArrayEquals(prefix, readTarget(fixture, files, target))
+            assertArrayEquals(prefix, readTarget(fixture, files, requireNotNull(publication.get()).absolutePath))
+            assertEquals("previous expansion", readTarget(fixture, files, target).decodeToString())
             assertOwnedArchive(fixture, COPY)
             val interactiveStarted = SystemClock.elapsedRealtimeNanos()
             assertEquals("independent", rootCommand(fixture, "printf independent").second)
@@ -279,6 +294,10 @@ class ObbPlacementIntegrationTest {
             running.cancel(requested)
             val outcome = withTimeout(15_000) { outcomeEntered.await() }
             val acknowledgedAfter = SystemClock.elapsedRealtimeNanos() - cancelledAt
+            report("fifo_outcome", mapOf("kind" to outcome.kind, "exit_code" to (outcome.exitCode ?: "null"),
+                "cleanup_confirmed" to outcome.cleanupConfirmed, "shell_reusable" to outcome.shellReusable,
+                "staged_path" to requireNotNull(publication.get()).absolutePath,
+                "stderr" to outcome.stderr.joinToString(" | ") { it.replace("\n", "\\n").replace("\r", "\\r") }))
             assertEquals(RootJobOutcomeKind.CANCELLED, outcome.kind)
             assertTrue(outcome.started)
             assertTrue(outcome.cleanupConfirmed)
@@ -289,6 +308,9 @@ class ObbPlacementIntegrationTest {
             val staged = requireNotNull(source.get())
             assertTrue("Cancellation cannot remove the producer's source before acknowledgement", staged.isFile)
             assertTrue(receipt(fixture).isFile)
+            assertEquals("Cancellation must preserve the previously published expansion", "previous expansion",
+                readTarget(fixture, files, target).decodeToString())
+            assertTargetsAbsent(fixture, listOf(requireNotNull(publication.get().parentFile).absolutePath))
             val receiptBytes = receipt(fixture).length()
             finishRecording.complete(Unit)
             withTimeout(15_000) { running.join() }
@@ -302,13 +324,15 @@ class ObbPlacementIntegrationTest {
             assertEquals(2, submissions.get())
             assertEquals(2, outcomes.size)
             assertTargetsAbsent(fixture, listOf(unstartedTarget))
+            assertEquals("previous expansion", readTarget(fixture, files, target).decodeToString())
             assertNull(fixture.statuses.statuses.value.getValue(PrivilegeExecutionLane.ARCHIVE).activeCommandClass)
             val next = rootCommand(fixture, "printf 'next\\n' >> ${nextMarker.absolutePath.escapeForShell()}; " +
                 "printf 'next\\n'; printf '%s' \"\$\$\"", archiveContext(fixture))
             assertEquals(listOf("next", shellPid), next.second.orEmpty().lines())
             assertEquals(listOf("next"), nextMarker.readLines())
             report("fifo", mapOf("interactive_while_copy_ns" to interactiveElapsed,
-                "cancel_to_ack_ns" to acknowledgedAfter, "partial_bytes" to prefix.size,
+                "cancel_to_ack_ns" to acknowledgedAfter, "staged_partial_bytes" to prefix.size,
+                "previous_target_preserved" to true,
                 "retained_source_bytes_before_ack" to 4096, "receipt_bytes" to receiptBytes,
                 "cancellation_stderr_lines" to outcome.stderr.size))
         } finally {
@@ -320,10 +344,129 @@ class ObbPlacementIntegrationTest {
                 } finally {
                     descriptor?.let { Os.close(it) }
                     if (outcomes.size == submissions.get() && outcomes.all { it.cleanupConfirmed }) {
+                        removePublicationTemps(fixture, listOfNotNull(publication.get()))
                         removeTargets(fixture, targets)
                         assertTrue(files.deleteRecursively())
                     } else report("retained", mapOf("fixture" to files.absolutePath, "receipt" to receipt(fixture).absolutePath))
                 }
+            }
+        }
+    }
+
+    @Test
+    fun publicationPreservesExistingFilesOnCopyAndSizeFailuresAndRefusesDirectories() = runBlocking<Unit> {
+        val fixture = readyFixture()
+        val files = File(fixture.context.cacheDir, "obb-placement-command-${UUID.randomUUID()}")
+            .apply { assertTrue(mkdir()) }
+        val source = File(files, "source.obb").apply { writeBytes(ByteArray(2048) { (it % 127).toByte() }) }
+        val target = destination(fixture, "main-${UUID.randomUUID()}.obb")
+        val directoryTarget = destination(fixture, "directory-${UUID.randomUUID()}.obb")
+        val targets = mutableListOf<String>()
+        val directories = mutableListOf<String>()
+        val publications = ConcurrentLinkedQueue<File>()
+        val submissions = AtomicInteger()
+        val outcomes = ConcurrentLinkedQueue<RootJobOutcome>()
+        try {
+            assertTargetsAbsent(fixture, listOf(target, directoryTarget))
+            targets += target
+            rootCommand(fixture, requireNotNull(obbMkdirCommand(externalRoot(), fixture.packageName)))
+            rootCommand(fixture, "printf original > ${target.escapeForShell()}")
+            for ((input, expectedSize) in listOf(File(files, "missing") to source.length(), source to source.length() + 1)) {
+                val command = requireNotNull(obbPlaceCommand(externalRoot(), fixture.packageName,
+                    File(target).name, input.absolutePath, expectedSize))
+                val result = runPublicationCommand(fixture, command, File(target), publications, submissions, outcomes)
+                assertTrue("Copy failure or short-copy verification must fail", result.first != 0)
+                assertEquals("original", readTarget(fixture, files, target).decodeToString())
+            }
+            val replace = requireNotNull(obbPlaceCommand(externalRoot(), fixture.packageName,
+                File(target).name, source.absolutePath, source.length()))
+            assertEquals(0, runPublicationCommand(fixture, replace, File(target), publications, submissions, outcomes).first)
+            assertArrayEquals(source.readBytes(), readTarget(fixture, files, target))
+
+            rootCommand(fixture, "mkdir ${directoryTarget.escapeForShell()}")
+            directories += directoryTarget
+            val protectedTarget = "$directoryTarget/keep"
+            val nestedTarget = "$directoryTarget/${File(directoryTarget).name}"
+            targets += listOf(protectedTarget, nestedTarget)
+            rootCommand(fixture, "printf protected > ${protectedTarget.escapeForShell()}")
+            val refuse = requireNotNull(obbPlaceCommand(externalRoot(), fixture.packageName,
+                File(directoryTarget).name, source.absolutePath, source.length()))
+            val refused = runPublicationCommand(fixture, refuse, File(directoryTarget), publications, submissions, outcomes)
+            assertTrue("A real directory must not become a nested file destination", refused.first != 0)
+            assertEquals("protected", readTarget(fixture, files, protectedTarget).decodeToString())
+            assertTargetsAbsent(fixture, listOf(nestedTarget))
+            assertEquals(4, submissions.get())
+            assertEquals(4, outcomes.size)
+            report("publication", mapOf("ordinary_failures_preserved_target" to 2,
+                "existing_file_replaced" to true, "directory_refused" to true))
+        } finally {
+            withContext(NonCancellable) {
+                if (outcomes.size == submissions.get() && outcomes.all { it.cleanupConfirmed }) {
+                    removePublicationTemps(fixture, publications)
+                    removeTargets(fixture, targets)
+                    directories.forEach { rootCommand(fixture, "rmdir ${it.escapeForShell()}") }
+                    assertTrue(files.deleteRecursively())
+                } else report("retained", mapOf("fixture" to files.absolutePath))
+            }
+        }
+    }
+
+    @Test
+    fun publicationReplacesLeafSymlinksWithoutFollowingThemAndRefusesSymlinkedPackageDirectory() = runBlocking<Unit> {
+        val fixture = readyFixture()
+        val files = File(fixture.context.cacheDir, "obb-placement-symlink-${UUID.randomUUID()}")
+            .apply { assertTrue(mkdir()) }
+        val external = File(files, "storage")
+        val packageDirectory = File(requireNotNull(obbDestinationDir(external.absolutePath, fixture.packageName)))
+            .apply { assertTrue(mkdirs()) }
+        val source = File(files, "source.obb").apply { writeText("replacement") }
+        val protectedFile = File(files, "protected-file").apply { writeText("file preserved") }
+        val protectedDirectory = File(files, "protected-directory").apply { assertTrue(mkdir()) }
+        val protectedChild = File(protectedDirectory, "keep").apply { writeText("directory preserved") }
+        val targets = mutableListOf<String>()
+        val links = mutableListOf<File>()
+        val publications = ConcurrentLinkedQueue<File>()
+        val submissions = AtomicInteger()
+        val outcomes = ConcurrentLinkedQueue<RootJobOutcome>()
+        try {
+            // Private app storage supports symlinks even when the device's emulated storage does not.
+            for (referent in listOf(protectedFile, protectedDirectory)) {
+                val target = File(packageDirectory, "main-${UUID.randomUUID()}.obb")
+                Os.symlink(referent.absolutePath, target.absolutePath)
+                links += target
+                targets += target.absolutePath
+                val command = requireNotNull(obbPlaceCommand(external.absolutePath, fixture.packageName,
+                    target.name, source.absolutePath, source.length()))
+                assertEquals(0, runPublicationCommand(fixture, command, target, publications, submissions, outcomes).first)
+                rootCommand(fixture, "[ ! -L ${target.absolutePath.escapeForShell()} ] && [ -f ${target.absolutePath.escapeForShell()} ]")
+                assertArrayEquals(source.readBytes(), readTarget(fixture, files, target.absolutePath))
+                assertEquals("file preserved", protectedFile.readText())
+                assertEquals("directory preserved", protectedChild.readText())
+            }
+            val redirectedExternal = File(files, "redirected-storage")
+            val linkedPackage = File(requireNotNull(obbDestinationDir(redirectedExternal.absolutePath, fixture.packageName)))
+            assertTrue(requireNotNull(linkedPackage.parentFile).mkdirs())
+            Os.symlink(protectedDirectory.absolutePath, linkedPackage.absolutePath)
+            links += linkedPackage
+            val refusedTarget = File(linkedPackage, "main-${UUID.randomUUID()}.obb")
+            targets += refusedTarget.absolutePath
+            val command = requireNotNull(obbPlaceCommand(redirectedExternal.absolutePath, fixture.packageName,
+                refusedTarget.name, source.absolutePath, source.length()))
+            assertTrue(runPublicationCommand(fixture, command, refusedTarget, publications, submissions, outcomes).first != 0)
+            assertTargetsAbsent(fixture, listOf(refusedTarget.absolutePath))
+            assertEquals("directory preserved", protectedChild.readText())
+            assertEquals(3, submissions.get())
+            assertEquals(3, outcomes.size)
+            report("symlink", mapOf("leaf_links_replaced" to 2, "referents_preserved" to true,
+                "package_directory_link_refused" to true))
+        } finally {
+            withContext(NonCancellable) {
+                if (outcomes.size == submissions.get() && outcomes.all { it.cleanupConfirmed }) {
+                    removePublicationTemps(fixture, publications)
+                    removeTargets(fixture, targets)
+                    links.filter { Files.isSymbolicLink(it.toPath()) }.forEach { assertTrue(it.delete()) }
+                    assertTrue(files.deleteRecursively())
+                } else report("retained", mapOf("fixture" to files.absolutePath))
             }
         }
     }
@@ -382,6 +525,54 @@ class ObbPlacementIntegrationTest {
 
     internal fun copySource(command: String): File = File(requireNotNull(COPY_OPERANDS.find(command)).groupValues[1])
 
+    internal fun publicationFile(command: String): File = File(requireNotNull(COPY_OPERANDS.find(command)).groupValues[2])
+
+    internal fun assertPublicationPath(staged: File, target: File) {
+        assertEquals(target.name, staged.name)
+        val directory = requireNotNull(staged.parentFile)
+        assertEquals(target.parentFile, directory.parentFile)
+        assertTrue(directory.name.startsWith(".thor-obb-"))
+        assertEquals(directory.name.removePrefix(".thor-obb-"),
+            UUID.fromString(directory.name.removePrefix(".thor-obb-")).toString())
+    }
+
+    private suspend fun runPublicationCommand(
+        fixture: Fixture,
+        command: String,
+        target: File,
+        publications: ConcurrentLinkedQueue<File>,
+        submissions: AtomicInteger,
+        outcomes: ConcurrentLinkedQueue<RootJobOutcome>,
+    ): Pair<Int, String?> {
+        val staged = publicationFile(command)
+        assertPublicationPath(staged, target)
+        assertTargetsAbsent(fixture, listOf(requireNotNull(staged.parentFile).absolutePath))
+        publications += staged
+        val terminal = AtomicReference<RootJobOutcome>()
+        val execution = archiveContext(fixture).copy(commandClass = COPY,
+            rootExecutionPolicy = RootExecutionPolicy.ISOLATED,
+            rootExecutionObserver = object : RootExecutionObserver {
+                override suspend fun beforeSubmit() {
+                    submissions.incrementAndGet()
+                    assertOwnedArchive(fixture, COPY)
+                }
+
+                override suspend fun onOutcome(outcome: RootJobOutcome) {
+                    outcomes += outcome
+                    terminal.set(outcome)
+                }
+            })
+        val result = withTimeout(20_000) { fixture.gateway.executeShellCommand(command, execution).getOrThrow() }
+        val outcome = requireNotNull(terminal.get())
+        assertEquals(RootJobOutcomeKind.EXITED, outcome.kind)
+        assertEquals(result.first, outcome.exitCode)
+        assertTrue(outcome.started)
+        assertTrue(outcome.cleanupConfirmed)
+        assertTrue(outcome.shellReusable)
+        assertTargetsAbsent(fixture, listOf(requireNotNull(staged.parentFile).absolutePath))
+        return result
+    }
+
     internal fun assertStagedSource(fixture: Fixture, source: File) {
         val root = File(requireNotNull(fixture.context.getExternalFilesDir(null)), "obb_placement")
         assertTrue(source.canonicalFile.toPath().startsWith(root.canonicalFile.toPath()))
@@ -402,7 +593,7 @@ class ObbPlacementIntegrationTest {
 
     private fun externalRoot() = requireNotNull(Environment.getExternalStorageDirectory()).absolutePath
 
-    private fun destination(fixture: Fixture, leaf: String) =
+    internal fun destination(fixture: Fixture, leaf: String) =
         "${requireNotNull(obbDestinationDir(externalRoot(), fixture.packageName))}/$leaf"
 
     private fun archiveContext(fixture: Fixture) = PrivilegeExecutionContext(
@@ -416,7 +607,9 @@ class ObbPlacementIntegrationTest {
         command: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Pair<Int, String?> = withTimeout(15_000) {
-        fixture.gateway.executeShellCommand(command, execution).getOrThrow().also { assertEquals(it.second, 0, it.first) }
+        fixture.gateway.executeShellCommand(command, execution).getOrThrow().also {
+            assertEquals("Fixture command: $command\nOutput: ${it.second.orEmpty()}", 0, it.first)
+        }
     }
 
     private suspend fun assertTargetsAbsent(fixture: Fixture, targets: List<String>) {
@@ -429,6 +622,15 @@ class ObbPlacementIntegrationTest {
         // Never remove the package directory: an unrelated OBB may already live beside these leaves.
         targets.forEach { rootCommand(fixture, "rm -f ${it.escapeForShell()}") }
         assertTargetsAbsent(fixture, targets)
+    }
+
+    private suspend fun removePublicationTemps(fixture: Fixture, publications: Collection<File>) {
+        // Only known, acknowledged command operands are eligible; never recurse through Android/obb.
+        publications.forEach { staged ->
+            val directory = requireNotNull(staged.parentFile).absolutePath
+            rootCommand(fixture, "rm -f ${staged.absolutePath.escapeForShell()} && " +
+                "if [ -d ${directory.escapeForShell()} ]; then rmdir ${directory.escapeForShell()}; fi")
+        }
     }
 
     private suspend fun readTarget(fixture: Fixture, files: File, target: String): ByteArray {

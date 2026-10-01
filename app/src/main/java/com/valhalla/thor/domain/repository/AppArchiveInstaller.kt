@@ -83,6 +83,8 @@ interface AppArchiveInstaller {
      *
      * Waits on the install result rather than polling `isInstalled()`: §8.2. Returns only once the
      * install has landed, failed, or the wait has run out.
+     * The caller must hold [packageName]'s package-operation lease until this call returns;
+     * the restore use case owns it across installation, data restoration, and rollback.
      */
     suspend fun installBundle(
         bundle: File,

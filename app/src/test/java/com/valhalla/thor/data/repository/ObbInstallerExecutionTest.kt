@@ -147,6 +147,10 @@ class ObbInstallerExecutionTest {
                 command.source?.let { source ->
                     assertTrue(source.canonicalFile.toPath().startsWith(sourceRoot.canonicalFile.toPath()))
                     assertEquals(PAYLOAD, source.readText())
+                    val staged = requireNotNull(command.stagedDestination)
+                    assertEquals(source.name, staged.name)
+                    assertTrue(requireNotNull(staged.parentFile).name.startsWith(".thor-obb-"))
+                    assertEquals(PACKAGE, staged.parentFile?.parentFile?.name)
                 }
                 acknowledge(command)
             }
@@ -337,6 +341,7 @@ class ObbInstallerExecutionTest {
                 staged: StagedPackage, uri: Uri, mode: InstallMode, canDowngrade: Boolean,
                 grantAllPermissions: Boolean?, execution: PrivilegeExecutionContext,
                 onInvocationStarted: () -> Unit, onInstallSucceeded: () -> Unit, bypassLowTargetSdkBlock: Boolean,
+                packageLeaseHeldFor: String?,
             ) = error("rollback must not start an install")
         }
         val archiveInstaller = AppArchiveInstallerImpl(
@@ -459,6 +464,7 @@ class ObbInstallerExecutionTest {
                 staged: StagedPackage, uri: Uri, mode: InstallMode, canDowngrade: Boolean,
                 grantAllPermissions: Boolean?, execution: PrivilegeExecutionContext,
                 onInvocationStarted: () -> Unit, onInstallSucceeded: () -> Unit, bypassLowTargetSdkBlock: Boolean,
+                packageLeaseHeldFor: String?,
             ) {
                 onInvocationStarted()
                 install(staged.file, execution)
@@ -501,7 +507,9 @@ class ObbInstallerExecutionTest {
     }
 
     private data class Command(val text: String, val execution: PrivilegeExecutionContext) {
-        val source: File? get() = Regex("cp -f '([^']+)'").find(text)?.groupValues?.get(1)?.let(::File)
+        private val copyOperands get() = Regex("cp -f '([^']+)' '([^']+)'").find(text)?.groupValues
+        val source: File? get() = copyOperands?.get(1)?.let(::File)
+        val stagedDestination: File? get() = copyOperands?.get(2)?.let(::File)
     }
 
     private enum class Entry { LEGACY, STREAMING }

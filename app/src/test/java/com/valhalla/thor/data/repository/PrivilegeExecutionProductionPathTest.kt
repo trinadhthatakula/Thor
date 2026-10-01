@@ -12,6 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.gateway.RootSystemGateway
@@ -256,7 +257,7 @@ class PrivilegeExecutionProductionPathTest {
             val repository = InstallerRepositoryImpl(
                 context, bus, root, ShizukuReflector(context), preferences,
                 ObbInstaller(context, FakeSystemRepository(), Dispatchers.Unconfined),
-                Dispatchers.Unconfined, Dispatchers.Unconfined,
+                DefaultPackageOperationCoordinator(), Dispatchers.Unconfined, Dispatchers.Unconfined,
             )
             val staged = StagedPackage(temporaryFolder.newFile("callback-$result.apk").apply { writeText("apk") }, "base.apk")
             val caught = runCatching {
@@ -380,6 +381,7 @@ class PrivilegeExecutionProductionPathTest {
             shizukuReflector = ShizukuReflector(context),
             preferenceRepository = preferences,
             obbInstaller = ObbInstaller(context, FakeSystemRepository(), Dispatchers.Unconfined),
+            packageOperationCoordinator = DefaultPackageOperationCoordinator(),
             ioDispatcher = Dispatchers.Unconfined,
             mainDispatcher = Dispatchers.Unconfined,
         )
@@ -490,6 +492,7 @@ class PrivilegeExecutionProductionPathTest {
                 onInvocationStarted: () -> Unit,
                 onInstallSucceeded: () -> Unit,
                 bypassLowTargetSdkBlock: Boolean,
+                packageLeaseHeldFor: String?,
             ) {
                 onInvocationStarted()
                 entered.complete(Unit)
@@ -681,6 +684,7 @@ class PrivilegeExecutionProductionPathTest {
             shizukuReflector = ShizukuReflector(context),
             preferenceRepository = preferences,
             obbInstaller = ObbInstaller(context, system, Dispatchers.Unconfined),
+            packageOperationCoordinator = DefaultPackageOperationCoordinator(),
             ioDispatcher = Dispatchers.Unconfined,
             mainDispatcher = Dispatchers.Unconfined,
         )
@@ -780,6 +784,7 @@ class PrivilegeExecutionProductionPathTest {
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
             bypassLowTargetSdkBlock: Boolean,
+            packageLeaseHeldFor: String?,
         ) {
             calls++
             withContext(entryDispatcher) {
@@ -804,6 +809,7 @@ class PrivilegeExecutionProductionPathTest {
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
             bypassLowTargetSdkBlock: Boolean,
+            packageLeaseHeldFor: String?,
         ) {
             onInvocationStarted()
             invocationEntered = true
@@ -829,6 +835,7 @@ class PrivilegeExecutionProductionPathTest {
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
             bypassLowTargetSdkBlock: Boolean,
+            packageLeaseHeldFor: String?,
         ) {
             onInvocationStarted()
             calls++

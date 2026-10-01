@@ -20,6 +20,7 @@ import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
 
 /** Where the install side unpacks an archive's expansions before the shell moves them into place. */
@@ -455,17 +456,21 @@ internal fun obbMkdirCommand(externalStorageDir: String, packageName: String): S
  *    guard below says nothing about a link at `<packageName>`.
  *
  *    What this does **not** close is the race itself: the directory could be swapped between this
- *    test and the `cp` two commands later. Closing that needs `openat(O_NOFOLLOW)` per component,
+ *    tests and the filesystem operations. Closing that needs `openat(O_NOFOLLOW)` per component,
  *    which is not expressible as a shell command — and a shell command is the only tool available,
  *    since the reason this code exists is that Thor's own uid cannot open these paths at all. The
  *    residual window is one shell invocation wide, against a directory whose owner would first have
  *    to be able to create a symlink on external storage at all. Recorded rather than hidden.
- *  - **The destination is unlinked first, not overwritten.** `cp -f` only unlinks when the *open*
- *    fails, so an existing `<leaf>` that is a symlink is followed — and this runs as root into a
- *    directory the target app owns, which makes it an arbitrary write, and `chmod 644` an arbitrary
- *    chmod, on whatever the link names. `rm -f` does not follow links, so it removes the link itself;
- *    on a path that does not exist it succeeds, and on a directory it fails and the install reports
- *    it. This is the write-side twin of the read-side guard in `obbCopyCommand`.
+ *  - **Publish only the checked copy.** A unique temporary sibling directory holds a file with the
+ *    final basename. Moving that file into the destination directory replaces a symlink leaf itself,
+ *    including one pointing to a directory, and fails for an actual directory. This avoids `mv -T`,
+ *    unavailable on older supported Android shells, while keeping publication on one filesystem.
+ *    The previous destination stays intact until the rename; cancellation racing publication may
+ *    leave either complete version, and does not roll back an already published file.
+ *  - **Cleanup stays local to a subshell.** Exit and catchable signals remove only this attempt's
+ *    temporary file and directory, without altering a persistent provider shell's traps. SIGKILL or
+ *    power loss can leave the unique temporary directory behind; no cleanup acknowledgement proves
+ *    rollback or crash durability.
  *  - **644, not the shell's default.** The file is created by the shell's uid and read by the game's.
  *  - **[expectedBytes] is verified inside the same invocation.** `cp` can exit 0 having written
  *    short when the volume fills, and from API 30 Thor cannot stat `Android/obb/<pkg>/` itself to
@@ -491,10 +496,20 @@ internal fun obbPlaceCommand(
     if ((sourcePath + leaf).any { it == '\'' || it == '\n' }) return null
 
     val dest = "$destDir/$leaf"
-    // `obbMkdirCommand` already refused a symlinked directory, but that ran in an *earlier* shell
-    // invocation and this one runs once per expansion — so the check is repeated here, inside the
-    // same invocation as the `rm`/`cp`/`chmod` it protects. See the KDoc on what that does and does
-    // not buy.
-    return "[ ! -L '$destDir' ] && rm -f '$dest' && cp -f '$sourcePath' '$dest' && chmod 644 '$dest' && " +
-        "{ S=\$(stat -c %s '$dest' 2>/dev/null); [ -z \"\$S\" ] || [ \"\$S\" = \"$expectedBytes\" ]; }"
+    val temporaryDir = "$destDir/.thor-obb-${UUID.randomUUID()}"
+    val temporary = "$temporaryDir/$leaf"
+    val destinationGuard = "[ ! -L '$destDir' ] && { [ ! -d '$dest' ] || [ -L '$dest' ]; }"
+    // Exclusive mkdir must succeed before installing cleanup: a collision is not ours to delete.
+    // The final directory operand is deliberate: mv <temporary>/<leaf> <destDir>/ asks toybox to
+    // rename onto <destDir>/<leaf> without following a leaf symlink to a directory.
+    // Android mksh does not run an EXIT trap when a subshell exits from a signal handler, so
+    // catchable signals call cleanup directly. Ignore repeated TERM while cleanup is in progress.
+    return "( $destinationGuard && mkdir '$temporaryDir' || exit 1; " +
+        "T='$temporary'; D='$temporaryDir'; " +
+        "obb_cleanup() { R=\$1; trap \"\" HUP INT TERM; trap - 0; " +
+        "rm -f \"\$T\"; rmdir \"\$D\"; exit \"\$R\"; }; " +
+        "trap 'obb_cleanup \$?' 0; trap 'obb_cleanup 1' HUP INT TERM; " +
+        "cp -f '$sourcePath' '$temporary' && chmod 644 '$temporary' && " +
+        "{ S=\$(stat -c %s '$temporary' 2>/dev/null); [ -z \"\$S\" ] || [ \"\$S\" = \"$expectedBytes\" ]; } && " +
+        "$destinationGuard && mv -f '$temporary' '$destDir/' )"
 }

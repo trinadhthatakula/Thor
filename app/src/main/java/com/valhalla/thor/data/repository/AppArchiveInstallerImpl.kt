@@ -189,6 +189,7 @@ class AppArchiveInstallerImpl(
                         mode = mode,
                         canDowngrade = true,
                         execution = execution,
+                        packageLeaseHeldFor = packageName,
                         // Only this invocation's installer success can authorize cancellation rollback.
                         onInstallSucceeded = { installSucceeded = true },
                     )
