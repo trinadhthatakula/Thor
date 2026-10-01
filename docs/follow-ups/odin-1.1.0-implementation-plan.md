@@ -139,7 +139,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | Done |
 | M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
 | M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
-| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | — | Selected input reads validated; broader adoption pending |
+| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542) | Selected input reads in review; broader adoption pending |
 | M3-01 | Settings Editor reconciliation | M2-01 | Unassigned | — | Not started |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
@@ -294,7 +294,7 @@ source inputs; its manifest digest is
 [#541](https://github.com/trinadhthatakula/Thor/pull/541) as `e449623c`, following M2-02 export
 staging in [#540](https://github.com/trinadhthatakula/Thor/pull/540) (`1fdda745`). M2-04 now adopts
 generated installer-preview and archive-import staging; implementation is on
-`feat/odin-staging-adoption`, with required host gates and selected-input checks passing on both
+[#542](https://github.com/trinadhthatakula/Thor/pull/542), with required host gates and selected-input checks passing on both
 the Magisk emulator and ReSuKiSU phone. Its candidate inventory
 below keeps tar, extraction, final restore mutations, cache deletion, and archive-icon adoption
 separate until their resource and recovery contracts are ready. The broader device acceptance
@@ -1098,7 +1098,8 @@ Test APK SHA-256: `04ec82ac1d7ec9e250735c696bafb4be06c8981ddb93b81cee9ee622a10e9
   destructive restore commit phases or PackageInstaller work.
 
 **Selected implementation, 2026-10-02:** `feat/odin-staging-adoption`, based on #541's merge
-(`e449623c`); validation evidence is recorded below. This increment covers the generated
+(`e449623c`). Implementation `9e696a88` is in
+[#542](https://github.com/trinadhthatakula/Thor/pull/542); validation evidence is recorded below. This increment covers the generated
 fallback copies in `AppAnalyzerImpl` and `UriArchiveSourceFactory`. It does not complete the
 broader archive/cache workload adoption.
 
