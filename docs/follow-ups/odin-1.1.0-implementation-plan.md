@@ -136,8 +136,8 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M1-04 | Data-clear fallback correction | None | Codex | [#533](https://github.com/trinadhthatakula/Thor/pull/533), [#536](https://github.com/trinadhthatakula/Thor/pull/536) | Merged — validation pending |
 | M1-05 | RootService connection ownership | None | Codex | [#537](https://github.com/trinadhthatakula/Thor/pull/537) | Done |
 | M1-06 | RootService profile isolation | M1-05 test fixture recommended | Codex | [#538](https://github.com/trinadhthatakula/Thor/pull/538) | Done |
-| M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | In review — validated |
-| M2-02 | Cancellable export staging copy | M2-01 | Unassigned | — | Not started |
+| M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | Done |
+| M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | In review — validated |
 | M2-03 | OBB context and cancellable placement | M2-02 | Unassigned | — | Not started |
 | M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Unassigned | — | Not started |
 | M3-01 | Settings Editor reconciliation | M2-01 | Unassigned | — | Not started |
@@ -290,11 +290,10 @@ Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
 source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
 
-**Next task, updated 2026-10-01:** M1-06 profile isolation merged in
-[#538](https://github.com/trinadhthatakula/Thor/pull/538) as `316c5892`. M2-01 execution policy
-and complete outcomes is validated in [#539](https://github.com/trinadhthatakula/Thor/pull/539).
-After it merges, continue M2-02 with one bounded export
-staging copy; the broader device acceptance matrix remains open.
+**Next task, updated 2026-10-01:** M2-01 execution policy and complete outcomes merged in
+[#539](https://github.com/trinadhthatakula/Thor/pull/539) as `1014a467`. M2-02 is validated in
+[#540](https://github.com/trinadhthatakula/Thor/pull/540). After it merges, continue M2-03 OBB context and placement;
+the broader device acceptance matrix remains open.
 Actual post-dispatch transport/deadline fault injection remains an unchecked M1-04 follow-up.
 
 ### M1-04: Data-clear fallback correction
@@ -627,7 +626,7 @@ warning and retain any unavailable case as unverified.
 - [x] Test real acknowledgement ordering with readiness markers and a TERM-resistant child.
 
 **Implementation:** `ad1fd5ee853144031ef885d7a93508f1a4d628a5` in
-[#539](https://github.com/trinadhthatakula/Thor/pull/539), based on #538's merge (`316c5892`).
+[#539](https://github.com/trinadhthatakula/Thor/pull/539), merged as `1014a467`, based on #538's merge (`316c5892`).
 Scheduling lane and diagnostic command class no longer select execution
 policy. `PrivilegeExecutionContext.rootExecutionPolicy` defaults to `PERSISTENT`; Settings Editor
 explicitly selects `ISOLATED`. MainShell and owned ARCHIVE/SWEEP sessions share the same isolated
@@ -719,12 +718,147 @@ Earlier failed/unfinished runs are retained separately; they are not the accepta
 
 ### M2-02: Cancellable export staging copy
 
-- [ ] Opt one bounded-output `file.copy` staging path into isolated execution on ARCHIVE.
-- [ ] Preserve package/work identity, mount-master namespace, unique destination, and deadlines.
-- [ ] Require confirmed termination/drain before normal cleanup; retain uncertainty when proof
+- [x] Opt one bounded-output `file.copy` staging path into isolated execution on ARCHIVE.
+- [x] Preserve package/work identity, mount-master namespace, unique destination, and deadlines.
+- [x] Require confirmed termination/drain before normal cleanup; retain uncertainty when proof
   is absent, rather than deleting or reusing an actively written destination.
-- [ ] Verify cancellation responsiveness, cleanup order, subsequent safe shell reuse, and an
-  unrelated lane's ability to work. Measure fresh-control-shell overhead and temporary storage.
+- [x] Verify cancellation responsiveness, cleanup order, subsequent safe shell reuse, and an
+  unrelated lane's ability to work. Measure aggregate isolated-copy overhead (including control
+  shell setup) and temporary storage; record the limits of timing attribution.
+
+**Initial implementation:** `53d7a3a6df4bf5d8f41efc0ba59b82140b4577a0` in
+[#540](https://github.com/trinadhthatakula/Thor/pull/540), based on #539's merge (`1014a467`).
+The direct and durable export use cases select `buildExportWithProgress`.
+Only that entry point's APK root-copy fallback adopts isolated execution on ARCHIVE; app-readable
+copies retain their existing byte-copy path. Share, backup/archive builders, OBB probes, OBB copies,
+and other root commands retain their previous policies. The selected copy preserves package/work
+identity, the existing nine-minute maximum or a shorter caller deadline, and fallback provenance.
+Owned ARCHIVE shells retain their mount-master configuration; degraded routing is unchanged.
+
+Root copies write into a new UUID directory under `noBackupFilesDir/root_export_staging`, outside
+the bundle/batch cache trees and launch sweeper. An app-owned payload file preserves readability
+when root overwrites it. Before submission, an AtomicFile receipt records UUID, package/work
+identity, kernel boot UUID, and recovery metadata. Terminal metadata is persisted before the
+external observer returns and before lane release. Receipts omit source paths, commands, output,
+and raw failure text; non-regular receipt files and malformed records fail closed.
+
+The payload is promoted into the bundle cache only after a recorded `EXITED`, exit zero,
+started, termination-confirmed and output-drained outcome. Promotion first attempts an atomic
+move. If Android reports `AtomicMoveNotSupportedException` (including cache project-quota
+boundaries), a cancellable app-side copy replaces the destination and verifies its size against
+the confirmed payload. A failed, incomplete, or cancelled fallback removes its destination and
+preserves the original failure. Other move errors propagate without fallback. The existing verified
+operation boundary and byte checks follow promotion, before publication. Cancellation preserves
+its original exception and acknowledgement; confirmed cleanup removes the private workspace.
+Missing or uncertain completion and terminal-persistence failure retain it without promotion,
+deletion, or reuse. Existing export/batch cleanup can safely delete its ordinary cache tree because
+the uncertain producer never writes there.
+
+Before a later export, the recovery sweep reclaims only recorded safe completion or a different
+known canonical kernel boot UUID. An in-process registry excludes active workspaces, including
+while an outcome observer or promotion is pending. Same-boot process restart, root refresh,
+new shells, stable file length, and elapsed time do not authorize reclamation. Unresolved work
+remains retained when boot/receipt evidence is missing, corrupt, or unavailable; recorded safe
+completion permits cleanup even without boot identity. Each newly requested attempt gets a new
+workspace; neither the component nor gateway retries its copy through another shell/provider.
+This concerns private staging, not a change to durable-task publication/reconciliation policy.
+
+This milestone does not opt OBB/restore writes into isolation, claim termination of detached
+producers or Binder work, or add a UI for manually reclaiming unresolved private workspaces.
+
+**Validation, 2026-10-01:** All checks below used the implementation SHA above and the published
+Maven dependency `com.trinadhthatakula:odin:1.1.0`, with no local Odin substitution.
+
+- `./gradlew test lintFossDebug lintStoreRelease :app:assembleFossDebug
+  :app:assembleFossDebugAndroidTest --no-parallel --max-workers=2` passed with Zulu JDK 21.0.12.
+  FOSS and Store debug each report **3,244 JVM tests**, zero failures/errors/skips. Both lint
+  reports have zero errors/warnings, including no `MissingTranslation` or `SyntheticAccessor`
+  findings; existing hints remain 14 FOSS / 13 Store.
+- New deterministic coverage includes 13 staging lifecycle/recovery tests, 7 real-builder adoption
+  tests, and a direct-export contract test alongside existing durable-publication tests. It checks
+  acknowledgement ordering, original cancellation/provenance, pending and terminal persistence
+  failures, absent outcomes, corrupt metadata, boot-aware recovery, active-work exclusion, atomic
+  promotion failure, and non-export/OBB compatibility. Unconfirmed partial copies survive the
+  outer export cleanup without publication.
+- Restarted **`Odin_Magisk_API36_1`**, API 36.1 ARM64/16 KiB, Magisk **30.7 (30700)**:
+  **7/7 instrumentation tests passed**, no skips.
+- Connected **POCO F7 (`25053PC47G`)**, API 36, ReSuKiSU **v4.2.0-rc2 (35159)**:
+  **7/7 instrumentation tests passed**, no skips, using Thor debug's existing manual grant.
+- Each device ran `RootExportStagingIntegrationTest` (2 tests) and
+  `OdinExecutionPolicyIntegrationTest` (5 tests), separately through
+  `com.valhalla.thor.debug.test/com.valhalla.thor.ThorTestRunner` with `-e odinRoot true`.
+  The new tests verify a root-only 256 KiB source through the real export builder, exact bytes and
+  verified progress, owned mount-master namespace equality, and an actual `cp` blocked on a FIFO
+  after copying 1,024 known bytes. Cancellation waits for acknowledgement/observer completion,
+  retains files until then, and releases the lane afterward. INTERACTIVE work succeeds during the
+  blocked copy; the next ARCHIVE command reuses the same shell PID with exact output and no replay.
+- Fixture/recovery directories were empty after the final runs. The same debug APK was installed,
+  hash-checked, launched, and visually inspected on Home on both devices. No `adb root`, shell-root
+  grant, or root-manager policy changes were used.
+
+Observed timings in milliseconds (three paired regular-copy samples; descriptive measurements,
+not performance thresholds):
+
+| Measurement | Magisk emulator | ReSuKiSU phone |
+|---|---:|---:|
+| Persistent copy median (range) | 17.1 (17.1–31.2) | 25.3 (17.4–25.4) |
+| Isolated copy median (range) | 297.3 (290.0–321.2) | 389.6 (349.9–421.9) |
+| Paired aggregate isolation delta median (range) | 280.2 (272.9–290.1) | 364.2 (332.5–396.6) |
+| Full export staging, including receipts/promotion | 310.7 | 399.1 |
+| INTERACTIVE command while FIFO copy is blocked | 17.8 | 20.3 |
+| Cancellation request to terminal acknowledgement | 219.2 | 262.9 |
+
+The paired delta includes isolated-process setup, control-shell work, termination and output
+drain; it does not isolate control-shell acquisition time. Both devices observed a 262,144-byte
+payload plus a 365-byte terminal receipt for success, and a 1,024-byte partial payload plus a
+370-byte receipt for cancellation. These are logical file sizes observed at acknowledgement,
+not filesystem allocation peaks or the size of transient AtomicFile replacement files. Atomic
+promotion adds no second whole-payload copy; the compatibility fallback can temporarily retain
+both the confirmed payload and a complete destination. These small fixtures do not establish large-export
+throughput or a bound on storage retained by unresolved attempts.
+
+Forced process death, reboot/power loss, and control-shell denial were not injected on hardware;
+their receipt/recovery decisions have deterministic JVM coverage. No cross-profile, detached
+producer, Binder, or OBB-isolation guarantee is inferred from these runs. Earlier device attempts
+failed on fixture SELinux categories and an unsupported empty-stderr assertion after cancellation.
+The fixture now creates its FIFO as the application UID, and cancellation retains valid shell
+diagnostics while verifying drain and exact subsequent-command output. Those earlier attempts are
+preserved separately and excluded from acceptance counts. Exact stale FIFO fixtures were removed
+through Thor's app UID and existing root grant before the final runs.
+
+Local evidence: `~/.codex/artifacts/thor-odin-export-staging-2026-10-01/` —
+`build-gates-acceptance.log`, `dependency-insight.log`, `host-validation.json`, both device
+`*-validation.json` and instrumentation logs, cleanup/launch logs, and `*-debug-home.png`.
+The tested app APK SHA-256 is
+`82341e8a70cdff8629cddad35fb5fdc3628bcc319404085a32169b07fa4c389c`; the test APK is
+`6e311ddd6309b8d9a12a72520fb55090fda133f9759c9322a91114878d2ecea1`.
+`tested-code-files.sha256` covers 1,009 source/build inputs and matches the committed implementation;
+its manifest digest is `252c85a878d5d03dcfde4e0809552d54a8ef9055fed9c8f253190cf9fe581c5b`.
+
+**Promotion compatibility follow-up, 2026-10-02:** The
+[review finding](https://github.com/trinadhthatakula/Thor/pull/540#discussion_r4158891243)
+identified that same-volume placement alone does not guarantee atomic rename. ext4/F2FS can
+return `EXDEV` across inherited project-quota boundaries; Android maps this to
+`AtomicMoveNotSupportedException`. The fallback above handles that exception after confirmed root
+completion, without rerunning root work. Seven new `RootExportPromotionTest` cases force the
+exception and cover successful replacement, empty payloads, missing/short destinations, partial
+I/O failure, cancellation after the first actual copy chunk, and unrelated move failures.
+
+The full local test/lint/build command above passed again: **3,251 JVM tests per FOSS/Store debug
+variant**, zero failures/errors/skips, zero lint errors/warnings (14 FOSS / 13 Store hints).
+The rebuilt debug APK passed the same **7/7 instrumentation tests on each device**, with no skips;
+fixture/recovery cleanup and Home launch also passed. This revalidates the root-export lifecycle.
+The unsupported-move exception is injected in JVM tests; neither device reproduced an actual
+project-quota boundary failure. Current stock AOSP disables the internal project-ID feature, so
+this is a compatibility case rather than a claim about every Android device.
+
+Follow-up evidence: `~/.codex/artifacts/thor-root-export-promotion-2026-10-02/` —
+`review-rationale.md`, `build-gates-final.log`, `host-validation.json`, and both device validation
+JSON/instrumentation/cleanup/launch logs. The installed app APK SHA-256 is
+`340d412ad1365f89169bff8331be4e63cfad92875fa4513109a5d64f4ebcf9af`; the unchanged test APK is
+`6e311ddd6309b8d9a12a72520fb55090fda133f9759c9322a91114878d2ecea1`.
+The follow-up source manifest covers 1,010 inputs with digest
+`482d5023b25e150eb205bde1c7a2d44f24f88b862ced7059eb97a5cd92371865`.
 
 ### M2-03: OBB context and cancellable placement
 

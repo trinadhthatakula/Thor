@@ -7,6 +7,7 @@ import android.util.AtomicFile
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import com.valhalla.thor.data.repository.localState
+import com.valhalla.thor.data.util.readKernelBootId
 import com.valhalla.thor.domain.model.SettingsEditRecord
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
@@ -15,7 +16,6 @@ import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.IOException
-import java.util.UUID
 
 @Single
 class SettingsEditorStore(context: Context) {
@@ -68,8 +68,4 @@ internal class FileSettingsEditHistory(file: File) : SettingsEditHistory {
 }
 
 /** Kernel identity is read-only; Settings.Global.BOOT_COUNT can itself be edited by root. */
-internal fun readSettingsBootId(): String? = try {
-    File("/proc/sys/kernel/random/boot_id").readText().trim().let { value ->
-        value.takeIf { UUID.fromString(it).toString() == it }
-    }
-} catch (_: Exception) { null }
+internal fun readSettingsBootId(): String? = readKernelBootId()
