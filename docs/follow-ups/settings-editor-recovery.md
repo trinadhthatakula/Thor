@@ -1,6 +1,7 @@
 # Sett Edit recovery and execution bounds
 
-Status: explicit read-only history checks are implemented on `feat/settings-editor-reconciliation`.
+Status: explicit read-only history checks are in review in
+[#544](https://github.com/trinadhthatakula/Thor/pull/544) (`98793e74`).
 Host gates and the eight-check Magisk emulator suite passed; physical Root, live Shizuku,
 and actual process-death checks remain pending. The approved [Odin 1.1.0 plan](odin-1.1.0-implementation-plan.md),
 especially M2-01 and M3-01, tracks acceptance and remaining work.

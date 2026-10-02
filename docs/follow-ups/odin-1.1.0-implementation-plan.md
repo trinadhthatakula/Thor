@@ -140,7 +140,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
 | M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
 | M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Selected input reads and archive icons merged; broader adoption pending |
-| M3-01 | Settings Editor reconciliation | M2-01 | Codex | — | Read-only checks implemented; host/emulator passed; physical, Shizuku and process-death acceptance pending |
+| M3-01 | Settings Editor reconciliation | M2-01 | Codex | [#544](https://github.com/trinadhthatakula/Thor/pull/544) | In review; read-only checks implemented; host/emulator passed; physical, Shizuku and process-death acceptance pending |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
 
@@ -1283,8 +1283,8 @@ Test APK SHA-256: `b915a0db8a3d02c71c3557c5e3be9c62dc4d9feec32bd24291928dabd8e4c
 - [ ] Exercise actual process death and lost completion on devices; reopening seeded/injected
   journals is not evidence of a real interrupted producer.
 
-**Implementation, 2026-10-02:** `feat/settings-editor-reconciliation`, based on #543's merge
-(`1c0424f9`). History offers **Check current value** for uncertain records. The controller reads
+**Implementation, 2026-10-02:** `98793e74` on `feat/settings-editor-reconciliation` in
+[#544](https://github.com/trinadhthatakula/Thor/pull/544), based on #543's merge (`1c0424f9`). History offers **Check current value** for uncertain records. The controller reads
 the saved table/user through one currently allowed Root or Shizuku session and atomically adds a
 `SettingsEditObservation`; it does not issue a settings write or invoke write admission. Both
 before access and before publication it checks consent, and cancellation/read/save failures leave
@@ -1380,7 +1380,7 @@ baseline row with results from a later commit.
 | M1-05 ownership | `7a8c9ac1` / #537 | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; binding lifecycle; clear-data regression | 3,188 JVM tests per variant; lint passed; 3/3 tests on each device |
 | M1-06 isolation | `eff6de65` / #538 | Host; Magisk API 36.1 users 0/10; ReSuKiSU API 36 user 0 | Required gates; replacement/death/rebind; cross-user held work; binding/clear regressions | 3,188 JVM tests per variant; lint passed; 12 emulator and 6 physical passes; expected interruptions separate |
 | M2-01 execution policy | `ad1fd5ee` / #539 | Host; Magisk API 36.1 user 0; ReSuKiSU API 36 user 0 | Required gates; explicit policy; cancellation/lease ordering on all lanes; boot identity; Settings watchdog and edit round trips | 3,223 JVM tests per variant; lint passed; 7 emulator and 7 physical passes; full evidence above |
-| M3-01 read-only reconciliation | `feat/settings-editor-reconciliation` | Host; Magisk API 36.1 user 0 | Required gates; persisted observations; stale restoration; retained barrier; cancellation and history UI | 3,350 JVM tests per variant; lint passed; 8/8 emulator passes; physical, Shizuku and actual process-death checks pending |
+| M3-01 read-only reconciliation | `98793e74` / #544 | Host; Magisk API 36.1 user 0 | Required gates; persisted observations; stale restoration; retained barrier; cancellation and history UI | 3,350 JVM tests per variant; lint passed; 8/8 emulator passes; physical, Shizuku and actual process-death checks pending |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
