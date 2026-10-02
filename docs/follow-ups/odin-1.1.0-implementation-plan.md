@@ -1407,8 +1407,9 @@ Test APK SHA-256: `311e19b67160f588516e96e2412b167d24a0bcff479acfe1ed3c99fafcc5f
 
 ### M3-01 live privileged writer and reboot recovery
 
-**Scope, 2026-10-02:** follow-up to #544's merge (`5efa1399`). This increment adds
-instrumentation fixtures; production code and the app APK are unchanged.
+**Scope, 2026-10-02:** tested harness `3d175607c4903de3306b4f58e692ef7562f572c8` in
+[#545](https://github.com/trinadhthatakula/Thor/pull/545), based on #544's merge (`5efa1399`).
+This increment adds instrumentation fixtures; production code and the app APK are unchanged.
 
 `SettingsEditorLiveWriterProbe` runs from the test APK as root and repeatedly PUTs/GETs one
 validated UUID SYSTEM setting for user 0. It publishes readiness only after a verified write and
@@ -1546,7 +1547,7 @@ baseline row with results from a later commit.
 | M2-01 execution policy | `ad1fd5ee` / #539 | Host; Magisk API 36.1 user 0; ReSuKiSU API 36 user 0 | Required gates; explicit policy; cancellation/lease ordering on all lanes; boot identity; Settings watchdog and edit round trips | 3,223 JVM tests per variant; lint passed; 7 emulator and 7 physical passes; full evidence above |
 | M3-01 read-only reconciliation | `98793e74` / #544 | Host; Magisk API 36.1 user 0 | Required gates; persisted observations; stale restoration; retained barrier; cancellation and history UI | 3,350 JVM tests per variant; lint passed; 8/8 initial emulator passes; follow-up below completes physical and post-acknowledgement death checks |
 | M3-01 physical and process-death follow-up | `c1d87205` / #544 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; ROOT/SHIZUKU; actual app death after acknowledged write | 3,350 JVM tests per variant; lint passed; physical 8 ROOT + 4 SHIZUKU + 1 recovery; emulator 8 ROOT + 1 recovery; live-producer death pending |
-| M3-01 live-writer follow-up | Based on `5efa1399` | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; real live writer, same-boot barrier, actual reboot recovery, hostile cancellation | 3,350 JVM tests per variant; lint passed; emulator 9 checks + 2 phases; physical 9 checks with ROOT/SHIZUKU refusal; interrupted attempts separate |
+| M3-01 live-writer follow-up | [`3d175607`](https://github.com/trinadhthatakula/Thor/commit/3d175607c4903de3306b4f58e692ef7562f572c8) / [#545](https://github.com/trinadhthatakula/Thor/pull/545); base `5efa1399` (#544) | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; real live writer, same-boot barrier, actual reboot recovery, hostile cancellation | 3,350 JVM tests per variant; lint passed; emulator 9 checks + 2 phases; physical 9 checks with ROOT/SHIZUKU refusal; interrupted attempts separate |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
