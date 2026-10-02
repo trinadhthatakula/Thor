@@ -139,7 +139,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | Done |
 | M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
 | M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
-| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Input reads merged; archive icons in review, emulator passed; physical validation and broader adoption pending |
+| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Input reads merged; archive icons in review, emulator and physical checks passed; broader adoption pending |
 | M3-01 | Settings Editor reconciliation | M2-01 | Unassigned | — | Not started |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
@@ -295,8 +295,8 @@ source inputs; its manifest digest is
 placement in [#541](https://github.com/trinadhthatakula/Thor/pull/541). M2-04 now applies the same
 acknowledged staging owner to archive-icon reads in
 [#543](https://github.com/trinadhthatakula/Thor/pull/543), with a separate root deadline,
-cancellation cleanup, and retryable transient failures. Host gates and emulator checks passed;
-physical ReSuKiSU validation is pending reconnection. The inventory below retains tar, extraction, final
+cancellation cleanup, and retryable transient failures. Host gates and the 16-check suites passed
+on both the Magisk emulator and ReSuKiSU phone. The inventory below retains tar, extraction, final
 restore mutations, and cache deletion until their resource and recovery contracts are ready.
 The broader device acceptance matrix, live Shizuku OBB placement, and M1-04 post-dispatch
 transport/deadline fault injection remain open.
@@ -1095,8 +1095,8 @@ Test APK SHA-256: `04ec82ac1d7ec9e250735c696bafb4be06c8981ddb93b81cee9ee622a10e9
 - [x] Adopt archive-icon staging with cancellation cleanup, the existing byte budget,
   independent concurrent fetch ownership, and transient failures separated from persistent misses.
 - [x] Record archive-icon host gates and Magisk emulator acceptance with exact source/APK hashes.
-- [ ] Run the archive-icon checks on the ReSuKiSU phone after reconnection; #542's device
-  results do not prove this new consumer.
+- [x] Run the archive-icon checks and regression set on the ReSuKiSU phone with the same
+  verified APKs; record current evidence for this consumer independently of #542.
 - [ ] Design and validate accepted-work/recovery contracts before enabling cancellation of
   destructive restore commit phases or PackageInstaller work.
 
@@ -1235,29 +1235,33 @@ tests; these were corrected before the complete passing run.
 | Environment | Archive-icon checks | Regression checks | Result |
 | --- | --- | --- | --- |
 | `Odin_Magisk_API36_1`, Magisk 30.7, API 36.1, ARM64, 16 KiB pages, user 0 | Protected XAPK decode/pixels and cache reuse; confirmed miss; partial-root cancellation and same-key retry; overlapping fetch ownership | Five selected-input, two export-staging, five explicit-policy/admission checks | 16/16 passed, zero skips; installed APK hashes verified; Home launch passed |
-| ReSuKiSU physical phone | Same four archive-icon checks | Same regression set | Pending: phone absent from ADB; no current physical acceptance claim |
+| POCO F7 `25053PC47G`, ReSuKiSU v4.2.0-rc2 (35159), API 36, ARM64, 4 KiB pages, user 0 | Same four archive-icon checks | Same twelve regression checks | 16/16 passed on first run, zero skips; installed APK hashes verified; Home launch passed |
 
 The cancellation test waited for a real 1,024-byte FIFO prefix. While its outcome observer held
 acknowledgement handling, the durable receipt/private payload and input inode/open writer
 remained owned, an active-workspace sweep retained them, and no PNG or miss was published.
 After acknowledgement, the fetch propagated cancellation and removed its scratch; a fresh
 same-key request succeeded. An independent INTERACTIVE command completed during the blocked
-read. Cancellation-to-outcome acknowledgement was observed at 68 ms; this is not a timing
-assertion or guarantee. The overlapping test paused two separately acknowledged copies,
-published one icon, and cancelled the peer without deleting the completed PNG.
+read. Cancellation-to-outcome acknowledgement was observed at 68 ms on the emulator and
+327 ms on the phone; these are not timing assertions or guarantees. The overlapping test paused
+two separately acknowledged copies, published one icon, and cancelled the peer without deleting
+the completed PNG.
 
-The emulator began and ended with no private staging/test fixtures. Its debug/test APKs remain
-installed; no provider preference or root-manager policy was changed. Host `run-as` observation
-of external app storage was denied; these new icon fixtures and staging assertions use private
-app storage. No `adb root` or shell-root grant was used. Physical checks, live Shizuku copies,
-storage exhaustion, process-death/uncertain recovery, multi-user validation, and rapid list UI
-scrolling remain unverified for this consumer.
+Both devices began and ended with no private staging/test fixtures; their debug/test APKs remain
+installed. The phone's preferred provider was temporarily changed through Thor's Settings from
+Shizuku to Root, then restored to Shizuku and verified in the saved preference. No root-manager
+policy was changed. Host `run-as` observation of external app storage was denied on both devices;
+these icon fixtures and staging assertions use private app storage. No `adb root` or shell-root
+grant was used. Live Shizuku copies, storage exhaustion, process-death/uncertain recovery,
+multi-user validation, and rapid list UI scrolling remain unverified for this consumer.
 
 Evidence: `~/.codex/artifacts/thor-odin-archive-icons-2026-10-02/` — `build-gates.log`,
 `build-gates-initial-lint.log`, `host-validation.json`, `dependency-insight.log`,
-`tested-code-files.sha256`, `emulator-validation.json`, corresponding instrumentation,
-fixture/hash/launch logs, `emulator-environment.json`, `emulator-home.png`, and
-`physical-validation-pending.json`. The 1,021-input source manifest SHA-256 is
+`tested-code-files.sha256`, `emulator-validation.json`, `physical-validation.json`, corresponding
+instrumentation/fixture/hash/launch logs, both environment records, `emulator-home.png`,
+`physical-root-home.png`, and `physical-provider-restored.json`/`.xml`/`.png`. The earlier
+`physical-validation-pending.json` is retained as historical evidence; the phone reconnected and
+passed the unchanged-APK suite on 2026-10-02. The 1,021-input source manifest SHA-256 is
 `a4d862016e206ef774d6ea85a32f9f53575f56ba7a52e025d25aaace5d3bfc5f`.
 App APK SHA-256: `6e7d3f904b0fbcb51d3145d4ca6aa87e809cbed279c9150b55181c1731495322`.
 Test APK SHA-256: `b915a0db8a3d02c71c3557c5e3be9c62dc4d9feec32bd24291928dabd8e4c82b`.
