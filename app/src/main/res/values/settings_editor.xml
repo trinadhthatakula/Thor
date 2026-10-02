@@ -51,4 +51,8 @@
     <string name="sett_back">Back</string>
     <string name="sett_answer">Answer</string>
     <string name="sett_execution_unconfirmed">A previous operation may still be running. Restart your device before changing this setting.</string>
+    <string name="sett_check_current_value">Check current value</string>
+    <string name="sett_observed_value">Current value observed</string>
+    <string name="sett_observation_source">Checked with %1$s · %2$s</string>
+    <string name="sett_observation_note">The current value does not confirm that the earlier change finished.</string>
 </resources>

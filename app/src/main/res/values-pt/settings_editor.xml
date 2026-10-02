@@ -51,4 +51,8 @@
     <string name="sett_back">Voltar</string>
     <string name="sett_answer">Resposta</string>
     <string name="sett_execution_unconfirmed">Uma operação anterior pode ainda estar em execução. Reinicie o dispositivo antes de alterar esta definição.</string>
+    <string name="sett_check_current_value">Verificar o valor atual</string>
+    <string name="sett_observed_value">Valor atual observado</string>
+    <string name="sett_observation_source">Verificado com %1$s · %2$s</string>
+    <string name="sett_observation_note">O valor atual não confirma que a alteração anterior tenha terminado.</string>
 </resources>

@@ -5,6 +5,8 @@ package com.valhalla.thor.data.settingseditor
 import com.valhalla.thor.domain.model.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -37,6 +39,30 @@ internal class SettingsEditorController(
         openSession().read(view, view.userId(currentUserId()))
     }
     suspend fun history(): List<SettingsEditRecord> = mutex.withLock { history.load() }
+    suspend fun reconcile(id: String): SettingsEditRecord = mutex.withLock {
+        val records = history.load()
+        val previous = records.singleOrNull { it.id == id } ?: error("missing_history")
+        check(previous.outcome.canReconcile) { "reconcile_unavailable" }
+        require(previous.view.writable && editableSettingKey(previous.key)) { "invalid_key" }
+        check(previous.userId == previous.view.userId(currentUserId())) { "wrong_user" }
+        check(allowed()) { "consent_required" }
+        val session = openSession()
+        check(session.provider == PrivilegeMode.ROOT || session.provider == PrivilegeMode.SHIZUKU) { "unavailable" }
+        // A read may use the currently selected provider; the original write's provider stays intact.
+        // Do not enter the write gate: observing a value cannot retire an unresolved producer.
+        val entries = session.read(previous.view, previous.userId)
+        currentCoroutineContext().ensureActive()
+        check(entries.count { it.key == previous.key } <= 1) { "provider_error" }
+        val observed = previous.copy(observation = SettingsEditObservation(
+            value = valueOf(entries, previous.key),
+            provider = session.provider,
+            timestamp = now(),
+        ))
+        check(allowed()) { "consent_required" }
+        currentCoroutineContext().ensureActive()
+        history.save(records.map { if (it.id == id) observed else it })
+        observed
+    }
     suspend fun change(view: SettingsEditorView, key: String, expected: SettingValue, desired: SettingValue): SettingsEditRecord =
         mutex.withLock { changeLocked(view, key, expected, desired) }
     suspend fun undo(id: String): SettingsEditRecord = mutex.withLock {

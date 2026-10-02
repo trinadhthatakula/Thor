@@ -51,4 +51,8 @@
     <string name="sett_back">Wstecz</string>
     <string name="sett_answer">Odpowiedź</string>
     <string name="sett_execution_unconfirmed">Poprzednia operacja może nadal być wykonywana. Uruchom urządzenie ponownie przed zmianą tego ustawienia.</string>
+    <string name="sett_check_current_value">Sprawdź bieżącą wartość</string>
+    <string name="sett_observed_value">Zaobserwowana bieżąca wartość</string>
+    <string name="sett_observation_source">Sprawdzono za pomocą %1$s · %2$s</string>
+    <string name="sett_observation_note">Bieżąca wartość nie potwierdza zakończenia wcześniejszej zmiany.</string>
 </resources>

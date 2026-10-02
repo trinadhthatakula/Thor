@@ -20,7 +20,21 @@ data class SettingValue(val present: Boolean, val value: String? = null) {
 @Serializable
 data class SettingEntry(val key: String, val value: String?)
 @Serializable
-enum class SettingsEditOutcome { PENDING, VERIFIED, REJECTED, CONFLICT, UNKNOWN, UNCONFIRMED }
+enum class SettingsEditOutcome {
+    PENDING, VERIFIED, REJECTED, CONFLICT, UNKNOWN, UNCONFIRMED;
+
+    val canReconcile: Boolean
+        get() = this == PENDING || this == UNKNOWN || this == UNCONFIRMED
+}
+
+/** A later read, not a new verdict about the original write or its termination. */
+@Serializable
+data class SettingsEditObservation(
+    val value: SettingValue,
+    val provider: PrivilegeMode,
+    val timestamp: Long,
+)
+
 @Serializable
 data class SettingsEditRecord(
     val id: String,
@@ -33,6 +47,7 @@ data class SettingsEditRecord(
     val timestamp: Long,
     val outcome: SettingsEditOutcome = SettingsEditOutcome.PENDING,
     val undoOf: String? = null,
+    val observation: SettingsEditObservation? = null,
 )
 
 fun settingsEditorMode(state: PrivilegeState, preferred: PrivilegeMode?): PrivilegeMode? =

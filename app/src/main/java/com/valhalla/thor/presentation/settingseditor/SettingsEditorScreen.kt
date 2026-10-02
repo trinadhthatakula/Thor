@@ -19,6 +19,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -28,6 +29,8 @@ import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.model.*
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import java.text.DateFormat
+import java.util.Date
 import kotlin.random.Random
 
 @Composable
@@ -97,18 +100,16 @@ fun SettingsEditorScreen(onBack: () -> Unit, viewModel: SettingsEditorViewModel 
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (showHistory) {
                         items(state.history, key = { it.id }) { record ->
-                            Card(Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(record.key, style = MaterialTheme.typography.titleMedium)
-                                    Text("${stringResource(record.view.titleRes())} · ${record.provider.name} · ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(record.timestamp))}", style = MaterialTheme.typography.bodySmall)
-                                    Text(stringResource(record.outcome.titleRes()))
-                                    Text(stringResource(R.string.sett_before) + "\n" + displayValue(record.before))
-                                    Text(stringResource(R.string.sett_after) + "\n" + displayValue(record.desired))
-                                    TextButton(onClick = { undo = record }, enabled = unlocked && record.outcome == SettingsEditOutcome.VERIFIED && state.history.none { it.undoOf == record.id && it.outcome == SettingsEditOutcome.VERIFIED }) {
-                                        Text(stringResource(R.string.sett_undo))
-                                    }
-                                }
-                            }
+                            SettingsEditHistoryCard(
+                                record = record,
+                                consent = state.consent,
+                                mode = state.mode,
+                                busy = state.busy,
+                                currentUserId = thorUserId,
+                                canUndo = state.history.none { it.undoOf == record.id && it.outcome == SettingsEditOutcome.VERIFIED },
+                                onReconcile = viewModel::reconcile,
+                                onUndo = { undo = it },
+                            )
                         }
                     } else {
                         val visible = state.entries.filter { search.isEmpty() || it.key.contains(search, true) || it.value.orEmpty().contains(search, true) }
@@ -146,6 +147,60 @@ fun SettingsEditorScreen(onBack: () -> Unit, viewModel: SettingsEditorViewModel 
                 Text(stringResource(R.string.sett_after) + "\n" + displayValue(record.before))
             } }, confirmButton = { TextButton(onClick = { viewModel.undo(record.id); undo = null }, enabled = unlocked) { Text(stringResource(R.string.sett_undo)) } },
             dismissButton = { TextButton(onClick = { undo = null }) { Text(stringResource(R.string.cancel)) } })
+    }
+}
+
+@Composable
+internal fun SettingsEditHistoryCard(
+    record: SettingsEditRecord,
+    consent: Boolean?,
+    mode: PrivilegeMode?,
+    busy: Boolean,
+    currentUserId: Int,
+    canUndo: Boolean,
+    onReconcile: (String) -> Unit,
+    onUndo: (SettingsEditRecord) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val actionsEnabled = consent == true && !busy &&
+        (mode == PrivilegeMode.ROOT || mode == PrivilegeMode.SHIZUKU) &&
+        record.userId == record.view.userId(currentUserId)
+    Card(modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(record.key, style = MaterialTheme.typography.titleMedium)
+            Text("${stringResource(record.view.titleRes())} · ${record.provider.name} · ${localizedSettingsEditTime(record.timestamp)}", style = MaterialTheme.typography.bodySmall)
+            Text(
+                stringResource(if (record.view == SettingsEditorView.GLOBAL) R.string.sett_shared_scope else R.string.sett_user_scope, record.userId),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(stringResource(record.outcome.titleRes()))
+            Text(stringResource(R.string.sett_before) + "\n" + displayValue(record.before))
+            Text(stringResource(R.string.sett_after) + "\n" + displayValue(record.desired))
+            record.observation?.let { observation ->
+                Text(stringResource(R.string.sett_observed_value) + "\n" + displayValue(observation.value))
+                Text(
+                    stringResource(R.string.sett_observation_source, observation.provider.name, localizedSettingsEditTime(observation.timestamp)),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(stringResource(R.string.sett_observation_note), style = MaterialTheme.typography.bodySmall)
+            }
+            if (record.outcome.canReconcile) {
+                TextButton(onClick = { onReconcile(record.id) }, enabled = actionsEnabled) {
+                    Text(stringResource(R.string.sett_check_current_value))
+                }
+            }
+            TextButton(onClick = { onUndo(record) }, enabled = actionsEnabled && canUndo && record.outcome == SettingsEditOutcome.VERIFIED) {
+                Text(stringResource(R.string.sett_undo))
+            }
+        }
+    }
+}
+
+@Composable
+private fun localizedSettingsEditTime(timestamp: Long): String {
+    val locale = LocalConfiguration.current.locales[0]
+    return remember(timestamp, locale) {
+        DateFormat.getDateTimeInstance(DateFormat.DEFAULT, DateFormat.DEFAULT, locale).format(Date(timestamp))
     }
 }
 

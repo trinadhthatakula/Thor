@@ -139,8 +139,8 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | Done |
 | M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
 | M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
-| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Input reads merged; archive icons in review, emulator and physical checks passed; broader adoption pending |
-| M3-01 | Settings Editor reconciliation | M2-01 | Unassigned | — | Not started |
+| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Selected input reads and archive icons merged; broader adoption pending |
+| M3-01 | Settings Editor reconciliation | M2-01 | Codex | — | Read-only checks implemented; host/emulator passed; physical, Shizuku and process-death acceptance pending |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
 
@@ -290,16 +290,14 @@ Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
 source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
 
-**Current task, updated 2026-10-02:** selected preview/import reads merged in
-[#542](https://github.com/trinadhthatakula/Thor/pull/542) as `369520f7`, following M2-03 OBB
-placement in [#541](https://github.com/trinadhthatakula/Thor/pull/541). M2-04 now applies the same
-acknowledged staging owner to archive-icon reads in
-[#543](https://github.com/trinadhthatakula/Thor/pull/543), with a separate root deadline,
-cancellation cleanup, and retryable transient failures. Host gates and the 16-check suites passed
-on both the Magisk emulator and ReSuKiSU phone. The inventory below retains tar, extraction, final
-restore mutations, and cache deletion until their resource and recovery contracts are ready.
-The broader device acceptance matrix, live Shizuku OBB placement, and M1-04 post-dispatch
-transport/deadline fault injection remain open.
+**Current task, updated 2026-10-02:** archive-icon staging merged in
+[#543](https://github.com/trinadhthatakula/Thor/pull/543) as `1c0424f9`, following selected
+preview/import reads in [#542](https://github.com/trinadhthatakula/Thor/pull/542). M3-01 now adds
+explicit read-only checks for uncertain Settings Editor history. This depends on completed M2-01;
+it does not require enabling cancellation for the broader M2-04 workloads. Tar creation,
+extraction, final restore mutations, and cache deletion remain deferred until their source/output
+ownership and durable uncertainty contracts are ready. Their checkboxes and the broader device
+acceptance matrix remain open.
 
 ### M1-04: Data-clear fallback correction
 
@@ -1193,7 +1191,7 @@ Test APK SHA-256: `4e6e7ce778472cd11ee16cbb493aec769d4097f1e4b2a2db72f5d1d82ba06
 ### M2-04 archive-icon increment
 
 **Implementation, 2026-10-02:** `67a980e6` on `feat/odin-archive-icon-staging` in
-[#543](https://github.com/trinadhthatakula/Thor/pull/543), based on #542's merge (`369520f7`).
+[#543](https://github.com/trinadhthatakula/Thor/pull/543), merged as `1c0424f9` after #542 (`369520f7`).
 `ArchiveIconFetcher` now delegates generated fallback reads to
 `SystemRepository.copyFileForRead`, preserving provider selection and the acknowledged private
 root-staging contract above. The root command uses ARCHIVE / `input.archive-icon` and a
@@ -1270,14 +1268,73 @@ Test APK SHA-256: `b915a0db8a3d02c71c3557c5e3be9c62dc4d9feec32bd24291928dabd8e4c
 
 ### M3-01: Settings Editor reconciliation
 
-- [ ] Implement user-driven read-only reconciliation for PENDING/UNKNOWN history, preserving
-  user/table/key/provider, original/requested/observed value, and observation time.
-- [ ] Preserve the difference between current-state reconciliation and proof of termination.
-- [ ] Keep restoration as a separately reviewed mutation with fresh conflict checks; no automatic
-  replay or falsely verified undo.
-- [ ] Test process death, lost final journal save, read/journal failure, conflicting restore, and
-  unresolved producer termination. Keep [the recovery follow-up](settings-editor-recovery.md)
-  aligned with the implemented behavior.
+- [x] Implement user-driven read-only checks for PENDING/UNKNOWN/UNCONFIRMED history, preserving
+  the saved user/table/key and original/requested values, provider, timestamp, and outcome.
+- [x] Persist the latest observed value, observing provider, and time as separate optional metadata;
+  older history without this field remains readable.
+- [x] Preserve the difference between current-state readback and proof of termination. Matching
+  readback neither enables verified-only undo nor retires the root execution barrier.
+- [x] Keep restoration as a separately reviewed mutation with fresh conflict checks; no automatic
+  replay or falsely verified undo. Existing manual edits continue to provide this path.
+- [x] Validate lost final journal save/reopening, failed reads/saves, cancellation, concurrent edits,
+  provider/user/consent restrictions, stale restoration, and unresolved producer barriers on the host.
+- [x] Record required host gates and live emulator Root/UI checks with exact source/APK evidence.
+- [ ] Run the same checks on the ReSuKiSU physical device and validate live Shizuku reconciliation.
+- [ ] Exercise actual process death and lost completion on devices; reopening seeded/injected
+  journals is not evidence of a real interrupted producer.
+
+**Implementation, 2026-10-02:** `feat/settings-editor-reconciliation`, based on #543's merge
+(`1c0424f9`). History offers **Check current value** for uncertain records. The controller reads
+the saved table/user through one currently allowed Root or Shizuku session and atomically adds a
+`SettingsEditObservation`; it does not issue a settings write or invoke write admission. Both
+before access and before publication it checks consent, and cancellation/read/save failures leave
+the prior durable observation intact. Observations preserve absent, SQL null, empty, and literal
+values separately. A repeated explicit check replaces only the latest observation.
+
+The history card keeps the original result and provenance visible alongside the observation,
+its provider/time, and a note that the earlier change is still unverified. Wrong-user records and
+busy/unavailable/unconsented actions cannot request a check. The existing verified-only undo path
+is unchanged. Even a matching observation of an UNCONFIRMED entry leaves the independent
+`SettingsRootExecutionGate` intact, including across provider changes.
+
+This increment updates [the recovery follow-up](settings-editor-recovery.md). It does not add an
+automatic retry, a restore shortcut, or a mechanism to prove that an old producer terminated.
+
+**Validation, 2026-10-02:**
+
+- Required `./gradlew test lintFossDebug lintStoreRelease` gates and both FOSS debug APK builds
+  passed with JDK 21.0.12 (`--no-parallel --max-workers=2`). All **3,350 tests per FOSS/Store
+  variant** passed with zero failures or skips, including 14 new reconciliation cases and three
+  new persistence cases. Both app lint reports have no errors or warnings and no
+  `MissingTranslation`/`SyntheticAccessor` findings. Dependency insight resolves external
+  `com.trinadhthatakula:odin:1.1.0`; neither a composite Odin build nor Maven Local is selected.
+- Magisk emulator: **8/8 tests passed**, zero skips. `Odin_Magisk_API36_1`, Android 16/API 36.1,
+  ARM64, 16 KiB pages, Magisk 30.7, Android user 0; Thor used its existing app root authorization.
+  The run included `SettingsEditorReconciliationIntegrationTest` (3),
+  `SettingsEditorIntegrationTest` (1), `SettingsEditorDeadlineTest` (1), and
+  `SettingsEditorHistoryTest` (3), with `settingsEditorMode=ROOT`.
+- Metrics confirmed six persisted read-only observations, one refused stale restoration, and
+  retention of the synthetic unresolved barrier plus a consent refusal. Matching readback kept
+  uncertain outcomes and disabled undo. UI checks covered stored-user/provider/consent/busy
+  eligibility, observed provenance, shared GLOBAL scope, and absent/null/empty/literal rendering.
+- Instrumentation restored the selected provider and consent, history, disposable keys, and its
+  own synthetic receipt. Host comparison confirmed identical semantic hashes/counts for history
+  and root-execution journals and no new disposable keys in SYSTEM/SECURE/GLOBAL. No raw history
+  or settings-table values were exported. Installed APK hashes matched the built artifacts, and
+  the debug Home activity launched successfully afterward.
+- The ReSuKiSU phone disconnected before this increment's validation; final ADB inventory showed
+  only the emulator. **Physical Root and live Shizuku checks remain unrun.** Seeded uncertain
+  records, injected final-save failure, and a synthetic execution receipt are not evidence of
+  actual process death, lost completion, or hostile producer termination; those checks remain open.
+
+Evidence: `~/.codex/artifacts/thor-settings-reconciliation-2026-10-02/` contains `build-gates.log`,
+`host-validation.json`, `odin-dependency.log`, `emulator-environment.json`,
+`emulator-root-settings-acceptance.log`, `emulator-root-validation.json`, and
+`emulator-debug-home.png`. `tested-code-files.sha256` covers 1,024 source/build/resource inputs;
+its SHA-256 is `026a818f94af19a6ff07f36921fb3edd86bb8620f7292945050f6fcc0bbeef9a`.
+
+App APK SHA-256: `c820bba65cef34e344b961193f1f61fca2e87fd91a85c4c1d434428e1011c179`.
+Test APK SHA-256: `3fe1470e5adf797fec02a1bc90ac942fabcfdd159d544d75a4cdd7992c89f5f7`.
 
 ### M3-02: Typed Binder results and compact suspension readback
 
@@ -1323,6 +1380,7 @@ baseline row with results from a later commit.
 | M1-05 ownership | `7a8c9ac1` / #537 | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; binding lifecycle; clear-data regression | 3,188 JVM tests per variant; lint passed; 3/3 tests on each device |
 | M1-06 isolation | `eff6de65` / #538 | Host; Magisk API 36.1 users 0/10; ReSuKiSU API 36 user 0 | Required gates; replacement/death/rebind; cross-user held work; binding/clear regressions | 3,188 JVM tests per variant; lint passed; 12 emulator and 6 physical passes; expected interruptions separate |
 | M2-01 execution policy | `ad1fd5ee` / #539 | Host; Magisk API 36.1 user 0; ReSuKiSU API 36 user 0 | Required gates; explicit policy; cancellation/lease ordering on all lanes; boot identity; Settings watchdog and edit round trips | 3,223 JVM tests per variant; lint passed; 7 emulator and 7 physical passes; full evidence above |
+| M3-01 read-only reconciliation | `feat/settings-editor-reconciliation` | Host; Magisk API 36.1 user 0 | Required gates; persisted observations; stale restoration; retained barrier; cancellation and history UI | 3,350 JVM tests per variant; lint passed; 8/8 emulator passes; physical, Shizuku and actual process-death checks pending |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |

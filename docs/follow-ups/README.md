@@ -12,7 +12,7 @@ when they were written; they are not a current release gate.
 | --- | --- | --- |
 | [Odin 1.1.0 implementation plan and progress tracker](odin-1.1.0-implementation-plan.md) | Approved; implementation pending | Reliability and accurate root status first, followed by acknowledged cancellation and recovery. Tracks PR packages, dependencies, owners, implementation checklists, and device acceptance. |
 | [App preference editor](app-preference-editor.md) | Deferred by maintainer; not implemented | Edit the selected app's own preference files from app details surfaces. Separate from the global Sett Edit extension in #504; provider access and supported formats need assessment. |
-| [Sett Edit recovery and execution bounds](settings-editor-recovery.md) | Recovery proposed; bridge deadline implemented in PR #530 | Unverified records cannot use undo. The bridge now has a process watchdog; explicit reconciliation remains future work. |
+| [Sett Edit recovery and execution bounds](settings-editor-recovery.md) | Read-only checks implemented; host/emulator passed; physical/Shizuku and process-death checks pending | Explicitly observe uncertain entries without replaying writes, enabling undo, or clearing termination barriers. See M3-01 in the Odin plan for device evidence and remaining process-death checks. |
 | [Odin per-job cancellation API](odin-per-job-cancellation.md) | Shipped in Odin 1.1.0; initial Thor adoption merged in PR #531 | Historical API requirements and initial adoption evidence. Remaining outcome handling, workload adoption, and validation are tracked in the implementation plan above. |
 
 **Historical tiers.** `0/1` meant being built · `2` approved, not scheduled · `3` filed, decision still open ·

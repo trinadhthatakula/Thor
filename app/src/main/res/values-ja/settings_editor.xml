@@ -51,4 +51,8 @@
     <string name="sett_back">戻る</string>
     <string name="sett_answer">答え</string>
     <string name="sett_execution_unconfirmed">前の操作がまだ実行中の可能性があります。この設定を変更する前に端末を再起動してください。</string>
+    <string name="sett_check_current_value">現在の値を確認</string>
+    <string name="sett_observed_value">確認時の現在値</string>
+    <string name="sett_observation_source">%1$s で確認 · %2$s</string>
+    <string name="sett_observation_note">現在の値は、以前の変更が完了したことを示すものではありません。</string>
 </resources>
