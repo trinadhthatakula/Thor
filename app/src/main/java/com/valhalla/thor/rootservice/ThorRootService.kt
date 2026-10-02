@@ -5,16 +5,19 @@ package com.valhalla.thor.rootservice
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.PersistableBundle
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.gateway.userIdOf
 import com.valhalla.thor.data.source.local.DataClearOutcome
 import com.valhalla.thor.data.source.local.awaitDataObserver
 import com.valhalla.thor.domain.model.LEGACY_ROOT_SUSPENDER_IDENTITY
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
-import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.util.Logger
 import java.lang.reflect.InvocationTargetException
 
@@ -75,6 +78,8 @@ private const val PLATFORM_SUSPENDER_IDENTITY = "android"
  */
 @SuppressLint("PrivateApi", "SoonBlockedPrivateApi")
 class ThorRootService : RootService() {
+
+    private val packageDumpReader = BoundedPackageDumpReader()
 
     init {
         // This daemon runs in a separate :root (app_process) process where ThorApplication.onCreate
@@ -155,6 +160,21 @@ class ThorRootService : RootService() {
             override fun dumpPackage(packageName: String): String? {
                 this@ThorRootService.enforceCaller()
                 return this@ThorRootService.dumpPackage(packageName)
+            }
+
+            override fun getSuspensionStateForUser(
+                packageName: String?,
+                userId: Int,
+            ): SuspensionReadbackResult {
+                this@ThorRootService.enforceCaller()
+                val refusal = validateSuspensionReadRequest(packageName, userId, Binder.getCallingUid())
+                if (refusal != SuspensionReadbackProtocol.REASON_NONE) {
+                    return SuspensionSnapshot(SuspensionReadbackProtocol.STATUS_REFUSED, refusal)
+                        .toReadbackResult(packageName.orEmpty(), userId)
+                }
+                val target = requireNotNull(packageName)
+                return this@ThorRootService.readSuspensionState(target, userId)
+                    .toReadbackResult(target, userId)
             }
 
             override fun clearAppData(packageName: String): Boolean {
@@ -525,39 +545,58 @@ class ThorRootService : RootService() {
     }
 
     /**
-     * The identities the platform currently records as suspending [targetPackage] for [userId], or
-     * `null` when the dump could not be trusted.
-     *
-     * [userId] is the caller's, never this process's: `dumpsys package` prints every user's section
-     * and `parseSuspendingPackages` picks one, so passing the wrong number here turns a suspension
-     * that exists into an empty set — the exact shape of "unknown" the `null` below is here to keep
-     * separate from "nothing is recorded".
-     *
-     * The `null` is the entire point of this wrapper. `parseSuspendingPackages` cannot distinguish a
-     * package with no suspenders from a dump that was truncated, denied, or in a format nobody has
-     * seen — all three parse to an empty set — so "did we get a real dump?" has to be answered here,
-     * before anything interprets that emptiness. Without the header check an unreadable dump would
-     * parse empty and [unsuspendAllOf] would read it as "nothing left, we succeeded": the same
-     * empty-means-success lie this change exists to remove, one layer further down.
-     *
-     * `dumpsys package <pkg>` always prints a `Package [<pkg>] (…):` block for an installed package;
-     * a caller without `android.permission.DUMP` gets a `Permission Denial:` line instead, and a
-     * truncated dump gets neither.
+     * Legacy mutation verification uses the same strict snapshot as the typed read. Only an explicit
+     * NOT_SUSPENDED can become an empty verified set. A cross-user owner cannot be represented by
+     * this mutation API, which supplies the same user for suspender and target, so it stays unknown.
      */
-    private fun readSuspenders(targetPackage: String, userId: Int): Set<String>? {
-        val dump = dumpPackage(targetPackage) ?: return null
-        if (!dump.contains("Package [$targetPackage]")) {
-            Logger.w(
-                "Odin",
-                "dumpsys package $targetPackage returned no package block; suspender state unknown"
-            )
-            return null
+    private fun readSuspenders(targetPackage: String, userId: Int): Set<String>? =
+        readSuspensionState(targetPackage, userId).sameUserSuspendersOrNull(userId)
+
+    // Reached from the Binder stub's separate class; internal avoids SyntheticAccessor.
+    internal fun readSuspensionState(targetPackage: String, userId: Int): SuspensionSnapshot {
+        if (!SuspensionReadbackProtocol.isValidPackageIdentity(targetPackage) || userId < 0) {
+            return unknownSuspensionSnapshot(SuspensionReadbackProtocol.REASON_INVALID_ARGUMENT)
         }
-        return parseSuspendingPackages(dump, userId)
+        val read = packageDumpReader.read(targetPackage, userId) {
+            readCanonicalSuspensionState(targetPackage, userId)
+        }
+        val output = read.output ?: return unknownSuspensionSnapshot(read.reason)
+        val parsed = parseSuspensionDump(
+            output, targetPackage, userId, Build.VERSION.SDK_INT,
+            // Arbitrary third-party string dialogs can forge dump framing. Only Thor's fixed
+            // strings from our actual build identity or its shell path are accepted as text.
+            trustedStringOwners = setOf(packageName, SHELL_SUSPENDER_IDENTITY),
+        )
+        return verifySuspensionSnapshot(parsed, read.canonicalState, targetPackage, userId)
+    }
+
+    /** A direct typed framework answer prevents unescaped manifest metadata from forging state. */
+    internal fun readCanonicalSuspensionState(targetPackage: String, userId: Int): CanonicalSuspensionState? {
+        val binder = Class.forName("android.os.ServiceManager")
+            .getMethod("getService", String::class.java).invoke(null, "package") as IBinder
+        val pm = Class.forName("android.content.pm.IPackageManager\$Stub")
+            .getMethod("asInterface", IBinder::class.java).invoke(null, binder)
+        val pmClass = Class.forName("android.content.pm.IPackageManager")
+        val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES or
+            PackageManager.MATCH_DIRECT_BOOT_AWARE or PackageManager.MATCH_DIRECT_BOOT_UNAWARE
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pmClass.getMethod("getApplicationInfo", String::class.java, Long::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType).invoke(pm, targetPackage, flags.toLong(), userId)
+        } else {
+            pmClass.getMethod("getApplicationInfo", String::class.java, Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType).invoke(pm, targetPackage, flags, userId)
+        } as? ApplicationInfo ?: return null
+        return CanonicalSuspensionState(
+            packageName = info.packageName,
+            userId = userIdOf(info.uid),
+            installed = info.flags and ApplicationInfo.FLAG_INSTALLED != 0,
+            suspended = info.flags and ApplicationInfo.FLAG_SUSPENDED != 0,
+        )
     }
 
     /**
-     * Raw `dumpsys package <targetPackage>` output, or `null` when it could not be read.
+     * Legacy raw-dump slot, now bounded and unused by current suspension clients. Null on timeout,
+     * failed exit, incomplete output, or more than one MiB. Preserve its transaction number.
      *
      * This lives on the root side because `PackageManagerService.dump` gates on
      * `android.permission.DUMP` through `DumpUtils.checkDumpAndUsageStatsPermission`
@@ -569,26 +608,7 @@ class ThorRootService : RootService() {
      * argument and cannot be quoted out of; no escaping is applied because none would do anything.
      */
     // internal, not private — reached from a lambda's own class; see SyntheticAccessor in lint.xml.
-    internal fun dumpPackage(targetPackage: String): String? = runCatching {
-        val process = ProcessBuilder("dumpsys", "package", targetPackage)
-            .redirectErrorStream(true)
-            .start()
-        val output = try {
-            process.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            // This daemon outlives any single call, so the unused stdin pipe is closed here rather
-            // than left to finalization — one leaked fd per dump adds up over a long session.
-            process.outputStream.close()
-        }
-        val exitCode = process.waitFor()
-        if (exitCode != 0) {
-            Logger.w("Odin", "dumpsys package $targetPackage exited $exitCode")
-            return@runCatching null
-        }
-        output.takeIf { it.isNotBlank() }
-    }.onFailure { e ->
-        Logger.e("Odin", "Failed to dump package $targetPackage", e)
-    }.getOrNull()
+    internal fun dumpPackage(targetPackage: String): String? = packageDumpReader.read(targetPackage).output
 
     /**
      * Wipes [packageName]'s data **for [userId]**, which the caller has to name.

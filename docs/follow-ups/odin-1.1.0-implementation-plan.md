@@ -140,8 +140,8 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
 | M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
 | M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Selected input reads and archive icons merged; broader adoption pending |
-| M3-01 | Settings Editor reconciliation | M2-01 | Codex | [#544](https://github.com/trinadhthatakula/Thor/pull/544) | Merged #544 (`5efa1399`); live-writer emulator recovery and acknowledged cancellation on both devices validated below |
-| M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
+| M3-01 | Settings Editor reconciliation | M2-01 | Codex | [#544](https://github.com/trinadhthatakula/Thor/pull/544), [#545](https://github.com/trinadhthatakula/Thor/pull/545) | Merged through #545 (`95e1bdb5`); live-writer emulator recovery and acknowledged cancellation on both devices validated below |
+| M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Codex | [#546](https://github.com/trinadhthatakula/Thor/pull/546) | Compact readback implemented and validated; typed mutation results and wider IPC acceptance remain open |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
 
 **Starting pair:** M1-01 and M1-04 deliver independent reliability fixes. M1-05 can proceed in
@@ -1503,16 +1503,77 @@ ordinary production `SettingsEditorBridge` while it is inside a Settings provide
 
 ### M3-02: Typed Binder results and compact suspension readback
 
-- [ ] Design append-only typed AIDL results for service-confirmed/refused/unknown outcomes. Map
+- [x] Append a compact read-only AIDL result for explicit suspended/not-suspended/not-installed,
+  refused, and unknown outcomes; retain all six existing transaction slots and owner Android users.
+- [x] Return compact typed suspension-owner information for the requested Android user, with
+  bounded read/output and explicit unknown state, instead of arbitrary full package dumps.
+- [x] Bound the framework observation and dump producer to a five-second caller wait and one MiB
+  of output; retain admission until a timed-out worker actually exits.
+- [x] Validate package/user/version/owner bounds, require independent typed framework-state
+  agreement, and stop further writes after uncertain readback or Binder dispatch.
+- [x] Test truncation, oversized/malformed output, ambiguous dialog text, invalid requests,
+  user identity, synthetic transport failure, and no replay; run the real app path on both devices.
+- [ ] Design append-only typed AIDL **mutation** results for service-confirmed/refused/unknown outcomes. Map
   client-observed Binder death or `RemoteException` to explicit transport/uncertain execution
   states; a dead service cannot return its own terminal reply. Add operation identity only where
   accepted work requires tracking.
-- [ ] Define cooperative IPC deadline boundaries; do not present coroutine timeout or shell
+- [ ] Define cooperative **mutation** IPC deadline boundaries; do not present coroutine timeout or shell
   cancellation as cancellation of a Binder transaction.
-- [ ] Return compact typed suspension-owner information for the requested Android user, with
-  bounded read/output and explicit unknown state, instead of arbitrary full package dumps.
-- [ ] Test late success, missing observer callback, binder death after dispatch, no replay,
-  oversized/truncated/unparseable output, caller rejection, and user identity.
+- [ ] Test real late mutation success, missing observer callback, and Binder death after dispatch.
+- [ ] Extend live acceptance to an unauthorized Binder caller, secondary-user readback, older/OEM
+  formats, and minified Binder loading. The current minified build/keep check is a host check.
+
+#### M3-02 compact readback evidence (2026-10-03)
+
+Tested implementation and harness:
+[`f9e684e8`](https://github.com/trinadhthatakula/Thor/commit/f9e684e8d5ee965c083aa536d34002dcd5740ffe)
+in [#546](https://github.com/trinadhthatakula/Thor/pull/546), based on merged #545
+(`95e1bdb5f0772c92cc678a05a17ac5e36a71b3c6`). Subsequent documentation changes do not change
+the tested app or instrumentation sources.
+
+The new `getSuspensionStateForUser` transaction returns bounded metadata rather than a full dump.
+The root daemon compares strict supported-format parsing with a typed `ApplicationInfo` observation
+for the exact package/user. Missing sections, contradictory flags, timeout, overflow, old/null replies,
+and malformed transport remain unknown. Owner identities retain both package and suspending user;
+the existing mutation method cannot name a different owner user, so the gateway refuses that case
+before writing. A failed removal stops further owner calls and shell fallback; only readback can
+confirm the outcome. Legacy service verification uses the same strict state checks.
+
+The five-second wait covers framework observation, process startup, full output drain, and exit.
+Interrupting the waiting worker does not cancel a framework Binder call. A stalled worker retains
+the service's single read admission until it actually finishes, so later requests return busy/unknown
+instead of accumulating workers. The child uses argv execution and output is capped at one MiB;
+the wire result permits at most 64 bounded owner identities.
+
+Owner names still depend on supported dump framing, and the framework flags and dump are separate
+observations rather than an atomic snapshot. Resource/null dialogs and Thor's fixed string dialogs
+from its own or shell identity are supported; other custom/OEM string dialogs remain unknown.
+The canonical framework check prevents unescaped manifest metadata from manufacturing a negative
+suspension state. Typed mutation acknowledgements and recovery remain separate work.
+
+- Required `test lintFossDebug lintStoreRelease` gates passed with **3,396 JVM tests per FOSS/Store
+  variant**, zero failures/errors/skips. Lint had zero errors/warnings and no `MissingTranslation`
+  or `SyntheticAccessor` findings; 14 FOSS and 13 Store hint-level suggestions remain.
+- FOSS debug app/test APKs and the unsigned minified FOSS release built successfully. R8 mappings
+  retain the root service, AIDL interface and new parcelables. Published Odin **1.1.0** resolved
+  without a local Odin substitution. Device execution used the debug build.
+- Magisk 30.7 API 36.1 emulator (`emulator-5554`, ARM64, 16 KiB): **7/7 passed** — four new
+  readback/real multi-owner suspension checks, two clear-data regressions, one binding lifecycle check.
+- ReSuKiSU API 36 phone (`1da5425f`, POCO F7, ARM64, 4 KiB): the same **7/7 passed**. The debug
+  app also cold-launched successfully. No `adb root`, root-policy change, provider-preference change,
+  or phone reboot was needed. Both disposable fixtures were confirmed unsuspended and removed.
+- Generated Binder proxies preserved slots 1–6 and made only the appended read against a synthetic
+  old service. This is protocol compatibility evidence, not a real mutation-death experiment.
+- The initial host run failed only a new exception-identity assertion; coroutine stack-trace recovery
+  copies cancellation exceptions. The test now checks propagated cancellation and no subsequent
+  call, and the full gates passed on rerun. The phone initially refused fixture installation;
+  after the user unlocked it, installation and all checks passed. Both initial attempts are retained.
+
+App APK SHA-256: `ca20be5118eaf7111132b39cd692d59aa7ea85bca0fcc9f018f8e2782fc4fdbd`.
+Test APK SHA-256: `47e3a6880a387dc9ec8eb0913c76d26013089339b3fe44aab0df56d5e9342503`.
+Installed hashes matched both built artifacts on both devices. Evidence lives in
+`~/.codex/artifacts/thor-typed-suspension-readback-2026-10-03/`, including final/initial gate logs,
+test summaries, device logs, APKs, installed hashes, dependency and R8 checks, and source revision.
 
 ### M3-03: Diagnostics and documentation
 
@@ -1548,6 +1609,7 @@ baseline row with results from a later commit.
 | M3-01 read-only reconciliation | `98793e74` / #544 | Host; Magisk API 36.1 user 0 | Required gates; persisted observations; stale restoration; retained barrier; cancellation and history UI | 3,350 JVM tests per variant; lint passed; 8/8 initial emulator passes; follow-up below completes physical and post-acknowledgement death checks |
 | M3-01 physical and process-death follow-up | `c1d87205` / #544 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; ROOT/SHIZUKU; actual app death after acknowledged write | 3,350 JVM tests per variant; lint passed; physical 8 ROOT + 4 SHIZUKU + 1 recovery; emulator 8 ROOT + 1 recovery; live-producer death pending |
 | M3-01 live-writer follow-up | [`3d175607`](https://github.com/trinadhthatakula/Thor/commit/3d175607c4903de3306b4f58e692ef7562f572c8) / [#545](https://github.com/trinadhthatakula/Thor/pull/545); base `5efa1399` (#544) | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; real live writer, same-boot barrier, actual reboot recovery, hostile cancellation | 3,350 JVM tests per variant; lint passed; emulator 9 checks + 2 phases; physical 9 checks with ROOT/SHIZUKU refusal; interrupted attempts separate |
+| M3-02 compact readback | [`f9e684e8`](https://github.com/trinadhthatakula/Thor/commit/f9e684e8d5ee965c083aa536d34002dcd5740ffe) / [#546](https://github.com/trinadhthatakula/Thor/pull/546); base `95e1bdb5` (#545) | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; compact protocol; state/owner validation; real multi-owner suspension; clear/bind regressions | 3,396 JVM tests per variant; lint and minified build passed; 7/7 emulator and 7/7 physical checks; typed mutation acceptance remains open |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |

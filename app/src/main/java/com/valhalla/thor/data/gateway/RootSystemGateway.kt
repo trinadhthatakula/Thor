@@ -34,6 +34,8 @@ import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.data.gateway.root.RootCommand
 import com.valhalla.thor.data.gateway.root.OdinRootServiceBinding
 import com.valhalla.thor.data.gateway.root.RootServiceConnectionOwner
+import com.valhalla.thor.data.gateway.root.RootSuspensionReadback
+import com.valhalla.thor.data.gateway.root.RootSuspensionReadbackClient
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
@@ -44,7 +46,6 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeMode
-import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.RootAdmissionController
@@ -71,7 +72,7 @@ internal fun PrivilegeExecutionContext.forRootCommand(
  * One operation used to name three different users, and the third is the one that made the pinning
  * indefensible. The *write* was user 0 (`ThorRootService`'s own constant, plus an API-28 `pm suspend`
  * that named no user at all, which `PackageManagerShellCommand.runSuspend` seeds to
- * `UserHandle.USER_SYSTEM`). [readSuspenders] parsed user 0 to match it, so those two agreed. But
+ * `UserHandle.USER_SYSTEM`). The old owner parser read user 0 to match it, so those two agreed. But
  * [readSuspendedFlag] is `context.packageManager.getApplicationInfo`, an in-process query that can
  * only ever answer for **Thor's** user — and it is what decides the outcome on all four paths below,
  * including the early return that skips the unsuspend entirely.
@@ -744,7 +745,9 @@ class RootSystemGateway internal constructor(
      * the same number by construction rather than by luck.
      */
     private fun readSuspendedFlag(packageName: String): Boolean? =
-        getApplicationInfoCompat(packageName)?.let {
+        getApplicationInfoCompat(packageName)?.takeIf {
+            (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+        }?.let {
             (it.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
         }
 
@@ -812,11 +815,14 @@ class RootSystemGateway internal constructor(
             if (hasReflection) {
                 val service = getRootService()
                 if (service != null) {
-                    val taskResult = runCatching {
+                    val taskResult = try {
                         service.setAppSuspendedAsForUser(packageName, true, null, SUSPEND_USER_ID)
-                    }.onFailure { e ->
-                        Logger.e("RootSystemGateway", "AIDL suspend failed", e)
-                    }.getOrDefault(false)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        Logger.e("RootSystemGateway", "AIDL suspend outcome is uncertain", failure)
+                        false
+                    }
                     // `== true` and not a bare call: readSuspendedFlag answers null when the package
                     // cannot be read, and "could not tell" must not stand in for the daemon's own
                     // verified success.
@@ -870,19 +876,9 @@ class RootSystemGateway internal constructor(
     }
 
     /**
-     * Lifts every suspension recorded against [packageName], and says so only when a readback agrees.
-     *
-     * Two shapes, picked by whether the platform's record could be read at all:
-     *
-     *  1. **Record readable** — one `setAppSuspendedAsForUser(…, owner, …)` per recorded owner, then
-     *     a second read that has to come back empty. This is the rescue path for the user's
-     *     Shizuku-era suspensions and the only one that can name an identity Thor never wrote.
-     *  2. **Record unknown, empty included** — sweep the identities Thor could have written and let
-     *     `FLAG_SUSPENDED` be the sole judge. Reached when the daemon will not bind, when the dump
-     *     is denied or in a shape the parser has never seen, and on API 28, where there is no
-     *     reflection overload to name an owner with and none is needed: `setSuspended(false)` there
-     *     clears the single suspension slot whoever set it (android-9.0.0_r1
-     *     `PackageSettingBase.java:399-407`).
+     * Removes only owners from a complete typed read for Thor's Android user. Unknown, refused,
+     * stale-protocol and cross-user ownership cannot authorize a guessed sweep. A failed dispatched
+     * mutation ends further writes; only readback may establish its result, never a shell replay.
      */
     private suspend fun unsuspendPackage(
         packageName: String,
@@ -890,149 +886,95 @@ class RootSystemGateway internal constructor(
         hasReflection: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> {
-        // Already unsuspended — by us, by another tool, or never suspended at all. A *positive*
-        // false, not the fail-open shortcut this change deletes: an unreadable flag is null, which
-        // is neither true nor false and falls through to the full path. It also keeps a bulk
-        // unfreeze from paying a `dumpsys package` round trip per app that was never suspended.
         if (readSuspendedFlag(packageName) == false) {
             Logger.i("RootSystemGateway", "unsuspend $packageName: not suspended, no rung run")
             return Result.success(Unit)
         }
 
-        // The daemon is the only thing here that can read the record — `dumpsys package` is gated on
-        // android.permission.DUMP via DumpUtils.checkDumpAndUsageStatsPermission (android-16
-        // `PackageManagerService.java:6689`), which the app process does not hold — and the only
-        // thing that can name an arbitrary owner, since the reflective overload it calls does not
-        // exist before API 29.
+        val userId = SUSPEND_USER_ID
         val service = if (hasReflection) getRootService() else null
-
-        // Past the early return above, the package is either suspended or unreadable — so a parse
-        // that names nobody contradicts the flag and cannot be taken at face value. A dump in a
-        // shape this parser has never seen (an OEM that dropped the token, a format newer than this
-        // build) also parses to empty, and reading that as "nothing to remove, we are done" is the
-        // same empty-means-success lie one layer down. Empty is therefore unknown *here*, and falls
-        // through to the sweep rather than to a fabricated success.
-        val recorded = service?.let { readSuspenders(it, packageName) }?.takeIf { it.isNotEmpty() }
-
-        if (service != null && recorded != null) {
-            // One removal per recorded owner, and deliberately no break on the first accepted call:
-            // from API 30 `PackageUserState.suspendParams` is a map, so a package can carry several
-            // entries at once and stays suspended while any one of them survives. Each removal names
-            // the user the owners were read for, so what is lifted is what [readSuspenders] listed
-            // rather than user 0's same-named entries.
-            for (owner in recorded) {
-                val accepted = runCatching {
-                    service.setAppSuspendedAsForUser(packageName, false, owner, SUSPEND_USER_ID)
-                }.onFailure { e ->
-                    Logger.e("RootSystemGateway", "AIDL unsuspend of $packageName for one recorded owner failed", e)
-                }.getOrDefault(false)
-                if (!accepted) {
-                    Logger.w(
-                        "RootSystemGateway",
-                        "unsuspend $packageName: the daemon could not confirm one owner removal"
+        if (service != null) {
+            val reader = RootSuspensionReadbackClient(service)
+            val recorded = when (val readback = reader.read(packageName, userId)) {
+                RootSuspensionReadback.NotSuspended -> {
+                    return if (readSuspendedFlag(packageName) != true) Result.success(Unit)
+                    else unsuspendFailure(
+                        "Root unsuspend of $packageName is unverified: the service reports no " +
+                            "suspension for user $userId, but the package still reports FLAG_SUSPENDED."
                     )
                 }
-            }
-
-            val remaining = readSuspenders(service, packageName) ?: return unsuspendFailure(
-                "Root unsuspend of $packageName is unverified: the platform's suspension record " +
-                    "could not be read back after asking to remove ${recorded.size} record(s), so " +
-                    "Thor will not report a success it cannot see."
-            )
-            if (remaining.isNotEmpty()) {
-                return unsuspendFailure(
-                    "Root unsuspend of $packageName failed: ${remaining.size} suspension record(s) " +
-                        "remain after Thor asked to remove ${recorded.size}, so the app stays paused."
+                is RootSuspensionReadback.Suspended -> readback.owners
+                RootSuspensionReadback.NotInstalled -> return unsuspendFailure(
+                    "Root unsuspend of $packageName cannot proceed: the package is not installed " +
+                        "for user $userId."
+                )
+                is RootSuspensionReadback.Refused -> return unsuspendFailure(
+                    "Root unsuspend of $packageName cannot proceed: the service refused the " +
+                        "suspension read for user $userId."
+                )
+                is RootSuspensionReadback.Unknown -> return unsuspendFailure(
+                    "Root unsuspend of $packageName is unverified: suspension ownership could not " +
+                        "be read for user $userId. No removal was attempted."
                 )
             }
-            // The record names nobody, so the flag may only veto, never vouch: null here means the
-            // package could not be read, which the record has already answered for.
-            if (readSuspendedFlag(packageName) == true) {
+            // The legacy mutation method names one user for both target and owner. Retain the
+            // cross-user identity in the read result, but never flatten it into an unsafe write.
+            if (recorded.any { it.userId != userId }) {
                 return unsuspendFailure(
-                    "Root unsuspend of $packageName failed: removing ${recorded.size} suspender " +
-                        "record(s) left nothing recorded for user $SUSPEND_USER_ID, yet the " +
-                        "package still reports FLAG_SUSPENDED."
+                    "Root unsuspend of $packageName cannot proceed: a suspension belongs to " +
+                        "another Android user. No removal was attempted."
                 )
             }
-            Logger.i(
-                "RootSystemGateway",
-                "unsuspend $packageName: verified — ${recorded.size} suspender record(s) removed"
-            )
-            return Result.success(Unit)
-        }
 
-        // Unknown record. Sweep rather than guess: passing a null identity asks the daemon to clear
-        // every name Thor has written across its history, and the root shell's `pm unsuspend` clears
-        // the "root" entry left by a pre-GH#239 build or by the API-28 suspend path above
-        // (PackageManagerShellCommand passes "root" as the calling package for uid 0). Neither is
-        // allowed to *report* anything — an exit code of 0 is what the no-op returns — so the flag
-        // read below is the only judge, and both rungs therefore have to act on the user that flag
-        // answers for. That is what `--user $SUSPEND_USER_ID` and the fourth argument below are
-        // doing; `runSuspend` would otherwise seed `USER_SYSTEM` and the daemon would otherwise
-        // default to 0, neither of which is Thor's user in a work profile.
-        if (service != null) {
-            runCatching {
-                service.setAppSuspendedAsForUser(packageName, false, null, SUSPEND_USER_ID)
-            }.onFailure { e ->
-                Logger.e("RootSystemGateway", "AIDL unsuspend failed", e)
+            for (owner in recorded) {
+                val confirmed = try {
+                    service.setAppSuspendedAsForUser(packageName, false, owner.packageName, userId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    // Binder can die after dispatch. Stop here rather than rebinding, removing the
+                    // next owner, or replaying the mutation through pm. Read-only verification follows.
+                    Logger.e("RootSystemGateway", "AIDL owner removal outcome is uncertain", failure)
+                    break
+                }
+                // The legacy boolean cannot distinguish refusal from an unverified write. Both
+                // stop further mutations; the typed read and local flag below may still prove success.
+                if (!confirmed) break
+            }
+
+            val remaining = reader.read(packageName, userId)
+            val suspended = readSuspendedFlag(packageName)
+            return when {
+                remaining is RootSuspensionReadback.Suspended -> unsuspendFailure(
+                    "Root unsuspend of $packageName is unverified: ${remaining.owners.size} " +
+                        "suspension record(s) remain in the service readback."
+                )
+                suspended == false ||
+                    (remaining == RootSuspensionReadback.NotSuspended && suspended != true) ->
+                    Result.success(Unit)
+                else -> unsuspendFailure(
+                    "Root unsuspend of $packageName is unverified: readback did not confirm that " +
+                        "the suspension was removed for user $userId."
+                )
             }
         }
-        runCommand(
-            "pm unsuspend --user $SUSPEND_USER_ID $escapedPackage", execution, APP_UNSUSPEND,
+
+        // No Binder mutation was dispatched. Keep the historical single shell removal for API 28
+        // and a daemon that never bound, with the same-user public flag as its only success evidence.
+        val shell = runCommand(
+            "pm unsuspend --user $userId $escapedPackage", execution, APP_UNSUSPEND,
         )
+        if (shell.exceptionOrNull() is PrivilegeExecutionException) return shell
         return when (readSuspendedFlag(packageName)) {
-            false -> {
-                Logger.i(
-                    "RootSystemGateway",
-                    "unsuspend $packageName: verified via FLAG_SUSPENDED; the suspender record was " +
-                        "unreadable, so who owned it is unknown"
-                )
-                Result.success(Unit)
-            }
-
+            false -> Result.success(Unit)
             true -> unsuspendFailure(
-                "Root unsuspend of $packageName failed: it is still suspended after the direct " +
-                        "shell step and a sweep of every identity Thor records, and the platform's " +
-                    "record could not be read to find out which one owns it."
+                "Root unsuspend of $packageName failed: it is still suspended after the shell step."
             )
-
             null -> unsuspendFailure(
-                "Root unsuspend of $packageName is unverified: neither the platform's suspension " +
-                    "record nor the package's own ApplicationInfo could be read back."
+                "Root unsuspend of $packageName is unverified: the package's suspension state " +
+                    "could not be read back for user $userId."
             )
         }
-    }
-
-    /**
-     * The identities the platform records as suspending [packageName] for [SUSPEND_USER_ID], or
-     * `null` when the record could not be trusted.
-     *
-     * The `null` is the whole point of the wrapper. `parseSuspendingPackages` cannot tell a package
-     * with no suspenders from a dump that was truncated, denied, or in a shape nobody has seen — all
-     * three parse to an empty set — so "did we get a real dump?" is answered here, before anything
-     * reads meaning into that emptiness. `dumpsys package <pkg>` always prints a `Package [<pkg>]
-     * (…):` block for an installed package; a caller without `android.permission.DUMP` gets a
-     * `Permission Denial:` line instead, and a truncated dump gets neither.
-     *
-     * A daemon still running from an older build predates `dumpPackage` entirely. Binder answers an
-     * unknown transaction code with an empty reply parcel, which the generated proxy reads back as
-     * `null`, so that degrades into "unknown" here rather than into a mis-dispatch.
-     */
-    private fun readSuspenders(service: IThorRootService, packageName: String): Set<String>? {
-        val dump = runCatching {
-            service.dumpPackage(packageName)
-        }.onFailure { e ->
-            Logger.e("RootSystemGateway", "AIDL dumpPackage failed for $packageName", e)
-        }.getOrNull() ?: return null
-
-        if (!dump.contains("Package [$packageName]")) {
-            Logger.w(
-                "RootSystemGateway",
-                "Package suspender state could not be read for $packageName"
-            )
-            return null
-        }
-        return parseSuspendingPackages(dump, SUSPEND_USER_ID)
     }
 
     /**

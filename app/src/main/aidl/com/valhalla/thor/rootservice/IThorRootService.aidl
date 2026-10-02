@@ -1,5 +1,7 @@
 package com.valhalla.thor.rootservice;
 
+import com.valhalla.thor.rootservice.SuspensionReadbackResult;
+
 /**
  * The privileged surface the :root daemon exposes to the app process.
  *
@@ -114,4 +116,12 @@ interface IThorRootService {
      *   let the daemon apply its own fallback order.
      */
     boolean setAppSuspendedAsForUser(String packageName, boolean suspended, in @nullable String suspendingPackage, int userId);
+
+    /**
+     * Bounded suspension state and complete owner identities for one package and Android user.
+     * UNKNOWN never means not suspended. A null reply may identify an older daemon; clients must
+     * also handle Binder transport failure. This read does not dispatch or replay a mutation.
+     * Appended after all six legacy transactions, whose numbering and signatures must stay fixed.
+     */
+    @nullable SuspensionReadbackResult getSuspensionStateForUser(String packageName, int userId);
 }
