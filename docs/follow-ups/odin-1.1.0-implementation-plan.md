@@ -1723,6 +1723,15 @@ its original revision. Evidence: `~/.codex/artifacts/thor-pr547-ci-test-failure-
 including the failed CI log, focused/mutation results, `final-gates.log`,
 `source-revision.json`, and `validation-summary.json`.
 
+After [#548](https://github.com/trinadhthatakula/Thor/pull/548) merged, `dev` at
+`a13e761ab5d7e2c2d49ca9de57dc999412ab0809` was merged into #547 as
+[`f0ca834a830fccf3fd29019b20cd8ba4876aadfe`](https://github.com/trinadhthatakula/Thor/commit/f0ca834a830fccf3fd29019b20cd8ba4876aadfe).
+The same complete host gates passed again with Gradle **9.8.0**, AGP **9.5.0-alpha08**, and
+Robolectric **4.17**: **3,470 tests per variant**, zero failures/errors/skips, zero lint
+errors/warnings (9 FOSS / 8 Store hints), and successful debug assembly and AndroidTest compilation.
+The cancellation test and production code were unchanged by this merge. Results and source
+provenance are retained in the evidence directory's `merged-dev/` subdirectory; devices were not rerun.
+
 ### M3-03: Diagnostics and documentation
 
 - [ ] Add structured lifecycle/refresh/bind diagnostics without raw commands, setting values,
@@ -1761,6 +1770,7 @@ baseline row with results from a later commit.
 | M3-02 tracked clear-data | [`bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728`](https://github.com/trinadhthatakula/Thor/commit/bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728) / [#547](https://github.com/trinadhthatakula/Thor/pull/547); base `fdbfbbda2e3a0e5072829828474c8ae5592ab316` (#546) | Host; Magisk 30.7 API 36; ReSuKiSU v4.2.0-rc2 API 36 | Required gates; typed clear/query; real held observer and package barrier; no replay; suspension/binding regressions | 3,463 JVM tests per FOSS/Store Debug variant; lint and minified build passed; 8/8 emulator and 8/8 physical checks; live mutation-death and wider IPC acceptance remain open |
 | M3-02 journal initialization | [`ab9bf1e3`](https://github.com/trinadhthatakula/Thor/commit/ab9bf1e35901a8691d5ef822d4cb524bbe731ce5) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21 | Interrupted empty initialization; atomic backups; nonempty/invalid state refusal; required gates | 21 focused journal tests and 3,470 JVM tests per FOSS/Store Debug variant passed; lint passed; no device rerun |
 | M3-02 CI cancellation watchdog | [`8952fab2`](https://github.com/trinadhthatakula/Thor/commit/8952fab2f324f28b59fffe26925278d5eaeb8200) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21 | Real-clock cancellation guard; negative admission mutation; required gates; debug assembly and AndroidTest compile | Focused test and 3,470 JVM tests per FOSS/Store Debug variant passed; unsafe mutation rejected; lint passed; no device rerun |
+| M3-02 dev build integration | [`f0ca834a`](https://github.com/trinadhthatakula/Thor/commit/f0ca834a830fccf3fd29019b20cd8ba4876aadfe) / [#547](https://github.com/trinadhthatakula/Thor/pull/547); merged dev `a13e761a` (#548) | Host, JDK 21; Gradle 9.8.0; AGP 9.5.0-alpha08; Robolectric 4.17 | Required gates; debug assembly and AndroidTest compile after merging dev | 3,470 JVM tests per FOSS/Store Debug variant passed; lint passed; no device rerun |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
