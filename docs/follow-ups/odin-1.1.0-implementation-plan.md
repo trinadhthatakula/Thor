@@ -139,7 +139,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | Done |
 | M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
 | M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
-| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542) | Selected input reads merged; Archive icons validated on emulator; physical validation and broader adoption pending |
+| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Input reads merged; archive icons in review, emulator passed; physical validation and broader adoption pending |
 | M3-01 | Settings Editor reconciliation | M2-01 | Unassigned | — | Not started |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
@@ -293,8 +293,10 @@ source inputs; its manifest digest is
 **Current task, updated 2026-10-02:** selected preview/import reads merged in
 [#542](https://github.com/trinadhthatakula/Thor/pull/542) as `369520f7`, following M2-03 OBB
 placement in [#541](https://github.com/trinadhthatakula/Thor/pull/541). M2-04 now applies the same
-acknowledged staging owner to archive-icon reads, with a separate root deadline, cancellation
-cleanup, and retryable transient failures. The inventory below retains tar, extraction, final
+acknowledged staging owner to archive-icon reads in
+[#543](https://github.com/trinadhthatakula/Thor/pull/543), with a separate root deadline,
+cancellation cleanup, and retryable transient failures. Host gates and emulator checks passed;
+physical ReSuKiSU validation is pending reconnection. The inventory below retains tar, extraction, final
 restore mutations, and cache deletion until their resource and recovery contracts are ready.
 The broader device acceptance matrix, live Shizuku OBB placement, and M1-04 post-dispatch
 transport/deadline fault injection remain open.
@@ -1190,8 +1192,9 @@ Test APK SHA-256: `4e6e7ce778472cd11ee16cbb493aec769d4097f1e4b2a2db72f5d1d82ba06
 
 ### M2-04 archive-icon increment
 
-**Implementation, 2026-10-02:** `feat/odin-archive-icon-staging`, based on #542's merge
-(`369520f7`). `ArchiveIconFetcher` now delegates generated fallback reads to
+**Implementation, 2026-10-02:** `67a980e6` on `feat/odin-archive-icon-staging` in
+[#543](https://github.com/trinadhthatakula/Thor/pull/543), based on #542's merge (`369520f7`).
+`ArchiveIconFetcher` now delegates generated fallback reads to
 `SystemRepository.copyFileForRead`, preserving provider selection and the acknowledged private
 root-staging contract above. The root command uses ARCHIVE / `input.archive-icon` and a
 30-second deadline. Staging remains capped at 256 MiB even when provider length is unknown;
