@@ -141,7 +141,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
 | M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Selected input reads and archive icons merged; broader adoption pending |
 | M3-01 | Settings Editor reconciliation | M2-01 | Codex | [#544](https://github.com/trinadhthatakula/Thor/pull/544), [#545](https://github.com/trinadhthatakula/Thor/pull/545) | Merged through #545 (`95e1bdb5`); live-writer emulator recovery and acknowledged cancellation on both devices validated below |
-| M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Codex | [#546](https://github.com/trinadhthatakula/Thor/pull/546) | Compact readback implemented and validated; typed mutation results and wider IPC acceptance remain open |
+| M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Codex | [#546](https://github.com/trinadhthatakula/Thor/pull/546), [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Compact readback and tracked clear-data implemented and validated; wider mutation/IPC acceptance remains open |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
 
 **Starting pair:** M1-01 and M1-04 deliver independent reliability fixes. M1-05 can proceed in
@@ -1522,6 +1522,7 @@ ordinary production `SettingsEditorBridge` while it is inside a Settings provide
 - [x] Bound clear-data observation across preparation, dispatch and callback while retaining unfinished work.
 - [ ] Extend cooperative **mutation** IPC deadline boundaries beyond clear-data; do not present coroutine timeout or shell
   cancellation as cancellation of a Binder transaction.
+- [x] Validate real delayed clear-data acknowledgement and read-only reconciliation without another wipe on both devices.
 - [ ] Test real late mutation success, missing observer callback, and Binder death after dispatch.
 - [ ] Extend live acceptance to an unauthorized Binder caller, secondary-user readback, older/OEM
   formats, and minified Binder loading. The current minified build/keep check is a host check.
@@ -1623,11 +1624,63 @@ and cannot become another wipe;
 a subsequent explicit gesture may create a new request after settlement. Global operations do not
 query every pending package: targeted reconciliation must first retire PREPARED or late terminal records.
 
-- [ ] Run the new real typed clear/query and held-observer checks on the Magisk emulator.
-- [ ] Run the same checks on the ReSuKiSU physical device.
+- [x] Run the new real typed clear/query and held-observer checks on the Magisk emulator.
+- [x] Run the same checks on the ReSuKiSU physical device.
 - [ ] Exercise actual app/service death during a clear and same-boot/different-boot recovery on devices.
 - [ ] Extend beyond delayed observer delivery to missing observer and hostile dispatch/death cases.
 - [ ] Add dedicated recovery visibility and resolve bounded history capacity UX.
+
+#### M3-02 tracked clear-data evidence (2026-10-03)
+
+Tested implementation and harness:
+[`bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728`](https://github.com/trinadhthatakula/Thor/commit/bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728)
+in [#547](https://github.com/trinadhthatakula/Thor/pull/547), based on merged #546
+(`fdbfbbda2e3a0e5072829828474c8ae5592ab316`). The evidence update changes documentation only.
+The 1,053-input source manifest has SHA-256
+`4a552489cd80c4a486d858a745356e16dc7234a034c81c34d7d5b42112b6d205`.
+
+- Required `test lintFossDebug lintStoreRelease` gates passed with **3,463 JVM tests per FOSS/Store
+  Debug variant**, zero failures/errors/skips. Lint had zero errors/warnings and no
+  `MissingTranslation` or `SyntheticAccessor` findings; 14 FOSS and 13 Store hints remain.
+  The final build used JDK 21, one Gradle worker, and disabled parallel compilation after an
+  earlier Kotlin compiler heap exhaustion; repository build settings were unchanged.
+- FOSS debug app/test APKs and the unsigned minified FOSS release built successfully. R8 mappings
+  retain `ThorRootService`, `IThorRootService`, `RootDataClearResult`, and `RootDataClearLedger`.
+  Published Odin **1.1.0** resolved without a local Odin project substitution. Minified execution
+  on a device remains pending.
+- Magisk **30.7** emulator (`emulator-5554`, `Odin_Magisk_API36_1`, Android 16/API 36,
+  ARM64, 16 KiB): **8/8 passed**, comprising three typed-clear checks, four suspension regressions,
+  and one binding regression, with no skips.
+- ReSuKiSU **v4.2.0-rc2 / 35159** phone (`1da5425f`, POCO F7 / `25053PC47G`, Android 16/API 36,
+  ARM64, 4 KiB): the same **8/8 passed**, with no skips. The phone initially refused fixture
+  installation while locked; after the user unlocked it, installation and the complete suite passed.
+- Both debug apps cold-launched successfully, installed APK hashes matched the retained artifacts,
+  and the disposable `com.valhalla.thor.audit.cleardata` fixture was removed from both devices.
+  No `adb root`, root-policy change, provider-preference change, or phone reboot was needed.
+
+The typed-clear checks invoke the real gateway/API, verify that a clear removes fixture data,
+and confirm that read-only lookup and a duplicate retained request preserve newly written data.
+The held-observer fixture waits for Android's real callback, then delays delivery to the ledger.
+It verifies retained package ownership and late reconciliation without another wipe. This establishes
+late acknowledgement after the real clear, not death or continued filesystem mutation during the hold.
+
+The first emulator held-observer attempt used the wrong Binder interface token. After fixing the
+fixture descriptor, a verified emulator reboot retired the uncertain attempt before rerunning;
+unresolved journal metadata was not deleted or edited. Earlier host compile/fixture lookup issues
+and eager Android-storage initialization failures were corrected before the successful final gates.
+Initial attempts and the corrected final logs are retained separately.
+
+App APK SHA-256: `4224b8fcbe904ff9b7e59ba4cd0b9e4c1b4591c76a49572a58093bad9e85df2b`.
+Test APK SHA-256: `a185736bd73611562fbebc6d26bf43d0b642b6dcb63dc30f93d61da8c071ef6e`.
+Evidence lives in `~/.codex/artifacts/thor-typed-root-data-clear-2026-10-03/`, including
+`committed-source-gates.log`, `validation-summary.json`, `source-revision.json`,
+`source-inputs.json`, `emulator-final-results.json`, `physical-final-results.json`, their raw logs,
+device environment records, the reboot record, lint reports, and APKs. The `*-final-*` results
+identify the committed artifacts; earlier unsuffixed attempts are not the final acceptance evidence.
+
+Actual app/service death during an in-flight clear, missing-observer/hostile dispatch cases,
+minified device execution, recovery/history-capacity UX, and asynchronous installer completion
+ownership remain open. This slice does not close the broader M3-02 acceptance checklist.
 
 ### M3-03: Diagnostics and documentation
 
@@ -1664,6 +1717,7 @@ baseline row with results from a later commit.
 | M3-01 physical and process-death follow-up | `c1d87205` / #544 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; ROOT/SHIZUKU; actual app death after acknowledged write | 3,350 JVM tests per variant; lint passed; physical 8 ROOT + 4 SHIZUKU + 1 recovery; emulator 8 ROOT + 1 recovery; live-producer death pending |
 | M3-01 live-writer follow-up | [`3d175607`](https://github.com/trinadhthatakula/Thor/commit/3d175607c4903de3306b4f58e692ef7562f572c8) / [#545](https://github.com/trinadhthatakula/Thor/pull/545); base `5efa1399` (#544) | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; real live writer, same-boot barrier, actual reboot recovery, hostile cancellation | 3,350 JVM tests per variant; lint passed; emulator 9 checks + 2 phases; physical 9 checks with ROOT/SHIZUKU refusal; interrupted attempts separate |
 | M3-02 compact readback | [`f9e684e8`](https://github.com/trinadhthatakula/Thor/commit/f9e684e8d5ee965c083aa536d34002dcd5740ffe) / [#546](https://github.com/trinadhthatakula/Thor/pull/546); base `95e1bdb5` (#545) | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; compact protocol; state/owner validation; real multi-owner suspension; clear/bind regressions | 3,396 JVM tests per variant; lint and minified build passed; 7/7 emulator and 7/7 physical checks; typed mutation acceptance remains open |
+| M3-02 tracked clear-data | [`bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728`](https://github.com/trinadhthatakula/Thor/commit/bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728) / [#547](https://github.com/trinadhthatakula/Thor/pull/547); base `fdbfbbda2e3a0e5072829828474c8ae5592ab316` (#546) | Host; Magisk 30.7 API 36; ReSuKiSU v4.2.0-rc2 API 36 | Required gates; typed clear/query; real held observer and package barrier; no replay; suspension/binding regressions | 3,463 JVM tests per FOSS/Store Debug variant; lint and minified build passed; 8/8 emulator and 8/8 physical checks; live mutation-death and wider IPC acceptance remain open |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
