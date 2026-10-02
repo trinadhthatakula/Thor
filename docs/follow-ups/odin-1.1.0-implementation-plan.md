@@ -138,8 +138,8 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M1-06 | RootService profile isolation | M1-05 test fixture recommended | Codex | [#538](https://github.com/trinadhthatakula/Thor/pull/538) | Done |
 | M2-01 | Execution policy and complete outcomes | Milestone 1 | Codex | [#539](https://github.com/trinadhthatakula/Thor/pull/539) | Done |
 | M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
-| M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | In review |
-| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Unassigned | — | Not started |
+| M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
+| M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542) | Selected input reads in review; broader adoption pending |
 | M3-01 | Settings Editor reconciliation | M2-01 | Unassigned | — | Not started |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
@@ -290,13 +290,16 @@ Local evidence: `~/.codex/artifacts/thor-odin-refresh-admission-2026-10-01/` —
 source inputs; its manifest digest is
 `1ac43c0433a22b577916b531d181c22e434782a76a0885b418e895ff92306e8c`.
 
-**Next task, updated 2026-10-02:** M2-02 export staging merged in
-[#540](https://github.com/trinadhthatakula/Thor/pull/540) as `1fdda745`. M2-03 OBB placement is
-implemented and validated on the Magisk emulator and ReSuKiSU phone in
-[#541](https://github.com/trinadhthatakula/Thor/pull/541). After it merges, continue M2-04 selected
-archive/cache/import adoption, starting with each workload's ownership and recovery contract.
-The broader device acceptance matrix, live Shizuku OBB placement, and M1-04 post-dispatch
-transport/deadline fault injection remain open.
+**Current task, updated 2026-10-02:** M2-03 OBB placement merged in
+[#541](https://github.com/trinadhthatakula/Thor/pull/541) as `e449623c`, following M2-02 export
+staging in [#540](https://github.com/trinadhthatakula/Thor/pull/540) (`1fdda745`). M2-04 now adopts
+generated installer-preview and archive-import staging; implementation is on
+[#542](https://github.com/trinadhthatakula/Thor/pull/542), with required host gates and selected-input checks passing on both
+the Magisk emulator and ReSuKiSU phone. Its candidate inventory
+below keeps tar, extraction, final restore mutations, cache deletion, and archive-icon adoption
+separate until their resource and recovery contracts are ready. The broader device acceptance
+matrix, live Shizuku OBB placement, and M1-04 post-dispatch transport/deadline fault injection
+remain open.
 
 ### M1-04: Data-clear fallback correction
 
@@ -889,6 +892,10 @@ The follow-up source manifest covers 1,010 inputs with digest
 [#541](https://github.com/trinadhthatakula/Thor/pull/541), based on #540's merge (`1fdda745`).
 Subsequent review fixes and their validation are recorded below.
 
+**Merged, 2026-10-02:** #541 is integrated into `dev` at
+`e449623ca908d2a4bb3a314ef105541440ab2e54`. The recorded host and root-device acceptance below
+covers this package; its explicitly unrun scenarios remain open.
+
 `ObbPlacementStaging` owns unique sources at `externalFilesDir/obb_placement/<UUID>/` outside
 cache cleanup, with private receipts at `noBackupFilesDir/obb_placement/<package>/receipt.json`.
 The external source location preserves access for the existing Shizuku path. Metadata includes
@@ -1067,16 +1074,118 @@ Test APK SHA-256: `04ec82ac1d7ec9e250735c696bafb4be06c8981ddb93b81cee9ee622a10e9
 
 ### M2-04: Selected archive/cache/import adoption
 
-- [ ] Inventory each candidate's state needs, affected resources, output bounds, deadlines, and
+- [x] Inventory each candidate's state needs, affected resources, output bounds, deadlines, and
   recovery behavior before opting it in.
 - [ ] Expand to suitable tar/extract/chown/restorecon/cache jobs only after copy validation;
   preserve package leases and mount visibility.
-- [ ] Add explicit policies to generated preview/import staging in `AppAnalyzerImpl` and
+- [x] Add explicit policies to generated preview/import staging in `AppAnalyzerImpl` and
   `UriArchiveSourceFactory`; retain unique temporary paths and content-resolver handling.
+- [x] Pin one selected provider throughout each privileged input copy and its cleanup; never
+  replay a failed or uncertain copy through another provider.
+- [x] Reuse private receipt-backed root staging, validate stopped payloads before promotion,
+  retain uncertain work outside ordinary cache cleanup, and preserve preview byte limits.
+- [x] Guard archive-source ownership when no descriptor is available; propagate cancellation
+  and delete private copies that cannot be returned to their caller.
+- [x] Record required host gates, resolved Odin dependency, and exact tested source/artifacts.
+- [x] Validate both selected root entry points on the Magisk emulator and ReSuKiSU phone;
+  record acknowledged cancellation, cleanup ordering, independent INTERACTIVE work, and safe
+  subsequent work. Independent concurrent archive copies are covered by host tests.
 - [ ] Validate each workload's child termination, cleanup, uncertainty, and concurrent operation
   behavior. Do not infer all workloads passed from one copy test.
-- [ ] Keep destructive restore commit phases and PackageInstaller cancellation deferred until
-  their accepted-work/recovery contracts are independently designed and validated.
+- [ ] Adopt archive-icon staging separately after covering cancellation, the existing byte
+  budget, concurrent list fetches, and transient failures versus persistent icon-miss caching.
+- [ ] Design and validate accepted-work/recovery contracts before enabling cancellation of
+  destructive restore commit phases or PackageInstaller work.
+
+**Selected implementation, 2026-10-02:** `feat/odin-staging-adoption`, based on #541's merge
+(`e449623c`). Implementation `9e696a88` is in
+[#542](https://github.com/trinadhthatakula/Thor/pull/542); validation evidence is recorded below. This increment covers the generated
+fallback copies in `AppAnalyzerImpl` and `UriArchiveSourceFactory`. It does not complete the
+broader archive/cache workload adoption.
+
+| Candidate | Existing state and resources | Bounds and lifetime | Decision and remaining contract |
+| --- | --- | --- | --- |
+| Installer preview | Provider stream first; one unique private bundle survives until install or discard. Metadata and installation must use those same bytes. | Preserve the 4 GiB input budget. Generated reads use ARCHIVE / `input.preview`, with a root command deadline of at most nine minutes. | Selected. Bound privileged staging to budget plus one detection byte; enforce the final app-copy budget too. Promote root bytes only after acknowledged completion. |
+| Archive import/open | Prefer retained FD access; provider stream and unique cache copy are fallbacks. The returned source owns its FD/ZIP/cache lifetime. | No new archive-size cap. Generated reads use ARCHIVE / `input.archive`, with a root command deadline of at most nine minutes. | Selected. Retain invalid-ZIP classification, independent per-open files, and cleanup before cancellation can discard ownership. |
+| Tar creation and staged-file ownership | Backup already holds a package lease. Tar writes a package/class-named staging file, followed by ownership adjustment and encryption; both gateway and caller clean that file. | Current tar commands have no explicit deadline. Preserve sizing/free-space checks, mount visibility, and nonempty exit-1 warning semantics. | Deferred. Hold the source snapshot lease and output through acknowledgement, move uncertain output beyond ordinary cleanup, and prevent the uncompressed retry from replaying uncertain execution. The export helper's exit-0-only promotion contract cannot be applied unchanged. |
+| Restore extraction | Restore holds a package lease, but extraction resets shared `<class-root>/.thorbak-staging` and reads a decrypted tar owned by its caller. | Current extraction has no explicit command deadline; preserve member validation and same-volume staging. | Deferred. Retain the tar until termination is acknowledged and block reuse/deletion of shared staging after uncertain execution, including across restart. |
+| Final swap, chown, restorecon, and cache deletion | These mutate live app data, ownership/labels, or cache trees. Their affected user/package scope can exceed an individual temporary file. | Existing command/provider behavior remains. New deadlines need workload-specific partial-effect handling and output limits. | Deferred. Design durable uncertainty barriers and accepted-work recovery before opting in; cancellation cannot imply rollback. PackageInstaller/Binder work requires its own contract. |
+| Archive-icon fallback (`ArchiveIconLoader`) | Unique temporary archive copy, installed-icon/cache shortcuts, and a persistent `.none` marker when extraction returns no icon. Coil cancels fetches during list scrolling. | Preserve the 256 MiB staging limit, direct-readable-file path, and `.thorbak` staging refusal; choose a separate fetch deadline/admission policy. | Separate follow-up. The new helper can be reused, but transient admission/uncertain completion must not become a permanent icon miss. Validate rapid cancellation and overlapping fetches before adoption. |
+
+`SystemRepository.copyFileForRead` resolves the gateway once, preserving preferred independent
+providers even when root is available. Its root branch uses `RootExportStaging` under
+`noBackupFilesDir/root_read_staging/<UUID>/`, with precreated app-owned payloads, durable pending
+receipts, and isolated execution. Validation and promotion require recorded `EXITED`, exit 0,
+started work, and confirmed termination/output drain. A missing or uncertain outcome retains
+the private workspace; another read gets a new identity without replay. Reclamation requires
+acknowledged cleanup or a different known boot, and excludes active workspaces. Receipts contain
+identity/lifecycle metadata, not input paths, commands, output, or raw errors.
+
+Non-root providers retain their unique `/data/local/tmp` route and existing synchronous process
+behavior, with cleanup bound to the same selected gateway. Their temporary cleanup remains best
+effort, and the existing shared-location exposure remains. Root acknowledgement, deadlines, and
+child-termination guarantees do not apply to this branch. App-copy cancellation checkpoints and
+byte checks also do not cancel a ContentResolver read or accepted Binder work.
+
+The direct provider/FD paths remain available without privileged admission. Preview still stages
+the URI only once, and archive-source ownership now covers the descriptor-null fallback as well
+as the FD path. The new 24 host tests cover provider/read-once behavior, byte equality,
+invalid ZIPs, per-open ownership, overlapping archive copies, bounds, deadlines, observer order,
+uncertain retention/no replay, and cancellation including the descriptor-null handoff.
+
+**Selected-input acceptance, 2026-10-02:** JDK 21.0.12; the full command
+`./gradlew test lintFossDebug lintStoreRelease :app:assembleFossDebug :app:assembleFossDebugAndroidTest --no-parallel --max-workers=2`
+passed. Each FOSS/Store unit-test variant passed 3,318 tests with zero failures/errors/skips.
+Lint reported zero errors/warnings and no `MissingTranslation` or `SyntheticAccessor` findings
+(14 FOSS and 13 Store hints). Dependency insight resolved the external published
+`com.trinadhthatakula:odin:1.1.0` AAR without a project substitution; no local Odin override was used.
+
+| Environment | Selected input checks | Regression checks | Result |
+| --- | --- | --- | --- |
+| `Odin_Magisk_API36_1`, Magisk 30.7, API 36.1, ARM64, 16 KiB pages, user 0 | Protected APK preview and archive open; real FD close; separate preview/archive partial-read cancellations | Two root-export checks and five explicit-policy/admission checks | 12/12 passed, zero skips; installed APK hashes verified; Home launch passed |
+| POCO F7 `25053PC47G`, ReSuKiSU v4.2.0-rc2 (35159), API 36, ARM64, 4 KiB pages, user 0 | The same five production entry-point checks | The same seven regression checks | Final unchanged-APK rerun 12/12 passed, zero skips; installed APK hashes verified; Home launch passed |
+
+The preview fixture used the installed 2,059,851-byte test APK and checked real PackageManager
+metadata plus SHA-256 equality. Archive checks preserved exact ZIP bytes and entries and released
+their actual FD/cache owners. Each cancellation waited for a real 1,024-byte FIFO prefix before
+cancelling. A held outcome observer proved that the durable CANCELLED receipt, private payload,
+and input inode/open writer survived acknowledgement handling; a concurrent sweep retained active
+work. After release, no output was published, the receipt/payload disappeared, cancellation
+propagated, and the same ARCHIVE shell accepted exactly one subsequent command without replay.
+INTERACTIVE remained usable during each blocked read. In the final runs, preview/archive
+cancellation-to-acknowledgement observations were 93/56 ms on the emulator and 303/306 ms on the
+phone; these are observations, not timing assertions or performance guarantees.
+
+Both final runs began and ended with no private staging/test fixtures. Thor debug and test APKs
+remain installed. Only the phone's Thor provider preference was temporarily changed from Shizuku
+to Root and then restored to Shizuku, verified in the saved preference; no `adb root`, shell-root
+grant, or root-manager policy change was used.
+
+**Validation history and limits:** the initial phone run stopped all five new tests before fixture
+creation because Shizuku was selected; the root regressions still passed. With Root selected, a
+preview fixture's unnecessary root `chmod` hit `ShellLaneBusy` before the read. Setup now uses
+`Os.chmod` on its app-owned inode, retaining the direct-read denial assertion and live root copy.
+After rebuilding, all five new tests passed on both devices. One existing
+`explicitPolicyIsIndependentOfCommandClassAndLane` run on the phone reported
+`RootAdmissionUnavailable` during its cleanup; a full rerun with identical APK hashes passed all
+12 checks. Both logs are retained. This does not establish why freshness changed, nor prove the
+existing regression test is free of intermittent startup/refresh contention.
+
+- [ ] Investigate that existing policy test's intermittent admission/cleanup failure under
+  concurrent startup/refresh; preserve a primary test failure if cleanup also fails.
+- [ ] Validate live Shizuku copies, storage exhaustion, process-death/uncertain receipt recovery,
+  and multiple Android users for these entry points. Host outcome injection is not device proof.
+- [ ] Validate the deferred workloads independently before adopting them; the passing input-read
+  tests do not establish cancellation safety for tar, extraction, final restore mutation, or caches.
+
+Evidence: `~/.codex/artifacts/thor-odin-input-staging-2026-10-02/` — `build-gates-final.log`,
+`host-validation.json`, `dependency-insight.log`, `tested-code-files.sha256`,
+`emulator-final-validation.json`, `physical-acceptance-validation.json`, corresponding
+instrumentation/fixture/launch logs, the earlier phone failure logs, environment records,
+`physical-provider-restored.json`, and screenshots. The 1,019-input source manifest SHA-256 is
+`35709bbad5bd0e039d3395d8e7fd1da3b191d60bbd01e3a37cd45ee3aef95a07`.
+App APK SHA-256: `3e3431a532c14427d2a043c0fae338be3d45e76b272f1841a463daa164276d81`.
+Test APK SHA-256: `4e6e7ce778472cd11ee16cbb493aec769d4097f1e4b2a2db72f5d1d82ba06d7c`.
 
 ## Milestone 3 — recovery and IPC improvements
 

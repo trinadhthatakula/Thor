@@ -208,6 +208,13 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         execution: PrivilegeExecutionContext,
     ) = record("reinstallAppWithGoogle:$packageName", execution)
 
+    override suspend fun copyFileForRead(
+        sourcePath: String,
+        destination: java.io.File,
+        maxBytes: Long?,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = Result.failure(UnsupportedOperationException("No staged read configured"))
+
     override suspend fun copyFileWithRoot(
         sourcePath: String,
         destinationPath: String,

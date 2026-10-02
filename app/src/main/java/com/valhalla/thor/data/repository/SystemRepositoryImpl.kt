@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.repository
 
+import android.content.Context
 import android.os.Environment
 import android.os.SystemClock
 import com.valhalla.thor.BuildConfig
@@ -33,6 +34,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -81,6 +83,7 @@ internal suspend inline fun <T> resultPreservingCancellation(
 
 @Single(binds = [SystemRepository::class, AppDataProbe::class])
 class SystemRepositoryImpl(
+    context: Context,
     private val rootGateway: RootSystemGateway,
     private val shizukuGateway: ShizukuSystemGateway,
     private val dhizukuGateway: DhizukuSystemGateway,
@@ -89,6 +92,8 @@ class SystemRepositoryImpl(
     rootAvailability: RootAvailabilityProvider,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemRepository, AppDataProbe {
+
+    private val readStaging = PrivilegedReadStaging(context)
 
     private val activeGatewayResolver = ActiveGatewayResolver(
         preferredMode = {
@@ -294,6 +299,24 @@ class SystemRepositoryImpl(
             }
         } else {
             Result.failure(Exception("Root required for privileged copy"))
+        }
+    }
+
+    override suspend fun copyFileForRead(
+        sourcePath: String,
+        destination: File,
+        maxBytes: Long?,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = withContext(ioDispatcher) {
+        // Resolve once. A preference/availability change during a copy cannot move its cleanup
+        // onto another provider, and a failed or uncertain copy is never replayed elsewhere.
+        runGatewayAction(execution) { gateway ->
+            readStaging.copy(
+                sourcePath, destination, maxBytes, execution,
+                isRoot = gateway === rootGateway,
+                execute = gateway::executeShellCommand,
+            )
+            Result.success(Unit)
         }
     }
 
