@@ -96,6 +96,12 @@ class PackageOperationBusy(val owner: PackageOperationOwner) :
 class ObbPlacementUnresolved(val packageName: String, cause: Throwable? = null) :
     PrivilegeExecutionException("Game data placement could not be confirmed for $packageName", cause)
 
+class RootDataClearUnresolved(val packageName: String, cause: Throwable? = null) :
+    PrivilegeExecutionException(
+        "Clear-data completion is unknown for $packageName; conflicting package operations remain blocked",
+        cause,
+    )
+
 class ShellLaneUnavailable(val lane: PrivilegeExecutionLane, cause: Throwable? = null) :
     PrivilegeExecutionException("Root shell lane unavailable: $lane", cause)
 

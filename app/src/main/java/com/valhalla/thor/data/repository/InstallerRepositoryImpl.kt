@@ -38,6 +38,7 @@ import com.valhalla.thor.domain.model.supportsLowTargetSdkBypass
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
+import com.valhalla.thor.domain.repository.PackageOperationBarrier
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
@@ -91,7 +92,25 @@ class InstallerRepositoryImpl(
     // Only installWithExternal() uses this: handing the URI to the system's installer chooser is a
     // UI hand-off, so it stays on main. Note this is plain Main, not Main.immediate.
     @Named("main") private val mainDispatcher: CoroutineDispatcher,
+    private val packageOperationBarrier: PackageOperationBarrier,
 ) : InstallerRepository {
+
+    /** Production uses the primary constructor's required barrier; isolated callers retain this seam. */
+    constructor(
+        context: Context,
+        eventBus: InstallerEventBus,
+        rootGateway: RootSystemGateway,
+        shizukuReflector: ShizukuReflector,
+        preferenceRepository: PreferenceRepository,
+        obbInstaller: ObbInstaller,
+        packageOperationCoordinator: PackageOperationCoordinator,
+        ioDispatcher: CoroutineDispatcher,
+        mainDispatcher: CoroutineDispatcher,
+    ) : this(
+        context, eventBus, rootGateway, shizukuReflector, preferenceRepository, obbInstaller,
+        packageOperationCoordinator, ioDispatcher, mainDispatcher,
+        PackageOperationBarrier { _, _ -> false },
+    )
 
     // The in-process installer. Its sessions are created by Thor's own uid, so the platform's
     // openSession() is the correct opener here — which is why the unprivileged case has to be asked
@@ -173,7 +192,7 @@ class InstallerRepositoryImpl(
                 // is what keeps a plain APK, an .apks and an .apkm on exactly the path they were on
                 // before: one extra read of the central directory and no shell command at all.
                 val packageName = resolvePackageNameForObb(staged.file)
-                withInstallerPackageLease(packageName, mode, execution, packageLeaseHeldFor) operation@{
+                withInstallerPackageLease(packageName, execution, packageLeaseHeldFor) operation@{
                     onInvocationStarted()
                     if (packageName != null) {
                         obbInstaller.refusalReason(staged.file, packageName)?.let { reason ->
@@ -389,7 +408,6 @@ class InstallerRepositoryImpl(
 
     private suspend fun withInstallerPackageLease(
         packageName: String?,
-        mode: InstallMode,
         execution: PrivilegeExecutionContext,
         packageLeaseHeldFor: String?,
         operation: suspend () -> Unit,
@@ -397,9 +415,16 @@ class InstallerRepositoryImpl(
         if (packageName != null && packageLeaseHeldFor != null && packageName != packageLeaseHeldFor) {
             throw InstallRefusedException("the archive's game data package does not match the held package operation")
         }
-        // External mode only launches a chooser; Thor cannot own the other installer's lifetime.
-        // Inputs without a resolved XAPK OBB target retain their existing installation behavior.
-        if (mode == InstallMode.EXTERNAL || packageName == null || packageLeaseHeldFor != null) {
+        if (packageName == null) {
+            when (val lease = packageOperationBarrier.withGlobalLease(operation)) {
+                is PackageLeaseResult.Acquired -> Unit
+                is PackageLeaseResult.Busy -> throw PackageOperationBusy(lease.owner)
+            }
+            return
+        }
+        // External mode's lease covers admission and chooser launch only; it cannot own the
+        // other installer's lifetime. A retained clear must still refuse that initial handoff.
+        if (packageLeaseHeldFor != null) {
             operation()
             return
         }

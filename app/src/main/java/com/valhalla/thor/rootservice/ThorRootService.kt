@@ -81,6 +81,17 @@ class ThorRootService : RootService() {
 
     private val packageDumpReader = BoundedPackageDumpReader()
 
+    // Lazy because the root service's attached package context owns the journal we must protect.
+    // Internal: the Binder stub below is a separate generated class (SyntheticAccessor).
+    internal val dataClearLedger: RootDataClearLedger by lazy {
+        RootDataClearLedger(
+            preparation = RootDataClearPreparation { target, user, callback ->
+                prepareAndroidRootDataClear(target, user, callback)
+            },
+            protectedPackageName = packageName,
+        )
+    }
+
     init {
         // This daemon runs in a separate :root (app_process) process where ThorApplication.onCreate
         // never executes, so Logger.isDebug — a runtime flag set there for the main process — would
@@ -189,6 +200,26 @@ class ThorRootService : RootService() {
             override fun clearAppDataForUser(packageName: String, userId: Int): Boolean {
                 this@ThorRootService.enforceCaller()
                 return this@ThorRootService.clearAppData(packageName, userId)
+            }
+
+            override fun clearAppDataForUserWithResult(
+                requestId: String?,
+                packageName: String?,
+                userId: Int,
+            ): RootDataClearResult {
+                this@ThorRootService.enforceCaller()
+                return dataClearLedger.clear(requestId, packageName, userId, Binder.getCallingUid())
+                    .toParcelable()
+            }
+
+            override fun getClearAppDataResult(
+                requestId: String?,
+                packageName: String?,
+                userId: Int,
+            ): RootDataClearResult {
+                this@ThorRootService.enforceCaller()
+                return dataClearLedger.query(requestId, packageName, userId, Binder.getCallingUid())
+                    .toParcelable()
             }
         }
     }
@@ -675,8 +706,8 @@ class ThorRootService : RootService() {
             DataClearOutcome.REFUSED ->
                 Logger.w(
                     "Odin",
-                    "clearAppData($packageName, user $userId): PackageManagerService refused the " +
-                        "wipe — the data is still there"
+                    "clearAppData($packageName, user $userId): PackageManagerService reported a " +
+                        "failed clear; earlier side effects are not ruled out"
                 )
 
             DataClearOutcome.UNVERIFIED ->

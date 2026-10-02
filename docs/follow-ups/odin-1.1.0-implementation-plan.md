@@ -1513,11 +1513,14 @@ ordinary production `SettingsEditorBridge` while it is inside a Settings provide
   agreement, and stop further writes after uncertain readback or Binder dispatch.
 - [x] Test truncation, oversized/malformed output, ambiguous dialog text, invalid requests,
   user identity, synthetic transport failure, and no replay; run the real app path on both devices.
-- [ ] Design append-only typed AIDL **mutation** results for service-confirmed/refused/unknown outcomes. Map
+- [x] Append tracked clear-data request/query results, preserving all seven earlier transaction slots.
+- [x] Persist package/user ownership before dispatch and reconcile late completion without resubmission.
+- [ ] Extend typed AIDL **mutation** results beyond clear-data for service-confirmed/refused/unknown outcomes. Map
   client-observed Binder death or `RemoteException` to explicit transport/uncertain execution
   states; a dead service cannot return its own terminal reply. Add operation identity only where
   accepted work requires tracking.
-- [ ] Define cooperative **mutation** IPC deadline boundaries; do not present coroutine timeout or shell
+- [x] Bound clear-data observation across preparation, dispatch and callback while retaining unfinished work.
+- [ ] Extend cooperative **mutation** IPC deadline boundaries beyond clear-data; do not present coroutine timeout or shell
   cancellation as cancellation of a Binder transaction.
 - [ ] Test real late mutation success, missing observer callback, and Binder death after dispatch.
 - [ ] Extend live acceptance to an unauthorized Binder caller, secondary-user readback, older/OEM
@@ -1574,6 +1577,57 @@ Test APK SHA-256: `47e3a6880a387dc9ec8eb0913c76d26013089339b3fe44aab0df56d5e9342
 Installed hashes matched both built artifacts on both devices. Evidence lives in
 `~/.codex/artifacts/thor-typed-suspension-readback-2026-10-03/`, including final/initial gate logs,
 test summaries, device logs, APKs, installed hashes, dependency and R8 checks, and source revision.
+
+#### M3-02 tracked root clear-data contract
+
+Root clear-data now invokes the typed daemon transaction once, replacing the shell-first/legacy
+boolean chain. Provider preference is unchanged. The daemon still invokes the same four-argument
+`IActivityManager.clearApplicationUserData` API with `keepState=false`; no alternative mutation is
+tried after failure, cancellation, an old/null reply, or connection loss. This requires a daemon
+supporting the appended protocol; an older daemon cannot be used as a destructive fallback.
+
+| Observation | Meaning and ownership |
+| --- | --- |
+| Cleared | Dispatch returned accepted and the exact observer confirmed success; release ownership. |
+| Failed | Dispatch returned accepted and the observer reported failure; release ownership, without claiming rollback or unchanged data. |
+| Refused | A validated pre-dispatch refusal or returned dispatch rejection; no accepted clear remains tracked. |
+| Unknown | Preparation/dispatch is unfinished, an observer is missing, dispatch threw, the reply is malformed, or transport was lost; retain ownership. |
+
+The service bounds initial observation to 15 seconds, including reflection preparation, invocation,
+and callback delivery. It admits one active clear, retaining admission until the dispatch worker has
+returned and a valid callback arrived, or nonacceptance is established. Callback-before-return and
+callback-then-throw are handled independently. Callback package and root/system sender UID must
+match the strict protocol. Requests bind full caller UID, UUID, package and Android user; duplicate
+retained identities return their record. History retains at most 256 records without eviction per
+daemon lifetime; capacity refuses before dispatch. It never resets the daemon or replays a request
+in order to free capacity. A replacement daemon's missing record remains unknown.
+
+An app-private AtomicFile journal in `noBackupFilesDir` records the exact identity before dispatch.
+Every admitted package lease checks it, including queued waiters and operations using a different
+privilege provider. Unknown-target installs and global cache clearing hold a shared admission lock
+through Thor's invocation, excluding a new clear's record creation. Known external-installer targets
+also check their package lease before chooser launch. This does **not** extend ownership to remote
+installer completion after a session commit or external handoff; that separate lifetime contract
+remains open. Independent operations outside this Thor installation are outside this journal.
+
+A cancelled admission may leave a PREPARED record. Exact-phase retirement prevents its old owner from
+subsequently entering Binder. A direct terminal reply or local proof that submission never started
+also permits retirement. After attempted dispatch without terminal evidence, recovery requires a
+validated read-only terminal query or known, different recorded/current kernel boot identities.
+Reboot establishes actor retirement, not successful clearing. Unknown boot identity prevents
+boot-based retirement; terminal query recovery remains available. Corrupt/missing initialized
+metadata, lost daemon state, and remote exceptions remain blocked. Thor refuses clearing, uninstalling, or restoring its own control-plane
+package through coordinated flows. External erasure of Thor's private storage is outside this recovery
+contract. While a prior record remains retained, a repeated clear gesture first recovers that operation
+and cannot become another wipe;
+a subsequent explicit gesture may create a new request after settlement. Global operations do not
+query every pending package: targeted reconciliation must first retire PREPARED or late terminal records.
+
+- [ ] Run the new real typed clear/query and held-observer checks on the Magisk emulator.
+- [ ] Run the same checks on the ReSuKiSU physical device.
+- [ ] Exercise actual app/service death during a clear and same-boot/different-boot recovery on devices.
+- [ ] Extend beyond delayed observer delivery to missing observer and hostile dispatch/death cases.
+- [ ] Add dedicated recovery visibility and resolve bounded history capacity UX.
 
 ### M3-03: Diagnostics and documentation
 

@@ -33,6 +33,7 @@ import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.repository.PackageOperationBarrier
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
 import com.valhalla.thor.presentation.FakeSystemRepository
@@ -73,6 +74,9 @@ class InstallerPackageLeaseTest {
     private lateinit var obb: ObbInstaller
     private lateinit var system: SystemRepository
     private lateinit var bus: InstallerEventBus
+    private var globallyBlocked = false
+    private var globalLeaseActive = false
+    private var globalChecks = 0
     private val trace = mutableListOf<String>()
     private var installCommand: suspend () -> RootCommandResult = {
         markInstalled()
@@ -117,6 +121,19 @@ class InstallerPackageLeaseTest {
         repository = InstallerRepositoryImpl(
             context, bus, root, ShizukuReflector(context), preferences, obb, coordinator,
             Dispatchers.Unconfined, Dispatchers.Unconfined,
+            object : PackageOperationBarrier {
+                override suspend fun isBlocked(packageName: String, owner: PackageOperationOwner) = false
+                override suspend fun <T> withGlobalLease(block: suspend () -> T): PackageLeaseResult<T> {
+                    globalChecks++
+                    if (globallyBlocked) return PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA)
+                    globalLeaseActive = true
+                    return try {
+                        PackageLeaseResult.Acquired(block())
+                    } finally {
+                        globalLeaseActive = false
+                    }
+                }
+            },
         )
     }
 
@@ -271,17 +288,84 @@ class InstallerPackageLeaseTest {
     }
 
     @Test
-    fun `external chooser handoff does not acquire the package lease`() = runTest {
+    fun `known XAPK external chooser refuses a busy package before preflight or invocation`() = runTest {
         var entered = false
         val staged = staged()
-        coordinator.withPackageLease(PACKAGE, PackageOperationOwner.ARCHIVE_RESTORE, Duration.ZERO) {
-            repository.installPackage(staged, Uri.fromFile(staged.file), InstallMode.EXTERNAL,
-                onInvocationStarted = { entered = true })
+        val lease = coordinator.withPackageLease(PACKAGE, PackageOperationOwner.ARCHIVE_RESTORE, Duration.ZERO) {
+            runCatching {
+                repository.installPackage(staged, Uri.fromFile(staged.file), InstallMode.EXTERNAL,
+                    onInvocationStarted = { entered = true })
+            }.exceptionOrNull()
         }
+
+        val failure = (lease as PackageLeaseResult.Acquired).value
+        assertTrue(failure is PackageOperationBusy)
+        assertEquals(PackageOperationOwner.ARCHIVE_RESTORE, (failure as PackageOperationBusy).owner)
+        assertFalse(entered)
+        assertTrue(trace.toString(), trace.isEmpty())
+        assertEquals(0, globalChecks)
+        assertAvailable()
+    }
+
+    @Test
+    fun `known XAPK external chooser still invokes when package admission is available`() = runTest {
+        var entered = false
+        val staged = staged()
+        repository.installPackage(staged, Uri.fromFile(staged.file), InstallMode.EXTERNAL,
+            onInvocationStarted = { entered = true })
 
         assertTrue(entered)
         assertEquals(listOf("preflight"), trace)
+        assertEquals(0, globalChecks)
         assertAvailable()
+    }
+
+    @Test
+    fun `unknown package refuses every install mode before invocation or privileged calls while globally blocked`() = runTest {
+        globallyBlocked = true
+        val file = temporaryFolder.newFile("unknown.apk").apply { writeText("apk bytes") }
+        val staged = StagedPackage(file, file.name)
+        for (mode in InstallMode.entries) {
+            var entered = false
+            val failure = runCatching {
+                repository.installPackage(
+                    staged, Uri.fromFile(file), mode,
+                    onInvocationStarted = { entered = true },
+                )
+            }.exceptionOrNull()
+
+            assertTrue("$mode must refuse before invoking its installer", failure is PackageOperationBusy)
+            assertEquals(PackageOperationOwner.CLEAR_DATA, (failure as PackageOperationBusy).owner)
+            assertFalse(entered)
+            assertTrue(trace.toString(), trace.isEmpty())
+        }
+        assertEquals(InstallMode.entries.size, globalChecks)
+        assertFalse(globalLeaseActive)
+    }
+
+    @Test
+    fun `unknown root install holds the global lease through invocation and privileged work`() = runTest {
+        val file = temporaryFolder.newFile("unknown.apk").apply { writeText("apk bytes") }
+        val staged = StagedPackage(file, file.name)
+        var entered = false
+        installCommand = {
+            assertTrue(globalLeaseActive)
+            RootCommandResult(0, emptyList(), emptyList())
+        }
+
+        repository.installPackage(
+            staged, Uri.fromFile(file), InstallMode.ROOT,
+            onInvocationStarted = {
+                assertTrue(globalLeaseActive)
+                entered = true
+            },
+        )
+
+        assertTrue(entered)
+        assertEquals(1, globalChecks)
+        assertEquals(listOf("install"), trace)
+        assertEquals(InstallState.Success, bus.latest)
+        assertFalse(globalLeaseActive)
     }
 
     private fun staged(): StagedPackage {
