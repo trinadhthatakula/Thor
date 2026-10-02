@@ -1701,6 +1701,28 @@ follow-up, and the earlier device/APK evidence remains tied to `bc8647f5` above.
 `~/.codex/artifacts/thor-pr547-journal-init-2026-10-03/`, including before/after focused results,
 `final-gates.log`, `source-revision.json`, and `validation-summary.json`.
 
+#### M3-02 CI cancellation watchdog follow-up (2026-10-03)
+
+Tested revision (test-only fix):
+[`8952fab2f324f28b59fffe26925278d5eaeb8200`](https://github.com/trinadhthatakula/Thor/commit/8952fab2f324f28b59fffe26925278d5eaeb8200)
+in [#547](https://github.com/trinadhthatakula/Thor/pull/547).
+[CI run 37070795009](https://github.com/trinadhthatakula/Thor/actions/runs/37070795009)
+at `9badb63c` failed one of 3,470 tests: `RootDataClearGlobalAdmissionCancellationTest`.
+Its virtual timeout could expire while the cancelled journal operation returned from real IO
+threads. The join now uses a real-clock 10-second hang guard; cancellation must still finish
+before global admission is released, without a journal record or Binder/shell dispatch.
+
+The focused test passed. A temporary `NonCancellable` wrapper around journal admission made the
+test fail at the guard while global admission remained held, confirming the cancellation-order check
+still detects uncancellable admission. The production source was restored byte-for-byte before
+the final checks. Required `test lintFossDebug lintStoreRelease` gates, debug assembly, and
+AndroidTest Kotlin compilation passed on JDK 21 with one worker: **3,470 tests per FOSS/Store
+Debug variant**, zero failures/errors/skips, and zero lint errors/warnings (14 FOSS / 13 Store
+hints). No device rerun was needed for this test-only change; earlier device evidence retains
+its original revision. Evidence: `~/.codex/artifacts/thor-pr547-ci-test-failure-2026-10-03/`,
+including the failed CI log, focused/mutation results, `final-gates.log`,
+`source-revision.json`, and `validation-summary.json`.
+
 ### M3-03: Diagnostics and documentation
 
 - [ ] Add structured lifecycle/refresh/bind diagnostics without raw commands, setting values,
@@ -1738,6 +1760,7 @@ baseline row with results from a later commit.
 | M3-02 compact readback | [`f9e684e8`](https://github.com/trinadhthatakula/Thor/commit/f9e684e8d5ee965c083aa536d34002dcd5740ffe) / [#546](https://github.com/trinadhthatakula/Thor/pull/546); base `95e1bdb5` (#545) | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; compact protocol; state/owner validation; real multi-owner suspension; clear/bind regressions | 3,396 JVM tests per variant; lint and minified build passed; 7/7 emulator and 7/7 physical checks; typed mutation acceptance remains open |
 | M3-02 tracked clear-data | [`bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728`](https://github.com/trinadhthatakula/Thor/commit/bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728) / [#547](https://github.com/trinadhthatakula/Thor/pull/547); base `fdbfbbda2e3a0e5072829828474c8ae5592ab316` (#546) | Host; Magisk 30.7 API 36; ReSuKiSU v4.2.0-rc2 API 36 | Required gates; typed clear/query; real held observer and package barrier; no replay; suspension/binding regressions | 3,463 JVM tests per FOSS/Store Debug variant; lint and minified build passed; 8/8 emulator and 8/8 physical checks; live mutation-death and wider IPC acceptance remain open |
 | M3-02 journal initialization | [`ab9bf1e3`](https://github.com/trinadhthatakula/Thor/commit/ab9bf1e35901a8691d5ef822d4cb524bbe731ce5) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21 | Interrupted empty initialization; atomic backups; nonempty/invalid state refusal; required gates | 21 focused journal tests and 3,470 JVM tests per FOSS/Store Debug variant passed; lint passed; no device rerun |
+| M3-02 CI cancellation watchdog | [`8952fab2`](https://github.com/trinadhthatakula/Thor/commit/8952fab2f324f28b59fffe26925278d5eaeb8200) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21 | Real-clock cancellation guard; negative admission mutation; required gates; debug assembly and AndroidTest compile | Focused test and 3,470 JVM tests per FOSS/Store Debug variant passed; unsafe mutation rejected; lint passed; no device rerun |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
