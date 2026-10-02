@@ -12,16 +12,20 @@ import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.data.repository.localState
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.RootAdmissionUnavailable
 import com.valhalla.thor.domain.model.RootJobOutcome
 import com.valhalla.thor.domain.model.RootJobOutcomeKind
+import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.model.SettingValue
 import com.valhalla.thor.domain.model.SettingsEditOutcome
 import com.valhalla.thor.domain.model.SettingsEditRecord
 import com.valhalla.thor.domain.model.SettingsEditorView
+import com.valhalla.thor.domain.model.ShellLaneBusy
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -154,6 +158,7 @@ class SettingsEditorReconciliationIntegrationTest {
             store = requireNotNull(koin.getOrNull<SettingsEditorStore>()),
             preferences = requireNotNull(koin.getOrNull<PreferenceRepository>()),
             privilege = requireNotNull(koin.getOrNull<PrivilegeManager>()),
+            lanes = requireNotNull(koin.getOrNull<RootLaneStatusSource>()),
         )
         val initialMode = fixture.preferences.userPreferences.first().preferredPrivilegeMode
         val initialConsent = fixture.store.consent.first()
@@ -161,7 +166,7 @@ class SettingsEditorReconciliationIntegrationTest {
         var primary: Throwable? = null
         try {
             fixture.selectMode(fixture.mode)
-            assertEquals(fixture.mode, withTimeout(30_000) { fixture.privilege.refreshAndAwait() }.active)
+            fixture.awaitReady()
             fixture.setConsent(true)
             block(fixture)
         } catch (failure: Throwable) {
@@ -176,7 +181,7 @@ class SettingsEditorReconciliationIntegrationTest {
                 fixture.beforeCleanup.forEach { cleanup -> attempt(cleanup) }
                 attempt {
                     fixture.selectMode(fixture.mode)
-                    withTimeout(30_000) { fixture.privilege.refreshAndAwait() }
+                    fixture.awaitReady()
                     fixture.setConsent(true)
                 }
                 fixture.keys.forEach { (view, key) ->
@@ -208,6 +213,7 @@ class SettingsEditorReconciliationIntegrationTest {
         val store: SettingsEditorStore,
         val preferences: PreferenceRepository,
         val privilege: PrivilegeManager,
+        val lanes: RootLaneStatusSource,
     ) {
         val keys = mutableListOf<Pair<SettingsEditorView, String>>()
         val beforeCleanup = mutableListOf<suspend () -> Unit>()
@@ -215,6 +221,26 @@ class SettingsEditorReconciliationIntegrationTest {
         suspend fun selectMode(selected: PrivilegeMode?) {
             preferences.setPrivilegeMode(selected)
             withTimeout(10_000) { preferences.userPreferences.first { it.preferredPrivilegeMode == selected } }
+        }
+
+        suspend fun awaitReady() = withTimeout(30_000) {
+            lanes.statuses.first { all -> all.values.none { it.activeCommandClass != null } }
+            assertEquals(mode, privilege.refreshAndAwait().active)
+            if (mode == PrivilegeMode.ROOT) {
+                // Startup and provider changes can still schedule work after refresh publishes.
+                // Retry only a read-only probe refused before dispatch, never an edit or outcome.
+                while (true) {
+                    privilege.state.first { it.active == mode && it.rootAvailability.canAdmitRoot }
+                    lanes.statuses.first { all -> all.values.none { it.activeCommandClass != null } }
+                    val probe = repository.read(SettingsEditorView.SYSTEM)
+                    val failure = probe.exceptionOrNull()
+                    if (failure !is RootAdmissionUnavailable && failure !is ShellLaneBusy) {
+                        probe.getOrThrow()
+                        break
+                    }
+                    delay(25)
+                }
+            }
         }
 
         suspend fun setConsent(accepted: Boolean) {
