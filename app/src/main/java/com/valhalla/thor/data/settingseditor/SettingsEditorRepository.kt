@@ -112,6 +112,7 @@ class SettingsEditorRepository(
     private suspend fun androidProperties(): List<SettingEntry> = openSession().properties()
     suspend fun change(view: SettingsEditorView, key: String, expected: SettingValue, desired: SettingValue) = guarded { controller.change(view, key, expected, desired) }
     suspend fun undo(id: String) = guarded { controller.undo(id) }
+    suspend fun reconcile(id: String) = guarded { controller.reconcile(id) }
     suspend fun history() = guarded { controller.history() }
     private suspend fun <T> guarded(block: suspend () -> T): Result<T> = withContext(io) {
         try { Result.success(block()) } catch (cancelled: CancellationException) { throw cancelled }

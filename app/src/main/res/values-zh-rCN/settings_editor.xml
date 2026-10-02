@@ -51,4 +51,8 @@
     <string name="sett_back">返回</string>
     <string name="sett_answer">答案</string>
     <string name="sett_execution_unconfirmed">之前的操作可能仍在运行。请重启设备后再更改此设置。</string>
+    <string name="sett_check_current_value">检查当前值</string>
+    <string name="sett_observed_value">读取到的当前值</string>
+    <string name="sett_observation_source">已通过 %1$s 检查 · %2$s</string>
+    <string name="sett_observation_note">当前值不能确认先前的更改已完成。</string>
 </resources>

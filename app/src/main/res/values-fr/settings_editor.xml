@@ -51,4 +51,8 @@
     <string name="sett_back">Retour</string>
     <string name="sett_answer">Réponse</string>
     <string name="sett_execution_unconfirmed">Une opération précédente est peut-être encore en cours. Redémarrez votre appareil avant de modifier ce paramètre.</string>
+    <string name="sett_check_current_value">Vérifier la valeur actuelle</string>
+    <string name="sett_observed_value">Valeur actuelle observée</string>
+    <string name="sett_observation_source">Vérifié avec %1$s · %2$s</string>
+    <string name="sett_observation_note">La valeur actuelle ne confirme pas que la modification précédente est terminée.</string>
 </resources>

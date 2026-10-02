@@ -51,4 +51,8 @@
     <string name="sett_back">رجوع</string>
     <string name="sett_answer">الإجابة</string>
     <string name="sett_execution_unconfirmed">قد تكون عملية سابقة لا تزال قيد التشغيل. أعد تشغيل جهازك قبل تغيير هذا الإعداد.</string>
+    <string name="sett_check_current_value">تحقّق من القيمة الحالية</string>
+    <string name="sett_observed_value">القيمة الحالية المرصودة</string>
+    <string name="sett_observation_source">تم التحقّق باستخدام %1$s · %2$s</string>
+    <string name="sett_observation_note">القيمة الحالية لا تؤكد اكتمال التغيير السابق.</string>
 </resources>

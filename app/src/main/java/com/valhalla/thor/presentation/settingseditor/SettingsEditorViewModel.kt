@@ -38,7 +38,7 @@ class SettingsEditorViewModel(
     private val state = MutableStateFlow(SettingsEditorUiState())
     internal val uiState = state.asStateFlow()
     private var readJob: Job? = null
-    private var mutationRunning = false
+    private var historyOperationRunning = false
     init {
         viewModelScope.launch {
             combine(privileges.state, preferences.userPreferences, store.consent) { privilege, preference, consent ->
@@ -48,7 +48,7 @@ class SettingsEditorViewModel(
                 state.update { it.copy(mode = mode, consent = consent) }
                 if (mode == null) {
                     readJob?.cancel()
-                    state.update { it.copy(entries = emptyList(), busy = mutationRunning) }
+                    state.update { it.copy(entries = emptyList(), busy = historyOperationRunning) }
                 } else if (previous.mode != mode || previous.consent != consent) refresh()
             }
         }
@@ -67,7 +67,7 @@ class SettingsEditorViewModel(
         refresh()
     }
     fun refresh() {
-        if (mutationRunning || state.value.mode == null) return
+        if (historyOperationRunning || state.value.mode == null) return
         readJob?.cancel()
         val view = state.value.view
         state.update { it.copy(busy = true, error = false, conflict = false, executionUnconfirmed = false) }
@@ -77,29 +77,35 @@ class SettingsEditorViewModel(
             state.update { it.copy(entries = entries.getOrDefault(emptyList()), history = history.getOrDefault(emptyList()), busy = false, error = entries.isFailure || history.isFailure) }
         }
     }
-    fun change(key: String, expected: SettingValue, desired: SettingValue) = mutate {
+    fun change(key: String, expected: SettingValue, desired: SettingValue) = updateHistory {
         repository.change(state.value.view, key, expected, desired)
     }
-    fun undo(id: String) = mutate { repository.undo(id) }
-    private fun mutate(operation: suspend () -> Result<SettingsEditRecord>) {
+    fun undo(id: String) = updateHistory { repository.undo(id) }
+    fun reconcile(id: String) = updateHistory(readOnly = true) { repository.reconcile(id) }
+    private fun updateHistory(readOnly: Boolean = false, operation: suspend () -> Result<SettingsEditRecord>) {
         if (state.value.busy || state.value.mode == null || state.value.consent != true) return
         readJob?.cancel()
-        mutationRunning = true
+        historyOperationRunning = true
         state.update { it.copy(busy = true, error = false, conflict = false, executionUnconfirmed = false, outcome = null) }
         viewModelScope.launch {
             try {
                 val result = operation()
-                val entries = repository.read(state.value.view)
+                // Reconciliation already read the saved record's table. Do not make an unrelated
+                // table read or present the original uncertain outcome as a new mutation result.
+                val entries = if (readOnly) null else repository.read(state.value.view)
                 val history = repository.history()
                 state.update {
-                    it.copy(entries = if (it.mode == null) emptyList() else entries.getOrDefault(it.entries),
+                    it.copy(entries = if (it.mode == null) emptyList() else entries?.getOrDefault(it.entries) ?: it.entries,
                         history = history.getOrDefault(it.history), busy = false,
-                        outcome = result.getOrNull()?.outcome,
+                        outcome = if (readOnly) null else result.getOrNull()?.outcome,
                         executionUnconfirmed = result.exceptionOrNull() is SettingsExecutionUncertain,
                         conflict = result.exceptionOrNull()?.message == "conflict",
-                        error = result.isFailure && result.exceptionOrNull()?.message != "conflict" || entries.isFailure || history.isFailure)
+                        error = result.isFailure && result.exceptionOrNull()?.message != "conflict" || entries?.isFailure == true || history.isFailure)
                 }
-            } finally { mutationRunning = false }
+            } finally {
+                historyOperationRunning = false
+                state.update { it.copy(busy = false) }
+            }
         }
     }
 }
