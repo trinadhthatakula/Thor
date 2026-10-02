@@ -24,12 +24,14 @@ import com.valhalla.thor.rootservice.RootDataClearResult
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -100,7 +102,8 @@ class RootDataClearGlobalAdmissionCancellationTest {
         }
         try {
             bound.await()
-            // Drain the connected continuation so clear is suspended in begin's admission lock.
+            // Drain the connected continuation so clear has entered begin; its IO hop and
+            // admission wait must both remain cancellable while global admission is held.
             runCurrent()
             assertEquals(1, binds)
             assertFalse(clear.isCompleted)
@@ -108,7 +111,11 @@ class RootDataClearGlobalAdmissionCancellationTest {
 
             val cancellation = CancellationException("cancel before global admission")
             clear.cancel(cancellation)
-            withTimeout(1_000) { clear.join() }
+            // Journal IO uses real threads. A virtual timeout could expire before the cancelled
+            // IO continuation returns, so use a real-clock hang guard for this ordering check.
+            withContext(Dispatchers.Default) {
+                withTimeout(10_000) { clear.join() }
+            }
 
             assertTrue(clear.isCancelled)
             assertEquals(cancellation.message, observedCancellation.await().message)
