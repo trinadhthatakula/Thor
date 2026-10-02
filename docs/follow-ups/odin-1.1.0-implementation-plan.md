@@ -1515,6 +1515,9 @@ ordinary production `SettingsEditorBridge` while it is inside a Settings provide
   user identity, synthetic transport failure, and no replay; run the real app path on both devices.
 - [x] Append tracked clear-data request/query results, preserving all seven earlier transaction slots.
 - [x] Persist package/user ownership before dispatch and reconcile late completion without resubmission.
+- [x] Retain live-process install leases after a successful session commit until its correlated
+  terminal callback, including caller cancellation; keep external chooser handoff separate.
+- [ ] Add durable installer-session recovery across app death and resolve indeterminate commit transport failures.
 - [ ] Extend typed AIDL **mutation** results beyond clear-data for service-confirmed/refused/unknown outcomes. Map
   client-observed Binder death or `RemoteException` to explicit transport/uncertain execution
   states; a dead service cannot return its own terminal reply. Add operation identity only where
@@ -1606,10 +1609,11 @@ in order to free capacity. A replacement daemon's missing record remains unknown
 An app-private AtomicFile journal in `noBackupFilesDir` records the exact identity before dispatch.
 Every admitted package lease checks it, including queued waiters and operations using a different
 privilege provider. Unknown-target installs and global cache clearing hold a shared admission lock
-through Thor's invocation, excluding a new clear's record creation. Known external-installer targets
-also check their package lease before chooser launch. This does **not** extend ownership to remote
-installer completion after a session commit or external handoff; that separate lifetime contract
-remains open. Independent operations outside this Thor installation are outside this journal.
+through Thor's invocation, excluding a new clear's record creation. The session-completion follow-up
+below extends live-process leases through the terminal result of a successfully submitted session.
+Known external-installer targets also check their package lease before chooser launch; ownership
+ends at that handoff. Durable installer-session recovery remains open. Independent operations
+outside this Thor installation are outside this journal.
 
 A cancelled admission may leave a PREPARED record. Exact-phase retirement prevents its old owner from
 subsequently entering Binder. A direct terminal reply or local proof that submission never started
@@ -1732,6 +1736,39 @@ errors/warnings (9 FOSS / 8 Store hints), and successful debug assembly and Andr
 The cancellation test and production code were unchanged by this merge. Results and source
 provenance are retained in the evidence directory's `merged-dev/` subdirectory; devices were not rerun.
 
+#### M3-02 installer session completion follow-up (2026-10-03)
+
+Implementation and regression tests:
+[`e7ddadf64c0388345dd8db779c1fc005f5bb4122`](https://github.com/trinadhthatakula/Thor/commit/e7ddadf64c0388345dd8db779c1fc005f5bb4122)
+in [#547](https://github.com/trinadhthatakula/Thor/pull/547).
+Normal, Shizuku-session, and Dhizuku-session installation now retain the enclosing global,
+package, or borrowed restore lease after `commit()` returns until `InstallReceiver` supplies the
+matching session ID and attempt token's terminal result. Registration precedes submission, and
+the token also distinguishes the PendingIntent identity. Confirmation, streaming, unknown statuses,
+and unrelated events cannot settle ownership. Terminal failure remains a submitted install and
+cannot authorize fallback or OBB placement; even a changed package timestamp cannot override it.
+
+Cancellation drains that session's completion before unwinding the lease. Correlated success also
+reaches the restore caller's success observer before cancellation propagates; ordinary observer
+failure is diagnostic and cannot trigger a second install. External mode still releases after
+chooser handoff because Thor does not own the external installer's lifetime.
+
+This closes the successfully submitted session's live-process ownership gap noted in the original
+clear-data evidence. Missing or uncorrelated terminal callbacks retain the lease beyond cancellation
+and archive timeouts. Durable recovery after app death, indeterminate `commit()` transport failures,
+and real-device acceptance of this follow-up remain open; earlier device results keep their original
+APK/source attribution.
+
+Required `test lintFossDebug lintStoreRelease` gates passed on the revision above using JDK 21,
+Gradle 9.8.0, AGP 9.5.0-alpha08, Robolectric 4.17, and one worker: **3,491 tests per FOSS/Store
+Debug variant**, including 61 installer/session/archive tests, with zero failures/errors/skips.
+Lint reported zero errors/warnings (9 FOSS / 8 Store hints). Debug assembly, AndroidTest Kotlin
+compilation, and both minified release builds passed, with no nonempty R8 missing-rules files.
+Evidence: `~/.codex/artifacts/thor-pr547-install-completion-2026-10-03/`, including
+`source-revision.json`, `validation-summary.json`, `final-gates.log`, test/lint reports and APKs.
+The initial KTX lint failure and its preceding successful tests are retained separately in
+`before-ktx-fix/`. CI results are not included in this evidence.
+
 ### M3-03: Diagnostics and documentation
 
 - [ ] Add structured lifecycle/refresh/bind diagnostics without raw commands, setting values,
@@ -1771,6 +1808,7 @@ baseline row with results from a later commit.
 | M3-02 journal initialization | [`ab9bf1e3`](https://github.com/trinadhthatakula/Thor/commit/ab9bf1e35901a8691d5ef822d4cb524bbe731ce5) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21 | Interrupted empty initialization; atomic backups; nonempty/invalid state refusal; required gates | 21 focused journal tests and 3,470 JVM tests per FOSS/Store Debug variant passed; lint passed; no device rerun |
 | M3-02 CI cancellation watchdog | [`8952fab2`](https://github.com/trinadhthatakula/Thor/commit/8952fab2f324f28b59fffe26925278d5eaeb8200) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21 | Real-clock cancellation guard; negative admission mutation; required gates; debug assembly and AndroidTest compile | Focused test and 3,470 JVM tests per FOSS/Store Debug variant passed; unsafe mutation rejected; lint passed; no device rerun |
 | M3-02 dev build integration | [`f0ca834a`](https://github.com/trinadhthatakula/Thor/commit/f0ca834a830fccf3fd29019b20cd8ba4876aadfe) / [#547](https://github.com/trinadhthatakula/Thor/pull/547); merged dev `a13e761a` (#548) | Host, JDK 21; Gradle 9.8.0; AGP 9.5.0-alpha08; Robolectric 4.17 | Required gates; debug assembly and AndroidTest compile after merging dev | 3,470 JVM tests per FOSS/Store Debug variant passed; lint passed; no device rerun |
+| M3-02 installer session completion | [`e7ddadf6`](https://github.com/trinadhthatakula/Thor/commit/e7ddadf64c0388345dd8db779c1fc005f5bb4122) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21; Gradle 9.8.0; Robolectric 4.17 | Correlated terminal callbacks; global/package/borrowed leases; cancellation; OBB refusal; external handoff; required gates and release builds | 3,491 JVM tests per variant, including 61 relevant regressions; lint, debug/AndroidTest compile and both minified builds passed; device and durable-recovery acceptance remain open |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
