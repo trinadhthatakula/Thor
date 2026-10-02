@@ -1,9 +1,11 @@
 # Sett Edit recovery and execution bounds
 
-Status: explicit read-only history checks are in review in
-[#544](https://github.com/trinadhthatakula/Thor/pull/544) (`98793e74`).
+Status: explicit read-only history checks merged in
+[#544](https://github.com/trinadhthatakula/Thor/pull/544) (`5efa1399`).
 Host gates, Root suites on both devices, Shizuku on the phone, and actual app death after an
-acknowledged write passed. Death during live/hostile producer execution remains pending.
+acknowledged write passed. The live-writer follow-up now passes app-death, same-boot blocking
+and actual reboot recovery on the emulator, plus acknowledged hostile-writer cancellation on
+both devices with ROOT/SHIZUKU refusal on the phone.
 The approved [Odin 1.1.0 plan](odin-1.1.0-implementation-plan.md), especially M2-01 and M3-01,
 tracks acceptance and remaining work.
 
@@ -60,6 +62,13 @@ SIGKILL and broken transport still prevent a strict wall-clock completion guaran
   and disabled undo after matching readback.
 - [x] Actual app force-stop after an acknowledged production write but before final journal save,
   followed by public reconciliation of durable PENDING history: 1/1 recovery on each device.
-- [ ] Death during live/hostile producer execution. Post-acknowledgement app death, seeded history,
-  and a synthetic receipt do not establish termination or recovery of an interrupted producer.
+- [x] Emulator: real root writer continues after app SIGKILL; public reconciliation preserves
+  PENDING and the genuine receipt after same-boot completion; actual reboot permits safe recovery.
+- [x] Emulator: ignored-TERM writer and same-group child cancellation acknowledges termination
+  and drain while the lane remains owned, followed by a verified edit and original-state cleanup.
+- [x] ReSuKiSU: acknowledged cancellation, real ROOT/SHIZUKU refusal, four retired process
+  identities and state restoration; 9/9 checks passed after reconnection and a clean baseline check.
+- [ ] Physical-device live-writer app-death/reboot recovery; only the emulator was rebooted.
+- [ ] Cancellation-control denial or unconfirmed termination with a surviving observer. A lost
+  observer after app death and successful acknowledged cancellation do not prove this case.
 - [x] Full repository gates and validation evidence in the implementation plan before review.
