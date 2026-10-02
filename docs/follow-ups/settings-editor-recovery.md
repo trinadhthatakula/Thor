@@ -2,9 +2,10 @@
 
 Status: explicit read-only history checks are in review in
 [#544](https://github.com/trinadhthatakula/Thor/pull/544) (`98793e74`).
-Host gates and the eight-check Magisk emulator suite passed; physical Root, live Shizuku,
-and actual process-death checks remain pending. The approved [Odin 1.1.0 plan](odin-1.1.0-implementation-plan.md),
-especially M2-01 and M3-01, tracks acceptance and remaining work.
+Host gates, Root suites on both devices, Shizuku on the phone, and actual app death after an
+acknowledged write passed. Death during live/hostile producer execution remains pending.
+The approved [Odin 1.1.0 plan](odin-1.1.0-implementation-plan.md), especially M2-01 and M3-01,
+tracks acceptance and remaining work.
 
 ## Current behavior
 
@@ -53,10 +54,12 @@ SIGKILL and broken transport still prevent a strict wall-clock completion guaran
   separate stale restoration conflicts without writing or changing the prior record.
 - [x] Magisk emulator: real Root reads using disposable keys; preserve preference, consent,
   history and synthetic barrier ownership. Exact build and provider evidence is in the Odin plan.
-- [ ] ReSuKiSU physical Root and live Shizuku reads using the same fixtures. The phone was absent
-  from ADB during this increment; prior PR results do not validate these changes.
+- [x] ReSuKiSU physical Root (8/8) and live Shizuku (4/4) using the rebuilt fixtures, with state
+  restoration verified. The Odin plan retains the initial startup-refusal failure and final evidence.
 - [x] UI checks: explicit action, stored-user eligibility, observed provenance, unverified result,
   and disabled undo after matching readback.
-- [ ] Actual process death/lost completion and hostile producer behavior on devices. Seeded
-  history, injected final-save failure, and a synthetic receipt do not establish these scenarios.
+- [x] Actual app force-stop after an acknowledged production write but before final journal save,
+  followed by public reconciliation of durable PENDING history: 1/1 recovery on each device.
+- [ ] Death during live/hostile producer execution. Post-acknowledgement app death, seeded history,
+  and a synthetic receipt do not establish termination or recovery of an interrupted producer.
 - [x] Full repository gates and validation evidence in the implementation plan before review.

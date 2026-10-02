@@ -140,7 +140,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-02 | Cancellable export staging copy | M2-01 | Codex | [#540](https://github.com/trinadhthatakula/Thor/pull/540) | Done |
 | M2-03 | OBB context and cancellable placement | M2-02 | Codex | [#541](https://github.com/trinadhthatakula/Thor/pull/541) | Done |
 | M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Selected input reads and archive icons merged; broader adoption pending |
-| M3-01 | Settings Editor reconciliation | M2-01 | Codex | [#544](https://github.com/trinadhthatakula/Thor/pull/544) | In review; read-only checks implemented; host/emulator passed; physical, Shizuku and process-death acceptance pending |
+| M3-01 | Settings Editor reconciliation | M2-01 | Codex | [#544](https://github.com/trinadhthatakula/Thor/pull/544) | In review; host, Root/Shizuku and post-acknowledgement process-death checks passed; live-producer death pending |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Unassigned | — | Not started |
 | M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
 
@@ -1279,12 +1279,15 @@ Test APK SHA-256: `b915a0db8a3d02c71c3557c5e3be9c62dc4d9feec32bd24291928dabd8e4c
 - [x] Validate lost final journal save/reopening, failed reads/saves, cancellation, concurrent edits,
   provider/user/consent restrictions, stale restoration, and unresolved producer barriers on the host.
 - [x] Record required host gates and live emulator Root/UI checks with exact source/APK evidence.
-- [ ] Run the same checks on the ReSuKiSU physical device and validate live Shizuku reconciliation.
-- [ ] Exercise actual process death and lost completion on devices; reopening seeded/injected
-  journals is not evidence of a real interrupted producer.
+- [x] Run the same checks on the ReSuKiSU physical device and validate live Shizuku reconciliation.
+- [x] Exercise actual app death after an acknowledged real write but before final history persistence,
+  then reconcile the retained PENDING record after restart on the physical device and emulator.
+- [ ] Exercise death while a privileged producer is still running and validate its retained barrier
+  and recovery using real termination evidence. Post-acknowledgement death does not cover this case.
 
 **Implementation, 2026-10-02:** `98793e74` on `feat/settings-editor-reconciliation` in
-[#544](https://github.com/trinadhthatakula/Thor/pull/544), based on #543's merge (`1c0424f9`). History offers **Check current value** for uncertain records. The controller reads
+[#544](https://github.com/trinadhthatakula/Thor/pull/544), based on #543's merge (`1c0424f9`).
+History offers **Check current value** for uncertain records. The controller reads
 the saved table/user through one currently allowed Root or Shizuku session and atomically adds a
 `SettingsEditObservation`; it does not issue a settings write or invoke write admission. Both
 before access and before publication it checks consent, and cancellation/read/save failures leave
@@ -1323,9 +1326,9 @@ automatic retry, a restore shortcut, or a mechanism to prove that an old produce
   or settings-table values were exported. Installed APK hashes matched the built artifacts, and
   the debug Home activity launched successfully afterward.
 - The ReSuKiSU phone disconnected before this increment's validation; final ADB inventory showed
-  only the emulator. **Physical Root and live Shizuku checks remain unrun.** Seeded uncertain
-  records, injected final-save failure, and a synthetic execution receipt are not evidence of
-  actual process death, lost completion, or hostile producer termination; those checks remain open.
+  only the emulator. The physical follow-up below completes Root/Shizuku and post-acknowledgement
+  app-death checks. Seeded uncertain records and synthetic receipts still do not establish hostile
+  or unacknowledged producer termination.
 
 Evidence: `~/.codex/artifacts/thor-settings-reconciliation-2026-10-02/` contains `build-gates.log`,
 `host-validation.json`, `odin-dependency.log`, `emulator-environment.json`,
@@ -1335,6 +1338,65 @@ its SHA-256 is `026a818f94af19a6ff07f36921fb3edd86bb8620f7292945050f6fcc0bbeef9a
 
 App APK SHA-256: `c820bba65cef34e344b961193f1f61fca2e87fd91a85c4c1d434428e1011c179`.
 Test APK SHA-256: `3fe1470e5adf797fec02a1bc90ac942fabcfdd159d544d75a4cdd7992c89f5f7`.
+
+### M3-01 physical-device and process-death follow-up
+
+**Validation, 2026-10-02:** test harness `c1d87205` in
+[#544](https://github.com/trinadhthatakula/Thor/pull/544); production code and the app APK are
+unchanged from `98793e74`.
+
+| Environment | Suite | Result |
+| --- | --- | --- |
+| POCO F7 / 25053PC47G, Android 16/API 36, ARM64, 4 KiB pages; ReSuKiSU v4.2.0-rc2 (35159), user 0 | Reconciliation (3), production round trip (1), deadline/cancellation (1), history UI (3); ROOT | **8/8 passed**, zero skips |
+| Same physical device; Shizuku 13.7.0-thedjchi (1361) | Reconciliation (3), production round trip (1); SHIZUKU | **4/4 passed**, zero skips |
+| Same physical device; ROOT | Acknowledged write, force-stop, restart, durable reconciliation | **1/1 recovery passed** plus one expected interrupted arm phase |
+| Magisk 30.7 emulator above; ROOT | Updated eight-check suite and the same process-death scenario | **8/8 + 1/1 recovery passed**, plus one expected interrupted arm phase |
+
+The first physical ROOT attempt passed five checks but the new three stopped before mutation:
+one `ShellLaneBusy` and two `RootAdmissionUnavailable` refusals during startup/provider refresh.
+Its before/after journals and fixture keys matched. Test setup now awaits idle lanes and current
+root admission and uses a read-only readiness probe; only typed pre-dispatch refusals may repeat.
+Edits and reconciliation outcomes are never retried by that helper. The failed run remains in the
+original evidence directory; the final results above use the rebuilt test APK.
+
+`SettingsEditorProcessDeathIntegrationTest` obtains the exact production session factory through
+a test-only reflection seam and runs the real controller/store. It intercepts only the fixture's
+final VERIFIED history save, after the real write/readback and root execution cleanup returned.
+It confirms that the original PENDING row is durable and no receipt remains for the owned key,
+then publishes value-free readiness. Private originals were persisted before any changes. The
+host verifies the fixture UUID and exact PID/start ticks, force-stops Thor, confirms that process
+is gone, then starts recovery without reinstalling or rebooting. Recovery checks the same kernel
+boot and APK update identity, uses public `repository.reconcile`, and verifies durable observed
+state with PENDING/original metadata retained and undo disabled. The interrupted arm is expected
+instrumentation failure and is **not** counted as a successful test.
+
+For reproduction, run only `armAcknowledgedWriteBeforeFinalJournal` with
+`settingsEditorMode=ROOT`, `settingsProcessDeathPhase=arm`, and
+`settingsProcessDeathId=<canonical UUID>`. Wait for and validate
+`no_backup/settings_reconcile_death/<UUID>/ready.json`, then force-stop the debug package.
+Run only `recoverAfterAcknowledgedWriteProcessDeath` with the same UUID and phase `recover`.
+Keep Settings Editor closed and do not run concurrent history edits. `fixture.json` contains
+private recovery originals and stays on-device; recovery owns cleanup. The artifact runner below
+performs the identity, expected-interruption, recovery-result and cleanup checks.
+
+Both devices restored their history, root-execution journals, provider preference, consent,
+disposable keys and owned recovery directory. Host semantic journal hashes/counts and key sets
+matched before/after; both recovery directories were removed. Debug Home launched afterward.
+No root-manager policy or ADB-root setting was changed. Death during live/hostile producer
+execution remains a distinct open acceptance case.
+
+Required host gates and both debug APK builds passed again: **3,350 tests per variant**, no
+failures/skips, and no lint errors/warnings or MissingTranslation/SyntheticAccessor findings.
+Independent review and whitespace checks passed.
+
+Evidence: `~/.codex/artifacts/thor-settings-reconciliation-physical-2026-10-02/` contains
+`host-validation.json`, `physical-environment.json`, the `physical-root`, `physical-shizuku`,
+`emulator-root`, `physical-death-root`, and `emulator-death-root` logs/validation JSON, and
+`validate-process-death.py`. The 1,025-input source manifest SHA-256 is
+`4318a8f992ef0024f53b63c227846fa5524807836abd7946721b108ea1223e86`.
+
+App APK SHA-256: `c820bba65cef34e344b961193f1f61fca2e87fd91a85c4c1d434428e1011c179`.
+Test APK SHA-256: `311e19b67160f588516e96e2412b167d24a0bcff479acfe1ed3c99fafcc5f1ba`.
 
 ### M3-02: Typed Binder results and compact suspension readback
 
@@ -1380,7 +1442,8 @@ baseline row with results from a later commit.
 | M1-05 ownership | `7a8c9ac1` / #537 | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; binding lifecycle; clear-data regression | 3,188 JVM tests per variant; lint passed; 3/3 tests on each device |
 | M1-06 isolation | `eff6de65` / #538 | Host; Magisk API 36.1 users 0/10; ReSuKiSU API 36 user 0 | Required gates; replacement/death/rebind; cross-user held work; binding/clear regressions | 3,188 JVM tests per variant; lint passed; 12 emulator and 6 physical passes; expected interruptions separate |
 | M2-01 execution policy | `ad1fd5ee` / #539 | Host; Magisk API 36.1 user 0; ReSuKiSU API 36 user 0 | Required gates; explicit policy; cancellation/lease ordering on all lanes; boot identity; Settings watchdog and edit round trips | 3,223 JVM tests per variant; lint passed; 7 emulator and 7 physical passes; full evidence above |
-| M3-01 read-only reconciliation | `98793e74` / #544 | Host; Magisk API 36.1 user 0 | Required gates; persisted observations; stale restoration; retained barrier; cancellation and history UI | 3,350 JVM tests per variant; lint passed; 8/8 emulator passes; physical, Shizuku and actual process-death checks pending |
+| M3-01 read-only reconciliation | `98793e74` / #544 | Host; Magisk API 36.1 user 0 | Required gates; persisted observations; stale restoration; retained barrier; cancellation and history UI | 3,350 JVM tests per variant; lint passed; 8/8 initial emulator passes; follow-up below completes physical and post-acknowledgement death checks |
+| M3-01 physical and process-death follow-up | `c1d87205` / #544 | Host; ReSuKiSU API 36; Magisk API 36.1 | Required gates; ROOT/SHIZUKU; actual app death after acknowledged write | 3,350 JVM tests per variant; lint passed; physical 8 ROOT + 4 SHIZUKU + 1 recovery; emulator 8 ROOT + 1 recovery; live-producer death pending |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
