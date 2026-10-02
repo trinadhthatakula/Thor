@@ -1616,9 +1616,10 @@ subsequently entering Binder. A direct terminal reply or local proof that submis
 also permits retirement. After attempted dispatch without terminal evidence, recovery requires a
 validated read-only terminal query or known, different recorded/current kernel boot identities.
 Reboot establishes actor retirement, not successful clearing. Unknown boot identity prevents
-boot-based retirement; terminal query recovery remains available. Corrupt/missing initialized
-metadata, lost daemon state, and remote exceptions remain blocked. Thor refuses clearing, uninstalling, or restoring its own control-plane
-package through coordinated flows. External erasure of Thor's private storage is outside this recovery
+boot-based retirement; terminal query recovery remains available. Corrupt metadata, an initialization
+marker with missing state, lost daemon state, and remote exceptions remain blocked. Thor refuses
+clearing, uninstalling, or restoring its own control-plane package through coordinated flows.
+External erasure of Thor's private storage is outside this recovery
 contract. While a prior record remains retained, a repeated clear gesture first recovers that operation
 and cannot become another wipe;
 a subsequent explicit gesture may create a new request after settlement. Global operations do not
@@ -1682,6 +1683,24 @@ Actual app/service death during an in-flight clear, missing-observer/hostile dis
 minified device execution, recovery/history-capacity UX, and asynchronous installer completion
 ownership remain open. This slice does not close the broader M3-02 acceptance checklist.
 
+#### M3-02 interrupted journal initialization follow-up (2026-10-03)
+
+Tested fix and regression tests:
+[`ab9bf1e35901a8691d5ef822d4cb524bbe731ce5`](https://github.com/trinadhthatakula/Thor/commit/ab9bf1e35901a8691d5ef822d4cb524bbe731ce5)
+in [#547](https://github.com/trinadhthatakula/Thor/pull/547). With no initialization marker,
+an existing directory can finish initialization only when committed state is absent or is a valid
+version-1 journal with no records. An absent state is written before the marker. Nonempty state is
+rejected before boot filtering, including an authoritative AtomicFile backup; invalid state or
+markers and a surviving marker with missing state still fail closed.
+
+All **21 focused journal tests passed**, including seven new regressions for interrupted initialization
+and refusal boundaries. Required `test lintFossDebug lintStoreRelease` gates passed on JDK 21 with
+one worker: **3,470 tests per FOSS/Store Debug variant**, zero failures/errors/skips, and zero lint
+errors/warnings (14 FOSS / 13 Store hints). These are host checks; devices were not rerun for this
+follow-up, and the earlier device/APK evidence remains tied to `bc8647f5` above. Evidence:
+`~/.codex/artifacts/thor-pr547-journal-init-2026-10-03/`, including before/after focused results,
+`final-gates.log`, `source-revision.json`, and `validation-summary.json`.
+
 ### M3-03: Diagnostics and documentation
 
 - [ ] Add structured lifecycle/refresh/bind diagnostics without raw commands, setting values,
@@ -1718,6 +1737,7 @@ baseline row with results from a later commit.
 | M3-01 live-writer follow-up | [`3d175607`](https://github.com/trinadhthatakula/Thor/commit/3d175607c4903de3306b4f58e692ef7562f572c8) / [#545](https://github.com/trinadhthatakula/Thor/pull/545); base `5efa1399` (#544) | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; real live writer, same-boot barrier, actual reboot recovery, hostile cancellation | 3,350 JVM tests per variant; lint passed; emulator 9 checks + 2 phases; physical 9 checks with ROOT/SHIZUKU refusal; interrupted attempts separate |
 | M3-02 compact readback | [`f9e684e8`](https://github.com/trinadhthatakula/Thor/commit/f9e684e8d5ee965c083aa536d34002dcd5740ffe) / [#546](https://github.com/trinadhthatakula/Thor/pull/546); base `95e1bdb5` (#545) | Host; Magisk API 36.1; ReSuKiSU API 36 | Required gates; compact protocol; state/owner validation; real multi-owner suspension; clear/bind regressions | 3,396 JVM tests per variant; lint and minified build passed; 7/7 emulator and 7/7 physical checks; typed mutation acceptance remains open |
 | M3-02 tracked clear-data | [`bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728`](https://github.com/trinadhthatakula/Thor/commit/bc8647f5ced6c2be8f4f140fc23b8e24e0e9d728) / [#547](https://github.com/trinadhthatakula/Thor/pull/547); base `fdbfbbda2e3a0e5072829828474c8ae5592ab316` (#546) | Host; Magisk 30.7 API 36; ReSuKiSU v4.2.0-rc2 API 36 | Required gates; typed clear/query; real held observer and package barrier; no replay; suspension/binding regressions | 3,463 JVM tests per FOSS/Store Debug variant; lint and minified build passed; 8/8 emulator and 8/8 physical checks; live mutation-death and wider IPC acceptance remain open |
+| M3-02 journal initialization | [`ab9bf1e3`](https://github.com/trinadhthatakula/Thor/commit/ab9bf1e35901a8691d5ef822d4cb524bbe731ce5) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21 | Interrupted empty initialization; atomic backups; nonempty/invalid state refusal; required gates | 21 focused journal tests and 3,470 JVM tests per FOSS/Store Debug variant passed; lint passed; no device rerun |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
