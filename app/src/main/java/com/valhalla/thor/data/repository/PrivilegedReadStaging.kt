@@ -57,7 +57,7 @@ internal class PrivilegedReadStaging(context: Context) {
         var primary: Throwable? = null
         try {
             val command = boundedReadCommand(sourcePath, temporary.absolutePath, maxBytes) +
-                " && chmod 666 ${temporary.absolutePath.escapeShellArg()} 2>/dev/null"
+                " && chmod 644 ${temporary.absolutePath.escapeShellArg()} 2>/dev/null"
             val result = execute(command, persistent).getOrThrow()
             if (result.first != 0) throw IOException("Could not copy the selected file.")
             currentCoroutineContext().ensureActive()
