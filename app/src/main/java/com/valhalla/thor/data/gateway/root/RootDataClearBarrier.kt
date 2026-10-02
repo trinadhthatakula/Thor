@@ -167,17 +167,29 @@ internal class RootDataClearBarrier(context: Context) {
         if (!directory.exists()) {
             if (markerExists) throw RootDataClearJournalUnavailable()
             if (!directory.mkdirs()) throw RootDataClearJournalUnavailable()
-            // Interrupted initialization is deliberately fail-closed. No dispatch has yet been
-            // authorized; a subsequent reader must see both durable files before proceeding.
-            writeRecords(emptyList())
+        } else if (!directory.isDirectory) {
+            throw RootDataClearJournalUnavailable()
+        }
+        if (!markerExists) {
+            // No work can be admitted before initialization completes. Resume only an absent
+            // or validated empty journal, before boot filtering could retire any old records.
+            if (!stateExists) {
+                writeRecords(emptyList())
+            } else if (readJournalRecords().isNotEmpty()) {
+                throw RootDataClearJournalUnavailable()
+            }
             atomicWrite(markerFile, MARKER.toByteArray(Charsets.UTF_8))
-        } else if (!directory.isDirectory || !stateExists || !markerExists) {
+        } else if (!stateExists) {
             throw RootDataClearJournalUnavailable()
         }
         val marker = readBounded(markerFile, MARKER.length)
         if (!marker.contentEquals(MARKER.toByteArray(Charsets.UTF_8))) {
             throw RootDataClearJournalUnavailable()
         }
+        return readJournalRecords()
+    }
+
+    private fun readJournalRecords(): List<RootDataClearRecord> {
         val journal = json.decodeFromString<RootDataClearJournal>(
             readBounded(stateFile, MAX_JOURNAL_BYTES).toString(Charsets.UTF_8),
         )

@@ -5,6 +5,7 @@ package com.valhalla.thor.data.gateway.root
 
 import android.app.Application
 import android.content.ContextWrapper
+import android.util.AtomicFile
 import com.valhalla.thor.domain.model.PackageLeaseResult
 import com.valhalla.thor.domain.model.PackageOperationOwner
 import java.io.File
@@ -46,6 +47,104 @@ class RootDataClearBarrierTest {
         assertNull(barrier().pending(PACKAGE, USER + 1))
         assertTrue(journalFile().isFile)
         assertTrue(markerFile().isFile)
+    }
+
+    @Test
+    fun `directory left by interrupted initialization can admit and persist a new record`() = runTest {
+        assertTrue(requireNotNull(journalFile().parentFile).mkdirs())
+
+        assertFalse(barrier().anyPending())
+        assertTrue(journalFile().isFile)
+        assertTrue(markerFile().isFile)
+        val record = barrier().begin(PACKAGE, USER)
+        assertEquals(record, barrier().pending(PACKAGE, USER))
+    }
+
+    @Test
+    fun `empty version one journal resumes initialization without replacing its state`() = runTest {
+        assertTrue(requireNotNull(journalFile().parentFile).mkdirs())
+        val empty = """{ "version": 1, "records": [] }"""
+        journalFile().writeText(empty)
+
+        assertEquals(PackageLeaseResult.Acquired("admitted"), barrier().withGlobalLease { "admitted" })
+        assertEquals(empty, journalFile().readText())
+        assertTrue(markerFile().isFile)
+        assertFalse(barrier().anyPending())
+    }
+
+    @Test
+    fun `empty atomic backup can finish initialization`() = runTest {
+        assertTrue(requireNotNull(journalFile().parentFile).mkdirs())
+        val empty = """{"version":1,"records":[]}"""
+        File(journalFile().path + ".bak").writeText(empty)
+
+        assertFalse(barrier().anyPending())
+        assertEquals(empty, journalFile().readText())
+        assertTrue(markerFile().isFile)
+    }
+
+    @Test
+    fun `markerless nonempty state and backup fail closed before old boot retirement`() = runTest {
+        barrier().markBinder(barrier().begin(PACKAGE, USER))
+        val pending = journalFile().readText()
+        assertTrue(markerFile().delete())
+
+        expectUnavailable { barrier(OTHER_BOOT).anyPending() }
+        assertEquals(pending, journalFile().readText())
+        assertFalse(markerFile().exists())
+
+        File(journalFile().path + ".bak").writeText(pending)
+        journalFile().writeText("""{"version":1,"records":[]}""")
+        expectUnavailable { barrier(OTHER_BOOT).begin("com.example.other", USER) }
+        assertEquals(pending, AtomicFile(journalFile()).readFully().toString(Charsets.UTF_8))
+        assertFalse(markerFile().exists())
+    }
+
+    @Test
+    fun `markerless malformed and unsupported empty state cannot authorize initialization`() = runTest {
+        assertTrue(requireNotNull(journalFile().parentFile).mkdirs())
+        for (invalid in listOf(
+            "{corrupt",
+            "{}",
+            """{"version":2,"records":[]}""",
+            """{"version":1,"records":null}""",
+            """{"version":1,"records":[],"unexpected":true}""",
+            " ".repeat(262_145),
+        )) {
+            journalFile().writeText(invalid)
+            expectUnavailable { barrier().anyPending() }
+            assertEquals(invalid, journalFile().readText())
+            assertFalse(markerFile().exists())
+        }
+        assertTrue(journalFile().delete())
+        assertTrue(journalFile().mkdir())
+        expectUnavailable { barrier().anyPending() }
+        assertFalse(markerFile().exists())
+    }
+
+    @Test
+    fun `uncommitted state can initialize only while the marker is absent`() = runTest {
+        assertTrue(requireNotNull(journalFile().parentFile).mkdirs())
+        val uncommitted = File(journalFile().path + ".new")
+        uncommitted.writeText("{interrupted")
+
+        assertFalse(barrier().anyPending())
+        assertTrue(markerFile().isFile)
+        assertTrue(journalFile().delete())
+        uncommitted.writeText("""{"version":1,"records":[]}""")
+        expectUnavailable { barrier().anyPending() }
+        assertFalse(journalFile().exists())
+    }
+
+    @Test
+    fun `an invalid existing marker never resumes initialization`() = runTest {
+        assertFalse(barrier().anyPending())
+        val empty = journalFile().readText()
+        markerFile().writeText("invalid")
+
+        expectUnavailable { barrier().anyPending() }
+        assertEquals("invalid", markerFile().readText())
+        assertEquals(empty, journalFile().readText())
     }
 
     @Test
@@ -133,7 +232,7 @@ class RootDataClearBarrierTest {
     }
 
     @Test
-    fun `missing initialized journal directory or marker fails closed`() = runTest {
+    fun `missing initialized journal directory or nonempty journal marker fails closed`() = runTest {
         val initial = barrier().begin(PACKAGE, USER)
         val bytes = journalFile().readBytes()
         assertTrue(journalFile().delete())
