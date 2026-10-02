@@ -29,15 +29,21 @@ import com.valhalla.thor.data.repository.BundleZip
 import com.valhalla.thor.data.repository.copyAtMostTo
 import com.valhalla.thor.domain.model.THORBAK_EXTENSION
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
-import com.valhalla.thor.domain.model.escapeShellArg
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.time.Duration.Companion.seconds
 import org.json.JSONObject
 
 /**
@@ -51,6 +57,15 @@ import org.json.JSONObject
  * writing a gigabyte of cacheDir — and whose entry in the list still shows its name, size and date.
  */
 private const val MAX_ICON_STAGE_BYTES = 256L * 1024 * 1024
+
+// Only cache publication/pruning is serialized; independent reads retain their own cancellation.
+internal val archiveIconCacheWrites = Mutex()
+
+internal sealed interface ArchiveIconExtraction {
+    data class Found(val bitmap: Bitmap) : ArchiveIconExtraction
+    data object Missing : ArchiveIconExtraction
+    data object Skipped : ArchiveIconExtraction
+}
 
 /**
  * The most pixels `decodeSampled` will allocate, whatever the caller asked for — 4 MB of ARGB_8888.
@@ -94,11 +109,13 @@ class ArchiveIconFetcher(
 
     override suspend fun fetch(): FetchResult? {
         return try {
+            currentCoroutineContext().ensureActive()
             // 1. If packageName is known, try loading installed app icon first
             val pkg = model.packageName
             if (!pkg.isNullOrBlank()) {
                 val installed = installedIcon(pkg)
                 if (installed != null) {
+                    currentCoroutineContext().ensureActive()
                     return ImageFetchResult(
                         image = installed.toDrawable(context.resources).asImage(),
                         isSampled = false,
@@ -121,6 +138,7 @@ class ArchiveIconFetcher(
                     .getOrNull()
                     ?.let { decodeSampled(it) }
                 if (bitmap != null) {
+                    currentCoroutineContext().ensureActive()
                     return ImageFetchResult(
                         image = bitmap.toDrawable(context.resources).asImage(),
                         isSampled = false,
@@ -129,36 +147,56 @@ class ArchiveIconFetcher(
                 }
             }
 
-            // 2b. A remembered miss. Coil caches an image, not the absence of one, so without this
-            // a fetch that ends in null is redone on every pass over the list — and for an archive
-            // that has to be staged first, "redone" means copying it again. The key carries the
-            // size and the mtime, so a file that changes is re-examined, and the marker is evicted
-            // on the same schedule as an icon. A transient failure is therefore remembered as a
-            // permanent one until one of those happens: that is the trade, and it is the right way
-            // round for a list whose entries can be gigabytes each.
-            val missMarker = File(iconCacheDir, "$cacheKey.none")
+            // Old .none files may represent transient failures. Only new, confirmed misses
+            // suppress a later fetch with the same source identity.
+            val missMarker = File(iconCacheDir, "$cacheKey.none-v2")
             if (missMarker.exists()) return null
 
-            // 3. Extract icon from archive (APK, XAPK, APKS, THORBAK)
-            val extractedBitmap = extractIcon(model)
-            if (extractedBitmap == null) {
-                runCatching {
-                    prepareCacheDir(iconCacheDir)
-                    missMarker.createNewFile()
+            val extraction = extractIcon(model)
+            currentCoroutineContext().ensureActive()
+            val extractedBitmap = when (extraction) {
+                is ArchiveIconExtraction.Found -> extraction.bitmap
+                ArchiveIconExtraction.Skipped -> return null
+                ArchiveIconExtraction.Missing -> {
+                    try {
+                        archiveIconCacheWrites.withLock {
+                            currentCoroutineContext().ensureActive()
+                            prepareCacheDir(iconCacheDir)
+                            if (!cachedFile.exists()) missMarker.createNewFile()
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // A cache failure does not change the completed inspection result.
+                    }
+                    return null
                 }
-                return null
             }
 
-            // Cache extracted bitmap
+            // A cancelled or overlapping fetch never exposes a partially encoded PNG. The short
+            // cache lock also keeps pruning away from another fetch's active publication file.
             try {
-                prepareCacheDir(iconCacheDir)
-                FileOutputStream(cachedFile).use { out ->
-                    extractedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                archiveIconCacheWrites.withLock {
+                    currentCoroutineContext().ensureActive()
+                    prepareCacheDir(iconCacheDir)
+                    val pending = File(iconCacheDir, ".icon_write_${UUID.randomUUID()}.tmp")
+                    try {
+                        FileOutputStream(pending).use { out ->
+                            if (!extractedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                                throw IOException("Could not encode archive icon")
+                            }
+                        }
+                        currentCoroutineContext().ensureActive()
+                        // The optional cache can be skipped if same-directory rename fails.
+                        if (pending.renameTo(cachedFile)) missMarker.delete()
+                    } finally {
+                        pending.delete()
+                    }
                 }
-            } catch (e: CancellationException) {
-                throw e
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
-                // Cache writing failure is non-fatal
+                // Cache writing failure is non-fatal.
             }
 
             ImageFetchResult(
@@ -192,8 +230,8 @@ class ArchiveIconFetcher(
         }
     }
 
-    private suspend fun extractIcon(model: ArchiveIconModel): Bitmap? {
-        val uri = runCatching { model.uriString.toUri() }.getOrNull() ?: return null
+    private suspend fun extractIcon(model: ArchiveIconModel): ArchiveIconExtraction {
+        val uri = runCatching { model.uriString.toUri() }.getOrNull() ?: return ArchiveIconExtraction.Skipped
         val lower = model.displayName.lowercase()
         val localFile = uri.path
             ?.let(::File)
@@ -208,113 +246,63 @@ class ArchiveIconFetcher(
             // reading a whole multi-gigabyte archive to arrive at the identity the scanner already
             // parsed out of the `<pkg>-<versionCode>.thorbak` file name and step 1 above has
             // already tried against the package manager.
-            if (lower.endsWith(".$THORBAK_EXTENSION")) return null
-            if (model.sizeBytes > MAX_ICON_STAGE_BYTES) return null
+            if (lower.endsWith(".$THORBAK_EXTENSION")) return ArchiveIconExtraction.Skipped
+            if (model.sizeBytes > MAX_ICON_STAGE_BYTES) return ArchiveIconExtraction.Skipped
         }
 
         val token = UUID.randomUUID().toString()
         val tempStaging = File(context.cacheDir, "temp_ico_$token")
 
-        val sourceFile: File = localFile ?: stageArchive(uri, tempStaging, token) ?: return null
-        val staged = sourceFile === tempStaging
-
         try {
-            return when {
-                lower.endsWith(".apk") -> parseApkIcon(sourceFile)
+            val sourceFile = localFile ?: stageArchive(uri, tempStaging)
+                ?: return ArchiveIconExtraction.Skipped
+            currentCoroutineContext().ensureActive()
+            val bitmap = when {
+                lower.endsWith(".apk") -> {
+                    // A null PackageManager parse is not proof that the archive has no icon.
+                    parseApkIcon(sourceFile) ?: return ArchiveIconExtraction.Skipped
+                }
                 lower.endsWith(".xapk") || lower.endsWith(".apks") -> parseBundleIcon(sourceFile)
-                lower.endsWith(".$THORBAK_EXTENSION") -> parseThorbakIcon(sourceFile)
+                lower.endsWith(".$THORBAK_EXTENSION") -> {
+                    // A header can identify an app installed later without changing this file.
+                    parseThorbakIcon(sourceFile) ?: return ArchiveIconExtraction.Skipped
+                }
                 else -> parseApkIcon(sourceFile) ?: parseBundleIcon(sourceFile)
             }
+            return bitmap?.let { ArchiveIconExtraction.Found(it) } ?: ArchiveIconExtraction.Missing
         } finally {
-            if (staged) {
-                tempStaging.delete()
-            }
+            // Root's unacknowledged writer is owned by private receipt staging, never this file.
+            if (localFile == null) tempStaging.delete()
         }
     }
 
-    /**
-     * Copy the archive at [uri] into [tempStaging] so a `ZipFile` reader can open it, and return
-     * that file — or null when it cannot be staged, or should not be.
-     *
-     * Owns the cleanup of everything it writes, on every exit including a cancellation, so a caller
-     * holding a null has nothing left to undo.
-     */
-    private suspend fun stageArchive(uri: Uri, tempStaging: File, token: String): File? {
-        return try {
-            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
-            if (input != null) {
-                try {
-                    // Bounded, not merely size-checked by the caller: `sizeBytes` reaches it from
-                    // the same provider as the bytes, and a provider that reports 0 for a length it
-                    // does not know — plenty do — sails straight through that check.
-                    val copied = input.use { src ->
-                        FileOutputStream(tempStaging).use { dst ->
-                            src.copyAtMostTo(dst, MAX_ICON_STAGE_BYTES)
-                        }
-                    }
-                    if (copied == null) {
-                        tempStaging.delete()
-                        null
-                    } else {
-                        tempStaging
-                    }
-                } catch (e: Throwable) {
-                    tempStaging.delete()
-                    throw e
-                }
-            } else {
-                val path = uri.path
-                if (path.isNullOrBlank()) return null
-                val tmpPath = "/data/local/tmp/thor_ico_$token"
-                val src = path.escapeShellArg()
-                val dst = tmpPath.escapeShellArg()
-                val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
-                // One `finally` for every exit, and an uncancellable one. The `cat` can have
-                // produced the file even when this coroutine is cancelled before the call
-                // returns, so a removal placed on the success paths only — as this was — never
-                // runs on the path that matters. Coil cancels these fetches routinely as the
-                // archive list scrolls, and `ArchiveOrphanSweeper` sweeps `cacheDir`,
-                // `externalCacheDir/obb_out` and the SAF ledger but *not* `/data/local/tmp`, so
-                // a skipped `rm -f` strands a full-size, `chmod 666` copy of the user's archive
-                // where nothing in the app can ever reclaim it. `NonCancellable` alone, without
-                // a dispatcher: `executeShellCommand` makes its own `ioDispatcher` hop.
-                try {
-                    val res = systemRepository.executeShellCommand(cmd).getOrNull()
-                    if (res == null || res.first != 0) return null
-                    val tmpFile = File(tmpPath)
-                    if (!tmpFile.exists() || tmpFile.length() <= 0) return null
-                    val copied = try {
-                        tmpFile.inputStream().use { inputStream ->
-                            FileOutputStream(tempStaging).use { outputStream ->
-                                inputStream.copyAtMostTo(outputStream, MAX_ICON_STAGE_BYTES)
-                            }
-                        }
-                    } catch (e: Throwable) {
-                        tempStaging.delete()
-                        throw e
-                    }
-                    if (copied == null) {
-                        tempStaging.delete()
-                        null
-                    } else {
-                        tempStaging
-                    }
-                } finally {
-                    withContext(NonCancellable) {
-                        systemRepository.executeShellCommand("rm -f $dst")
-                    }
-                }
-            }
-        } catch (e: CancellationException) {
-            // Above the rethrow, not below it: a cancellation arriving here leaves the same staged
-            // copy behind as any other failure, and `File.delete()` is a blocking call that still
-            // completes while cancellation is in progress.
-            tempStaging.delete()
-            throw e
-        } catch (_: Exception) {
-            tempStaging.delete()
+    /** Returns null only for a policy refusal; read/privilege failures must not become icon misses. */
+    private suspend fun stageArchive(uri: Uri, tempStaging: File): File? {
+        val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrElse {
+            if (it is CancellationException) throw it
             null
         }
+        if (input != null) {
+            // Preserve the limit even when a provider reports an unknown or incorrect size.
+            val copied = input.use { src ->
+                FileOutputStream(tempStaging).use { dst -> src.copyAtMostTo(dst, MAX_ICON_STAGE_BYTES) }
+            }
+            if (copied == null) return null
+        } else {
+            val path = uri.path?.takeIf { it.isNotBlank() } ?: return null
+            systemRepository.copyFileForRead(
+                sourcePath = path,
+                destination = tempStaging,
+                maxBytes = MAX_ICON_STAGE_BYTES,
+                execution = PrivilegeExecutionContext(
+                    lane = PrivilegeExecutionLane.ARCHIVE,
+                    commandClass = PrivilegeCommandClass("input.archive-icon"),
+                    commandTimeout = 30.seconds,
+                ),
+            ).getOrThrow()
+        }
+        currentCoroutineContext().ensureActive()
+        return tempStaging
     }
 
     private fun parseApkIcon(file: File): Bitmap? {
@@ -330,35 +318,34 @@ class ArchiveIconFetcher(
     }
 
     private fun parseBundleIcon(file: File): Bitmap? {
-        val contents = runCatching {
-            BundleZip.read(
-                file,
-                setOf("manifest.json", "info.json", "icon.png", "icon.jpg", "icon.webp")
-            )
-        }.getOrNull()
+        val contents = BundleZip.read(
+            file,
+            setOf("manifest.json", "info.json", "icon.png", "icon.jpg", "icon.webp")
+        )
 
-        if (contents != null) {
-            val iconBytes = contents.bytes["icon.png"]
-                ?: contents.bytes["icon.jpg"]
-                ?: contents.bytes["icon.webp"]
-            if (iconBytes != null && iconBytes.isNotEmpty()) {
-                val bitmap = decodeSampled(iconBytes)
-                if (bitmap != null) return bitmap
-            }
+        val iconBytes = contents.bytes["icon.png"]
+            ?: contents.bytes["icon.jpg"]
+            ?: contents.bytes["icon.webp"]
+        if (iconBytes != null && iconBytes.isNotEmpty()) {
+            val bitmap = decodeSampled(iconBytes)
+            if (bitmap != null) return bitmap
+        }
 
-            // Fallback: extract base.apk or first apk candidate
-            val candidate = contents.entryNames.firstOrNull { it.endsWith(".apk", ignoreCase = true) }
-            if (candidate != null) {
-                val tmpApk = File(context.cacheDir, "tmp_bundle_apk_${UUID.randomUUID()}.apk")
-                try {
-                    val extracted = BundleZip.extractEntryTo(file, candidate.substringAfterLast('/'), tmpApk)
-                    if (extracted) {
-                        return parseApkIcon(tmpApk)
-                    }
-                } finally {
-                    tmpApk.delete()
-                }
+        // Fallback: extract base.apk or first apk candidate
+        val candidate = contents.entryNames.firstOrNull { it.endsWith(".apk", ignoreCase = true) }
+        if (candidate != null) {
+            val tmpApk = File(context.cacheDir, "tmp_bundle_apk_${UUID.randomUUID()}.apk")
+            try {
+                val extracted = BundleZip.extractEntryTo(file, candidate.substringAfterLast('/'), tmpApk)
+                if (!extracted) throw IOException("Could not inspect bundled APK icon")
+                return parseApkIcon(tmpApk) ?: throw IOException("Could not parse bundled APK icon")
+            } finally {
+                tmpApk.delete()
             }
+        }
+        if (contents.entryNames.any { it.lowercase() in setOf("icon.png", "icon.jpg", "icon.webp") }) {
+            // A present but undecodable or over-budget icon is not confirmed absence.
+            throw IOException("Could not inspect bundled icon")
         }
         return null
     }
@@ -377,9 +364,7 @@ class ArchiveIconFetcher(
      * archive to get here, and with nothing recording the miss, so the next scroll did it again.
      */
     private fun parseThorbakIcon(file: File): Bitmap? {
-        val contents = runCatching {
-            BundleZip.read(file, setOf(THORBAK_HEADER_ENTRY, "icon.png"))
-        }.getOrNull() ?: return null
+        val contents = BundleZip.read(file, setOf(THORBAK_HEADER_ENTRY, "icon.png"))
 
         val header = contents.bytes[THORBAK_HEADER_ENTRY]
         if (header != null) {
@@ -405,7 +390,7 @@ class ArchiveIconFetcher(
             pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
         }
         appInfo.loadIcon(pm).toBitmap(options)
-    } catch (_: Exception) {
+    } catch (_: PackageManager.NameNotFoundException) {
         null
     }
 
