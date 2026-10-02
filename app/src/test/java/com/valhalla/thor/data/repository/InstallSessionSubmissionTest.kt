@@ -23,6 +23,7 @@ class InstallSessionSubmissionTest {
             abandon = { calls += "abandon" },
             onSubmissionFailure = { throw AssertionError("Submission already succeeded", it) },
             onCleanupFailure = { diagnosed = it },
+            awaitCompletion = { calls += "terminal" },
         ) { markSubmitted ->
             calls += "commit"
             markSubmitted()
@@ -32,7 +33,7 @@ class InstallSessionSubmissionTest {
         if (!submitted) calls += "normal installer"
 
         assertTrue(submitted)
-        assertEquals(listOf("commit", "close"), calls)
+        assertEquals(listOf("commit", "close", "terminal"), calls)
         assertSame(closeFailure, diagnosed)
     }
 
@@ -49,6 +50,7 @@ class InstallSessionSubmissionTest {
                 diagnosed = it
             },
             onCleanupFailure = { throw AssertionError("Nothing was submitted", it) },
+            awaitCompletion = { throw AssertionError("Nothing was submitted") },
         ) {
             calls += "commit"
             throw commitFailure
@@ -73,6 +75,7 @@ class InstallSessionSubmissionTest {
                 },
                 onSubmissionFailure = { throw it },
                 onCleanupFailure = { throw AssertionError("Nothing was submitted", it) },
+                awaitCompletion = { throw AssertionError("Nothing was submitted") },
             ) { throw writeFailure }
         }.exceptionOrNull()
 
@@ -85,11 +88,13 @@ class InstallSessionSubmissionTest {
         for (committed in listOf(false, true)) {
             val cancelled = CancellationException("cancelled")
             var abandonCalls = 0
+            var completionWaits = 0
             val failure = runCatching {
                 trackInstallSessionSubmission(
                     abandon = { abandonCalls++ },
                     onSubmissionFailure = { throw AssertionError("Cancellation must propagate", it) },
                     onCleanupFailure = { throw AssertionError("Cancellation must propagate", it) },
+                    awaitCompletion = { completionWaits++ },
                 ) { markSubmitted ->
                     if (committed) markSubmitted()
                     throw cancelled
@@ -98,6 +103,7 @@ class InstallSessionSubmissionTest {
 
             assertSame(cancelled, failure)
             assertEquals(if (committed) 0 else 1, abandonCalls)
+            assertEquals(if (committed) 1 else 0, completionWaits)
         }
     }
 
@@ -107,6 +113,7 @@ class InstallSessionSubmissionTest {
             abandon = { throw AssertionError("Successful session must not be abandoned") },
             onSubmissionFailure = { throw AssertionError("Unexpected submission failure", it) },
             onCleanupFailure = { throw AssertionError("Unexpected cleanup failure", it) },
+            awaitCompletion = {},
         ) { markSubmitted -> markSubmitted() }
 
         assertTrue(submitted)

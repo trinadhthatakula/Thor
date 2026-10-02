@@ -3,10 +3,24 @@
 
 package com.valhalla.thor.domain
 
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import org.koin.core.annotation.Single
+
+/** One platform session attempt; cancelling a waiter does not settle the install. */
+internal class InstallSessionCompletion(val sessionId: Int, val token: String) {
+    private val terminal = CompletableDeferred<InstallState>()
+
+    suspend fun await(): InstallState = terminal.await()
+
+    internal fun complete(state: InstallState) {
+        terminal.complete(state)
+    }
+}
 
 /**
  * A Singleton Event Bus to bridge the gap between the Android System (BroadcastReceiver)
@@ -16,6 +30,8 @@ import org.koin.core.annotation.Single
  */
 @Single
 class InstallerEventBus {
+    private val sessions = ConcurrentHashMap<String, InstallSessionCompletion>()
+
     val events: SharedFlow<InstallState>
         field = MutableSharedFlow<InstallState>(
             replay = 1,
@@ -35,6 +51,28 @@ class InstallerEventBus {
 
     suspend fun emit(state: InstallState) {
         events.emit(state)
+    }
+
+    /** Register before commit so an immediate receiver result cannot be lost. */
+    internal fun registerSession(sessionId: Int): InstallSessionCompletion {
+        require(sessionId >= 0) { "Invalid install session ID" }
+        return InstallSessionCompletion(sessionId, UUID.randomUUID().toString()).also {
+            check(sessions.putIfAbsent(it.token, it) == null) { "Duplicate install attempt token" }
+        }
+    }
+
+    internal fun unregisterSession(completion: InstallSessionCompletion) {
+        sessions.remove(completion.token, completion)
+    }
+
+    /** UI events stay shared; only the exact session attempt may settle its ownership. */
+    internal suspend fun emitSessionResult(sessionId: Int, token: String?, state: InstallState) {
+        emit(state)
+        if (state != InstallState.Success && state !is InstallState.Error) return
+        val completion = token?.let(sessions::get) ?: return
+        if (completion.sessionId == sessionId && sessions.remove(token, completion)) {
+            completion.complete(state)
+        }
     }
 
     /**

@@ -131,19 +131,18 @@ class AppArchiveInstallerImpl(
      *    synchronously before `installPackage` returns. [settledArchiveInstallState] states that
      *    rule as a pure function of the two values, so it is decided by data rather than by which
      *    thread won, and it is tested.
-     *  - **The watcher is still what makes the fallback safe.** On a session rung the outcome
-     *    arrives *after* `installPackage` returns — `InstallReceiver` answers a commit that has
-     *    already been made — so the cache's last word is only `Installing`. Subscribing after that
-     *    read would race the broadcast; subscribing before the install, as below, cannot.
-     *  - **[INSTALL_WAIT_MS] bounds the whole operation.** The install call is inside the budget,
-     *    not just the wait after it, so a rung that never returns ends in `Unconfirmed` instead of
-     *    hanging the restore worker with no outcome at all.
+     *  - **The watcher records receiver and placement outcomes throughout the call.** Session
+     *    rungs wait for their own terminal callback before returning; the watcher also retains
+     *    the fallback for an installer implementation that returns before emitting its outcome.
+     *  - **[INSTALL_WAIT_MS] requests cancellation of the whole operation.** An accepted session
+     *    keeps the caller's lease until its terminal callback even after this budget expires.
+     *    A missing callback therefore retains ownership in this process beyond the budget.
      *
      * What this does *not* fix, because the constant is in `InstallerRepositoryImpl` and shared with
      * the foreground installer: for an OBB-carrying archive installed through a **session** rung
      * (Shizuku's reflection fallback, or the normal-installer fallback below it), `installPackage`
-     * runs its own 90 s `awaitInstalled` and emits "Thor could not confirm … finished installing" on
-     * timeout. That error settles this wait at 90 s even though the budget here is ten minutes. The
+     * runs its own 90 s `awaitInstalled` after terminal success and emits "Thor could not confirm …
+     * finished installing" if package readback still cannot establish placement eligibility. The
      * shell rungs — root, and Shizuku's first rung — are synchronous and never reach it. The reason
      * now travels with the outcome, so the user is told the install could not be confirmed rather
      * than that it failed.

@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
+import androidx.core.net.toUri
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.data.gateway.RootSystemGateway
@@ -204,6 +205,19 @@ class InstallerRepositoryImpl(
                     // Read *before* installing, because for an update the answer changes and nothing
                     // afterwards can reconstruct it. See [awaitInstalled].
                     val stampBefore = packageName?.let { installStamp(it) }
+                    var sessionTerminal: InstallState? = null
+                    val onSessionTerminal: (InstallState) -> Unit = { result ->
+                        sessionTerminal = result
+                        if (result is InstallState.Success) {
+                            try {
+                                onInstallSucceeded()
+                            } catch (failure: Throwable) {
+                                if (failure is CancellationException) throw failure
+                                // Observer failure cannot revoke a completed session or authorize fallback.
+                                Logger.e("InstallerRepo", "Install success observer failed", failure)
+                            }
+                        }
+                    }
 
                     when (mode) {
                         InstallMode.ROOT -> {
@@ -269,7 +283,8 @@ class InstallerRepositoryImpl(
                                             staged,
                                             privilegedInstaller,
                                             canDowngrade,
-                                            emitErrors = false
+                                            emitErrors = false,
+                                            onTerminalResult = onSessionTerminal,
                                         )
                                     } catch (e: Throwable) {
                                         if (e is CancellationException) throw e
@@ -285,7 +300,8 @@ class InstallerRepositoryImpl(
                                         staged,
                                         defaultInstaller,
                                         canDowngrade,
-                                        emitErrors = true
+                                        emitErrors = true,
+                                        onTerminalResult = onSessionTerminal,
                                     )
                                 }
                             }
@@ -310,7 +326,8 @@ class InstallerRepositoryImpl(
                                         staged,
                                         privilegedInstaller,
                                         canDowngrade,
-                                        emitErrors = false
+                                        emitErrors = false,
+                                        onTerminalResult = onSessionTerminal,
                                     )
                                 } catch (e: Throwable) {
                                     if (e is CancellationException) throw e
@@ -326,7 +343,8 @@ class InstallerRepositoryImpl(
                                     staged,
                                     defaultInstaller,
                                     canDowngrade,
-                                    emitErrors = true
+                                    emitErrors = true,
+                                    onTerminalResult = onSessionTerminal,
                                 )
                             }
                         }
@@ -336,7 +354,8 @@ class InstallerRepositoryImpl(
                                 staged,
                                 defaultInstaller,
                                 canDowngrade,
-                                emitErrors = true
+                                emitErrors = true,
+                                onTerminalResult = onSessionTerminal,
                             )
                         }
 
@@ -364,7 +383,7 @@ class InstallerRepositoryImpl(
                         obbInstaller.carriesExpansions(staged.file, packageName)
                     ) {
                         val name = staged.displayName ?: packageName
-                        when (awaitInstalled(packageName, stampBefore)) {
+                        when (awaitInstalled(packageName, stampBefore, sessionTerminal)) {
                             InstallWait.INSTALLED ->
                                 when (val placement = obbInstaller.place(staged.file, packageName, execution)) {
                                     is ObbPlacement.Failed -> eventBus.emit(
@@ -480,11 +499,9 @@ class InstallerRepositoryImpl(
     /**
      * Wait until this install has actually landed, it has failed, or we give up.
      *
-     * Only the `pm`-based rungs finish synchronously. `performPackageInstallerInstall` ends at
-     * `session.commit()`, which returns before the platform has installed anything — the outcome
-     * arrives later as a broadcast to `InstallReceiver`. Reading "not installed yet" as "no install,
-     * so no game data to place" would drop the OBB silently, which is exactly the bug this feature
-     * exists to fix. It is reachable today: Shizuku's shell rung failing falls through to a session.
+     * Session rungs now wait for their correlated terminal broadcast before reaching this check.
+     * Keep package readback as the placement postcondition, and never treat a timestamp change or
+     * another install's event as overriding this session's terminal failure.
      *
      * Two things this must get right, and a presence check gets neither:
      *
@@ -495,21 +512,27 @@ class InstallerRepositoryImpl(
      *  - **A failure never arrives as a package.** A declined confirmation dialog or a rejected
      *    session means the stamp never moves, so polling alone spins out the whole timeout and then
      *    reports "could not confirm" on top of the real error `InstallReceiver` already delivered.
-     *    [InstallerEventBus.latest] answers that in one read per tick. A *previous* install's error
-     *    cannot be misread as this one's: every session path emits `Installing(1.0f)` before this
-     *    gate, and `InstallerViewModel` emits `Parsing` before that, so both overwrite the bus.
+     *    Session results are operation-local. Only the synchronous shell rungs use
+     *    [InstallerEventBus.latest] when no session result exists.
      *
      * The wait engages only when needed and so costs nothing on the synchronous rungs, which have
      * already moved the stamp by the time they return. It cannot substitute for real completion
      * plumbing, so the timeout ends in a stated failure rather than in silence.
      */
-    private suspend fun awaitInstalled(packageName: String, stampBefore: Long?): InstallWait {
+    private suspend fun awaitInstalled(
+        packageName: String,
+        stampBefore: Long?,
+        sessionTerminal: InstallState?,
+    ): InstallWait {
+        if (sessionTerminal is InstallState.Error) return InstallWait.FAILED
         fun landed() = installStamp(packageName)?.let { it != stampBefore } == true
 
         if (landed()) return InstallWait.INSTALLED
         val settled = withTimeoutOrNull(OBB_INSTALL_WAIT_MS) {
             while (!landed()) {
-                if (eventBus.latest is InstallState.Error) return@withTimeoutOrNull InstallWait.FAILED
+                if (sessionTerminal == null && eventBus.latest is InstallState.Error) {
+                    return@withTimeoutOrNull InstallWait.FAILED
+                }
                 delay(OBB_INSTALL_POLL_MS)
             }
             InstallWait.INSTALLED
@@ -871,7 +894,8 @@ class InstallerRepositoryImpl(
         // write on it transacts as Thor and is refused. The handle carries the correct opener.
         installer: InstallerHandle,
         canDowngrade: Boolean,
-        emitErrors: Boolean = true
+        emitErrors: Boolean = true,
+        onTerminalResult: (InstallState) -> Unit,
     ): Boolean {
         // Written before the first entry is copied, once the install set is known; the staged
         // file's own length is the right answer for a monolithic APK and a decent lower bound
@@ -981,128 +1005,137 @@ class InstallerRepositoryImpl(
             }
         }
 
-        return trackInstallSessionSubmission(
-            abandon = session::abandon,
-            onSubmissionFailure = { failure ->
-                Logger.e("thorInstaller", "Install failed", failure)
-                if (emitErrors) {
-                    eventBus.emit(
-                        InstallState.Error(UiText.DynamicString(failure.message ?: "Unknown installation error"))
-                    )
-                } else throw failure
-            },
-            onCleanupFailure = { failure ->
-                Logger.e("thorInstaller", "Session close failed after install submission", failure)
-            },
-        ) { markSubmitted ->
-            // The staged copy IS the input, already on disk — no second read of the URI, and no
-            // second copy either. ZipFile (central directory) reads it; ZipInputStream cannot
-            // handle APKPure's STORED-with-data-descriptor entries and derails on the first one.
-            val bundleFile = staged.file
-            coroutineScope {
-                // Drain progress ticks on a child coroutine so emissions are bound to the
-                // install job (cancellation stops them) and can never outlive the write phase.
-                // Closing the channel ends the drain loop; coroutineScope then awaits this child
-                // before returning, so the final tick is flushed before we continue. No explicit
-                // join(): it is redundant here, and a suspending join() in a finally could mask
-                // the real failure (e.g. an IOException from openWrite) under cancellation.
-                launch {
-                    for (fraction in progressChannel) {
-                        eventBus.emit(InstallState.Installing(fraction))
-                    }
-                }
-                try {
-                    // Genuine bundle: write each resolved split into the session, read via
-                    // ZipFile so STORED-with-data-descriptor entries stream correctly.
-                    val installSet = resolveStagedInstallSet(staged, ::resolveInstallSetFromFile)
-                    if (installSet != null) {
-                        val wanted =
-                            installSet.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }
-                        ZipFile(bundleFile).use { zf ->
-                            // OrRefuse, not the bare selector: an install set that does not
-                            // survive selection is a verdict about the archive, not a licence to
-                            // install something else. An empty selection used to fall through to
-                            // the monolithic branch below and stream the outer container as
-                            // base.apk — a file that by construction is not the one the sheet's
-                            // identity was read from.
-                            val toWrite =
-                                selectEntriesToWriteOrRefuse(zf.entries().asSequence(), wanted)
-                            // Now that the set is known, progress can be measured against what
-                            // actually gets written rather than the archive's compressed length —
-                            // capped, because this sum is the archive's own claim about itself.
-                            val declared = toWrite.sumOf { if (it.size >= 0) it.size else 0L }
-                            if (declared > 0) {
-                                totalBytes = declared.coerceAtMost(MAX_EXTRACTED_TOTAL_BYTES)
-                            }
-                            writeEntriesWithinBudget(
-                                zip = zf,
-                                entries = toWrite,
-                                budget = MAX_EXTRACTED_TOTAL_BYTES,
-                                openSink = { name, length -> session.openWrite(name, 0, length) },
-                                trackProgress = { inner -> getTrackedStream(inner) },
-                                afterEntry = { out -> session.fsync(out) }
-                            )
-                        }
-                    } else {
-                        // Monolithic APK (or not a readable bundle): stream the staged file
-                        // whole as base.apk.
-                        //
-                        // Gated on the ABSENCE of an install set, not on "nothing got written".
-                        // `installSet == null` is resolveInstallSetFromFile's own monolithic
-                        // verdict — the very condition AppAnalyzerImpl checks (plan.installSet
-                        // .isEmpty()) before it lets the whole file identify itself, so this is
-                        // the only state in which the file's own manifest describes the bytes
-                        // `pm` ends up with.
-                        Logger.d("thor", "Treating stream as monolithic base.apk")
-                        // The budget cannot bite here — the source is Thor's own staged copy,
-                        // bounded by analyze() — but it is applied anyway rather than assumed,
-                        // so this path does not depend on an invariant held in another class.
-                        val length = bundleFile.length().takeIf { it in 1..MAX_EXTRACTED_TOTAL_BYTES }
-                            ?: -1L
-                        var copied: Long? = null
-                        session.openWrite("base.apk", 0, length).use { out ->
-                            bundleFile.inputStream().use { inner ->
-                                copied = getTrackedStream(inner)
-                                    .copyAtMostTo(out, MAX_EXTRACTED_TOTAL_BYTES)
-                            }
-                            if (copied != null) session.fsync(out)
-                        }
-                        if (copied == null) {
-                            throw InstallRefusedException(
-                                "The selected file is larger than " +
-                                    "${MAX_EXTRACTED_TOTAL_BYTES / (1024 * 1024)} MB; " +
-                                    "refusing to install it."
-                            )
+        val completion = eventBus.registerSession(sessionId)
+        return try {
+            trackInstallSessionSubmission(
+                abandon = session::abandon,
+                onSubmissionFailure = { failure ->
+                    Logger.e("thorInstaller", "Install failed", failure)
+                    if (emitErrors) {
+                        eventBus.emit(
+                            InstallState.Error(UiText.DynamicString(failure.message ?: "Unknown installation error"))
+                        )
+                    } else throw failure
+                },
+                onCleanupFailure = { failure ->
+                    Logger.e("thorInstaller", "Session close failed after install submission", failure)
+                },
+                awaitCompletion = { onTerminalResult(completion.await()) },
+            ) { markSubmitted ->
+                // The staged copy IS the input, already on disk — no second read of the URI, and no
+                // second copy either. ZipFile (central directory) reads it; ZipInputStream cannot
+                // handle APKPure's STORED-with-data-descriptor entries and derails on the first one.
+                val bundleFile = staged.file
+                coroutineScope {
+                    // Drain progress ticks on a child coroutine so emissions are bound to the
+                    // install job (cancellation stops them) and can never outlive the write phase.
+                    // Closing the channel ends the drain loop; coroutineScope then awaits this child
+                    // before returning, so the final tick is flushed before we continue. No explicit
+                    // join(): it is redundant here, and a suspending join() in a finally could mask
+                    // the real failure (e.g. an IOException from openWrite) under cancellation.
+                    launch {
+                        for (fraction in progressChannel) {
+                            eventBus.emit(InstallState.Installing(fraction))
                         }
                     }
-                } finally {
-                    progressChannel.close()
+                    try {
+                        // Genuine bundle: write each resolved split into the session, read via
+                        // ZipFile so STORED-with-data-descriptor entries stream correctly.
+                        val installSet = resolveStagedInstallSet(staged, ::resolveInstallSetFromFile)
+                        if (installSet != null) {
+                            val wanted =
+                                installSet.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }
+                            ZipFile(bundleFile).use { zf ->
+                                // OrRefuse, not the bare selector: an install set that does not
+                                // survive selection is a verdict about the archive, not a licence to
+                                // install something else. An empty selection used to fall through to
+                                // the monolithic branch below and stream the outer container as
+                                // base.apk — a file that by construction is not the one the sheet's
+                                // identity was read from.
+                                val toWrite =
+                                    selectEntriesToWriteOrRefuse(zf.entries().asSequence(), wanted)
+                                // Now that the set is known, progress can be measured against what
+                                // actually gets written rather than the archive's compressed length —
+                                // capped, because this sum is the archive's own claim about itself.
+                                val declared = toWrite.sumOf { if (it.size >= 0) it.size else 0L }
+                                if (declared > 0) {
+                                    totalBytes = declared.coerceAtMost(MAX_EXTRACTED_TOTAL_BYTES)
+                                }
+                                writeEntriesWithinBudget(
+                                    zip = zf,
+                                    entries = toWrite,
+                                    budget = MAX_EXTRACTED_TOTAL_BYTES,
+                                    openSink = { name, length -> session.openWrite(name, 0, length) },
+                                    trackProgress = { inner -> getTrackedStream(inner) },
+                                    afterEntry = { out -> session.fsync(out) }
+                                )
+                            }
+                        } else {
+                            // Monolithic APK (or not a readable bundle): stream the staged file
+                            // whole as base.apk.
+                            //
+                            // Gated on the ABSENCE of an install set, not on "nothing got written".
+                            // `installSet == null` is resolveInstallSetFromFile's own monolithic
+                            // verdict — the very condition AppAnalyzerImpl checks (plan.installSet
+                            // .isEmpty()) before it lets the whole file identify itself, so this is
+                            // the only state in which the file's own manifest describes the bytes
+                            // `pm` ends up with.
+                            Logger.d("thor", "Treating stream as monolithic base.apk")
+                            // The budget cannot bite here — the source is Thor's own staged copy,
+                            // bounded by analyze() — but it is applied anyway rather than assumed,
+                            // so this path does not depend on an invariant held in another class.
+                            val length = bundleFile.length().takeIf { it in 1..MAX_EXTRACTED_TOTAL_BYTES }
+                                ?: -1L
+                            var copied: Long? = null
+                            session.openWrite("base.apk", 0, length).use { out ->
+                                bundleFile.inputStream().use { inner ->
+                                    copied = getTrackedStream(inner)
+                                        .copyAtMostTo(out, MAX_EXTRACTED_TOTAL_BYTES)
+                                }
+                                if (copied != null) session.fsync(out)
+                            }
+                            if (copied == null) {
+                                throw InstallRefusedException(
+                                    "The selected file is larger than " +
+                                        "${MAX_EXTRACTED_TOTAL_BYTES / (1024 * 1024)} MB; " +
+                                        "refusing to install it."
+                                )
+                            }
+                        }
+                    } finally {
+                        progressChannel.close()
+                    }
                 }
+
+                eventBus.emit(InstallState.Installing(1.0f))
+
+                val intent = Intent(context, InstallReceiver::class.java).apply {
+                    action = ACTION_INSTALL_STATUS
+                    setPackage(context.packageName)
+                    data = "thor-install-session:${completion.token}".toUri()
+                    putExtra(PackageInstaller.EXTRA_SESSION_ID, sessionId)
+                    putExtra(InstallReceiver.EXTRA_INSTALL_TOKEN, completion.token)
+                }
+
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+
+                val pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    sessionId,
+                    intent,
+                    flags
+                )
+
+                session.commit(pendingIntent.intentSender)
+                markSubmitted()
+                session.close()
             }
-
-            eventBus.emit(InstallState.Installing(1.0f))
-
-            val intent = Intent(context, InstallReceiver::class.java).apply {
-                action = ACTION_INSTALL_STATUS
-                setPackage(context.packageName)
-            }
-
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
-
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                sessionId,
-                intent,
-                flags
-            )
-
-            session.commit(pendingIntent.intentSender)
-            markSubmitted()
-            session.close()
+        } finally {
+            eventBus.unregisterSession(completion)
         }
     }
 }

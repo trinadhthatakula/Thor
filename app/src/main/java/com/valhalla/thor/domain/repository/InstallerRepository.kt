@@ -39,10 +39,10 @@ interface InstallerRepository {
      * @param onInvocationStarted called after the repository has entered its install dispatcher and
      *   immediately before install work begins. It does not imply success; it lets cancellation-aware
      *   callers distinguish a call cancelled at dispatcher entry from one whose install path started.
-     * @param onInstallSucceeded operation-local proof, called only after this invocation's synchronous
-     *   installer reports success, before publishing progress or placing OBB data. Invocation entry,
-     *   global events and package presence are not proof. Session/external rungs do not call it: their
-     *   asynchronous completion is not correlated here, so cancellation ownership stays unknown.
+     * @param onInstallSucceeded operation-local proof from this invocation's synchronous installer
+     *   or matching session success callback, before OBB placement. Session success is also observed
+     *   while draining cancellation. Invocation entry, global events and package presence are not
+     *   proof. External chooser handoff does not call it because Thor does not own that install.
      * @param bypassLowTargetSdkBlock requests Android's low-target SDK install bypass. It is valid
      *   only for the Root and shell-backed Shizuku paths on Android 14 and later; unsupported modes
      *   are rejected before the install starts.
