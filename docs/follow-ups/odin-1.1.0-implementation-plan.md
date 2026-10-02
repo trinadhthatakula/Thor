@@ -1323,7 +1323,7 @@ automatic retry, a restore shortcut, or a mechanism to prove that an old produce
 - Instrumentation restored the selected provider and consent, history, disposable keys, and its
   own synthetic receipt. Host comparison confirmed identical semantic hashes/counts for history
   and root-execution journals and no new disposable keys in SYSTEM/SECURE/GLOBAL. No raw history
-  or settings-table values were exported. Installed APK hashes matched the built artifacts, and
+  or settings-table values were saved in host artifacts. Installed APK hashes matched the built artifacts, and
   the debug Home activity launched successfully afterward.
 - The ReSuKiSU phone disconnected before this increment's validation; final ADB inventory showed
   only the emulator. The physical follow-up below completes Root/Shizuku and post-acknowledgement
