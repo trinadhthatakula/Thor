@@ -329,13 +329,13 @@ class SettingsEditorLiveCancellationIntegrationTest {
         }
 
         fun command(): String {
-            val apk = InstrumentationRegistry.getInstrumentation().context.applicationInfo.sourceDir
+            val classpath = settingsEditorProbeClasspath()
             val request = JSONObject().put("key", key).put("userId", 0).put("variant", "ignore_term_child")
                 .put("maxSeconds", WATCHDOG_SECONDS).put("controlDir", control.absolutePath)
             val payload = Base64.encodeToString(request.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
             val helper = "trap '' TERM; exec /system/bin/app_process /system/bin --nice-name=thor_sett_live_${id.replace("-", "")} " +
                 "com.valhalla.thor.data.settingseditor.SettingsEditorLiveWriterProbe ${quote(payload)}"
-            return "CLASSPATH=${quote(apk)} " + settingsEditorProcessDeadline("/system/bin/sh -c ${quote(helper)}", WATCHDOG_SECONDS)
+            return "CLASSPATH=${quote(classpath)} " + settingsEditorProcessDeadline("/system/bin/sh -c ${quote(helper)}", WATCHDOG_SECONDS)
         }
 
         fun validateReady(marker: LiveMarker, bootId: String) {
