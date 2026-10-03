@@ -1515,9 +1515,10 @@ ordinary production `SettingsEditorBridge` while it is inside a Settings provide
   user identity, synthetic transport failure, and no replay; run the real app path on both devices.
 - [x] Append tracked clear-data request/query results, preserving all seven earlier transaction slots.
 - [x] Persist package/user ownership before dispatch and reconcile late completion without resubmission.
-- [x] Retain live-process install leases after a successful session commit until its correlated
-  terminal callback, including caller cancellation; keep external chooser handoff separate.
-- [ ] Add durable installer-session recovery across app death and resolve indeterminate commit transport failures.
+- [x] Retain live-process install leases before commit is attempted until its correlated terminal
+  callback, independently of caller cancellation/deadlines; keep external chooser handoff separate.
+- [x] Stop background confirmation waits without publishing prompts, retaining ownership and restore evidence.
+- [ ] Add durable installer-session recovery across app death and resolve attempted commits with no terminal callback.
 - [ ] Extend typed AIDL **mutation** results beyond clear-data for service-confirmed/refused/unknown outcomes. Map
   client-observed Binder death or `RemoteException` to explicit transport/uncertain execution
   states; a dead service cannot return its own terminal reply. Add operation identity only where
@@ -1738,6 +1739,9 @@ provenance are retained in the evidence directory's `merged-dev/` subdirectory; 
 
 #### M3-02 installer session completion follow-up (2026-10-03)
 
+Historical validation of the initial implementation. The detached ownership follow-up below
+supersedes its caller-draining and commit-uncertainty behavior.
+
 Implementation and regression tests:
 [`e7ddadf64c0388345dd8db779c1fc005f5bb4122`](https://github.com/trinadhthatakula/Thor/commit/e7ddadf64c0388345dd8db779c1fc005f5bb4122)
 in [#547](https://github.com/trinadhthatakula/Thor/pull/547).
@@ -1768,6 +1772,46 @@ Evidence: `~/.codex/artifacts/thor-pr547-install-completion-2026-10-03/`, includ
 `source-revision.json`, `validation-summary.json`, `final-gates.log`, test/lint reports and APKs.
 The initial KTX lint failure and its preceding successful tests are retained separately in
 `before-ktx-fix/`. CI results are not included in this evidence.
+
+#### M3-02 detached installer ownership follow-up (2026-10-03)
+
+Implementation and regression tests: [`0ddae5c23d425ad5af15e388df5fb95486546385`](https://github.com/trinadhthatakula/Thor/commit/0ddae5c23d425ad5af15e388df5fb95486546385)
+in [#547](https://github.com/trinadhthatakula/Thor/pull/547), based on
+`7a47f4baa328cac79a0dc8fe08bb491299d4bb8d`. This supersedes the noncancellable caller drain described above.
+
+Each registered session retains references to every actual enclosing package/global lease before
+commit is attempted, including an archive restore's borrowed package claim. Caller cancellation
+returns promptly, and the session wait has a ten-minute budget. Neither caller exit nor closing the
+session handle retires the retained ownership; only the matching terminal session/token callback
+does. A throwing commit is treated as unresolved delivery, without abandonment or fallback.
+
+Background `STATUS_PENDING_USER_ACTION` ends the caller wait with an explicit unresolved result,
+keeps ownership, and does not publish a foreground confirmation intent. Active interactive sessions
+keep their confirmation flow. Detached, mismatched, duplicate, and malformed callbacks cannot
+replace another install's status. Late terminal callbacks release ownership without calling the
+exited success observer, placing OBB, restoring data, or authorizing rollback. Unconfirmed archive
+installs retain their interruption breadcrumb. External chooser ownership still ends at handoff.
+
+- [x] Separate caller cancellation/deadlines from retained session ownership.
+- [x] Keep exact package/global/borrowed claims, including already queued successor admission.
+- [x] Preserve noninteractive confirmation uncertainty and prevent fallback after attempted commit.
+- [x] Suppress late caller side effects and retain restore interruption evidence.
+- [ ] Validate these new session cases against real PackageInstaller/device callbacks.
+- [ ] Establish complete WorkManager cancellation and durable process-death/session recovery.
+
+Required `test lintFossDebug lintStoreRelease` gates passed on the revision above using JDK 21,
+Gradle 9.8.0, AGP 9.5.0-alpha08, Robolectric 4.17, and one worker: **3,522 tests per FOSS/Store
+Debug variant**, including 212 focused installer/lease/receiver/restore/UI tests, with zero
+failures/errors/skips. Lint reported zero errors/warnings (9 FOSS / 8 Store hints). Debug assembly,
+AndroidTest Kotlin compilation, and both minified release builds passed; neither release produced
+nonempty R8 missing rules. The existing worker cancellation assertion now follows the original
+cause through coroutine stack-trace recovery introduced by the retained lease scope.
+
+Evidence: `~/.codex/artifacts/thor-pr547-retained-install-2026-10-03/`, including exact source
+hashes, `validation-summary.json`, full gate logs, test/lint reports and APK hashes/copies. Earlier
+harness assertion failures are retained separately. No device tests were rerun; these results do
+not establish real PackageInstaller callback, complete WorkManager cancellation, or durable
+process-death recovery behavior. CI was not monitored.
 
 ### M3-03: Diagnostics and documentation
 
@@ -1809,6 +1853,7 @@ baseline row with results from a later commit.
 | M3-02 CI cancellation watchdog | [`8952fab2`](https://github.com/trinadhthatakula/Thor/commit/8952fab2f324f28b59fffe26925278d5eaeb8200) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21 | Real-clock cancellation guard; negative admission mutation; required gates; debug assembly and AndroidTest compile | Focused test and 3,470 JVM tests per FOSS/Store Debug variant passed; unsafe mutation rejected; lint passed; no device rerun |
 | M3-02 dev build integration | [`f0ca834a`](https://github.com/trinadhthatakula/Thor/commit/f0ca834a830fccf3fd29019b20cd8ba4876aadfe) / [#547](https://github.com/trinadhthatakula/Thor/pull/547); merged dev `a13e761a` (#548) | Host, JDK 21; Gradle 9.8.0; AGP 9.5.0-alpha08; Robolectric 4.17 | Required gates; debug assembly and AndroidTest compile after merging dev | 3,470 JVM tests per FOSS/Store Debug variant passed; lint passed; no device rerun |
 | M3-02 installer session completion | [`e7ddadf6`](https://github.com/trinadhthatakula/Thor/commit/e7ddadf64c0388345dd8db779c1fc005f5bb4122) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21; Gradle 9.8.0; Robolectric 4.17 | Correlated terminal callbacks; global/package/borrowed leases; cancellation; OBB refusal; external handoff; required gates and release builds | 3,491 JVM tests per variant, including 61 relevant regressions; lint, debug/AndroidTest compile and both minified builds passed; device and durable-recovery acceptance remain open |
+| M3-02 detached installer ownership | [`0ddae5c2`](https://github.com/trinadhthatakula/Thor/commit/0ddae5c23d425ad5af15e388df5fb95486546385) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21; Gradle 9.8.0; Robolectric 4.17 | Caller deadlines/cancellation; exact package/global/borrowed retention; background confirmation; late callbacks; no fallback; restore evidence | 3,522 JVM tests per variant, including 212 focused tests; lint, debug/AndroidTest compile and both minified releases passed; device, full worker cancellation and durable recovery remain open |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
