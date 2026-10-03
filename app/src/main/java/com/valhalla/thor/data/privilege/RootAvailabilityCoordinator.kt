@@ -3,6 +3,11 @@
 
 package com.valhalla.thor.data.privilege
 
+import com.valhalla.thor.util.DefaultRootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleEvent
+import com.valhalla.thor.util.RootRefreshPhase
+import com.valhalla.thor.util.recordSafely
 import com.valhalla.thor.domain.model.RootAdmissionUnavailable
 import com.valhalla.thor.domain.model.RootAvailabilityState
 import com.valhalla.thor.domain.model.RootConfirmation
@@ -41,6 +46,7 @@ fun interface RootAvailabilityProbe {
 class RootAvailabilityCoordinator(
     private val probe: RootAvailabilityProbe,
     @Named("io") ioDispatcher: CoroutineDispatcher,
+    private val diagnostics: RootLifecycleDiagnostics = DefaultRootLifecycleDiagnostics,
 ) : RootRefreshController, RootAdmissionController {
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val lock = Any()
@@ -84,6 +90,7 @@ class RootAvailabilityCoordinator(
                 failure = "Accepted root work is still running",
             )
             mutableState.value = busy
+            recordRefresh(RootRefreshPhase.DEFERRED_ACTIVE_WORK)
             idleRetryPending = allowIdleRetry
             busyResult = completion
             completion.complete(busy)
@@ -96,13 +103,14 @@ class RootAvailabilityCoordinator(
             failure = null,
         )
         inFlight = completion
+        recordRefresh(RootRefreshPhase.STARTED)
         scope.launch {
             val result = try {
                 probe.observeFreshRoot()
             } catch (cancelled: CancellationException) {
                 synchronized(lock) {
                     if (inFlight === completion) {
-                        publishResultLocked(RootProbeResult(RootProbeOutcome.FAILED, "Root refresh cancelled"))
+                        publishResultLocked(RootProbeResult(RootProbeOutcome.FAILED, "Root refresh cancelled"), RootRefreshPhase.CANCELLED)
                         inFlight = null
                     }
                     completion.cancel(cancelled)
@@ -124,7 +132,10 @@ class RootAvailabilityCoordinator(
         return completion
     }
 
-    private fun publishResultLocked(result: RootProbeResult): RootAvailabilityState {
+    private fun publishResultLocked(
+        result: RootProbeResult,
+        phase: RootRefreshPhase = RootRefreshPhase.COMPLETED,
+    ): RootAvailabilityState {
         val previous = mutableState.value
         val revision = previous.revision + 1
         val confirmed = when (result.outcome) {
@@ -144,7 +155,10 @@ class RootAvailabilityCoordinator(
             confirmedRevision = if (confirmed != null) revision else previous.confirmedRevision,
             hasCompletedRefresh = true,
             failure = result.failure,
-        ).also { mutableState.value = it }
+        ).also {
+            mutableState.value = it
+            recordRefresh(phase)
+        }
     }
 
     override fun onRootWorkIdle() {
@@ -156,6 +170,7 @@ class RootAvailabilityCoordinator(
 
     private fun retryWhenIdleLocked() {
         if (activeAdmissions == 0 && idleRetryPending && inFlight == null) {
+            recordRefresh(RootRefreshPhase.IDLE_RETRY)
             startRefreshLocked(allowIdleRetry = false)
         }
     }
@@ -168,7 +183,10 @@ class RootAvailabilityCoordinator(
             return block()
         }
         val admission = synchronized(lock) {
-            if (!mutableState.value.canAdmitRoot) throw RootAdmissionUnavailable(mutableState.value)
+            if (!mutableState.value.canAdmitRoot) {
+                recordRefresh(RootRefreshPhase.ADMISSION_REFUSED)
+                throw RootAdmissionUnavailable(mutableState.value)
+            }
             activeAdmissions++
             Admission(this)
         }
@@ -182,6 +200,14 @@ class RootAvailabilityCoordinator(
                 retryWhenIdleLocked()
             }
         }
+    }
+
+    private fun recordRefresh(phase: RootRefreshPhase) {
+        val observation = mutableState.value
+        diagnostics.recordSafely(RootLifecycleEvent.Refresh(
+            phase, observation.revision, observation.confirmedRevision,
+            observation.confirmation, observation.refreshStatus,
+        ))
     }
 
     private class Admission(val owner: RootAvailabilityCoordinator) : AbstractCoroutineContextElement(Key) {
