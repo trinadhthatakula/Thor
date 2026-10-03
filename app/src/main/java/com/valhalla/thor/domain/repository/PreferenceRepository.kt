@@ -100,6 +100,9 @@ interface PreferenceRepository {
     // --- Work Mode ---
     suspend fun setPrivilegeMode(mode: PrivilegeMode?)
 
+    /** Saves a device-local manager shortcut without changing privilege mode; null clears it. */
+    suspend fun setSelectedRootManagerPackage(packageName: String?)
+
     // --- Localization ---
     /**
      * @return `true` if the new value reached disk.

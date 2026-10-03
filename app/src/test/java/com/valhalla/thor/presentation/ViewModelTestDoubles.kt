@@ -728,6 +728,10 @@ class FakePreferenceRepository(
         write { it.copy(preferredPrivilegeMode = mode) }
     }
 
+    override suspend fun setSelectedRootManagerPackage(packageName: String?) {
+        write { it.copy(selectedRootManagerPackage = packageName) }
+    }
+
     override suspend fun setLanguage(language: String?): Boolean =
         write(announce = false) { it.copy(language = language) }
 

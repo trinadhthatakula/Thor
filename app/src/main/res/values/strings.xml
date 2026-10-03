@@ -120,6 +120,11 @@
     <string name="suspended">Suspended</string>
     <string name="privilege_check">Privilege Check</string>
     <string name="privilege_check_desc">Thor requires Root, Shizuku or Dhizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.</string>
+    <string name="choose_root_manager">Choose root manager</string>
+    <string name="choose_root_manager_action">Choose</string>
+    <string name="root_manager_picker_description">If your root manager uses a hidden or randomized package name, choose its app here. This saves a shortcut; root access is checked separately.</string>
+    <string name="root_manager_apps_unavailable">Could not load apps. Try again.</string>
+    <string name="selected_root_manager_unavailable">The selected manager is unavailable. Choose it again if its package name changed.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ System Apps</string>

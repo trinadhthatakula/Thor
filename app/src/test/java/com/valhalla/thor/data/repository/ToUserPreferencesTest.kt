@@ -10,11 +10,13 @@ import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,6 +30,46 @@ import org.junit.Test
  * a `Preferences` — so it is pinned here.
  */
 class ToUserPreferencesTest {
+
+    @Test
+    fun `no root manager shortcut is selected by default`() {
+        assertNull(com.valhalla.thor.domain.model.UserPreferences().selectedRootManagerPackage)
+        assertNull(emptyPreferences().toUserPreferences().selectedRootManagerPackage)
+    }
+
+    @Test
+    fun `root manager shortcut comes from local state without selecting root mode`() {
+        val local = preferencesOf(LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE to "random.manager.package")
+        val settings = preferencesOf(Keys.PRIVILEGE_MODE to PrivilegeMode.SHIZUKU.name)
+
+        val prefs = settings.toUserPreferences(local)
+
+        assertEquals("random.manager.package", prefs.selectedRootManagerPackage)
+        assertEquals(PrivilegeMode.SHIZUKU, prefs.preferredPrivilegeMode)
+    }
+
+    @Test
+    fun `restored settings cannot supply or replace a root manager shortcut`() {
+        val restored = preferencesOf(LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE to "other.device.manager")
+        val local = preferencesOf(LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE to "this.device.manager")
+
+        assertNull(restored.toUserPreferences().selectedRootManagerPackage)
+        assertEquals("this.device.manager", restored.toUserPreferences(local).selectedRootManagerPackage)
+    }
+
+    @Test
+    fun `degraded and recovered local state cannot retain a root manager shortcut`() {
+        val local = preferencesOf(LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE to "random.manager.package")
+
+        assertNull(
+            emptyPreferences().toUserPreferences(local, localStateDegraded = true)
+                .selectedRootManagerPackage,
+        )
+        assertNull(
+            emptyPreferences().toUserPreferences(recoveredLocalPreferences())
+                .selectedRootManagerPackage,
+        )
+    }
 
     @Test
     fun `system app removal fallback defaults on for existing and new installs without a saved choice`() {
