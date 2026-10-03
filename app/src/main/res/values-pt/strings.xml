@@ -121,6 +121,11 @@
     <string name="suspended">Suspensa</string>
     <string name="privilege_check">Verificação de privilégios</string>
     <string name="privilege_check_desc">O Thor precisa de acesso Root, Shizuku ou Dhizuku para funcionar corretamente.\n\nConceda o acesso na sua aplicação de gestão e toque em Atualizar.</string>
+    <string name="choose_root_manager">Escolher gestor de Root</string>
+    <string name="choose_root_manager_action">Escolher</string>
+    <string name="root_manager_picker_description">Se o seu gestor de Root usar um nome de pacote oculto ou aleatório, escolha a aplicação aqui. Será guardado um atalho; o acesso Root é verificado separadamente.</string>
+    <string name="root_manager_apps_unavailable">Não foi possível carregar as aplicações. Tente novamente.</string>
+    <string name="selected_root_manager_unavailable">O gestor selecionado está indisponível. Escolha-o novamente se o nome do pacote tiver mudado.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ Aplicações de sistema</string>

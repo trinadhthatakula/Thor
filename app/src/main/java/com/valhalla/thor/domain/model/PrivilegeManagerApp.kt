@@ -14,7 +14,8 @@ import android.content.pm.PackageManager
 enum class PrivilegeManagerApp(
     val displayName: String,
     val mode: PrivilegeMode,
-    val packageNames: Set<String>
+    val packageNames: Set<String>,
+    val launcherClassNames: Set<String> = emptySet(),
 ) {
     // Shizuku
     SHIZUKU(
@@ -40,6 +41,24 @@ enum class PrivilegeManagerApp(
         displayName = "KernelSU Next",
         mode = PrivilegeMode.ROOT,
         packageNames = setOf("com.rifsxd.ksunext")
+    ),
+    RE_SUKI_SU(
+        displayName = "ReSukiSU",
+        mode = PrivilegeMode.ROOT,
+        packageNames = setOf("com.resukisu.resukisu"),
+        launcherClassNames = setOf(
+            "com.resukisu.resukisu.ui.MainActivity",
+            "com.resukisu.resukisu.ui.MainActivityAlias",
+        ),
+    ),
+    SUKI_SU_ULTRA(
+        displayName = "SukiSU Ultra",
+        mode = PrivilegeMode.ROOT,
+        packageNames = setOf("com.sukisu.ultra"),
+        launcherClassNames = setOf(
+            "com.sukisu.ultra.ui.MainActivity",
+            "com.sukisu.ultra.ui.MainActivityAlias",
+        ),
     ),
     WILD_KSU(
         displayName = "Wild KSU",
@@ -99,17 +118,33 @@ enum class PrivilegeManagerApp(
         }
 
         /**
-         * Detects all known privilege manager applications currently installed on the device via PackageManager.
+         * Finds usable manager shortcuts, including renamed builds that retain a known launcher.
+         * Package and launcher names are discovery hints only; neither establishes root access.
          */
-        fun findInstalledManagers(pm: PackageManager): List<InstalledManagerInfo> =
-            findInstalledManagers { pkg ->
-                try {
-                    pm.getPackageInfo(pkg, 0)
-                    true
-                } catch (_: PackageManager.NameNotFoundException) {
-                    false
-                }
+        fun findInstalledManagers(pm: PackageManager): List<InstalledManagerInfo> {
+            val installed = findInstalledManagers { RootManagerShortcuts.resolve(pm, it) != null }
+                .associateByTo(mutableMapOf()) { it.app }
+            val usedPackages = installed.values.mapTo(mutableSetOf()) { it.installedPackageName }
+            val launchers = try {
+                RootManagerShortcuts.launcherActivities(pm)
+                    .sortedWith(compareBy({ it.packageName }, { it.name }))
+            } catch (_: RuntimeException) {
+                // Discovery is optional; a failed package query must not stop root-state updates.
+                emptyList()
             }
+            for (activity in launchers) {
+                if (!activity.enabled || !activity.exported) continue
+                val manager = entries.firstOrNull {
+                    it !in installed && activity.name in it.launcherClassNames
+                } ?: continue
+                val packageName = activity.packageName ?: continue
+                if (packageName in usedPackages) continue
+                if (RootManagerShortcuts.resolve(pm, packageName) == null) continue
+                installed[manager] = InstalledManagerInfo(manager, packageName)
+                usedPackages += packageName
+            }
+            return entries.mapNotNull { installed[it] }
+        }
     }
 }
 

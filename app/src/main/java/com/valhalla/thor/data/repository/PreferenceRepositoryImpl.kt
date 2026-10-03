@@ -123,6 +123,8 @@ internal val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
  *
  * The system-app removal fallback preference is device-local because ROM restrictions differ.
  * An absent key uses the product default; an explicit false remains false across app updates.
+ * The selected root-manager shortcut is also local: a hidden manager's randomized package name
+ * identifies an app on this device and must not follow settings onto another one.
  *
  * Corruption-handled for the same reason as [dataStore]: this file cannot arrive corrupted from a
  * restore, but an interrupted write or a bad block can still leave it unreadable, and the default
@@ -231,6 +233,7 @@ class PreferenceRepositoryImpl(
     /** Keys in [localState] — see that store's doc for what earns a place here. */
     internal object LocalKeys {
         val ALLOW_SYSTEM_APP_REMOVAL_FALLBACK = booleanPreferencesKey("allow_system_app_removal_fallback")
+        val SELECTED_ROOT_MANAGER_PACKAGE = stringPreferencesKey("selected_root_manager_package")
         /** "We have already offered to import the frozen apps we found." A fact about the watchlist. */
         val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
     }
@@ -321,6 +324,13 @@ class PreferenceRepositoryImpl(
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             if (mode == null) it.remove(Keys.PRIVILEGE_MODE)
             else it[Keys.PRIVILEGE_MODE] = mode.name
+        }
+    }
+
+    override suspend fun setSelectedRootManagerPackage(packageName: String?) {
+        context.localState.guardedWrite(LOCAL_STORE) {
+            if (packageName == null) it.remove(LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE)
+            else it[LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE] = packageName
         }
     }
 
@@ -769,6 +779,8 @@ internal fun Preferences.toUserPreferences(
         useAmoled = prefs[Keys.USE_AMOLED] ?: false,
         biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
         preferredPrivilegeMode = privilegeMode,
+        selectedRootManagerPackage = if (localStateDegraded) null
+            else local[LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE],
         language = prefs[Keys.LANGUAGE],
         autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
         freezerMode = freezerMode,

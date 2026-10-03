@@ -35,4 +35,36 @@ class PrivilegeManagerAppTest {
         assertTrue(installedApps.contains(PrivilegeManagerApp.SHIZUKU))
         assertTrue(!installedApps.contains(PrivilegeManagerApp.DHIZUKU))
     }
+
+    @Test
+    fun `KernelSU forks retain their own manager names and launch packages`() {
+        val packages = setOf("me.weishu.kernelsu", "com.resukisu.resukisu", "com.sukisu.ultra")
+
+        val installed = PrivilegeManagerApp.findInstalledManagers { it in packages }
+
+        assertEquals(
+            listOf(
+                InstalledManagerInfo(PrivilegeManagerApp.KERNEL_SU, "me.weishu.kernelsu"),
+                InstalledManagerInfo(PrivilegeManagerApp.RE_SUKI_SU, "com.resukisu.resukisu"),
+                InstalledManagerInfo(PrivilegeManagerApp.SUKI_SU_ULTRA, "com.sukisu.ultra"),
+            ),
+            installed,
+        )
+        assertEquals(listOf("KernelSU", "ReSukiSU", "SukiSU Ultra"), installed.map { it.app.displayName })
+        assertTrue(installed.all { it.app.mode == PrivilegeMode.ROOT })
+    }
+
+    @Test
+    fun `each package identifies at most one registered manager`() {
+        val packages = PrivilegeManagerApp.entries.flatMap { it.packageNames }
+
+        assertEquals(packages.size, packages.toSet().size)
+    }
+
+    @Test
+    fun `unknown or randomized package names are not inferred to be root managers`() {
+        val packages = setOf("zaqxsw.edcrfv.tgbyhn", "com.resukisu.resukisu.clone", "com.sukisu.ultra.clone")
+
+        assertTrue(PrivilegeManagerApp.findInstalledManagers { it in packages }.isEmpty())
+    }
 }
