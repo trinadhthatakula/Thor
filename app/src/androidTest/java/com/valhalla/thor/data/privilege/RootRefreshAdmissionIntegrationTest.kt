@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.RootAdmissionUnavailable
+import com.valhalla.thor.domain.model.RootAvailabilityState
 import com.valhalla.thor.domain.model.RootLaneStatusSource
 import com.valhalla.thor.domain.model.RootLaneMode
 import com.valhalla.thor.domain.model.RootRefreshStatus
@@ -49,7 +50,7 @@ class RootRefreshAdmissionIntegrationTest {
         val lanes = requireNotNull(koin.getOrNull<RootLaneStatusSource>())
         withTimeout(30_000) {
             lanes.statuses.first { it.values.none { lane -> lane.activeCommandClass != null } }
-            assertTrue(manager.refreshAndAwait().rootAvailability.canAdmitRoot)
+            refreshAndAwaitAdmission(manager, root)
         }
         val confirmedRevision = root.state.value.confirmedRevision
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -115,8 +116,8 @@ class RootRefreshAdmissionIntegrationTest {
         val koin = GlobalContext.get()
         val manager = requireNotNull(koin.getOrNull<PrivilegeManager>())
         val gateway = requireNotNull(koin.getOrNull<RootSystemGateway>())
-        val first = withTimeout(30_000) { manager.refreshAndAwait() }
-        assertTrue(first.rootAvailability.canAdmitRoot)
+        val root = requireNotNull(koin.getOrNull<RootAvailabilityProvider>())
+        val first = refreshAndAwaitAdmission(manager, root)
         val statuses = requireNotNull(koin.getOrNull<RootLaneStatusSource>())
         suspend fun checkLanes(): Map<PrivilegeExecutionLane, String> = buildMap {
             for (lane in listOf(PrivilegeExecutionLane.ARCHIVE, PrivilegeExecutionLane.SWEEP)) {
@@ -137,12 +138,38 @@ class RootRefreshAdmissionIntegrationTest {
         }
         val before = checkLanes()
         assertEquals("The lanes must own separate shells", 2, before.values.toSet().size)
-        val refreshed = withTimeout(30_000) { manager.refreshAndAwait() }
-        assertTrue(refreshed.rootAvailability.canAdmitRoot)
-        assertTrue(refreshed.rootAvailability.confirmedRevision > first.rootAvailability.confirmedRevision)
+        val refreshed = refreshAndAwaitAdmission(manager, root)
+        assertTrue(refreshed.confirmedRevision > first.confirmedRevision)
         val after = checkLanes()
         before.forEach { (lane, pid) ->
             assertTrue("Refresh must replace the $lane shell", after.getValue(lane) != pid)
         }
+    }
+
+    private suspend fun refreshAndAwaitAdmission(
+        manager: PrivilegeManager,
+        root: RootAvailabilityProvider,
+    ): RootAvailabilityState = withTimeout(30_000) {
+        val baseline = root.state.value.confirmedRevision
+        val requested = manager.refreshAndAwait().rootAvailability
+        // These tests retain production startup. Idle shell lanes do not reserve root admission:
+        // another accepted operation can defer this refresh until its existing idle retry.
+        // Observe that attempt's settlement without issuing another refresh or replaying work.
+        val settled = if (requested.refreshStatus == RootRefreshStatus.BUSY ||
+            requested.refreshStatus == RootRefreshStatus.CHECKING
+        ) {
+            root.state.first { observation ->
+                observation.revision > requested.revision &&
+                    observation.refreshStatus != RootRefreshStatus.CHECKING &&
+                    observation.refreshStatus != RootRefreshStatus.BUSY
+            }
+        } else requested
+        assertTrue("Setup refresh must confirm root after accepted work settles", settled.canAdmitRoot)
+        assertTrue("Setup refresh must publish a fresh confirmation", settled.confirmedRevision > baseline)
+        manager.state.first {
+            it.rootAvailability.canAdmitRoot &&
+                it.rootAvailability.confirmedRevision >= settled.confirmedRevision
+        }
+        settled
     }
 }
