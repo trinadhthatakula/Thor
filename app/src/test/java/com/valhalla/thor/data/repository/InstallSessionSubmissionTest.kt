@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.domain.model.InstallSessionUnresolved
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -23,22 +24,25 @@ class InstallSessionSubmissionTest {
             abandon = { calls += "abandon" },
             onSubmissionFailure = { throw AssertionError("Submission already succeeded", it) },
             onCleanupFailure = { diagnosed = it },
-        ) { markSubmitted ->
+            releaseUnsubmitted = {},
+            detach = {},
+            awaitCompletion = { calls += "terminal" },
+        ) { commit ->
             calls += "commit"
-            markSubmitted()
+            commit {}
             calls += "close"
             throw closeFailure
         }
         if (!submitted) calls += "normal installer"
 
         assertTrue(submitted)
-        assertEquals(listOf("commit", "close"), calls)
+        assertEquals(listOf("commit", "close", "terminal"), calls)
         assertSame(closeFailure, diagnosed)
     }
 
     @Test
-    fun `failed commit abandons before reporting failure and permits fallback`() = runTest {
-        val commitFailure = IOException("commit refused")
+    fun `failure before commit abandons before reporting failure and permits fallback`() = runTest {
+        val setupFailure = IOException("session write refused")
         val calls = mutableListOf<String>()
         var diagnosed: Throwable? = null
 
@@ -49,15 +53,18 @@ class InstallSessionSubmissionTest {
                 diagnosed = it
             },
             onCleanupFailure = { throw AssertionError("Nothing was submitted", it) },
+            releaseUnsubmitted = {},
+            detach = {},
+            awaitCompletion = { throw AssertionError("Nothing was submitted") },
         ) {
-            calls += "commit"
-            throw commitFailure
+            calls += "write"
+            throw setupFailure
         }
         if (!submitted) calls += "normal installer"
 
         assertFalse(submitted)
-        assertEquals(listOf("commit", "abandon", "failure", "normal installer"), calls)
-        assertSame(commitFailure, diagnosed)
+        assertEquals(listOf("write", "abandon", "failure", "normal installer"), calls)
+        assertSame(setupFailure, diagnosed)
     }
 
     @Test
@@ -73,6 +80,9 @@ class InstallSessionSubmissionTest {
                 },
                 onSubmissionFailure = { throw it },
                 onCleanupFailure = { throw AssertionError("Nothing was submitted", it) },
+                releaseUnsubmitted = {},
+                detach = {},
+                awaitCompletion = { throw AssertionError("Nothing was submitted") },
             ) { throw writeFailure }
         }.exceptionOrNull()
 
@@ -85,20 +95,46 @@ class InstallSessionSubmissionTest {
         for (committed in listOf(false, true)) {
             val cancelled = CancellationException("cancelled")
             var abandonCalls = 0
+            var completionWaits = 0
             val failure = runCatching {
                 trackInstallSessionSubmission(
                     abandon = { abandonCalls++ },
                     onSubmissionFailure = { throw AssertionError("Cancellation must propagate", it) },
                     onCleanupFailure = { throw AssertionError("Cancellation must propagate", it) },
-                ) { markSubmitted ->
-                    if (committed) markSubmitted()
+                    releaseUnsubmitted = {},
+                    detach = {},
+                    awaitCompletion = { completionWaits++ },
+                ) { commit ->
+                    if (committed) commit {}
                     throw cancelled
                 }
             }.exceptionOrNull()
 
             assertSame(cancelled, failure)
             assertEquals(if (committed) 0 else 1, abandonCalls)
+            assertEquals(0, completionWaits)
         }
+    }
+
+    @Test
+    fun `throwing commit retains ownership without abandon or fallback`() = runTest {
+        var released = false
+        var detached = false
+        val transportFailure = IOException("commit acknowledgement lost")
+        val failure = runCatching {
+            trackInstallSessionSubmission(
+                abandon = { throw AssertionError("Attempted commit must not be abandoned") },
+                onSubmissionFailure = { throw AssertionError("Attempted commit must not permit fallback", it) },
+                onCleanupFailure = { throw AssertionError("Commit did not return", it) },
+                releaseUnsubmitted = { released = true },
+                detach = { detached = true },
+                awaitCompletion = { throw AssertionError("Commit did not return") },
+            ) { commit -> commit { throw transportFailure } }
+        }.exceptionOrNull()
+        assertTrue(failure is InstallSessionUnresolved)
+        assertSame(transportFailure, failure?.cause)
+        assertFalse(released)
+        assertTrue(detached)
     }
 
     @Test
@@ -107,7 +143,10 @@ class InstallSessionSubmissionTest {
             abandon = { throw AssertionError("Successful session must not be abandoned") },
             onSubmissionFailure = { throw AssertionError("Unexpected submission failure", it) },
             onCleanupFailure = { throw AssertionError("Unexpected cleanup failure", it) },
-        ) { markSubmitted -> markSubmitted() }
+            releaseUnsubmitted = {},
+            detach = {},
+            awaitCompletion = {},
+        ) { commit -> commit {} }
 
         assertTrue(submitted)
     }

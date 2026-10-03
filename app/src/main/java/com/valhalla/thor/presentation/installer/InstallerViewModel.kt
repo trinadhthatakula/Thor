@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.AppMetadata
+import com.valhalla.thor.domain.model.InstallSessionUnresolved
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.isVersionDowngrade
@@ -55,6 +56,8 @@ internal suspend fun runInstallerPresentationBoundary(
         install()
     } catch (cancelled: CancellationException) {
         throw cancelled
+    } catch (unresolved: InstallSessionUnresolved) {
+        eventBus.emit(InstallState.Error(UiText.DynamicString(requireNotNull(unresolved.message))))
     } catch (_: PrivilegeExecutionException) {
         eventBus.emit(
             InstallState.Error(UiText.StringResource(R.string.unknown_error_occurred))

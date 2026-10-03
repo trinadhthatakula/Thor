@@ -605,9 +605,9 @@ class RestoreAppArchiveUseCaseTest {
     }
 
     @Test
-    fun `an install that does not land writes no data and leaves no breadcrumb`() = runTest {
-        // Nothing was destroyed, so a breadcrumb saying otherwise would make the user go looking for
-        // damage that is not there.
+    fun `an unconfirmed install writes no data and retains its interruption breadcrumb`() = runTest {
+        // A timeout does not prove PackageInstaller stopped; keep recovery evidence even though
+        // this restore has not started replacing app data.
         val (header, source) = archive(listOf(DataClass.CE))
         val crumbs = RecordingBreadcrumbs()
 
@@ -619,7 +619,7 @@ class RestoreAppArchiveUseCaseTest {
 
         assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
         assertEquals(listOf("install"), calls)
-        assertNull(crumbs.current)
+        assertEquals(header.packageName, crumbs.current?.packageName)
     }
 
     @Test

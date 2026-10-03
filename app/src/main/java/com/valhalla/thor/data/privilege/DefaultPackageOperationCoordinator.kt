@@ -6,6 +6,8 @@ package com.valhalla.thor.data.privilege
 import com.valhalla.thor.domain.model.PackageLeaseResult
 import com.valhalla.thor.domain.model.PackageOperationOwner
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
+import com.valhalla.thor.domain.repository.PackageOperationBarrier
+import com.valhalla.thor.domain.repository.withRetainableOperationLease
 import java.util.ArrayDeque
 import kotlin.time.Duration
 import kotlinx.coroutines.CompletableDeferred
@@ -17,7 +19,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Single
 
 @Single(binds = [PackageOperationCoordinator::class])
-internal class DefaultPackageOperationCoordinator : PackageOperationCoordinator {
+internal class DefaultPackageOperationCoordinator(
+    private val barrier: PackageOperationBarrier,
+) : PackageOperationCoordinator {
+    constructor() : this(PackageOperationBarrier { _, _ -> false })
+
     private val stateMutex = Mutex()
     private val entries = mutableMapOf<String, Entry>()
 
@@ -31,6 +37,7 @@ internal class DefaultPackageOperationCoordinator : PackageOperationCoordinator 
         var entry: Entry? = null
         var acquiredImmediately = false
         var immediateBusyOwner: PackageOperationOwner? = null
+        var leaseOwnsClaim = false
 
         try {
             stateMutex.withLock {
@@ -86,10 +93,26 @@ internal class DefaultPackageOperationCoordinator : PackageOperationCoordinator 
                 timeoutOwner?.let { return PackageLeaseResult.Busy(it) }
             }
 
-            return PackageLeaseResult.Acquired(block())
+            // A predecessor may return with accepted work still unresolved. Every newly admitted
+            // claim, including a queued waiter, checks durable ownership while retaining its lexical
+            // claim. Reconciliation can suspend and must never run under the global state mutex.
+            if (barrier.isBlocked(packageName, owner)) {
+                return PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA)
+            }
+            val acquiredEntry = checkNotNull(entry)
+            leaseOwnsClaim = true
+            return withRetainableOperationLease(
+                release = {
+                    stateMutex.withLock {
+                        releaseClaim(packageName, acquiredEntry, claim)
+                    }
+                },
+            ) {
+                PackageLeaseResult.Acquired(block())
+            }
         } finally {
             val registeredEntry = entry
-            if (registeredEntry != null) {
+            if (registeredEntry != null && !leaseOwnsClaim) {
                 withContext(NonCancellable) {
                     stateMutex.withLock {
                         releaseClaim(

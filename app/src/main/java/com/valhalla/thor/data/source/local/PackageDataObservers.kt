@@ -89,8 +89,8 @@ internal fun resetObserverTransportBelief() {
  * The distinction that matters is not [CLEARED] versus [REFUSED] — both are the platform speaking —
  * but either of those versus [UNVERIFIED], which is Thor admitting it does not know. Every caller
  * collapses this to a `Boolean`, and both non-[CLEARED] values collapse to `false`. That is the
- * conservative direction and it is deliberate: clearing data twice costs a user nothing, whereas a
- * false "done" costs them the chance to try a privilege mode that would have worked.
+ * conservative direction: an absent verdict cannot establish completion. Callers must not replay
+ * an uncertain mutation; Android may still be clearing data after the observer wait ends.
  */
 internal enum class DataClearOutcome {
     /** `onRemoveCompleted(pkg, succeeded = true)` arrived. The only value that means success. */

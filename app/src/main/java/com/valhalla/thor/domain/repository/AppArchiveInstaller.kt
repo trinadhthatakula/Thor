@@ -62,7 +62,7 @@ sealed interface ArchiveInstallOutcome {
      *
      * Its own outcome, not folded into [Failed]: restoring data into a package whose install Thor
      * could not confirm is how you write someone's data into a half-installed app. The caller stops,
-     * and says so.
+     * preserves its interruption breadcrumb, and says so.
      */
     data object Unconfirmed : ArchiveInstallOutcome
 }
@@ -84,7 +84,9 @@ interface AppArchiveInstaller {
      * Waits on the install result rather than polling `isInstalled()`: §8.2. Returns only once the
      * install has landed, failed, or the wait has run out.
      * The caller must hold [packageName]'s package-operation lease until this call returns;
-     * the restore use case owns it across installation, data restoration, and rollback.
+     * the restore use case owns it across installation, data restoration, and rollback. A session
+     * still unresolved when this caller exits retains its own lease references until its terminal
+     * callback; an exited caller must not resume restoration or rollback on that late callback.
      */
     suspend fun installBundle(
         bundle: File,

@@ -10,7 +10,6 @@ import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.asComponentState
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
-import com.valhalla.thor.data.source.local.clearAppDataCommand
 import com.valhalla.thor.data.source.local.ComponentCommandKind
 import com.valhalla.thor.data.source.local.componentCommandFailure
 import com.valhalla.thor.data.source.local.escapedComponentSpecOrNull
@@ -32,6 +31,13 @@ import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.RootDataClearBarrier
+import com.valhalla.thor.data.gateway.root.RootDataClearClient
+import com.valhalla.thor.data.gateway.root.RootDataClearObservation
+import com.valhalla.thor.data.gateway.root.RootDataClearPhase
+import com.valhalla.thor.data.gateway.root.RootDataClearRecord
+import com.valhalla.thor.domain.model.RootDataClearUnresolved
+import com.valhalla.thor.rootservice.RootDataClearProtocol
 import com.valhalla.thor.data.gateway.root.OdinRootServiceBinding
 import com.valhalla.thor.data.gateway.root.RootServiceConnectionOwner
 import com.valhalla.thor.data.gateway.root.RootSuspensionReadback
@@ -53,6 +59,9 @@ import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
@@ -105,6 +114,7 @@ class RootSystemGateway internal constructor(
         ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
     private val rootServiceConnection: RootServiceConnectionOwner =
         RootServiceConnectionOwner(OdinRootServiceBinding(context)),
+    private val dataClearJournal: RootDataClearBarrier = RootDataClearBarrier(context),
 ) : SystemGateway {
 
     internal var userIdProvider: () -> Int = { thorUserId }
@@ -316,64 +326,79 @@ class RootSystemGateway internal constructor(
         packageName: String,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> = admittedResult(ioDispatcher) {
-        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        if (!RootDataClearProtocol.isValidPackageName(packageName)) {
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name"))
         }
-        val escapedPackage = packageName.escapeForShell()
-        val shellResult = runCommand(
-            clearAppDataCommand(escapedPackage, thorUserId), execution, CLEAR_APP_DATA,
-        )
-        // A transport failure or deadline may follow a dispatched wipe. Preserve its typed
-        // outcome instead of issuing the destructive operation again through the daemon.
-        if (shellResult.exceptionOrNull() is PrivilegeExecutionException) return@admittedResult shellResult
-        if (shellResult.isSuccess) return@admittedResult shellResult
-
-        // Fallback to ThorRootService AIDL daemon. `clearAppDataForUser` and not the older
-        // `clearAppData`: the daemon runs as uid 0 in user 0, so it cannot read Thor's user for
-        // itself and the one-argument entry point wipes user 0 unconditionally. A daemon left over
-        // from an older build has no such transaction code and answers false, which lands on the
-        // failure below — the right way round for a call that destroys data.
-        val service = getRootService()
-        // The failure below now names *which* way the AIDL rung produced nothing. "AIDL failed" —
-        // the whole of what it used to say — folded three different diagnoses into one sentence of
-        // a bug report about data that is still there: no daemon at all (the bind was refused or
-        // timed out), a daemon that could not be reached (dead binder, `:root` killed mid-call),
-        // and a daemon that answered no. The third covers both a PMS refusal and the older-build
-        // case the paragraph above describes — `clearAppDataForUser` hands back a bare boolean, so
-        // this side cannot separate those two and the string does not pretend to.
-        //
-        // What a `true` is, since it still returns a success here: `ThorRootService.clearAppData`
-        // now hands `clearApplicationUserData` a real `IPackageDataObserver` and waits for
-        // `onRemoveCompleted`, so `true` means a verdict of "cleared" actually arrived rather than
-        // that the void call was dispatched without throwing. That is the whole point of the
-        // observer, and it is why this rung's success is worth returning.
-        //
-        // What a `false` is has correspondingly widened, and the string below is deliberately vague
-        // about it. `clearAppDataForUser` hands back a bare boolean, so REFUSED (PMS said no) and
-        // UNVERIFIED (nothing came back inside the daemon's own wait) reach this side as the same
-        // value. The daemon logs which one it was; this process cannot know, so "answered no"
-        // rather than "refused" is the strongest claim available here.
-        val daemonVerdict: String
-        if (service != null) {
-            val aidlCall = runCatching {
-                service.clearAppDataForUser(packageName, userIdProvider())
-            }.onFailure { e ->
-                Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
+        if (packageName == context.packageName || packageName == BuildConfig.APPLICATION_ID) {
+            return@admittedResult Result.failure(IllegalArgumentException("Cannot clear Thor's recovery information"))
+        }
+        var record: RootDataClearRecord? = null
+        var attempted = false
+        try {
+            val userId = userIdProvider()
+            val pending = dataClearJournal.pending(packageName, userId)
+            if (pending != null) {
+                // Recover an earlier attempt without resubmitting it, even after client death.
+                if (pending.phase != RootDataClearPhase.BINDER) {
+                    return@admittedResult if (dataClearJournal.finish(pending)) {
+                        Result.failure(IllegalStateException("The previous data clear was not dispatched"))
+                    } else Result.failure(RootDataClearUnresolved(packageName))
+                }
+                val service = getRootService()
+                    ?: return@admittedResult Result.failure(RootDataClearUnresolved(packageName))
+                return@admittedResult completeDataClear(pending, RootDataClearClient(service).query(pending))
             }
-            if (aidlCall.getOrDefault(false)) {
-                return@admittedResult Result.success(Unit)
-            }
-            daemonVerdict = aidlCall.fold(
-                onSuccess = { "the root daemon answered no" },
-                onFailure = { "the root daemon could not confirm the wipe (${it.javaClass.simpleName})" },
+            val service = getRootService() ?: return@admittedResult Result.failure(
+                IllegalStateException("The root daemon could not bind; data clear was not dispatched"),
             )
-        } else {
-            daemonVerdict = "the root daemon would not bind, so it was never asked"
+            // Global admission remains cancellable. If cancellation discards the prepared return,
+            // its persisted PREPARED record can be retired without authorizing a remote dispatch.
+            record = dataClearJournal.begin(packageName, userId)
+            withContext(NonCancellable) {
+                record = dataClearJournal.markBinder(checkNotNull(record))
+            }
+            currentCoroutineContext().ensureActive()
+            val dispatched = checkNotNull(record)
+            // Binder owns its observation budget. Timeout/interruption cannot cancel Android's
+            // clear operation, so ownership persists independently of this lexical admission.
+            attempted = true
+            completeDataClear(dispatched, RootDataClearClient(service).submit(dispatched))
+        } catch (cancelled: CancellationException) {
+            if (!attempted) retireUndispatchedClear(record)
+            throw cancelled
+        } catch (failure: Exception) {
+            if (!attempted) retireUndispatchedClear(record)
+            Result.failure(RootDataClearUnresolved(packageName, failure))
         }
+    }
 
-        return@admittedResult Result.failure(
-            Exception("Root clear app data of $packageName failed: the shell step failed and $daemonVerdict.")
-        )
+    private suspend fun retireUndispatchedClear(record: RootDataClearRecord?) {
+        if (record == null) return
+        withContext(NonCancellable) {
+            // Failure to persist cleanup must leave the package blocked, never authorize replay.
+            runCatching { dataClearJournal.finish(record) }
+        }
+    }
+
+    private suspend fun completeDataClear(
+        record: RootDataClearRecord,
+        observation: RootDataClearObservation,
+    ): Result<Unit> {
+        if (observation is RootDataClearObservation.Unknown) {
+            return Result.failure(RootDataClearUnresolved(record.packageName))
+        }
+        val retired = withContext(NonCancellable) { dataClearJournal.finish(record) }
+        if (!retired) return Result.failure(RootDataClearUnresolved(record.packageName))
+        return when (observation) {
+            RootDataClearObservation.Cleared -> Result.success(Unit)
+            RootDataClearObservation.Failed -> Result.failure(
+                IllegalStateException("Android reported a failed data clear; partial changes are possible"),
+            )
+            is RootDataClearObservation.Refused -> Result.failure(
+                IllegalStateException("The root service could not accept the data clear"),
+            )
+            is RootDataClearObservation.Unknown -> error("An unresolved clear must retain its record")
+        }
     }
 
     /**
@@ -1516,7 +1541,6 @@ class RootSystemGateway internal constructor(
         val CACHE_CLEAR = PrivilegeCommandClass("package.cache-clear")
         val CACHE_TRIM = PrivilegeCommandClass("cache.trim")
         val CACHE_SWEEP = PrivilegeCommandClass("cache.sweep")
-        val CLEAR_APP_DATA = PrivilegeCommandClass("package.clear-data")
         val APP_ENABLED_STATE = PrivilegeCommandClass("package.enabled-state")
         val INSTALL_EXISTING = PrivilegeCommandClass("package.install-existing")
         val APP_SUSPEND = PrivilegeCommandClass("package.suspend")

@@ -32,41 +32,71 @@ class InstallReceiver : BroadcastReceiver(), KoinComponent {
         if (intent.action != ACTION_INSTALL_STATUS) return
 
         val pendingResult = goAsync()
-        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                when (status) {
-                    PackageInstaller.STATUS_SUCCESS -> {
-                        eventBus.emit(InstallState.Success)
-                    }
-
-                    PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                        val confirmIntent: Intent? =
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                intent.getParcelableExtra(
-                                    Intent.EXTRA_INTENT,
-                                    Intent::class.java
-                                )
-                            } else {
-                                @Suppress("DEPRECATION")
-                                intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
-                            }
-                        if (confirmIntent != null) {
-                            pendingInstallIntent.set(confirmIntent)
-                            eventBus.emit(InstallState.UserConfirmationRequired)
-                        }
-                    }
-
-                    else -> {
-                        val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-                            ?: "Unknown Error"
-                        eventBus.emit(InstallState.Error(UiText.DynamicString("Install Failed ($status): $msg")))
-                    }
-                }
+                emitInstallSessionStatus(intent, eventBus, pendingInstallIntent)
             } finally {
                 pendingResult.finish()
             }
         }
     }
+
+    internal companion object {
+        const val EXTRA_INSTALL_TOKEN = "com.valhalla.thor.extra.INSTALL_TOKEN"
+    }
+}
+
+/** Maps platform callbacks without treating progress or an unrecognized status as completion. */
+internal suspend fun emitInstallSessionStatus(
+    intent: Intent,
+    eventBus: InstallerEventBus,
+    pendingInstallIntent: PendingInstallIntent,
+) {
+    if (intent.action != ACTION_INSTALL_STATUS) return
+    val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE)
+    when (status) {
+        PackageInstaller.STATUS_SUCCESS,
+        in PackageInstaller.STATUS_FAILURE..PackageInstaller.STATUS_FAILURE_TIMEOUT -> {
+            val state = if (status == PackageInstaller.STATUS_SUCCESS) {
+                InstallState.Success
+            } else {
+                installFailure(intent, status)
+            }
+            eventBus.emitSessionResult(
+                intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1),
+                intent.getStringExtra(InstallReceiver.EXTRA_INSTALL_TOKEN),
+                state,
+            )
+        }
+
+        PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+            val confirmIntent: Intent? =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                }
+            eventBus.emitSessionPendingUserAction(
+                intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1),
+                intent.getStringExtra(InstallReceiver.EXTRA_INSTALL_TOKEN),
+                publishConfirmation = confirmIntent?.let { confirmation ->
+                    { pendingInstallIntent.set(confirmation) }
+                },
+            )
+        }
+
+        // Framework STATUS_PENDING_STREAMING is hidden from the public SDK. It is progress,
+        // even though Thor's ordinary file-backed sessions do not request a DataLoader.
+        -2 -> Unit
+        // Missing or unknown statuses prove neither failure nor completion and must not replace
+        // a different operation's presentation while this attempt keeps its ownership.
+        else -> Unit
+    }
+}
+
+private fun installFailure(intent: Intent, status: Int): InstallState.Error {
+    val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "Unknown Error"
+    return InstallState.Error(UiText.DynamicString("Install Failed ($status): $message"))
 }

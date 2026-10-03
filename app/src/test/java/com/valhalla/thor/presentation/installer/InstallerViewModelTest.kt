@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.installer
 
+import com.valhalla.thor.domain.model.InstallSessionUnresolved
 import android.app.Application
 import android.net.Uri
 import androidx.core.net.toUri
@@ -69,6 +70,17 @@ class InstallerViewModelTest {
     val temporaryFolder = TemporaryFolder()
 
     private var fixtureNumber = 0
+
+    @Test
+    fun `unresolved session ends foreground waiting and explains retained ownership`() = runTest {
+        val reason = "Installation is unresolved; conflicting operations remain blocked"
+        val fixture = fixture(failure = InstallSessionUnresolved(reason))
+        fixture.parseReadyPackage()
+        val completion = fixture.startAndObserveCompletion()
+        runCurrent()
+        assertNull(completion.await())
+        assertEquals(InstallState.Error(UiText.DynamicString(reason)), fixture.eventBus.latest)
+    }
 
     @Test
     fun `parsing waits for shared readiness and discovers non-root providers`() = runTest {
