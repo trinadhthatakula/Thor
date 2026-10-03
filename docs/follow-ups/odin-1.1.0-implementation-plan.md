@@ -142,7 +142,7 @@ branch from `dev`, targets `dev`, and leaves `versionCode` unchanged.
 | M2-04 | Selected archive/cache/import adoption | M2-02; workload-specific recovery | Codex | [#542](https://github.com/trinadhthatakula/Thor/pull/542), [#543](https://github.com/trinadhthatakula/Thor/pull/543) | Selected input reads and archive icons merged; broader adoption pending |
 | M3-01 | Settings Editor reconciliation | M2-01 | Codex | [#544](https://github.com/trinadhthatakula/Thor/pull/544), [#545](https://github.com/trinadhthatakula/Thor/pull/545) | Merged through #545 (`95e1bdb5`); live-writer emulator recovery and acknowledged cancellation on both devices validated below |
 | M3-02 | Typed Binder results and compact readback | Milestone 1; protocol design | Codex | [#546](https://github.com/trinadhthatakula/Thor/pull/546), [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Compact readback and tracked clear-data implemented and validated; wider mutation/IPC acceptance remains open |
-| M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Unassigned | — | Not started |
+| M3-03 | Diagnostics and documentation reconciliation | Follow the affected packages | Codex | [#551](https://github.com/trinadhthatakula/Thor/pull/551) | Development diagnostics implemented and validated on both devices; release retention/export decision remains open |
 
 **Starting pair:** M1-01 and M1-04 deliver independent reliability fixes. M1-05 can proceed in
 parallel. Design M1-02/M1-03 together so state, routing, and admission use the same revision.
@@ -1096,7 +1096,8 @@ Test APK SHA-256: `04ec82ac1d7ec9e250735c696bafb4be06c8981ddb93b81cee9ee622a10e9
 - [x] Run the archive-icon checks and regression set on the ReSuKiSU phone with the same
   verified APKs; record current evidence for this consumer independently of #542.
 - [ ] Design and validate accepted-work/recovery contracts before enabling cancellation of
-  destructive restore commit phases or PackageInstaller work.
+  destructive restore commit phases. PackageInstaller caller cancellation now retains in-process
+  ownership through #547; durable session recovery remains open in M3-02.
 
 **Selected implementation, 2026-10-02:** `feat/odin-staging-adoption`, based on #541's merge
 (`e449623c`). Implementation `9e696a88` merged through
@@ -1611,7 +1612,9 @@ An app-private AtomicFile journal in `noBackupFilesDir` records the exact identi
 Every admitted package lease checks it, including queued waiters and operations using a different
 privilege provider. Unknown-target installs and global cache clearing hold a shared admission lock
 through Thor's invocation, excluding a new clear's record creation. The session-completion follow-up
-below extends live-process leases through the terminal result of a successfully submitted session.
+below, including detached ownership, extends live-process leases from attempted commit through
+the matching terminal result, including when commit throws. Caller cancellation does not release
+that ownership or prove backend cancellation.
 Known external-installer targets also check their package lease before chooser launch; ownership
 ends at that handoff. Durable installer-session recovery remains open. Independent operations
 outside this Thor installation are outside this journal.
@@ -1815,12 +1818,113 @@ process-death recovery behavior. CI was not monitored.
 
 ### M3-03: Diagnostics and documentation
 
-- [ ] Add structured lifecycle/refresh/bind diagnostics without raw commands, setting values,
+- [x] Add structured lifecycle/refresh/bind diagnostics without raw commands, setting values,
   package inventories, or arbitrary dump output; retain disabled global Odin verbose logging.
 - [ ] Resolve release diagnostic retention/export as a separate product decision before enabling
   it in shipped builds.
-- [ ] Reconcile historical follow-ups and shell startup/cancellation comments as behavior ships.
-- [ ] Record final workload coverage, supported device evidence, limitations, and remaining work.
+- [x] Reconcile historical follow-ups and shell startup/cancellation comments as behavior ships.
+- [x] Record implemented workload coverage, supported device evidence, limitations, and remaining work.
+
+**Implementation and tested harness:**
+[`a36d0a403cd96e1357af5a918a43a7bd15368a43`](https://github.com/trinadhthatakula/Thor/commit/a36d0a403cd96e1357af5a918a43a7bd15368a43)
+in [#551](https://github.com/trinadhthatakula/Thor/pull/551), based on `dev`
+`f5d01986a9ec428ed88f07cba60c27a2b3c03869`, including merged #547 and Dependabot #549/#550.
+The subsequent tracker update changes documentation only.
+
+`RootLifecycleEvent` is a closed schema for refresh/admission, shell generations, lane degradation
+and recovery, isolated outcomes, and binding. Its versioned `ThorRootLifecycle` lines contain only
+enums, booleans, and numeric revisions/generations, bounded to 256 characters. They exclude raw
+commands, package/work identifiers, setting values, stdout/stderr and arbitrary failure strings.
+`recordSafely` prevents sink exceptions from changing an operation result or interrupting cleanup.
+
+The existing `PRIVILEGE_TRACE` gate enables the sink in debug/benchmark and disables it in normal
+release builds. Odin global verbose logging remains off. This adds no retained diagnostic file,
+export path, or release preference. `RETIRED` means local shell close returned; `UNBOUND` means
+local unbind returned. Neither establishes producer termination or completion of accepted IPC.
+Isolated outcomes preserve their separate started, termination-confirmed, output-drained and
+shell-reusable fields.
+
+Historical root-cache, per-job cancellation and release-logging follow-ups now point back to this
+tracker; startup comments describe manual KernelSU/ReSuKiSU grants. Coverage below links to the
+original workload evidence. Those historical checks were not all rerun for this diagnostics slice,
+and the broad device acceptance matrix remains open.
+
+#### Current workload coverage and remaining acceptance
+
+| Workload / canonical evidence | Implemented and previously validated | Remaining work |
+| --- | --- | --- |
+| [Shared state](#m1-01-shared-privilege-state-in-screens), [refresh](#m1-02-typed-refresh-and-cache-coordination), [admission](#m1-03-root-admission-and-lane-recovery) | Typed shared state, root admission, idle retry and owned-shell replacement | Screen navigation under held contention; broader combined device matrix |
+| [RootService ownership](#m1-05-rootservice-connection-ownership) and [profile isolation](#m1-06-rootservice-profile-isolation) | Delayed binding, exact cleanup, replacement and historical cross-user checks | Wider IPC acceptance, including unauthorized callers and minified runtime loading |
+| [Execution contracts](#m2-01-execution-policy-and-complete-outcomes) | Explicit persistent/isolated policies and complete acknowledgement fields | Control denial, unconfirmed termination and inherited-pipe cases need their specific evidence; deliberately detached descendants remain outside the guarantee |
+| [Export staging](#m2-02-cancellable-export-staging-copy) | Acknowledged private staging, retained uncertainty, verified promotion | Hardware process-death/receipt recovery acceptance |
+| [OBB placement](#m2-03-obb-context-and-cancellable-placement) | Root placement, ownership, publication and cancellation | Live Shizuku placement |
+| [Preview/import](#m2-04-selected-archivecacheimport-adoption) and [archive icons](#m2-04-archive-icon-increment) | Selected bounded reads and icon staging on both devices | Intermittent startup/admission regression; live Shizuku copies, storage exhaustion, uncertain receipt/process-death recovery and multiple users |
+| [Tar/extraction/destructive restore/cache](#m2-04-selected-archivecacheimport-adoption) | Deferred | Workload-specific source/output ownership, partial mutation, durable uncertainty and cancellation acceptance |
+| [Settings reconciliation](#m3-01-settings-editor-reconciliation) and [live writer](#m3-01-live-privileged-writer-and-reboot-recovery) | Read-only reconciliation; historical post-acknowledgement death, emulator live-writer/reboot recovery and acknowledged hostile cancellation | Physical live-death/reboot; control denial with a surviving observer; unconfirmed termination; death inside the ordinary Settings provider call |
+| [Compact suspension readback](#m3-02-typed-binder-results-and-compact-suspension-readback) | Bounded typed readback and owner validation | Unauthorized caller, secondary-user readback, older/OEM formats, minified Binder execution; typed mutation results/deadlines beyond clear-data |
+| [Tracked clear-data](#m3-02-tracked-root-clear-data-contract) | Durable request/query ownership and real delayed-observer checks | Actual death during clear and boot recovery; missing observer/hostile dispatch; recovery visibility and bounded history-capacity UX |
+| [Installer ownership](#m3-02-detached-installer-ownership-follow-up-2026-10-03) | Caller cancellation/deadlines separated from retained package/global ownership through a matching terminal callback | Real PackageInstaller callbacks, complete WorkManager cancellation, attempted commits without terminal callbacks and durable app-death/session recovery |
+| Development diagnostics (this section) | Closed structured events; evidence below | Release retention/export product decision; broader fault-path/device coverage |
+
+#### M3-03 diagnostics evidence (2026-10-03)
+
+All final checks use the implementation/harness commit above, JDK 21, Gradle 9.8.0,
+AGP 9.5.0-alpha08 and Robolectric 4.17. Dependency insight resolves the published
+`com.trinadhthatakula:odin:1.1.0` without local substitution.
+
+```bash
+./gradlew --max-workers=1 test lintFossDebug lintStoreRelease \
+  assembleFossDebug assembleFossDebugAndroidTest assembleFossRelease assembleStoreRelease
+```
+
+- **3,533 JVM tests per FOSS/Store Debug variant passed**, including **87 relevant regression
+  tests** per variant; zero failures/errors/skips. Both lint gates have zero errors/warnings,
+  including no MissingTranslation or SyntheticAccessor findings; existing hints remain 9/8.
+- Both minified release APKs assembled without nonempty R8 missing-rules output. Static DEX
+  inspection finds `ThorRootLifecycle` in debug and absent from both release APKs. This validates
+  the new sink's release suppression; it does not establish all release logging behavior or
+  minified Binder runtime acceptance.
+- **Magisk 30.7 / Odin_Magisk_API36_1**, Android 16/API 36, ARM64/16 KiB (`emulator-5554`):
+  **8/8 instrumentation checks passed**, zero skips; **104** current-run diagnostic records passed
+  the closed-field and line-bound validation.
+- **ReSuKiSU v4.2.0-rc2 (35159) / POCO F7 (25053PC47G)**, Android 16/API 36, ARM64/4 KiB
+  (`1da5425f`): the same **8/8 passed**, zero skips; **105** current-run diagnostic records passed.
+  Thor used its existing app grant. No `adb root` or root-manager policy changes were used.
+- Each device ran `RootRefreshAdmissionIntegrationTest` (2), `OdinExecutionPolicyIntegrationTest`
+  (5), and `OdinRootServiceBindingIntegrationTest` (1), in separate instrumentation invocations
+  with `odinRoot=true`. Checks cover accepted work surviving busy refresh, fresh admission,
+  owned-shell replacement, isolated cancellation and lease order, and timeout/cancellation/late
+  bind callbacks with a usable replacement. Recorded phases include deferred/refused refresh,
+  shell open/retirement, EXITED/CANCELLED outcomes and late/cache binding events.
+- Capture starts at a device timestamp after installation; every trace payload is validated.
+  The runner requires successful final instrumentation completion, not only per-test statuses.
+  Both device summaries match the finalized host commit and app/test APK hashes. Installed debug
+  APK hashes also match; Home launched and was visually checked on both devices.
+
+The initial physical run at `bc529939a67a7cc7635c86c1a8dfc4233bfe4909` confirmed ROOT, then
+failed the existing immediate-readiness assertions because another accepted root admission made
+refresh return BUSY. The test's own lane commands had returned; idle lane observations do not
+reserve all gateway admissions. The narrow trace does not identify the background operation.
+Setup now requests refresh once and awaits its existing pending/idle-retry settlement, requiring
+fresh root confirmation and publication through `PrivilegeManager`. Denial/error still fails,
+permanent BUSY still times out, and the deliberate held-helper BUSY/refusal assertions are unchanged.
+The original failed phone attempt and earlier successful emulator run remain separate from the
+final acceptance above. An earlier SyntheticAccessor lint failure was fixed by the internal binding
+helper visibility; its report is also retained.
+
+Diagnostic fault paths have focused JVM coverage; this smoke set does not newly establish live
+lane-degradation faults, Settings/installer recovery, Shizuku/Dhizuku workloads, multiple users,
+minified IPC execution or the deferred destructive workloads. Release retention/export remains
+undecided and disabled in normal releases.
+
+Evidence: `~/.codex/artifacts/thor-odin-lifecycle-diagnostics-2026-10-03/` contains exact source
+hashes, `validation-summary.json`, `combined-device-validation.json`, full build/dependency logs,
+archived test/lint reports, APK copies/hashes, static release inspection, per-device instrumentation
+and trace logs, installed-hash/launch checks and Home screenshots. Earlier attempts are under
+`initial-lint-failure/` and `before-refresh-fixture-fix/`. CI was not monitored.
+
+App APK SHA-256: `9cdcfd80a0394569ea53eeebf5544aec9e4998f9f7c41a9829b21efb3ec893c0`.
+Test APK SHA-256: `a28781f14621a375cb79750c7a29ca1f54dce6e0eefee3996181e4f6054d7a38`.
 
 ## Validation and evidence
 
@@ -1854,6 +1958,7 @@ baseline row with results from a later commit.
 | M3-02 dev build integration | [`f0ca834a`](https://github.com/trinadhthatakula/Thor/commit/f0ca834a830fccf3fd29019b20cd8ba4876aadfe) / [#547](https://github.com/trinadhthatakula/Thor/pull/547); merged dev `a13e761a` (#548) | Host, JDK 21; Gradle 9.8.0; AGP 9.5.0-alpha08; Robolectric 4.17 | Required gates; debug assembly and AndroidTest compile after merging dev | 3,470 JVM tests per FOSS/Store Debug variant passed; lint passed; no device rerun |
 | M3-02 installer session completion | [`e7ddadf6`](https://github.com/trinadhthatakula/Thor/commit/e7ddadf64c0388345dd8db779c1fc005f5bb4122) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21; Gradle 9.8.0; Robolectric 4.17 | Correlated terminal callbacks; global/package/borrowed leases; cancellation; OBB refusal; external handoff; required gates and release builds | 3,491 JVM tests per variant, including 61 relevant regressions; lint, debug/AndroidTest compile and both minified builds passed; device and durable-recovery acceptance remain open |
 | M3-02 detached installer ownership | [`0ddae5c2`](https://github.com/trinadhthatakula/Thor/commit/0ddae5c23d425ad5af15e388df5fb95486546385) / [#547](https://github.com/trinadhthatakula/Thor/pull/547) | Host, JDK 21; Gradle 9.8.0; Robolectric 4.17 | Caller deadlines/cancellation; exact package/global/borrowed retention; background confirmation; late callbacks; no fallback; restore evidence | 3,522 JVM tests per variant, including 212 focused tests; lint, debug/AndroidTest compile and both minified releases passed; device, full worker cancellation and durable recovery remain open |
+| M3-03 development diagnostics | [`a36d0a40`](https://github.com/trinadhthatakula/Thor/commit/a36d0a403cd96e1357af5a918a43a7bd15368a43) / [#551](https://github.com/trinadhthatakula/Thor/pull/551); base `f5d01986` (#547/#549/#550) | Host, JDK 21; Magisk 30.7 API 36; ReSuKiSU v4.2.0-rc2 API 36 | Required gates; structured refresh/shell/outcome/binding traces; idle-refresh fixture; release suppression | 3,533 JVM tests per variant (87 focused), zero lint errors/warnings; debug/AndroidTest and both minified releases built; 8/8 checks per device, 104/105 schema-valid trace records; release policy and broader acceptance remain open |
 | Milestone 1 | — | — | — | Broader acceptance matrix pending |
 | Milestone 2 | — | — | — | Pending |
 | Milestone 3 | — | — | — | Pending |
