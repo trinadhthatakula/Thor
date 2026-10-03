@@ -846,4 +846,12 @@
     <string name="root_refresh_busy">Aguardando a conclusão das operações root. As novas ações root estão pausadas.</string>
     <string name="root_refresh_timed_out">A verificação de root excedeu o tempo limite. As novas ações root estão pausadas.</string>
     <string name="root_refresh_failed">Não foi possível verificar o acesso root. As novas ações root estão pausadas.</string>
+
+    <string name="filter_type_uad">Recomendação UAD</string>
+    <string name="uad_filter_recommended">Recomendado</string>
+    <string name="uad_filter_advanced">Avançado</string>
+    <string name="uad_filter_expert">Especialista</string>
+    <string name="uad_filter_unsafe">Inseguro</string>
+    <string name="uad_filter_loading">Carregando recomendações UAD…</string>
+    <string name="uad_filter_failed">Não foi possível carregar as recomendações UAD.</string>
 </resources>

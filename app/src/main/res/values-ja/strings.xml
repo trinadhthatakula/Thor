@@ -133,6 +133,13 @@
     <string name="permission_filter_loading">権限を読み取り中…</string>
     <string name="permission_filter_unavailable">このデバイスには権限グループが見つかりません</string>
     <string name="permission_filter_failed">この端末の権限を読み取れませんでした</string>
+    <string name="filter_type_uad">UAD の推奨度</string>
+    <string name="uad_filter_recommended">推奨</string>
+    <string name="uad_filter_advanced">上級者向け</string>
+    <string name="uad_filter_expert">専門家向け</string>
+    <string name="uad_filter_unsafe">危険</string>
+    <string name="uad_filter_loading">UAD の推奨度を読み込み中…</string>
+    <string name="uad_filter_failed">UAD の推奨度を読み込めませんでした。</string>
     <string name="clear_app_data_title">アプリデータをクリアしますか?</string>
     <string name="clear_app_data_desc">これにより、%1$s のすべてのデータが完全に削除されます。この操作は元に戻すことができません。</string>
     <string name="clear_all_data">すべてのデータをクリア</string>

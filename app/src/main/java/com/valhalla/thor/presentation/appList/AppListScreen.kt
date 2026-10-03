@@ -328,7 +328,8 @@ fun AppListScreen(
                     // filter has no index, so every app is filtered out and the list would say
                     // "No matching apps found" — a wrong answer, not a pending one.
                     isLoading = state.isLoading || state.isComputingSizes ||
-                            state.isLoadingPermissions,
+                            state.isLoadingPermissions ||
+                            (state.isLoadingUad && state.selectedFilter != "All"),
                     appList = state.displayedApps,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
@@ -349,16 +350,18 @@ fun AppListScreen(
                     permissionIndex = state.permissionIndex,
                     isLoadingPermissions = state.isLoadingPermissions,
                     permissionIndexFailed = state.permissionIndexFailed,
+                    isLoadingUad = state.isLoadingUad,
+                    uadLoadFailed = state.uadLoadFailed,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     // Actions forwarded to ViewModel
-                    onFilterTypeChanged = viewModel::updateFilterType,
+                    onFilterTypeChanged = { viewModel.updateFilterType(it, state.appListType) },
                     onSortByChanged = viewModel::updateSort,
                     onSortOrderSelected = viewModel::updateSortOrder,
                     onSearchQueryChange = viewModel::updateSearchQuery,
                     onFilterSelected = {
                         it?.let { filter ->
-                            viewModel.updateFilter(filter)
+                            viewModel.updateFilter(filter, state.appListType, state.filterType)
                         }
                     },
                     onAppInfoSelected = { appInfo ->

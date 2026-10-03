@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.preferencesOf
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
+import com.valhalla.thor.domain.model.AppFilterPreferences
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
@@ -158,7 +159,8 @@ class ToUserPreferencesTest {
 
         assertEquals(SortBy.SIZE, prefs.appSortBy)
         assertEquals(SortOrder.DESCENDING, prefs.appSortOrder)
-        assertEquals(FilterType.State, prefs.appFilterType)
+        assertEquals(AppFilterPreferences(FilterType.State), prefs.userAppFilter)
+        assertEquals(AppFilterPreferences(FilterType.State), prefs.systemAppFilter)
         assertEquals(ThemeMode.DARK, prefs.themeMode)
         assertTrue(prefs.biometricLockEnabled)
         // The other "have we asked?" flag stays put on purpose: it describes the *user*, not the
@@ -173,7 +175,8 @@ class ToUserPreferencesTest {
 
         assertEquals(SortBy.NAME, prefs.appSortBy)
         assertEquals(SortOrder.ASCENDING, prefs.appSortOrder)
-        assertEquals(FilterType.Source, prefs.appFilterType)
+        assertEquals(AppFilterPreferences(), prefs.userAppFilter)
+        assertEquals(AppFilterPreferences(), prefs.systemAppFilter)
         assertEquals(ThemeMode.SYSTEM, prefs.themeMode)
         assertEquals(FontPreset.ASGARD, prefs.fontPreset)
         assertEquals(DefaultTab.HOME, prefs.defaultTab)

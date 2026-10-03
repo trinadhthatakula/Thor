@@ -44,6 +44,8 @@ data class AppInfo(
     val isUadLoadFailed: Boolean = false,
     /** Total install size in bytes (app + data + cache). null = not yet computed. */
     val installSize: Long? = null,
+    /** False for the first Room-cache frame; true once a UAD lookup has completed, even on failure. */
+    val isUadLoaded: Boolean = false,
 )
 
 fun AppInfo.formattedAppName() = appName?.replace(" ", "_") ?: packageName

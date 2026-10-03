@@ -35,7 +35,7 @@
 
 ### Apps and installation
 
-- Room-cached app lists with search, sorting, source and permission filters, split/frozen/suspended/hidden indicators, and a saved list or grid layout. Long Apps and Freezer lists/grids have a draggable scrollbar with a visible-range bubble. Export the current list to CSV.
+- Room-cached app lists with search, sorting, source, state and permission filters, split/frozen/suspended/hidden indicators, and a saved list or grid layout. System apps also offer UAD recommendation filters: Recommended, Advanced, Expert, Unsafe, and Unknown. User and System tabs remember their filter choices separately. Long Apps and Freezer lists/grids have a draggable scrollbar with a visible-range bubble. Export the current list to CSV.
 - App Info quick actions can be reordered or hidden. Tap an app icon to launch it, or long-press it for Android's app settings.
 - Install APK, APKM, APKS, and XAPK packages (including supported OBB expansion assets) through Root, Shizuku, Dhizuku, or Android's installer. Eligible Root/Shizuku installs of older-target APKs require explicit consent unless the separate saved override is enabled; install-time runtime-permission grants are opt-in.
 - Per-app permission management can grant or revoke supported runtime permissions. Its **App Ops** tab uses Root or Shizuku to show the device's operations, with Relevant, Changed, and All filters, search, package/UID modes, and a separate reset to the platform default. Changes are read back before confirmation; shared-UID edits warn about affected apps. App Ops modes remain separate from permission grants. See the [scope and validation notes](docs/superpowers/plans/2026-09-24-app-ops-manager.md).

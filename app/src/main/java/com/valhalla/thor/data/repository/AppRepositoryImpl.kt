@@ -13,6 +13,7 @@ import android.content.res.Resources
 import android.os.Build
 import androidx.core.content.edit
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.UadEntry
 import com.valhalla.thor.data.source.local.UadHelper
 import com.valhalla.thor.data.source.local.isEffectivelyEnabled
 import com.valhalla.thor.data.source.local.room.AppDao
@@ -204,6 +205,7 @@ class AppRepositoryImpl(
 
         // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
         val worker = launch(ioDispatcher) {
+            var lastPublishedApps = emptyList<AppInfo>()
             // Initial load from cache and baseline for comparison
             val cachedMap = try {
                 val entities = appDao.getAllApps()
@@ -216,7 +218,8 @@ class AppRepositoryImpl(
                     // the path that was cleared of exactly that after an ANR (see the note at the
                     // per-rescan read further down, and `UadHelper.uadMap`). A badge that arrives a
                     // beat late is recoverable; a stall before the first frame is not.
-                    producer.send(entities.map { it.toDomain() })
+                    lastPublishedApps = entities.map { it.toDomain() }
+                    producer.send(lastPublishedApps)
                 }
                 entities.associateBy { it.packageName }.toMutableMap()
             } catch (e: Exception) {
@@ -333,23 +336,11 @@ class AppRepositoryImpl(
                             cachedEntry.isSuspended == isSuspended
                         ) {
                             val domain = cachedEntry.toDomain()
-                            val bloat = uadMap[domain.packageName]
-                            currentList.add(domain.copy(
-                                bloatRecommendation = bloat?.removal,
-                                bloatDescription = bloat?.description,
-                                isInstalled = isInstalled,
-                                isUadLoadFailed = uadLoadFailed
-                            ))
+                            currentList.add(domain.copy(isInstalled = isInstalled))
                         } else {
                             val mapped =
                                 mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
-                            val bloat = uadMap[mapped.packageName]
-                            val mappedWithBloat = mapped.copy(
-                                bloatRecommendation = bloat?.removal,
-                                bloatDescription = bloat?.description,
-                                isUadLoadFailed = uadLoadFailed
-                            )
-                            currentList.add(mappedWithBloat)
+                            currentList.add(mapped)
                             val entity = AppEntity.fromDomain(mapped)
                             toUpdate.add(entity)
                             cachedMap[packageName] = entity
@@ -385,8 +376,8 @@ class AppRepositoryImpl(
                     consecutiveSuspectScans = nextSuspectScanCount(consecutiveSuspectScans, verdict)
 
                     // The cached rows this scan did not see and was not allowed to delete. Mapped
-                    // through the same AppEntity.toDomain() the initial cache emission above uses,
-                    // so a retained row reaches the UI exactly as it did a moment earlier.
+                    // through the same AppEntity.toDomain() the initial cache emission above uses.
+                    // Both observed and retained rows receive this scan's UAD metadata below.
                     var syncCacheSucceeded = true
                     val retained = when (verdict) {
                         ScanVerdict.Accept -> {
@@ -441,7 +432,10 @@ class AppRepositoryImpl(
                     // that snapshot is the union, never the scan alone: emitting what a truncated
                     // scan saw is the blank list this whole guard exists to prevent, and emitting
                     // nothing would strand isLoading forever on a fresh collection.
-                    producer.send(currentList + retained)
+                    lastPublishedApps = (currentList + retained).map { app ->
+                        app.withUadMetadata(uadMap[app.packageName], uadLoadFailed)
+                    }
+                    producer.send(lastPublishedApps)
 
                     // Only now, and only on a scan that was trusted enough to prune against and whose
                     // cache synchronization succeeded — [shouldRecordLabelLocale] holds the rule.
@@ -460,6 +454,23 @@ class AppRepositoryImpl(
                     throw e
                 } catch (e: Exception) {
                     Logger.e("AppRepository", "getAllApps scan failed", e)
+                    // With nothing to retain, propagate the failed load rather than publishing
+                    // an empty device inventory as a successful scan.
+                    if (lastPublishedApps.isEmpty()) throw e
+                    // A failed package scan must not strand the first Room snapshot in UAD's
+                    // unread state. Keep the same apps and resolve only their metadata off-main.
+                    val (entries, failed) = try {
+                        uadHelper.uadMap to uadHelper.didLoadFail
+                    } catch (metadataError: CancellationException) {
+                        throw metadataError
+                    } catch (metadataError: Exception) {
+                        Logger.e("AppRepository", "UAD metadata unavailable after scan failure", metadataError)
+                        emptyMap<String, UadEntry>() to true
+                    }
+                    lastPublishedApps = lastPublishedApps.map { app ->
+                        app.withUadMetadata(entries[app.packageName], failed)
+                    }
+                    producer.send(lastPublishedApps)
                 }
             }
         }
@@ -547,11 +558,7 @@ class AppRepositoryImpl(
 
                 val mapped = mapToAppInfo(packInfo, appInfo, pm, isLightweight = false)
                 val bloat = uadHelper.uadMap[packageName]
-                mapped.copy(
-                    bloatRecommendation = bloat?.removal,
-                    bloatDescription = bloat?.description,
-                    isUadLoadFailed = uadHelper.didLoadFail
-                )
+                mapped.withUadMetadata(bloat, uadHelper.didLoadFail)
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG)
                     e.printStackTrace()
@@ -806,3 +813,11 @@ class AppRepositoryImpl(
                 ).toLong()
     }
 }
+
+/** A completed lookup includes a successful miss, which must differ from an unread Room row. */
+internal fun AppInfo.withUadMetadata(entry: UadEntry?, loadFailed: Boolean): AppInfo = copy(
+    bloatRecommendation = entry?.removal,
+    bloatDescription = entry?.description,
+    isUadLoadFailed = loadFailed,
+    isUadLoaded = true,
+)

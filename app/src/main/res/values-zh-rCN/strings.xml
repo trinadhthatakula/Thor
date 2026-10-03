@@ -134,6 +134,13 @@
     <string name="permission_filter_loading">正在读取权限…</string>
     <string name="permission_filter_unavailable">在此设备上未找到权限组</string>
     <string name="permission_filter_failed">无法读取此设备上的权限</string>
+    <string name="filter_type_uad">UAD 建议</string>
+    <string name="uad_filter_recommended">推荐</string>
+    <string name="uad_filter_advanced">高级</string>
+    <string name="uad_filter_expert">专家</string>
+    <string name="uad_filter_unsafe">不安全</string>
+    <string name="uad_filter_loading">正在加载 UAD 建议…</string>
+    <string name="uad_filter_failed">无法加载 UAD 建议。</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">清除应用数据？</string>

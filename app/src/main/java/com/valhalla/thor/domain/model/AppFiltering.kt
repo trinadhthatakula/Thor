@@ -46,6 +46,14 @@ fun filterApps(
             val declaring = permissionIndex.packagesFor(selectedFilter)
             apps.filter { it.packageName in declaring }
         }
+
+        FilterType.Uad -> {
+            val recommendation = UadRecommendation.fromPersistedValue(selectedFilter)
+            // An unavailable lookup is not Unknown. The UI explains loading/failure while All
+            // remains usable; no specific chip may temporarily show an unclassified cache row.
+            if (recommendation == null) emptyList()
+            else apps.filter { it.uadRecommendation == recommendation }
+        }
     }
 }
 
