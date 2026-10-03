@@ -41,14 +41,16 @@ import org.json.JSONObject
 object SettingsEditorLiveWriterProbe {
     const val INITIAL_VALUE = "live_writer_initial"
     const val COMPLETED_VALUE = "live_writer_completed"
-    private val className = SettingsEditorLiveWriterProbe::class.java.name
-    private var stage = "request"
+    // Match the Java helper's package-level access with module visibility. Probe calls these
+    // members directly, avoiding synthetic bridges across the nested-class boundary.
+    internal val className = SettingsEditorLiveWriterProbe::class.java.name
+    internal var stage = "request"
     // This test-only root helper deliberately supports only Thor debug in Android user 0.
     @SuppressLint("SdCardPath")
     private const val APP_DIRECTORY = "/data/user/0/com.valhalla.thor.debug"
     private const val CONTROL_PARENT = "/no_backup/settings_live_writer/"
-    private val variants = setOf("normal", "ignore_term", "child", "ignore_term_child")
-    private val emptyMarkers = setOf(
+    internal val variants = setOf("normal", "ignore_term", "child", "ignore_term_child")
+    internal val emptyMarkers = setOf(
         "ready.json", "heartbeat.json", "completed.json", "child-ready.json",
         "child-completed.json", "producer-starting.json",
     )
@@ -344,12 +346,14 @@ object SettingsEditorLiveWriterProbe {
         }
     }
 
-    private class Identity(val pid: Int, val ppid: Int, val pgid: Int, val uid: Int, val startTicks: Long, val bootId: String) {
+    internal class Identity(val pid: Int, val ppid: Int, val pgid: Int, val uid: Int, val startTicks: Long, val bootId: String) {
         fun json(): JSONObject = JSONObject().put("pid", pid).put("ppid", ppid).put("pgid", pgid)
             .put("uid", uid).put("startTicks", startTicks).put("bootId", bootId)
     }
 
-    private fun identity(pid: Int): Identity {
+    // Keep Java's ASCII trim semantics for the /proc protocol during this conversion.
+    @SuppressLint("TrimLambda")
+    internal fun identity(pid: Int): Identity {
         if (pid <= 1) throw IllegalArgumentException()
         val stat = String(readSmall(File("/proc/$pid/stat"), 8192), StandardCharsets.UTF_8).trim { it <= ' ' }
         val end = stat.lastIndexOf(')')
@@ -366,12 +370,13 @@ object SettingsEditorLiveWriterProbe {
         return Identity(pid, fields[1].toInt(), fields[2].toInt(), uid, fields[19].toLong(), bootId)
     }
 
-    private fun sameIdentity(a: JSONObject, b: JSONObject): Boolean =
+    internal fun sameIdentity(a: JSONObject, b: JSONObject): Boolean =
         a.getInt("pid") == b.getInt("pid") && a.getLong("startTicks") == b.getLong("startTicks") &&
             a.getInt("pgid") == b.getInt("pgid") && a.getInt("uid") == b.getInt("uid") &&
             a.getString("bootId") == b.getString("bootId")
 
-    private fun termIgnored(): Boolean {
+    @SuppressLint("TrimLambda") // Same ASCII trim contract as identity().
+    internal fun termIgnored(): Boolean {
         val status = String(readSmall(File("/proc/self/status"), 16384), StandardCharsets.UTF_8)
         for (line in status.split('\n')) {
             if (line.startsWith("SigIgn:")) {
@@ -381,7 +386,7 @@ object SettingsEditorLiveWriterProbe {
         throw IllegalStateException()
     }
 
-    private fun readSmall(file: File, limit: Int): ByteArray = FileInputStream(file).use { input ->
+    internal fun readSmall(file: File, limit: Int): ByteArray = FileInputStream(file).use { input ->
         ByteArrayOutputStream().use { output ->
             val buffer = ByteArray(1024)
             while (true) {
@@ -398,7 +403,7 @@ object SettingsEditorLiveWriterProbe {
     // enumerates a table: the only calls are PUT_system and GET_system for its validated literal key.
     // Framework reflection executes only in root app_process, never Thor's application runtime.
     @SuppressLint("PrivateApi", "BlockedPrivateApi", "DiscouragedPrivateApi", "SoonBlockedPrivateApi")
-    private fun settingsClient(): ContentProviderClient {
+    internal fun settingsClient(): ContentProviderClient {
         val threadClass = Class.forName("android.app.ActivityThread")
         val thread = threadClass.getMethod("systemMain").invoke(null)
         val system = threadClass.getMethod("getSystemContext").invoke(thread) as Context
@@ -437,7 +442,7 @@ object SettingsEditorLiveWriterProbe {
         return client
     }
 
-    private fun call(client: ContentProviderClient, method: String, key: String, extras: Bundle): Bundle? =
+    internal fun call(client: ContentProviderClient, method: String, key: String, extras: Bundle): Bundle? =
         if (Build.VERSION.SDK_INT >= 29) client.call("settings", method, key, extras)
         else client.call(method, key, extras)
 }
