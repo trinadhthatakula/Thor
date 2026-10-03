@@ -371,38 +371,43 @@ are after the requested 1960 baseline.
 
 ## 🧪 Validation scope and remaining acceptance
 
-The **initial release candidate, before PR #553**, passed the following checks on
-**Zulu JDK 21**, Gradle **9.8.0** and AGP **9.5.0-alpha08**, using base `51d118b6` plus the
-versionCode change. Fresh full-build validation of the expanded candidate through `585acf62`
-is pending; these earlier results do not establish that updated tree's build status.
+The expanded release candidate through dev `585acf62`, built from
+[`ea66bee4`](https://github.com/trinadhthatakula/Thor/commit/ea66bee4cda5b761889ea854158249d2f738987d),
+passed on **Zulu JDK 21**, Gradle **9.8.0** and AGP **9.5.0-alpha08** in one Gradle invocation:
 
 ```sh
 ./gradlew --max-workers=1 test lintFossDebug lintStoreRelease \
-  assembleFossDebug assembleFossRelease assembleStoreRelease
+  assembleFossDebug assembleFossRelease assembleStoreRelease \
+  :app:compileFossDebugAndroidTestKotlin
 ```
 
-- **3,533 JVM tests per FOSS/Store Debug variant**, zero failures, errors or skips.
+- **3,554 JVM tests per FOSS/Store Debug variant**, zero failures, errors or skips.
+  Gradle reused cached unit-test results for unchanged inputs.
 - Both lint gates report **zero errors/warnings**, including no MissingTranslation or
   SyntheticAccessor findings; existing hints remain 9 for FOSS Debug and 8 for Store Release.
 - Debug and both minified release APKs report **1970 / 1.97.0**. Neither release contains the
   development lifecycle trace tag; no nonempty R8 missing-rules file was produced.
-- All **13 release-script suites passed before and after retention pruning**; **35 release-routing
-  tests / 49 assertions** passed. The initial retention and production-pinned Shizu checks passed.
+- FOSS Debug instrumentation sources compile successfully. Instrumentation tests were not run
+  on a device as part of this build check.
+- All **13 release-script suites** and **35 release-routing tests / 49 assertions** passed on
+  the merged tree. The 20-directory retention and production-pinned Shizu checks passed.
+- The updated notes cover **137 non-merge commits** through `585acf62`. Play notes use
+  **489/500 characters** and Telegram uses **892/1024 assembled UTF-16 units**.
+  Note budgets, the exact commit log, commit references, closing-keyword and Fastlane-content/parity
+  checks pass; en-US, en-GB and hi-IN each retain the complete Play source.
 
-The updated notes cover **137 non-merge commits** through `585acf62`. Play notes use
-**489/500 characters** and Telegram uses **892/1024 assembled UTF-16 units**.
-The note budget, exact commit log, commit references, closing-keyword and Fastlane-content/parity
-checks pass; en-US, en-GB and hi-IN each retain the complete Play source.
+The tested source is `ea66bee4`; the subsequent validation edit changes this document only.
+The local release APKs are unsigned. AGP recorded `NO_VALID_GIT_FOUND` in their local
+version-control metadata, so the source revision and APK SHA-256 values are recorded separately
+with the build evidence. Release publishing rebuilds and signs from its own checkout and commit.
 
-The initial build was interrupted during lint after both unit-test suites passed; its log is retained
-separately. The complete initial rerun above passed. Those preparation APKs use base `51d118b6`
-plus the versionCode change; release publishing rebuilds and signs from its own commit. The local
-release APKs are unsigned. PR #553's separate UI smoke checks remain attributed to their tested
-source `fa86a8ab` in the manager validation record; they are not a full regression run of the
-expanded release candidate. Earlier live acceptance remains attributed below.
+No new device installation was performed for this merge. The earlier release-candidate phone
+smoke is recorded in [PR #552's device evidence](https://github.com/trinadhthatakula/Thor/pull/552#issuecomment-5970567932).
+PR #553's separate UI smoke checks remain attributed to source `fa86a8ab` in the manager
+validation record; those checks are not a full device regression of this expanded candidate.
 
 Local preparation evidence, including reports and APK hashes, is retained in
-`~/.codex/artifacts/thor-release-1.97.0-2026-10-03/`.
+`~/.codex/artifacts/thor-pr552-dev-merge-2026-10-03/`.
 
 Historical device results retain their original tested revisions in the
 [Odin implementation tracker](https://github.com/trinadhthatakula/Thor/blob/51d118b649fb03171c8de929b5608374fe1b6d29/docs/follow-ups/odin-1.1.0-implementation-plan.md),
