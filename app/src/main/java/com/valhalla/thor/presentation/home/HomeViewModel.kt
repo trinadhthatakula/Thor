@@ -108,19 +108,14 @@ class HomeViewModel(
     val rootManagerPicker = _rootManagerPicker.asStateFlow()
     private var rootManagerPickerJob: Job? = null
 
-    private data class ManagerShortcuts(
-        val installed: List<InstalledManagerInfo>,
-        val selected: RootManagerShortcut?
-    )
-
     // Package discovery is a shortcut lookup, independent of the live privilege probe.
-    private val preferencesWithManagers = combine(
+    private val preferencesWithManagers = preferencesWithManagerShortcuts(
         preferenceRepository.userPreferences,
         _managerRefreshRevision
-    ) { prefs, _ ->
-        prefs to ManagerShortcuts(
+    ) { selectedPackage ->
+        ManagerShortcuts(
             installed = PrivilegeManagerApp.findInstalledManagers(packageManager),
-            selected = RootManagerShortcuts.resolve(packageManager, prefs.selectedRootManagerPackage)
+            selected = RootManagerShortcuts.resolve(packageManager, selectedPackage)
         )
     }.flowOn(ioDispatcher)
 
