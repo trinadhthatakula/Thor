@@ -45,6 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.window.core.layout.WindowSizeClass
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -494,16 +496,29 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        TextButton(onClick = { viewModel.selectRootManager(null) }) {
-                            Text(stringResource(R.string.clear_root_manager_selection))
-                        }
                     }
-                    TextButton(onClick = {
-                        viewModel.loadRootManagerCandidates()
-                        showRootManagerPicker = true
-                    }) {
-                        Text(stringResource(R.string.choose_root_manager))
-                    }
+                    ConnectedButtonGroup(
+                        items = listOf(
+                            ConnectedButtonGroupItem.Label(stringResource(R.string.choose_root_manager_action)),
+                            ConnectedButtonGroupItem.Label(
+                                stringResource(R.string.cd_clear),
+                                enabled = state.hasSelectedRootManager
+                            )
+                        ),
+                        // These are actions, so neither segment stays selected.
+                        selectedIndex = -1,
+                        onItemSelected = { index ->
+                            if (index == 0) {
+                                viewModel.loadRootManagerCandidates()
+                                showRootManagerPicker = true
+                            } else {
+                                viewModel.selectRootManager(null)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentDescription = stringResource(R.string.choose_root_manager),
+                        labelMaxLines = 2
+                    )
                 }
             },
             confirmButton = {
