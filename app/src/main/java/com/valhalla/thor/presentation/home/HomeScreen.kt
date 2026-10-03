@@ -26,6 +26,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SplitButtonDefaults
+import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,8 +47,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.window.core.layout.WindowSizeClass
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
-import com.valhalla.asgard.components.ConnectedButtonGroup
-import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -497,27 +497,27 @@ fun HomeScreen(
                             }
                         }
                     }
-                    ConnectedButtonGroup(
-                        items = listOf(
-                            ConnectedButtonGroupItem.Label(stringResource(R.string.choose_root_manager_action)),
-                            ConnectedButtonGroupItem.Label(
-                                stringResource(R.string.cd_clear),
-                                enabled = state.hasSelectedRootManager
-                            )
-                        ),
-                        // These are actions, so neither segment stays selected.
-                        selectedIndex = -1,
-                        onItemSelected = { index ->
-                            if (index == 0) {
-                                viewModel.loadRootManagerCandidates()
-                                showRootManagerPicker = true
-                            } else {
-                                viewModel.selectRootManager(null)
+                    SplitButtonLayout(
+                        leadingButton = {
+                            SplitButtonDefaults.LeadingButton(
+                                onClick = {
+                                    viewModel.loadRootManagerCandidates()
+                                    showRootManagerPicker = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.choose_root_manager_action), maxLines = 2)
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        contentDescription = stringResource(R.string.choose_root_manager),
-                        labelMaxLines = 2
+                        trailingButton = {
+                            SplitButtonDefaults.TrailingButton(
+                                onClick = { viewModel.selectRootManager(null) },
+                                enabled = state.hasSelectedRootManager
+                            ) {
+                                Text(stringResource(R.string.cd_clear), maxLines = 2)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
