@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +58,9 @@ import com.valhalla.thor.presentation.home.components.SupportCommunitySection
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
 import com.valhalla.thor.presentation.home.components.RootManagerPickerDialog
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
+import com.valhalla.thor.presentation.theme.LocalDarkTheme
+import com.valhalla.thor.presentation.theme.greenDark
+import com.valhalla.thor.presentation.theme.greenLight
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
 import org.koin.androidx.compose.koinViewModel
@@ -453,10 +457,6 @@ fun HomeScreen(
                     }
                     if (state.hasSelectedRootManager) {
                         androidx.compose.material3.HorizontalDivider()
-                        Text(
-                            stringResource(R.string.selected_root_manager),
-                            style = MaterialTheme.typography.labelLarge
-                        )
                         val manager = state.selectedRootManager
                         if (manager == null) {
                             Text(stringResource(R.string.selected_root_manager_unavailable))
@@ -466,6 +466,12 @@ fun HomeScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.check_circle),
+                                    contentDescription = stringResource(R.string.selected_root_manager),
+                                    tint = if (LocalDarkTheme.current) greenDark else greenLight,
+                                    modifier = Modifier.size(24.dp)
+                                )
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         manager.label,
