@@ -34,6 +34,9 @@ data class UserPreferences(
     // Work Mode
     val preferredPrivilegeMode: PrivilegeMode? = null,
 
+    /** Device-local shortcut selected by the user; it does not establish root access. */
+    val selectedRootManagerPackage: String? = null,
+
     // Localization
     val language: String? = null, // null means System Default
 

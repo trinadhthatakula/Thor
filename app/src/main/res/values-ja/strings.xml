@@ -97,6 +97,12 @@
     <string name="suspended">一時停止中</string>
     <string name="privilege_check">権限チェック</string>
     <string name="privilege_check_desc">Thorが正しく動作するには、Root、Shizuku、またはDhizukuへのアクセスが必要です。\n\n管理アプリでアクセスを許可し、「更新」をタップしてください。</string>
+    <string name="choose_root_manager">Root管理アプリを選択</string>
+    <string name="root_manager_picker_description">Root管理アプリのパッケージ名が非表示またはランダム化されている場合は、ここでアプリを選択してください。ショートカットを保存します。Rootアクセスは別途確認されます。</string>
+    <string name="root_manager_apps_unavailable">アプリを読み込めませんでした。もう一度お試しください。</string>
+    <string name="selected_root_manager">選択中のRoot管理アプリ</string>
+    <string name="selected_root_manager_unavailable">選択した管理アプリは利用できません。パッケージ名が変更された場合は、もう一度選択してください。</string>
+    <string name="clear_root_manager_selection">選択を解除</string>
     <string name="system_apps_warning">⚠ システムアプリ</string>
     <string name="selected_count" tools:ignore="PluralsCandidate">%1$d 選択済み</string>
     <string name="no_matching_apps">マッチングアプリが見つかりませんでした</string>

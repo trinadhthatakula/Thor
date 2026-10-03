@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
@@ -53,6 +55,7 @@ import com.valhalla.thor.presentation.home.components.HomeActionsBento
 import com.valhalla.thor.presentation.home.components.homeActionRows
 import com.valhalla.thor.presentation.home.components.SupportCommunitySection
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
+import com.valhalla.thor.presentation.home.components.RootManagerPickerDialog
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
@@ -86,6 +89,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showPrivilegeDialog by remember { mutableStateOf(false) }
+    var showRootManagerPicker by remember { mutableStateOf(false) }
 
     var showInstallerSheet by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
@@ -147,7 +151,10 @@ fun HomeScreen(
             selectedType = state.selectedType,
             onTypeChanged = { viewModel.onTypeChanged(it) },
             onPrivilegeChanged = { viewModel.onPrivilegeModeChanged(it) },
-            onRestrictedStatusClick = { showPrivilegeDialog = true },
+            onRestrictedStatusClick = {
+                viewModel.refreshManagerShortcuts()
+                showPrivilegeDialog = true
+            },
             onNavigateToQueue = onNavigateToQueue,
             extensionsUnlocked = state.extensionsUnlocked,
             onCrack = { viewModel.crackEasterEgg() },
@@ -347,14 +354,32 @@ fun HomeScreen(
     // by MainScreen and driven by `MainUiState.cacheClear`, which asks once and says plainly that
     // system apps are included too.
 
-    if (showPrivilegeDialog) {
+    if (showRootManagerPicker) {
+        val picker by viewModel.rootManagerPicker.collectAsStateWithLifecycle()
+        RootManagerPickerDialog(
+            apps = picker.apps,
+            isLoading = picker.isLoading,
+            loadFailed = picker.loadFailed,
+            onSelect = {
+                viewModel.selectRootManager(it)
+                showRootManagerPicker = false
+            },
+            onRetry = viewModel::loadRootManagerCandidates,
+            onDismiss = { showRootManagerPicker = false }
+        )
+    }
+
+    if (showPrivilegeDialog && !showRootManagerPicker) {
         val context = androidx.compose.ui.platform.LocalContext.current
         AlertDialog(
             onDismissRequest = { showPrivilegeDialog = false },
             icon = { Icon(painterResource(R.drawable.privacy_tip), null) },
             title = { Text(stringResource(R.string.privilege_check)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Text(stringResource(R.string.privilege_check_desc))
                     RootRefreshNotice(status = state.rootAvailability.refreshStatus)
 
@@ -425,6 +450,53 @@ fun HomeScreen(
                                 }
                             }
                         }
+                    }
+                    if (state.hasSelectedRootManager) {
+                        androidx.compose.material3.HorizontalDivider()
+                        Text(
+                            stringResource(R.string.selected_root_manager),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        val manager = state.selectedRootManager
+                        if (manager == null) {
+                            Text(stringResource(R.string.selected_root_manager_unavailable))
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        manager.label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        manager.packageName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                TextButton(onClick = {
+                                    viewModel.openManagerApp(context, manager.packageName)
+                                }) {
+                                    Text(stringResource(R.string.open_app))
+                                }
+                            }
+                        }
+                        TextButton(onClick = { viewModel.selectRootManager(null) }) {
+                            Text(stringResource(R.string.clear_root_manager_selection))
+                        }
+                    }
+                    TextButton(onClick = {
+                        viewModel.loadRootManagerCandidates()
+                        showRootManagerPicker = true
+                    }) {
+                        Text(stringResource(R.string.choose_root_manager))
                     }
                 }
             },
