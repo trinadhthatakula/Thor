@@ -4,7 +4,7 @@ Validated on 2026-10-03 for [PR #553](https://github.com/trinadhthatakula/Thor/p
 The tested app source is
 [`fa86a8ab1eeccfe67cc44fcb3ff12d3ee10d244c`](https://github.com/trinadhthatakula/Thor/commit/fa86a8ab1eeccfe67cc44fcb3ff12d3ee10d244c),
 based on dev commit `51d118b649fb03171c8de929b5608374fe1b6d29`.
-The subsequent evidence commit adds documentation and screenshots only.
+Subsequent evidence commits add documentation and screenshots only.
 
 FOSS debug APK SHA-256:
 `a215e5c538f6aa11a0c290463ee9552fea4e08b0e19a86e1c6b621cb5ae77766`.
@@ -57,6 +57,12 @@ deduplicated row, and Clear restores automatic detection and Choose with Clear
 disabled. The phone was left on its selected-manager sheet; the emulator was left
 on automatic Magisk with no saved selection.
 
+The emulator screenshots were refreshed after Shizuku and Dhizuku were added.
+An explicit Refresh showed all three managers with their own Granted tick and
+Open action. Both automatic discovery and a selected Magisk shortcut were
+captured, and the installed APK hash still matched `fa86a8ab`. This screenshot
+refresh did not rerun Shizuku/Dhizuku authorization or manager-launch flows.
+
 The unknown-manager fallback was reviewed in code: it shows generic Root with
 Choose and derives its tick from the same live root grant. Its device simulation
 remains **unrun**. The emulator rejected launcher-component changes through
@@ -83,14 +89,15 @@ were restored after those checks.
 
 Phone package IDs are redacted in the published images. The four manager
 screenshots below use `fa86a8ab`; the previous dialog is retained for comparison.
+Both emulator captures include Magisk, Shizuku, and Dhizuku.
 
-| Before | ReSukiSU, detected | Magisk, detected |
+| Before | ReSukiSU, detected | Magisk, Shizuku, and Dhizuku |
 | --- | --- | --- |
-| ![Previous dialog](../images/privilege-check/previous-dialog.png) | ![ReSukiSU automatic discovery](../images/privilege-check/resukisu-detected.png) | ![Magisk automatic discovery](../images/privilege-check/magisk-detected.png) |
+| ![Previous dialog](../images/privilege-check/previous-dialog.png) | ![ReSukiSU automatic discovery](../images/privilege-check/resukisu-detected.png) | ![All three emulator managers with granted access and Open](../images/privilege-check/magisk-detected.png) |
 
-| ReSukiSU, selected | Magisk, selected |
+| ReSukiSU, selected | Magisk selected, with Shizuku and Dhizuku |
 | --- | --- |
-| ![Selected ReSukiSU with granted access and Open](../images/privilege-check/resukisu-selected.png) | ![Selected Magisk with granted access and Open](../images/privilege-check/magisk-selected.png) |
+| ![Selected ReSukiSU with granted access and Open](../images/privilege-check/resukisu-selected.png) | ![Selected Magisk alongside Shizuku and Dhizuku](../images/privilege-check/magisk-selected.png) |
 
 Historical Portuguese layout at 2× text size (`34b43c2d`, before grant-only ticks):
 
