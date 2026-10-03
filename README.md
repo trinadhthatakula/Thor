@@ -65,7 +65,7 @@
 - Biometric lock for Thor, with screenshot/recording protection and a hidden Recents preview while locked.
 - Nine app languages: English, Spanish, French, Arabic, Simplified Chinese, Japanese, European Portuguese, Brazilian Portuguese, and Polish, with an in-app language switcher.
 - Work Mode selection between available Root, Shizuku, and Dhizuku providers. The Extension Manager offers an optional catalog of add-ons, with a pinned-signer check for every downloaded APK and a SHA-256 comparison when the catalog provides a digest, both before installation.
-- Privilege Check recognizes ReSukiSU and SukiSU Ultra, including renamed builds that retain their known launcher activities. For other hidden managers, choose the installed app as a shortcut saved on this device. Root access is checked independently of manager discovery or selection.
+- The Privilege Check bottom sheet recognizes ReSukiSU and SukiSU Ultra, including renamed builds that retain their known launcher activities. For other hidden managers, choose the installed app as a shortcut saved on this device. Root access is checked independently of manager discovery or selection.
 
 ## Upcoming Features
 

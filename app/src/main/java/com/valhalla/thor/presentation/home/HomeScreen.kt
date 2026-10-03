@@ -21,15 +21,20 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,13 +45,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.window.core.layout.WindowSizeClass
-import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -55,16 +62,16 @@ import com.valhalla.thor.presentation.components.RootRefreshNotice
 import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
 import com.valhalla.thor.presentation.home.components.HomeActionsBento
-import com.valhalla.thor.presentation.home.components.homeActionRows
-import com.valhalla.thor.presentation.home.components.SupportCommunitySection
+import com.valhalla.thor.presentation.home.components.RootManagerPickerSheet
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
-import com.valhalla.thor.presentation.home.components.RootManagerPickerDialog
+import com.valhalla.thor.presentation.home.components.SupportCommunitySection
+import com.valhalla.thor.presentation.home.components.homeActionRows
+import com.valhalla.thor.presentation.installer.InstallerViewModel
+import com.valhalla.thor.presentation.installer.PortableInstaller
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.theme.LocalDarkTheme
 import com.valhalla.thor.presentation.theme.greenDark
 import com.valhalla.thor.presentation.theme.greenLight
-import com.valhalla.thor.presentation.installer.InstallerViewModel
-import com.valhalla.thor.presentation.installer.PortableInstaller
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
@@ -94,7 +101,7 @@ fun HomeScreen(
     installerViewModel: InstallerViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var showPrivilegeDialog by remember { mutableStateOf(false) }
+    var showPrivilegeSheet by remember { mutableStateOf(false) }
     var showRootManagerPicker by remember { mutableStateOf(false) }
 
     var showInstallerSheet by remember { mutableStateOf(false) }
@@ -159,7 +166,7 @@ fun HomeScreen(
             onPrivilegeChanged = { viewModel.onPrivilegeModeChanged(it) },
             onRestrictedStatusClick = {
                 viewModel.refreshManagerShortcuts()
-                showPrivilegeDialog = true
+                showPrivilegeSheet = true
             },
             onNavigateToQueue = onNavigateToQueue,
             extensionsUnlocked = state.extensionsUnlocked,
@@ -362,7 +369,7 @@ fun HomeScreen(
 
     if (showRootManagerPicker) {
         val picker by viewModel.rootManagerPicker.collectAsStateWithLifecycle()
-        RootManagerPickerDialog(
+        RootManagerPickerSheet(
             apps = picker.apps,
             isLoading = picker.isLoading,
             loadFailed = picker.loadFailed,
@@ -375,16 +382,65 @@ fun HomeScreen(
         )
     }
 
-    if (showPrivilegeDialog && !showRootManagerPicker) {
+    if (showPrivilegeSheet && !showRootManagerPicker) {
         val context = androidx.compose.ui.platform.LocalContext.current
-        AlertDialog(
-            onDismissRequest = { showPrivilegeDialog = false },
-            icon = { Icon(painterResource(R.drawable.privacy_tip), null) },
-            title = { Text(stringResource(R.string.privilege_check)) },
-            text = {
+        val sheetTitle = stringResource(R.string.privilege_check)
+        ModalBottomSheet(
+            modifier = Modifier.semantics { paneTitle = sheetTitle },
+            onDismissRequest = { showPrivilegeSheet = false },
+            sheetState = rememberBottomSheetState(
+                initialValue = SheetValue.Hidden,
+                enabledValues = setOf(SheetValue.Expanded, SheetValue.Hidden)
+            ),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
+            tonalElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = sheetTitle,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-1).sp,
+                        modifier = Modifier.weight(1f).semantics { heading() }
+                    )
+                    IconButton(
+                        onClick = viewModel::refreshPrivileges,
+                        enabled = state.rootAvailability.refreshStatus != RootRefreshStatus.CHECKING
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(
+                                if (state.rootAvailability.refreshStatus == RootRefreshStatus.IDLE) {
+                                    R.string.refresh
+                                } else {
+                                    R.string.retry_label
+                                }
+                            )
+                        )
+                    }
+                    IconButton(onClick = { showPrivilegeSheet = false }) {
+                        Icon(
+                            painter = painterResource(R.drawable.round_close),
+                            contentDescription = stringResource(R.string.cd_close)
+                        )
+                    }
+                }
                 Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(stringResource(R.string.privilege_check_desc))
                     RootRefreshNotice(status = state.rootAvailability.refreshStatus)
@@ -520,27 +576,8 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = viewModel::refreshPrivileges,
-                    enabled = state.rootAvailability.refreshStatus != RootRefreshStatus.CHECKING
-                ) {
-                    Text(stringResource(
-                        if (state.rootAvailability.refreshStatus == RootRefreshStatus.IDLE) {
-                            R.string.refresh
-                        } else {
-                            R.string.retry_label
-                        }
-                    ))
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showPrivilegeDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
             }
-        )
+        }
     }
 
     if (showInstallerSheet) {

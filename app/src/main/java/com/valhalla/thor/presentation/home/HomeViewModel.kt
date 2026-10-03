@@ -214,7 +214,7 @@ class HomeViewModel(
     }
 
     /**
-     * What the Privilege Check dialog's **Refresh** does — re-probe the three privilege sources,
+     * What the Privilege Check sheet's **Refresh** does — re-probe the three privilege sources,
      * then reload the dashboard.
      *
      * The dialog says "grant access in your manager app and click Refresh", so the probe is the
@@ -271,7 +271,7 @@ class HomeViewModel(
      * Off the main thread, because [DhizukuHelper.requestPermission] opens with `DhizukuAPI.init`
      * and `isPermissionGranted()` — both synchronous binder round-trips to another process.
      * `DhizukuSystemGateway` confines the same helper to [ioDispatcher] for exactly that reason and
-     * this call site, reached straight from the Privilege Check dialog's `onClick`, was the one that
+     * this call site, reached straight from the Privilege Check sheet's `onClick`, was the one that
      * did not. The bind is normally already latched by `ThorApplication.onCreate`, so the usual cost
      * is a stall rather than an ANR — but "usually already bound" is not a thread policy.
      *
