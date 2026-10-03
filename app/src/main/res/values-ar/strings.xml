@@ -101,6 +101,7 @@
     <string name="choose_root_manager_action">اختيار</string>
     <string name="root_manager_picker_description">إذا كان مدير Root يستخدم اسم حزمة مخفيًا أو عشوائيًا، فاختر تطبيقه هنا. سيُحفظ اختصار له؛ ويُتحقق من صلاحية Root بشكل منفصل.</string>
     <string name="root_manager_apps_unavailable">تعذّر تحميل التطبيقات. حاول مجددًا.</string>
+    <string name="detected_root_manager">تم اكتشاف مدير Root</string>
     <string name="selected_root_manager">مدير Root المحدد</string>
     <string name="selected_root_manager_unavailable">المدير المحدد غير متاح. اختره مجددًا إذا تغير اسم حزمته.</string>
 

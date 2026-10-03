@@ -470,12 +470,37 @@ fun HomeScreen(
                                     isSuspended = false,
                                     size = 24.dp
                                 )
-                                Text(
-                                    text = info.app.displayName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                Column(Modifier.weight(1f)) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = info.app.displayName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        if (info.app.mode == PrivilegeMode.ROOT) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.check_circle),
+                                                contentDescription = stringResource(R.string.detected_root_manager),
+                                                tint = if (LocalDarkTheme.current) greenDark else greenLight,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                    if (info.app.mode == PrivilegeMode.ROOT) {
+                                        Text(
+                                            text = info.installedPackageName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
 
                                 if (info.app.mode == PrivilegeMode.ROOT &&
                                     state.rootAvailability.refreshStatus != RootRefreshStatus.IDLE
@@ -592,7 +617,13 @@ fun HomeScreen(
                         ) {
                             Icon(painterResource(R.drawable.apps), null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.choose_root_manager_action), maxLines = 2)
+                            Text(
+                                text = stringResource(
+                                    if (state.hasSelectedRootManager) R.string.export_change
+                                    else R.string.choose_root_manager_action
+                                ),
+                                maxLines = 2
+                            )
                         }
                         FilledTonalButton(
                             onClick = { viewModel.selectRootManager(null) },

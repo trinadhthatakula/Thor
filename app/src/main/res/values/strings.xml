@@ -124,6 +124,7 @@
     <string name="choose_root_manager_action">Choose</string>
     <string name="root_manager_picker_description">If your root manager uses a hidden or randomized package name, choose its app here. This saves a shortcut; root access is checked separately.</string>
     <string name="root_manager_apps_unavailable">Could not load apps. Try again.</string>
+    <string name="detected_root_manager">Root manager detected</string>
     <string name="selected_root_manager">Selected root manager</string>
     <string name="selected_root_manager_unavailable">The selected manager is unavailable. Choose it again if its package name changed.</string>
 
