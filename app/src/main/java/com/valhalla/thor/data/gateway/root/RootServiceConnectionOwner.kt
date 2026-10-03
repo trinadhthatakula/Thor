@@ -113,7 +113,7 @@ internal class RootServiceConnectionOwner(
     // A null service callback is a completed bind response, distinct from the wait's own timeout.
     private data class BindResult(val service: IThorRootService?)
 
-    private fun record(phase: RootBindingPhase, cached: Boolean = false) {
+    internal fun record(phase: RootBindingPhase, cached: Boolean = false) {
         diagnostics.recordSafely(RootLifecycleEvent.Binding(phase, cached))
     }
 

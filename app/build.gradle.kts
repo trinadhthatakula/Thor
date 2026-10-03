@@ -113,10 +113,10 @@ android {
             debugSymbolLevel = "SYMBOL_TABLE"
         }
 
-        // Startup-timing instrumentation switch, read by PrivilegeProbeTrace and by
-        // ThorApplication's Logger.isDebug wiring. Off by default so `release` inherits false and
-        // stays silent; `debug` and `benchmark` turn it back on below. It exists as its own field
-        // rather than reusing BuildConfig.DEBUG because the benchmark build type is release-shaped,
+        // Development privilege diagnostics switch, shared by startup timing, structured root
+        // lifecycle events, and ThorApplication's Logger.isDebug wiring. Off by default so `release`
+        // inherits false and stays silent; `debug` and `benchmark` turn it back on below. It has its
+        // own field rather than reusing BuildConfig.DEBUG because the benchmark is release-shaped,
         // so BuildConfig.DEBUG is false there and the trace would compile out again.
         buildConfigField("boolean", "PRIVILEGE_TRACE", "false")
     }
