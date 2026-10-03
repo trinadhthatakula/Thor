@@ -7,6 +7,7 @@ import com.valhalla.thor.domain.model.PackageLeaseResult
 import com.valhalla.thor.domain.model.PackageOperationOwner
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.domain.repository.PackageOperationBarrier
+import com.valhalla.thor.domain.repository.withRetainableOperationLease
 import java.util.ArrayDeque
 import kotlin.time.Duration
 import kotlinx.coroutines.CompletableDeferred
@@ -36,6 +37,7 @@ internal class DefaultPackageOperationCoordinator(
         var entry: Entry? = null
         var acquiredImmediately = false
         var immediateBusyOwner: PackageOperationOwner? = null
+        var leaseOwnsClaim = false
 
         try {
             stateMutex.withLock {
@@ -97,10 +99,20 @@ internal class DefaultPackageOperationCoordinator(
             if (barrier.isBlocked(packageName, owner)) {
                 return PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA)
             }
-            return PackageLeaseResult.Acquired(block())
+            val acquiredEntry = checkNotNull(entry)
+            leaseOwnsClaim = true
+            return withRetainableOperationLease(
+                release = {
+                    stateMutex.withLock {
+                        releaseClaim(packageName, acquiredEntry, claim)
+                    }
+                },
+            ) {
+                PackageLeaseResult.Acquired(block())
+            }
         } finally {
             val registeredEntry = entry
-            if (registeredEntry != null) {
+            if (registeredEntry != null && !leaseOwnsClaim) {
                 withContext(NonCancellable) {
                     stateMutex.withLock {
                         releaseClaim(

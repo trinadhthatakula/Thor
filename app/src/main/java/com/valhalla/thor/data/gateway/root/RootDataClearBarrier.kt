@@ -9,6 +9,7 @@ import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.util.readKernelBootId
 import com.valhalla.thor.domain.model.PackageLeaseResult
 import com.valhalla.thor.domain.model.PackageOperationOwner
+import com.valhalla.thor.domain.repository.withRetainableOperationLease
 import com.valhalla.thor.rootservice.RootDataClearProtocol
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -78,17 +79,21 @@ internal class RootDataClearBarrier(context: Context) {
 
     suspend fun anyPending(): Boolean = locked { currentRecords().isNotEmpty() }
 
-    /** Hold admission until a global or unknown-target mutation finishes, excluding every begin. */
-    suspend fun <T> withGlobalLease(block: suspend () -> T): PackageLeaseResult<T> =
-        withContext(Dispatchers.IO) { globalAdmission }.withLock {
+    /** Hold admission through lexical and retained work, excluding every new clear-data begin. */
+    suspend fun <T> withGlobalLease(block: suspend () -> T): PackageLeaseResult<T> {
+        val admission = withContext(Dispatchers.IO) { globalAdmission }
+        val owner = Any()
+        admission.lock(owner)
+        return withRetainableOperationLease(release = { admission.unlock(owner) }) {
             val blocked = try {
                 anyPending()
             } catch (_: RootDataClearJournalUnavailable) {
                 true
             }
-            if (blocked) return@withLock PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA)
-            PackageLeaseResult.Acquired(block())
+            if (blocked) PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA)
+            else PackageLeaseResult.Acquired(block())
         }
+    }
 
     /** The returned identity is durable before this method returns permission to dispatch. */
     suspend fun begin(packageName: String, userId: Int): RootDataClearRecord =

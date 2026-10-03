@@ -135,7 +135,7 @@ class AppArchiveInstallerImpl(
      *    rungs wait for their own terminal callback before returning; the watcher also retains
      *    the fallback for an installer implementation that returns before emitting its outcome.
      *  - **[INSTALL_WAIT_MS] requests cancellation of the whole operation.** An accepted session
-     *    keeps the caller's lease until its terminal callback even after this budget expires.
+     *    retains its own lease references until its terminal callback after this caller exits.
      *    A missing callback therefore retains ownership in this process beyond the budget.
      *
      * What this does *not* fix, because the constant is in `InstallerRepositoryImpl` and shared with

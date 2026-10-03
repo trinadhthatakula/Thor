@@ -3,31 +3,52 @@
 
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.domain.model.InstallSessionUnresolved
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
-/** After commit returns, retain the caller's lease until completion, even during cancellation. */
+/** The registered ticket owns retained leases; this function owns only the caller's wait. */
 internal suspend fun trackInstallSessionSubmission(
     abandon: () -> Unit,
     onSubmissionFailure: suspend (Throwable) -> Unit,
     onCleanupFailure: (Throwable) -> Unit,
+    releaseUnsubmitted: suspend () -> Unit,
+    detach: () -> Unit,
     awaitCompletion: suspend () -> Unit,
-    submit: suspend (markSubmitted: () -> Unit) -> Unit,
+    submit: suspend (commit: (action: () -> Unit) -> Unit) -> Unit,
 ): Boolean {
+    var attempted = false
     var submitted = false
     try {
-        submit { submitted = true }
-    } catch (failure: Throwable) {
-        if (!submitted) runCatching(abandon)
-        if (failure is CancellationException) throw failure
-        if (submitted) onCleanupFailure(failure) else onSubmissionFailure(failure)
+        try {
+            submit { action ->
+                // There is no safe abandonment/fallback proof after crossing the commit boundary,
+                // including a Binder exception whose delivery to PackageInstaller is unknown.
+                attempted = true
+                action()
+                submitted = true
+            }
+        } catch (failure: Throwable) {
+            if (!attempted) runCatching(abandon)
+            if (failure is CancellationException) throw failure
+            when {
+                submitted -> onCleanupFailure(failure)
+                attempted -> throw InstallSessionUnresolved(
+                    "Thor could not confirm install submission; conflicting operations remain blocked",
+                    failure,
+                )
+                else -> onSubmissionFailure(failure)
+            }
+        }
+        if (submitted) awaitCompletion()
+        currentCoroutineContext().ensureActive()
+        return submitted
     } finally {
-        // Neither cancellation nor closing the session handle stops an accepted installation.
-        if (submitted) withContext(NonCancellable) { awaitCompletion() }
+        detach()
+        // Only an unattempted session can retire without its matching terminal callback.
+        if (!attempted) withContext(NonCancellable) { releaseUnsubmitted() }
     }
-    currentCoroutineContext().ensureActive()
-    return submitted
 }

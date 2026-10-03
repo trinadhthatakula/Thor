@@ -54,7 +54,7 @@ internal suspend fun emitInstallSessionStatus(
     pendingInstallIntent: PendingInstallIntent,
 ) {
     if (intent.action != ACTION_INSTALL_STATUS) return
-    val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
+    val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE)
     when (status) {
         PackageInstaller.STATUS_SUCCESS,
         in PackageInstaller.STATUS_FAILURE..PackageInstaller.STATUS_FAILURE_TIMEOUT -> {
@@ -78,16 +78,21 @@ internal suspend fun emitInstallSessionStatus(
                     @Suppress("DEPRECATION")
                     intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                 }
-            if (confirmIntent != null) {
-                pendingInstallIntent.set(confirmIntent)
-                eventBus.emit(InstallState.UserConfirmationRequired)
-            }
+            eventBus.emitSessionPendingUserAction(
+                intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1),
+                intent.getStringExtra(InstallReceiver.EXTRA_INSTALL_TOKEN),
+                publishConfirmation = confirmIntent?.let { confirmation ->
+                    { pendingInstallIntent.set(confirmation) }
+                },
+            )
         }
 
         // Framework STATUS_PENDING_STREAMING is hidden from the public SDK. It is progress,
         // even though Thor's ordinary file-backed sessions do not request a DataLoader.
         -2 -> Unit
-        else -> eventBus.emit(installFailure(intent, status))
+        // Missing or unknown statuses prove neither failure nor completion and must not replace
+        // a different operation's presentation while this attempt keeps its ownership.
+        else -> Unit
     }
 }
 

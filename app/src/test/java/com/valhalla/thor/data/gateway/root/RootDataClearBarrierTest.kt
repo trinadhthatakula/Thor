@@ -8,8 +8,14 @@ import android.content.ContextWrapper
 import android.util.AtomicFile
 import com.valhalla.thor.domain.model.PackageLeaseResult
 import com.valhalla.thor.domain.model.PackageOperationOwner
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
+import com.valhalla.thor.domain.repository.RetainedOperationLease
+import com.valhalla.thor.domain.repository.retainOperationLeases
 import java.io.File
 import java.util.UUID
+import kotlin.time.Duration
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.awaitCancellation
@@ -355,6 +361,62 @@ class RootDataClearBarrierTest {
         assertFalse(barrier().anyPending())
         val record = barrier().begin(PACKAGE, USER)
         assertEquals(record, barrier().pending(PACKAGE, USER))
+    }
+
+    @Test
+    fun `cancelled global caller retains admission until its accepted work releases`() = runTest {
+        val entered = CompletableDeferred<RetainedOperationLease>()
+        val global = async {
+            barrier().withGlobalLease {
+                entered.complete(retainOperationLeases())
+                awaitCancellation()
+            }
+        }
+        val retained = entered.await()
+        global.cancelAndJoin()
+        // With an IO context and undispatched start, begin reaches the admission mutex before
+        // async returns; a released mutex would let the whole begin complete synchronously.
+        val newClear = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+            barrier().begin(PACKAGE, USER)
+        }
+        assertNull(barrier().pending(PACKAGE, USER))
+        assertFalse(newClear.isCompleted)
+
+        retained.release()
+        val record = newClear.await()
+        assertEquals(record, barrier().pending(PACKAGE, USER))
+        retained.release()
+        assertEquals(record, barrier().pending(PACKAGE, USER))
+    }
+
+    @Test
+    fun `nested archive package and unknown target global ownership are both retained`() = runTest {
+        val coordinator = DefaultPackageOperationCoordinator()
+        lateinit var retained: RetainedOperationLease
+        coordinator.withPackageLease(PACKAGE, PackageOperationOwner.ARCHIVE_RESTORE, Duration.ZERO) {
+            barrier().withGlobalLease { retained = retainOperationLeases() }
+        }
+        assertEquals(
+            PackageLeaseResult.Busy(PackageOperationOwner.ARCHIVE_RESTORE),
+            coordinator.withPackageLease(PACKAGE, PackageOperationOwner.UNINSTALL, Duration.ZERO) {
+                error("The borrowed archive package claim must remain retained")
+            },
+        )
+        val newClear = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+            barrier().begin("com.example.other", USER)
+        }
+        assertFalse(barrier().anyPending())
+        assertFalse(newClear.isCompleted)
+
+        retained.release()
+        val record = newClear.await()
+        assertEquals(record, barrier().pending(record.packageName, USER))
+        assertEquals(
+            PackageLeaseResult.Acquired("released"),
+            coordinator.withPackageLease(PACKAGE, PackageOperationOwner.UNINSTALL, Duration.ZERO) {
+                "released"
+            },
+        )
     }
 
     private fun barrier(boot: String? = BOOT): RootDataClearBarrier = RootDataClearBarrier(

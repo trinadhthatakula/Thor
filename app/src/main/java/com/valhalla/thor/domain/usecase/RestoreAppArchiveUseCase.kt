@@ -309,7 +309,8 @@ internal class RestoreAppArchiveUseCase(
                     ArchiveInstallOutcome.Unconfirmed -> {
                         Logger.e(TAG, "Bundle install was unconfirmed")
                         return failRestore(
-                            "Thor could not confirm $appLabel finished installing, so it wrote no data"
+                            "Thor could not confirm $appLabel finished installing, so it wrote no data",
+                            keepBreadcrumb = true,
                         )
                     }
                 }

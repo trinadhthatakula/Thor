@@ -93,6 +93,10 @@ sealed class PrivilegeExecutionException(
 class PackageOperationBusy(val owner: PackageOperationOwner) :
     PrivilegeExecutionException("Package operation busy: $owner")
 
+/** The caller has exited, but the accepted or attempted install still owns admission. */
+class InstallSessionUnresolved(message: String, cause: Throwable? = null) :
+    PrivilegeExecutionException(message, cause)
+
 class ObbPlacementUnresolved(val packageName: String, cause: Throwable? = null) :
     PrivilegeExecutionException("Game data placement could not be confirmed for $packageName", cause)
 

@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.domain.model.InstallSessionUnresolved
 import android.app.Application
 import android.content.IntentSender
 import android.content.pm.ApplicationInfo
@@ -47,8 +48,16 @@ import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.time.Duration
+import com.valhalla.thor.domain.repository.withRetainableOperationLease
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -73,6 +82,7 @@ import org.robolectric.annotation.Implements
 import org.robolectric.fakes.RoboIntentSender
 import org.robolectric.shadows.ShadowPackageInstaller
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = Application::class, shadows = [InstallerPackageLeaseTest.HeldSession::class])
 class InstallerPackageLeaseTest {
@@ -93,7 +103,9 @@ class InstallerPackageLeaseTest {
     }
 
     @Before
-    fun setUp() {
+    fun setUp() = setUpRepository(Dispatchers.Unconfined)
+
+    private fun setUpRepository(ioDispatcher: CoroutineDispatcher) {
         context = ApplicationProvider.getApplicationContext()
         Environment.getExternalStorageDirectory().mkdirs()
         sources().deleteRecursively()
@@ -104,6 +116,7 @@ class InstallerPackageLeaseTest {
         HeldSession.nextCommit = CompletableDeferred()
         HeldSession.commits = 0
         HeldSession.abandons = 0
+        HeldSession.commitFailure = null
         val preferences = FakePreferenceRepository()
         val commands = object : RootCommandExecutor {
             override suspend fun execute(command: RootCommand): RootCommandResult {
@@ -132,17 +145,15 @@ class InstallerPackageLeaseTest {
         obb = ObbInstaller(context, system, Dispatchers.Unconfined)
         repository = InstallerRepositoryImpl(
             context, bus, root, ShizukuReflector(context), preferences, obb, coordinator,
-            Dispatchers.Unconfined, Dispatchers.Unconfined,
+            ioDispatcher, Dispatchers.Unconfined,
             object : PackageOperationBarrier {
                 override suspend fun isBlocked(packageName: String, owner: PackageOperationOwner) = false
                 override suspend fun <T> withGlobalLease(block: suspend () -> T): PackageLeaseResult<T> {
                     globalChecks++
                     if (globallyBlocked) return PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA)
                     globalLeaseActive = true
-                    return try {
+                    return withRetainableOperationLease(release = { globalLeaseActive = false }) {
                         PackageLeaseResult.Acquired(block())
-                    } finally {
-                        globalLeaseActive = false
                     }
                 }
             },
@@ -498,9 +509,9 @@ class InstallerPackageLeaseTest {
                 onInstallSucceeded = { succeeded = true })
         }
         val session = HeldSession.nextCommit.await()
-        install.cancel(CancellationException("cancel submitted install"))
+        install.cancelAndJoin()
         try {
-            assertFalse(install.isCompleted)
+            assertTrue(install.isCompleted)
             assertTrue(globalLeaseActive)
             assertFalse(succeeded)
             assertEquals(0, HeldSession.abandons)
@@ -509,7 +520,7 @@ class InstallerPackageLeaseTest {
             install.join()
         }
         assertTrue(runCatching { install.await() }.exceptionOrNull() is CancellationException)
-        assertTrue(succeeded)
+        assertFalse(succeeded)
         assertFalse(globalLeaseActive)
         assertEquals(0, HeldSession.abandons)
     }
@@ -524,9 +535,9 @@ class InstallerPackageLeaseTest {
             }
         }
         val session = HeldSession.nextCommit.await()
-        install.cancel(CancellationException("cancel borrowed install"))
+        install.cancelAndJoin()
         try {
-            assertFalse(install.isCompleted)
+            assertTrue(install.isCompleted)
             assertBusy(PackageOperationOwner.ARCHIVE_RESTORE)
             assertEquals(0, HeldSession.abandons)
         } finally {
@@ -536,6 +547,109 @@ class InstallerPackageLeaseTest {
         assertTrue(runCatching { install.await() }.exceptionOrNull() is CancellationException)
         assertAvailable()
         assertEquals(0, HeldSession.abandons)
+    }
+
+    @Test
+    fun `caller deadline detaches while package ownership remains until late success`() = runTest {
+        val staged = staged()
+        var succeeded = false
+        val install = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeoutOrNull(100) {
+                repository.installPackage(staged, Uri.fromFile(staged.file), InstallMode.NORMAL,
+                    onInstallSucceeded = { succeeded = true })
+            }
+        }
+        val session = HeldSession.nextCommit.await()
+        advanceTimeBy(100)
+        runCurrent()
+        assertTrue(install.isCompleted)
+        assertEquals(null, install.await())
+        assertBusy(PackageOperationOwner.REINSTALL)
+        assertAvailable("com.example.other")
+        markInstalled()
+        session.emit(InstallState.Success)
+        assertAvailable()
+        assertFalse(succeeded)
+        assertEquals(listOf("preflight"), trace)
+        assertEquals(0, HeldSession.abandons)
+    }
+
+    @Test
+    fun `missing callback ends the bounded session wait without releasing global admission`() = runTest {
+        setUpRepository(UnconfinedTestDispatcher(testScheduler))
+        val staged = unknownApk()
+        val install = async(start = CoroutineStart.UNDISPATCHED) {
+            runCatching { repository.installPackage(staged, Uri.fromFile(staged.file), InstallMode.NORMAL) }
+        }
+        val session = HeldSession.nextCommit.await()
+        advanceTimeBy(INSTALL_SESSION_WAIT_MS)
+        runCurrent()
+        assertTrue(install.isCompleted)
+        assertTrue(install.await().exceptionOrNull() is InstallSessionUnresolved)
+        assertTrue(globalLeaseActive)
+        session.emit(installFailure())
+        assertFalse(globalLeaseActive)
+    }
+
+    @Test
+    fun `cancellation retains nested borrowed package and global leases`() = runTest {
+        val staged = unknownApk()
+        val install = launch(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.withPackageLease(PACKAGE, PackageOperationOwner.ARCHIVE_RESTORE, Duration.ZERO) {
+                repository.installPackage(staged, Uri.fromFile(staged.file), InstallMode.NORMAL,
+                    packageLeaseHeldFor = PACKAGE)
+            }
+        }
+        val session = HeldSession.nextCommit.await()
+        install.cancelAndJoin()
+        assertBusy(PackageOperationOwner.ARCHIVE_RESTORE)
+        assertTrue(globalLeaseActive)
+        session.emit(installFailure())
+        assertAvailable()
+        assertFalse(globalLeaseActive)
+    }
+
+    @Test
+    fun `background confirmation ends caller wait and retains ownership until a real terminal result`() = runTest {
+        val staged = staged()
+        var succeeded = false
+        var published = false
+        val install = async(start = CoroutineStart.UNDISPATCHED) {
+            runCatching {
+                coordinator.withPackageLease(PACKAGE, PackageOperationOwner.ARCHIVE_RESTORE, Duration.ZERO) {
+                    repository.installPackage(staged, Uri.fromFile(staged.file), InstallMode.NORMAL,
+                        execution = PrivilegeExecutionContext(lane = PrivilegeExecutionLane.ARCHIVE),
+                        packageLeaseHeldFor = PACKAGE, onInstallSucceeded = { succeeded = true })
+                }
+            }
+        }
+        val session = HeldSession.nextCommit.await()
+        bus.emitSessionPendingUserAction(session.id, session.token) { published = true }
+        assertTrue(install.await().exceptionOrNull() is InstallSessionUnresolved)
+        assertFalse(published)
+        assertBusy(PackageOperationOwner.ARCHIVE_RESTORE)
+        markInstalled()
+        session.emit(InstallState.Success)
+        assertAvailable()
+        assertFalse(succeeded)
+        assertEquals(listOf("preflight"), trace)
+        assertEquals(1, HeldSession.commits)
+        assertEquals(0, HeldSession.abandons)
+    }
+
+    @Test
+    fun `commit transport uncertainty detaches without abandon or releasing its claim`() = runTest {
+        val staged = staged(includeObb = false)
+        HeldSession.commitFailure = IOException("reply lost")
+        val failure = runCatching {
+            repository.installPackage(staged, Uri.fromFile(staged.file), InstallMode.NORMAL)
+        }.exceptionOrNull()
+        assertTrue(failure is InstallSessionUnresolved)
+        assertBusy(PackageOperationOwner.REINSTALL)
+        assertEquals(1, HeldSession.commits)
+        assertEquals(0, HeldSession.abandons)
+        HeldSession.nextCommit.await().emit(installFailure())
+        assertAvailable()
     }
 
     @Test
@@ -642,6 +756,7 @@ class InstallerPackageLeaseTest {
             check(id >= 0 && id == shadowOf(pendingIntent).requestCode)
             val token = requireNotNull(intent.getStringExtra(InstallReceiver.EXTRA_INSTALL_TOKEN))
             check(nextCommit.complete(SessionIdentity(id, token)))
+            commitFailure?.let { throw it }
         }
 
         @Implementation
@@ -654,6 +769,7 @@ class InstallerPackageLeaseTest {
             lateinit var nextCommit: CompletableDeferred<SessionIdentity>
             var commits: Int = 0
             var abandons: Int = 0
+            var commitFailure: IOException? = null
         }
     }
 

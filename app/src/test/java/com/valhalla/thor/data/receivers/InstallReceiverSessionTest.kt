@@ -11,6 +11,7 @@ import com.valhalla.thor.data.manager.PendingInstallIntent
 import com.valhalla.thor.domain.InstallSessionCompletion
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
+import com.valhalla.thor.domain.repository.withRetainableOperationLease
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -107,6 +108,108 @@ class InstallReceiverSessionTest {
     }
 
     @Test
+    fun `background pending confirmation returns promptly without replacing a foreground prompt`() = runTest {
+        for (includeIntent in listOf(false, true)) {
+            val bus = InstallerEventBus()
+            val pending = PendingInstallIntent()
+            val foregroundPrompt = Intent("foreground.confirm")
+            pending.set(foregroundPrompt)
+            var releases = 0
+            lateinit var completion: InstallSessionCompletion
+            withRetainableOperationLease(release = { releases++ }) {
+                completion = bus.registerSession(41, interactive = false)
+            }
+            val intent = callback(completion, PackageInstaller.STATUS_PENDING_USER_ACTION)
+            if (includeIntent) intent.putExtra(Intent.EXTRA_INTENT, Intent("background.confirm"))
+
+            emitInstallSessionStatus(intent, bus, pending)
+
+            assertSame(InstallState.UserConfirmationRequired, completion.await())
+            assertSame(foregroundPrompt, pending.consume())
+            assertNull(bus.latest)
+            assertEquals(0, releases)
+            bus.detachSession(completion)
+            emitInstallSessionStatus(callback(completion, PackageInstaller.STATUS_FAILURE_ABORTED), bus, pending)
+            assertEquals(1, releases)
+        }
+    }
+
+    @Test
+    fun `uncorrelated pending callbacks cannot replace or publish another attempts prompt`() = runTest {
+        val bus = InstallerEventBus()
+        val completion = bus.registerSession(41)
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) { completion.await() }
+        val pending = PendingInstallIntent()
+        val existing = Intent("owned.confirm")
+        pending.set(existing)
+        try {
+            val invalid = listOf(
+                callback(completion, -1).apply { removeExtra(PackageInstaller.EXTRA_SESSION_ID) },
+                callback(completion, -1).apply { removeExtra(InstallReceiver.EXTRA_INSTALL_TOKEN) },
+                callback(completion, -1).putExtra(PackageInstaller.EXTRA_SESSION_ID, 42),
+                callback(completion, -1).putExtra(InstallReceiver.EXTRA_INSTALL_TOKEN, "unrelated"),
+                callback(completion, -1).putExtra(InstallReceiver.EXTRA_INSTALL_TOKEN, 42),
+            )
+            for (intent in invalid) {
+                emitInstallSessionStatus(intent.putExtra(Intent.EXTRA_INTENT, Intent("unowned.confirm")), bus, pending)
+                assertFalse(waiter.isCompleted)
+                assertNull(bus.latest)
+            }
+            assertSame(existing, pending.consume())
+        } finally {
+            waiter.cancelAndJoin()
+            bus.unregisterSession(completion)
+        }
+    }
+
+    @Test
+    fun `detached interactive attempt cannot deliver a late foreground confirmation`() = runTest {
+        val bus = InstallerEventBus()
+        val completion = bus.registerSession(41)
+        val pending = PendingInstallIntent()
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) { completion.await() }
+        waiter.cancelAndJoin()
+        bus.detachSession(completion)
+
+        emitInstallSessionStatus(
+            callback(completion, PackageInstaller.STATUS_PENDING_USER_ACTION)
+                .putExtra(Intent.EXTRA_INTENT, Intent("late.confirm")),
+            bus, pending,
+        )
+
+        assertNull(pending.consume())
+        assertNull(bus.latest)
+        emitInstallSessionStatus(callback(completion, PackageInstaller.STATUS_SUCCESS), bus, pending)
+        assertSame(InstallState.Success, completion.await())
+    }
+
+    @Test
+    fun `missing malformed and unknown background statuses cannot end its wait or replace presentation`() = runTest {
+        val bus = InstallerEventBus()
+        val completion = bus.registerSession(41, interactive = false)
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) { completion.await() }
+        val pending = PendingInstallIntent()
+        val currentProgress = InstallState.Installing(0.5f)
+        bus.emit(currentProgress)
+        try {
+            val malformed = listOf(
+                callback(completion, 0).apply { removeExtra(PackageInstaller.EXTRA_STATUS) },
+                callback(completion, 0).putExtra(PackageInstaller.EXTRA_STATUS, "0"),
+                callback(completion, Int.MAX_VALUE),
+            )
+            for (intent in malformed) {
+                emitInstallSessionStatus(intent.putExtra(Intent.EXTRA_INTENT, Intent("invalid.confirm")), bus, pending)
+                assertFalse(waiter.isCompleted)
+                assertSame(currentProgress, bus.latest)
+                assertNull(pending.consume())
+            }
+        } finally {
+            waiter.cancelAndJoin()
+            bus.unregisterSession(completion)
+        }
+    }
+
+    @Test
     fun `missing confirmation streaming and unknown statuses cannot settle ownership`() = runTest {
         val bus = InstallerEventBus()
         val completion = bus.registerSession(41)
@@ -135,7 +238,7 @@ class InstallReceiverSessionTest {
     }
 
     @Test
-    fun `terminal callbacks with missing or mismatched correlation only update presentation`() = runTest {
+    fun `terminal callbacks with missing or mismatched correlation cannot change presentation or ownership`() = runTest {
         val bus = InstallerEventBus()
         val completion = bus.registerSession(41)
         val waiter = async(start = CoroutineStart.UNDISPATCHED) { completion.await() }
@@ -151,7 +254,7 @@ class InstallReceiverSessionTest {
                 emitInstallSessionStatus(intent, bus, PendingInstallIntent())
                 runCurrent()
                 assertFalse(waiter.isCompleted)
-                assertSame(InstallState.Success, bus.latest)
+                assertNull(bus.latest)
             }
         } finally {
             waiter.cancelAndJoin()
