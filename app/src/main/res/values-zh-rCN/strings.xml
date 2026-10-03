@@ -100,8 +100,6 @@
     <string name="choose_root_manager_action">选择</string>
     <string name="root_manager_picker_description">如果 Root 管理器使用隐藏或随机生成的包名，请在此选择其应用。这会保存一个快捷方式；Root 权限将单独检查。</string>
     <string name="root_manager_apps_unavailable">无法加载应用，请重试。</string>
-    <string name="detected_root_manager">已检测到 Root 管理器</string>
-    <string name="selected_root_manager">已选 Root 管理器</string>
     <string name="selected_root_manager_unavailable">所选管理器不可用。如果其包名已更改，请重新选择。</string>
 
     <!-- App List / Freezer -->

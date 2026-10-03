@@ -101,8 +101,6 @@
     <string name="choose_root_manager_action">Elegir</string>
     <string name="root_manager_picker_description">Si tu gestor de root usa un nombre de paquete oculto o aleatorio, elige su aplicación aquí. Se guardará un acceso directo; el acceso root se comprueba por separado.</string>
     <string name="root_manager_apps_unavailable">No se pudieron cargar las aplicaciones. Inténtalo de nuevo.</string>
-    <string name="detected_root_manager">Gestor de root detectado</string>
-    <string name="selected_root_manager">Gestor de root seleccionado</string>
     <string name="selected_root_manager_unavailable">El gestor seleccionado no está disponible. Elígelo de nuevo si cambió su nombre de paquete.</string>
 
     <!-- App List / Freezer -->
