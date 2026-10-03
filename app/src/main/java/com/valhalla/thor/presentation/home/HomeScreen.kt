@@ -10,9 +10,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -574,7 +576,7 @@ fun HomeScreen(
                         }
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         FilledTonalButton(
@@ -582,7 +584,7 @@ fun HomeScreen(
                                 viewModel.loadRootManagerCandidates()
                                 showRootManagerPicker = true
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             shape = RoundedCornerShape(
                                 topStart = 24.dp, bottomStart = 24.dp,
                                 topEnd = 8.dp, bottomEnd = 8.dp
@@ -595,7 +597,7 @@ fun HomeScreen(
                         FilledTonalButton(
                             onClick = { viewModel.selectRootManager(null) },
                             enabled = state.hasSelectedRootManager,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             shape = RoundedCornerShape(
                                 topStart = 8.dp, bottomStart = 8.dp,
                                 topEnd = 24.dp, bottomEnd = 24.dp
