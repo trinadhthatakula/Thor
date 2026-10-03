@@ -1,0 +1,13 @@
+• 🛠️ Sett Edit: inspect Android settings, review edits and keep verified history.
+
+• 🛡️ Privilege Check becomes a bottom sheet with grant ticks, Open and ReSukiSU shortcuts.
+
+• ⏸️ Find suspended apps and use supported Unpause.
+
+• 📦 Safer installs, exports and game-file copies; manage App Ops.
+
+• ❄️ Better Dhizuku actions, Shizuku recovery and Freezer profiles.
+
+• 🎛️ Customize multi-app actions, drag through lists and use Japanese.
+
+• 📜 Scroll Extensions confirmation on small screens.
