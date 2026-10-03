@@ -23,18 +23,17 @@ object ThorShellConfig {
         // Archive- and sweep-owned shells configure FLAG_MOUNT_MASTER independently because reading
         // another package's private data or clearing its cache requires the global namespace.
         //
-        // setTimeout aligns the builder's shell-check budget with Odin's own root probe, which gives
-        // up at RealShellRepository.SHELL_INIT_TIMEOUT_MS = 10s; the 20s BuilderImpl default would
-        // leave a `su` process and a blocked executor thread alive for ten seconds after the probe
-        // has already reported "no root". The budget covers the time the *user* spends answering the
-        // superuser dialog, so the trade is real: a grant given between 10s and 20s now has its
-        // shell destroyed instead of cached, and costs one more prompt on the next probe.
+        // Odin 1.1.0 publishes a shell only after its handshake and initializers complete under
+        // the builder deadline. Keep the interactive acquisition budget aligned with owned shells.
+        // An expired acquisition is not proof of root revocation: the shared availability model
+        // retains TIMED_OUT/FAILED separately from a confirmed NON_ROOT observation. Authorization
+        // is managed by the installed root manager; KernelSU forks can require a manual app grant.
         Shell.setDefaultBuilder(
             Shell.Builder.create()
                 .setTimeout(SHELL_INIT_TIMEOUT_SECONDS)
         )
     }
 
-    /** Matches Odin's `RealShellRepository.SHELL_INIT_TIMEOUT_MS`; see [init]. */
+    /** Ten-second startup budget, also used by Thor's owned-shell factory. */
     private const val SHELL_INIT_TIMEOUT_SECONDS = 10L
 }

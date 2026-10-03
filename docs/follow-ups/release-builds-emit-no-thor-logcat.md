@@ -1,34 +1,47 @@
 # Follow-up: release builds emit no Thor logcat at all, including errors
 
 **Status:** OPEN, undecided. Surfaced while building and measuring a release APK for the #22
-cold-start comparison (2026-07-30).
+cold-start comparison (2026-07-30). Release diagnostic retention/export remains a separate product
+decision in [M3-03 of the Odin implementation plan](odin-1.1.0-implementation-plan.md#m3-03-diagnostics-and-documentation).
 **Severity:** Minor-to-moderate, and **narrower than it first looks** — see "What this is not" before
 acting on it. Crashes are still diagnosable; non-fatal failures are not.
 **Effort:** depends entirely on the option. One `Logger.isDebug` assignment if the whole flag flips;
 a `thor-extension-api` release if only errors are wanted (see option 2). Plus, either way, a decision
 about what "release" should mean.
 
-Files: `app/src/main/java/com/valhalla/thor/ThorApplication.kt:67`
+Files: `app/src/main/java/com/valhalla/thor/ThorApplication.kt`,
+`app/src/main/java/com/valhalla/thor/core/ThorShellConfig.kt`
 
-## What was found
+## Historical finding (2026-07-30)
 
-Thor makes **zero direct `android.util.Log` calls** in `app/src/main/java` — every one of its 149
-logging sites goes through `com.valhalla.thor.extension.api.Logger`. That type lives in the
-published `thor-extension-api` artifact, and it gates **all five levels — `v`, `d`, `i`, `w` and
-`e`** — on a single `isDebug` flag. Thor sets it once:
+At the original assessment, Thor made **zero direct `android.util.Log` calls** in
+`app/src/main/java`; all 149 logging sites used `com.valhalla.thor.extension.api.Logger`.
+That type lives in the published `thor-extension-api` artifact, and it gates **all five levels —
+`v`, `d`, `i`, `w` and `e`** — on a single `isDebug` flag. Thor then set it once:
 
 ```kotlin
 com.valhalla.thor.extension.api.Logger.isDebug = BuildConfig.DEBUG
 ```
 
-`BuildConfig.DEBUG` is `false` in release, R8 constant-folds the assignment, and the flag is never
-written again. So a shipped Thor emits nothing to logcat under any tag it owns — not warnings, not
-errors, not the gateway failure paths. This was confirmed against the **shipped release bytecode**,
-not just the source: every `Logger` method body is `isDebug`-guarded in the release dex, and
-`Shell.enableVerboseLogging` is likewise wired to `BuildConfig.DEBUG`.
+`BuildConfig.DEBUG` was `false` in release, and the shipped release bytecode confirmed that every
+`Logger` method body was `isDebug`-guarded. Odin verbose logging was then also wired to
+`BuildConfig.DEBUG`. This is historical bytecode evidence, not a verification of later releases.
 
-The one app-side log path that survives is Odin's own `Utils.err`, which is ungated and prints under
-tag `LIBSU`.
+The assessment also identified Odin's own ungated `Utils.err` logging under the `LIBSU` tag.
+
+## Current development diagnostics
+
+`ThorApplication` now sets `Logger.isDebug = BuildConfig.DEBUG || BuildConfig.PRIVILEGE_TRACE`.
+`PRIVILEGE_TRACE` is enabled for debug and the release-shaped Store benchmark build; normal release
+builds keep both flags false. The separate root daemon initializes its logger with `BuildConfig.DEBUG`.
+`ThorShellConfig` disables Odin's process-wide verbose logging in every build because it can expose
+raw commands and output from concurrent shells.
+
+M3-03 adds structured lifecycle/refresh/bind diagnostics under the development trace gate. These
+events contain only allowed typed fields, with no raw commands, setting values, package inventories,
+or arbitrary failure/output text. This does not enable release logging, retain a diagnostic file,
+or provide an export path. Release retention/export and any broader logging changes still require
+the product decision tracked in the linked plan; development logcat evidence does not settle it.
 
 ## What this is not
 
@@ -67,17 +80,17 @@ So this is filed as a decision, not a defect.
 2. **Let errors through in release.** Ungate `Logger.e` (and possibly `w`) while leaving `v`/`d`/`i`
    debug-only. Smallest useful change *in principle*: the failure paths become visible, the chatty
    ones stay quiet. Two costs, and the first is easy to miss:
-   - **It is not a change Thor can make.** `Logger`'s single `isDebug` flag gates all five levels
-     together, and `Logger` ships in `com.trinadhthatakula:thor-extension-api` (pinned at **3.0.0**
-     in `gradle/libs.versions.toml:34`), not in this repo. Per-level gating means a new API surface
-     — a `minLevel`, or separate flags — released as a new artifact version and adopted here.
+   - Changing this shared logger's gate requires an API change. `Logger`'s single `isDebug` flag
+     gates all five levels together, and `Logger` ships in `com.trinadhthatakula:thor-extension-api`
+     (pinned at **3.0.0** in `gradle/libs.versions.toml`), not in this repo. Per-level gating means
+     a new API surface — a `minLevel`, or separate flags — released as a new artifact version and adopted here.
      Publishing to Central is irreversible, and the flag is contract with third-party extensions, so
      this is a versioned API decision, not a line of app code.
    - Then an audit that no `Logger.e` call site interpolates a package list or a raw command —
      several probably do. A review pass on top of the API change, not instead of it.
-   If the API change is unwanted, the only in-repo variant of this option is flipping the whole flag
-   for release, which broadens the privacy audit from `e`/`w` to all 149 sites and gives up the
-   quiet-by-default property that made option 2 attractive.
+   Flipping the whole shared flag for release would broaden the privacy audit from `e`/`w` to
+   every existing logging site. A separate structured app sink can instead restrict its payload,
+   but enabling it in release still needs an explicit retention/export decision.
 3. **A user-toggled debug-logging preference.** Off by default, surfaced in Settings, sets
    `Logger.isDebug = true` for the session. Turns "send me a logcat" into a supportable request
    without leaking by default. Costs a preference, a Settings row, and the same call-site audit as
@@ -92,12 +105,10 @@ So this is filed as a decision, not a defect.
    *reproduction*, not *field diagnosis* — you cannot ask a user to install it. It does not close
    this item.
 
-Option 2 removes the actual gap most precisely but is **not** the cheapest — it reaches outside this
-repo into a published artifact. Option 3 is the cheapest thing that is entirely in Thor's hands, and
-buys the same diagnosis by asking the user to opt in rather than by changing what release means.
-Option 4 has already been built for another reason and closes nothing here. So the remaining
-question is what a **shipped** build should say, and whether answering it is worth an
-`thor-extension-api` version.
+The options above concern broader logging and remain undecided. The structured development sink
+provides a narrower event vocabulary without changing the shared extension logger. The remaining
+release decision must specify which events may be retained or exported, their lifetime, and user
+control before any shipped-build diagnostics are enabled.
 
 ## Acceptance
 

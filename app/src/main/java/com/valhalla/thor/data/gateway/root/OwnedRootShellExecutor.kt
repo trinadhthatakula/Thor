@@ -3,6 +3,11 @@
 
 package com.valhalla.thor.data.gateway.root
 
+import com.valhalla.thor.util.DefaultRootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleEvent
+import com.valhalla.thor.util.RootShellPhase
+import com.valhalla.thor.util.recordSafely
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.RootExecutionPolicy
 import com.valhalla.thor.domain.model.ShellCommandCancelled
@@ -23,9 +28,10 @@ internal class OwnedRootShellExecutor(
     private val lane: PrivilegeExecutionLane,
     sessionFactory: RootShellSessionFactory,
     ioDispatcher: CoroutineDispatcher,
+    diagnostics: RootLifecycleDiagnostics = DefaultRootLifecycleDiagnostics,
 ) : RootCommandExecutor {
     private val mutex = Mutex()
-    private val generationOwner = RootShellGenerationOwner(sessionFactory, ioDispatcher)
+    private val generationOwner = RootShellGenerationOwner(sessionFactory, ioDispatcher, lane, diagnostics)
 
     /** Called at a lane's idle boundary; active work keeps its exact generation until completion. */
     suspend fun retireIdleSession() = mutex.withLock {
@@ -97,6 +103,8 @@ internal class OwnedRootShellExecutor(
 internal class RootShellGenerationOwner(
     private val sessionFactory: RootShellSessionFactory,
     private val ioDispatcher: CoroutineDispatcher,
+    private val lane: PrivilegeExecutionLane = PrivilegeExecutionLane.ARCHIVE,
+    private val diagnostics: RootLifecycleDiagnostics = DefaultRootLifecycleDiagnostics,
 ) {
     private var currentLease: SessionLease? = null
     private var generation: Long = 0
@@ -111,11 +119,23 @@ internal class RootShellGenerationOwner(
             invalidateExactGeneration(lease)
         }
 
-        val session = sessionFactory.open()
+        diagnostics.recordSafely(RootLifecycleEvent.Shell(lane, RootShellPhase.OPEN_STARTED))
+        val session = try {
+            sessionFactory.open()
+        } catch (cancelled: CancellationException) {
+            diagnostics.recordSafely(RootLifecycleEvent.Shell(lane, RootShellPhase.OPEN_CANCELLED))
+            throw cancelled
+        } catch (failure: Exception) {
+            diagnostics.recordSafely(RootLifecycleEvent.Shell(lane, RootShellPhase.OPEN_FAILED))
+            throw failure
+        }
         return SessionLease(
             generation = ++generation,
             session = session,
-        ).also { currentLease = it }
+        ).also {
+            currentLease = it
+            diagnostics.recordSafely(RootLifecycleEvent.Shell(lane, RootShellPhase.OPENED, it.generation))
+        }
     }
 
     suspend fun invalidateExactGeneration(lease: SessionLease) {
@@ -123,10 +143,13 @@ internal class RootShellGenerationOwner(
         if (ownedLease?.generation != lease.generation || ownedLease.session !== lease.session) return
 
         currentLease = null
+        diagnostics.recordSafely(RootLifecycleEvent.Shell(lane, RootShellPhase.RETIRE_STARTED, lease.generation))
         withContext(NonCancellable + ioDispatcher) {
             try {
                 lease.session.close()
+                diagnostics.recordSafely(RootLifecycleEvent.Shell(lane, RootShellPhase.RETIRED, lease.generation))
             } catch (_: Exception) {
+                diagnostics.recordSafely(RootLifecycleEvent.Shell(lane, RootShellPhase.RETIRE_FAILED, lease.generation))
                 // The failed generation is already detached; preserve the command outcome.
             }
         }

@@ -4,20 +4,36 @@ Status: implemented in Odin 1.1.0; initial Thor adoption merged in PR #531, 2026
 
 Track remaining Thor work in the approved
 [implementation plan and progress checklist](odin-1.1.0-implementation-plan.md). The API design
-requirements below are historical; complete outcome handling and broader workload adoption remain
-pending in Thor.
+requirements below are historical. Complete outcome handling shipped in
+[#539](https://github.com/trinadhthatakula/Thor/pull/539); selected workload adoption and Settings
+reconciliation followed. Broader adoption and workload-specific acceptance remain open.
 
 Odin PR [#15](https://github.com/trinadhthatakula/Odin/pull/15) adds opt-in `prepareIsolatedJob` /
-`submitIsolated` and JobHandle cancellation/termination acknowledgement. Settings Editor adopts it;
-legacy persistent jobs keep wait-only coroutine cancellation. Same-process-group descendants are
-covered; deliberately detached descendants remain outside the guarantee. Nested toybox watchdogs
+`submitIsolated` and JobHandle cancellation/termination acknowledgement. Odin's legacy persistent
+job coroutine APIs stop observation rather than terminating the producer. Same-process-group
+descendants are covered; deliberately detached descendants remain outside the guarantee. Nested toybox watchdogs
 must use `--foreground`. Thor retains the process deadline as defense in depth.
 
-Maven Local evidence: full unit/lint gates, 10 lifecycle checks on physical API36 root and dedicated
-Magisk SDK36.1 emulator, Settings Editor deadline tests on both, Magisk deny/grant refresh and
+Initial Maven Local evidence: full unit/lint gates, 10 lifecycle checks on physical API36 root and
+dedicated Magisk SDK36.1 emulator, Settings Editor deadline tests on both, Magisk deny/grant refresh and
 Settings Editor disposable-key round trip. Published artifact verification is recorded in the
-adoption PR. Journal recovery remains a separate Thor follow-up.
+adoption PR. These results belong to that initial adoption, not every later consumer.
 Owner: the Thor maintainer also owns Odin. Follow the linked plan for remaining consumer work.
+
+## Current Thor adoption
+
+Thor preserves the isolated outcome's started, termination-confirmed, output-drained, and
+shell-reusable facts and keeps owned cleanup/leases until acknowledgement. Adopted consumers
+include Settings Editor, export staging (#540), OBB placement (#541), selected privileged input
+reads (#542), and archive-icon staging (#543). Settings history and read-only reconciliation
+shipped through #544/#545; the tracker distinguishes acknowledged completion, live-writer
+evidence, and remaining hostile termination/process-death acceptance.
+
+Tar creation, extraction, destructive restore phases, and cache deletion remain deferred for
+their own source/output ownership, partial-mutation, and durable uncertainty contracts. Odin's
+shell acknowledgement does not establish Binder or PackageInstaller completion; M3-02 tracks
+those operations separately. The linked plan is the source for tested revisions, device evidence,
+and outstanding checks.
 
 ## Historical motivation (Odin 1.0.0)
 

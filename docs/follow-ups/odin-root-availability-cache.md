@@ -1,8 +1,9 @@
 # Follow-up: root availability is cached for the process lifetime
 
-**Status:** Odin 1.1.0 invalidation and initial Thor refresh adoption are merged. Typed refresh,
-cache coordination, and admission remain in the approved
-[implementation plan and progress checklist](odin-1.1.0-implementation-plan.md).
+**Status:** Odin 1.1.0 invalidation and Thor's typed refresh, cache coordination, root admission,
+and idle lane recovery are implemented through [#535](https://github.com/trinadhthatakula/Thor/pull/535).
+The approved [implementation plan and progress checklist](odin-1.1.0-implementation-plan.md)
+records their focused validation and the remaining broader device acceptance.
 **Historical severity:** Minor (stale privilege state after a revocation, until restart).
 **Historical effort:** small in Thor (add a re-probe), medium in Odin (invalidate the cache).
 **Raised by:** assessment during the FreezerTileService rework (2026-07-28).
@@ -46,3 +47,17 @@ invalidates cached Odin observations before its existing provider probes. A live
 verified that an existing shell can retain UID0 after policy denial while a fresh acquisition
 returns NON_ROOT; re-grant restores ROOT. BUSY/TIMED_OUT/FAILED remain distinct Odin observations;
 the legacy Boolean gateway stays a convenience view and preserves provider-selection rules.
+
+## Current Thor coordination
+
+`RootAvailabilityCoordinator` owns coalesced refresh attempts and admission; `PrivilegeManager`
+publishes that observation with the independent Shizuku/Dhizuku observations. BUSY, TIMED_OUT,
+and FAILED preserve the last confirmed ROOT/NON_ROOT acquisition result while keeping new root
+admission closed. Accepted work retains its leases; a busy refresh retries once at idle. Observation
+revisions invalidate capability caches; confirmed revisions retire owned ARCHIVE/SWEEP shells only
+at an idle boundary.
+RootService lifetime remains separate from MainShell refresh.
+
+M1-02/M1-03 in the linked plan records the Magisk and ReSuKiSU refresh/admission evidence.
+That evidence does not close the outstanding held-contention visual check or establish all
+Shizuku/Dhizuku operation and lifecycle scenarios in the broader acceptance matrix.

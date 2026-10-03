@@ -3,6 +3,10 @@
 
 package com.valhalla.thor.data.gateway.root
 
+import com.valhalla.thor.util.DefaultRootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleEvent
+import com.valhalla.thor.util.recordSafely
 import com.valhalla.superuser.JobHandle
 import com.valhalla.superuser.JobOutcome
 import com.valhalla.superuser.JobOutcomeKind
@@ -52,6 +56,7 @@ internal fun JobOutcome.toRootJobOutcome(): RootJobOutcome = RootJobOutcome(
 internal suspend fun executeIsolatedRootCommand(
     command: RootCommand,
     job: IsolatedRootJob,
+    diagnostics: RootLifecycleDiagnostics = DefaultRootLifecycleDiagnostics,
 ): RootCommandResult {
     var submitted = false
     var recordingAttempted = false
@@ -61,6 +66,10 @@ internal suspend fun executeIsolatedRootCommand(
         command.rootOutcome = outcome
         if (!recordingAttempted) {
             recordingAttempted = true
+            diagnostics.recordSafely(RootLifecycleEvent.IsolatedOutcome(
+                command.execution.lane, outcome.kind, outcome.started,
+                outcome.terminationConfirmed, outcome.outputDrained, outcome.shellReusable,
+            ))
             command.execution.rootExecutionObserver?.onOutcome(outcome)
         }
     }

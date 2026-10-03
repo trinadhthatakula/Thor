@@ -9,6 +9,9 @@ import android.os.Binder
 import android.os.IBinder
 import android.os.IInterface
 import com.valhalla.thor.rootservice.IThorRootService
+import com.valhalla.thor.util.RootBindingPhase
+import com.valhalla.thor.util.RootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleEvent
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,7 +40,8 @@ class RootServiceConnectionOwnerTest {
     fun `live connection is cached and duplicate connect does not resume twice`() = runTest {
         val binding = FakeBinding()
         val main = StandardTestDispatcher(testScheduler)
-        val owner = RootServiceConnectionOwner(binding, main)
+        val diagnostics = CapturingDiagnostics()
+        val owner = RootServiceConnectionOwner(binding, main, diagnostics = diagnostics)
         val first = async { owner.getService() }
         runCurrent()
         val connection = binding.connections.single()
@@ -51,13 +55,22 @@ class RootServiceConnectionOwnerTest {
         assertSame(service, owner.getService())
         assertEquals(1, binding.connections.size)
         assertTrue(binding.unbound.isEmpty())
+        assertEquals(
+            listOf(
+                RootLifecycleEvent.Binding(RootBindingPhase.STARTED),
+                RootLifecycleEvent.Binding(RootBindingPhase.CONNECTED),
+                RootLifecycleEvent.Binding(RootBindingPhase.CACHE_HIT, cached = true),
+            ),
+            diagnostics.events,
+        )
     }
 
     @Test
     fun `cancellation releases pending attempt and releases its late registration again`() = runTest {
         val binding = FakeBinding()
         val main = StandardTestDispatcher(testScheduler)
-        val owner = RootServiceConnectionOwner(binding, main)
+        val diagnostics = CapturingDiagnostics()
+        val owner = RootServiceConnectionOwner(binding, main, diagnostics = diagnostics)
         val first = async { owner.getService() }
         runCurrent()
         val abandoned = binding.connections.single()
@@ -69,13 +82,20 @@ class RootServiceConnectionOwnerTest {
         runCurrent()
         assertEquals(listOf(abandoned, abandoned), binding.unbound)
         assertTrue(binding.registered.isEmpty())
+        assertEquals(1, diagnostics.count(RootBindingPhase.WAITER_CANCELLED))
+        assertEquals(0, diagnostics.count(RootBindingPhase.WAIT_TIMED_OUT))
+        assertEquals(1, diagnostics.count(RootBindingPhase.LATE_CONNECTED))
+        assertEquals(2, diagnostics.count(RootBindingPhase.UNBOUND))
     }
 
     @Test
     fun `timeout releases mutex and an old callback cannot displace a newer pending attempt`() = runTest {
         val binding = FakeBinding()
         val main = StandardTestDispatcher(testScheduler)
-        val owner = RootServiceConnectionOwner(binding, main, bindTimeoutMillis = 1_000)
+        val diagnostics = CapturingDiagnostics()
+        val owner = RootServiceConnectionOwner(
+            binding, main, bindTimeoutMillis = 1_000, diagnostics = diagnostics,
+        )
         val first = async { owner.getService() }
         runCurrent()
         val abandoned = binding.connections.single()
@@ -95,6 +115,10 @@ class RootServiceConnectionOwnerTest {
         assertSame(service, owner.getService())
         assertEquals(listOf(abandoned, abandoned), binding.unbound)
         assertEquals(setOf(current), binding.registered)
+        assertEquals(1, diagnostics.count(RootBindingPhase.WAIT_TIMED_OUT))
+        assertEquals(0, diagnostics.count(RootBindingPhase.WAITER_CANCELLED))
+        assertEquals(1, diagnostics.count(RootBindingPhase.LATE_CONNECTED))
+        assertEquals(1, diagnostics.count(RootBindingPhase.CONNECTED))
     }
 
     @Test
@@ -236,7 +260,8 @@ class RootServiceConnectionOwnerTest {
     fun `null binding completes immediately and duplicate terminal callbacks are harmless`() = runTest {
         val binding = FakeBinding()
         val main = StandardTestDispatcher(testScheduler)
-        val owner = RootServiceConnectionOwner(binding, main)
+        val diagnostics = CapturingDiagnostics()
+        val owner = RootServiceConnectionOwner(binding, main, diagnostics = diagnostics)
         val first = async { owner.getService() }
         runCurrent()
         val connection = binding.connections.single()
@@ -247,6 +272,10 @@ class RootServiceConnectionOwnerTest {
         }
         assertNull(first.await())
         assertEquals(listOf(connection), binding.unbound)
+        assertEquals(0, diagnostics.count(RootBindingPhase.WAIT_TIMED_OUT))
+        assertEquals(0, diagnostics.count(RootBindingPhase.WAITER_CANCELLED))
+        assertEquals(2, diagnostics.count(RootBindingPhase.NULL_BINDING))
+        assertEquals(1, diagnostics.count(RootBindingPhase.BINDING_DIED))
         val next = async { owner.getService() }
         runCurrent()
         assertEquals(2, binding.connections.size)
@@ -281,11 +310,14 @@ class RootServiceConnectionOwnerTest {
         val failure = IllegalStateException("bind refused")
         val binding = FakeBinding().apply { onBind = { throw failure } }
         val main = StandardTestDispatcher(testScheduler)
-        val owner = RootServiceConnectionOwner(binding, main)
+        val diagnostics = CapturingDiagnostics(failOnRecord = true)
+        val owner = RootServiceConnectionOwner(binding, main, diagnostics = diagnostics)
         val caught = runCatching { owner.getService() }.exceptionOrNull()
         assertEquals(failure.javaClass, caught?.javaClass)
         assertEquals(failure.message, caught?.message)
         assertEquals(binding.connections, binding.unbound)
+        assertEquals(1, diagnostics.count(RootBindingPhase.BIND_FAILED))
+        assertEquals(0, diagnostics.count(RootBindingPhase.WAIT_TIMED_OUT))
         binding.onBind = null
         val next = async { owner.getService() }
         runCurrent()
@@ -332,12 +364,80 @@ class RootServiceConnectionOwnerTest {
         assertTrue(binding.registered.isEmpty())
     }
 
+    @Test
+    fun `throwing diagnostics preserve late cleanup and a replacement service result`() = runTest {
+        val binding = FakeBinding()
+        val main = StandardTestDispatcher(testScheduler)
+        val diagnostics = CapturingDiagnostics(failOnRecord = true)
+        val owner = RootServiceConnectionOwner(binding, main, diagnostics = diagnostics)
+        val cancelled = async { owner.getService() }
+        runCurrent()
+        val abandoned = binding.connections.single()
+        cancelled.cancelAndJoin()
+        runCurrent()
+
+        val replacement = async { owner.getService() }
+        runCurrent()
+        val current = binding.connections.last()
+        val service = Service()
+        withContext(main) {
+            binding.connect(abandoned, service)
+            binding.connect(current, service)
+        }
+
+        assertSame(service, replacement.await())
+        assertSame(service, owner.getService())
+        assertEquals(listOf(abandoned, abandoned), binding.unbound)
+        assertEquals(setOf(current), binding.registered)
+        assertEquals(1, diagnostics.count(RootBindingPhase.WAITER_CANCELLED))
+        assertEquals(1, diagnostics.count(RootBindingPhase.LATE_CONNECTED))
+        assertEquals(1, diagnostics.count(RootBindingPhase.CONNECTED))
+    }
+
+    @Test
+    fun `unbind failure records only its phase and late registration still retries cleanup`() = runTest {
+        val binding = FakeBinding().apply {
+            onUnbind = { throw IllegalStateException("private binding failure detail") }
+        }
+        val main = StandardTestDispatcher(testScheduler)
+        val diagnostics = CapturingDiagnostics(failOnRecord = true)
+        val owner = RootServiceConnectionOwner(binding, main, diagnostics = diagnostics)
+        val cancelled = async { owner.getService() }
+        runCurrent()
+        val connection = binding.connections.single()
+        cancelled.cancelAndJoin()
+        runCurrent()
+        assertEquals(1, diagnostics.count(RootBindingPhase.UNBIND_FAILED))
+        assertEquals(0, diagnostics.count(RootBindingPhase.UNBOUND))
+
+        binding.onUnbind = null
+        withContext(main) { binding.connect(connection, Service()) }
+        assertEquals(listOf(connection, connection), binding.unbound)
+        assertTrue(binding.registered.isEmpty())
+        assertEquals(1, diagnostics.count(RootBindingPhase.UNBOUND))
+        assertFalse(diagnostics.events.toString().contains("private binding failure detail"))
+    }
+
+    private class CapturingDiagnostics(private val failOnRecord: Boolean = false) : RootLifecycleDiagnostics {
+        val events = mutableListOf<RootLifecycleEvent>()
+
+        override fun record(event: RootLifecycleEvent) {
+            events += event
+            if (failOnRecord) throw IllegalStateException("diagnostics unavailable")
+        }
+
+        fun count(phase: RootBindingPhase): Int = events.count {
+            it is RootLifecycleEvent.Binding && it.phase == phase
+        }
+    }
+
     private class FakeBinding : RootServiceBinding {
         val connections = mutableListOf<ServiceConnection>()
         val unbound = mutableListOf<ServiceConnection>()
         val registered = mutableSetOf<ServiceConnection>()
         val events = mutableListOf<String>()
         var onBind: ((ServiceConnection) -> Unit)? = null
+        var onUnbind: ((ServiceConnection) -> Unit)? = null
 
         override fun bind(connection: ServiceConnection) {
             events += "bind"
@@ -348,6 +448,7 @@ class RootServiceConnectionOwnerTest {
         override fun unbind(connection: ServiceConnection) {
             events += "unbind"
             unbound += connection
+            onUnbind?.invoke(connection)
             registered -= connection
         }
 
