@@ -1,0 +1,11 @@
+• 🛠️ Sett Edit: inspect Android settings, review changes and keep verified history.
+
+• ⏸️ Find suspended apps and use supported Unpause controls.
+
+• 🛡️ Manage App Ops; get clearer root status and safer installs, exports and game-file placement.
+
+• ❄️ Improved Dhizuku actions, Shizuku freeze recovery and Freezer profile choices.
+
+• 🎛️ Customize multi-app actions, drag through long app lists and use Japanese.
+
+• 📜 Reach Extensions confirmation controls on small screens.
