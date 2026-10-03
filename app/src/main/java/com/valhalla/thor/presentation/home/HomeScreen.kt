@@ -17,19 +17,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
-import androidx.compose.material3.SplitButtonDefaults
-import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
@@ -72,6 +72,7 @@ import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.theme.LocalDarkTheme
 import com.valhalla.thor.presentation.theme.greenDark
 import com.valhalla.thor.presentation.theme.greenLight
+import com.valhalla.thor.presentation.widgets.AppIcon
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
@@ -458,13 +459,20 @@ fun HomeScreen(
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                AppIcon(
+                                    packageName = info.installedPackageName,
+                                    isEnabled = true,
+                                    isSuspended = false,
+                                    size = 24.dp
+                                )
                                 Text(
                                     text = info.app.displayName,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
                                 )
 
                                 if (info.app.mode == PrivilegeMode.ROOT &&
@@ -524,20 +532,32 @@ fun HomeScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.check_circle),
-                                    contentDescription = stringResource(R.string.selected_root_manager),
-                                    tint = if (LocalDarkTheme.current) greenDark else greenLight,
-                                    modifier = Modifier.size(24.dp)
+                                AppIcon(
+                                    packageName = manager.packageName,
+                                    isEnabled = true,
+                                    isSuspended = false,
+                                    size = 24.dp
                                 )
                                 Column(Modifier.weight(1f)) {
-                                    Text(
-                                        manager.label,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            manager.label,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        Icon(
+                                            painter = painterResource(R.drawable.check_circle),
+                                            contentDescription = stringResource(R.string.selected_root_manager),
+                                            tint = if (LocalDarkTheme.current) greenDark else greenLight,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                     Text(
                                         manager.packageName,
                                         style = MaterialTheme.typography.bodySmall,
@@ -553,28 +573,39 @@ fun HomeScreen(
                             }
                         }
                     }
-                    SplitButtonLayout(
-                        leadingButton = {
-                            SplitButtonDefaults.LeadingButton(
-                                onClick = {
-                                    viewModel.loadRootManagerCandidates()
-                                    showRootManagerPicker = true
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(stringResource(R.string.choose_root_manager_action), maxLines = 2)
-                            }
-                        },
-                        trailingButton = {
-                            SplitButtonDefaults.TrailingButton(
-                                onClick = { viewModel.selectRootManager(null) },
-                                enabled = state.hasSelectedRootManager
-                            ) {
-                                Text(stringResource(R.string.cd_clear), maxLines = 2)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = {
+                                viewModel.loadRootManagerCandidates()
+                                showRootManagerPicker = true
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(
+                                topStart = 24.dp, bottomStart = 24.dp,
+                                topEnd = 8.dp, bottomEnd = 8.dp
+                            )
+                        ) {
+                            Icon(painterResource(R.drawable.apps), null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.choose_root_manager_action), maxLines = 2)
+                        }
+                        FilledTonalButton(
+                            onClick = { viewModel.selectRootManager(null) },
+                            enabled = state.hasSelectedRootManager,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(
+                                topStart = 8.dp, bottomStart = 8.dp,
+                                topEnd = 24.dp, bottomEnd = 24.dp
+                            )
+                        ) {
+                            Icon(painterResource(R.drawable.round_close), null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.cd_clear), maxLines = 2)
+                        }
+                    }
                 }
             }
         }
