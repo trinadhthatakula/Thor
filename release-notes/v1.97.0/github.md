@@ -1,12 +1,12 @@
 # Thor v1.97.0 Release Notes
 
 Version **1.97.0 (1970)** is a cumulative update covering **everything added after v1.96.0
-(1960)** through `51d118b6`. It combines **v1.96.1**, **v1.96.2 development builds**,
-**v1.96.3**, and the subsequent merged work through PR #551. Features already present in
+(1960)** through `585acf62`. It combines **v1.96.1**, **v1.96.2 development builds**,
+**v1.96.3**, and the subsequent merged work through PR #553. Features already present in
 v1.96.0 are outside this release's change summary.
 
 The cumulative comparison is
-[`v1.96.0...51d118b6`](https://github.com/trinadhthatakula/Thor/compare/v1.96.0...51d118b649fb03171c8de929b5608374fe1b6d29).
+[`v1.96.0...585acf62`](https://github.com/trinadhthatakula/Thor/compare/v1.96.0...585acf62b69d0e3e02d52e5af0a0f6434a73a1cd).
 The newest published tag is **v1.96.3**; new work since that release is identified below,
 using its tag as the fresh-change baseline. Earlier post-1960 notes remain available for
 [v1.96.1](https://github.com/trinadhthatakula/Thor/blob/51d118b649fb03171c8de929b5608374fe1b6d29/release-notes/v1.96.1/github.md),
@@ -16,6 +16,9 @@ Descriptions here reflect the final implementation, including later reliability 
 
 ## ✨ Highlights
 
+- 🛡️ **Privilege Check becomes a bottom sheet** — replaces the previous dialog, adds header
+  Refresh/Close icons and grant ticks, and keeps identified managers ready to Open. Discover
+  ReSukiSU/SukiSU Ultra or choose a shortcut for another hidden root manager.
 - 🛠️ **Sett Edit in Extensions** — inspect Android settings, preview individual changes, verify
   saved values and retain edit history with Root or Shizuku.
 - ⏸️ **Suspended apps and Unpause** — find suspended user/system apps together and use Android's
@@ -82,6 +85,37 @@ property mutation remain separate work.
   original dialog until recreated, and another suspension owner's policy may still apply.
 - Supported suspension overloads use ordinary reflection, avoiding a native crash encountered
   when an absent overload was attempted through the unsafe reflection fallback.
+
+### 🛡️ Privilege Check bottom sheet and manager shortcuts — new since v1.96.3
+
+[PR #553](https://github.com/trinadhthatakula/Thor/pull/553)
+(`e081e91f`, `be66be4d`, `02b40176`, `d2465d9e`, `edb79102`, `fa86a8ab`):
+
+- **The previous Privilege Check dialog is replaced by a scrollable bottom sheet.** Refresh and
+  Close are header icon actions. The searchable manager picker is also a bottom sheet with a
+  header Close action and room for results above the keyboard.
+- Manager rows show compact app icons; root managers also show their actual package names.
+  **Green ticks mean granted access**, not simply that a manager was found or selected. Root's
+  tick requires an idle, confirmed root observation; checking/unknown states remain visible.
+- **Open remains available for identified and selected managers**, including while access is
+  granted or root is being checked. Shizuku and Dhizuku retain their supported Grant actions
+  when permission is missing.
+- Adds **ReSukiSU** and **SukiSU Ultra** discovery alongside existing managers. Renamed builds
+  are recognized when they retain an exact known launcher activity; names and labels alone
+  do not identify a root manager or prove that Thor has root access.
+- **Choose** saves a device-local shortcut to a launchable app for managers with other hidden
+  or randomized identities. **Change** reopens the picker; **Clear** removes only that saved
+  shortcut and restores automatic discovery. The selection is excluded from backups.
+- If no root manager can be identified or selected, a generic **Root** row offers **Choose**
+  while keeping root availability independent of discovery. Unavailable saved shortcuts are
+  identified so they can be changed or cleared; duplicate automatic/selected rows are removed.
+- Choose/Change and Clear have balanced widths and matching heights when labels wrap.
+  Manager lookup is refreshed when needed and reused across unrelated preference changes.
+
+The [source-pinned UI validation record](https://github.com/trinadhthatakula/Thor/blob/585acf62b69d0e3e02d52e5af0a0f6434a73a1cd/docs/validation/root-manager-discovery.md)
+includes ReSukiSU phone and Magisk emulator smoke checks, screenshots with Shizuku/Dhizuku,
+and earlier large-text coverage. The unknown-manager fallback's device simulation remains unrun;
+its behavior was reviewed in code. Manager discovery and choosing a shortcut do not grant root.
 
 ### 🛡️ Fresh root status, admission and service ownership — new since v1.96.3
 
@@ -304,6 +338,11 @@ are after the requested 1960 baseline.
   (`a1c6e4ef`) and acknowledges helper submission before cancellation (`b005cb35`). #531 corrects
   readiness publication and opt-in assumptions (`cdf8afcc`). #547 uses a real-clock cancellation
   watchdog (`8952fab2`); #551 waits for an already-scheduled idle refresh in smoke-test setup.
+- **Manager discovery and preference caching** — [#553](https://github.com/trinadhthatakula/Thor/pull/553)
+  adds 21 tests for canonical/renamed manager discovery, exact package matching, duplicate and
+  unavailable shortcuts, device-local preference mapping and collection-local caching. Selection
+  or explicit refresh invalidates discovery; unrelated preference changes keep their current
+  values without rescanning installed managers (`e081e91f`, `edb79102`).
 - **Build and dependency updates** — [#548](https://github.com/trinadhthatakula/Thor/pull/548)
   (`3a49c3a0`) adopts Gradle **9.8.0**, reviews Gradle properties, updates dependencies and fixes
   Robolectric **4.17** compatibility on Java 21. Current root integration uses Odin **1.1.0**;
@@ -332,7 +371,10 @@ are after the requested 1960 baseline.
 
 ## 🧪 Validation scope and remaining acceptance
 
-Release preparation passed on **Zulu JDK 21**, Gradle **9.8.0** and AGP **9.5.0-alpha08**:
+The **initial release candidate, before PR #553**, passed the following checks on
+**Zulu JDK 21**, Gradle **9.8.0** and AGP **9.5.0-alpha08**, using base `51d118b6` plus the
+versionCode change. Fresh full-build validation of the expanded candidate through `585acf62`
+is pending; these earlier results do not establish that updated tree's build status.
 
 ```sh
 ./gradlew --max-workers=1 test lintFossDebug lintStoreRelease \
@@ -345,16 +387,19 @@ Release preparation passed on **Zulu JDK 21**, Gradle **9.8.0** and AGP **9.5.0-
 - Debug and both minified release APKs report **1970 / 1.97.0**. Neither release contains the
   development lifecycle trace tag; no nonempty R8 missing-rules file was produced.
 - All **13 release-script suites passed before and after retention pruning**; **35 release-routing
-  tests / 49 assertions** passed. Play notes use **473/500 characters** and Telegram uses
-  **840/1024 assembled UTF-16 units**. All three Fastlane copies match the complete source.
-- The 123-entry commit log, commit references, closing-keyword check, 20-directory retention
-  count and production-pinned Shizu manifest checks pass.
+  tests / 49 assertions** passed. The initial retention and production-pinned Shizu checks passed.
 
-The first build was interrupted during lint after both unit-test suites passed; its log is retained
-separately. The complete rerun above passed. These preparation APKs use base `51d118b6` plus the
-versionCode change; release publishing rebuilds and signs from its own commit. The local release
-APKs are unsigned. No fresh device test was run for this version-and-notes change: ADB had no
-connected devices during final preparation. Earlier live acceptance remains attributed below.
+The updated notes cover **137 non-merge commits** through `585acf62`. Play notes use
+**489/500 characters** and Telegram uses **892/1024 assembled UTF-16 units**.
+The note budget, exact commit log, commit references, closing-keyword and Fastlane-content/parity
+checks pass; en-US, en-GB and hi-IN each retain the complete Play source.
+
+The initial build was interrupted during lint after both unit-test suites passed; its log is retained
+separately. The complete initial rerun above passed. Those preparation APKs use base `51d118b6`
+plus the versionCode change; release publishing rebuilds and signs from its own commit. The local
+release APKs are unsigned. PR #553's separate UI smoke checks remain attributed to their tested
+source `fa86a8ab` in the manager validation record; they are not a full regression run of the
+expanded release candidate. Earlier live acceptance remains attributed below.
 
 Local preparation evidence, including reports and APK hashes, is retained in
 `~/.codex/artifacts/thor-release-1.97.0-2026-10-03/`.
@@ -363,6 +408,7 @@ Historical device results retain their original tested revisions in the
 [Odin implementation tracker](https://github.com/trinadhthatakula/Thor/blob/51d118b649fb03171c8de929b5608374fe1b6d29/docs/follow-ups/odin-1.1.0-implementation-plan.md),
 [Settings Editor record](https://github.com/trinadhthatakula/Thor/blob/51d118b649fb03171c8de929b5608374fe1b6d29/docs/follow-ups/settings-editor-recovery.md),
 [Unpause record](https://github.com/trinadhthatakula/Thor/blob/51d118b649fb03171c8de929b5608374fe1b6d29/docs/issues/522-suspended-app-unpause.md),
+the [manager UI record](https://github.com/trinadhthatakula/Thor/blob/585acf62b69d0e3e02d52e5af0a0f6434a73a1cd/docs/validation/root-manager-discovery.md),
 and the earlier release notes linked above. They include Magisk/ReSuKiSU root checks, selected
 live Shizuku cases, native Unpause and an emulator device-owner suspension check; they do not
 establish every Android/OEM/provider combination.
@@ -375,9 +421,10 @@ Release diagnostic retention/export remains undecided and disabled in normal rel
 
 ## 🛠 Commits Log
 
-Complete non-merge history after the requested baseline: **123 commits**, in chronological order,
-from `v1.96.0..51d118b6`. The release-preparation commit adds version 1970 and these notes.
-The newly developed subset since the latest published tag is `v1.96.3..51d118b6`.
+Complete non-merge development history after the requested baseline: **137 commits**, in
+chronological order, from `v1.96.0..585acf62`. Release-preparation commit `3c213496` separately
+adds version 1970 and these notes; the merge of current dev into the release branch is `bf6f183e`.
+The newly developed subset since the latest published tag is `v1.96.3..585acf62`.
 
 - `950c7d11` chore(deps-dev): bump @types/node in /web in the web group
 - `98f5c0fa` chore(deps): bump com.google.devtools.ksp in the maven group
@@ -502,3 +549,17 @@ The newly developed subset since the latest published tag is `v1.96.3..51d118b6`
 - `bc529939` fix(root): avoid synthetic accessors in binding diagnostics
 - `a36d0a40` test(root): await deferred refresh settlement during setup
 - `04276805` docs(odin): record diagnostics validation and remaining acceptance
+- `e081e91f` fix: discover KernelSU forks and hidden root managers
+- `d13d3b7d` ui: mark the selected root manager with a green tick
+- `000dd3a1` ui: group root manager choose and clear actions
+- `276dd803` fix: preserve action semantics for root manager split buttons
+- `be66be4d` ui: use privilege bottom sheets with header icon actions
+- `b14902fa` chore: remove the unused privilege dialog icon
+- `02b40176` ui: balance manager actions and show manager app icons
+- `d2465d9e` ui: align joined actions when translated labels wrap
+- `34b43c2d` ui: show detected root manager details and selection change action
+- `4da92cb3` docs: record root manager discovery and sheet validation
+- `edb79102` fix: cache manager discovery across unrelated preference changes
+- `fa86a8ab` ui: show live grant ticks and retain manager open actions
+- `88388008` docs: record grant indicator and manager cache validation
+- `a6530658` docs: refresh emulator screenshots with all privilege managers
