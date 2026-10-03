@@ -135,6 +135,13 @@
     <string name="permission_filter_loading">Leyendo permisos…</string>
     <string name="permission_filter_unavailable">No se encontraron grupos de permisos en este dispositivo</string>
     <string name="permission_filter_failed">No se pudieron leer los permisos en este dispositivo</string>
+    <string name="filter_type_uad">Recomendación de UAD</string>
+    <string name="uad_filter_recommended">Recomendado</string>
+    <string name="uad_filter_advanced">Avanzado</string>
+    <string name="uad_filter_expert">Experto</string>
+    <string name="uad_filter_unsafe">No seguro</string>
+    <string name="uad_filter_loading">Cargando recomendaciones de UAD…</string>
+    <string name="uad_filter_failed">No se pudieron cargar las recomendaciones de UAD.</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">¿Borrar datos de la aplicación?</string>

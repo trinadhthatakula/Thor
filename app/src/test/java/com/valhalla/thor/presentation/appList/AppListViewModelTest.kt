@@ -9,6 +9,8 @@ import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.R
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppFilterPreferences
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -52,8 +54,12 @@ import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -158,9 +164,10 @@ class AppListViewModelTest {
         taskNavigationTargets: TaskNavigationTargets = TaskNavigationTargets(
             ProvisionalTaskIdentityRegistry()
         ),
+        preferences: FakePreferenceRepository? = null,
     ): AppListViewModel {
-        val prefs = FakePreferenceRepository(
-            UserPreferences(animationIntensity = intensity, appFilterType = filterType)
+        val prefs = preferences ?: FakePreferenceRepository(
+            UserPreferences(animationIntensity = intensity, userAppFilter = AppFilterPreferences(filterType))
         )
         val manageAppUseCase = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
         val exportAppUseCase = ExportAppUseCase(
@@ -210,22 +217,231 @@ class AppListViewModelTest {
             userApp("disabled", enabled = false),
             userApp("active"),
         )
-        val normal = viewModel()
-        val suspended = viewModel()
+        val prefs = FakePreferenceRepository(UserPreferences(
+            userAppFilter = AppFilterPreferences(FilterType.State, "Frozen"),
+            systemAppFilter = AppFilterPreferences(FilterType.Uad, "Recommended"),
+        ))
+        val normal = viewModel(preferences = prefs)
+        val suspended = viewModel(preferences = prefs)
         suspended.showSuspendedApps()
         normal.loadApps()
         suspended.loadApps()
         runCurrent()
         assertEquals(setOf("user.paused", "system.paused"),
             suspended.uiState.value.displayedApps.map { it.packageName }.toSet())
-        assertEquals(FilterType.Source, normal.uiState.value.filterType)
-        assertEquals("All", normal.uiState.value.selectedFilter)
+        assertEquals(FilterType.State, normal.uiState.value.filterType)
+        assertEquals("Frozen", normal.uiState.value.selectedFilter)
+        suspended.updateFilterType(FilterType.Source)
+        suspended.updateFilter("All")
+        runCurrent()
+        assertEquals(AppFilterPreferences(FilterType.Uad, "Recommended"),
+            prefs.userPreferences.first().systemAppFilter)
+        assertEquals("Frozen", prefs.userPreferences.first().userAppFilter.selectedFilter)
         appRepository.apps.value = appRepository.apps.value.map { it.copy(isSuspended = false) }
         runCurrent()
         assertTrue(suspended.uiState.value.displayedApps.isEmpty())
     }
 
     // --- Who pays the settle delay ---------------------------------------------------------
+
+    @Test
+    fun `tabs and recreated view model restore independent filter profiles`() = runTest {
+        val prefs = FakePreferenceRepository()
+        val vm = viewModel(preferences = prefs)
+        runCurrent()
+        vm.updateFilterType(FilterType.State)
+        runCurrent()
+        vm.updateFilter("Frozen")
+        // Do not drain the queued write before switching tabs.
+        vm.updateListType(AppListType.SYSTEM)
+        vm.updateFilterType(FilterType.Uad)
+        runCurrent()
+        vm.updateFilter("Recommended")
+        vm.updateListType(AppListType.USER)
+        runCurrent()
+        assertEquals(FilterType.State, vm.uiState.value.filterType)
+        assertEquals("Frozen", vm.uiState.value.selectedFilter)
+        vm.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertEquals(FilterType.Uad, vm.uiState.value.filterType)
+        assertEquals("Recommended", vm.uiState.value.selectedFilter)
+
+        val recreated = viewModel(preferences = prefs)
+        runCurrent()
+        assertEquals(AppListType.USER, recreated.uiState.value.appListType)
+        assertEquals("Frozen", recreated.uiState.value.selectedFilter)
+        recreated.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertEquals(FilterType.Uad, recreated.uiState.value.filterType)
+        assertEquals("Recommended", recreated.uiState.value.selectedFilter)
+    }
+
+    @Test
+    fun `installer shortcut only changes its destination profile`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(
+            userAppFilter = AppFilterPreferences(FilterType.State, "Frozen"),
+            systemAppFilter = AppFilterPreferences(FilterType.Uad, "Recommended"),
+        ))
+        val vm = viewModel(preferences = prefs)
+        vm.showAppsFromInstaller(AppListType.SYSTEM, "com.example.installer")
+        vm.updateListType(AppListType.USER)
+        runCurrent()
+        assertEquals("Frozen", vm.uiState.value.selectedFilter)
+        assertEquals(AppFilterPreferences(FilterType.Source, "com.example.installer"),
+            prefs.userPreferences.first().systemAppFilter)
+    }
+
+    @Test
+    fun `permission indexing follows the active profile rather than the inactive tab`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(
+            animationIntensity = AnimationIntensity.LOW,
+            systemAppFilter = AppFilterPreferences(FilterType.Permission),
+        ))
+        val permissions = FakePermissionRepository()
+        appRepository.apps.value = listOf(userApp("first"))
+        val vm = viewModel(preferences = prefs, permissions = permissions)
+        runCurrent()
+        assertEquals(0, permissions.indexBuilds)
+        vm.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertEquals(1, permissions.indexBuilds)
+        vm.updateListType(AppListType.USER)
+        runCurrent()
+        appRepository.apps.value += userApp("second")
+        runCurrent()
+        assertEquals(1, permissions.indexBuilds)
+        assertFalse(vm.uiState.value.isLoadingPermissions)
+    }
+
+    @Test
+    fun `unknown UAD filter waits for enrichment and excludes failed metadata`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(
+            animationIntensity = AnimationIntensity.LOW,
+            systemAppFilter = AppFilterPreferences(FilterType.Uad, "Unknown"),
+        ))
+        val cached = userApp("system.unlisted").copy(isSystem = true)
+        appRepository.apps.value = listOf(cached)
+        val vm = viewModel(preferences = prefs)
+        vm.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertTrue(vm.uiState.value.isLoadingUad)
+        assertTrue(vm.uiState.value.displayedApps.isEmpty())
+
+        appRepository.apps.value = listOf(cached.copy(isUadLoaded = true))
+        runCurrent()
+        assertFalse(vm.uiState.value.isLoadingUad)
+        assertEquals(listOf("system.unlisted"), vm.uiState.value.displayedApps.map { it.packageName })
+
+        appRepository.apps.value = listOf(cached.copy(isUadLoaded = true, isUadLoadFailed = true))
+        runCurrent()
+        assertTrue(vm.uiState.value.uadLoadFailed)
+        assertFalse(vm.uiState.value.isLoadingUad)
+        assertTrue(vm.uiState.value.displayedApps.isEmpty())
+
+        vm.updateFilter("All")
+        runCurrent()
+        assertEquals(1, vm.uiState.value.displayedApps.size)
+        vm.updateListType(AppListType.USER)
+        runCurrent()
+        assertFalse(vm.uiState.value.uadLoadFailed)
+    }
+
+    @Test
+    fun `recommendation changes update filtered results without reselecting the chip`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(
+            animationIntensity = AnimationIntensity.LOW,
+            systemAppFilter = AppFilterPreferences(FilterType.Uad, "Recommended"),
+        ))
+        val app = userApp("system.test").copy(
+            isSystem = true, isUadLoaded = true, bloatRecommendation = "Recommended")
+        appRepository.apps.value = listOf(app)
+        val vm = viewModel(preferences = prefs)
+        vm.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertEquals(1, vm.uiState.value.displayedApps.size)
+        appRepository.apps.value = listOf(app.copy(bloatRecommendation = "Unsafe"))
+        runCurrent()
+        assertTrue(vm.uiState.value.displayedApps.isEmpty())
+    }
+
+    @Test
+    fun `upstream failure after cached rows terminates UAD loading without classifying Unknown`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(
+            animationIntensity = AnimationIntensity.LOW,
+            systemAppFilter = AppFilterPreferences(FilterType.Uad, "Unknown"),
+        ))
+        appRepository.appFlowOverride = flow {
+            emit(listOf(userApp("cached.system").copy(isSystem = true)))
+            delay(1)
+            throw IllegalStateException("receiver registration failed")
+        }
+        val vm = viewModel(preferences = prefs)
+        vm.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertTrue(vm.uiState.value.isLoadingUad)
+        advanceTimeBy(1)
+        runCurrent()
+        assertFalse(vm.uiState.value.isLoadingUad)
+        assertTrue(vm.uiState.value.uadLoadFailed)
+        assertTrue(vm.uiState.value.displayedApps.isEmpty())
+        vm.updateFilter("All")
+        runCurrent()
+        assertEquals("cached.system", vm.uiState.value.displayedApps.single().packageName)
+    }
+
+    @Test
+    fun `switching profile or opening suspended view cancels a running permission index`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(
+            animationIntensity = AnimationIntensity.LOW,
+            userAppFilter = AppFilterPreferences(FilterType.Permission),
+        ))
+        var cancelled = 0
+        val permissions = FakePermissionRepository().apply {
+            beforeIndexBuild = {
+                try { awaitCancellation() } finally { cancelled++ }
+            }
+        }
+        appRepository.apps.value = listOf(userApp("installed"))
+        val vm = viewModel(preferences = prefs, permissions = permissions)
+        runCurrent()
+        assertTrue(vm.uiState.value.isLoadingPermissions)
+        vm.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertEquals(1, cancelled)
+        assertFalse(vm.uiState.value.isLoadingPermissions)
+        assertFalse(vm.uiState.value.permissionIndexFailed)
+        vm.updateListType(AppListType.USER)
+        runCurrent()
+        assertTrue(vm.uiState.value.isLoadingPermissions)
+        vm.showSuspendedApps()
+        runCurrent()
+        assertEquals(2, cancelled)
+        assertFalse(vm.uiState.value.isLoadingPermissions)
+        assertFalse(vm.uiState.value.permissionIndexFailed)
+        assertEquals(FilterType.Permission, prefs.userPreferences.first().userAppFilter.filterType)
+    }
+
+    @Test
+    fun `failed initial app load reports UAD unavailable even without cached rows and can recover`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(
+            animationIntensity = AnimationIntensity.LOW,
+            systemAppFilter = AppFilterPreferences(FilterType.Uad, "Recommended"),
+        ))
+        appRepository.appFlowOverride = flow { throw IllegalStateException("package manager unavailable") }
+        val vm = viewModel(preferences = prefs)
+        vm.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertFalse(vm.uiState.value.isLoadingUad)
+        assertTrue(vm.uiState.value.uadLoadFailed)
+        appRepository.appFlowOverride = null
+        appRepository.apps.value = listOf(userApp("system.recovered").copy(
+            isSystem = true, isUadLoaded = true, bloatRecommendation = "Recommended"))
+        vm.loadApps()
+        runCurrent()
+        assertFalse(vm.uiState.value.isLoadingUad)
+        assertFalse(vm.uiState.value.uadLoadFailed)
+        assertEquals("system.recovered", vm.uiState.value.displayedApps.single().packageName)
+    }
 
     @Test
     fun `a manual refresh starts the scan without advancing the clock`() = runTest {

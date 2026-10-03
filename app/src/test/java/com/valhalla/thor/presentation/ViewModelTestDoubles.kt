@@ -9,6 +9,8 @@ import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.AppFilterPreferences
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppPermission
@@ -304,6 +306,7 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
 class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepository {
 
     val apps = MutableStateFlow(initialApps)
+    var appFlowOverride: Flow<List<AppInfo>>? = null
     val installSizeWrites = mutableListOf<Map<String, Long>>()
 
     /**
@@ -322,7 +325,7 @@ class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepositor
      */
     val componentSnapshots = mutableMapOf<String, ComponentSnapshot>()
 
-    override fun getAllApps(): Flow<List<AppInfo>> = apps
+    override fun getAllApps(): Flow<List<AppInfo>> = appFlowOverride ?: apps
 
     override suspend fun getAppDetails(packageName: String): AppInfo? =
         apps.value.firstOrNull { it.packageName == packageName }
@@ -685,8 +688,14 @@ class FakePreferenceRepository(
         write { it.copy(appSortOrder = sortOrder) }
     }
 
-    override suspend fun updateAppFilter(filterType: FilterType, selectedFilter: String) {
-        write { it.copy(appFilterType = filterType, appSelectedFilter = selectedFilter) }
+    override suspend fun updateAppFilter(appListType: AppListType, filterType: FilterType, selectedFilter: String) {
+        val filter = AppFilterPreferences(filterType, selectedFilter).normalizedFor(appListType)
+        write {
+            when (appListType) {
+                AppListType.USER -> it.copy(userAppFilter = filter)
+                AppListType.SYSTEM -> it.copy(systemAppFilter = filter)
+            }
+        }
     }
 
     override suspend fun setReinstallAllCardVisibility(isVisible: Boolean) {
@@ -1097,9 +1106,11 @@ class FakePermissionRepository(
 
     var indexBuilds = 0
         private set
+    var beforeIndexBuild: suspend () -> Unit = {}
 
     override suspend fun buildPermissionIndex(): Result<PermissionIndex> {
         indexBuilds++
+        beforeIndexBuild()
         return index
     }
 

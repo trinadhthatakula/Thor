@@ -6,6 +6,7 @@ package com.valhalla.thor.domain.repository
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
@@ -69,7 +70,11 @@ interface PreferenceRepository {
     // --- App List ---
     suspend fun updateAppSort(sortBy: SortBy)
     suspend fun updateAppSortOrder(sortOrder: SortOrder)
-    suspend fun updateAppFilter(filterType: FilterType, selectedFilter: String)
+    suspend fun updateAppFilter(
+        appListType: AppListType,
+        filterType: FilterType,
+        selectedFilter: String,
+    )
     suspend fun setReinstallAllCardVisibility(isVisible: Boolean)
 
     // --- Navigation ---

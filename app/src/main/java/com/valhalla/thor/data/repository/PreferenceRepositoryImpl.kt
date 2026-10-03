@@ -17,9 +17,12 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
+import com.valhalla.thor.domain.model.ALL_FILTER
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppFilterPreferences
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
@@ -153,8 +156,14 @@ class PreferenceRepositoryImpl(
         // App List
         val SORT_BY = stringPreferencesKey("sort_by")
         val SORT_ORDER = stringPreferencesKey("sort_order")
+        // Read-only fallback for installs predating per-tab filters. Never update these keys:
+        // an untouched tab must not inherit later edits made to the other tab.
         val FILTER_TYPE = stringPreferencesKey("filter_type")
         val SELECTED_FILTER = stringPreferencesKey("selected_filter")
+        val USER_FILTER_TYPE = stringPreferencesKey("user_app_filter_type")
+        val USER_SELECTED_FILTER = stringPreferencesKey("user_app_selected_filter")
+        val SYSTEM_FILTER_TYPE = stringPreferencesKey("system_app_filter_type")
+        val SYSTEM_SELECTED_FILTER = stringPreferencesKey("system_app_selected_filter")
         val SHOW_REINSTALL_ALL = booleanPreferencesKey("show_reinstall_all")
 
         // Navigation
@@ -257,18 +266,12 @@ class PreferenceRepositoryImpl(
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.SORT_ORDER] = sortOrder.name }
     }
 
-    override suspend fun updateAppFilter(filterType: FilterType, selectedFilter: String) {
-        context.dataStore.guardedWrite(SETTINGS_STORE) {
-            // An exhaustive `when` rather than the old `if (State) … else "SOURCE"`: that shape
-            // silently wrote SOURCE for anything new, so adding a third filter would have persisted
-            // the wrong one with nothing to catch it. This form stops compiling instead.
-            it[Keys.FILTER_TYPE] = when (filterType) {
-                FilterType.State -> "STATE"
-                FilterType.Source -> "SOURCE"
-                FilterType.Permission -> "PERMISSION"
-            }
-            it[Keys.SELECTED_FILTER] = selectedFilter
-        }
+    override suspend fun updateAppFilter(
+        appListType: AppListType,
+        filterType: FilterType,
+        selectedFilter: String,
+    ) {
+        context.dataStore.writeAppFilter(appListType, filterType, selectedFilter)
     }
 
     override suspend fun setReinstallAllCardVisibility(isVisible: Boolean) {
@@ -533,6 +536,57 @@ class PreferenceRepositoryImpl(
     }
 }
 
+private fun appFilterTypeKey(type: AppListType): Preferences.Key<String> = when (type) {
+    AppListType.USER -> Keys.USER_FILTER_TYPE
+    AppListType.SYSTEM -> Keys.SYSTEM_FILTER_TYPE
+}
+
+private fun appSelectedFilterKey(type: AppListType): Preferences.Key<String> = when (type) {
+    AppListType.USER -> Keys.USER_SELECTED_FILTER
+    AppListType.SYSTEM -> Keys.SYSTEM_SELECTED_FILTER
+}
+
+/** Write the selected tab's complete pair in one edit, leaving the legacy fallback untouched. */
+internal suspend fun DataStore<Preferences>.writeAppFilter(
+    appListType: AppListType,
+    filterType: FilterType,
+    selectedFilter: String,
+) {
+    val filter = AppFilterPreferences(filterType, selectedFilter).normalizedFor(appListType)
+    val typeKey = appFilterTypeKey(appListType)
+    val selectionKey = appSelectedFilterKey(appListType)
+    val typeToken = when (filter.filterType) {
+        FilterType.Source -> "SOURCE"
+        FilterType.State -> "STATE"
+        FilterType.Permission -> "PERMISSION"
+        FilterType.Uad -> "UAD"
+    }
+    guardedWrite(SETTINGS_STORE) {
+        it[typeKey] = typeToken
+        it[selectionKey] = filter.selectedFilter
+    }
+}
+
+private fun Preferences.appFilterFor(type: AppListType): AppFilterPreferences {
+    val savedType = this[appFilterTypeKey(type)]
+    val savedSelection = this[appSelectedFilterKey(type)]
+    // Only a wholly absent profile inherits the old pair. A partial profile must never combine a
+    // new category with a legacy chip, or vice versa, because those values may mean different things.
+    val useLegacy = savedType == null && savedSelection == null
+    val typeToken = if (useLegacy) this[Keys.FILTER_TYPE] else savedType
+    val selection = if (useLegacy) this[Keys.SELECTED_FILTER] else savedSelection
+    val filterType = when (typeToken) {
+        "SOURCE" -> FilterType.Source
+        "STATE" -> FilterType.State
+        "PERMISSION" -> FilterType.Permission
+        "UAD" -> FilterType.Uad
+        // Reset the chip with an unknown/missing category, rather than treating e.g. a UAD token
+        // from a newer version as the name of an installer.
+        else -> return AppFilterPreferences()
+    }
+    return AppFilterPreferences(filterType, selection ?: ALL_FILTER).normalizedFor(type)
+}
+
 private fun multiAppActionsOrderKey(layout: MultiAppActionLayout): Preferences.Key<String> =
     when (layout) {
         MultiAppActionLayout.APP_LIST -> Keys.APP_LIST_MULTI_ACTIONS_ORDER
@@ -729,14 +783,6 @@ internal fun Preferences.toUserPreferences(
         ?.let { runCatching { SortOrder.valueOf(it) }.getOrNull() }
         ?: SortOrder.ASCENDING
 
-    // Falls through to Source for an unknown token, so a preferences file written by a *newer*
-    // Thor (or a corrupted one) degrades to the default filter instead of failing to read.
-    val filterType = when (prefs[Keys.FILTER_TYPE]) {
-        "STATE" -> FilterType.State
-        "PERMISSION" -> FilterType.Permission
-        else -> FilterType.Source
-    }
-
     val themeMode = prefs[Keys.THEME_MODE]
         ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
         ?: ThemeMode.SYSTEM
@@ -767,8 +813,8 @@ internal fun Preferences.toUserPreferences(
     return UserPreferences(
         appSortBy = sortBy,
         appSortOrder = sortOrder,
-        appFilterType = filterType,
-        appSelectedFilter = prefs[Keys.SELECTED_FILTER] ?: "All",
+        userAppFilter = prefs.appFilterFor(AppListType.USER),
+        systemAppFilter = prefs.appFilterFor(AppListType.SYSTEM),
         defaultTab = defaultTab,
         showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
         showInstallerTile = prefs[Keys.SHOW_INSTALLER_TILE] ?: true,

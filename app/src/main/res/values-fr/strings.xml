@@ -135,6 +135,13 @@
     <string name="permission_filter_loading">Lecture des autorisations…</string>
     <string name="permission_filter_unavailable">Aucun groupe d\'autorisations trouvé sur cet appareil</string>
     <string name="permission_filter_failed">Impossible de lire les autorisations sur cet appareil</string>
+    <string name="filter_type_uad">Recommandation UAD</string>
+    <string name="uad_filter_recommended">Recommandé</string>
+    <string name="uad_filter_advanced">Avancé</string>
+    <string name="uad_filter_expert">Expert</string>
+    <string name="uad_filter_unsafe">Dangereux</string>
+    <string name="uad_filter_loading">Chargement des recommandations UAD…</string>
+    <string name="uad_filter_failed">Impossible de charger les recommandations UAD.</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">Effacer les données ?</string>
