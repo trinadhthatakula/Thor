@@ -37,9 +37,9 @@ class SettingsEditorDeadlineTest {
             rootExecutionPolicy = RootExecutionPolicy.ISOLATED,
         )
         if (mode == "ROOT") assertTrue(gateway.isRootAvailable(execution))
-        val apk = InstrumentationRegistry.getInstrumentation().context.applicationInfo.sourceDir
+        val classpath = settingsEditorProbeClasspath()
         val processName = "thor_sett_deadline_" + java.util.UUID.randomUUID().toString().replace("-", "")
-        val command = "CLASSPATH='" + apk.replace("'", "'\\''") + "' " + settingsEditorProcessDeadline(
+        val command = "CLASSPATH='" + classpath.replace("'", "'\\''") + "' " + settingsEditorProcessDeadline(
             "/system/bin/app_process /system/bin --nice-name=$processName com.valhalla.thor.data.settingseditor.SettingsEditorStallProbe", 3
         )
         val started = SystemClock.elapsedRealtime()

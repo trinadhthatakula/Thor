@@ -295,8 +295,8 @@ class SettingsEditorLiveProducerIntegrationTest {
             val payload = Base64.encodeToString(request.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
             val shell = "trap '' TERM; exec /system/bin/app_process /system/bin --nice-name=thor_sett_live_${id.replace("-", "")} " +
                 "com.valhalla.thor.data.settingseditor.SettingsEditorLiveWriterProbe ${quote(payload)}"
-            val apk = InstrumentationRegistry.getInstrumentation().context.applicationInfo.sourceDir
-            return "CLASSPATH=${quote(apk)} /system/bin/toybox timeout --foreground -s KILL 180 /system/bin/sh -c ${quote(shell)}"
+            val classpath = settingsEditorProbeClasspath()
+            return "CLASSPATH=${quote(classpath)} /system/bin/toybox timeout --foreground -s KILL 180 /system/bin/sh -c ${quote(shell)}"
         }
         suspend fun prepareRoot() {
             preferences.setPrivilegeMode(PrivilegeMode.ROOT)
