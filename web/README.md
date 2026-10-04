@@ -278,19 +278,30 @@ which is the wrong shape for a maskable icon's 40 % safe circle.
 
 Both need `rsvg-convert` (`brew install librsvg`); the `.ico` also needs ImageMagick.
 
-**The fonts are the trap.** Outfit and Fira Code are not installed system-wide anywhere — they exist
-as TTFs in `app/src/main/res/font/`. Rasterising without wiring them up substitutes a default sans,
+**The fonts are the trap.** Outfit and Fira Code need to be available to the renderer.
+Use the original TTFs pinned in [`src/fonts/README.md`](src/fonts/README.md) to reproduce the existing
+social card; Android's current Outfit asset is variable. From the repository root, extract the
+original files to a temporary directory:
+
+```sh
+font_sources=$(mktemp -d "${TMPDIR:-/tmp}/thor-web-fonts.XXXXXX")
+git archive aac17127b9f5a497b1c27a0c761e6b9cb11b37c2 app/src/main/res/font \
+  | tar -x -C "$font_sources"
+```
+
+Rasterising without wiring these fonts up substitutes a default sans,
 and the card ships in the wrong typeface. It looks fine. It just is not the product. Worse, on macOS
 `pangocairo` defaults to the **CoreText** backend, which ignores `FONTCONFIG_FILE` entirely — so
 pointing fontconfig at the repo fonts is not enough on its own and produces no warning.
 
-Save this as `/tmp/thor-fonts.conf` (adjust the first `<dir>` to your checkout):
+Save this as `/tmp/thor-fonts.conf`, replacing the first `<dir>` with the absolute
+path to `$font_sources/app/src/main/res/font` (XML does not expand shell variables):
 
 ```xml
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
-  <dir>/absolute/path/to/Thor/app/src/main/res/font</dir>
+  <dir>/absolute/path/to/extracted-fonts/app/src/main/res/font</dir>
   <dir>/System/Library/Fonts</dir>
   <dir>/Library/Fonts</dir>
   <cachedir>/tmp/thor-fc-cache</cachedir>
@@ -327,6 +338,8 @@ for s in 16 32 48; do
     -w $inner -h $inner --page-width $s --page-height $s --top $pad --left $pad -o /tmp/ico-$s.png
 done
 magick /tmp/ico-16.png /tmp/ico-32.png /tmp/ico-48.png public/favicon.ico
+
+rm -rf "$font_sources"
 ```
 
 The PNG is committed, not generated at build time: Open Graph consumers handle SVG badly, and the

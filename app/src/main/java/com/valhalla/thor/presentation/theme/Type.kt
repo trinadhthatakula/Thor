@@ -3,11 +3,16 @@
 
 package com.valhalla.thor.presentation.theme
 
+import android.content.Context
+import android.graphics.Typeface
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.text.font.AndroidFont
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontLoadingStrategy
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.FontPreset
@@ -17,42 +22,53 @@ val firaMonoFontFamily = FontFamily(
     ResFont(resId = R.font.firacode_variable)
 )
 
+// FontWeight selects the matching entry; the explicit wght axis selects its actual outlines.
+// Outfit defaults to wght=100, so even Regular must specify its axis rather than use the default.
 val bodyFontFamily = FontFamily(
-    ResFont(resId = R.font.outfit_regular, weight = FontWeight.Normal, style = FontStyle.Normal),
-    ResFont(resId = R.font.outfit_black, weight = FontWeight.Black, style = FontStyle.Normal),
-    ResFont(resId = R.font.outfit_bold, weight = FontWeight.Bold, style = FontStyle.Normal),
-    ResFont(
-        resId = R.font.outfit_extrabold,
-        weight = FontWeight.ExtraBold,
-        style = FontStyle.Normal
-    ),
-    ResFont(
-        resId = R.font.outfit_extralight,
-        weight = FontWeight.ExtraLight,
-        style = FontStyle.Normal
-    ),
-    ResFont(resId = R.font.outfit_light, weight = FontWeight.Light, style = FontStyle.Normal),
-    ResFont(resId = R.font.outfit_medium, weight = FontWeight.Medium, style = FontStyle.Normal),
-    ResFont(resId = R.font.outfit_semibold, weight = FontWeight.SemiBold, style = FontStyle.Normal),
-    ResFont(resId = R.font.outfit_thin, weight = FontWeight.Thin, style = FontStyle.Normal),
-    ResFont(resId = R.font.outfit_regular, weight = FontWeight.Normal, style = FontStyle.Italic),
-    ResFont(resId = R.font.outfit_black, weight = FontWeight.Black, style = FontStyle.Italic),
-    ResFont(resId = R.font.outfit_bold, weight = FontWeight.Bold, style = FontStyle.Italic),
-    ResFont(
-        resId = R.font.outfit_extrabold,
-        weight = FontWeight.ExtraBold,
-        style = FontStyle.Italic
-    ),
-    ResFont(
-        resId = R.font.outfit_extralight,
-        weight = FontWeight.ExtraLight,
-        style = FontStyle.Italic
-    ),
-    ResFont(resId = R.font.outfit_light, weight = FontWeight.Light, style = FontStyle.Italic),
-    ResFont(resId = R.font.outfit_medium, weight = FontWeight.Medium, style = FontStyle.Italic),
-    ResFont(resId = R.font.outfit_semibold, weight = FontWeight.SemiBold, style = FontStyle.Italic),
-    ResFont(resId = R.font.outfit_thin, weight = FontWeight.Thin, style = FontStyle.Italic),
+    listOf(
+        FontWeight.Thin,
+        FontWeight.ExtraLight,
+        FontWeight.Light,
+        FontWeight.Normal,
+        FontWeight.Medium,
+        FontWeight.SemiBold,
+        FontWeight.Bold,
+        FontWeight.ExtraBold,
+        FontWeight.Black,
+    ).flatMap { weight ->
+        // Preserve Thor's existing upright aliases for italic requests: Outfit has no italic axis.
+        listOf(FontStyle.Normal, FontStyle.Italic).map { style ->
+            OutfitFont(weight = weight, style = style)
+        }
+    }
 )
+
+private data class OutfitFont(
+    override val weight: FontWeight,
+    override val style: FontStyle,
+) : AndroidFont(
+    loadingStrategy = FontLoadingStrategy.Blocking,
+    typefaceLoader = OutfitTypefaceLoader,
+    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
+)
+
+private object OutfitTypefaceLoader : AndroidFont.TypefaceLoader {
+    private const val FONT_PATH = "fonts/outfit_variable.ttf"
+
+    override fun loadBlocking(context: Context, font: AndroidFont): Typeface? {
+        // On the tested HyperOS device, Paint draws the axis but its returned Typeface loses it.
+        // Compose needs a Typeface, so build the axis into it instead of using Paint's setter.
+        // The resolver already applies accessibility weight preferences when selecting this font.
+        return Typeface.Builder(context.assets, FONT_PATH)
+            .setWeight(font.weight.weight)
+            .setItalic(false)
+            .setFontVariationSettings("'wght' ${font.weight.weight}")
+            .build()
+    }
+
+    override suspend fun awaitLoad(context: Context, font: AndroidFont): Typeface? =
+        loadBlocking(context, font)
+}
 
 /** Families are resolved by role so a future role override can inherit the selected preset. */
 @Immutable

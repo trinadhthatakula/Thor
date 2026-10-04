@@ -9,8 +9,12 @@ making — see the design spec, §5.3 and §7.
 
 ## Provenance
 
-Sources are `app/src/main/res/font/`, unmodified, exactly as they go into the APK.
-Nothing here is fetched from the network.
+The original sources for the shipped web fonts are preserved in `app/src/main/res/font/`
+at Thor commit `aac17127b9f5a497b1c27a0c761e6b9cb11b37c2`. Keep that revision pinned when reproducing
+these assets: Android now bundles one variable Outfit font instead of the nine
+static TTFs at that commit. This Android change does not alter the web fonts.
+The commands below recover the original sources from local Git history without
+fetching fonts from the network or restoring deleted files to the checkout.
 
 | Shipped file | Source | CSS `font-weight` | Bytes |
 |---|---|---|---|
@@ -22,10 +26,11 @@ Nothing here is fetched from the network.
 | `outfit-latin-900.woff2` | `outfit_black.ttf` | 900 | 14178 |
 | `firacode-latin-var.woff2` | `firacode_variable.ttf` | `300 700` (variable) | 36078 |
 
-`res/font/` also ships `outfit_thin.ttf` (100), `outfit_extralight.ttf` (200) and
-`outfit_light.ttf` (300). They are declared in `Type.kt`'s `FontFamily` and referenced
-by **no** typography role, so they are not shipped here. The six weights above are
-exactly the set `AppTypography` asks for.
+The pinned Android sources also contain `outfit_thin.ttf` (100),
+`outfit_extralight.ttf` (200), and `outfit_light.ttf` (300). Android still declares
+all nine weights in `Type.kt`, now with explicit variable axes. The six weights
+above cover the Outfit typography roles used by the website; the three lighter
+weights are not shipped here.
 
 **No italic face ships, and none should.** `Type.kt` maps every `FontStyle.Italic`
 entry back to the same file as its upright, so Thor has no real italic. `fonts.css`
@@ -34,9 +39,14 @@ and `<i>`.
 
 ## Re-running the conversion
 
-The repo's fontTools lives in `.tools-venv` at the repo root. From the repo root:
+The examples use fontTools in `.tools-venv` at the repo root. From the repo root:
 
 ```sh
+# Recover the exact sources used for the existing web assets, including Fira Code.
+font_source_commit=aac17127b9f5a497b1c27a0c761e6b9cb11b37c2
+font_sources=$(mktemp -d "${TMPDIR:-/tmp}/thor-web-fonts.XXXXXX")
+git archive "$font_source_commit" app/src/main/res/font | tar -x -C "$font_sources"
+
 # The nominal Latin subset: Google Fonts' `latin` range plus U+2190-2193, because the
 # stock range carries only the up and down arrows and the copy uses -> and <-.
 # Keep this string in sync with the `unicode-range` descriptors in ../styles/fonts.css.
@@ -48,11 +58,13 @@ for pair in \
   outfit_extrabold:outfit-latin-800 outfit_black:outfit-latin-900 \
   firacode_variable:firacode-latin-var
 do
-  .tools-venv/bin/pyftsubset "app/src/main/res/font/${pair%%:*}.ttf" \
+  .tools-venv/bin/pyftsubset "$font_sources/app/src/main/res/font/${pair%%:*}.ttf" \
     --output-file="web/src/fonts/${pair##*:}.woff2" \
     --flavor=woff2 \
     --unicodes="$U"
 done
+
+rm -rf "$font_sources"
 ```
 
 Default `--layout-features` is deliberately not overridden: it already keeps `calt`,
@@ -61,8 +73,8 @@ and `locl` — there is no `liga` table to preserve).
 
 ### If `--flavor=woff2` fails with a missing `brotli`
 
-`pyftsubset` needs the `brotli` Python module to write WOFF2, and `.tools-venv` does
-not currently have it. The fix is one command, and it is the right fix:
+`pyftsubset` needs the `brotli` Python module to write WOFF2. If the local
+fontTools environment lacks it, install it with:
 
 ```sh
 .tools-venv/bin/pip install brotli
