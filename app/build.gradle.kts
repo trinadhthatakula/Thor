@@ -309,6 +309,11 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // Compress native libraries in standalone APKs; Android extracts the device's ABI
+            // at installation. Device-targeted bundle APKs retain direct loading via the override below.
+            useLegacyPackaging = true
+        }
         dex {
             // Compress dex in generated APKs. dex is otherwise STORED uncompressed (~76% of the
             // foss-release APK), so this roughly halves the direct-download size. By AGP design this
@@ -343,6 +348,12 @@ androidComponents {
         selector().withBuildType("benchmark").withFlavor("distribution", "foss")
     ) { variantBuilder ->
         variantBuilder.enable = false
+    }
+
+    onVariants { variant ->
+        // Play already compresses APK downloads in transit. Keep its device-targeted native
+        // splits directly loadable instead of creating extracted copies with no download benefit.
+        variant.packaging.jniLibs.useLegacyPackagingFromBundle.set(false)
     }
 
     // 1. Locale filtering — every variant, one set.

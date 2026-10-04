@@ -80,7 +80,8 @@ widths and vertical metrics match at every weight. Contour topology matches, wit
 coordinate differences no greater than **1/1000 em**.
 
 Toolchain: Zulu **21.0.12.1**, Gradle **9.8.0**, AGP **9.5.0-alpha08**, Kotlin **2.4.20**,
-and resolved Compose UI Text **1.12.1**. Host tests completed with **3,584 tests per debug flavor**
+and packaged Compose UI Text **1.13.0-alpha02** (verified from the retained APK metadata).
+Host tests completed with **3,584 tests per debug flavor**
 and zero failures, errors, or skips. Debug app/test builds and the six final device test runs passed.
 The complete `test lintFossDebug lintStoreRelease :app:assembleFossRelease :app:assembleStoreRelease`
 gate passed. FOSS Debug lint has 9 hints and Store Release lint has 8 hints, with **zero errors or
