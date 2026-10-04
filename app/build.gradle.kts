@@ -451,19 +451,19 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    // Original renderer is a pixel oracle for the terminal Canvas animation; never packaged.
+    androidTestImplementation(libs.lottie.test)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    implementation(libs.accompanist.drawablepainter)
     implementation(libs.kotlinx.serialization.json)
     // :app has ~300 `import kotlinx.coroutines.*` and no direct declaration — they arrive through
     // Odin's `api(kotlinx-coroutines-android)`. Declared here so Thor pins its own version instead of
     // silently tracking whatever Odin ships, and so coroutines-test stays on the same 1.11.0.
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.lottie.compose)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.dhizuku.api)
@@ -478,11 +478,9 @@ dependencies {
     // Adaptive Layouts
     implementation(libs.androidx.adaptive)
     implementation(libs.androidx.adaptive.layout)
-    implementation(libs.androidx.adaptive.navigation)
     implementation(libs.androidx.adaptive.navigation3)
 
     implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
     // Store-only dependencies
