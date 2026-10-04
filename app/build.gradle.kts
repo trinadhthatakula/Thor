@@ -457,7 +457,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    implementation(libs.accompanist.drawablepainter)
     implementation(libs.kotlinx.serialization.json)
     // :app has ~300 `import kotlinx.coroutines.*` and no direct declaration — they arrive through
     // Odin's `api(kotlinx-coroutines-android)`. Declared here so Thor pins its own version instead of
@@ -478,11 +477,9 @@ dependencies {
     // Adaptive Layouts
     implementation(libs.androidx.adaptive)
     implementation(libs.androidx.adaptive.layout)
-    implementation(libs.androidx.adaptive.navigation)
     implementation(libs.androidx.adaptive.navigation3)
 
     implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
     // Store-only dependencies

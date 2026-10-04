@@ -2,7 +2,6 @@
 compileSdk = "37"
 targetSdk = "37"
 minSdk = "28"
-accompanistDrawablepainter = "0.37.3"
 agp = "9.5.0-alpha08"
 biometric = "1.4.0-alpha02"
 datastorePreferences = "1.2.1"
@@ -42,7 +41,6 @@ testOrchestrator = "1.6.1"
 thor-extension-api = { module = "com.trinadhthatakula:thor-extension-api", version.ref = "thorExtensionApi" }
 asgard = { module = "com.trinadhthatakula:asgard", version.ref = "asgardUi" }
 odin = { module = "com.trinadhthatakula:odin", version.ref = "odin" }
-accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
 #Core
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
@@ -53,7 +51,7 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-test-orchestrator = { group = "androidx.test", name = "orchestrator", version.ref = "testOrchestrator" }
-androidx-biometric = { module = "androidx.biometric:biometric-ktx", version.ref = "biometric" }
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 #Compose
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -76,7 +74,6 @@ androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "l
 androidx-lifecycle-viewmodel-navigation3 = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-navigation3", version.ref = "lifecycleRuntimeKtx" }
 #Room DB
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 # androidTest-only, and deliberately on the same `room` ref as the runtime: MigrationTestHelper
 # validates a migrated database against the schema JSON the *compiler* exported, so a testing
@@ -113,7 +110,6 @@ play-billing-ktx = { module = "com.android.billingclient:billing-ktx", version.r
 # Adaptive Layouts
 androidx-adaptive = { module = "androidx.compose.material3.adaptive:adaptive", version.ref = "androidx-adaptive" }
 androidx-adaptive-layout = { module = "androidx.compose.material3.adaptive:adaptive-layout", version.ref = "androidx-adaptive" }
-androidx-adaptive-navigation = { module = "androidx.compose.material3.adaptive:adaptive-navigation", version.ref = "androidx-adaptive" }
 androidx-adaptive-navigation3 = { module = "androidx.compose.material3.adaptive:adaptive-navigation3", version.ref = "androidx-adaptive" }
 
 [plugins]
@@ -138,4 +134,4 @@ coil = [
 ]
 # No `room` bundle on purpose: it would have to list room-compiler alongside the runtime artifacts,
 # and any `implementation(libs.bundles.room)` would then put the annotation processor on the runtime
-# classpath. :app wires Room explicitly instead — runtime + ktx as implementation, compiler as ksp.
+# classpath. :app wires Room explicitly instead — runtime as implementation, compiler as ksp.
