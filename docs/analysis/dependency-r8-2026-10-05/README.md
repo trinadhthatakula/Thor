@@ -6,7 +6,8 @@ The original audit baseline was `18162fe050b1360c79de0071eed4c59ddcb49622`.
 
 The audit found no large, clearly unused runtime dependency that can simply be deleted.
 It found redundant declarations and two larger
-replacement/migration candidates: Lottie and legacy WorkManager support. Root/IPC and
+replacement/migration candidates: Lottie and legacy WorkManager support. The Lottie
+replacement is now implemented locally and validated as described below. Root/IPC and
 external extension contracts account for the broadest remaining keep rules.
 
 The maintainer discarded UAD minification/projection, license consolidation, downloadable
@@ -31,7 +32,7 @@ latest release APKs. A separate fresh R8 configuration-analyzer run covered both
 - [Release APK inspection](release-apks.md): retained DEX, resources, native libraries,
   test/debug leakage and Store isolation, anchored by matching APK/R8 mapping identities.
 - [R8 keep rules](r8-keep-rules.md): fresh analyzer scores, rule impact and protected roots.
-- [Lottie replacement proposal](lottie-replacement.md): how to reproduce the current
+- [Lottie replacement implementation](lottie-replacement.md): how to reproduce the current
   seven-square animation with Compose, including its time remapping and parity checks.
 
 The baseline resolves **158 FOSS / 172 Store runtime artifacts**, including forwarding
@@ -56,7 +57,8 @@ libraries; historical measurements below are labelled separately.
 | Remove `room-ktx` declaration | Room 2.8.5 KTX is an empty compatibility AAR; runtime owns the Kotlin APIs. | Removes redundant compatibility declaration. |
 | Remove `:bypass` core-ktx declaration | The module has no AndroidX references. `:app` retains its directly used core dependency. | Reduces the support module's compile/runtime dependency graph. |
 
-All other used dependencies and runtime keeps remain in the implementation. In particular,
+The declaration cleanup retains all other used dependencies and runtime keeps; the subsequent
+Canvas replacement removes runtime Lottie separately. In particular,
 Billing KTX's suspend `acknowledgePurchase` API is used; Coil's DrawablePainter is used
 transitively; Asgard's JetBrains Compose wrappers do not contain a second Compose engine.
 Compiler/test dependencies and the compile-only VM stubs are not shipped runtime weight.
@@ -87,6 +89,27 @@ and zero external dependencies in `:vm-runtime`. The change is dependency mainte
 the evidence does not establish a runtime-performance gain. Final APKs, maps, resolved
 graphs, source hashes, test/lint counts and manifest comparisons are archived under
 `merged-dev-cleanup/` in the artifact directory below.
+
+## Subsequent Canvas replacement
+
+The terminal's seven-box animation now uses Compose Canvas with the original geometry,
+time remapping, loop duration and in-app theme colors. Lottie and the two production
+JSON resources are removed; base Lottie and unchanged JSON references are test-only.
+There is no new runtime dependency or change to R8 keep rules.
+
+| Unsigned release APK | Validated dependency cleanup bytes | Canvas bytes | Saved bytes |
+| --- | ---: | ---: | ---: |
+| FOSS | 4,706,015 | 4,628,633 | **77,382 (1.64%)** |
+| Store | 4,921,200 | 4,841,054 | **80,146 (1.63%)** |
+
+Both release builds and the required test/lint gates pass: **7,168 tests**, zero failures,
+errors or skips, and no lint errors/warnings. Native-library payloads are unchanged;
+Lottie, test classes and reference animation payloads are absent from both release APKs.
+Each device passes **8/8 focused checks**, including **5,688 pixel-identical comparisons**
+across the emulator and phone, controlled timing/lifecycle/theme checks, and sustained
+live playback at the observed 60 Hz / 120 Hz display rates. These are correctness checks,
+not a performance benchmark. See [validation and limitations](../../validation/terminal-canvas.md)
+for exact scope, artifacts and the separate minified-preview result.
 
 ## Historical measurement: initial six-change candidate
 

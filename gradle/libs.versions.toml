@@ -19,7 +19,7 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 composeBom = "2026.09.00"
-lottieCompose = "6.7.1"
+lottieTest = "6.7.1"
 material3 = "1.5.0-alpha29"
 kotlinxSerializationJson = "1.11.0"
 splashscreen = "1.2.0"
@@ -88,8 +88,8 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 # as a version skew.
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
-#Lottie
-lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottieCompose" }
+# Test-only reference renderer for terminal animation pixel comparisons.
+lottie-test = { module = "com.airbnb.android:lottie", version.ref = "lottieTest" }
 #Shizuku
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
 shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }

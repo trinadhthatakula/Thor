@@ -35,6 +35,10 @@ class ThorTestRunner : AndroidJUnitRunner() {
     private companion object {
         const val CLASS_ARGUMENT = "class"
         val ISOLATED_TESTS = setOf(
+            "com.valhalla.thor.presentation.widgets.RearrangingBoxesAnimationTest",
+            "com.valhalla.thor.presentation.widgets.RearrangingBoxesParityTest",
+            "com.valhalla.thor.presentation.widgets.TermLoggerPlaybackTest",
+            "com.valhalla.thor.presentation.widgets.TermLoggerRealClockTest",
             "com.valhalla.thor.data.gateway.root.OdinLifecycleIntegrationTest",
             "com.valhalla.thor.data.gateway.root.OdinRootServiceBindingIntegrationTest",
             "com.valhalla.thor.data.gateway.root.OdinRootServiceLifecycleIntegrationTest",

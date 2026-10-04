@@ -24,9 +24,8 @@ import com.valhalla.thor.domain.model.FontPreset
 
 /**
  * The app's resolved dark-theme flag (from [ThemeMode] + system setting), independent
- * of the device night mode. Widgets that load night-qualified resources (e.g. Lottie
- * raw files under res/raw-night) read this so they follow the in-app theme rather than
- * the device configuration's -night qualifier.
+ * of the device night mode. Custom drawings such as the terminal animation read this
+ * so their colors follow the in-app theme.
  */
 val LocalDarkTheme = staticCompositionLocalOf { false }
 
