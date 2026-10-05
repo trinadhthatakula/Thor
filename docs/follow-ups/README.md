@@ -6,6 +6,13 @@ feature-request roadmap, and the standing promises in the project `README.md`. T
 acceptance, and new work. Older ranked tables below preserve the decisions and evidence available
 when they were written; they are not a current release gate.
 
+## New follow-ups (2026-10-05)
+
+| Work | Status | Scope |
+| --- | --- | --- |
+| [Room 3 migration assessment](room-3-migration.md) | Recorded; implementation not scheduled | Current Room 2.8.5 versus stable Room 3.0.3, driver and APK tradeoffs, persistence/upgrade risks, and a staged migration recommendation. Separate from APK-size optimization. |
+| [APK-size optimization status](apk-size-optimization-status.md) | Accepted changes merged; legacy WorkManager retirement remains a candidate | Fonts, native packaging, dependency declarations and Canvas are complete. Records rejected small experiments, WorkManager upgrade constraints, and remaining measurement limits. |
+
 ## New follow-ups (2026-09-30)
 
 | Work | Status | Scope |

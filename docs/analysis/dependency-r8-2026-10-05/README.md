@@ -1,5 +1,11 @@
 # Dependency and R8 audit
 
+**Status update, 2026-10-05:** the five dependency cleanups and Canvas replacement merged
+in [PR #558](https://github.com/trinadhthatakula/Thor/pull/558). References below to local
+implementation or Lottie as a candidate describe earlier stages. See the reconciled
+[APK optimization status](../../follow-ups/apk-size-optimization-status.md) for remaining
+work and the disposition of subsequent validation.
+
 Date: 2026-10-05. Topic branch: `chore/dependency-r8-cleanup`, based on `dev`
 `b679e91e` (PR #557 merge) in `~/StudioProject/Thor-worktrees/dependency-r8-cleanup`.
 The original audit baseline was `18162fe050b1360c79de0071eed4c59ddcb49622`.
