@@ -4,10 +4,11 @@ Reconciled 2026-10-05 against `dev` at `6967de7d5ce636d9ab66553a6d0e6df1e75c2231
 (after PR #560), the merged implementation, retained validation reports, and the
 maintainer's decisions in the APK optimization discussion.
 
-**The accepted optimization work is merged. No immediately actionable, worthwhile
-dependency or R8 removal remains identified.** Legacy WorkManager retirement is the one
-larger remaining candidate, subject to an upgrade-compatibility design and a measured
-benefit. Room 3 is a separate maintenance assessment.
+**This APK optimization pass is complete. The accepted work is merged, and the maintainer
+has decided to retain WorkManager for legacy-job compatibility.** No immediately actionable,
+worthwhile dependency or R8 removal remains identified. Removing unused helpers is routine
+maintenance with no measured APK-size or performance benefit. Room 3 remains a separate,
+deferred maintenance assessment.
 
 This status supersedes the pending-work interpretation of the original
 `apk-size-optimization-handover.md`, retained on local branch
@@ -38,40 +39,40 @@ The last recorded Canvas-stage unsigned artifacts were **4,628,633 B FOSS** and
 **4,841,054 B Store**. PRs #559 and #560 followed that measurement. Rebuild current `dev`
 with matching toolchain/signing before using a current-size number in a new comparison.
 
-## Remaining candidate: retire legacy WorkManager support
+## Decision: retain legacy WorkManager support
 
-**Status: identified, not implemented or scheduled; not an unused dependency today.**
+**Status: retained by the maintainer on 2026-10-05; retirement is closed for this pass.**
 New export/backup/restore and sweep work uses Room-backed services, but existing persisted
 WorkManager jobs still have compatibility, observation, cancellation, and recovery paths.
+The possible small APK saving does not justify changing that upgrade behavior. Only
+leftovers confirmed to have no callers are being removed; the library and live legacy
+compatibility paths stay.
 
 - [LegacyDataWorkDrainGate](../../app/src/main/java/com/valhalla/thor/data/backup/job/LegacyDataWorkDrainGate.kt)
   prevents new data work from racing nonterminal legacy `THOR_JOB_CHAIN` work.
 - [ThorJobLauncher](../../app/src/main/java/com/valhalla/thor/data/backup/job/ThorJobLauncher.kt)
-  still observes and cancels legacy jobs.
+  still observes legacy jobs, while notification actions retain their WorkManager
+  cancellation route.
 - [PrivilegeSweepWorkManagerCutover](../../app/src/main/java/com/valhalla/thor/data/freezer/PrivilegeSweepWorkManagerCutover.kt)
-  closes legacy admission, requests cancellation, waits for quiescence, and preserves
-  ambiguous outcomes instead of replaying privileged mutations.
+  awaits the legacy-chain cancellation operation and reconciles ambiguous outcomes before
+  new service claims begin, serialized by the existing process gate and mutex. It does not
+  replay privileged mutations. The removed in-process execution fence had no production
+  registration callers; it was not an active worker-quiescence barrier.
 - [ThorApplication](../../app/src/main/java/com/valhalla/thor/ThorApplication.kt) and the
   [app dependencies](../../app/build.gradle.kts) still initialize WorkManager and its Koin
   worker factory so persisted workers can be reconstructed.
 
-Before removing this family:
-
-- [ ] Define supported direct-upgrade behavior, including users who skip releases with
-      old persisted jobs, or implement a safe migration that settles those jobs and retains
-      interrupted-operation recovery information. Elapsed time since release is insufficient.
-- [ ] Remove old workers, DI registration, WorkInfo watchers/cancel adapters,
-      initializer/manifest services, WorkManager and its Koin bridge together after the
-      compatibility contract is satisfied.
-- [ ] Validate upgrades containing queued/running/interrupted legacy work, task ownership,
-      recovery and cancellation on the emulator and physical device with minified builds.
-- [ ] Run required test/lint gates and measure comparable FOSS/Store APKs before deciding
-      whether the result justifies shipping the retirement.
-
 The audit attributed **135,809 B FOSS / 131,233 B Store of raw DEX** to WorkManager.
-That is not a predicted compressed APK reduction: necessary shared dependencies remain,
-and compatibility replacement code may offset removals. See the
-[exact retirement constraints](../analysis/dependency-r8-2026-10-05/core-dependencies.md#workmanager-retirement-exact-constraints).
+That is not a measured or predicted compressed APK reduction; an exact saving below
+100 KB has not been established. Necessary shared dependencies remain, and compatibility
+replacement code could offset removals. No runtime-performance problem caused by retaining
+WorkManager was established in this assessment.
+
+The [historical retirement analysis](../analysis/dependency-r8-2026-10-05/core-dependencies.md#workmanager-retirement-exact-constraints)
+is retained as evidence for this decision, not an active deletion checklist. Any future
+reconsideration would require a new maintenance decision covering direct upgrades that skip
+intermediate releases, persisted-job recovery, and meaningful measured benefit. Elapsed time
+since the service migration alone is not evidence that legacy jobs no longer exist.
 
 ## Closed, superseded, or deliberately excluded
 
@@ -117,4 +118,7 @@ API 28/31, other ABIs and further OEM coverage remain bounded coverage gaps in t
 reports. These are measurement/coverage limits, not additional APK-saving implementations
 or newly imposed blockers for the merged work.
 
-No new APK build, profiler session, or device test was run for this documentation review.
+The status reconciliation reuses the retained size measurements above. Separate build and
+device checks for the unused-helper cleanup are recorded in
+[WorkManager cleanup validation](../validation/legacy-workmanager-cleanup.md); they do not
+establish a new APK-size or performance improvement.

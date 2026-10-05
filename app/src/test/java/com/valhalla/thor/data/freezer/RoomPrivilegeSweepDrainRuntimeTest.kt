@@ -185,7 +185,6 @@ class RoomPrivilegeSweepDrainRuntimeTest {
             )
         )
         val cutover = PrivilegeSweepWorkManagerCutover(
-            LegacyPrivilegeSweepExecutionFence(),
             SweepQueueWorkManager {},
             store,
             clock,
@@ -324,7 +323,7 @@ class RoomPrivilegeSweepDrainRuntimeTest {
             itemResult(SweepAttemptOutcome.SUCCEEDED)
         },
     ): RoomPrivilegeSweepDrainRuntime {
-        val cutover = PrivilegeSweepWorkManagerCutover(LegacyPrivilegeSweepExecutionFence(), SweepQueueWorkManager {}, port, clock, gate)
+        val cutover = PrivilegeSweepWorkManagerCutover(SweepQueueWorkManager {}, port, clock, gate)
         return RoomPrivilegeSweepDrainRuntime(ApplicationProvider.getApplicationContext(), cutover, PrivilegeSweepReconciler(port, clock, gate, packageOperationCoordinator = DefaultPackageOperationCoordinator()), verifier, port,
             object : PrivilegeStateProvider { override val state = privilege }, PrivilegeSweepItemExecutor(execute), clock, Dispatchers.IO,
             wakeLockFactory = { ForegroundTaskWakeLock(ForegroundTaskOwner.PRIVILEGE_SWEEP, ForegroundWakeLockFactory { _, _ -> wake }) })

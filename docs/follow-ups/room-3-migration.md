@@ -7,10 +7,10 @@ not authorize a database migration or make it part of the APK-size optimization 
 
 ## Recommendation
 
-Keep Room 2.8.5 for the current APK-size work. Plan a staged Room 3 migration as database
-maintenance when its benefits justify the validation effort. The stable version reviewed
-was **Room 3.0.3**; recheck releases before implementation rather than choosing the 3.1 alpha
-or treating this version snapshot as permanent.
+Keep Room 2.8.5. The APK optimization pass is complete; a staged Room 3 migration remains
+deferred database maintenance until its benefits justify the validation effort. The stable
+version reviewed was **Room 3.0.3**; recheck releases before implementation rather than
+choosing the 3.1 alpha or treating this version snapshot as permanent.
 
 There is no measured Thor APK-size, memory, startup, or query-performance benefit from
 Room 3. WorkManager currently depends on Room 2, so switching Thor's own database to Room 3
@@ -18,7 +18,7 @@ would retain both runtime families. Choose `AndroidSQLiteDriver` for an initial 
 unless a separate requirement justifies shipping a bundled SQLite engine.
 
 See [APK optimization status](apk-size-optimization-status.md) for completed work, dropped
-experiments, and the separate legacy WorkManager retirement candidate.
+experiments, and the maintainer's decision to retain WorkManager for legacy-job compatibility.
 
 ## Current Thor implementation
 
@@ -58,10 +58,10 @@ our current version as abandoned or promising indefinite Room 2 support.
 The cached published Gradle metadata for `androidx.work:work-runtime:2.12.0` declares a
 runtime dependency on `androidx.room:room-runtime:2.7.0`. Thor currently selects Room 2.8.5
 through its direct declaration. Room 3 uses different coordinates and packages, so it does
-not replace WorkManager's Room 2 dependency. Both runtime families would remain unless
-that dependency changes or WorkManager is safely retired. R8 can trim unused code, but
-the exact minified APK delta has **not** been measured. Do not exclude Room 2 from
-WorkManager to force a smaller graph.
+not replace WorkManager's Room 2 dependency. The maintainer has decided to retain WorkManager,
+so both runtime families would remain unless its upstream Room dependency changes. R8 can
+trim unused code, but the exact minified APK delta has **not** been measured. Do not exclude
+Room 2 from WorkManager to force a smaller graph.
 
 | Driver | Benefit | Cost or limitation |
 | --- | --- | --- |
@@ -122,8 +122,8 @@ compatibility and exported-schema differences rather than assuming them.
       performance claim is proposed. Do not treat raw library sizes as APK deltas.
 
 No prototype, build, or device test of Room 3 was performed for this assessment. The staged
-sequence above is a recommendation, not completed work or a requirement to retire
-WorkManager first.
+sequence above is a deferred recommendation, not completed work. WorkManager remains in
+the app; its removal is not a prerequisite for a future Room 3 migration.
 
 ## Sources reviewed
 

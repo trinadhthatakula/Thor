@@ -15,10 +15,7 @@ import org.junit.Test
 class NoNewWorkRequestArchitectureTest {
 
     @Test
-    fun `only the released data compatibility boundary can enqueue WorkRequests`() {
-        val allowed = setOf(
-            "com/valhalla/thor/data/backup/job/ThorJobLauncher.kt",
-        )
+    fun `production cannot enqueue new WorkRequests`() {
         val forbidden = listOf(
             "OneTimeWorkRequestBuilder",
             "PeriodicWorkRequestBuilder",
@@ -27,7 +24,6 @@ class NoNewWorkRequestArchitectureTest {
         )
 
         val violations = productionSources()
-            .filterNot { source -> source.relativePath in allowed }
             .flatMap { source ->
                 val code = source.file.readText().withoutComments()
                 forbidden.mapNotNull { call ->

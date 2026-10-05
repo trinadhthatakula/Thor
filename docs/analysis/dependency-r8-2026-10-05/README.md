@@ -2,18 +2,26 @@
 
 **Status update, 2026-10-05:** the five dependency cleanups and Canvas replacement merged
 in [PR #558](https://github.com/trinadhthatakula/Thor/pull/558). References below to local
-implementation or Lottie as a candidate describe earlier stages. See the reconciled
-[APK optimization status](../../follow-ups/apk-size-optimization-status.md) for remaining
-work and the disposition of subsequent validation.
+implementation or Lottie as a candidate describe earlier stages. The maintainer has also
+decided to retain WorkManager for legacy-job compatibility, completing this APK optimization
+pass. Its retirement discussion below is historical analysis, not pending work. Only unused
+helpers are being cleaned up, with no measured APK-size or performance benefit. See the
+reconciled [APK optimization status](../../follow-ups/apk-size-optimization-status.md) for
+these decisions and the disposition of subsequent validation.
+
+The unused sweep execution fence described in the original core audit has been removed:
+no production caller registered with it. Legacy-chain cancellation and outcome reconciliation
+remain active; retaining historical fence details does not imply that current workers can
+register or execute through that deleted helper.
 
 Date: 2026-10-05. Topic branch: `chore/dependency-r8-cleanup`, based on `dev`
 `b679e91e` (PR #557 merge) in `~/StudioProject/Thor-worktrees/dependency-r8-cleanup`.
 The original audit baseline was `18162fe050b1360c79de0071eed4c59ddcb49622`.
 
 The audit found no large, clearly unused runtime dependency that can simply be deleted.
-It found redundant declarations and two larger
+It found redundant declarations and originally identified two larger
 replacement/migration candidates: Lottie and legacy WorkManager support. The Lottie
-replacement is now implemented locally and validated as described below. Root/IPC and
+replacement has since merged; WorkManager is retained by maintainer decision. Root/IPC and
 external extension contracts account for the broadest remaining keep rules.
 
 The maintainer discarded UAD minification/projection, license consolidation, downloadable
@@ -146,10 +154,12 @@ The resolved artifact counts changed from **158 → 155 FOSS**, **172 → 169 St
 `:app` still resolves its required AndroidX/core graph. Accompanist and adaptive-navigation
 remain transitively required. No new app runtime artifact was introduced.
 
-## Larger candidates and their constraints
+## Historical larger candidates and their constraints
 
 These numbers are **raw DEX attribution**, not expected compressed APK savings. R8 moves
 code across package boundaries, so they cannot be added to obtain a removal estimate.
+The table preserves the original assessment: Lottie was replaced, WorkManager stays, and
+the Odin experiment was not adopted. These are not pending deletion recommendations.
 
 | Candidate | FOSS retained attribution | Required work |
 | --- | ---: | --- |
