@@ -10,10 +10,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koin.core.annotation.Single
 
-/** One-shot barrier that retires the legacy WorkManager sweep chain before service claims begin. */
+/** Retires the legacy WorkManager sweep chain once per process before service claims begin. */
 @Single
 internal class PrivilegeSweepWorkManagerCutover(
-    private val fence: LegacyPrivilegeSweepExecutionFence,
     private val queueWorkManager: SweepQueueWorkManager,
     private val store: PrivilegeSweepStore,
     private val clock: PrivilegeSweepClock,
@@ -29,7 +28,6 @@ internal class PrivilegeSweepWorkManagerCutover(
                 return
             }
             gate.serialized {
-                fence.closeAdmission()
                 val legacyRequests = store.observeRetained().first()
                     .filter { snapshot ->
                         snapshot.terminalState == null &&
@@ -37,7 +35,6 @@ internal class PrivilegeSweepWorkManagerCutover(
                                 !snapshot.executionId.isPrivilegeServiceExecutionId()
                     }
                 queueWorkManager.cancelQueue()
-                fence.awaitQuiescence()
                 val nowMs = clock.nowMs()
                 legacyRequests.forEach { legacy ->
                     val current = store.load(legacy.requestId) ?: return@forEach

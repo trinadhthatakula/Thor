@@ -21,9 +21,9 @@ import java.util.UUID
 interface ExportJobLauncher : ThorJobWatcher {
 
     /**
-     * @return the enqueued job's id, or null when the request never made it into WorkManager's
-     *   database — which is a real outcome and not a theoretical one, and the caller must say so
-     *   rather than showing a progress bar for a job that will never run. See `enqueueUniqueJob`.
+     * @return the durable Room task's id, or null when acceptance failed before the task was stored.
+     *   A stored task keeps its id even if Android refuses the service wake; its observed state
+     *   reports that failure to the caller.
      */
     suspend fun startExport(request: AppExportRequest): UUID?
 

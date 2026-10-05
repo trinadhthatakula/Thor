@@ -19,24 +19,19 @@ import org.koin.core.annotation.Single
 private const val TAG = "ArchiveKeyHolder"
 
 /**
- * Hands a derived key from the confirm sheet to the worker, in memory only.
+ * Hands a derived key from the confirm sheet to the data task or legacy worker, in memory only.
  *
  * **Never put a passphrase or a derived key in a `WorkRequest`'s input `Data`.** WorkManager persists
  * `Data` to its SQLite database, so that writes key material to disk in the clear and leaves it there
  * after the job is pruned.
  *
- * The consequence is deliberate: a job whose process died has no key, so it **fails** rather than
- * retrying. `Result.retry()` is forbidden in every archive worker — WorkManager would re-run in a
- * fresh process where [take] returns null, and the user would be told much later that a backup they
- * watched start had failed.
+ * A task whose process died has no key and needs authentication again. Retained legacy archive
+ * workers report a bounded failure when [take] returns null; they never request a WorkManager retry.
  *
- * **Every entry expires.** [ThorJobWorker]'s `finally` drops the key on every path `doWork` can reach
- * and [ThorJobLauncher.cancel] covers an explicit user cancel, but neither covers a job that never
- * reaches `doWork` at all. `beginUniqueWork(…, APPEND_OR_REPLACE, …)` appends a second request as a
- * **dependent** of the one already queued, and WorkManager cancels the dependents of a prerequisite
- * that returns `Result.failure()`. So a backup that fails — a wrong passphrase, a full disk — takes
- * the restore queued behind it with it: `doWork` is never called, no `finally` runs, and without the
- * timer below that job's derived key would sit in this map for the lifetime of the process.
+ * **Every entry expires.** Acceptance, cancellation and recovery release keys when they can prove
+ * the task no longer needs them. Legacy archive workers also drop keys from [ThorJobWorker]'s
+ * completion hook. The timer covers keys no executor ever takes, including a retained WorkManager
+ * dependent cancelled before `doWork` starts, so they cannot remain for the lifetime of the process.
  *
  * @param dispatcher used for nothing but the expiry timer. Injected rather than hardcoded so the
  *   expiry can be pinned on the JVM with a `TestDispatcher`'s virtual clock — which is why this

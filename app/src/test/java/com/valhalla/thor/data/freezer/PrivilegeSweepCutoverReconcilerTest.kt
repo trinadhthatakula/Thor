@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.repository.StoredSweepTerminal
 import com.valhalla.thor.domain.repository.SweepAttemptOutcome
 import com.valhalla.thor.domain.repository.SweepCreateResult
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +22,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -29,26 +29,34 @@ import org.junit.Test
 class PrivilegeSweepCutoverReconcilerTest {
 
     @Test
-    fun `cutover closes admission then separately awaits worker body quiescence`() = runTest {
+    fun `concurrent cutovers await legacy cancellation before reconciling Room`() = runTest {
         val events = mutableListOf<String>()
-        val fence = LegacyPrivilegeSweepExecutionFence()
-        val registration = checkNotNull(fence.tryRegister())
+        val cancellation = CompletableDeferred<Unit>()
         val store = FakeStore(listOf(stored(LEGACY_ID)), events)
-        val cutover = cutover(fence, store) { events += "work-cancelled" }
+        var cancellationCalls = 0
+        val cutover = cutover(store) {
+            cancellationCalls++
+            events += "cancel-started"
+            cancellation.await()
+            events += "work-cancelled"
+        }
 
-        val result = async { cutover.awaitCompleted() }
+        val first = async { cutover.awaitCompleted() }
+        val second = async { cutover.awaitCompleted() }
         runCurrent()
 
-        assertFalse(result.isCompleted)
-        assertFalse(fence.isAdmissionOpenForTest())
-        assertNull(fence.tryRegister())
-        assertEquals(listOf("work-cancelled"), events)
+        assertFalse(first.isCompleted)
+        assertFalse(second.isCompleted)
+        assertEquals(1, cancellationCalls)
+        assertTrue(store.marked.isEmpty())
+        assertEquals(listOf("cancel-started"), events)
 
-        events += "worker-finally"
-        registration.close()
-        result.await()
+        cancellation.complete(Unit)
+        first.await()
+        second.await()
 
-        assertEquals(listOf("work-cancelled", "worker-finally", "legacy-unknown"), events)
+        assertEquals(listOf("cancel-started", "work-cancelled", "legacy-unknown"), events)
+        assertEquals(1, cancellationCalls)
     }
 
     @Test
@@ -58,7 +66,7 @@ class PrivilegeSweepCutoverReconcilerTest {
         val legacy = stored(LEGACY_ID)
         val store = FakeStore(listOf(legacy, stored(serviceId)), events)
         var cancellationCalls = 0
-        val cutover = cutover(LegacyPrivilegeSweepExecutionFence(), store) {
+        val cutover = cutover(store) {
             cancellationCalls++
         }
 
@@ -74,7 +82,7 @@ class PrivilegeSweepCutoverReconcilerTest {
         val events = mutableListOf<String>()
         val legacy = stored(LEGACY_ID)
         val store = FakeStore(listOf(legacy), events, settleCancellationOnMark = true)
-        val cutover = cutover(LegacyPrivilegeSweepExecutionFence(), store) {}
+        val cutover = cutover(store) {}
 
         cutover.awaitCompleted()
 
@@ -84,27 +92,27 @@ class PrivilegeSweepCutoverReconcilerTest {
 
     @Test
     fun `failed cutover is retried once and only successful completion is cached`() {
-        val fence = LegacyPrivilegeSweepExecutionFence()
+        val legacy = stored(LEGACY_ID)
+        val store = FakeStore(listOf(legacy), mutableListOf())
         var calls = 0
-        val cutover = cutover(fence, FakeStore(emptyList(), mutableListOf())) {
+        val cutover = cutover(store) {
             calls++
             if (calls == 1) error("WorkManager unavailable")
         }
 
         assertThrows(IllegalStateException::class.java) { runTest { cutover.awaitCompleted() } }
+        assertTrue(store.marked.isEmpty())
         runTest { cutover.awaitCompleted() }
         runTest { cutover.awaitCompleted() }
 
         assertEquals(2, calls)
-        assertFalse(fence.isAdmissionOpenForTest())
+        assertEquals(listOf(legacy.requestId), store.marked)
     }
 
     private fun cutover(
-        fence: LegacyPrivilegeSweepExecutionFence,
         store: PrivilegeSweepStore,
         cancel: suspend () -> Unit,
     ) = PrivilegeSweepWorkManagerCutover(
-        fence = fence,
         queueWorkManager = SweepQueueWorkManager { cancel() },
         store = store,
         clock = object : PrivilegeSweepClock {

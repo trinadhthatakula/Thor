@@ -110,11 +110,9 @@ fun JobPhase.reduce(status: ThorJobStatus): JobPhase = when (status) {
     // start it" rather than "Thor tried and failed".
     ThorJobStatus.Cancelled -> settle(JobFinish.Cancelled(workerRan = seenRunning))
 
-    // `Gone` is a null `WorkInfo`, and null is what "no row for this id" looks like as well as "the
-    // row was pruned". `enqueueUniqueJob` awaits the `Operation`, so an id handed back normally does
-    // have a row — but an enqueue that fails *after* the caller stopped waiting, and an id recovered
-    // from `runningJobFor` that WorkManager prunes in between, both produce a leading null. Nothing in
-    // the value distinguishes them from a terminal one; only the order does.
+    // `Gone` means the combined watcher found neither a Room task nor a legacy WorkInfo. A legacy id
+    // recovered from `runningJobFor` can be pruned before this observer sees it. The absent value
+    // alone does not distinguish that initial lookup from a record disappearing after a live state.
     //
     // After the job has been seen alive: the record went away underneath a live watcher. Terminal, but
     // with no outcome to report — hence `settle(null)` rather than a `Failed`.
