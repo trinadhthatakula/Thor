@@ -1,4 +1,5 @@
 import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.HostTestBuilder
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.FileInputStream
 import java.util.Properties
@@ -137,6 +138,20 @@ android {
             } else {
                 logger.warn("⚠️ keystore.properties not found or environment variables not set. Release build will not be signed properly.")
             }
+        }
+    }
+
+    // Keep the existing test suite on debug, as it was under AGP's default. Release and
+    // benchmark host-test components are enabled below only to supply Compose Preview resources.
+    // The Compose UI tests rely on the test activity in debugImplementation's binary manifest.
+    sourceSets {
+        getByName("test") {
+            java.directories.clear()
+            kotlin.directories.clear()
+        }
+        getByName("testDebug") {
+            java.directories.add("src/test/java")
+            kotlin.directories.addAll(listOf("src/test/java", "src/test/kotlin"))
         }
     }
 
@@ -337,6 +352,13 @@ android {
 }
 
 androidComponents {
+    // AGP 9.5 registers Compose Preview tasks for every app variant, but its default only
+    // enables unit tests for debug. Preview needs the unit-test resource APK even for release
+    // and benchmark; without it, Studio fails while collecting the Gradle task model.
+    beforeVariants(selector().all()) { variantBuilder ->
+        variantBuilder.hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = true
+    }
+
     // 0. Confine the benchmark build type to the store flavour.
     //
     // Build types and flavours are a cross product in AGP, so declaring `benchmark` would otherwise
