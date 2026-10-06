@@ -1,1 +1,1 @@
-Freeze, debloat & install apps via Shizuku, Root & Dhizuku. Ad-free & FOSS
+Freeze apps, debloat and uninstall system apps with Root, Shizuku or Dhizuku.

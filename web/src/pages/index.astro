@@ -19,10 +19,10 @@ import permissionChips from '../assets/screenshots/04-app-list-permission-chips.
 import workMode from '../assets/screenshots/05-settings-work-mode.png'
 
 const description =
-  'Thor freezes the apps your phone will not let you uninstall. Free software, no trackers, ' +
-  'and it works through root, Shizuku or Dhizuku.'
+  'Thor is an open-source Android app manager to freeze apps, debloat with UAD guidance, ' +
+  'and uninstall system apps for the current user via Root, Shizuku or Dhizuku.'
 ---
-<BaseLayout title={SITE.tagline} description={description} bareTitle>
+<BaseLayout title="Thor App Manager: Freeze & Debloat Android Apps" description={description} bareTitle>
   <Hero
     title="Turn off the apps your phone won't let you uninstall."
     primary={{ href: '/download', label: 'Download Thor' }}
@@ -43,8 +43,9 @@ const description =
   <FeatureBand id="freeze-it-and-it-stops" title="Freeze it, and it stops.">
     <p>
       A frozen app doesn't run in the background, doesn't start at boot, and doesn't appear in your
-      launcher. It isn't hidden, and wherever the platform lets Thor disable it, it isn't
-      uninstalled either — it is switched off, and you can switch it back on.
+      launcher. Where Android allows it, Thor disables the app in place. On some devices a system
+      app cannot be disabled; a separate Shizuku setting then permits removal for the current user
+      while keeping its data files, and Unfreeze reinstalls it.
     </p>
     <p>
       Freeze one app, or select forty and freeze them together. Save a group as a profile and put the
@@ -56,13 +57,10 @@ const description =
       turns grey, and tapping it unfreezes the app and opens it.
     </p>
     <p>
-      Your data stays where it is. Freezing switches an app off; it doesn't take anything away, in
-      any of the three modes. A handful of devices — some OEM builds — refuse to let a preinstalled
-      app be switched off at all, and on those, Shizuku and Dhizuku can't freeze that app. Thor
-      says so and leaves it alone. It won't remove the package to get the job done instead: you
-      asked for something reversible, and removing an app for your Android user is a different
-      thing with a different blast radius, however carefully its files are kept. Freezing those
-      apps needs Root.
+      Freezing keeps app data, but removal for the current user can affect accounts managed by that
+      app. The Shizuku removal fallback is on by default and can be turned off in Settings. Thor
+      reports a refusal if the selected mode cannot freeze the app. Unfreeze restores apps that the
+      fallback removed while their system package remains available.
     </p>
 
     <DeviceFrame

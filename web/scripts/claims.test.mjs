@@ -39,6 +39,30 @@ describe.each(claimRules.map((rule) => rule.id))('%s', (id) => {
   })
 })
 
+describe('C16 removal claims', () => {
+  const rule = claimRules.filter((candidate) => candidate.id === 'C16')
+  const violations = (text) => evaluatePage({ rel: 'index.html', text }, rule).violations
+
+  it.each([
+    'Freezing with Root removes the system app for your user.',
+    'Freezing with Dhizuku uninstalls the system app for your user.',
+    'Root freezing never fails and removes the system app for your user.',
+    'Root freezing does not disable a system app; it removes it for your user.',
+  ])('rejects %s', (text) => {
+    expect(violations(text)).toHaveLength(1)
+  })
+
+  it.each([
+    'Root freezing never removes the system app for your user.',
+    'Freezing with Root never removes the system app for your user.',
+    'Never does freezing with Root remove a system app for your user.',
+    'Never does Root freezing remove a system app for your user.',
+    'Dhizuku freezing does not use current-user removal.',
+  ])('accepts %s', (text) => {
+    expect(violations(text)).toEqual([])
+  })
+})
+
 describe('the shapes that make a gate stop being a gate', () => {
   it('fails when it scanned no pages', async () => {
     const { failures, counts } = await scan(fixture('C1', 'nowhere'))
