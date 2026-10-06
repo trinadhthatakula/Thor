@@ -3,8 +3,15 @@
 The Google Play title, short description and full description live in
 `fastlane/metadata/android/{en-US,en-GB,hi-IN}/`. Keep the English Shizu Store
 copy in `shizu_store.json` aligned with `en-US`, and its Hindi copy aligned with
-`hi-IN`. The app name in the Shizu manifest follows the Play title. The website
+`hi-IN`, including the localized title. The main app name in the Shizu manifest
+follows the en-US Play title. The website
 homepage and feature page should use the same feature vocabulary and limits.
+
+Fastlane currently has Play listing text only for `en-US`, `en-GB`, and `hi-IN`.
+Shizu Store also has Arabic, Spanish, French, European Portuguese, and Chinese
+descriptions and localized app names in `shizu_store.json`. These Shizu-only
+translations do not automatically create Google Play locale listings. Review
+every localized claim against the current app before reusing that copy on Play.
 
 The Play phone screenshots and feature graphic are generated from reviewed,
 real app captures under `web/src/assets/screenshots/` and

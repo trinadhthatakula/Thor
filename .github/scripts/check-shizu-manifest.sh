@@ -149,15 +149,27 @@ compare_text() {
     diff <(printf '%s\n' "$from_file") <(printf '%s\n' "$from_json") >&2 || true
   fi
 }
+compare_text "app_name"             '.app_name'             "$FASTLANE/en-US/title.txt"
 compare_text "short_description"    '.short_description'    "$FASTLANE/en-US/short_description.txt"
 compare_text "detailed_description" '.detailed_description' "$FASTLANE/en-US/full_description.txt"
 
 for loc in $(jq -r 'if has("locales") then .locales | keys[] else empty end' "$MANIFEST"); do
   dir="$(fastlane_dir_for_locale "$loc")"
   [ -n "$dir" ] || continue
+  compare_text "locales.$loc.app_name"             ".locales.\"$loc\".app_name"             "$FASTLANE/$dir/title.txt"
   compare_text "locales.$loc.short_description"    ".locales.\"$loc\".short_description"    "$FASTLANE/$dir/short_description.txt"
   compare_text "locales.$loc.detailed_description" ".locales.\"$loc\".detailed_description" "$FASTLANE/$dir/full_description.txt"
 done
+
+section "title length"
+for f in "$FASTLANE"/*/title.txt; do
+  [ -f "$f" ] || continue
+  n="$(jq -Rs 'rtrimstr("\n") | length' < "$f")"
+  if [ "$n" -le 30 ]; then ok "$f is $n chars"; else fail "$f is $n chars, over Play's 30"; fi
+done
+while read -r label len; do
+  if [ "$len" -le 30 ]; then ok "$label is $len chars"; else fail "$label is $len chars, over the listing's 30-char target"; fi
+done < <(jq -r '["en", (.app_name|length)], (if has("locales") then (.locales|to_entries[]|select(.value.app_name != null)|[.key, (.value.app_name|length)]) else empty end) | @tsv' "$MANIFEST")
 
 section "short_description length"
 # jq's length counts Unicode codepoints, which is what Google Play limits.

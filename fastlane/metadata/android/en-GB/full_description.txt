@@ -1,22 +1,33 @@
-Thor is an open-source Android app manager, app freezer and system app uninstaller. Browse installed apps, freeze apps, debloat with safety guidance, install APK bundles and manage multiple apps at once. Root, Shizuku or Dhizuku enables privileged actions; you can browse and search apps without granting any of them.
+Thor is a free, open-source Android app manager, app freezer, system app uninstaller and APK installer. Search apps, freeze bloatware, debloat with guidance, install APK bundles and run batch actions. Root, Shizuku or Dhizuku unlocks privileged tools; browsing and searching apps needs none of them.
 
 FREEZE APPS AND DEBLOAT
-• Freeze and unfreeze user or system apps while retaining their data. The method depends on your privilege mode and device.
-• Keep track of frozen apps in the Freezer, and group actions with Freeze Profiles.
-• Review Universal Android Debloater (UAD) recommendations before changing system apps. Thor blocks Unsafe freeze targets and warns about Expert targets.
-• Uninstall a system app for the current Android user when supported, or restore an app whose package remains on the device. This does not remove the system APK from the device partition.
+• Freeze or unfreeze apps to stop them running while keeping their data. Track them in the Freezer or group them into Freeze Profiles.
+• Suspend or unsuspend apps, force stop them, and manage supported background restrictions. Methods vary by mode and device.
+• Review Universal Android Debloater (UAD) advice before changing system apps. Filter by Recommended, Advanced, Expert, Unsafe or Unknown. Thor blocks Unsafe freeze targets and warns about Expert ones. UAD advice is not a guarantee.
+• Uninstall a system app for the current Android user when supported, then restore it if its package remains on the device. Thor does not erase the system APK from the device partition. Shizuku's configurable removal fallback keeps data files when disabling is refused, but may affect app-managed accounts.
 
-MANAGE AND INSTALL APPS
-• Search, sort and filter user and system apps by source, state and permissions. Inspect app details and export your app list to CSV.
-• Install APK, APKM, APKS and XAPK packages, including supported OBB assets. Export and share installer bundles.
-• Run supported batch actions such as freeze, unfreeze, uninstall, reinstall, suspend, force stop and cache clearing.
-• Manage supported runtime permissions, App Ops and app components where your privilege mode allows it.
-• Back up and restore supported app bundles. Root is required to include private app data.
+FIND AND MANAGE INSTALLED APPS
+• Browse user apps, preinstalled system apps and packages removed for the current user. Filter by source, state, permissions and UAD advice.
+• See frozen, suspended, hidden and split-package states. Choose list or grid view and export the app list to CSV.
+• Open App Info for package details and quick actions. Reorder or hide quick actions.
+• Select multiple apps for supported batch freeze, unfreeze, uninstall, reinstall, suspend, unsuspend, force stop, cache clearing, sharing or APK export. Batch install and batch clear data are not available.
 
-DO I NEED ROOT?
-No. Shizuku and Dhizuku provide alternative privileged modes, though each needs separate setup. Without a privileged mode, Thor can still browse, search and filter installed apps. Some actions, including private app-data backup, require Root; available actions vary by mode and Android device.
+APK INSTALLER, EXPORT AND BACKUP
+• Install APK, APKM, APKS and XAPK files, including supported OBB expansion assets. Use Android's installer or a configured Root, Shizuku or Dhizuku mode, where supported.
+• Export an app as APK, APKS or XAPK; share apps or export selected apps as installer bundles. Fix Store can restore Play installer attribution for eligible reinstalls with Root or Shizuku.
+• Use the Backup & Restore hub to find, inspect, share, back up or restore app bundles and encrypted .thorbak archives. Root can include private app data; non-root modes have narrower access. Backup passphrases cannot be recovered.
+• Guardians shows progress, logs, results and cancellation for supported long-running tasks.
 
-PRIVATE BY DESIGN
-Thor is free software under GPL-3.0-or-later, with no ads, analytics or trackers. The optional Extension Manager uses the network to fetch a catalogue and verified extensions; the Play build also supports optional purchases through Google Play Billing. Core app-management tools work offline.
+PERMISSIONS AND POWER TOOLS
+• Grant or revoke supported runtime permissions per app. With Root or Shizuku, inspect and change supported App Ops modes, search them and reset to platform defaults.
+• Inspect activities, services, receivers and providers. Where your mode allows it, open activities or enable, disable and restore components.
+• Clear app data, clear supported caches and restrict background activity. Availability varies by mode and device.
+• Built-in Sett Edit lets Root or Shizuku users inspect Android settings and preview changes to supported System, Secure and Global values with confirmation and readback.
 
-Freeze apps, debloat carefully and take control of your Android apps with Thor App Manager.
+ROOT, SHIZUKU OR DHIZUKU
+Root offers the broadest set of actions. Shizuku works without root after its separate service setup; Dhizuku uses Device Owner access and has its own setup. Without privilege, you can still browse, search and filter apps. Thor shows when an action is unavailable instead of silently claiming it worked.
+
+PRIVATE AND PERSONAL
+No ads, analytics or trackers. The optional Extension Manager connects to download a catalogue and verified extensions; the Play build also uses Google Play Billing for optional support. Core app-management tools work offline. Thor is GPL-3.0-or-later free software, with Material 3 themes, AMOLED mode, tablet and foldable layouts, a biometric lock and an in-app language switcher.
+
+Take control of your apps with Thor.
