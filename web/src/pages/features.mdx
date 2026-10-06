@@ -545,12 +545,10 @@ written.
 <h3 id="status-chips">Status at a glance</h3>
 
 Chips and icons mark apps that are frozen, suspended, split-APK installs, debuggable builds, and
-packages UAD flags as bloat. A system app taken away from your Android user reads as frozen rather
-than as a separate state, because Thor folds the installed flag into the same answer. Uninstalling
-or debloating a system app still puts it there, and that is the honest reading of both — the app is
-gone for you and still on the partition. What no longer puts it there is a freeze: that substitution
-was [withdrawn](/features#freeze-suspend-force-stop). A device an older build ran on can still be
-sitting in the state for that reason too, so the chip stays either way.
+packages UAD flags as bloat. A system app removed for your Android user also shows the frozen chip:
+Thor folds the installed flag into the same state. Both an explicit system-app uninstall and a
+Shizuku-assisted freeze using the configured removal fallback can leave it there. The system APK
+remains on the device partition; the chip alone does not show which action removed it.
 
 <h3 id="home-dashboard">Home dashboard</h3>
 

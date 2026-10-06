@@ -46,6 +46,10 @@
 const NEGATED =
   /\b(?:no longer|not|never|none|doesn'?t|does not|did ?n'?t|isn'?t|is not|won'?t|will not|cannot|can'?t|used to|rather than|instead of|no reason)\b/i
 
+/** C16 exempts a negated removal claim, not an unrelated negation earlier in the sentence. */
+const C16_NEGATED_REMOVAL =
+  /(?:\b(?:not|never|no longer|cannot|can'?t|doesn'?t|does not|don'?t|do not|won'?t|will not|isn'?t|is not|without)\s+(?:(?:automatically|always|ever|directly|necessarily|actually)\s+)?(?:(?:use(?:s)?|cause(?:s)?|trigger(?:s)?|lead(?:s)? to|result(?:s)? in)\s+)?(?:(?:a|an|the|any|current-user)\s+){0,2}|\bnever\s+(?:does|can|will)\s+(?:(?:Root|Dhizuku)\s+freez\w*|freez\w*\s+(?:with|via|under)\s+(?:Root|Dhizuku))\s+)(?:remov\w*|uninstall\w*)\b$/i
+
 /** @type {ReadonlyArray<import('../../scripts/lib/claims-engine.mjs').ClaimRule>} */
 export const claimRules = [
   {
@@ -474,9 +478,10 @@ export const claimRules = [
     appliesTo: '**',
     patterns: [
       /\b(?:Root|Dhizuku)\b[^.]{0,140}?\b(?:freez\w*|frozen)\b[^.]{0,100}?\b(?:remov\w*|uninstall\w*)\b/i,
+      /\b(?:freez\w*|frozen)\b[^.]{0,110}?\b(?:Root|Dhizuku)\b[^.]{0,100}?\b(?:remov\w*|uninstall\w*)\b/i,
       /\b(?:freez\w*|frozen)\b[^.]{0,110}?\b(?:always|automatically|in every mode)\b[^.]{0,90}?\b(?:remov\w*|uninstall\w*)\b/i,
     ],
-    unless: NEGATED,
+    unless: C16_NEGATED_REMOVAL,
     rationale:
       'The current removal fallback is limited to Shizuku, a system app, a platform refusal ' +
       'to disable it, and the user-controlled setting. Root and Dhizuku cannot reach that rung. ' +
