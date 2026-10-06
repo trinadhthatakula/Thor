@@ -78,8 +78,18 @@ const jsonLd = {
         price: '0',
         priceCurrency: 'USD',
       },
-      description: 'Free and open-source Android app manager to freeze, suspend, debloat, and manage system and user applications via Root, Shizuku, or Dhizuku.',
+      description: 'Open-source Android app manager and freezer to debloat, install APK bundles, and uninstall system apps for the current user via Root, Shizuku, or Dhizuku.',
       url: SITE.origin,
+      sameAs: [
+        'https://play.google.com/store/apps/details?id=com.valhalla.thor',
+        'https://github.com/trinadhthatakula/Thor',
+      ],
+      featureList: [
+        'Freeze and unfreeze Android apps',
+        'Debloat system apps with Universal Android Debloater guidance',
+        'Uninstall system apps for the current Android user',
+        'Install APK, APKM, APKS and XAPK bundles',
+      ],
       downloadUrl: 'https://github.com/trinadhthatakula/Thor/releases/latest',
       license: 'https://www.gnu.org/licenses/gpl-3.0.html',
       author: {

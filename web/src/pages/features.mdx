@@ -1,7 +1,7 @@
 ---
 layout: ../layouts/PageLayout.astro
 title: Features
-description: Every feature in Thor — three privilege engines, the installer, the freezer and its safety gate, per-component control, batch operations, and what each mode can do.
+description: Thor is an Android app manager, freezer and system app uninstaller. Explore debloating with UAD guidance, APK installation, batch actions and Root, Shizuku or Dhizuku modes.
 lead: Nine areas, in the order they matter. Each one says what works, what does not, and which privilege mode you need for it.
 index:
   - id: privilege-engines
@@ -235,19 +235,15 @@ This is the single most common confusion, so here it is in a table:
 Force-stop is momentary: an alarm, a job or a push message brings the app straight back. Freeze and
 Suspend are persistent states. Which of the two Thor uses is a single global Freezer setting.
 
-Under the hood, freezing a **user app** disables it. Freezing a **system app** switches it off in
-place as well — the package stays installed and its data stays on disk. That is the only mechanic
-Thor has for a freeze, in every privilege mode.
+Under the hood, freezing a **user app** disables it. Thor normally disables a **system app** in
+place too, keeping its package installed and its data on disk. Some OEM builds refuse to let
+Shizuku disable preinstalled packages. Thor's default-on Shizuku removal fallback can then remove
+the app for the current Android user with <code>pm uninstall -k --user N</code>, which keeps its data
+files. Unfreeze reinstalls the package. You can turn off this fallback in Settings; a refused
+disable then fails rather than removing the app.
 
-Some OEM builds — Xiaomi's HyperOS is the one that was reported and reproduced — refuse to let
-anything but root disable their own preinstalled packages. Where Thor meets that refusal it stops
-and tells you, and the message distinguishes the two cases that look identical from the outside: a
-device that actively refused, and a failure with no refusal behind it. The second one is Thor's bug
-to fix and says so.
-
-<Callout tone="warning" title="On those devices, Shizuku and Dhizuku can't freeze that app at all">
-  <p>This is a real capability gap and not a wording change. Earlier builds substituted <code>pm uninstall -k --user N</code> here, which takes the package away for your Android user while keeping its data directories on disk. That substitution has been withdrawn. Freezing those apps now needs Root.</p>
-  <p>Why withdraw something that worked: <code>-k</code> keeps the data, but nothing keeps the installed flag, and an app needs that to stay visible to anything managing accounts or sync for it. Swapping a reversible switch-off for a removal is a decision with a different blast radius, and Thor was making it silently — no dialog, no mention of the mechanic, and a success message at the end. The trade is a capability lost on some devices against no device ever losing a package its owner did not agree to lose.</p>
+<Callout tone="warning" title="Current-user removal has different effects from disabling">
+  <p>Even when data files remain, an app removed for the current user can lose accounts it manages. Check the setting before freezing system apps on a device that refuses to disable them. Neither method erases the system APK from the device partition.</p>
 </Callout>
 
 <h3 id="watchlist">The watchlist</h3>
@@ -351,9 +347,10 @@ bad data file would strand every frozen system app on the device.
 <h3 id="getting-things-back">Getting things back</h3>
 
 - **User app, frozen** — always recoverable, no data loss.
-- **System app, frozen** — switched off in place, so nothing is removed and its data is kept. On
-  devices that refuse to switch a preinstalled app off, there is nothing to get back: the freeze
-  did not happen, Thor said so, and the app was left running. Freezing those needs Root.
+- **System app, frozen** — usually switched off in place. With Shizuku's removal fallback, it can
+  instead be removed for the current user while data files remain; Unfreeze reinstalls it. Accounts
+  managed by that app may still be affected. If the selected mode cannot freeze it, Thor reports
+  failure and leaves the app active.
 - **System app, debloated** — recoverable with `pm install-existing`, as long as the APK is still on
   the system partition. It is the same file that shipped with your phone, so this is the normal
   case.
