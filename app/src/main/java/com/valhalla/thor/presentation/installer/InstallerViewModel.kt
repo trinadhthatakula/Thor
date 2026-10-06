@@ -13,7 +13,9 @@ import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.AppMetadata
+import com.valhalla.thor.domain.model.InstallSessionUnresolved
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
+import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.isVersionDowngrade
 import com.valhalla.thor.domain.model.requiresLowTargetSdkBypass
 import com.valhalla.thor.domain.model.supportsLowTargetSdkBypass
@@ -21,7 +23,7 @@ import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.supportsInstallTimePermissionGrants
@@ -33,9 +35,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
@@ -51,6 +56,8 @@ internal suspend fun runInstallerPresentationBoundary(
         install()
     } catch (cancelled: CancellationException) {
         throw cancelled
+    } catch (unresolved: InstallSessionUnresolved) {
+        eventBus.emit(InstallState.Error(UiText.DynamicString(requireNotNull(unresolved.message))))
     } catch (_: PrivilegeExecutionException) {
         eventBus.emit(
             InstallState.Error(UiText.StringResource(R.string.unknown_error_occurred))
@@ -64,7 +71,7 @@ class InstallerViewModel(
     private val analyzer: AppAnalyzer,
     private val eventBus: InstallerEventBus,
     private val packageManager: PackageManager,
-    private val systemRepository: SystemRepository,
+    private val privilegeState: PrivilegeStateProvider,
     private val preferenceRepository: PreferenceRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -161,6 +168,16 @@ class InstallerViewModel(
     // (e.g. one that merely observed the bus) can't clobber a terminal Success / ReadyToInstall
     // that a different, still-alive InstallerViewModel is displaying.
     private var ownsInstall = false
+    private var modeSelectionReady = false
+    private var modeSelectedByUser = false
+
+    init {
+        viewModelScope.launch {
+            privilegeState.state.filter { it.isReady }.collect { privileges ->
+                if (modeSelectionReady) updateAvailableModes(privileges)
+            }
+        }
+    }
 
     fun resetState() {
         invalidateLegacyConfirmation()
@@ -183,6 +200,8 @@ class InstallerViewModel(
     }
 
     fun parsePackage(uri: Uri) {
+        modeSelectionReady = false
+        modeSelectedByUser = false
         pendingUri = uri
         ownsInstall = true
         // A new package is a new question. Without this the box stays ticked from the previous
@@ -216,15 +235,18 @@ class InstallerViewModel(
                     val meta = analysis.metadata
                     currentPackageName = meta.packageName
 
-                    // getPackageInfo() and the privilege checks in checkPrivilegeAndModes()
-                    // (isShizukuAvailable()/isDhizukuAvailable() are synchronous binder IPC)
-                    // must not run on the main thread.
+                    // Reuse the shared startup result. A direct root probe can be busy while
+                    // Shizuku or Dhizuku is available, so parsing must not run its own probes.
+                    // Slow startup must not prevent the ordinary Android installer from being
+                    // offered. The collector still adds privileged modes if readiness arrives later.
+                    val privileges = withTimeoutOrNull(10_000) {
+                        privilegeState.state.first { it.isReady }
+                    }
+                    updateAvailableModes(privileges ?: PrivilegeState())
+                    modeSelectionReady = true
+
+                    // PackageManager is synchronous binder IPC; keep it off the main thread.
                     val existing = withContext(ioDispatcher) {
-                        // Privilege detection is best-effort: an unexpected repository/
-                        // binder IPC exception must not crash package parsing. On failure
-                        // the available modes simply stay at their defaults (NORMAL) and
-                        // parsing still proceeds to getPackageInfo so the user can install.
-                        runCatching { checkPrivilegeAndModes(meta.packageName) }
                         runCatching {
                             packageManager.getPackageInfo(meta.packageName, 0)
                         }.getOrNull()
@@ -258,24 +280,33 @@ class InstallerViewModel(
         }
     }
 
-    private suspend fun checkPrivilegeAndModes(packageName: String) {
+    private fun updateAvailableModes(privileges: PrivilegeState) {
         val modes = mutableListOf(InstallMode.NORMAL)
-        if (systemRepository.isRootAvailable()) modes.add(InstallMode.ROOT)
-        if (systemRepository.isShizukuAvailable()) modes.add(InstallMode.SHIZUKU)
-        if (systemRepository.isDhizukuAvailable()) modes.add(InstallMode.DHIZUKU)
-        
+        if (privileges.root) modes.add(InstallMode.ROOT)
+        if (privileges.shizuku) modes.add(InstallMode.SHIZUKU)
+        if (privileges.dhizuku) modes.add(InstallMode.DHIZUKU)
+
         _availableModes.value = modes
-        
-        // Pick best available mode
-        _installMode.value = when {
-            modes.contains(InstallMode.DHIZUKU) -> InstallMode.DHIZUKU
-            modes.contains(InstallMode.SHIZUKU) -> InstallMode.SHIZUKU
-            modes.contains(InstallMode.ROOT) -> InstallMode.ROOT
-            else -> InstallMode.NORMAL
+        // Keep an explicit choice while it remains usable. EXTERNAL is the separate hand-off
+        // action and does not require any of Thor's privilege providers.
+        val current = _installMode.value
+        val selected = if (modeSelectedByUser && (current in modes || current == InstallMode.EXTERNAL)) {
+            current
+        } else {
+            modeSelectedByUser = false
+            when {
+                modes.contains(InstallMode.DHIZUKU) -> InstallMode.DHIZUKU
+                modes.contains(InstallMode.SHIZUKU) -> InstallMode.SHIZUKU
+                modes.contains(InstallMode.ROOT) -> InstallMode.ROOT
+                else -> InstallMode.NORMAL
+            }
         }
+        if (selected != current) invalidateLegacyConfirmation()
+        _installMode.value = selected
     }
 
     fun setInstallMode(mode: InstallMode) {
+        modeSelectedByUser = true
         if (mode != _installMode.value) invalidateLegacyConfirmation()
         _installMode.value = mode
     }
@@ -370,6 +401,9 @@ class InstallerViewModel(
         } else {
             false
         }
+        // Tapping Install accepts the displayed mode, even when it was selected automatically.
+        // A newly available provider must not supersede its preference read or confirmation.
+        modeSelectedByUser = true
         val request = InstallRequest(selectionRevision, analysis, uri, mode, allowDowngrade, grantAll)
         val legacyInstall = supportsLowTargetSdkBypass(mode, Build.VERSION.SDK_INT) &&
             requiresLowTargetSdkBypass(analysis.metadata.targetSdk, Build.VERSION.SDK_INT)

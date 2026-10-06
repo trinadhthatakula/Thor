@@ -7,8 +7,8 @@ data class UserPreferences(
     // App List Sorting & Filtering
     val appSortBy: SortBy = SortBy.NAME,
     val appSortOrder: SortOrder = SortOrder.ASCENDING,
-    val appFilterType: FilterType = FilterType.Source,
-    val appSelectedFilter: String = "All",
+    val userAppFilter: AppFilterPreferences = AppFilterPreferences(),
+    val systemAppFilter: AppFilterPreferences = AppFilterPreferences(),
 
     // Navigation — the tab Thor opens on at launch
     val defaultTab: DefaultTab = DefaultTab.HOME,
@@ -33,6 +33,9 @@ data class UserPreferences(
 
     // Work Mode
     val preferredPrivilegeMode: PrivilegeMode? = null,
+
+    /** Device-local shortcut selected by the user; it does not establish root access. */
+    val selectedRootManagerPackage: String? = null,
 
     // Localization
     val language: String? = null, // null means System Default
@@ -134,6 +137,11 @@ data class UserPreferences(
      */
     val settingsLost: Boolean = false
 ) {
+    fun appFilterFor(type: AppListType): AppFilterPreferences = when (type) {
+        AppListType.USER -> userAppFilter
+        AppListType.SYSTEM -> systemAppFilter
+    }.normalizedFor(type)
+
     fun multiAppActionsOrder(layout: MultiAppActionLayout): List<MultiAppActionId> = when (layout) {
         MultiAppActionLayout.APP_LIST -> appListMultiActionsOrder
         MultiAppActionLayout.FREEZER -> freezerMultiActionsOrder

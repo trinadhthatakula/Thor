@@ -5,13 +5,16 @@ package com.valhalla.thor.data.freezer
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.core.net.toUri
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.data.repository.RoomPrivilegeSweepStore
+import com.valhalla.thor.data.service.ForegroundPendingIntentNamespace
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.domain.model.*
 import com.valhalla.thor.domain.repository.*
@@ -57,7 +60,7 @@ class PrivilegeSweepServiceIntegrationTest {
         val reconciler = PrivilegeSweepReconciler(store, clock, gate)
         val verifier = PrivilegeSweepReinstallPostconditionVerifier { _, _, _, _ -> ReinstallPostcondition.UNKNOWN }
         val runtime = RoomPrivilegeSweepDrainRuntime(context,
-            PrivilegeSweepWorkManagerCutover(LegacyPrivilegeSweepExecutionFence(), SweepQueueWorkManager {}, store, clock, gate),
+            PrivilegeSweepWorkManagerCutover(SweepQueueWorkManager {}, store, clock, gate),
             reconciler, verifier, store,
             object : PrivilegeStateProvider { override val state = MutableStateFlow(PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true)) },
             PrivilegeSweepItemExecutor { snapshot, _ ->
@@ -97,23 +100,22 @@ class PrivilegeSweepServiceIntegrationTest {
         val b = create()
         start(a)
         awaitEntered(a, "A")
-        val original = notification()
+        val original = notification(a)
         val cancelA = original.actions.single().actionIntent
+        assertNotNull(original.contentIntent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             assertTrue(cancelA.isImmutable)
         }
         start(b)
-        assertNotNull("repeat wake changed A cancellation identity", withTimeoutOrNull(10_000) {
-            while (notification().actions.single().actionIntent != cancelA) delay(20)
-            true
-        })
-        assertEquals(original.extras.getCharSequence(Notification.EXTRA_TEXT).toString(), notification().extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        val repeated = notification(a)
+        assertEquals("repeat wake changed A cancellation identity", cancelA, repeated.actions.single().actionIntent)
+        assertEquals("repeat wake changed A content identity", original.contentIntent, repeated.contentIntent)
         cancelA.send()
         assertNotNull("cancel A did not admit B: A=${store.load(a)} B=${store.load(b)} owner=${owners.ownedRequestForTest()}",
             withTimeoutOrNull(10_000) { entered.getValue(b).await(); true })
         assertEquals(StoredSweepTerminal.CANCELLED, store.load(a)?.terminalState)
         assertEquals(PrivilegeSweepRequestState.RUNNING, store.load(b)?.requestState)
-        val cancelB = notification().actions.single().actionIntent
+        val cancelB = notification(b).actions.single().actionIntent
         assertNotEquals(cancelA, cancelB)
         cancelA.send()
         delay(100)
@@ -126,17 +128,21 @@ class PrivilegeSweepServiceIntegrationTest {
         val a = create()
         startWithoutRequest()
         awaitEntered(a, "A")
-        val original = notification()
+        val original = notification(a)
         val cancelA = original.actions.single().actionIntent
+        assertNotNull(original.contentIntent)
 
         startWithoutRequest()
-        assertNotNull("requestless repeat wake replaced A cancellation identity", withTimeoutOrNull(10_000) {
-            while (notification().actions.single().actionIntent != cancelA) delay(20)
-            true
-        })
+        val repeated = notification(a)
         assertEquals(
-            original.extras.getCharSequence(Notification.EXTRA_TEXT).toString(),
-            notification().extras.getCharSequence(Notification.EXTRA_TEXT).toString(),
+            "requestless repeat wake replaced A cancellation identity",
+            cancelA,
+            repeated.actions.single().actionIntent,
+        )
+        assertEquals(
+            "requestless repeat wake replaced A content identity",
+            original.contentIntent,
+            repeated.contentIntent,
         )
 
         release.getValue(a).complete(Unit)
@@ -192,17 +198,35 @@ class PrivilegeSweepServiceIntegrationTest {
     private fun startWithoutRequest() {
         context.startForegroundService(Intent(context, PrivilegeSweepService::class.java))
     }
-    private suspend fun notification(): Notification {
+    private suspend fun notification(requestId: UUID? = null): Notification {
         var posted: Notification? = null
         withTimeoutOrNull(10_000) {
             while (posted == null) {
+                // Executor entry does not guarantee that the system has published its notification
+                // update. Look up the existing action without creating or updating it ourselves.
+                val expectedCancel = requestId?.let { id ->
+                    PendingIntent.getBroadcast(
+                        context,
+                        ForegroundPendingIntentNamespace.PRIVILEGED_CANCELLATION.requestCode(id),
+                        PrivilegeSweepCancelReceiver.intent(context, id)
+                            .setData("thor://privilege-sweep/$id/cancel".toUri()),
+                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+                    )
+                }
                 posted = context.getSystemService(NotificationManager::class.java).activeNotifications
                     .firstOrNull { it.id == PrivilegeSweepServiceNotification.NOTIFICATION_ID }
                     ?.notification
+                    ?.takeIf { current ->
+                        requestId == null ||
+                            (expectedCancel != null &&
+                                current.actions?.singleOrNull()?.actionIntent == expectedCancel)
+                    }
                 if (posted == null) delay(20)
             }
         }
-        return requireNotNull(posted) { "privilege foreground notification was not posted" }
+        return requireNotNull(posted) {
+            "privilege foreground notification was not posted (requestId=$requestId)"
+        }
     }
     private suspend fun awaitEntered(id: UUID, label: String) {
         val admitted = withTimeoutOrNull(10_000) { entered.getValue(id).await(); true }

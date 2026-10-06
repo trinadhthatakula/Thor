@@ -21,6 +21,7 @@ import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.bundleFileNameFor
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -63,6 +64,7 @@ class AppBundleBuilderImpl(
     private val apksMetadataGenerator: ApksMetadataGenerator,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : AppBundleBuilder {
+    private val exportRootStaging = RootExportStaging(File(context.noBackupFilesDir, "root_export_staging"))
     override suspend fun build(
         appInfo: AppInfo,
         cacheSubDir: String,
@@ -86,6 +88,33 @@ class AppBundleBuilderImpl(
         execution: PrivilegeExecutionContext,
         progress: VerifiedProgress,
         operationBoundary: VerifiedOperationBoundary,
+    ): Result<File> = buildBundle(
+        appInfo, cacheSubDir, format, fileName, execution, progress, operationBoundary,
+        isolateRootCopy = false,
+    )
+
+    override suspend fun buildExportWithProgress(
+        appInfo: AppInfo,
+        cacheSubDir: String,
+        format: BundleFormat,
+        fileName: String?,
+        execution: PrivilegeExecutionContext,
+        progress: VerifiedProgress,
+        operationBoundary: VerifiedOperationBoundary,
+    ): Result<File> = buildBundle(
+        appInfo, cacheSubDir, format, fileName, execution, progress, operationBoundary,
+        isolateRootCopy = true,
+    )
+
+    private suspend fun buildBundle(
+        appInfo: AppInfo,
+        cacheSubDir: String,
+        format: BundleFormat,
+        fileName: String?,
+        execution: PrivilegeExecutionContext,
+        progress: VerifiedProgress,
+        operationBoundary: VerifiedOperationBoundary,
+        isolateRootCopy: Boolean,
     ): Result<File> = withContext(ioDispatcher) {
         // Per-package subdir. Bulk share builds each selected app sequentially into
         // the same cacheSubDir and hands all the resulting content:// URIs to
@@ -114,6 +143,7 @@ class AppBundleBuilderImpl(
             File(it, "${ObbExportStagingDir.NAME}/scoped/$scope/${appInfo.packageName}")
         }
         try {
+            if (isolateRootCopy) exportRootStaging.sweep()
             if (cacheDir.exists()) cacheDir.deleteRecursively()
             cacheDir.mkdirs()
 
@@ -133,7 +163,8 @@ class AppBundleBuilderImpl(
                         finalFile,
                         execution,
                         progress,
-                        operationBoundary
+                        operationBoundary,
+                        if (isolateRootCopy) appInfo.packageName else null,
                     )
                 ) {
                     throw IllegalStateException("Failed to copy base APK")
@@ -163,7 +194,10 @@ class AppBundleBuilderImpl(
                 // which wipes the staging dir with it.
                 val apkFiles = plan.map { (path, name) ->
                     val destFile = File(tempSplitDir, name)
-                    if (!copyFileSafely(path, destFile, execution, progress, operationBoundary)) {
+                    if (!copyFileSafely(
+                            path, destFile, execution, progress, operationBoundary,
+                            if (isolateRootCopy) appInfo.packageName else null,
+                        )) {
                         throw IllegalStateException("Failed to copy APK: $name")
                     }
                     destFile
@@ -483,6 +517,7 @@ class AppBundleBuilderImpl(
         execution: PrivilegeExecutionContext,
         progress: VerifiedProgress,
         operationBoundary: VerifiedOperationBoundary,
+        exportPackage: String? = null,
     ): Boolean {
         val source = File(sourcePath)
         val expectedBytes = source.length()
@@ -497,11 +532,22 @@ class AppBundleBuilderImpl(
         } catch (_: Exception) {
             val copied = executeRootCopyWithVerifiedBoundary(
                 operation = {
-                    systemRepository.copyFileWithRoot(
-                        sourcePath,
-                        destFile.absolutePath,
-                        execution.withExportRootDeadline(),
-                    )
+                    if (exportPackage == null) {
+                        systemRepository.copyFileWithRoot(
+                            sourcePath, destFile.absolutePath, execution.withExportRootDeadline(),
+                        )
+                    } else {
+                        exportRootStaging.copy(
+                            source = sourcePath,
+                            destination = destFile,
+                            execution = execution.withExportRootDeadline().copy(
+                                lane = PrivilegeExecutionLane.ARCHIVE,
+                                packageName = execution.packageName ?: exportPackage,
+                            ).also { it.provenance = execution.provenance },
+                            copy = systemRepository::copyFileWithRoot,
+                        )
+                        Result.success(Unit)
+                    }
                 },
                 boundary = operationBoundary,
             )

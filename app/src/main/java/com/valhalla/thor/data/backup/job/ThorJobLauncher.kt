@@ -4,13 +4,8 @@
 package com.valhalla.thor.data.backup.job
 
 import android.content.Context
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequest
-import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import com.google.common.util.concurrent.ListenableFuture
-import com.valhalla.thor.ThorApplication
 import com.valhalla.thor.data.source.local.room.DataTaskDao
 import com.valhalla.thor.data.source.local.room.DataTaskSnapshot
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
@@ -28,17 +23,12 @@ import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.domain.repository.ThorJobWatcher
 import com.valhalla.thor.util.Logger
 import java.util.UUID
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.Executor
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
@@ -46,12 +36,11 @@ import org.koin.core.annotation.Single
 private const val TAG = "ThorJobLauncher"
 
 /**
- * The one place a Thor archive job is started — and the one place one is cancelled.
+ * Accepts archive jobs into the Room-backed data queue and observes new and legacy jobs.
  *
- * **Key derivation happens here, in the foreground, not in the worker.** PBKDF2 at 210 000 iterations
- * takes a noticeable moment, and the screen that has the passphrase is the only place with something
- * to show while it runs. It is also the only way the worker never sees a passphrase: the derived key
- * goes into [ArchiveKeyHolder] under the request's id and the passphrase stays with the caller.
+ * [DataTaskAcceptance] derives the key before accepting the task. PBKDF2 at 210 000 iterations
+ * runs on the default dispatcher while the confirm sheet shows progress. Only the derived key goes
+ * into [ArchiveKeyHolder] under the task's id; the passphrase stays with the caller.
  */
 // ThorJobWatcher is listed explicitly even though ArchiveJobLauncher extends it: Koin binds exactly
 // the types named here and does not walk a supertype chain, so `ExportJobLauncherImpl`'s delegate
@@ -60,12 +49,9 @@ private const val TAG = "ThorJobLauncher"
 @Single(binds = [ArchiveJobLauncher::class, ThorJobWatcher::class])
 class ThorJobLauncher(
     private val context: Context,
-    private val keys: ArchiveKeyHolder,
     private val acceptance: DataTaskAcceptance,
-    private val cancellation: DataTaskCancellationCoordinator,
     dataTaskDao: DataTaskDao,
     @Named("default") private val defaultDispatcher: CoroutineDispatcher,
-    @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ArchiveJobLauncher {
 
     private val dataTasks = DataTaskStore(dataTaskDao)
@@ -105,8 +91,8 @@ class ThorJobLauncher(
      *   differed would then be derived wrong from a correct passphrase. [startBackup] has no such
      *   parameter because it is the side that chooses the number and stamps it.
      *
-     * Untrusted, and left to `deriveKey`'s own `require(iterations > 0)` inside the `runCatching`
-     * below rather than re-checked here: `OpenArchiveUseCase.unlock` has already refused anything
+     * Untrusted, and left to `deriveKey`'s own `require(iterations > 0)` during acceptance
+     * rather than re-checked here: `OpenArchiveUseCase.unlock` has already refused anything
      * outside `0 < n <= MAX_KDF_ITERATIONS` and derived at this very number, on the screen that
      * produced this call. A second ceiling here would be a second place to keep in step.
      */
@@ -158,24 +144,6 @@ class ThorJobLauncher(
             .getWorkInfosByTagFlow(jobTag(kind, target))
             .map { infos -> infos.firstOrNull { !it.state.isFinished }?.id }
         return combine(durable, legacy) { durableId, legacyId -> durableId ?: legacyId }
-    }
-
-    /**
-     * Cancels a Room task through its task-scoped coordinator, or falls back to WorkManager for a
-     * persisted legacy id. The Room lookup, rather than process-local registration, keeps routing
-     * correct after process recreation.
-     */
-    fun cancel(jobId: UUID) {
-        val application = context.applicationContext as ThorApplication
-        application.launchInApplicationScope(ioDispatcher) {
-            if (dataTasks.loadTask(jobId) != null) {
-                cancellation.cancel(jobId)
-            } else {
-                keys.drop(jobId.toString())
-                runCatching { WorkManager.getInstance(context).cancelWorkById(jobId) }
-                    .onFailure { Logger.e(TAG, "could not cancel $jobId", it) }
-            }
-        }
     }
 }
 
@@ -230,161 +198,4 @@ internal fun ThorJobKind.toDataTaskKind(): DataTaskKind? = when (this) {
     ThorJobKind.ARCHIVE_RESTORE -> DataTaskKind.ARCHIVE_RESTORE
     ThorJobKind.APP_EXPORT -> DataTaskKind.APP_EXPORT
     ThorJobKind.PRIVILEGE_SWEEP -> null
-}
-
-/**
- * Enqueue one request on a unique chain, **wait for WorkManager to say it worked**, and hand back the
- * id — or run [onAbandoned] and hand back null.
- *
- * The wait is the point. `WorkContinuation.enqueue()` does its real work on WorkManager's task
- * executor and reports the result on the returned [Operation]; catching only what is thrown
- * synchronously catches argument validation and nothing else. A `WorkSpec` insert that fails, a
- * corrupt WorkManager database, an internal executor that rejects the task — all of those arrive as a
- * failed [Operation] and were once invisible here, so this returned an id for a row that does not
- * exist.
- *
- * What that cost downstream is worth naming, because no consumer can fix it: `getWorkInfoByIdFlow`
- * emits null forever for an id with no row, [ThorJobLauncher.status] maps null to
- * [ThorJobStatus.Gone], and both watchers correctly treat a first-and-only `Gone` as "not started
- * yet" rather than as terminal. The screen then sits on a progress bar for a job that will never
- * exist, with no timeout anywhere. This is the one hole underneath that rule, and it is created here.
- *
- * **Top-level and `internal` so the next launcher shares this and not a copy of it.** It was a private
- * method on [ThorJobLauncher] while archives were the only jobs; the awaited-[Operation] handling
- * above is the part a second launcher would reimplement badly, and the only thing that actually
- * differed between the two archive call sites was the chain name.
- *
- * @param chainName the unique work name — `THOR_JOB_CHAIN` for anything that moves bytes,
- *   `THOR_SWEEP_CHAIN` for a privilege sweep. See their docs for why that split exists.
- * @param onAbandoned run only when the request will never execute, and at most once. Not run *because*
- *   the wait was cancelled — the work is with WorkManager by then and is going to run, so releasing
- *   anything it depends on would fail a live job. It is still run if the enqueue then fails, which can
- *   happen after the caller has stopped waiting; see the cancellation branch.
- */
-internal suspend fun enqueueUniqueJob(
-    context: Context,
-    chainName: String,
-    work: OneTimeWorkRequest,
-    onAbandoned: (UUID) -> Unit = {},
-): UUID? = enqueueUniqueJob(chainName, work, onAbandoned) {
-    WorkManager.getInstance(context)
-        .beginUniqueWork(chainName, ExistingWorkPolicy.APPEND_OR_REPLACE, work)
-        .enqueue()
-}
-
-/**
- * Testable operation-producing half of [enqueueUniqueJob]. A sweep supplies its WorkManager adapter
- * here so its Room-to-WorkManager handoff can hold the shared process gate until this exact
- * [Operation] settles.
- */
-internal suspend fun enqueueUniqueJob(
-    chainName: String,
-    work: OneTimeWorkRequest,
-    onAbandoned: (UUID) -> Unit = {},
-    enqueue: () -> Operation,
-): UUID? {
-    val id = work.id
-    fun abandon(what: String, cause: Throwable): UUID? {
-        Logger.e(TAG, "$what on $chainName", cause)
-        onAbandoned(id)
-        return null
-    }
-
-    val operation = try {
-        enqueue()
-    } catch (e: Exception) {
-        return abandon("enqueue was refused", e)
-    }
-    return try {
-        operation.awaitSuccess()
-        id
-    } catch (e: CancellationException) {
-        // Only the *wait* was cancelled; the work is already with WorkManager and the worker that will
-        // take this job's key is real. Dropping it here would fail that job for the one reason it must
-        // never fail for.
-        //
-        // But "nobody is waiting" is not "nothing can still go wrong": the enqueue resolves on
-        // WorkManager's own executor, so it can fail *after* this frame is gone, and then no worker ever
-        // runs and neither `catch` below is there to see it. The future outlives the coroutine, so keep
-        // watching it for that one outcome. Without this the key sits in the holder until its own
-        // hour-long expiry (see [ArchiveKeyHolder.KEY_LIFETIME_MS]) with nothing left that could consume
-        // it — bounded and self-clearing, but an hour of held key material for a job that does not exist.
-        operation.result.whenFailed { cause ->
-            abandon("enqueue failed after the wait was cancelled", cause)
-        }
-        throw e
-    } catch (e: Exception) {
-        abandon("enqueue failed", e)
-    }
-}
-
-/**
- * [Operation.getResult] as a suspending call.
- *
- * WorkManager ships `Operation.await()` and it would do exactly this — but it is a
- * `public suspend inline fun` whose body calls `androidx.concurrent.futures.await`, and
- * `concurrent-futures-ktx` is a **runtime**-scope dependency of `work-runtime`. The inliner needs
- * that declaration at compile time, so the shipped extension is not reachable from here without
- * adding a dependency for one call site.
- *
- * The listener runs on whichever thread completed the future — a direct [Executor] — because all it
- * does is resume a continuation. No cancellation is propagated to the future: by the time this is
- * awaited the enqueue is already in flight, and cancelling the wait must not be mistaken for
- * cancelling the work. A `resume` on a continuation that was cancelled meanwhile is a no-op.
- *
- * Top-level and `private` to this file for the same reason the class is `@Single`: it is one
- * launcher's plumbing, not a general-purpose adapter.
- */
-private suspend fun Operation.awaitSuccess(): Operation.State.SUCCESS {
-    val future = result
-    return suspendCancellableCoroutine { continuation ->
-        future.addListener(
-            {
-                try {
-                    continuation.resume(future.get())
-                } catch (e: ExecutionException) {
-                    // The future wraps the real failure; the cause is what says what went wrong.
-                    continuation.resumeWithException(e.cause ?: e)
-                } catch (e: Exception) {
-                    continuation.resumeWithException(e)
-                }
-            },
-            Executor { it.run() },
-        )
-    }
-}
-
-/**
- * Run [handle] if this future has already failed or fails later — once, and never on success.
- *
- * The counterpart to [awaitSuccess] for a caller that has stopped waiting. A `ListenableFuture` runs each
- * listener at most once and runs it immediately if it is already done, so both the "failed while nobody
- * was looking" and "failed before we registered" orders are covered without a guard flag here.
- *
- * **Only a genuine failure counts.** An [ExecutionException] is WorkManager saying the enqueue did not
- * land, and its `cause` is the reason. A cancelled future or an interrupted listener says nothing about
- * whether the `WorkSpec` was written, so this stays silent for those and lets the key expire on its own
- * timer: releasing a key a live worker still needs is the worse of the two failures.
- *
- * `internal` rather than private to this file, unlike [awaitSuccess], because it is the only part of the
- * cancellation path a JVM test can reach — [enqueueUniqueJob] itself needs `WorkManager.getInstance`, and
- * there is no `work-testing` or Robolectric on this project's test classpath.
- */
-internal fun ListenableFuture<*>.whenFailed(handle: (Throwable) -> Unit) {
-    addListener(
-        {
-            // Nothing may be thrown from here: the executor below runs this on whichever thread completed
-            // the future, which is WorkManager's, and it is not expecting our exceptions.
-            val cause = try {
-                get()
-                null
-            } catch (e: ExecutionException) {
-                e.cause ?: e
-            } catch (_: Exception) {
-                null
-            }
-            if (cause != null) handle(cause)
-        },
-        Executor { it.run() },
-    )
 }

@@ -4,19 +4,12 @@
 package com.valhalla.thor.data.gateway
 
 import android.annotation.SuppressLint
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
-import android.os.IBinder
-import com.valhalla.superuser.Shell
-import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.asComponentState
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
-import com.valhalla.thor.data.source.local.clearAppDataCommand
 import com.valhalla.thor.data.source.local.ComponentCommandKind
 import com.valhalla.thor.data.source.local.componentCommandFailure
 import com.valhalla.thor.data.source.local.escapedComponentSpecOrNull
@@ -38,6 +31,17 @@ import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.RootDataClearBarrier
+import com.valhalla.thor.data.gateway.root.RootDataClearClient
+import com.valhalla.thor.data.gateway.root.RootDataClearObservation
+import com.valhalla.thor.data.gateway.root.RootDataClearPhase
+import com.valhalla.thor.data.gateway.root.RootDataClearRecord
+import com.valhalla.thor.domain.model.RootDataClearUnresolved
+import com.valhalla.thor.rootservice.RootDataClearProtocol
+import com.valhalla.thor.data.gateway.root.OdinRootServiceBinding
+import com.valhalla.thor.data.gateway.root.RootServiceConnectionOwner
+import com.valhalla.thor.data.gateway.root.RootSuspensionReadback
+import com.valhalla.thor.data.gateway.root.RootSuspensionReadbackClient
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
@@ -48,28 +52,21 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeMode
-import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.RootAdmissionController
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
-import kotlin.coroutines.resume
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
-
-// Upper bound for the RootService bind handshake. A null binder or a callback that never
-// arrives must not pin connectionMutex forever and deadlock every later privileged op (H2).
-private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
 
 internal fun PrivilegeExecutionContext.forRootCommand(
     commandClass: PrivilegeCommandClass,
@@ -84,7 +81,7 @@ internal fun PrivilegeExecutionContext.forRootCommand(
  * One operation used to name three different users, and the third is the one that made the pinning
  * indefensible. The *write* was user 0 (`ThorRootService`'s own constant, plus an API-28 `pm suspend`
  * that named no user at all, which `PackageManagerShellCommand.runSuspend` seeds to
- * `UserHandle.USER_SYSTEM`). [readSuspenders] parsed user 0 to match it, so those two agreed. But
+ * `UserHandle.USER_SYSTEM`). The old owner parser read user 0 to match it, so those two agreed. But
  * [readSuspendedFlag] is `context.packageManager.getApplicationInfo`, an in-process query that can
  * only ever answer for **Thor's** user — and it is what decides the outcome on all four paths below,
  * including the early return that skips the unsuspend entirely.
@@ -112,201 +109,25 @@ class RootSystemGateway internal constructor(
     private val rootCommands: RootCommandExecutor,
     private val preferenceRepository: PreferenceRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    private val rootAdmission: RootAdmissionController,
     private val reinstallPostconditionVerifier: ReinstallPostconditionVerifier =
         ReinstallPostconditionVerifier(AndroidReinstallStateReader(context)),
+    private val rootServiceConnection: RootServiceConnectionOwner =
+        RootServiceConnectionOwner(OdinRootServiceBinding(context)),
+    private val dataClearJournal: RootDataClearBarrier = RootDataClearBarrier(context),
 ) : SystemGateway {
 
-    private var rootService: IThorRootService? = null
     internal var userIdProvider: () -> Int = { thorUserId }
     internal var packageUserIdProvider: (String) -> Int? = { packageName ->
         getApplicationInfoCompat(packageName)?.let { userIdOf(it.uid) }
     }
-    private val connectionMutex = Mutex()
-    private var isDaemonReset = false
-    private var activeConnection: ServiceConnection? = null
+    // Odin owns ordinary servers per Android user and retires them on APK/client death.
+    internal suspend fun getRootService(): IThorRootService? = rootServiceConnection.getService()
 
-    /**
-     * Drop a stale [ServiceConnection], on the main thread because Odin requires it.
-     *
-     * `RootService.unbind` is `@MainThread` and enforces that at runtime — `RootServiceManager`
-     * opens it with `enforceMainThread()`, which throws `IllegalStateException` unless
-     * `Looper.myLooper()` is the main looper. [getRootService]'s callers arrive under
-     * `withContext(ioDispatcher)`, so both cleanup sites below were throwing that exception into a
-     * `runCatching` that discarded it, then nulling `activeConnection` regardless: the binding was
-     * never actually released and the reference to it was thrown away, which is a leak that
-     * survives until the process dies. `invokeOnCancellation` already got this right by posting to
-     * the main looper; the two cleanup paths never had the same treatment applied.
-     *
-     * Suspending rather than posting, so the unbind is ordered strictly before the rebind that
-     * follows it instead of racing that rebind from a queued Runnable. A failure is now logged
-     * rather than silently swallowed — if this ever throws again it should be visible.
-     *
-     * Bounded for the same reason the bind below is (H2): this runs inside `connectionMutex`, so a
-     * main looper that never gets round to us must not pin that mutex and deadlock every later
-     * privileged op. `withTimeoutOrNull` returns rather than throws, so on timeout the caller
-     * carries on to the bind.
-     *
-     * That timeout cannot simply give up, though, which is why there is a fallback below. It
-     * cancels the main-dispatched block, so `conn` is never handed back to `RootServiceManager`,
-     * and the caller then nulls `activeConnection` and drops the last reference to it. What that
-     * strands is not a bare object leak: `RootServiceManager.connections` is refcounted per
-     * `ServiceConnection`, and `services` is keyed by intent rather than by connection, so a
-     * record that is never removed holds the service's `refCount` above zero for the life of the
-     * process — after which no unbind of any *later* connection can reach the `refCount == 0`
-     * branch that actually releases the service inside the root process.
-     */
-    private suspend fun unbindStaleConnection(conn: ServiceConnection) {
-        val unbound = withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
-            withContext(Dispatchers.Main) { unbindOnMain(conn) }
-        }
-        if (unbound == true) return
-
-        // Not observed to have happened, so hand it to the looper to do whenever it catches up.
-        // This keeps the ordering claim above intact rather than reintroducing the race it warns
-        // about: the post is enqueued here, *before* the bind that follows queues its own main
-        // dispatch, so a looper that recovers still runs this unbind first.
-        //
-        // Deliberately does not touch `activeConnection` — by the time this runs, that field may
-        // legitimately hold a newer connection, and clearing it would strand that one instead.
-        //
-        // Also covers the (near-unreachable) throwing path rather than only the timeout, so this
-        // does not rest on the order of statements inside Odin's `unbind`; a redundant retry there
-        // is a no-op, since removing an absent connection does nothing.
-        android.os.Handler(android.os.Looper.getMainLooper()).post { unbindOnMain(conn) }
-    }
-
-    /** The unbind itself, factored out only so the timeout fallback above can reuse it. */
-    private fun unbindOnMain(conn: ServiceConnection): Boolean =
-        runCatching { RootService.unbind(conn) }
-            .onFailure {
-                Logger.w(
-                    "RootSystemGateway",
-                    "unbind of stale root connection failed: ${it.message.orEmpty()}"
-                )
-            }
-            .isSuccess
-
-    private suspend fun getRootService(execution: PrivilegeExecutionContext): IThorRootService? =
-        connectionMutex.withLock {
-            if (!isDaemonReset) {
-                isDaemonReset = true
-                // Kill any old daemon so the newly compiled root service is loaded and executed
-                try {
-                    execute(
-                        "pkill -f ${context.packageName}:root",
-                        execution.forRootCommand(ROOT_SERVICE_RESET),
-                    )
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    // A stale daemon is optional; binding below remains the source of truth.
-                }
-            }
-
-        rootService?.let { binder ->
-            if (binder.asBinder().isBinderAlive) {
-                return binder
-            } else {
-                rootService = null
-                activeConnection?.let { oldConn ->
-                    unbindStaleConnection(oldConn)
-                    activeConnection = null
-                }
-            }
-        }
-
-        // Clean up any stale connection before creating a new one
-        activeConnection?.let { oldConn ->
-            unbindStaleConnection(oldConn)
-            activeConnection = null
-        }
-
-        // Bind under a timeout so a null binder or a callback that never arrives can't hold
-        // connectionMutex forever (H2). withTimeoutOrNull RETURNS null on timeout — it does not
-        // throw — so on every path (success, null-binding, or timeout) withLock unwinds and the
-        // mutex is released. On timeout the child coroutine is cancelled, which fires
-        // invokeOnCancellation below to unbind the stale connection; the caller then falls back.
-        withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
-            // Hardcoded, and the one place in this class that must stay so. Odin's RootService.bind
-            // is @MainThread and enforces it at runtime — RootServiceManager.bindInternal opens with
-            // enforceMainThread(), which throws IllegalStateException unless Looper.myLooper() is
-            // the main looper. An injectable "main" here would look like a test seam while being
-            // the opposite: any dispatcher a test substituted would throw rather than bind.
-            withContext(Dispatchers.Main) {
-                suspendCancellableCoroutine { continuation ->
-                    val intent = Intent(context, com.valhalla.thor.rootservice.ThorRootService::class.java)
-                    val conn = object : ServiceConnection {
-                        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                            val binder = IThorRootService.Stub.asInterface(service)
-                            // Publish/resume only if the bind hasn't already timed out. A late
-                            // connect (continuation cancelled by withTimeoutOrNull) would otherwise
-                            // cache a service whose ServiceConnection is about to be unbound by
-                            // invokeOnCancellation, leaving rootService dangling (-> intermittent
-                            // DeadObjectException on the next call).
-                            if (continuation.isActive) {
-                                rootService = binder
-                                continuation.resume(binder)
-                            }
-                        }
-
-                        override fun onServiceDisconnected(name: ComponentName?) {
-                            rootService = null
-                            if (activeConnection === this) {
-                                activeConnection = null
-                            }
-                        }
-
-                        // The root process returned a null binder — the service refused to bind.
-                        // Resume with null (and unbind) instead of hanging until the timeout fires.
-                        override fun onNullBinding(name: ComponentName?) {
-                            rootService = null
-                            runCatching { RootService.unbind(this) }
-                            if (activeConnection === this) {
-                                activeConnection = null
-                            }
-                            if (continuation.isActive) {
-                                continuation.resume(null)
-                            }
-                        }
-                    }
-
-                    activeConnection = conn
-
-                    continuation.invokeOnCancellation {
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            runCatching {
-                                RootService.unbind(conn)
-                            }
-                            if (activeConnection === conn) {
-                                activeConnection = null
-                            }
-                        }
-                    }
-
-                    RootService.bind(intent, conn)
-                }
-            }
-        }
-    }
-
-    // A root check is strictly asynchronous. Invalidate any cached non-root shell so fresh su grants are recognized.
+    // Availability is observed centrally; this read must never retire an accepted operation's shell.
     override suspend fun isRootAvailable(
         execution: PrivilegeExecutionContext,
-    ): Boolean {
-        try {
-            val cached = Shell.cachedShell
-            if (cached != null && !cached.isRoot) {
-                cached.close()
-            }
-        } catch (_: Throwable) {
-        }
-        val result = execute(
-            "id -u",
-            execution.forRootCommand(ROOT_AVAILABILITY),
-        )
-        return result.exitCode == 0 &&
-            result.stdout.singleOrNull { it.isNotBlank() }?.trim() == ROOT_UID
-    }
+    ): Boolean = rootAdmission.awaitInitialObservation().isConfirmedRoot
 
     override suspend fun isShizukuAvailable(): Boolean = false
     override suspend fun isDhizukuAvailable(): Boolean = false
@@ -317,9 +138,9 @@ class RootSystemGateway internal constructor(
     override suspend fun forceStopApp(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
 
@@ -356,7 +177,7 @@ class RootSystemGateway internal constructor(
         if (hasExplicitArchiveRoute &&
             shellResult.exceptionOrNull() is PrivilegeExecutionException
         ) {
-            return shellResult
+            return@admittedResult shellResult
         }
         // The exit code alone decided this, and it cannot say no:
         // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so it
@@ -372,10 +193,10 @@ class RootSystemGateway internal constructor(
         // the command names [thorUserId] and `getApplicationInfo` can only ever answer for Thor's
         // own user. A shell 0 with a package that did not stop now falls through to the
         // unprivileged rung rather than being reported as done.
-        if (shellResult.isSuccess && isStoppedNow()) return shellResult
+        if (shellResult.isSuccess && isStoppedNow()) return@admittedResult shellResult
 
         // Unprivileged check/fallback
-        if (isStoppedNow()) return Result.success(Unit)
+        if (isStoppedNow()) return@admittedResult Result.success(Unit)
 
         runCatching {
             val am =
@@ -390,7 +211,7 @@ class RootSystemGateway internal constructor(
         if (postKillInfo != null &&
             (postKillInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
         ) {
-            return Result.success(Unit)
+            return@admittedResult Result.success(Unit)
         }
 
         // Two ways to arrive here now, and a bug report has to be able to tell them apart: the
@@ -411,7 +232,7 @@ class RootSystemGateway internal constructor(
         } else {
             "FLAG_STOPPED is still clear after killBackgroundProcesses, so it is still running"
         }
-        return Result.failure(
+        return@admittedResult Result.failure(
             Exception("Root force stop of $packageName failed: $shellVerdict, and $stateVerdict.")
         )
     }
@@ -433,14 +254,14 @@ class RootSystemGateway internal constructor(
     suspend fun clearCache(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
         val command =
             "rm -rf ${clearCachePaths(escapedPackage, userIdProvider()).joinToString(" ")}"
-        return runCommand(command, execution, CACHE_CLEAR)
+        return@admittedResult runCommand(command, execution, CACHE_CLEAR)
     }
 
     /**
@@ -474,7 +295,7 @@ class RootSystemGateway internal constructor(
     override suspend fun clearAllCaches(
         targetFreeBytes: Long?,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (targetFreeBytes != null) {
             // The verdict is logged and then dropped on the floor, and that is the fix. This used to
             // `return trim` on success, which made the sweep below unreachable: `runTrimCaches` waits
@@ -485,7 +306,7 @@ class RootSystemGateway internal constructor(
             val trim = runCommand(
                 "pm trim-caches $targetFreeBytes", execution, CACHE_TRIM,
             )
-            if (trim.exceptionOrNull() is PrivilegeExecutionException) return trim
+            if (trim.exceptionOrNull() is PrivilegeExecutionException) return@admittedResult trim
             if (trim.isFailure) {
                 Logger.w(
                     "RootSystemGateway",
@@ -498,68 +319,86 @@ class RootSystemGateway internal constructor(
         // cannot reach outside the three parents.
         val sweep =
             clearCachePaths(escapedPackage = "*", userId = userIdProvider()).joinToString(" ")
-        return runCommand("rm -rf $sweep", execution, CACHE_SWEEP)
+        return@admittedResult runCommand("rm -rf $sweep", execution, CACHE_SWEEP)
     }
 
     override suspend fun clearAppData(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = withContext(ioDispatcher) {
-        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+    ): Result<Unit> = admittedResult(ioDispatcher) {
+        if (!RootDataClearProtocol.isValidPackageName(packageName)) {
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name"))
         }
-        val escapedPackage = packageName.escapeForShell()
-        val shellResult = runCommand(
-            clearAppDataCommand(escapedPackage, thorUserId), execution, CLEAR_APP_DATA,
-        )
-        if (shellResult.isSuccess) return@withContext shellResult
-
-        // Fallback to ThorRootService AIDL daemon. `clearAppDataForUser` and not the older
-        // `clearAppData`: the daemon runs as uid 0 in user 0, so it cannot read Thor's user for
-        // itself and the one-argument entry point wipes user 0 unconditionally. A daemon left over
-        // from an older build has no such transaction code and answers false, which lands on the
-        // failure below — the right way round for a call that destroys data.
-        val service = getRootService(execution)
-        // The failure below now names *which* way the AIDL rung produced nothing. "AIDL failed" —
-        // the whole of what it used to say — folded three different diagnoses into one sentence of
-        // a bug report about data that is still there: no daemon at all (the bind was refused or
-        // timed out), a daemon that could not be reached (dead binder, `:root` killed mid-call),
-        // and a daemon that answered no. The third covers both a PMS refusal and the older-build
-        // case the paragraph above describes — `clearAppDataForUser` hands back a bare boolean, so
-        // this side cannot separate those two and the string does not pretend to.
-        //
-        // What a `true` is, since it still returns a success here: `ThorRootService.clearAppData`
-        // now hands `clearApplicationUserData` a real `IPackageDataObserver` and waits for
-        // `onRemoveCompleted`, so `true` means a verdict of "cleared" actually arrived rather than
-        // that the void call was dispatched without throwing. That is the whole point of the
-        // observer, and it is why this rung's success is worth returning.
-        //
-        // What a `false` is has correspondingly widened, and the string below is deliberately vague
-        // about it. `clearAppDataForUser` hands back a bare boolean, so REFUSED (PMS said no) and
-        // UNVERIFIED (nothing came back inside the daemon's own wait) reach this side as the same
-        // value. The daemon logs which one it was; this process cannot know, so "answered no"
-        // rather than "refused" is the strongest claim available here.
-        val daemonVerdict: String
-        if (service != null) {
-            val aidlCall = runCatching {
-                service.clearAppDataForUser(packageName, userIdProvider())
-            }.onFailure { e ->
-                Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
+        if (packageName == context.packageName || packageName == BuildConfig.APPLICATION_ID) {
+            return@admittedResult Result.failure(IllegalArgumentException("Cannot clear Thor's recovery information"))
+        }
+        var record: RootDataClearRecord? = null
+        var attempted = false
+        try {
+            val userId = userIdProvider()
+            val pending = dataClearJournal.pending(packageName, userId)
+            if (pending != null) {
+                // Recover an earlier attempt without resubmitting it, even after client death.
+                if (pending.phase != RootDataClearPhase.BINDER) {
+                    return@admittedResult if (dataClearJournal.finish(pending)) {
+                        Result.failure(IllegalStateException("The previous data clear was not dispatched"))
+                    } else Result.failure(RootDataClearUnresolved(packageName))
+                }
+                val service = getRootService()
+                    ?: return@admittedResult Result.failure(RootDataClearUnresolved(packageName))
+                return@admittedResult completeDataClear(pending, RootDataClearClient(service).query(pending))
             }
-            if (aidlCall.getOrDefault(false)) {
-                return@withContext Result.success(Unit)
-            }
-            daemonVerdict = aidlCall.fold(
-                onSuccess = { "the root daemon answered no" },
-                onFailure = { "the root daemon could not confirm the wipe (${it.javaClass.simpleName})" },
+            val service = getRootService() ?: return@admittedResult Result.failure(
+                IllegalStateException("The root daemon could not bind; data clear was not dispatched"),
             )
-        } else {
-            daemonVerdict = "the root daemon would not bind, so it was never asked"
+            // Global admission remains cancellable. If cancellation discards the prepared return,
+            // its persisted PREPARED record can be retired without authorizing a remote dispatch.
+            record = dataClearJournal.begin(packageName, userId)
+            withContext(NonCancellable) {
+                record = dataClearJournal.markBinder(checkNotNull(record))
+            }
+            currentCoroutineContext().ensureActive()
+            val dispatched = checkNotNull(record)
+            // Binder owns its observation budget. Timeout/interruption cannot cancel Android's
+            // clear operation, so ownership persists independently of this lexical admission.
+            attempted = true
+            completeDataClear(dispatched, RootDataClearClient(service).submit(dispatched))
+        } catch (cancelled: CancellationException) {
+            if (!attempted) retireUndispatchedClear(record)
+            throw cancelled
+        } catch (failure: Exception) {
+            if (!attempted) retireUndispatchedClear(record)
+            Result.failure(RootDataClearUnresolved(packageName, failure))
         }
+    }
 
-        return@withContext Result.failure(
-            Exception("Root clear app data of $packageName failed: the shell step failed and $daemonVerdict.")
-        )
+    private suspend fun retireUndispatchedClear(record: RootDataClearRecord?) {
+        if (record == null) return
+        withContext(NonCancellable) {
+            // Failure to persist cleanup must leave the package blocked, never authorize replay.
+            runCatching { dataClearJournal.finish(record) }
+        }
+    }
+
+    private suspend fun completeDataClear(
+        record: RootDataClearRecord,
+        observation: RootDataClearObservation,
+    ): Result<Unit> {
+        if (observation is RootDataClearObservation.Unknown) {
+            return Result.failure(RootDataClearUnresolved(record.packageName))
+        }
+        val retired = withContext(NonCancellable) { dataClearJournal.finish(record) }
+        if (!retired) return Result.failure(RootDataClearUnresolved(record.packageName))
+        return when (observation) {
+            RootDataClearObservation.Cleared -> Result.success(Unit)
+            RootDataClearObservation.Failed -> Result.failure(
+                IllegalStateException("Android reported a failed data clear; partial changes are possible"),
+            )
+            is RootDataClearObservation.Refused -> Result.failure(
+                IllegalStateException("The root service could not accept the data clear"),
+            )
+            is RootDataClearObservation.Unknown -> error("An unresolved clear must retain its record")
+        }
     }
 
     /**
@@ -631,9 +470,9 @@ class RootSystemGateway internal constructor(
         packageName: String,
         isDisabled: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val appInfo = getApplicationInfoCompat(packageName)
         val isSystem = appInfo != null && (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
@@ -646,12 +485,12 @@ class RootSystemGateway internal constructor(
         if (!isDisabled && readHiddenForUser(packageName) == true) {
             runCommand("pm unhide --user $currentUser $escapedPackage", execution, APP_ENABLED_STATE)
             if (readHiddenForUser(packageName) != false) {
-                return Result.failure(Exception("Root: $packageName is still hidden after unfreeze."))
+                return@admittedResult Result.failure(Exception("Root: $packageName is still hidden after unfreeze."))
             }
         }
 
         if (isSystem) {
-            return if (isDisabled) {
+            return@admittedResult if (isDisabled) {
                 freezeSystemApp(packageName, escapedPackage, currentUser, execution)
             } else {
                 unfreezeSystemApp(packageName, escapedPackage, currentUser, execution)
@@ -668,11 +507,11 @@ class RootSystemGateway internal constructor(
         // A null read is unverified, including when `pm` reports success.
         if (shellResult.isSuccess) {
             val enabled = readEffectivelyEnabled(packageName)
-            if (enabled == !isDisabled) return shellResult
+            if (enabled == !isDisabled) return@admittedResult shellResult
         }
 
         // Check if already in the target state
-        if (readEffectivelyEnabled(packageName) == !isDisabled) return Result.success(Unit)
+        if (readEffectivelyEnabled(packageName) == !isDisabled) return@admittedResult Result.success(Unit)
 
         // Try unprivileged API as fallback. Still "only for non-system apps" — that used to be an
         // `if (!isSystem)` here; system apps now return above, before this point, so the guard is
@@ -686,10 +525,10 @@ class RootSystemGateway internal constructor(
             context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
         }
         if (unprivilegedResult.isSuccess) {
-            if (readEffectivelyEnabled(packageName) == !isDisabled) return Result.success(Unit)
+            if (readEffectivelyEnabled(packageName) == !isDisabled) return@admittedResult Result.success(Unit)
         }
 
-        return Result.failure(Exception("Root setAppDisabled failed."))
+        return@admittedResult Result.failure(Exception("Root setAppDisabled failed."))
     }
 
     /**
@@ -931,7 +770,9 @@ class RootSystemGateway internal constructor(
      * the same number by construction rather than by luck.
      */
     private fun readSuspendedFlag(packageName: String): Boolean? =
-        getApplicationInfoCompat(packageName)?.let {
+        getApplicationInfoCompat(packageName)?.takeIf {
+            (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+        }?.let {
             (it.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
         }
 
@@ -972,9 +813,9 @@ class RootSystemGateway internal constructor(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = withContext(ioDispatcher) {
+    ): Result<Unit> = admittedResult(ioDispatcher) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val hasReflection = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
         val escapedPackage = packageName.escapeForShell()
@@ -997,21 +838,24 @@ class RootSystemGateway internal constructor(
             // Thor's. A daemon left over from an older build has no transaction code for this and
             // answers false, which lands on the failure below rather than on another user's app.
             if (hasReflection) {
-                val service = getRootService(execution)
+                val service = getRootService()
                 if (service != null) {
-                    val taskResult = runCatching {
+                    val taskResult = try {
                         service.setAppSuspendedAsForUser(packageName, true, null, SUSPEND_USER_ID)
-                    }.onFailure { e ->
-                        Logger.e("RootSystemGateway", "AIDL suspend failed", e)
-                    }.getOrDefault(false)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        Logger.e("RootSystemGateway", "AIDL suspend outcome is uncertain", failure)
+                        false
+                    }
                     // `== true` and not a bare call: readSuspendedFlag answers null when the package
                     // cannot be read, and "could not tell" must not stand in for the daemon's own
                     // verified success.
                     if (taskResult || readSuspendedFlag(packageName) == true) {
-                        return@withContext Result.success(Unit)
+                        return@admittedResult Result.success(Unit)
                     }
                 }
-                return@withContext Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
+                return@admittedResult Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
             }
             // API < 29 has no SuspendDialogInfo reflection path, so the shell is the whole rung and
             // it has to name the user itself. `PackageManagerShellCommand.runSuspend` seeds
@@ -1040,7 +884,7 @@ class RootSystemGateway internal constructor(
             val shell = runCommand(
                 "pm suspend --user $SUSPEND_USER_ID $escapedPackage", execution, APP_SUSPEND,
             )
-            return@withContext if (shell.isSuccess && readSuspendedFlag(packageName) == true) shell
+            return@admittedResult if (shell.isSuccess && readSuspendedFlag(packageName) == true) shell
             else Result.failure(
                 Exception(
                     if (shell.isSuccess) {
@@ -1053,23 +897,13 @@ class RootSystemGateway internal constructor(
             )
         }
 
-        return@withContext unsuspendPackage(packageName, escapedPackage, hasReflection, execution)
+        return@admittedResult unsuspendPackage(packageName, escapedPackage, hasReflection, execution)
     }
 
     /**
-     * Lifts every suspension recorded against [packageName], and says so only when a readback agrees.
-     *
-     * Two shapes, picked by whether the platform's record could be read at all:
-     *
-     *  1. **Record readable** — one `setAppSuspendedAsForUser(…, owner, …)` per recorded owner, then
-     *     a second read that has to come back empty. This is the rescue path for the user's
-     *     Shizuku-era suspensions and the only one that can name an identity Thor never wrote.
-     *  2. **Record unknown, empty included** — sweep the identities Thor could have written and let
-     *     `FLAG_SUSPENDED` be the sole judge. Reached when the daemon will not bind, when the dump
-     *     is denied or in a shape the parser has never seen, and on API 28, where there is no
-     *     reflection overload to name an owner with and none is needed: `setSuspended(false)` there
-     *     clears the single suspension slot whoever set it (android-9.0.0_r1
-     *     `PackageSettingBase.java:399-407`).
+     * Removes only owners from a complete typed read for Thor's Android user. Unknown, refused,
+     * stale-protocol and cross-user ownership cannot authorize a guessed sweep. A failed dispatched
+     * mutation ends further writes; only readback may establish its result, never a shell replay.
      */
     private suspend fun unsuspendPackage(
         packageName: String,
@@ -1077,149 +911,95 @@ class RootSystemGateway internal constructor(
         hasReflection: Boolean,
         execution: PrivilegeExecutionContext,
     ): Result<Unit> {
-        // Already unsuspended — by us, by another tool, or never suspended at all. A *positive*
-        // false, not the fail-open shortcut this change deletes: an unreadable flag is null, which
-        // is neither true nor false and falls through to the full path. It also keeps a bulk
-        // unfreeze from paying a `dumpsys package` round trip per app that was never suspended.
         if (readSuspendedFlag(packageName) == false) {
             Logger.i("RootSystemGateway", "unsuspend $packageName: not suspended, no rung run")
             return Result.success(Unit)
         }
 
-        // The daemon is the only thing here that can read the record — `dumpsys package` is gated on
-        // android.permission.DUMP via DumpUtils.checkDumpAndUsageStatsPermission (android-16
-        // `PackageManagerService.java:6689`), which the app process does not hold — and the only
-        // thing that can name an arbitrary owner, since the reflective overload it calls does not
-        // exist before API 29.
-        val service = if (hasReflection) getRootService(execution) else null
-
-        // Past the early return above, the package is either suspended or unreadable — so a parse
-        // that names nobody contradicts the flag and cannot be taken at face value. A dump in a
-        // shape this parser has never seen (an OEM that dropped the token, a format newer than this
-        // build) also parses to empty, and reading that as "nothing to remove, we are done" is the
-        // same empty-means-success lie one layer down. Empty is therefore unknown *here*, and falls
-        // through to the sweep rather than to a fabricated success.
-        val recorded = service?.let { readSuspenders(it, packageName) }?.takeIf { it.isNotEmpty() }
-
-        if (service != null && recorded != null) {
-            // One removal per recorded owner, and deliberately no break on the first accepted call:
-            // from API 30 `PackageUserState.suspendParams` is a map, so a package can carry several
-            // entries at once and stays suspended while any one of them survives. Each removal names
-            // the user the owners were read for, so what is lifted is what [readSuspenders] listed
-            // rather than user 0's same-named entries.
-            for (owner in recorded) {
-                val accepted = runCatching {
-                    service.setAppSuspendedAsForUser(packageName, false, owner, SUSPEND_USER_ID)
-                }.onFailure { e ->
-                    Logger.e("RootSystemGateway", "AIDL unsuspend of $packageName for one recorded owner failed", e)
-                }.getOrDefault(false)
-                if (!accepted) {
-                    Logger.w(
-                        "RootSystemGateway",
-                        "unsuspend $packageName: the daemon could not confirm one owner removal"
+        val userId = SUSPEND_USER_ID
+        val service = if (hasReflection) getRootService() else null
+        if (service != null) {
+            val reader = RootSuspensionReadbackClient(service)
+            val recorded = when (val readback = reader.read(packageName, userId)) {
+                RootSuspensionReadback.NotSuspended -> {
+                    return if (readSuspendedFlag(packageName) != true) Result.success(Unit)
+                    else unsuspendFailure(
+                        "Root unsuspend of $packageName is unverified: the service reports no " +
+                            "suspension for user $userId, but the package still reports FLAG_SUSPENDED."
                     )
                 }
-            }
-
-            val remaining = readSuspenders(service, packageName) ?: return unsuspendFailure(
-                "Root unsuspend of $packageName is unverified: the platform's suspension record " +
-                    "could not be read back after asking to remove ${recorded.size} record(s), so " +
-                    "Thor will not report a success it cannot see."
-            )
-            if (remaining.isNotEmpty()) {
-                return unsuspendFailure(
-                    "Root unsuspend of $packageName failed: ${remaining.size} suspension record(s) " +
-                        "remain after Thor asked to remove ${recorded.size}, so the app stays paused."
+                is RootSuspensionReadback.Suspended -> readback.owners
+                RootSuspensionReadback.NotInstalled -> return unsuspendFailure(
+                    "Root unsuspend of $packageName cannot proceed: the package is not installed " +
+                        "for user $userId."
+                )
+                is RootSuspensionReadback.Refused -> return unsuspendFailure(
+                    "Root unsuspend of $packageName cannot proceed: the service refused the " +
+                        "suspension read for user $userId."
+                )
+                is RootSuspensionReadback.Unknown -> return unsuspendFailure(
+                    "Root unsuspend of $packageName is unverified: suspension ownership could not " +
+                        "be read for user $userId. No removal was attempted."
                 )
             }
-            // The record names nobody, so the flag may only veto, never vouch: null here means the
-            // package could not be read, which the record has already answered for.
-            if (readSuspendedFlag(packageName) == true) {
+            // The legacy mutation method names one user for both target and owner. Retain the
+            // cross-user identity in the read result, but never flatten it into an unsafe write.
+            if (recorded.any { it.userId != userId }) {
                 return unsuspendFailure(
-                    "Root unsuspend of $packageName failed: removing ${recorded.size} suspender " +
-                        "record(s) left nothing recorded for user $SUSPEND_USER_ID, yet the " +
-                        "package still reports FLAG_SUSPENDED."
+                    "Root unsuspend of $packageName cannot proceed: a suspension belongs to " +
+                        "another Android user. No removal was attempted."
                 )
             }
-            Logger.i(
-                "RootSystemGateway",
-                "unsuspend $packageName: verified — ${recorded.size} suspender record(s) removed"
-            )
-            return Result.success(Unit)
-        }
 
-        // Unknown record. Sweep rather than guess: passing a null identity asks the daemon to clear
-        // every name Thor has written across its history, and the root shell's `pm unsuspend` clears
-        // the "root" entry left by a pre-GH#239 build or by the API-28 suspend path above
-        // (PackageManagerShellCommand passes "root" as the calling package for uid 0). Neither is
-        // allowed to *report* anything — an exit code of 0 is what the no-op returns — so the flag
-        // read below is the only judge, and both rungs therefore have to act on the user that flag
-        // answers for. That is what `--user $SUSPEND_USER_ID` and the fourth argument below are
-        // doing; `runSuspend` would otherwise seed `USER_SYSTEM` and the daemon would otherwise
-        // default to 0, neither of which is Thor's user in a work profile.
-        if (service != null) {
-            runCatching {
-                service.setAppSuspendedAsForUser(packageName, false, null, SUSPEND_USER_ID)
-            }.onFailure { e ->
-                Logger.e("RootSystemGateway", "AIDL unsuspend failed", e)
+            for (owner in recorded) {
+                val confirmed = try {
+                    service.setAppSuspendedAsForUser(packageName, false, owner.packageName, userId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    // Binder can die after dispatch. Stop here rather than rebinding, removing the
+                    // next owner, or replaying the mutation through pm. Read-only verification follows.
+                    Logger.e("RootSystemGateway", "AIDL owner removal outcome is uncertain", failure)
+                    break
+                }
+                // The legacy boolean cannot distinguish refusal from an unverified write. Both
+                // stop further mutations; the typed read and local flag below may still prove success.
+                if (!confirmed) break
+            }
+
+            val remaining = reader.read(packageName, userId)
+            val suspended = readSuspendedFlag(packageName)
+            return when {
+                remaining is RootSuspensionReadback.Suspended -> unsuspendFailure(
+                    "Root unsuspend of $packageName is unverified: ${remaining.owners.size} " +
+                        "suspension record(s) remain in the service readback."
+                )
+                suspended == false ||
+                    (remaining == RootSuspensionReadback.NotSuspended && suspended != true) ->
+                    Result.success(Unit)
+                else -> unsuspendFailure(
+                    "Root unsuspend of $packageName is unverified: readback did not confirm that " +
+                        "the suspension was removed for user $userId."
+                )
             }
         }
-        runCommand(
-            "pm unsuspend --user $SUSPEND_USER_ID $escapedPackage", execution, APP_UNSUSPEND,
+
+        // No Binder mutation was dispatched. Keep the historical single shell removal for API 28
+        // and a daemon that never bound, with the same-user public flag as its only success evidence.
+        val shell = runCommand(
+            "pm unsuspend --user $userId $escapedPackage", execution, APP_UNSUSPEND,
         )
+        if (shell.exceptionOrNull() is PrivilegeExecutionException) return shell
         return when (readSuspendedFlag(packageName)) {
-            false -> {
-                Logger.i(
-                    "RootSystemGateway",
-                    "unsuspend $packageName: verified via FLAG_SUSPENDED; the suspender record was " +
-                        "unreadable, so who owned it is unknown"
-                )
-                Result.success(Unit)
-            }
-
+            false -> Result.success(Unit)
             true -> unsuspendFailure(
-                "Root unsuspend of $packageName failed: it is still suspended after the direct " +
-                        "shell step and a sweep of every identity Thor records, and the platform's " +
-                    "record could not be read to find out which one owns it."
+                "Root unsuspend of $packageName failed: it is still suspended after the shell step."
             )
-
             null -> unsuspendFailure(
-                "Root unsuspend of $packageName is unverified: neither the platform's suspension " +
-                    "record nor the package's own ApplicationInfo could be read back."
+                "Root unsuspend of $packageName is unverified: the package's suspension state " +
+                    "could not be read back for user $userId."
             )
         }
-    }
-
-    /**
-     * The identities the platform records as suspending [packageName] for [SUSPEND_USER_ID], or
-     * `null` when the record could not be trusted.
-     *
-     * The `null` is the whole point of the wrapper. `parseSuspendingPackages` cannot tell a package
-     * with no suspenders from a dump that was truncated, denied, or in a shape nobody has seen — all
-     * three parse to an empty set — so "did we get a real dump?" is answered here, before anything
-     * reads meaning into that emptiness. `dumpsys package <pkg>` always prints a `Package [<pkg>]
-     * (…):` block for an installed package; a caller without `android.permission.DUMP` gets a
-     * `Permission Denial:` line instead, and a truncated dump gets neither.
-     *
-     * A daemon still running from an older build predates `dumpPackage` entirely. Binder answers an
-     * unknown transaction code with an empty reply parcel, which the generated proxy reads back as
-     * `null`, so that degrades into "unknown" here rather than into a mis-dispatch.
-     */
-    private fun readSuspenders(service: IThorRootService, packageName: String): Set<String>? {
-        val dump = runCatching {
-            service.dumpPackage(packageName)
-        }.onFailure { e ->
-            Logger.e("RootSystemGateway", "AIDL dumpPackage failed for $packageName", e)
-        }.getOrNull() ?: return null
-
-        if (!dump.contains("Package [$packageName]")) {
-            Logger.w(
-                "RootSystemGateway",
-                "Package suspender state could not be read for $packageName"
-            )
-            return null
-        }
-        return parseSuspendingPackages(dump, SUSPEND_USER_ID)
     }
 
     /**
@@ -1240,9 +1020,9 @@ class RootSystemGateway internal constructor(
         packageName: String,
         isRestricted: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
         // Not the `pm` trap: `appops` seeds USER_CURRENT and resolves it, inside system_server, to
@@ -1250,7 +1030,7 @@ class RootSystemGateway internal constructor(
         // every user — it landed on whoever happened to be in the foreground when the shell ran,
         // which on a work-profile device is the parent while Thor and the app it is restricting
         // live in the profile. See [backgroundRestrictionCommand] for the AOSP path.
-        return runCommand(
+        return@admittedResult runCommand(
             backgroundRestrictionCommand(escapedPackage, userIdProvider(), isRestricted),
             execution, BACKGROUND_RESTRICTION,
         )
@@ -1259,10 +1039,10 @@ class RootSystemGateway internal constructor(
     override suspend fun rebootDevice(
         reason: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         val escapedReason = reason.escapeForShell()
         // executeResult returns success if ANY of the commands succeed in the chain logic
-        return runCommand(
+        return@admittedResult runCommand(
             "svc power reboot $escapedReason || reboot $escapedReason",
             execution, DEVICE_REBOOT,
         )
@@ -1271,9 +1051,9 @@ class RootSystemGateway internal constructor(
     override suspend fun uninstallApp(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
         // Through the shared builder rather than the byte-identical string this used to hold: the
@@ -1281,7 +1061,7 @@ class RootSystemGateway internal constructor(
         // [uninstallCommand], and `Shizuku.uninstallApp` already reaches it the same way. Two
         // gateways spelling the destructive command themselves is how one of them keeps the `--user`
         // and the other loses it.
-        return runCommand(
+        return@admittedResult runCommand(
             uninstallCommand(escapedPackage, userIdProvider()), execution, UNINSTALL,
         )
     }
@@ -1291,8 +1071,8 @@ class RootSystemGateway internal constructor(
         canDowngrade: Boolean,
         grantAllPermissions: Boolean?,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        return installViaSession(listOf(apkPath), canDowngrade, grantAllPermissions, execution)
+    ): Result<Unit> = admittedResult {
+        return@admittedResult installViaSession(listOf(apkPath), canDowngrade, grantAllPermissions, execution)
     }
 
     suspend fun installMultipleApks(
@@ -1301,8 +1081,8 @@ class RootSystemGateway internal constructor(
         grantAllPermissions: Boolean? = null,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
         bypassLowTargetSdkBlock: Boolean = false,
-    ): Result<Unit> {
-        return installViaSession(
+    ): Result<Unit> = admittedResult {
+        return@admittedResult installViaSession(
             apkPaths,
             canDowngrade,
             grantAllPermissions,
@@ -1382,14 +1162,14 @@ class RootSystemGateway internal constructor(
     override suspend fun reinstallAppWithGoogle(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (packageName == BuildConfig.APPLICATION_ID)
-            return Result.failure(Exception("Cannot reinstall Thor"))
+            return@admittedResult Result.failure(Exception("Cannot reinstall Thor"))
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
 
-        return withContext(ioDispatcher) {
+        return@admittedResult withContext(ioDispatcher) {
             try {
                 // 1. Get the APK path(s)
                 val paths = getAppPaths(packageName, execution)
@@ -1427,7 +1207,7 @@ class RootSystemGateway internal constructor(
         source: String,
         destination: String,
         execution: PrivilegeExecutionContext,
-    ) {
+    ) = rootAdmission.withRootAdmission {
         val escapedSource = source.escapeForShell()
         val escapedDest = destination.escapeForShell()
         val command = "cp $escapedSource $escapedDest"
@@ -1451,9 +1231,9 @@ class RootSystemGateway internal constructor(
     suspend fun getAppPaths(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): List<String> {
+    ): List<String> = rootAdmission.withRootAdmission {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return emptyList()
+            return@withRootAdmission emptyList()
         }
         val escapedPackage = packageName.escapeForShell()
         val result = execute(
@@ -1462,7 +1242,7 @@ class RootSystemGateway internal constructor(
         )
         val lines = if (result.exitCode == 0) result.stdout else emptyList()
 
-        return lines
+        return@withRootAdmission lines
             .filter { it.isNotBlank() }
             .map { it.removePrefix("package:").trim() }
     }
@@ -1472,18 +1252,18 @@ class RootSystemGateway internal constructor(
         packageName: String,
         permissionName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         val userId = getPackageUserId(packageName)
-            ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to grant on user 0."))
+            ?: return@admittedResult Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to grant on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
         val res = runCommand(
             "pm grant --user $userId $escapedPackage $escapedPerm", execution, PERMISSION_GRANT,
         )
-        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
+        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return@admittedResult res
 
         // The app-ops are a *parallel route* to package visibility, not a follow-up to the grant,
         // so they run whatever `pm grant` returned. On the ROMs this permission exists for —
@@ -1526,7 +1306,7 @@ class RootSystemGateway internal constructor(
         // denied until something refreshes it. That disagreement is with the runtime permission,
         // not with what the app can now do, and unlike the alternative it leaves the toggle able to
         // undo itself.
-        return if (res.isSuccess || appOpsTaken > 0) {
+        return@admittedResult if (res.isSuccess || appOpsTaken > 0) {
             Result.success(Unit)
         } else {
             res
@@ -1537,18 +1317,18 @@ class RootSystemGateway internal constructor(
         packageName: String,
         permissionName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+            return@admittedResult Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         val userId = getPackageUserId(packageName)
-            ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
+            ?: return@admittedResult Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
         val res = runCommand(
             "pm revoke --user $userId $escapedPackage $escapedPerm", execution, PERMISSION_REVOKE,
         )
-        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return res
+        if (permissionName != GET_INSTALLED_APPS_PERMISSION) return@admittedResult res
 
         // The revoke half of the parallel route, and the reason it cannot be left out: the app-op
         // grant above outlives `pm revoke`, so a revoke that only ran `pm revoke` reported success
@@ -1570,7 +1350,7 @@ class RootSystemGateway internal constructor(
         // And unlike the grant, the fold stays narrow: `pm revoke` is the verdict. All three app-op
         // resets failing is the ordinary outcome on any device that does not define this op, so
         // reading that as a failed revoke would report one on every AOSP device.
-        return res
+        return@admittedResult res
     }
 
     /**
@@ -1604,12 +1384,12 @@ class RootSystemGateway internal constructor(
         state: ComponentEnabledState,
         userId: Int,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         val spec = escapedComponentSpecOrNull(packageName, className)
-            ?: return Result.failure(
+            ?: return@admittedResult Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(
+        return@admittedResult runComponentCommand(
             setComponentStateCommand(spec, userId, state.asComponentState()),
             execution, COMPONENT_STATE,
         )
@@ -1620,12 +1400,12 @@ class RootSystemGateway internal constructor(
         className: String,
         userId: Int,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         val spec = escapedComponentSpecOrNull(packageName, className)
-            ?: return Result.failure(
+            ?: return@admittedResult Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(
+        return@admittedResult runComponentCommand(
             startActivityCommand(spec, userId), execution, ACTIVITY_LAUNCH,
         )
     }
@@ -1635,12 +1415,12 @@ class RootSystemGateway internal constructor(
         className: String,
         userId: Int,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<Unit> = admittedResult {
         val spec = escapedComponentSpecOrNull(packageName, className)
-            ?: return Result.failure(
+            ?: return@admittedResult Result.failure(
                 IllegalArgumentException("Invalid component: $packageName/$className")
             )
-        return runComponentCommand(
+        return@admittedResult runComponentCommand(
             stopServiceCommand(spec, userId),
             execution,
             SERVICE_STOP,
@@ -1687,7 +1467,7 @@ class RootSystemGateway internal constructor(
     override suspend fun executeShellCommand(
         command: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Pair<Int, String?>> {
+    ): Result<Pair<Int, String?>> = admittedResult {
         val routedExecution =
             if (execution.commandClass.value == DEFAULT_COMMAND_CLASS) {
                 execution.forRootCommand(RAW_SHELL)
@@ -1699,10 +1479,24 @@ class RootSystemGateway internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            return Result.failure(failure)
+            return@admittedResult Result.failure(failure)
         }
         val output = result.stdout.joinToString("\n").ifBlank { result.stderr.joinToString("\n") }
-        return Result.success(result.exitCode to output)
+        return@admittedResult Result.success(result.exitCode to output)
+    }
+
+    /** One accepted gateway operation owns its nested shell and Binder work through completion. */
+    private suspend fun <T> admittedResult(
+        dispatcher: CoroutineDispatcher? = null,
+        block: suspend () -> Result<T>,
+    ): Result<T> = try {
+        rootAdmission.withRootAdmission {
+            if (dispatcher == null) block() else withContext(dispatcher) { block() }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: PrivilegeExecutionException) {
+        Result.failure(failure)
     }
 
     private suspend fun runCommand(
@@ -1742,15 +1536,11 @@ class RootSystemGateway internal constructor(
     ): RootCommandResult = rootCommands.execute(RootCommand(command, context))
 
     private companion object {
-        const val ROOT_UID = "0"
         const val DEFAULT_COMMAND_CLASS = "interactive.command"
-        val ROOT_SERVICE_RESET = PrivilegeCommandClass("root.service.reset")
-        val ROOT_AVAILABILITY = PrivilegeCommandClass("root.availability")
         val FORCE_STOP = PrivilegeCommandClass("package.force-stop")
         val CACHE_CLEAR = PrivilegeCommandClass("package.cache-clear")
         val CACHE_TRIM = PrivilegeCommandClass("cache.trim")
         val CACHE_SWEEP = PrivilegeCommandClass("cache.sweep")
-        val CLEAR_APP_DATA = PrivilegeCommandClass("package.clear-data")
         val APP_ENABLED_STATE = PrivilegeCommandClass("package.enabled-state")
         val INSTALL_EXISTING = PrivilegeCommandClass("package.install-existing")
         val APP_SUSPEND = PrivilegeCommandClass("package.suspend")

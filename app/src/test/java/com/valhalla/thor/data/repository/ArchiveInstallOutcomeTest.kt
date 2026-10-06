@@ -3,11 +3,13 @@
 
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.domain.model.InstallSessionUnresolved
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
 import com.valhalla.thor.domain.repository.ArchiveRollbackReceipt
 import com.valhalla.thor.util.UiText
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -37,6 +39,12 @@ class ArchiveInstallOutcomeTest {
 
     private fun error(message: String = "INSTALL_FAILED_INVALID_APK") =
         InstallState.Error(UiText.DynamicString(message))
+
+    @Test
+    fun `unresolved session cannot become an ordinary failed archive install`() {
+        val failure = InstallSessionUnresolved("installation is still unresolved")
+        assertSame(failure, runCatching { archiveInstallFailure(failure) }.exceptionOrNull())
+    }
 
     @Test
     fun `a wait that runs out is unconfirmed, never failed`() {

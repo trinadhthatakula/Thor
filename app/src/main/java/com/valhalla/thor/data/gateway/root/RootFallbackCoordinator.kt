@@ -4,9 +4,11 @@
 package com.valhalla.thor.data.gateway.root
 
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.RootExecutionPolicy
 import com.valhalla.thor.domain.model.ShellCommandCancelled
 import com.valhalla.thor.domain.model.ShellCommandTimedOut
 import com.valhalla.thor.domain.model.ShellLaneBusy
+import com.valhalla.thor.domain.repository.RootAdmissionController
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -18,6 +20,7 @@ import org.koin.core.annotation.Single
 @Single
 internal class RootFallbackCoordinator(
     private val statuses: DefaultRootLaneStatusSource,
+    private val rootAdmission: RootAdmissionController,
 ) {
     private val coordinationState = MutableStateFlow<MainShellLease?>(null)
 
@@ -32,8 +35,9 @@ internal class RootFallbackCoordinator(
             commandClass = command.execution.commandClass,
         )
         try {
-            return main.execute(command)
+            return rootAdmission.withRootAdmission { main.execute(command) }
         } catch (cancelled: CancellationException) {
+            if (command.execution.rootExecutionPolicy == RootExecutionPolicy.ISOLATED) throw cancelled
             if (cancelled is ShellCommandCancelled) throw cancelled
             throw ShellCommandCancelled(command.execution.commandClass, cancelled)
         } finally {
@@ -59,7 +63,7 @@ internal class RootFallbackCoordinator(
                 commandClass = command.execution.commandClass,
                 fallbackOwner = lane,
             )
-            return executeSubmittedCommandToDrain(main, command)
+            return rootAdmission.withRootAdmission { executeSubmittedCommandToDrain(main, command) }
         } finally {
             statuses.commandFinished(lane)
             release(lease)
@@ -87,9 +91,10 @@ internal class RootFallbackCoordinator(
             currentCoroutineContext().ensureActive()
             return when (outcome) {
                 is CommandOutcome.Completed -> outcome.result
-                CommandOutcome.TimedOut -> throw ShellCommandTimedOut(command.execution.commandClass)
+                CommandOutcome.TimedOut -> throw ShellCommandTimedOut(command.execution.commandClass, command.rootOutcome)
             }
         } catch (cancelled: CancellationException) {
+            if (command.execution.rootExecutionPolicy == RootExecutionPolicy.ISOLATED) throw cancelled
             if (cancelled is ShellCommandCancelled) throw cancelled
             throw ShellCommandCancelled(command.execution.commandClass, cancelled)
         }

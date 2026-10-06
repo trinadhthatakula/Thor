@@ -10,22 +10,33 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,24 +47,35 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.window.core.layout.WindowSizeClass
-import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.PrivilegeManagerApp
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.RootRefreshStatus
+import com.valhalla.thor.presentation.components.RootRefreshNotice
 import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
 import com.valhalla.thor.presentation.home.components.HomeActionsBento
-import com.valhalla.thor.presentation.home.components.homeActionRows
-import com.valhalla.thor.presentation.home.components.SupportCommunitySection
+import com.valhalla.thor.presentation.home.components.RootManagerPickerSheet
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
-import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
+import com.valhalla.thor.presentation.home.components.SupportCommunitySection
+import com.valhalla.thor.presentation.home.components.homeActionRows
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
+import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
+import com.valhalla.thor.presentation.theme.LocalDarkTheme
+import com.valhalla.thor.presentation.theme.greenDark
+import com.valhalla.thor.presentation.theme.greenLight
+import com.valhalla.thor.presentation.widgets.AppIcon
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
@@ -61,6 +83,7 @@ import org.koin.androidx.compose.koinViewModel
 fun HomeScreen(
     onNavigateToApps: () -> Unit,
     onNavigateToFreezer: () -> Unit,
+    onNavigateToSuspendedApps: () -> Unit,
     onNavigateToQueue: () -> Unit,
     onReinstallAll: () -> Unit,
     /**
@@ -82,7 +105,8 @@ fun HomeScreen(
     installerViewModel: InstallerViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var showPrivilegeDialog by remember { mutableStateOf(false) }
+    var showPrivilegeSheet by remember { mutableStateOf(false) }
+    var showRootManagerPicker by remember { mutableStateOf(false) }
 
     var showInstallerSheet by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
@@ -144,11 +168,20 @@ fun HomeScreen(
             selectedType = state.selectedType,
             onTypeChanged = { viewModel.onTypeChanged(it) },
             onPrivilegeChanged = { viewModel.onPrivilegeModeChanged(it) },
-            onRestrictedStatusClick = { showPrivilegeDialog = true },
+            onRestrictedStatusClick = {
+                viewModel.refreshManagerShortcuts()
+                showPrivilegeSheet = true
+            },
             onNavigateToQueue = onNavigateToQueue,
             extensionsUnlocked = state.extensionsUnlocked,
             onCrack = { viewModel.crackEasterEgg() },
             onShowSupport = { showSupportSheet = true }
+        )
+
+        RootRefreshNotice(
+            status = state.rootAvailability.refreshStatus,
+            onRetry = viewModel::refreshPrivileges,
+            modifier = Modifier.padding(horizontal = 24.dp)
         )
 
         Spacer(Modifier.height(8.dp))
@@ -168,7 +201,7 @@ fun HomeScreen(
                         suspendedCount = state.suspendedAppCount,
                         onActiveClick = onNavigateToApps,
                         onFrozenClick = onNavigateToFreezer,
-                        onSuspendedClick = onNavigateToFreezer,
+                        onSuspendedClick = onNavigateToSuspendedApps,
                         modifier = Modifier.padding(horizontal = 0.dp)
                     )
 
@@ -249,7 +282,7 @@ fun HomeScreen(
                 suspendedCount = state.suspendedAppCount,
                 onActiveClick = onNavigateToApps,
                 onFrozenClick = onNavigateToFreezer,
-                onSuspendedClick = onNavigateToFreezer,
+                onSuspendedClick = onNavigateToSuspendedApps,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
 
@@ -338,87 +371,195 @@ fun HomeScreen(
     // by MainScreen and driven by `MainUiState.cacheClear`, which asks once and says plainly that
     // system apps are included too.
 
-    if (showPrivilegeDialog) {
-        val context = androidx.compose.ui.platform.LocalContext.current
-        AlertDialog(
-            onDismissRequest = { showPrivilegeDialog = false },
-            icon = { Icon(painterResource(R.drawable.privacy_tip), null) },
-            title = { Text(stringResource(R.string.privilege_check)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(stringResource(R.string.privilege_check_desc))
+    if (showRootManagerPicker) {
+        val picker by viewModel.rootManagerPicker.collectAsStateWithLifecycle()
+        RootManagerPickerSheet(
+            apps = picker.apps,
+            isLoading = picker.isLoading,
+            loadFailed = picker.loadFailed,
+            onSelect = {
+                viewModel.selectRootManager(it)
+                showRootManagerPicker = false
+            },
+            onRetry = viewModel::loadRootManagerCandidates,
+            onDismiss = { showRootManagerPicker = false }
+        )
+    }
 
+    if (showPrivilegeSheet && !showRootManagerPicker) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val sheetTitle = stringResource(R.string.privilege_check)
+        ModalBottomSheet(
+            modifier = Modifier.semantics { paneTitle = sheetTitle },
+            onDismissRequest = { showPrivilegeSheet = false },
+            sheetState = rememberBottomSheetState(
+                initialValue = SheetValue.Hidden,
+                enabledValues = setOf(SheetValue.Expanded, SheetValue.Hidden)
+            ),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
+            tonalElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = sheetTitle,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-1).sp,
+                        modifier = Modifier.weight(1f).semantics { heading() }
+                    )
+                    IconButton(
+                        onClick = viewModel::refreshPrivileges,
+                        enabled = state.rootAvailability.refreshStatus != RootRefreshStatus.CHECKING
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(
+                                if (state.rootAvailability.refreshStatus == RootRefreshStatus.IDLE) {
+                                    R.string.refresh
+                                } else {
+                                    R.string.retry_label
+                                }
+                            )
+                        )
+                    }
+                    IconButton(onClick = { showPrivilegeSheet = false }) {
+                        Icon(
+                            painter = painterResource(R.drawable.round_close),
+                            contentDescription = stringResource(R.string.cd_close)
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(stringResource(R.string.privilege_check_desc))
+                    RootRefreshNotice(status = state.rootAvailability.refreshStatus)
+
+                    val rootGranted = state.isRootAvailable &&
+                        state.rootAvailability.refreshStatus == RootRefreshStatus.IDLE
+                    val hasDetectedRootManager = state.installedManagers.any {
+                        it.app.mode == PrivilegeMode.ROOT
+                    }
+                    val chooseRootManager = {
+                        viewModel.loadRootManagerCandidates()
+                        showRootManagerPicker = true
+                    }
                     if (state.installedManagers.isNotEmpty()) {
                         androidx.compose.material3.HorizontalDivider()
 
                         state.installedManagers.forEach { info ->
                             val isGranted = when (info.app.mode) {
-                                PrivilegeMode.ROOT -> state.isRootAvailable
+                                PrivilegeMode.ROOT -> rootGranted
                                 PrivilegeMode.SHIZUKU -> state.isShizukuAvailable
                                 PrivilegeMode.DHIZUKU -> state.isDhizukuAvailable
                                 PrivilegeMode.NONE -> false
                             }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = info.app.displayName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-
-                                if (isGranted) {
-                                    Text(
-                                        text = stringResource(R.string.permission_state_granted),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                } else {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        if (info.app == com.valhalla.thor.domain.model.PrivilegeManagerApp.SHIZUKU && state.isShizukuBinderAlive) {
-                                            androidx.compose.material3.TextButton(
-                                                onClick = { viewModel.requestShizuku() }
-                                            ) {
-                                                Text(stringResource(R.string.installed_apps_permission_grant))
-                                            }
-                                        } else if (info.app == com.valhalla.thor.domain.model.PrivilegeManagerApp.DHIZUKU) {
-                                            androidx.compose.material3.TextButton(
-                                                onClick = { viewModel.requestDhizuku(context) }
-                                            ) {
-                                                Text(stringResource(R.string.installed_apps_permission_grant))
-                                            }
-                                        }
-                                        androidx.compose.material3.TextButton(
-                                            onClick = {
-                                                viewModel.openManagerApp(context, info.installedPackageName)
-                                            }
-                                        ) {
-                                            Text(stringResource(R.string.open_app))
-                                        }
-                                    }
+                            val onGrant: (() -> Unit)? = when {
+                                !isGranted && info.app == PrivilegeManagerApp.SHIZUKU &&
+                                    state.isShizukuBinderAlive -> {
+                                    { viewModel.requestShizuku() }
                                 }
+                                !isGranted && info.app == PrivilegeManagerApp.DHIZUKU -> {
+                                    { viewModel.requestDhizuku(context) }
+                                }
+                                else -> null
+                            }
+                            PrivilegeManagerRow(
+                                label = info.app.displayName,
+                                packageName = info.installedPackageName,
+                                isGranted = isGranted,
+                                showPackageName = info.app.mode == PrivilegeMode.ROOT,
+                                rootRefreshStatus = state.rootAvailability.refreshStatus.takeIf {
+                                    info.app.mode == PrivilegeMode.ROOT
+                                },
+                                onGrant = onGrant,
+                                onOpen = {
+                                    viewModel.openManagerApp(context, info.installedPackageName)
+                                }
+                            )
+                        }
+                    }
+                    if (state.hasSelectedRootManager) {
+                        androidx.compose.material3.HorizontalDivider()
+                        val manager = state.selectedRootManager
+                        if (manager == null) {
+                            Text(stringResource(R.string.selected_root_manager_unavailable))
+                        } else {
+                            PrivilegeManagerRow(
+                                label = manager.label,
+                                packageName = manager.packageName,
+                                isGranted = rootGranted,
+                                rootRefreshStatus = state.rootAvailability.refreshStatus,
+                                onOpen = {
+                                    viewModel.openManagerApp(context, manager.packageName)
+                                }
+                            )
+                        }
+                    }
+                    if (!hasDetectedRootManager && state.selectedRootManager == null) {
+                        PrivilegeManagerRow(
+                            label = stringResource(R.string.install_mode_root),
+                            packageName = null,
+                            isGranted = rootGranted,
+                            rootRefreshStatus = state.rootAvailability.refreshStatus,
+                            onOpen = chooseRootManager
+                        )
+                    }
+                    if (hasDetectedRootManager || state.hasSelectedRootManager) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            FilledTonalButton(
+                                onClick = chooseRootManager,
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
+                                shape = RoundedCornerShape(
+                                    topStart = 24.dp, bottomStart = 24.dp,
+                                    topEnd = 8.dp, bottomEnd = 8.dp
+                                )
+                            ) {
+                                Icon(painterResource(R.drawable.apps), null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(
+                                        if (state.hasSelectedRootManager) R.string.export_change
+                                        else R.string.choose_root_manager_action
+                                    ),
+                                    maxLines = 2
+                                )
+                            }
+                            FilledTonalButton(
+                                onClick = { viewModel.selectRootManager(null) },
+                                enabled = state.hasSelectedRootManager,
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
+                                shape = RoundedCornerShape(
+                                    topStart = 8.dp, bottomStart = 8.dp,
+                                    topEnd = 24.dp, bottomEnd = 24.dp
+                                )
+                            ) {
+                                Icon(painterResource(R.drawable.round_close), null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.cd_clear), maxLines = 2)
                             }
                         }
                     }
                 }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.refreshPrivileges()
-                    showPrivilegeDialog = false
-                }) {
-                    Text(stringResource(R.string.refresh))
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showPrivilegeDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
             }
-        )
+        }
     }
 
     if (showInstallerSheet) {
@@ -432,5 +573,92 @@ fun HomeScreen(
         SupportDeveloperHelper(
             onDismiss = { showSupportSheet = false }
         )
+    }
+}
+
+/** A manager shortcut stays usable independently of the permission's current status. */
+@Composable
+private fun PrivilegeManagerRow(
+    label: String,
+    packageName: String?,
+    isGranted: Boolean,
+    showPackageName: Boolean = true,
+    rootRefreshStatus: RootRefreshStatus? = null,
+    onGrant: (() -> Unit)? = null,
+    onOpen: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (packageName != null) {
+            AppIcon(
+                packageName = packageName,
+                isEnabled = true,
+                isSuspended = false,
+                size = 24.dp
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.shield),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (isGranted) {
+                    Icon(
+                        painter = painterResource(R.drawable.check_circle),
+                        contentDescription = stringResource(R.string.permission_state_granted),
+                        tint = if (LocalDarkTheme.current) greenDark else greenLight,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            if (showPackageName && packageName != null) {
+                Text(
+                    text = packageName,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (rootRefreshStatus != null && rootRefreshStatus != RootRefreshStatus.IDLE) {
+                Text(
+                    text = stringResource(
+                        if (rootRefreshStatus == RootRefreshStatus.CHECKING) R.string.tile_checking
+                        else R.string.unknown
+                    ),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (onGrant != null) {
+                TextButton(onClick = onGrant) {
+                    Text(stringResource(R.string.installed_apps_permission_grant))
+                }
+            }
+            TextButton(onClick = onOpen) {
+                Text(
+                    stringResource(
+                        if (packageName == null) R.string.choose_root_manager_action else R.string.open_app
+                    )
+                )
+            }
+        }
     }
 }

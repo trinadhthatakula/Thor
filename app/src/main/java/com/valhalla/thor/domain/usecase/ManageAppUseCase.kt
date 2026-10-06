@@ -11,6 +11,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.restorePlanFor
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
+import com.valhalla.thor.domain.repository.PackageOperationBarrier
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlin.time.Duration
 import org.koin.core.annotation.Factory
@@ -19,7 +20,14 @@ import org.koin.core.annotation.Factory
 class ManageAppUseCase(
     private val systemRepository: SystemRepository,
     private val packageOperationCoordinator: PackageOperationCoordinator,
+    private val packageOperationBarrier: PackageOperationBarrier,
 ) {
+    /** Existing isolated callers can supply only their own coordinator; production injects all three. */
+    constructor(
+        systemRepository: SystemRepository,
+        packageOperationCoordinator: PackageOperationCoordinator,
+    ) : this(systemRepository, packageOperationCoordinator, PackageOperationBarrier { _, _ -> false })
+
     suspend fun forceStop(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
@@ -43,7 +51,12 @@ class ManageAppUseCase(
     /** Every app's cache, under any mode that can. The `Long?` is bytes freed. */
     suspend fun clearAllCaches(
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
-    ): Result<Long?> = systemRepository.clearAllCaches(execution)
+    ): Result<Long?> = when (
+        val lease = packageOperationBarrier.withGlobalLease { systemRepository.clearAllCaches(execution) }
+    ) {
+        is PackageLeaseResult.Acquired -> lease.value
+        is PackageLeaseResult.Busy -> Result.failure(PackageOperationBusy(lease.owner))
+    }
 
     suspend fun clearAppData(
         packageName: String,

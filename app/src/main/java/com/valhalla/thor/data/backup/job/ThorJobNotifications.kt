@@ -3,18 +3,15 @@
 
 package com.valhalla.thor.data.backup.job
 
-import android.Manifest
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import androidx.work.ForegroundInfo
 import androidx.work.WorkManager
 import com.valhalla.thor.R
@@ -27,22 +24,8 @@ import org.koin.core.annotation.Single
 
 private const val TAG = "ThorJobNotifications"
 
-internal fun interface ThorJobNotificationCapability {
-    fun canPostJobs(): Boolean
-}
-
-/** Pure half of [ThorJobNotifications.canPostJobs], kept visible to JVM policy tests. */
-internal fun jobNotificationsAvailable(
-    appNotificationsEnabled: Boolean,
-    postNotificationsGranted: Boolean,
-    channelImportance: Int?,
-): Boolean = appNotificationsEnabled &&
-        postNotificationsGranted &&
-        channelImportance != null &&
-        channelImportance != NotificationManager.IMPORTANCE_NONE
-
-@Single(binds = [ThorJobNotificationCapability::class])
-class ThorJobNotifications(private val context: Context) : ThorJobNotificationCapability {
+@Single
+class ThorJobNotifications(private val context: Context) {
 
     // Hoisted out of the per-tick path — each from() call is a system service lookup.
     private val notificationManager = NotificationManagerCompat.from(context)
@@ -84,30 +67,6 @@ class ThorJobNotifications(private val context: Context) : ThorJobNotificationCa
         // Channel creation is idempotent; calling it once here avoids an IPC on every notification
         // post rather than relying on the caller to guard it.
         ensureChannel()
-    }
-
-    /**
-     * Whether a background job can keep its required user-visible surface for its whole lifetime.
-     *
-     * Channel creation comes first deliberately. On API 26+ a missing channel is not evidence that
-     * the user disabled it, and querying before Thor has registered the channel would conflate those
-     * two states. An existing user-disabled channel keeps its importance when re-created, so the
-     * subsequent lookup still observes that decision.
-     */
-    override fun canPostJobs(): Boolean {
-        ensureChannel()
-        val postNotificationsGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                ) == PackageManager.PERMISSION_GRANTED
-        val channelImportance =
-            notificationManager.getNotificationChannelCompat(CHANNEL_ID)?.importance
-        return jobNotificationsAvailable(
-            appNotificationsEnabled = notificationManager.areNotificationsEnabled(),
-            postNotificationsGranted = postNotificationsGranted,
-            channelImportance = channelImportance,
-        )
     }
 
     fun foregroundInfo(

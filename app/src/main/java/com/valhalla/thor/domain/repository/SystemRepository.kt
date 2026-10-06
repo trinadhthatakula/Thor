@@ -6,6 +6,7 @@ package com.valhalla.thor.domain.repository
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import java.io.File
 
 interface SystemRepository {
 
@@ -90,6 +91,19 @@ interface SystemRepository {
         sourcePath: String,
         destinationPath: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext()
+    ): Result<Unit>
+
+    /**
+     * Stage an unreadable input into a caller-owned file, using one selected provider for the
+     * entire operation. Root output is private and promoted only after acknowledged completion;
+     * uncertain root work is retained outside cache cleanup. Other providers keep their existing
+     * persistent shell semantics. This does not cancel ContentResolver or Binder work.
+     */
+    suspend fun copyFileForRead(
+        sourcePath: String,
+        destination: File,
+        maxBytes: Long? = null,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
     suspend fun getAppPaths(

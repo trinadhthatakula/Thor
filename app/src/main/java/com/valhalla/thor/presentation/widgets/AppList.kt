@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -81,6 +82,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -101,9 +103,10 @@ import com.valhalla.thor.domain.model.MultiAppActionId
 import com.valhalla.thor.domain.model.MultiAppActionLayout
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.model.UadRecommendation
 import com.valhalla.thor.domain.model.asGeneralName
 import com.valhalla.thor.domain.model.PermissionIndex
-import com.valhalla.thor.domain.model.filterTypes
+import com.valhalla.thor.domain.model.availableFilterTypes
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
@@ -120,6 +123,7 @@ fun AppList(
     appList: List<AppInfo>,
     selectedFilter: String?,
     filterType: FilterType = FilterType.Source,
+    fixedStateFilter: Boolean = false,
     sortBy: SortBy = SortBy.NAME,
     sortOrder: SortOrder = SortOrder.ASCENDING,
     searchQuery: String = "",
@@ -133,6 +137,8 @@ fun AppList(
     permissionIndex: PermissionIndex = PermissionIndex(),
     isLoadingPermissions: Boolean = false,
     permissionIndexFailed: Boolean = false,
+    isLoadingUad: Boolean = false,
+    uadLoadFailed: Boolean = false,
     onSortOrderSelected: (SortOrder) -> Unit = {},
     onSortByChanged: (SortBy) -> Unit = {},
     onFilterSelected: (String?) -> Unit,
@@ -168,6 +174,8 @@ fun AppList(
         multiSelection.mapTo(HashSet()) { it.packageName }
     }
     val isMultiSelectMode = multiSelection.isNotEmpty()
+    val isUadFilter = appListType == AppListType.SYSTEM && filterType == FilterType.Uad && !fixedStateFilter
+    val isSpecificUadFilter = isUadFilter && selectedFilter != "All"
 
     // 2. Logic
     BackHandler(isMultiSelectMode) { multiSelection = emptyList() }
@@ -226,7 +234,8 @@ fun AppList(
 
             // Headers (Control Bar)
             this@Column.AnimatedVisibility(
-                visible = !isMultiSelectMode,
+                visible = !isMultiSelectMode && !fixedStateFilter &&
+                    (filterType != FilterType.Uad || appListType == AppListType.SYSTEM),
                 enter = expandVertically(),
                 exit = shrinkVertically()
             ) {
@@ -246,6 +255,9 @@ fun AppList(
                         permissionIndex = permissionIndex,
                         isLoadingPermissions = isLoadingPermissions,
                         permissionIndexFailed = permissionIndexFailed,
+                        isLoadingUad = isLoadingUad,
+                        uadLoadFailed = uadLoadFailed,
+                        showUadStatus = !isSpecificUadFilter || appList.isNotEmpty(),
                         onFilterSelected = onFilterSelected
                     )
                 }
@@ -257,11 +269,20 @@ fun AppList(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isLoading) {
+                    if (isSpecificUadFilter && (isLoadingUad || uadLoadFailed)) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            if (isLoadingUad) ContainedLoadingIndicator()
+                            UadFilterStatus(isLoading = isLoadingUad)
+                        }
+                    } else if (isLoading) {
                         ContainedLoadingIndicator()
                     } else {
                         EmptyStatePlaceholder(
-                            isFiltering = searchQuery.isNotEmpty() || selectedFilter != "All"
+                            isFiltering = searchQuery.isNotEmpty() || (!fixedStateFilter && selectedFilter != "All")
                         )
                     }
                 }
@@ -323,6 +344,7 @@ fun AppList(
         AppFilterSheet(
             onDismiss = { showFilterSheet = false },
             filterType = filterType,
+            fixedStateFilter = fixedStateFilter,
             sortBy = sortBy,
             sortOrder = sortOrder,
             isGrid = isGrid,
@@ -358,12 +380,12 @@ private fun AppQuickFilters(
     permissionIndex: PermissionIndex,
     isLoadingPermissions: Boolean,
     permissionIndexFailed: Boolean,
+    isLoadingUad: Boolean,
+    uadLoadFailed: Boolean,
+    showUadStatus: Boolean,
     onFilterSelected: (String?) -> Unit
 ) {
-    // The permission chips are the only ones that have to be read off the device, so they are the
-    // only ones with a "not there yet", a "it went wrong" and a "not there at all" state to show
-    // instead. Failure is worth its own sentence: the toast that announced it is long gone by the
-    // time the user looks at the empty row, and "no groups on this device" would be a lie.
+    // An empty permission index needs its own explanation rather than a misleading empty row.
     if (filterType == FilterType.Permission && permissionIndex.isEmpty) {
         Text(
             text = stringResource(
@@ -382,59 +404,84 @@ private fun AppQuickFilters(
         return
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        val chips: List<String?> = when (filterType) {
-            FilterType.Source -> installers
-            FilterType.State -> FilterType.State.types
-            FilterType.Permission -> listOf("All") + permissionIndex.orderedGroups
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (filterType == FilterType.Uad && showUadStatus && (isLoadingUad || uadLoadFailed)) {
+            UadFilterStatus(isLoading = isLoadingUad)
         }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val chips: List<String?> = when (filterType) {
+                FilterType.Source -> installers
+                FilterType.State -> FilterType.State.types
+                FilterType.Permission -> listOf("All") + permissionIndex.orderedGroups
+                FilterType.Uad -> listOf("All") + UadRecommendation.entries.map { it.persistedValue }
+            }
 
-        chips.forEach { item ->
-            val label = when (filterType) {
-                FilterType.Source -> {
-                    when (item) {
+            chips.forEach { item ->
+                val label = when (filterType) {
+                    FilterType.Source -> {
+                        when (item) {
+                            "All" -> stringResource(R.string.filter_all)
+                            "PLAY STORE" -> stringResource(R.string.play_store)
+                            "F-DROID" -> stringResource(R.string.f_droid)
+                            "SIDELOADED" -> stringResource(R.string.sideloaded)
+                            "OTHERS" -> stringResource(R.string.others)
+                            else -> installerNameMap[item] ?: item
+                            ?: if (appListType != AppListType.SYSTEM) stringResource(R.string.others) else stringResource(R.string.system_apps)
+                        }
+                    }
+
+                    // The platform's own label for the group, so the chip reads exactly like the
+                    // permission dialog the user has already seen — in their language, for free.
+                    FilterType.Permission -> when (item) {
                         "All" -> stringResource(R.string.filter_all)
-                        "PLAY STORE" -> stringResource(R.string.play_store)
-                        "F-DROID" -> stringResource(R.string.f_droid)
-                        "SIDELOADED" -> stringResource(R.string.sideloaded)
-                        "OTHERS" -> stringResource(R.string.others)
-                        else -> installerNameMap[item] ?: item
-                        ?: if (appListType != AppListType.SYSTEM) stringResource(R.string.others) else stringResource(R.string.system_apps)
+                        else -> permissionIndex.groupLabels[item] ?: item.orEmpty()
+                    }
+
+                    FilterType.State -> when (item) {
+                        "All" -> stringResource(R.string.filter_all)
+                        "Active" -> stringResource(R.string.active)
+                        "Frozen" -> stringResource(R.string.frozen)
+                        "Suspended" -> stringResource(R.string.suspended)
+                        else -> item ?: ""
+                    }
+
+                    FilterType.Uad -> when (UadRecommendation.fromPersistedValue(item.orEmpty())) {
+                        UadRecommendation.RECOMMENDED -> stringResource(R.string.uad_filter_recommended)
+                        UadRecommendation.ADVANCED -> stringResource(R.string.uad_filter_advanced)
+                        UadRecommendation.EXPERT -> stringResource(R.string.uad_filter_expert)
+                        UadRecommendation.UNSAFE -> stringResource(R.string.uad_filter_unsafe)
+                        UadRecommendation.UNKNOWN -> stringResource(R.string.unknown)
+                        null -> stringResource(R.string.filter_all)
                     }
                 }
 
-                // The platform's own label for the group, so the chip reads exactly like the
-                // permission dialog the user has already seen — in their language, for free.
-                FilterType.Permission -> when (item) {
-                    "All" -> stringResource(R.string.filter_all)
-                    else -> permissionIndex.groupLabels[item] ?: item.orEmpty()
-                }
-
-                FilterType.State -> when (item) {
-                    "All" -> stringResource(R.string.filter_all)
-                    "Active" -> stringResource(R.string.active)
-                    "Frozen" -> stringResource(R.string.frozen)
-                    "Suspended" -> stringResource(R.string.suspended)
-                    else -> item ?: ""
-                }
-            }
-
-            FilterChip(
-                selected = item == selectedFilter,
-                onClick = { onFilterSelected(item) },
-                label = { Text(label) },
-                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                FilterChip(
+                    selected = item == selectedFilter,
+                    onClick = { onFilterSelected(item) },
+                    enabled = filterType != FilterType.Uad || item == "All" || (!isLoadingUad && !uadLoadFailed),
+                    label = { Text(label) },
+                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 )
-            )
+            }
         }
     }
+}
+
+@Composable
+private fun UadFilterStatus(isLoading: Boolean) {
+    Text(
+        text = stringResource(if (isLoading) R.string.uad_filter_loading else R.string.uad_filter_failed),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1210,6 +1257,7 @@ private enum class SheetTab { FILTERS, SORT }
 private fun AppFilterSheet(
     onDismiss: () -> Unit,
     filterType: FilterType,
+    fixedStateFilter: Boolean,
     sortBy: SortBy,
     sortOrder: SortOrder,
     isGrid: Boolean,
@@ -1222,7 +1270,7 @@ private fun AppFilterSheet(
     onExportList: () -> Unit,
     onShareList: () -> Unit
 ) {
-    var activeTab by remember { mutableStateOf(SheetTab.FILTERS) }
+    var activeTab by remember { mutableStateOf(if (fixedStateFilter) SheetTab.SORT else SheetTab.FILTERS) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1245,34 +1293,37 @@ private fun AppFilterSheet(
             )
             Spacer(Modifier.height(24.dp))
 
-            // 1. App Type Selector (Top Row)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    stringResource(R.string.app_source),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-                ConnectedButtonGroup(
-                    items = AppListType.entries.map { type ->
-                        ConnectedButtonGroupItem.Icon(
-                            icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                            contentDescription = stringResource(
-                                if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+            // The dedicated Suspended list includes both user and system apps.
+            if (!fixedStateFilter) {
+                // 1. App Type Selector (Top Row)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(R.string.app_source),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                    ConnectedButtonGroup(
+                        items = AppListType.entries.map { type ->
+                            ConnectedButtonGroupItem.Icon(
+                                icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
+                                contentDescription = stringResource(
+                                    if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                                )
                             )
-                        )
-                    },
-                    selectedIndex = AppListType.entries.indexOf(appListType),
-                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) },
-                    modifier = Modifier.width(IntrinsicSize.Max)
-                )
+                        },
+                        selectedIndex = AppListType.entries.indexOf(appListType),
+                        onItemSelected = { onListTypeChanged(AppListType.entries[it]) },
+                        modifier = Modifier.width(IntrinsicSize.Max)
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
             }
-
-            Spacer(Modifier.height(24.dp))
-
             // 2. View Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1303,7 +1354,7 @@ private fun AppFilterSheet(
 
             Spacer(Modifier.height(32.dp))
 
-            ConnectedButtonGroup(
+            if (!fixedStateFilter) ConnectedButtonGroup(
                 items = SheetTab.entries.map { ConnectedButtonGroupItem.Label(stringResource(if (it == SheetTab.FILTERS) R.string.filters else R.string.sort_by)) },
                 selectedIndex = SheetTab.entries.indexOf(activeTab),
                 onItemSelected = { activeTab = SheetTab.entries[it] },
@@ -1318,7 +1369,7 @@ private fun AppFilterSheet(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        filterTypes.forEach { type ->
+                        availableFilterTypes(appListType).forEach { type ->
                             val isSelected = filterType == type
                             ListItem(
                                 trailingContent = {
@@ -1335,7 +1386,11 @@ private fun AppFilterSheet(
                                         if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                                         else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
                                     )
-                                    .clickable { onFilterTypeChanged(type) },
+                                    .selectable(
+                                        selected = isSelected,
+                                        role = Role.RadioButton,
+                                        onClick = { onFilterTypeChanged(type) }
+                                    ),
                                 colors = androidx.compose.material3.ListItemDefaults.colors(
                                     containerColor = Color.Transparent
                                 )

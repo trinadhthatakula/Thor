@@ -76,6 +76,5 @@ android {
 }
 
 dependencies {
-    implementation(libs.androidx.core.ktx)
     compileOnly(project(":vm-runtime"))
 }

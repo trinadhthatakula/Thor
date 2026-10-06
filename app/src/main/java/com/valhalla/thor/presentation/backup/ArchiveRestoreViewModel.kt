@@ -107,13 +107,10 @@ sealed interface RestoreFinish {
      * The job reached a terminal CANCELLED state.
      *
      * Not `Failed(null)`, which renders as "it stopped without saying why" — the one thing that is
-     * not true here. `ThorJobLauncher.cancel` has no call site, but that does not make this the chain
-     * case: `ThorJobNotifications` puts a Cancel action on the ongoing notification built from
-     * `WorkManager.createCancelPendingIntent`, which cancels the **work** and so can land here with a
-     * worker mid-restore. The other route is the chain — every job is appended to `THOR_JOB_CHAIN`,
-     * and WorkManager cancels the dependents of a prerequisite that returned `Result.failure()`
-     * without ever calling `doWork`. The two differ in exactly one way that matters to a user, which
-     * is whether the device was touched, and [workerRan] is what separates them.
+     * not true here. A service notification cancels its durable data task, while legacy notifications
+     * use `WorkManager.createCancelPendingIntent` and can stop a worker mid-restore. Retained legacy
+     * chain dependents can also be cancelled after a prerequisite fails, without entering `doWork`.
+     * [workerRan] records whether this watcher saw execution before cancellation.
      *
      * @param workerRan true when this watcher saw the job RUNNING before the cancel — the state
      *   WorkManager writes as it hands the job to a built worker, a line before `startWork()`. A cancel

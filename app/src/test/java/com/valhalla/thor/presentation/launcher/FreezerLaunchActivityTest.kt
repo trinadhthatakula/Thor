@@ -7,6 +7,8 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
@@ -14,9 +16,11 @@ import com.valhalla.thor.domain.model.PrivilegeSweepSpec
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.presentation.FakeFreezerRepository
+import com.valhalla.thor.presentation.FakePrivilegeStateProvider
 import com.valhalla.thor.presentation.privilegeSweepResolver
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
@@ -36,6 +40,65 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FreezerLaunchActivityTest {
+    @Test
+    fun `unready privilege ends the wait after ten seconds without claiming denial`() = runTest {
+        val privilege = FakePrivilegeStateProvider()
+        val failure = async { shortcutPrivilegeFailureRes(privilege) }
+        runCurrent()
+
+        advanceTimeBy(9_999L)
+        runCurrent()
+        assertFalse(failure.isCompleted)
+        advanceTimeBy(1L)
+        runCurrent()
+
+        assertEquals(R.string.freezer_launch_failed, failure.await())
+        privilege.emit(PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true))
+        runCurrent()
+        assertEquals(R.string.freezer_launch_failed, failure.await())
+    }
+
+    @Test
+    fun `privilege becoming ready inside the deadline permits launch`() = runTest {
+        val privilege = FakePrivilegeStateProvider()
+        val failure = async { shortcutPrivilegeFailureRes(privilege) }
+        runCurrent()
+        advanceTimeBy(9_999L)
+        runCurrent()
+        assertFalse(failure.isCompleted)
+
+        privilege.emit(PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true))
+        runCurrent()
+
+        assertNull(failure.await())
+    }
+
+    @Test
+    fun `confirmed absence asks for privilege without waiting for the deadline`() = runTest {
+        val privilege = FakePrivilegeStateProvider(PrivilegeState(isReady = true))
+
+        assertEquals(R.string.tile_grant_privilege_toast, shortcutPrivilegeFailureRes(privilege))
+        assertEquals(0L, testScheduler.currentTime)
+    }
+
+    @Test
+    fun `destroyed shortcut cancels readiness without returning a failure message`() = runTest {
+        val privilege = FakePrivilegeStateProvider()
+        val failure = async { shortcutPrivilegeFailureRes(privilege) }
+        runCurrent()
+        failure.cancel()
+        runCurrent()
+
+        var cancelled = false
+        try {
+            failure.await()
+        } catch (_: CancellationException) {
+            cancelled = true
+        }
+        assertTrue(cancelled)
+        assertEquals(0L, testScheduler.currentTime)
+    }
+
     @Test
     fun `shortcut reports accepted enqueue without waiting for completion`() {
         val accepted = PrivilegeSweepLaunchResult.Accepted(

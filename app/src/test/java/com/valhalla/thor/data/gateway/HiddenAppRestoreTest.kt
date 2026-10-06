@@ -8,6 +8,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.gateway.root.RootCommand
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.gateway.root.RootCommandExecutor
 import com.valhalla.thor.data.gateway.root.RootCommandResult
 import com.valhalla.thor.data.source.local.isEffectivelyEnabled
@@ -141,6 +142,7 @@ class HiddenAppRestoreTest {
         },
         preferenceRepository = FakePreferenceRepository(),
         ioDispatcher = Dispatchers.Unconfined,
+        rootAdmission = TestRootAdmission(),
     ).apply { userIdProvider = { 10 } }
 
     private fun shizukuGateway(context: Application) = ShizukuSystemGateway(

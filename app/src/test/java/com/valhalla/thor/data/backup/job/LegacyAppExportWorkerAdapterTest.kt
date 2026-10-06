@@ -223,7 +223,8 @@ class LegacyAppExportWorkerAdapterTest {
             }
         }
 
-        assertSame(cancellation, thrown)
+        // The retained lease coroutine scope may recover the stack trace with the original cause.
+        assertSame(cancellation, thrown.cause ?: thrown)
         assertFalse(persisted)
     }
 

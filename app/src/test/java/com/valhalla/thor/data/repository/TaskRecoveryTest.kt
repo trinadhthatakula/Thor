@@ -700,13 +700,10 @@ class TaskRecoveryTest {
             wakeSignal = wakeSignal(), taskIdFactory = { id }, clock = { 100L },
         )
         return ThorJobLauncher(
-            context,
-            keys,
-            acceptance,
-            cancellation(),
-            database.dataTaskDao(),
-            worker,
-            worker
+            context = context,
+            acceptance = acceptance,
+            dataTaskDao = database.dataTaskDao(),
+            defaultDispatcher = worker,
         )
     }
 

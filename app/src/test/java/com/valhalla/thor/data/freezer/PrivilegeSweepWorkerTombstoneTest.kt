@@ -32,7 +32,6 @@ class PrivilegeSweepWorkerTombstoneTest {
         )
         listOf(
             "runner.run(",
-            "executionFence.tryRegister(",
             "store.",
             "executor.execute(",
             "publish(",

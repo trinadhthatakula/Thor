@@ -70,3 +70,6 @@
 -keep class android.content.pm.IPackageDataObserver$Stub { *; }
 -keep class * extends android.content.pm.IPackageDataObserver$Stub { *; }
 
+
+# Invoked by class name in a short-lived privileged app_process, without starting Thor.
+-keep class com.valhalla.thor.data.settingseditor.SettingsEditorBridge { public static void main(java.lang.String[]); }

@@ -6,6 +6,9 @@ package com.valhalla.thor.data.gateway.root
 import com.valhalla.superuser.Shell
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.RootExecutionPolicy
 import java.io.InputStream
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
@@ -32,6 +35,33 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OdinRootShellSessionTest {
+
+    @Test
+    fun `owned Odin adapter chooses explicit policy without inspecting diagnostic name`() = runTest {
+        val shell = FakeOdinShell(status = Shell.ROOT_SHELL)
+        val isolated = TestIsolatedRootJob(isolatedOutcome())
+        val prepared = mutableListOf<String>()
+        val session = OdinRootShellSession(shell) { command ->
+            prepared += command
+            isolated
+        }
+
+        session.execute(RootCommand(OPAQUE_COMMAND, PrivilegeExecutionContext(
+            commandClass = PrivilegeCommandClass("settings_editor.name_only"),
+        )))
+        assertEquals(1, shell.submissionCount)
+        assertTrue(prepared.isEmpty())
+
+        val result = session.execute(RootCommand(OPAQUE_COMMAND, PrivilegeExecutionContext(
+            commandClass = PrivilegeCommandClass("different.command"),
+            lane = PrivilegeExecutionLane.ARCHIVE,
+            rootExecutionPolicy = RootExecutionPolicy.ISOLATED,
+        )))
+        assertEquals(listOf(OPAQUE_COMMAND), prepared)
+        assertEquals(1, shell.submissionCount)
+        assertEquals(1, isolated.submissions)
+        assertEquals(isolated.completion.await(), result.rootOutcome)
+    }
 
     @Test
     fun `factory accepts a live root shell`() = runTest {

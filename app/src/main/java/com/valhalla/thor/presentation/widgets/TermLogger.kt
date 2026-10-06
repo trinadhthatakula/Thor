@@ -27,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -147,11 +146,8 @@ fun TermLoggerContent(
             modifier = Modifier.fillMaxWidth(),
         ) {
             when (status) {
-                TermLoggerStatus.ACTIVE -> AnimateLottieRaw(
-                    resId = R.raw.rearrange,
-                    shouldLoop = true,
+                TermLoggerStatus.ACTIVE -> RearrangingBoxesAnimation(
                     modifier = Modifier.size(50.dp),
-                    contentScale = ContentScale.Crop,
                 )
 
                 TermLoggerStatus.SUCCESS -> Icon(

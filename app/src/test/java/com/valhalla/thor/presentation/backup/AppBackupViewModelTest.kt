@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.backup
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
 import com.valhalla.thor.data.backup.MIN_PASSPHRASE_LENGTH
 import com.valhalla.thor.data.backup.PassphraseVault
@@ -187,7 +188,7 @@ class AppBackupViewModelTest {
         probe: AppDataProbe,
         privilegeState: PrivilegeState = rooted(),
     ) = MeasureAppDataUseCase(
-        DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState)),
+        DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState), TestRootAdmission().apply { state.value = privilegeState.rootAvailability }),
         probe,
     )
 

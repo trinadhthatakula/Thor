@@ -25,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -99,6 +100,7 @@ fun AppListScreen(
     onAppAction: (AppClickAction) -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {},
     onNavigateToQueue: () -> Unit = {},
+    onBack: (() -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -221,6 +223,11 @@ fun AppListScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                onBack?.let { back ->
+                    IconButton(onClick = back) {
+                        Icon(painterResource(R.drawable.arrow_back), stringResource(R.string.cd_back))
+                    }
+                }
                 // LEFT: Brand/Title Block
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -249,8 +256,8 @@ fun AppListScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     QueueNavigationButton(onClick = onNavigateToQueue)
 
-                    // RIGHT: Connected button group to switch between App List Types
-                    ConnectedButtonGroup(
+                    // The dedicated Suspended list always includes both app sources.
+                    if (!state.suspendedOnly) ConnectedButtonGroup(
                         items = AppListType.entries.map { type ->
                             ConnectedButtonGroupItem.Icon(
                                 icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
@@ -310,6 +317,7 @@ fun AppListScreen(
                 // Using your existing AppList widget, but feeding it PURE STATE
                 AppList(
                     appListType = state.appListType,
+                    fixedStateFilter = state.suspendedOnly,
                     installers = state.availableInstallers,
                     selectedFilter = state.selectedFilter,
                     filterType = state.filterType,
@@ -320,7 +328,8 @@ fun AppListScreen(
                     // filter has no index, so every app is filtered out and the list would say
                     // "No matching apps found" — a wrong answer, not a pending one.
                     isLoading = state.isLoading || state.isComputingSizes ||
-                            state.isLoadingPermissions,
+                            state.isLoadingPermissions ||
+                            (state.isLoadingUad && state.selectedFilter != "All"),
                     appList = state.displayedApps,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
@@ -341,16 +350,18 @@ fun AppListScreen(
                     permissionIndex = state.permissionIndex,
                     isLoadingPermissions = state.isLoadingPermissions,
                     permissionIndexFailed = state.permissionIndexFailed,
+                    isLoadingUad = state.isLoadingUad,
+                    uadLoadFailed = state.uadLoadFailed,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     // Actions forwarded to ViewModel
-                    onFilterTypeChanged = viewModel::updateFilterType,
+                    onFilterTypeChanged = { viewModel.updateFilterType(it, state.appListType) },
                     onSortByChanged = viewModel::updateSort,
                     onSortOrderSelected = viewModel::updateSortOrder,
                     onSearchQueryChange = viewModel::updateSearchQuery,
                     onFilterSelected = {
                         it?.let { filter ->
-                            viewModel.updateFilter(filter)
+                            viewModel.updateFilter(filter, state.appListType, state.filterType)
                         }
                     },
                     onAppInfoSelected = { appInfo ->

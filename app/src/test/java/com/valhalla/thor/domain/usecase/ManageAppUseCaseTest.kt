@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
+import com.valhalla.thor.domain.repository.PackageOperationBarrier
 import com.valhalla.thor.domain.repository.SystemRepository
 import java.lang.reflect.InvocationTargetException
 import java.util.UUID
@@ -201,6 +202,53 @@ class ManageAppUseCaseTest {
         )
         assertEquals(emptyList<String>(), repository.calls)
     }
+
+    @Test
+    fun `global cache clear refuses retained clear work before calling the repository`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        var checks = 0
+        val barrier = object : PackageOperationBarrier {
+            override suspend fun isBlocked(packageName: String, owner: PackageOperationOwner) = false
+            override suspend fun <T> withGlobalLease(block: suspend () -> T): PackageLeaseResult<T> {
+                checks++
+                return PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA)
+            }
+        }
+
+        val result = ManageAppUseCase(repository, coordinator, barrier).clearAllCaches()
+
+        val failure = result.exceptionOrNull()
+        assertTrue(failure is PackageOperationBusy)
+        assertEquals(PackageOperationOwner.CLEAR_DATA, (failure as PackageOperationBusy).owner)
+        assertEquals(1, checks)
+        assertTrue(repository.calls.isEmpty())
+        assertTrue(coordinator.calls.isEmpty())
+    }
+
+    @Test
+    fun `allowed global cache clear runs through the global lease with original execution context`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        var checks = 0
+        val barrier = object : PackageOperationBarrier {
+            override suspend fun isBlocked(packageName: String, owner: PackageOperationOwner) = false
+            override suspend fun <T> withGlobalLease(block: suspend () -> T): PackageLeaseResult<T> {
+                checks++
+                assertTrue(repository.calls.isEmpty())
+                val result = block()
+                assertEquals(listOf("clearAllCaches"), repository.calls)
+                return PackageLeaseResult.Acquired(result)
+            }
+        }
+        val execution = PrivilegeExecutionContext(commandClass = PrivilegeCommandClass("cache.all"))
+
+        val result = ManageAppUseCase(repository, coordinator, barrier).clearAllCaches(execution)
+
+        assertEquals(0L, result.getOrThrow())
+        assertEquals(1, checks)
+        assertEquals(listOf("clearAllCaches" to execution), repository.executions)
+    }
 }
 
 private data class LeaseCall(
@@ -315,6 +363,13 @@ private class RecordingManageSystemRepository(
         execution: PrivilegeExecutionContext,
     ): Result<Unit> =
         error("off the manage-app path")
+
+    override suspend fun copyFileForRead(
+        sourcePath: String,
+        destination: java.io.File,
+        maxBytes: Long?,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = Result.failure(UnsupportedOperationException("No staged read configured"))
 
     override suspend fun copyFileWithRoot(
         sourcePath: String,
