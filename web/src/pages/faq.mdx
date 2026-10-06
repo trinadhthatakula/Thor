@@ -127,17 +127,24 @@ and blocked rather than waved through.
 Almost always.
 
 - **User apps** — unfreezing always works, with no data loss.
-- **System apps** — Thor switches them off in place. The app keeps its data, nothing is removed, so
-  there is nothing to restore. This is the only thing a freeze does, in every privilege mode.
-- **The devices where it doesn't happen at all** — a few OEM builds refuse to let a preinstalled app
-  be switched off by anything but root. On those, Shizuku and Dhizuku cannot freeze that app, and
-  Thor tells you so and leaves it alone. Nothing to undo, because nothing was done. Freezing those
-  apps needs Root.
+- **System apps** — Thor normally disables them in place. If Shizuku cannot disable one, its
+  default-on removal fallback can remove it for the current Android user while keeping its data files;
+  Unfreeze reinstalls it. The fallback can be turned off in Settings. Removing an app for the user
+  may still affect accounts that app manages.
+- **The devices where it doesn't happen at all** — if the selected mode cannot disable or remove a
+  preinstalled app, Thor reports the failure and leaves the app active.
 - **Debloated, rather than frozen** — recoverable with `pm install-existing` as long as the APK is
   still on the system partition, which is the normal case: it is the same file that shipped with
   your phone.
 - **Where it cannot be undone** — if a system update removes an app from the system partition while
   it is frozen, there is nothing left to reinstall from.
+
+<h3 id="uninstall-system-apps">Can Thor uninstall system apps?</h3>
+
+Yes, where the active privilege mode supports it. Thor removes a system app for the **current
+Android user**; it does not erase the APK from the read-only system partition. If that package remains
+on the device, Thor can reinstall it for the user. This is different from freezing an app, although
+Shizuku's optional removal fallback can use the same current-user removal when disabling fails.
 
 <h3 id="cross-privilege-unsuspend">I switched from Root to Shizuku and now some apps won't unsuspend.</h3>
 

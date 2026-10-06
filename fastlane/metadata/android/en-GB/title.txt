@@ -1,1 +1,1 @@
-Thor - App Manager
+Thor: App Manager & Freezer
