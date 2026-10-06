@@ -97,7 +97,7 @@ class ExportAppUseCase(
     ): Result<String> = withContext(ioDispatcher) {
         var staged: File? = null
         try {
-            val file = bundleBuilder.buildWithProgress(
+            val file = bundleBuilder.buildExportWithProgress(
                 appInfo,
                 cacheSubDir = session.stagingSubDir,
                 format = format,
@@ -227,7 +227,7 @@ internal suspend fun exportDurableBundle(
             }
 
             AppExportPublicationReconciliation.Absent -> {
-                val file = bundleBuilder.buildWithProgress(
+                val file = bundleBuilder.buildExportWithProgress(
                     appInfo = appInfo,
                     cacheSubDir = session.stagingSubDir,
                     format = format,

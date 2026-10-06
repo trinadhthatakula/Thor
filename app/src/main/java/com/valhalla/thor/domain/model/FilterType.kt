@@ -23,13 +23,20 @@ sealed interface FilterType {
      * for the sweep and [PermissionIndex] for what it produces.
      */
     data object Permission : FilterType
+
+    /** Removal recommendations from UAD and installed debloat extensions, for system apps only. */
+    data object Uad : FilterType
 }
 
 val filterTypes = listOf(
     FilterType.State,
     FilterType.Source,
-    FilterType.Permission
+    FilterType.Permission,
+    FilterType.Uad
 )
+
+fun availableFilterTypes(appListType: AppListType): List<FilterType> =
+    filterTypes.filter { it != FilterType.Uad || appListType == AppListType.SYSTEM }
 
 /**
  * The label for the filter *category*, as shown in the filter sheet.
@@ -43,4 +50,5 @@ fun FilterType.asGeneralName(): Int = when (this) {
     FilterType.State -> R.string.filter_type_state
     FilterType.Source -> R.string.filter_type_source
     FilterType.Permission -> R.string.filter_type_permission
+    FilterType.Uad -> R.string.filter_type_uad
 }

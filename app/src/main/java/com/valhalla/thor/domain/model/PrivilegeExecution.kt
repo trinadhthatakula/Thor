@@ -29,6 +29,8 @@ data class PrivilegeExecutionContext(
     val workRequestId: UUID? = null,
     val sweepRequestId: UUID? = null,
     val commandTimeout: Duration? = null,
+    val rootExecutionPolicy: RootExecutionPolicy = RootExecutionPolicy.PERSISTENT,
+    val rootExecutionObserver: RootExecutionObserver? = null,
 ) {
     internal var provenance = PrivilegeExecutionProvenance()
 }
@@ -91,6 +93,19 @@ sealed class PrivilegeExecutionException(
 class PackageOperationBusy(val owner: PackageOperationOwner) :
     PrivilegeExecutionException("Package operation busy: $owner")
 
+/** The caller has exited, but the accepted or attempted install still owns admission. */
+class InstallSessionUnresolved(message: String, cause: Throwable? = null) :
+    PrivilegeExecutionException(message, cause)
+
+class ObbPlacementUnresolved(val packageName: String, cause: Throwable? = null) :
+    PrivilegeExecutionException("Game data placement could not be confirmed for $packageName", cause)
+
+class RootDataClearUnresolved(val packageName: String, cause: Throwable? = null) :
+    PrivilegeExecutionException(
+        "Clear-data completion is unknown for $packageName; conflicting package operations remain blocked",
+        cause,
+    )
+
 class ShellLaneUnavailable(val lane: PrivilegeExecutionLane, cause: Throwable? = null) :
     PrivilegeExecutionException("Root shell lane unavailable: $lane", cause)
 
@@ -103,7 +118,10 @@ class ShellLaneDegraded(val lane: PrivilegeExecutionLane, cause: Throwable? = nu
 class ShellTransportDied(val lane: PrivilegeExecutionLane, cause: Throwable? = null) :
     PrivilegeExecutionException("Root shell transport died: $lane", cause)
 
-class ShellCommandTimedOut(val commandClass: PrivilegeCommandClass) :
+class ShellCommandTimedOut(
+    val commandClass: PrivilegeCommandClass,
+    val rootOutcome: RootJobOutcome? = null,
+) :
     PrivilegeExecutionException("Root command timed out: ${commandClass.value}")
 
 class ReinstallPostconditionFailed(val packageName: String) :

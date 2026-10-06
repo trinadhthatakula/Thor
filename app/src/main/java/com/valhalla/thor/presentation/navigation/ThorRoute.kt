@@ -16,6 +16,9 @@ sealed interface ThorRoute : NavKey {
     data object Apps : ThorRoute
 
     @Serializable
+    data object SuspendedApps : ThorRoute
+
+    @Serializable
     data object Freezer : ThorRoute
 
     @Serializable
@@ -60,6 +63,9 @@ sealed interface ThorRoute : NavKey {
 
     @Serializable
     data object ExtensionBrowse : ThorRoute
+
+    @Serializable
+    data object SettingsEditor : ThorRoute
 
     /** @param uriString null when the user came from Settings and still has to pick a file. */
     @Serializable

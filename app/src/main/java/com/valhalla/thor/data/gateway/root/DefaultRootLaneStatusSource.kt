@@ -3,6 +3,11 @@
 
 package com.valhalla.thor.data.gateway.root
 
+import com.valhalla.thor.util.DefaultRootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleDiagnostics
+import com.valhalla.thor.util.RootLifecycleEvent
+import com.valhalla.thor.util.RootLanePhase
+import com.valhalla.thor.util.recordSafely
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.RootLaneMode
@@ -16,7 +21,9 @@ import kotlinx.coroutines.flow.update
 import org.koin.core.annotation.Single
 
 @Single(binds = [RootLaneStatusSource::class])
-internal class DefaultRootLaneStatusSource : RootLaneStatusSource {
+internal class DefaultRootLaneStatusSource(
+    private val diagnostics: RootLifecycleDiagnostics = DefaultRootLifecycleDiagnostics,
+) : RootLaneStatusSource {
     private val mutableStatuses = MutableStateFlow(
         PrivilegeExecutionLane.entries.associateWith { lane ->
             RootLaneStatus(lane = lane, mode = RootLaneMode.ISOLATED)
@@ -38,6 +45,18 @@ internal class DefaultRootLaneStatusSource : RootLaneStatusSource {
         mutableStatuses.update { current ->
             current + (lane to current.getValue(lane).copy(mode = RootLaneMode.DEGRADED))
         }
+        diagnostics.recordSafely(RootLifecycleEvent.Lane(lane, RootLanePhase.DEGRADED))
+    }
+
+    fun markRecovered(lane: PrivilegeExecutionLane) {
+        require(lane != PrivilegeExecutionLane.INTERACTIVE)
+        degradationCauses.remove(lane)
+        mutableStatuses.update { current ->
+            val previous = current.getValue(lane)
+            check(previous.activeCommandClass == null) { "Cannot recover an active root lane" }
+            current + (lane to previous.copy(mode = RootLaneMode.ISOLATED))
+        }
+        diagnostics.recordSafely(RootLifecycleEvent.Lane(lane, RootLanePhase.RECOVERED))
     }
 
     fun commandStarted(

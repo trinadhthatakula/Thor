@@ -77,6 +77,7 @@ import kotlin.random.Random
 fun ExtensionManagerScreen(
     onBack: () -> Unit,
     onBrowse: () -> Unit,
+    onSettingsEditor: () -> Unit,
     viewModel: ExtensionManagerViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -151,158 +152,58 @@ fun ExtensionManagerScreen(
         topBar = { ExtensionTopAppBar(onBack = onBack) },
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .background(MaterialTheme.colorScheme.background)
-            ) {
-                if (state.isLoading) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        androidx.compose.material3.CircularProgressIndicator()
-                    }
-                } else if (state.extensions.isEmpty() && state.error != null) {
-                    val errorMessage = state.error
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.extension_store_error),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            if (!errorMessage.isNullOrBlank()) {
-                                Text(
-                                    text = errorMessage,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Button(
-                                onClick = { viewModel.loadExtensions() },
-                                shape = RoundedCornerShape(20.dp)
-                            ) {
-                                Text(text = stringResource(R.string.extension_retry))
-                            }
-                        }
-                    }
-                } else if (state.extensions.isEmpty()) {
-                    EmptyExtensionState(
-                        onGetExtensions = onBrowse
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // A reload can fail while a list is already shown (the VM keeps the old list
-                        // and sets error). Surface it inline with Retry so it isn't silently dropped.
-                        val reloadError = state.error.orEmpty()
-                        if (reloadError.isNotBlank()) {
-                            item(key = "reload-error") {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 16.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.errorContainer)
-                                        .padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        text = reloadError,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-                                    Button(
-                                        onClick = { viewModel.loadExtensions() },
-                                        shape = RoundedCornerShape(20.dp)
-                                    ) {
-                                        Text(text = stringResource(R.string.extension_retry))
-                                    }
-                                }
-                            }
-                        }
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = stringResource(R.string.extensions),
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = stringResource(R.string.manage_extensions_desc),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = onBrowse,
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.round_extension),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = stringResource(R.string.extension_browse_store),
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
-
-                        items(state.extensions, key = { it.packageName }) { item ->
-                            ExtensionCard(
-                                item = item,
-                                prefs = prefs,
-                                onConfigure = {
-                                    // Launch the extension's OWN config Activity (its process),
-                                    // passing Thor's theme so its UI can match (it can't read our prefs).
-                                    extensionManager.getConfigLaunchIntent(item.packageName)?.let {
-                                        it.putExtra(ExtensionManager.EXTRA_THEME_MODE, prefs.themeMode.name)
-                                        it.putExtra(ExtensionManager.EXTRA_DYNAMIC_COLOR, prefs.useDynamicColor)
-                                        it.putExtra(ExtensionManager.EXTRA_AMOLED, prefs.useAmoled)
-                                        runCatching { context.startActivity(it) }
-                                    }
-                                },
-                                onUninstall = {
-                                    val intent = Intent(Intent.ACTION_DELETE).apply {
-                                        data = "package:${item.packageName}".toUri()
-                                    }
-                                    runCatching { context.startActivity(intent) }
-                                }
-                            )
-                        }
-
-                        item {
-                            Spacer(modifier = Modifier.height(32.dp))
+        val privileges = koinInject<com.valhalla.thor.domain.repository.PrivilegeStateProvider>()
+        val privilege by privileges.state.collectAsStateWithLifecycle()
+        val settingsMode = com.valhalla.thor.domain.model.settingsEditorMode(privilege, prefs.preferredPrivilegeMode)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item(key = "sett-edit") {
+                androidx.compose.material3.Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.sett_edit), style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.sett_builtin_desc))
+                        Text(stringResource(if (settingsMode == null) R.string.sett_unavailable else R.string.sett_builtin))
+                        Button(onClick = onSettingsEditor, enabled = settingsMode != null && consentAccepted == true) {
+                            Text(stringResource(R.string.sett_open))
                         }
                     }
                 }
             }
+            item {
+                Text(stringResource(R.string.extensions), style = MaterialTheme.typography.headlineLarge)
+                Text(stringResource(R.string.manage_extensions_desc))
+                Button(onClick = onBrowse) { Text(stringResource(R.string.extension_browse_store)) }
+            }
+            if (state.isLoading) item { androidx.compose.material3.CircularProgressIndicator() }
+            state.error?.let { error ->
+                item(key = "reload-error") {
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                    Button(onClick = viewModel::loadExtensions) { Text(stringResource(R.string.extension_retry)) }
+                }
+            }
+            items(state.extensions, key = { it.packageName }) { item ->
+                ExtensionCard(
+                    item = item, prefs = prefs,
+                    onConfigure = {
+                        extensionManager.getConfigLaunchIntent(item.packageName)?.let {
+                            it.putExtra(ExtensionManager.EXTRA_THEME_MODE, prefs.themeMode.name)
+                            it.putExtra(ExtensionManager.EXTRA_DYNAMIC_COLOR, prefs.useDynamicColor)
+                            it.putExtra(ExtensionManager.EXTRA_AMOLED, prefs.useAmoled)
+                            runCatching { context.startActivity(it) }
+                        }
+                    },
+                    onUninstall = {
+                        val intent = Intent(Intent.ACTION_DELETE).apply { data = "package:${item.packageName}".toUri() }
+                        runCatching { context.startActivity(intent) }
+                    }
+                )
+            }
         }
     }
+}
 
 /**
  * One-time liability-consent gate shown the first time the user opens the Extension Manager. Beyond

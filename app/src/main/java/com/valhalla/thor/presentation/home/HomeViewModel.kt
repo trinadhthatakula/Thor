@@ -16,6 +16,9 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.InstalledManagerInfo
 import com.valhalla.thor.domain.model.PrivilegeManagerApp
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.RootAvailabilityState
+import com.valhalla.thor.domain.model.RootManagerShortcut
+import com.valhalla.thor.domain.model.RootManagerShortcuts
 import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -27,6 +30,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -34,6 +38,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
@@ -50,6 +55,7 @@ data class HomeUiState(
     val distribution: List<InstallerSlice> = emptyList(),
     // Status
     val isRootAvailable: Boolean = false,
+    val rootAvailability: RootAvailabilityState = RootAvailabilityState(),
     val isShizukuAvailable: Boolean = false,
     val isShizukuBinderAlive: Boolean = false,
     val isDhizukuAvailable: Boolean = false,
@@ -58,6 +64,8 @@ data class HomeUiState(
     // neutral "detecting" state instead of flashing the red "no privilege" icon on cold start.
     val isPrivilegeReady: Boolean = false,
     val installedManagers: List<InstalledManagerInfo> = emptyList(),
+    val selectedRootManager: RootManagerShortcut? = null,
+    val hasSelectedRootManager: Boolean = false,
 
     // Preferences
     val showReinstallCard: Boolean = true, // <--- Controlled by DataStore
@@ -66,6 +74,12 @@ data class HomeUiState(
     val showInstallerTile: Boolean = true,
     val showExtensionsTile: Boolean = true,
     val extensionsUnlocked: Boolean = false
+)
+
+data class RootManagerPickerState(
+    val isLoading: Boolean = true,
+    val apps: List<RootManagerShortcut> = emptyList(),
+    val loadFailed: Boolean = false
 )
 
 @KoinViewModel
@@ -89,15 +103,31 @@ class HomeViewModel(
     private val _rawAppData = MutableStateFlow<Pair<List<AppInfo>, List<AppInfo>>?>(null)
     private val _selectedType = MutableStateFlow(AppListType.USER)
     private val _isLoading = MutableStateFlow(true)
+    private val _managerRefreshRevision = MutableStateFlow(0L)
+    private val _rootManagerPicker = MutableStateFlow(RootManagerPickerState())
+    val rootManagerPicker = _rootManagerPicker.asStateFlow()
+    private var rootManagerPickerJob: Job? = null
+
+    // Package discovery is a shortcut lookup, independent of the live privilege probe.
+    private val preferencesWithManagers = preferencesWithManagerShortcuts(
+        preferenceRepository.userPreferences,
+        _managerRefreshRevision
+    ) { selectedPackage ->
+        ManagerShortcuts(
+            installed = PrivilegeManagerApp.findInstalledManagers(packageManager),
+            selected = RootManagerShortcuts.resolve(packageManager, selectedPackage)
+        )
+    }.flowOn(ioDispatcher)
 
     // Combine the reactively-derived dashboard stats with user preferences and privilege state.
     val state = combine(
         _rawAppData,
         _selectedType,
         _isLoading,
-        preferenceRepository.userPreferences,
+        preferencesWithManagers,
         privilegeManager.state
-    ) { rawData, selectedType, isLoading, prefs, priv ->
+    ) { rawData, selectedType, isLoading, preferences, priv ->
+        val (prefs, managers) = preferences
         val stats = computeStats(rawData, selectedType)
         HomeUiState(
             isLoading = isLoading,
@@ -111,11 +141,17 @@ class HomeViewModel(
             showInstallerTile = prefs.showInstallerTile,
             showExtensionsTile = prefs.showExtensionsTile,
             isRootAvailable = priv.root,
+            rootAvailability = priv.rootAvailability,
             isShizukuAvailable = priv.shizuku,
             isShizukuBinderAlive = runCatching { Shizuku.pingBinder() }.getOrDefault(false),
             isDhizukuAvailable = priv.dhizuku,
             isPrivilegeReady = priv.isReady,
-            installedManagers = PrivilegeManagerApp.findInstalledManagers(packageManager),
+            installedManagers = managers.installed.filterNot {
+                it.app.mode == PrivilegeMode.ROOT &&
+                    it.installedPackageName == managers.selected?.packageName
+            },
+            selectedRootManager = managers.selected,
+            hasSelectedRootManager = prefs.selectedRootManagerPackage != null,
             // Keep the existing "null = no privilege" contract for the UI. Until the
             // first probe completes (isReady == false), optimistically fall back to the
             // persisted preference so a configured user never sees a "no privilege"
@@ -173,7 +209,7 @@ class HomeViewModel(
     }
 
     /**
-     * What the Privilege Check dialog's **Refresh** does — re-probe the three privilege sources,
+     * What the Privilege Check sheet's **Refresh** does — re-probe the three privilege sources,
      * then reload the dashboard.
      *
      * The dialog says "grant access in your manager app and click Refresh", so the probe is the
@@ -184,9 +220,38 @@ class HomeViewModel(
      * running stays invisible until the process is killed and relaunched.
      */
     fun refreshPrivileges() {
+        refreshManagerShortcuts()
         privilegeManager.refresh()
-        AppScanRevision.bump()
-        loadDashboardData()
+    }
+
+    fun refreshManagerShortcuts() {
+        _managerRefreshRevision.update { it + 1 }
+    }
+
+    fun loadRootManagerCandidates() {
+        if (rootManagerPickerJob?.isActive == true) return
+        _rootManagerPicker.value = RootManagerPickerState()
+        rootManagerPickerJob = viewModelScope.launch(ioDispatcher) {
+            try {
+                _rootManagerPicker.value = RootManagerPickerState(
+                    isLoading = false,
+                    apps = RootManagerShortcuts.candidates(packageManager)
+                )
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Logger.e("HomeViewModel", "Root manager shortcut lookup failed", e)
+                _rootManagerPicker.value = RootManagerPickerState(
+                    isLoading = false,
+                    loadFailed = true
+                )
+            }
+        }
+    }
+
+    fun selectRootManager(packageName: String?) {
+        viewModelScope.launch {
+            preferenceRepository.setSelectedRootManagerPackage(packageName)
+        }
     }
 
     fun requestShizuku() {
@@ -201,7 +266,7 @@ class HomeViewModel(
      * Off the main thread, because [DhizukuHelper.requestPermission] opens with `DhizukuAPI.init`
      * and `isPermissionGranted()` — both synchronous binder round-trips to another process.
      * `DhizukuSystemGateway` confines the same helper to [ioDispatcher] for exactly that reason and
-     * this call site, reached straight from the Privilege Check dialog's `onClick`, was the one that
+     * this call site, reached straight from the Privilege Check sheet's `onClick`, was the one that
      * did not. The bind is normally already latched by `ThorApplication.onCreate`, so the usual cost
      * is a stall rather than an ANR — but "usually already bound" is not a thread policy.
      *
@@ -282,7 +347,8 @@ class HomeViewModel(
 
         val activeCount = filteredApps.count { it.enabled && !it.isSuspended }
         val frozenCount = filteredApps.count { !it.enabled }
-        val suspendedCount = filteredApps.count { it.isSuspended && it.enabled }
+        // Suspended opens a combined list, so its count must include both sources too.
+        val suspendedCount = (userApps + systemApps).count { it.isSuspended }
 
         // The badge on the Fix Store card counts exactly what the picker will list — same predicate,
         // one definition. It had its own copy before, which knew nothing of AOSP's package

@@ -97,6 +97,11 @@
     <string name="suspended">معلق</string>
     <string name="privilege_check">فحص الصلاحيات</string>
     <string name="privilege_check_desc">يتطلب Thor صلاحيات Root أو Shizuku أو Dhizuku ليعمل بشكل صحيح.\n\nيرجى منح الصلاحيات في تطبيق الإدارة والنقر فوق تحديث.</string>
+    <string name="choose_root_manager">اختيار مدير Root</string>
+    <string name="choose_root_manager_action">اختيار</string>
+    <string name="root_manager_picker_description">إذا كان مدير Root يستخدم اسم حزمة مخفيًا أو عشوائيًا، فاختر تطبيقه هنا. سيُحفظ اختصار له؛ ويُتحقق من صلاحية Root بشكل منفصل.</string>
+    <string name="root_manager_apps_unavailable">تعذّر تحميل التطبيقات. حاول مجددًا.</string>
+    <string name="selected_root_manager_unavailable">المدير المحدد غير متاح. اختره مجددًا إذا تغير اسم حزمته.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ تطبيقات النظام</string>
@@ -130,6 +135,13 @@
     <string name="permission_filter_loading">جارٍ قراءة الأذونات…</string>
     <string name="permission_filter_unavailable">لم يتم العثور على مجموعات أذونات على هذا الجهاز</string>
     <string name="permission_filter_failed">تعذّرت قراءة الأذونات على هذا الجهاز</string>
+    <string name="filter_type_uad">توصية UAD</string>
+    <string name="uad_filter_recommended">موصى به</string>
+    <string name="uad_filter_advanced">متقدم</string>
+    <string name="uad_filter_expert">للخبراء</string>
+    <string name="uad_filter_unsafe">غير آمن</string>
+    <string name="uad_filter_loading">جارٍ تحميل توصيات UAD…</string>
+    <string name="uad_filter_failed">تعذّر تحميل توصيات UAD.</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">مسح بيانات التطبيق؟</string>
@@ -1064,4 +1076,10 @@
     <string name="unfreeze_system_app_failed">تعذّر إلغاء تجميد %1$s باستخدام Shizuku. فشلت استعادة التطبيق أو تفعيله. راجع سجلات التشخيص لمعرفة استجابة الجهاز.</string>
     <string name="system_app_removal_fallback">الإزالة كبديل لتجميد تطبيقات النظام</string>
     <string name="system_app_removal_fallback_desc">إذا مُنع Shizuku من تعطيل تطبيق نظام، اسمح بإزالته لمستخدم Android الحالي مع الاحتفاظ بملفات البيانات. قد تُفقد الحسابات التي يديرها التطبيق. ينطبق على التجميد اليدوي والتلقائي. إلغاء التجميد يعيد تثبيت التطبيق. ينطبق هذا الإعداد على هذا الجهاز فقط.</string>
+
+    <!-- Root refresh status; availability remains the last confirmed observation. -->
+    <string name="root_refresh_checking">جارٍ التحقق من الوصول إلى الجذر…</string>
+    <string name="root_refresh_busy">بانتظار انتهاء العمليات الجارية بصلاحيات الجذر. إجراءات الجذر الجديدة متوقفة مؤقتًا.</string>
+    <string name="root_refresh_timed_out">انتهت مهلة التحقق من الجذر. إجراءات الجذر الجديدة متوقفة مؤقتًا.</string>
+    <string name="root_refresh_failed">تعذّر التحقق من الوصول إلى الجذر. إجراءات الجذر الجديدة متوقفة مؤقتًا.</string>
 </resources>

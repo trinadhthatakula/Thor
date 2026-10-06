@@ -11,7 +11,10 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.valhalla.thor.R
+import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
+import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.data.gateway.DhizukuSystemGateway
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.data.gateway.root.RootCommand
@@ -112,14 +115,37 @@ class PrivilegeExecutionProductionPathTest {
         val size = repository.measureDataClass("com.example.private", DataClass.CE)
 
         assertEquals(DataClassSize.Empty, size)
-        assertEquals(2, executor.commands.size)
-        assertEquals(PrivilegeExecutionLane.ARCHIVE, executor.commands[0].execution.lane)
-        with(executor.commands[1].execution) {
+        assertEquals(1, executor.commands.size)
+        with(executor.commands.single().execution) {
             assertEquals(PrivilegeExecutionLane.ARCHIVE, lane)
             assertEquals(PrivilegeCommandClass("archive.measure"), commandClass)
             assertEquals("com.example.private", packageName)
             assertEquals(null, commandTimeout)
         }
+    }
+
+    @Test
+    fun `capability probe cannot adopt a newer preferred provider before its state mirror updates`() = runTest {
+        val preferences = FakePreferenceRepository(UserPreferences(preferredPrivilegeMode = PrivilegeMode.SHIZUKU))
+        var rootCommands = 0
+        val executor = object : RootCommandExecutor {
+            override suspend fun execute(command: RootCommand): RootCommandResult {
+                rootCommands++
+                return RootCommandResult(0, listOf("THOR_OK"), emptyList())
+            }
+        }
+        val repository = systemRepository(executor, preferences)
+        val mirror = FakePrivilegeStateProvider(PrivilegeState(shizuku = true, active = PrivilegeMode.SHIZUKU, isReady = true))
+        val cache = DataArchiveCapabilityCache(repository, mirror, TestRootAdmission())
+        preferences.setPrivilegeMode(PrivilegeMode.ROOT)
+
+        // The unavailable Shizuku transport stays unknown. Root's successful probe must not be
+        // returned or cached as proof of the captured Shizuku provider's capability.
+        assertTrue(runCatching { cache.isSupported() }.isFailure)
+        assertEquals(0, rootCommands)
+        assertEquals(PrivilegeMode.SHIZUKU, mirror.state.value.active)
+        assertTrue(repository.probePrivateDataCapability(PrivilegeMode.ROOT))
+        assertEquals(1, rootCommands)
     }
 
     @Test
@@ -225,13 +251,13 @@ class PrivilegeExecutionProductionPathTest {
                     return RootCommandResult(if (result == "success") 0 else 1, emptyList(), emptyList())
                 }
             }
-            val root = RootSystemGateway(context, commands, preferences, Dispatchers.Unconfined).also {
+            val root = RootSystemGateway(context, commands, preferences, Dispatchers.Unconfined, TestRootAdmission()).also {
                 it.userIdProvider = { 0 }
             }
             val repository = InstallerRepositoryImpl(
                 context, bus, root, ShizukuReflector(context), preferences,
                 ObbInstaller(context, FakeSystemRepository(), Dispatchers.Unconfined),
-                Dispatchers.Unconfined, Dispatchers.Unconfined,
+                DefaultPackageOperationCoordinator(), Dispatchers.Unconfined, Dispatchers.Unconfined,
             )
             val staged = StagedPackage(temporaryFolder.newFile("callback-$result.apk").apply { writeText("apk") }, "base.apk")
             val caught = runCatching {
@@ -345,7 +371,7 @@ class PrivilegeExecutionProductionPathTest {
     fun `opted in root single APK uses the bypass-capable session route`() = runTest {
         val preferences = FakePreferenceRepository()
         val executor = SuccessfulRecordingExecutor()
-        val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined).also {
+        val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined, TestRootAdmission()).also {
             it.userIdProvider = { 0 }
         }
         val repository = InstallerRepositoryImpl(
@@ -355,6 +381,7 @@ class PrivilegeExecutionProductionPathTest {
             shizukuReflector = ShizukuReflector(context),
             preferenceRepository = preferences,
             obbInstaller = ObbInstaller(context, FakeSystemRepository(), Dispatchers.Unconfined),
+            packageOperationCoordinator = DefaultPackageOperationCoordinator(),
             ioDispatcher = Dispatchers.Unconfined,
             mainDispatcher = Dispatchers.Unconfined,
         )
@@ -465,6 +492,7 @@ class PrivilegeExecutionProductionPathTest {
                 onInvocationStarted: () -> Unit,
                 onInstallSucceeded: () -> Unit,
                 bypassLowTargetSdkBlock: Boolean,
+                packageLeaseHeldFor: String?,
             ) {
                 onInvocationStarted()
                 entered.complete(Unit)
@@ -585,16 +613,19 @@ class PrivilegeExecutionProductionPathTest {
     }
 
     private fun systemRepository(failure: Throwable): SystemRepositoryImpl =
-        systemRepository(ProbeThenFailExecutor(failure))
+        systemRepository(FailingExecutor(failure))
 
-    private fun systemRepository(executor: RootCommandExecutor): SystemRepositoryImpl {
-        val preferences = FakePreferenceRepository(
-            UserPreferences(preferredPrivilegeMode = PrivilegeMode.ROOT)
-        )
-        val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined).also {
+    private fun systemRepository(
+        executor: RootCommandExecutor,
+        preferences: FakePreferenceRepository = FakePreferenceRepository(
+            UserPreferences(preferredPrivilegeMode = PrivilegeMode.ROOT),
+        ),
+    ): SystemRepositoryImpl {
+        val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined, TestRootAdmission()).also {
             it.userIdProvider = { 0 }
         }
         return SystemRepositoryImpl(
+            context = context,
             rootGateway = root,
             shizukuGateway = ShizukuSystemGateway(
                 context,
@@ -610,6 +641,7 @@ class PrivilegeExecutionProductionPathTest {
             ),
             preferenceRepository = preferences,
             storageStats = FakeStorageStatsProvider(),
+            rootAvailability = TestRootAdmission(),
             ioDispatcher = Dispatchers.Unconfined,
         )
     }
@@ -641,7 +673,7 @@ class PrivilegeExecutionProductionPathTest {
     ): InstallerFixture {
         val preferences = FakePreferenceRepository()
         val executor = AlwaysFailExecutor(failure)
-        val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined).also {
+        val root = RootSystemGateway(context, executor, preferences, Dispatchers.Unconfined, TestRootAdmission()).also {
             it.userIdProvider = { 0 }
         }
         val system = FakeSystemRepository()
@@ -653,6 +685,7 @@ class PrivilegeExecutionProductionPathTest {
             shizukuReflector = ShizukuReflector(context),
             preferenceRepository = preferences,
             obbInstaller = ObbInstaller(context, system, Dispatchers.Unconfined),
+            packageOperationCoordinator = DefaultPackageOperationCoordinator(),
             ioDispatcher = Dispatchers.Unconfined,
             mainDispatcher = Dispatchers.Unconfined,
         )
@@ -693,14 +726,8 @@ class PrivilegeExecutionProductionPathTest {
         }
     }
 
-    private class ProbeThenFailExecutor(private val failure: Throwable) : RootCommandExecutor {
-        private var calls = 0
-
-        override suspend fun execute(command: RootCommand): RootCommandResult {
-            calls++
-            if (calls == 1) return RootCommandResult(0, listOf("0"), emptyList())
-            throw failure
-        }
+    private class FailingExecutor(private val failure: Throwable) : RootCommandExecutor {
+        override suspend fun execute(command: RootCommand): RootCommandResult = throw failure
     }
 
     private class RecordingMeasureExecutor : RootCommandExecutor {
@@ -708,11 +735,7 @@ class PrivilegeExecutionProductionPathTest {
 
         override suspend fun execute(command: RootCommand): RootCommandResult {
             commands += command
-            return if (commands.size == 1) {
-                RootCommandResult(0, listOf("0"), emptyList())
-            } else {
-                RootCommandResult(44, emptyList(), emptyList())
-            }
+            return RootCommandResult(44, emptyList(), emptyList())
         }
     }
 
@@ -762,6 +785,7 @@ class PrivilegeExecutionProductionPathTest {
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
             bypassLowTargetSdkBlock: Boolean,
+            packageLeaseHeldFor: String?,
         ) {
             calls++
             withContext(entryDispatcher) {
@@ -786,6 +810,7 @@ class PrivilegeExecutionProductionPathTest {
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
             bypassLowTargetSdkBlock: Boolean,
+            packageLeaseHeldFor: String?,
         ) {
             onInvocationStarted()
             invocationEntered = true
@@ -811,6 +836,7 @@ class PrivilegeExecutionProductionPathTest {
             onInvocationStarted: () -> Unit,
             onInstallSucceeded: () -> Unit,
             bypassLowTargetSdkBlock: Boolean,
+            packageLeaseHeldFor: String?,
         ) {
             onInvocationStarted()
             calls++

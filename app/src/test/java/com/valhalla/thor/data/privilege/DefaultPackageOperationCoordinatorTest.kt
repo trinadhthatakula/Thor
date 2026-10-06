@@ -6,12 +6,15 @@ package com.valhalla.thor.data.privilege
 import com.valhalla.thor.domain.model.PackageLeaseResult
 import com.valhalla.thor.domain.model.PackageOperationOwner
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
+import com.valhalla.thor.domain.repository.RetainedOperationLease
+import com.valhalla.thor.domain.repository.retainOperationLeases
 import java.util.concurrent.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -490,6 +493,95 @@ class DefaultPackageOperationCoordinatorTest {
             assertEquals(PackageLeaseResult.Acquired("entered"), afterRelease)
             assertEquals(0, coordinator.entryCount())
         }
+
+    @Test
+    fun `cancelled holder retains its exact package claim ahead of an already queued waiter`() = runTest {
+        val coordinator = DefaultPackageOperationCoordinator()
+        val entered = CompletableDeferred<RetainedOperationLease>()
+        val holder = async {
+            coordinator.withPackageLease(
+                "com.example.app", PackageOperationOwner.ARCHIVE_RESTORE, Duration.ZERO,
+            ) {
+                entered.complete(retainOperationLeases())
+                awaitCancellation()
+            }
+        }
+        val retained = entered.await()
+        val releaseWaiter = CompletableDeferred<Unit>()
+        val waiter = async {
+            coordinator.withPackageLease(
+                "com.example.app", PackageOperationOwner.CLEAR_DATA,
+                PrivilegeExecutionTimeouts.ARCHIVE_ADMISSION,
+            ) {
+                releaseWaiter.await()
+            }
+        }
+        runCurrent()
+        holder.cancelAndJoin()
+        assertFalse(waiter.isCompleted)
+        assertEquals(
+            PackageLeaseResult.Busy(PackageOperationOwner.ARCHIVE_RESTORE),
+            coordinator.withPackageLease(
+                "com.example.app", PackageOperationOwner.UNINSTALL, Duration.ZERO,
+            ) { error("Retained install ownership must exclude another mutation") },
+        )
+
+        retained.release()
+        runCurrent()
+        retained.release()
+        assertEquals(
+            PackageLeaseResult.Busy(PackageOperationOwner.CLEAR_DATA),
+            coordinator.withPackageLease(
+                "com.example.app", PackageOperationOwner.UNINSTALL, Duration.ZERO,
+            ) { error("A duplicate callback must not release the replacement claim") },
+        )
+        releaseWaiter.complete(Unit)
+        assertTrue(waiter.await() is PackageLeaseResult.Acquired<*>)
+        assertEquals(0, coordinator.entryCount())
+    }
+
+    @Test
+    fun `retained result cannot release a package before its lexical postprocessing finishes`() = runTest {
+        val coordinator = DefaultPackageOperationCoordinator()
+        coordinator.withPackageLease(
+            "com.example.app", PackageOperationOwner.REINSTALL, Duration.ZERO,
+        ) {
+            retainOperationLeases().release()
+            assertEquals(
+                PackageLeaseResult.Busy(PackageOperationOwner.REINSTALL),
+                coordinator.withPackageLease(
+                    "com.example.app", PackageOperationOwner.CLEAR_DATA, Duration.ZERO,
+                ) { error("Terminal install acknowledgement must not overlap caller postprocessing") },
+            )
+        }
+        assertEquals(0, coordinator.entryCount())
+    }
+
+    @Test
+    fun `retaining nested scopes preserves both package claims`() = runTest {
+        val coordinator = DefaultPackageOperationCoordinator()
+        lateinit var retained: RetainedOperationLease
+        coordinator.withPackageLease(
+            "com.example.outer", PackageOperationOwner.ARCHIVE_RESTORE, Duration.ZERO,
+        ) {
+            coordinator.withPackageLease(
+                "com.example.inner", PackageOperationOwner.REINSTALL, Duration.ZERO,
+            ) { retained = retainOperationLeases() }
+        }
+        for ((packageName, owner) in listOf(
+            "com.example.outer" to PackageOperationOwner.ARCHIVE_RESTORE,
+            "com.example.inner" to PackageOperationOwner.REINSTALL,
+        )) {
+            assertEquals(
+                PackageLeaseResult.Busy(owner),
+                coordinator.withPackageLease(
+                    packageName, PackageOperationOwner.CLEAR_DATA, Duration.ZERO,
+                ) { error("Nested ownership must be retained for each package") },
+            )
+        }
+        retained.release()
+        assertEquals(0, coordinator.entryCount())
+    }
 
     private fun DefaultPackageOperationCoordinator.entryCount(): Int {
         val entries = javaClass.getDeclaredField("entries").apply { isAccessible = true }.get(this)

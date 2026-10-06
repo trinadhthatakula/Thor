@@ -6,6 +6,22 @@ feature-request roadmap, and the standing promises in the project `README.md`. T
 acceptance, and new work. Older ranked tables below preserve the decisions and evidence available
 when they were written; they are not a current release gate.
 
+## New follow-ups (2026-10-05)
+
+| Work | Status | Scope |
+| --- | --- | --- |
+| [Room 3 migration assessment](room-3-migration.md) | Deferred maintenance; implementation not scheduled | Current Room 2.8.5 versus stable Room 3.0.3, driver and APK tradeoffs, persistence/upgrade risks, and a staged migration recommendation. WorkManager stays, so its Room 2 dependency remains relevant. |
+| [APK-size optimization status](apk-size-optimization-status.md) | Pass complete; accepted changes merged; WorkManager retained | Fonts, native packaging, dependency declarations and Canvas are complete. Records rejected small experiments, the decision to preserve legacy-job compatibility, and measurement limits. Unused-helper cleanup is maintenance without a measured size/performance benefit. |
+
+## New follow-ups (2026-09-30)
+
+| Work | Status | Scope |
+| --- | --- | --- |
+| [Odin 1.1.0 implementation plan and progress tracker](odin-1.1.0-implementation-plan.md) | In progress; M3-02 compact readback validated in #546 | Reliability, cancellation, staging and reconciliation increments are recorded in the tracker. Compact Binder readback passed both devices; typed mutation results and remaining workload/device acceptance stay open. |
+| [App preference editor](app-preference-editor.md) | Deferred by maintainer; not implemented | Edit the selected app's own preference files from app details surfaces. Separate from the global Sett Edit extension in #504; provider access and supported formats need assessment. |
+| [Sett Edit recovery and execution bounds](settings-editor-recovery.md) | Read-only checks merged; emulator live-writer recovery and hostile cancellation on both devices passed; control-failure recovery pending | Explicitly observe uncertain entries without replaying writes, enabling undo, or clearing termination barriers. See M3-01 in the Odin plan for device evidence and remaining process-death checks. |
+| [Odin per-job cancellation API](odin-per-job-cancellation.md) | Shipped in Odin 1.1.0; initial Thor adoption merged in PR #531 | Historical API requirements and initial adoption evidence. Remaining outcome handling, workload adoption, and validation are tracked in the implementation plan above. |
+
 **Historical tiers.** `0/1` meant being built · `2` approved, not scheduled · `3` filed, decision still open ·
 *declined* ruled out, do not re-raise. Where a row also carries a roadmap colour (🟢 do-first ·
 🟡 scope carefully · 🔴 defer), that colour is the roadmap's own verdict, not a second opinion.

@@ -68,17 +68,12 @@ does not depend on this table staying current.
 ### Aspect ratio
 
 Capture at the device's native resolution and do not resize. The `DeviceFrame` is built for a modern
-tall phone; the six committed captures are 1280 × 2772 (phone, ≈ 9 : 19.5) except slot 4, which is
-1080 × 2400 (emulator, 9 : 20). For further reference, the ten files under
-`fastlane/metadata/android/en-US/images/phoneScreenshots/` are:
-
-| File | Pixels | Ratio |
-|---|---|---|
-| `1.jpg` – `9.jpg` | 1280 × 2772 | ≈ 9 : 19.5 |
-| `0.png` | 1220 × 2712 | ≈ 9 : 20 |
-
-Those ten are **store crops in the wrong app states**. They are an aspect-ratio reference and nothing
-else — do not reuse one for a slot below, and do not assume the state they show is still current.
+tall phone; the six committed website captures are 1280 × 2772 (phone, ≈ 9 : 19.5) except slot 4,
+which is 1080 × 2400 (emulator, 9 : 20). The eight generated store screenshots under
+`fastlane/metadata/android/en-US/images/phoneScreenshots/` are 1280 × 2560. They have captions and
+framing baked in, so they are **not** website source captures. The raw app captures used for Play
+live under `web/src/assets/screenshots/` and `fastlane/assets/captures/`; regenerate the store set
+with `fastlane/scripts/build-listing-images.py`. Keep the website files raw and unframed.
 Anything between 9:19.5 and 9:20 frames cleanly; a 16:9 capture from an old device will letterbox.
 
 ---

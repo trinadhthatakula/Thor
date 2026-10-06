@@ -39,16 +39,12 @@ import java.io.File
  * 5. **`.part` containers in the user's folder** — only the names [PartialArchiveLedger] recorded, and
  *    a name is forgotten only once the file is gone.
  *
- * Resist reading that list as "and that is everything this feature can leak". It is not: a killed
- * **restore** strands the same order of magnitude in `externalCacheDir/obb_in/<pkg>`
- * (`OBB_INSTALL_STAGING_DIR`, a file-level `internal const val` in `ObbInstaller.kt` — not a member
- * of the class, which is what the pointer here used to say), which is not a target here. That is
- * deliberate rather
- * than overlooked. `obb_in` is shared with the already-shipped portable installer, so a wholesale
- * delete at launch would reach a subtree that path may be using; and `ObbInstaller` opens each
- * placement by deleting `obb_in/<pkg>` — **that package's subtree only, not the tree** — so a
- * strand clears when the *same* package is restored again, and not before. Recorded for the
- * whole-branch review.
+ * OBB placement sources are excluded. New placements use unique directories under
+ * `externalFilesDir/obb_placement` with private receipts under `noBackupFilesDir`; only their
+ * ownership component can reclaim them after acknowledged root cleanup or a different known
+ * kernel boot. Legacy `externalCacheDir/obb_in/<pkg>` leftovers are also left untouched: this
+ * sweeper has no termination evidence for them. Ordinary cache cleanup must not race a retained
+ * OBB reader or erase the record that blocks another placement for that package.
  *
  * What it does **not** do is clear the breadcrumb. It reports it. Clearing it here would make the
  * sweep the thing that silences the warning a user is owed.

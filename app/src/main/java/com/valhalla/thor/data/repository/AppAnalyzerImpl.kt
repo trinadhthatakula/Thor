@@ -15,12 +15,14 @@ import android.net.Uri
 import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.AppMetadata
+import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.StagedPackage
-import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.util.getDisplayName
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
@@ -29,6 +31,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.UUID
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * Sub-directory of cacheDir holding staged installer inputs.
@@ -72,7 +75,10 @@ class AppAnalyzerImpl(
         val apkFile = File(context.cacheDir, "analysis_$token.apk")
 
         val metadata = try {
-            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+            val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrElse {
+                if (it is CancellationException) throw it
+                null
+            }
             if (input != null) {
                 // The extraction budget applied at the door. A content provider is not an archive
                 // — there is no compression ratio to bound — but a hostile one can stream forever,
@@ -96,65 +102,28 @@ class AppAnalyzerImpl(
                     readMetadata(bundleFile, apkFile, displayName)
                 }
             } else {
-                // If content resolver cannot open the file directly (e.g. Scoped Storage non-owned file://),
-                // stage via /data/local/tmp (writable by Shizuku/shell, readable by Thor after chmod 666)
+                // Keep provider selection and privileged writer ownership inside the repository.
+                // Only a completed private copy may become the bytes previewed and installed.
                 val path = uri.path
                 if (!path.isNullOrBlank()) {
-                    val tempToken = UUID.randomUUID().toString()
-                    val tmpPath = "/data/local/tmp/thor_staged_$tempToken"
-                    val src = path.escapeShellArg()
-                    val dst = tmpPath.escapeShellArg()
-                    val cmd = "cat $src > $dst 2>/dev/null && chmod 666 $dst 2>/dev/null"
-                    // Uncancellable, and hoisted outside the branches so every exit passes through
-                    // it: `cat` can have produced the file even when this coroutine is cancelled
-                    // before the call returns, and a `finally` whose body is a suspend call never
-                    // executes once cancellation is in progress — it throws at the first suspension
-                    // point instead. `ArchiveOrphanSweeper` sweeps `cacheDir`,
-                    // `externalCacheDir/obb_out` and the SAF ledger but not `/data/local/tmp`, so
-                    // what is left there is a full-size, `chmod 666` copy of the user's package
-                    // that nothing in the app can reclaim.
-                    try {
-                        val res = systemRepository.executeShellCommand(cmd).getOrNull()
-                        val tmpFile = File(tmpPath)
-                        if (res != null && res.first == 0 &&
-                            tmpFile.exists() && tmpFile.length() > 0
-                        ) {
-                            // The same budget as the provider branch, for the same reason: the
-                            // invariant the two whole-file copies downstream rely on is a property
-                            // of `bundleFile`, not of how it was filled. This path had no bound at
-                            // all, so a 4 GB file the content resolver refused to open was copied
-                            // whole while a 100 MB one it opened was rejected.
-                            val copied = tmpFile.inputStream().use { input ->
-                                FileOutputStream(bundleFile).use { output ->
-                                    input.copyAtMostTo(output, MAX_EXTRACTED_TOTAL_BYTES)
-                                }
-                            }
-                            if (copied == null) {
-                                // Deliberately not the provider branch's wording: the shell has
-                                // already read the whole file into /data/local/tmp by this point,
-                                // so "was not read" would be untrue here. Only the copy Thor would
-                                // install from was declined.
-                                Result.failure(
-                                    Exception(
-                                        "The selected file is larger than " +
-                                            "${MAX_EXTRACTED_TOTAL_BYTES / (1024 * 1024)} MB and was not staged."
-                                    )
-                                )
-                            } else {
-                                readMetadata(bundleFile, apkFile, displayName)
-                            }
-                        } else {
-                            Result.failure(Exception("Could not open the selected file."))
-                        }
-                    } finally {
-                        withContext(NonCancellable) {
-                            systemRepository.executeShellCommand("rm -f $dst")
-                        }
-                    }
+                    systemRepository.copyFileForRead(
+                        sourcePath = path,
+                        destination = bundleFile,
+                        maxBytes = MAX_EXTRACTED_TOTAL_BYTES,
+                        execution = PrivilegeExecutionContext(
+                            lane = PrivilegeExecutionLane.ARCHIVE,
+                            commandClass = PrivilegeCommandClass("input.preview"),
+                            commandTimeout = 9.minutes,
+                        ),
+                    ).getOrThrow()
+                    readMetadata(bundleFile, apkFile, displayName)
                 } else {
                     Result.failure(Exception("Could not open the selected file."))
                 }
             }
+        } catch (cancelled: CancellationException) {
+            bundleFile.delete()
+            throw cancelled
         } catch (e: Exception) {
             Result.failure(e)
         } catch (e: OutOfMemoryError) {
@@ -174,8 +143,8 @@ class AppAnalyzerImpl(
             .onFailure { bundleFile.delete() }
 
         // Ownership transfers on the RETURN, and a cancelled withContext does not return — it
-        // throws, so the caller never assigns the result and never calls discard(). The copy above
-        // is a blocking, non-cooperative loop that runs to completion regardless, so cancelling the
+        // throws, so the caller never assigns the result and never calls discard(). Provider reads
+        // and metadata parsing can finish without observing cancellation, so cancelling the
         // sheet mid-parse (swiping it away is the ordinary way to leave) stranded a full-size APK
         // in cacheDir. The sweep on the next analysis reclaims it, but an hour later and only if
         // there ever is a next analysis.

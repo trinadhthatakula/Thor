@@ -4,9 +4,11 @@
 package com.valhalla.thor.data.backup
 
 import com.valhalla.thor.domain.model.DataClass
-import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.RootAdmissionUnavailable
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.RootAvailabilityProvider
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -29,51 +31,45 @@ data class DataArchiveCapability(
         }
 }
 
-/**
- * "Can this device back up app data?", answered once per privilege state.
- *
- * The probe is a shell round trip through the gateway, and the backup entry point asks on every
- * sheet open. Keyed on the whole [PrivilegeState] rather than on a TTL: `PrivilegeManager.refresh()`
- * landing a new state *is* the invalidation, so there is no second path to keep in sync and no
- * window where a freshly granted root still reads as unsupported.
- */
+/** A measured answer is reusable only for the same observation revision and active provider. */
 @Single
 class DataArchiveCapabilityCache(
     private val probe: AppDataProbe,
     private val privilegeState: PrivilegeStateProvider,
+    private val rootAvailability: RootAvailabilityProvider,
 ) {
-
+    private data class CacheKey(val revision: Long, val provider: PrivilegeMode)
     private val mutex = Mutex()
+    private var cached: Pair<CacheKey, DataArchiveCapability>? = null
 
-    private var cached: Pair<PrivilegeState, DataArchiveCapability>? = null
-
-    suspend fun capability(): DataArchiveCapability {
-        // Await the first resolved state rather than reading the raw snapshot. `state.value` is the
-        // default on cold start: `isReady = false, active = NONE` — `hasAnyPrivilege` would be false
-        // and we'd return false immediately, even on a rooted device, until both the privilege probe
-        // and the first DataStore emission have landed. `isReady` is set exactly once that has
-        // happened, distinguishing "not probed yet" from "probed, nothing available". The same fix
-        // lives in `the legacy bulk executor.launch`'s privilege gate for the same snapshot-read bug.
-        val state = privilegeState.state.first { it.isReady }
-        // No surface to probe through. Shelling out would raise a `su` prompt on a device where the
-        // user granted nothing — and the answer is derived, not measured, so it is not cached.
-        if (!state.hasAnyPrivilege) {
-            return DataArchiveCapability(isSupported = false, canReadPrivateData = false)
+    suspend fun capability(): DataArchiveCapability = mutex.withLock {
+        while (true) {
+            // Cold start is unknown, not a measured lack of capability.
+            val state = privilegeState.state.first { it.isReady }
+            val root = rootAvailability.state.value
+            val key = CacheKey(root.revision, state.active)
+            if (state.active == PrivilegeMode.ROOT && !root.canAdmitRoot) {
+                throw RootAdmissionUnavailable(root)
+            }
+            if (!state.hasAnyPrivilege) {
+                return@withLock DataArchiveCapability(isSupported = false, canReadPrivateData = false)
+            }
+            cached?.takeIf { it.first == key }?.let { return@withLock it.second }
+            // Failed probes throw and remain unknown; only completed measurements enter the cache.
+            val supported = probe.probeDataArchiveCapability(state.active)
+            val privateData = if (supported) probe.probePrivateDataCapability(state.active) else false
+            if (currentKey() != key) continue
+            val capability = DataArchiveCapability(supported, privateData)
+            cached = key to capability
+            return@withLock capability
         }
-
-        mutex.withLock {
-            cached?.let { (key, value) -> if (key == state) return value }
-            val supported = probe.probeDataArchiveCapability()
-            val privateData = if (supported) probe.probePrivateDataCapability() else false
-            val cap = DataArchiveCapability(isSupported = supported, canReadPrivateData = privateData)
-            cached = state to cap
-            return cap
-        }
+        @Suppress("UNREACHABLE_CODE")
+        error("unreachable")
     }
 
     suspend fun isSupported(): Boolean = capability().isSupported
-
     suspend fun canReadPrivateData(): Boolean = capability().canReadPrivateData
-
     suspend fun supportedClasses(): Set<DataClass> = capability().supportedClasses()
+
+    private fun currentKey() = CacheKey(rootAvailability.state.value.revision, privilegeState.state.value.active)
 }

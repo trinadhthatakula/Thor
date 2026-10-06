@@ -121,6 +121,11 @@
     <string name="suspended">Suspensa</string>
     <string name="privilege_check">Verificação de privilégios</string>
     <string name="privilege_check_desc">O Thor precisa de acesso Root, Shizuku ou Dhizuku para funcionar corretamente.\n\nConceda o acesso na sua aplicação de gestão e toque em Atualizar.</string>
+    <string name="choose_root_manager">Escolher gestor de Root</string>
+    <string name="choose_root_manager_action">Escolher</string>
+    <string name="root_manager_picker_description">Se o seu gestor de Root usar um nome de pacote oculto ou aleatório, escolha a aplicação aqui. Será guardado um atalho; o acesso Root é verificado separadamente.</string>
+    <string name="root_manager_apps_unavailable">Não foi possível carregar as aplicações. Tente novamente.</string>
+    <string name="selected_root_manager_unavailable">O gestor selecionado está indisponível. Escolha-o novamente se o nome do pacote tiver mudado.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ Aplicações de sistema</string>
@@ -160,6 +165,13 @@
     <string name="permission_filter_loading">A ler as permissões…</string>
     <string name="permission_filter_unavailable">Não foram encontrados grupos de permissões neste dispositivo</string>
     <string name="permission_filter_failed">Não foi possível ler as permissões neste dispositivo</string>
+    <string name="filter_type_uad">Recomendação UAD</string>
+    <string name="uad_filter_recommended">Recomendado</string>
+    <string name="uad_filter_advanced">Avançado</string>
+    <string name="uad_filter_expert">Especialista</string>
+    <string name="uad_filter_unsafe">Inseguro</string>
+    <string name="uad_filter_loading">A carregar recomendações UAD…</string>
+    <string name="uad_filter_failed">Não foi possível carregar as recomendações UAD.</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">Limpar os dados da aplicação?</string>
@@ -1022,4 +1034,10 @@
     <string name="unfreeze_system_app_failed">Não foi possível descongelar %1$s com o Shizuku. Falhou o restauro ou a ativação da aplicação. Consulte os registos de diagnóstico para ver a resposta do dispositivo.</string>
     <string name="system_app_removal_fallback">Remoção alternativa de aplicações do sistema</string>
     <string name="system_app_removal_fallback_desc">Se o Shizuku não tiver permissão para desativar uma aplicação do sistema, permite removê-la para o utilizador Android atual, mantendo os ficheiros de dados. As contas geridas pela aplicação podem perder-se. Aplica-se à congelação manual e automática. Descongelar reinstala a aplicação. Esta definição aplica-se apenas a este dispositivo.</string>
+
+    <!-- Root refresh status; availability remains the last confirmed observation. -->
+    <string name="root_refresh_checking">A verificar o acesso root…</string>
+    <string name="root_refresh_busy">A aguardar a conclusão das operações root. As novas ações root estão em pausa.</string>
+    <string name="root_refresh_timed_out">A verificação de root excedeu o tempo limite. As novas ações root estão em pausa.</string>
+    <string name="root_refresh_failed">Não foi possível verificar o acesso root. As novas ações root estão em pausa.</string>
 </resources>

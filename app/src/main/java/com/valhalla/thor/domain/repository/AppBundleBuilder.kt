@@ -56,4 +56,17 @@ interface AppBundleBuilder {
         progress: VerifiedProgress = VerifiedProgress.NONE,
         operationBoundary: VerifiedOperationBoundary = VerifiedOperationBoundary.NONE,
     ): Result<File> = build(appInfo, cacheSubDir, format, fileName, execution)
+
+    /** Export-only admission to cancellable root APK staging; other bundle consumers keep their policy. */
+    suspend fun buildExportWithProgress(
+        appInfo: AppInfo,
+        cacheSubDir: String,
+        format: BundleFormat,
+        fileName: String?,
+        execution: PrivilegeExecutionContext,
+        progress: VerifiedProgress = VerifiedProgress.NONE,
+        operationBoundary: VerifiedOperationBoundary = VerifiedOperationBoundary.NONE,
+    ): Result<File> = buildWithProgress(
+        appInfo, cacheSubDir, format, fileName, execution, progress, operationBoundary,
+    )
 }

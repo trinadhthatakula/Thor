@@ -19,6 +19,7 @@ import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.AppOpsRepository
+import com.valhalla.thor.domain.repository.RootAvailabilityProvider
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,6 +34,7 @@ class AppOpsRepositoryImpl(
     private val rootGateway: RootSystemGateway,
     private val shizukuGateway: ShizukuSystemGateway,
     preferenceRepository: PreferenceRepository,
+    rootAvailability: RootAvailabilityProvider,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : AppOpsRepository {
     private val pm = context.packageManager
@@ -40,7 +42,7 @@ class AppOpsRepositoryImpl(
     // transports that carry root/shell identity, while respecting their saved preference.
     private val gatewayResolver = ActiveGatewayResolver(
         preferredMode = { preferenceRepository.userPreferences.first().preferredPrivilegeMode },
-        rootAvailable = { rootGateway.isRootAvailable(it) },
+        rootAvailability = rootAvailability,
         shizukuAvailable = shizukuGateway::isShizukuAvailable,
         dhizukuAvailable = { false },
         elapsedRealtimeMs = SystemClock::elapsedRealtime,
@@ -58,7 +60,7 @@ class AppOpsRepositoryImpl(
                 commandClass = PrivilegeCommandClass("app_ops.manage"),
                 packageName = packageName,
             )
-            val gateway: SystemGateway = when (gatewayResolver.resolve(execution).getOrThrow()) {
+            val gateway: SystemGateway = when (gatewayResolver.resolve().getOrThrow()) {
                 PrivilegeMode.ROOT -> rootGateway
                 PrivilegeMode.SHIZUKU -> shizukuGateway
                 else -> error("App Ops requires Root or Shizuku. Dhizuku does not provide cross-app App Ops access.")

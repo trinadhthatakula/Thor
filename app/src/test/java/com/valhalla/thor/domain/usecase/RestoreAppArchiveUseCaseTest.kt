@@ -13,11 +13,14 @@ import com.valhalla.thor.domain.model.ArchiveMember
 import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.ObbPlacementUnresolved
 import com.valhalla.thor.domain.model.PackageOperationBusy
 import com.valhalla.thor.domain.model.PackageOperationOwner
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.domain.model.RootExecutionObserver
+import com.valhalla.thor.domain.model.RootJobOutcome
 import com.valhalla.thor.domain.model.ShellLaneUnavailable
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
@@ -61,6 +64,7 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.Base64
 import javax.crypto.SecretKey
+import kotlin.time.Duration.Companion.minutes
 
 class RestoreAppArchiveUseCaseTest {
 
@@ -272,11 +276,15 @@ class RestoreAppArchiveUseCaseTest {
         private val rollbackReceipt: ArchiveRollbackReceipt? = null,
         private val rollbackOutcome: ArchiveRollbackOutcome = ArchiveRollbackOutcome.CLEAN,
         private val beforeRollback: suspend () -> Unit = {},
+        private val unresolvedObb: Boolean = false,
+        private val placementFailure: Throwable? = null,
     ) : AppArchiveInstaller {
         var installExecution: PrivilegeExecutionContext? = null
+        var obbExecution: PrivilegeExecutionContext? = null
         var installedBundle: File? = null
         var installSet: List<String>? = null
         val rollbackReceipts = mutableListOf<ArchiveRollbackReceipt>()
+        val obbPreflightPackages = mutableListOf<String>()
 
         override suspend fun installBundle(
             bundle: File,
@@ -301,12 +309,20 @@ class RestoreAppArchiveUseCaseTest {
             return rollbackOutcome
         }
 
+        override suspend fun hasUnresolvedObbPlacement(packageName: String): Boolean {
+            obbPreflightPackages += packageName
+            return unresolvedObb
+        }
+
         override suspend fun placeBundleObb(
             bundle: File,
             packageName: String,
             onFile: (String, Int, Int) -> Unit,
+            execution: PrivilegeExecutionContext,
         ): ObbPlacement {
             calls += "obb"
+            obbExecution = execution
+            placementFailure?.let { throw it }
             return placement
         }
     }
@@ -589,9 +605,9 @@ class RestoreAppArchiveUseCaseTest {
     }
 
     @Test
-    fun `an install that does not land writes no data and leaves no breadcrumb`() = runTest {
-        // Nothing was destroyed, so a breadcrumb saying otherwise would make the user go looking for
-        // damage that is not there.
+    fun `an unconfirmed install writes no data and retains its interruption breadcrumb`() = runTest {
+        // A timeout does not prove PackageInstaller stopped; keep recovery evidence even though
+        // this restore has not started replacing app data.
         val (header, source) = archive(listOf(DataClass.CE))
         val crumbs = RecordingBreadcrumbs()
 
@@ -603,7 +619,7 @@ class RestoreAppArchiveUseCaseTest {
 
         assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
         assertEquals(listOf("install"), calls)
-        assertNull(crumbs.current)
+        assertEquals(header.packageName, crumbs.current?.packageName)
     }
 
     @Test
@@ -937,6 +953,104 @@ class RestoreAppArchiveUseCaseTest {
         }
 
     @Test
+    fun `previous unresolved OBB placement refuses before any mutation or breadcrumb change`() = runTest {
+        for (withBundle in listOf(true, false)) {
+            val (header, source) = archive(listOf(DataClass.CE), withBundle = withBundle)
+            val gateway = FakeGateway()
+            val installer = FakeInstaller(calls = calls, unresolvedObb = true)
+            val previous = ArchiveBreadcrumb("com.example.other", "Other", startedAt = 1L)
+            val crumbs = RecordingBreadcrumbs().apply { current = previous }
+
+            val outcome = useCase(gateway, installer, crumbs)(
+                source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = true,
+            )
+
+            val failed = outcome as ArchiveRestoreOutcome.Failed
+            assertEquals("Thor could not confirm an earlier game data copy finished, so this restore was not started", failed.reason)
+            assertTrue(failed.classesRestored.isEmpty())
+            assertNull(failed.classPossiblyCleared)
+            assertEquals(listOf(header.packageName), installer.obbPreflightPackages)
+            assertTrue(calls.toString(), calls.isEmpty())
+            assertTrue(crumbs.history.toString(), crumbs.history.isEmpty())
+            assertSame(previous, crumbs.current)
+            assertTrue(gateway.stagedFiles.isEmpty())
+            assertEquals(if (withBundle) 1 else 0, gateway.privateStagedFiles.size)
+            assertTrue(gateway.privateStagedFiles.none { it.exists() })
+        }
+    }
+
+    @Test
+    fun `OBB preflight permits normal restore when no previous writer is unresolved`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(calls = calls)
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(FakeGateway(), installer, crumbs)(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = true,
+        )
+
+        val completed = outcome as ArchiveRestoreOutcome.Completed
+        assertEquals(listOf(header.packageName), installer.obbPreflightPackages)
+        assertEquals(listOf(DataClass.CE), completed.classesRestored)
+        assertEquals(ObbPlacement.Placed(2), completed.obb)
+        assertTrue(calls.contains("swap:ce"))
+        assertEquals(listOf("write", "clear"), crumbs.history)
+    }
+
+    @Test
+    fun `disabling OBB restore skips the previous-writer preflight`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(calls = calls, unresolvedObb = true)
+
+        val outcome = useCase(FakeGateway(), installer, RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+        )
+
+        val completed = outcome as ArchiveRestoreOutcome.Completed
+        assertTrue(installer.obbPreflightPackages.isEmpty())
+        assertEquals(listOf(DataClass.CE), completed.classesRestored)
+        assertNull(completed.obb)
+        assertFalse(calls.contains("obb"))
+    }
+
+    @Test
+    fun `install-first leaves OBB preflight and placement to the installer`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(calls = calls, unresolvedObb = true)
+
+        val outcome = useCase(FakeGateway(), installer, RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = true,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+        assertTrue(installer.obbPreflightPackages.isEmpty())
+        assertEquals("install", calls.first())
+        assertTrue(calls.contains("swap:ce"))
+        assertFalse(calls.contains("obb"))
+    }
+
+    @Test
+    fun `uncertainty from this OBB attempt still throws and keeps the interruption breadcrumb`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val failure = ObbPlacementUnresolved(header.packageName)
+        val installer = FakeInstaller(calls = calls, placementFailure = failure)
+        val crumbs = RecordingBreadcrumbs()
+
+        val thrown = runCatching {
+            useCase(FakeGateway(), installer, crumbs)(
+                source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = true,
+            )
+        }.exceptionOrNull()
+
+        assertSame(failure, thrown)
+        assertEquals(listOf(header.packageName), installer.obbPreflightPackages)
+        assertTrue(calls.contains("swap:ce"))
+        assertEquals("obb", calls.last())
+        assertEquals(listOf("write"), crumbs.history)
+        assertEquals(header.packageName, crumbs.current?.packageName)
+    }
+
+    @Test
     fun `OBB is placed for an already-installed app when asked`() = runTest {
         val (header, source) = archive(listOf(DataClass.CE))
 
@@ -946,6 +1060,41 @@ class RestoreAppArchiveUseCaseTest {
 
         assertTrue(calls.toString(), calls.contains("obb"))
         assertEquals(ObbPlacement.Placed(2), (outcome as ArchiveRestoreOutcome.Completed).obb)
+    }
+
+    @Test
+    fun `OBB restore forwards the complete execution context and provenance`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val installer = FakeInstaller(calls = calls)
+        val observer = object : RootExecutionObserver {
+            override suspend fun onOutcome(outcome: RootJobOutcome) = Unit
+        }
+        val execution = PrivilegeExecutionContext(
+            lane = PrivilegeExecutionLane.ARCHIVE,
+            commandClass = PrivilegeCommandClass("archive.restore"),
+            packageName = header.packageName,
+            workRequestId = UUID.fromString("11111111-1111-1111-1111-111111111111"),
+            sweepRequestId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
+            commandTimeout = 2.minutes,
+            rootExecutionObserver = observer,
+        )
+        execution.provenance.recordDegradedRootFallback()
+
+        val outcome = useCase(FakeGateway(), installer, RecordingBreadcrumbs())(
+            source = source,
+            header = header,
+            key = key,
+            classes = listOf(DataClass.CE),
+            installFirst = false,
+            restoreObb = true,
+            execution = execution,
+        )
+
+        assertEquals(ObbPlacement.Placed(2), (outcome as ArchiveRestoreOutcome.Completed).obb)
+        assertSame(execution, installer.obbExecution)
+        assertSame(execution.provenance, installer.obbExecution?.provenance)
+        assertTrue(installer.obbExecution!!.provenance.usedDegradedRootFallback)
+        assertSame(observer, installer.obbExecution?.rootExecutionObserver)
     }
 
     @Test

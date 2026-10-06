@@ -97,6 +97,11 @@
     <string name="suspended">一時停止中</string>
     <string name="privilege_check">権限チェック</string>
     <string name="privilege_check_desc">Thorが正しく動作するには、Root、Shizuku、またはDhizukuへのアクセスが必要です。\n\n管理アプリでアクセスを許可し、「更新」をタップしてください。</string>
+    <string name="choose_root_manager">Root管理アプリを選択</string>
+    <string name="choose_root_manager_action">選択</string>
+    <string name="root_manager_picker_description">Root管理アプリのパッケージ名が非表示またはランダム化されている場合は、ここでアプリを選択してください。ショートカットを保存します。Rootアクセスは別途確認されます。</string>
+    <string name="root_manager_apps_unavailable">アプリを読み込めませんでした。もう一度お試しください。</string>
+    <string name="selected_root_manager_unavailable">選択した管理アプリは利用できません。パッケージ名が変更された場合は、もう一度選択してください。</string>
     <string name="system_apps_warning">⚠ システムアプリ</string>
     <string name="selected_count" tools:ignore="PluralsCandidate">%1$d 選択済み</string>
     <string name="no_matching_apps">マッチングアプリが見つかりませんでした</string>
@@ -128,6 +133,13 @@
     <string name="permission_filter_loading">権限を読み取り中…</string>
     <string name="permission_filter_unavailable">このデバイスには権限グループが見つかりません</string>
     <string name="permission_filter_failed">この端末の権限を読み取れませんでした</string>
+    <string name="filter_type_uad">UAD の推奨度</string>
+    <string name="uad_filter_recommended">推奨</string>
+    <string name="uad_filter_advanced">上級者向け</string>
+    <string name="uad_filter_expert">専門家向け</string>
+    <string name="uad_filter_unsafe">危険</string>
+    <string name="uad_filter_loading">UAD の推奨度を読み込み中…</string>
+    <string name="uad_filter_failed">UAD の推奨度を読み込めませんでした。</string>
     <string name="clear_app_data_title">アプリデータをクリアしますか?</string>
     <string name="clear_app_data_desc">これにより、%1$s のすべてのデータが完全に削除されます。この操作は元に戻すことができません。</string>
     <string name="clear_all_data">すべてのデータをクリア</string>
@@ -813,4 +825,10 @@
     <string name="unfreeze_system_app_failed">Shizuku で %1$s を凍結解除できませんでした。アプリの復元または有効化に失敗しました。端末の応答は診断ログで確認してください。</string>
     <string name="system_app_removal_fallback">システムアプリの削除による代替凍結</string>
     <string name="system_app_removal_fallback_desc">Shizuku によるシステムアプリの無効化が拒否された場合、データファイルを保持したまま現在の Android ユーザーからアプリを削除することを許可します。アプリが管理するアカウントは失われる場合があります。手動と自動の凍結に適用され、凍結解除すると再インストールされます。この設定はこの端末にのみ適用されます。</string>
+
+    <!-- Root refresh status; availability remains the last confirmed observation. -->
+    <string name="root_refresh_checking">root アクセスを確認中…</string>
+    <string name="root_refresh_busy">root の処理が終わるのを待っています。新しい root 操作は一時停止中です。</string>
+    <string name="root_refresh_timed_out">root の確認がタイムアウトしました。新しい root 操作は一時停止中です。</string>
+    <string name="root_refresh_failed">root アクセスを確認できませんでした。新しい root 操作は一時停止中です。</string>
 </resources>

@@ -90,6 +90,8 @@ data class AppListUiState(
     // Freezer membership (the watchlist), not freeze state: an app can be frozen without being in
     // the freezer and vice versa. Drives the sheet's "Add to / Remove from Freezer" action.
     val freezerPackageNames: Set<String> = emptySet(),
+    // A dedicated session view; it never changes the persisted Apps filter.
+    val suspendedOnly: Boolean = false,
     // Filter State
     val appListType: AppListType = AppListType.USER,
     val filterType: FilterType = FilterType.Source,
@@ -111,6 +113,8 @@ data class AppListUiState(
     // of them is Thor's fault, and the row says so. The one-off toast is gone by the time a user
     // looks up from the empty row and wonders what happened.
     val permissionIndexFailed: Boolean = false,
+    val isLoadingUad: Boolean = false,
+    val uadLoadFailed: Boolean = false,
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
@@ -207,11 +211,12 @@ class AppListViewModel(
     // Combine raw app data with user preferences from DataStore
     // OPTIMIZATION: flowOn(defaultDispatcher) ensures sorting/filtering happens on background thread
     val uiState = combine(_rawState, preferenceRepository.userPreferences) { state, prefs ->
+        val filter = prefs.appFilterFor(state.appListType)
         val mergedState = state.copy(
             sortBy = prefs.appSortBy,
             sortOrder = prefs.appSortOrder,
-            filterType = prefs.appFilterType,
-            selectedFilter = prefs.appSelectedFilter,
+            filterType = if (state.suspendedOnly) FilterType.State else filter.filterType,
+            selectedFilter = if (state.suspendedOnly) "Suspended" else filter.selectedFilter,
             isGrid = prefs.appListIsGrid,
             gridDensity = prefs.appGridDensity,
             multiActionsOrder = prefs.appListMultiActionsOrder,
@@ -296,8 +301,12 @@ class AppListViewModel(
     private fun observePermissionFilter() {
         viewModelScope.launch {
             combine(
-                preferenceRepository.userPreferences.map { it.appFilterType }
-                    .distinctUntilChanged(),
+                combine(
+                    preferenceRepository.userPreferences,
+                    _rawState.map { it.appListType to it.suspendedOnly }.distinctUntilChanged()
+                ) { prefs, (listType, suspendedOnly) ->
+                    if (suspendedOnly) FilterType.State else prefs.appFilterFor(listType).filterType
+                }.distinctUntilChanged(),
                 _rawState.map { state ->
                     (state.allUserApps + state.allSystemApps)
                         .mapTo(HashSet()) { "${it.packageName}@${it.lastUpdateTime}" }
@@ -409,7 +418,16 @@ class AppListViewModel(
                 // the app, and clear the loader so the UI doesn't spin forever.
                 if (e is CancellationException) throw e // preserve structured-concurrency cancellation
                 Logger.e("AppListViewModel", "loadApps failed", e)
-                _rawState.update { it.copy(isLoading = false) }
+                _rawState.update { state ->
+                    state.copy(
+                        isLoading = false,
+                        uadLoadFailed = true,
+                        allSystemApps = state.allSystemApps.map { app ->
+                            if (app.isUadLoaded) app
+                            else app.copy(isUadLoaded = true, isUadLoadFailed = true)
+                        },
+                    )
+                }
                 _events.send(AppListEvent.ShowMessage(UiText.StringResource(R.string.failed_to_load_apps)))
             }.collect { (user, system, priv) ->
                 _rawState.update {
@@ -424,7 +442,8 @@ class AppListViewModel(
                         isShizuku = priv.shizuku,
                         isDhizuku = priv.dhizuku,
                         allUserApps = user,
-                        allSystemApps = system
+                        allSystemApps = system,
+                        uadLoadFailed = false,
                     )
                 }
                 if (priv.hasAnyPrivilege) {
@@ -907,20 +926,17 @@ class AppListViewModel(
         }
     }
 
+    fun showSuspendedApps() {
+        _rawState.update { it.copy(suspendedOnly = true) }
+    }
+
     fun clearSelection() {
         _rawState.update { it.copy(selectedAppDetails = null) }
     }
 
     fun updateListType(type: AppListType) {
-        // AppListType is usually session-only, but we reset filter to "All" when switching
+        // The tab is session-only; its saved filter is restored by the preference combine.
         _rawState.update { it.copy(appListType = type) }
-        viewModelScope.launch {
-            // Keep the filter *category*, reset only the selection. This used to hardcode
-            // FilterType.Source, which was invisible while Source was the only interesting default
-            // but means "filter by Camera, then tap System apps" silently throws you back to
-            // Installation Source — reading as a bug in whichever filter you had chosen.
-            preferenceRepository.updateAppFilter(uiState.value.filterType, "All")
-        }
     }
 
     /**
@@ -929,28 +945,32 @@ class AppListViewModel(
      * Sets the list type as well, because that chart is drawn per type and a bar read off System
      * names apps a list left on User would hide, so the tap would land on an empty screen.
      *
-     * Deliberately not [updateListType] followed by [updateFilter]: the first of those resets the
-     * selection to "All", so the pair would queue two writes and the list would depend on their
-     * order to not throw away the very filter this was called to apply. One write, right value.
+     * The destination's category and selection are saved together; the other tab is untouched.
      */
     fun showAppsFromInstaller(type: AppListType, installerPackageName: String) {
         _rawState.update { it.copy(appListType = type) }
         viewModelScope.launch {
-            preferenceRepository.updateAppFilter(FilterType.Source, installerPackageName)
+            preferenceRepository.updateAppFilter(type, FilterType.Source, installerPackageName)
         }
     }
 
-    fun updateFilter(filter: String) {
+    fun updateFilter(
+        filter: String,
+        listType: AppListType = uiState.value.appListType,
+        filterType: FilterType = uiState.value.filterType,
+    ) {
+        if (_rawState.value.suspendedOnly) return
+        // Capture the rendered tab/category before dispatch, so a queued click cannot write to
+        // another tab when the user switches immediately afterward.
         viewModelScope.launch {
-            // We need to know current filter type to update properly
-            val currentType = uiState.value.filterType
-            preferenceRepository.updateAppFilter(currentType, filter)
+            preferenceRepository.updateAppFilter(listType, filterType, filter)
         }
     }
 
-    fun updateFilterType(type: FilterType) {
+    fun updateFilterType(type: FilterType, listType: AppListType = _rawState.value.appListType) {
+        if (_rawState.value.suspendedOnly) return
         viewModelScope.launch {
-            preferenceRepository.updateAppFilter(type, "All")
+            preferenceRepository.updateAppFilter(listType, type, "All")
         }
     }
 
@@ -1044,8 +1064,11 @@ class AppListViewModel(
 
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
-        val rawList =
-            if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
+        val rawList = when {
+            state.suspendedOnly -> state.allUserApps + state.allSystemApps
+            state.appListType == AppListType.USER -> state.allUserApps
+            else -> state.allSystemApps
+        }
 
         // 2. Filter by Search Query (Early out for performance)
         val searched = if (state.searchQuery.isBlank()) {
@@ -1100,7 +1123,14 @@ class AppListViewModel(
         return state.copy(
             displayedApps = sorted,
             availableInstallers = installers,
-            installerNameMap = installerNames
+            installerNameMap = installerNames,
+            // Cached Room rows deliberately arrive before metadata. Neither they nor a failed
+            // lookup may be reported as Unknown or as a completed empty recommendation result.
+            isLoadingUad = state.filterType == FilterType.Uad &&
+                    ((state.allSystemApps.isEmpty() && state.isLoading) ||
+                            state.allSystemApps.any { !it.isUadLoaded && !it.isUadLoadFailed }),
+            uadLoadFailed = state.filterType == FilterType.Uad &&
+                    (state.uadLoadFailed || state.allSystemApps.any { it.isUadLoadFailed }),
         )
     }
 

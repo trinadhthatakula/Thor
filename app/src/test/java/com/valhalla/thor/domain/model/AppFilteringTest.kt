@@ -12,8 +12,7 @@ import org.junit.Test
  *
  * These lived inside a private method on a ViewModel with eleven constructor dependencies until the
  * permission filter arrived, so none of them had ever been asserted — including the ones that were
- * already shipping. `filterApps` exists to make them reachable; this covers all three branches, not
- * just the new one.
+ * already shipping. `filterApps` exists to make them reachable.
  */
 class AppFilteringTest {
 
@@ -149,6 +148,103 @@ class AppFilteringTest {
 
         assertTrue(filterApps(apps, FilterType.Permission, mic, index).isEmpty())
     }
+
+    // --- UAD recommendations ---
+
+    @Test
+    fun uad_matchesEachRecommendationWithoutMergingAdvancedIntoRecommended() {
+        val apps = listOf(
+            systemApp("recommended", "Recommended"),
+            systemApp("advanced", "Advanced"),
+            systemApp("expert", "Expert"),
+            systemApp("unsafe", "Unsafe"),
+            systemApp("unknown", null),
+        )
+
+        for (recommendation in UadRecommendation.entries) {
+            assertEquals(
+                listOf(recommendation.persistedValue.lowercase()),
+                pkgs(filterApps(apps, FilterType.Uad, recommendation.persistedValue)),
+            )
+        }
+    }
+
+    @Test
+    fun uad_unknownIncludesUnlistedBlankAndCustomTagsOnlyAfterLookup() {
+        val apps = listOf(
+            systemApp("unlisted", null),
+            systemApp("blank", "  "),
+            systemApp("extension", "Vendor-specific advice"),
+            systemApp("pending", null, loaded = false),
+            systemApp("failed", null, failed = true),
+        )
+
+        assertEquals(
+            listOf("unlisted", "blank", "extension"),
+            pkgs(filterApps(apps, FilterType.Uad, "Unknown")),
+        )
+    }
+
+    @Test
+    fun uad_aFailedOrUnfinishedLookupCannotMatchAnySpecificChip() {
+        val apps = UadRecommendation.entries.flatMap { recommendation ->
+            listOf(
+                systemApp("pending.${recommendation.name}", recommendation.persistedValue, loaded = false),
+                systemApp("failed.${recommendation.name}", recommendation.persistedValue, failed = true),
+            )
+        }
+
+        for (recommendation in UadRecommendation.entries) {
+            assertTrue(filterApps(apps, FilterType.Uad, recommendation.persistedValue).isEmpty())
+        }
+        assertEquals(apps, filterApps(apps, FilterType.Uad, ALL_FILTER))
+    }
+
+    @Test
+    fun uad_doesNotMatchAUserAppEvenWhenItHasMetadata() {
+        val apps = listOf(
+            systemApp("system", "Recommended"),
+            systemApp("user", "Recommended").copy(isSystem = false),
+            systemApp("user.unknown", null).copy(isSystem = false),
+        )
+
+        assertEquals(listOf("system"), pkgs(filterApps(apps, FilterType.Uad, "Recommended")))
+        assertTrue(filterApps(apps, FilterType.Uad, "Unknown").isEmpty())
+    }
+
+    @Test
+    fun uad_normalizesMetadataWithoutChangingPersistedChipTokens() {
+        val apps = listOf(systemApp("recommended", "rEcOmMeNdEd"))
+
+        assertEquals(apps, filterApps(apps, FilterType.Uad, "Recommended"))
+        assertTrue(filterApps(apps, FilterType.Uad, "recommended").isEmpty())
+        assertTrue(filterApps(apps, FilterType.Uad, "Retired").isEmpty())
+    }
+
+    @Test
+    fun uad_isAvailableOnlyForTheSystemAppList() {
+        assertEquals(
+            listOf(FilterType.State, FilterType.Source, FilterType.Permission),
+            availableFilterTypes(AppListType.USER),
+        )
+        assertEquals(
+            listOf(FilterType.State, FilterType.Source, FilterType.Permission, FilterType.Uad),
+            availableFilterTypes(AppListType.SYSTEM),
+        )
+    }
+
+    private fun systemApp(
+        packageName: String,
+        recommendation: String?,
+        loaded: Boolean = true,
+        failed: Boolean = false,
+    ) = AppInfo(
+        packageName = packageName,
+        isSystem = true,
+        bloatRecommendation = recommendation,
+        isUadLoaded = loaded,
+        isUadLoadFailed = failed,
+    )
 
     // --- PermissionIndex itself ---
 

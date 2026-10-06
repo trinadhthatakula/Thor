@@ -1,5 +1,8 @@
 package com.valhalla.thor.rootservice;
 
+import com.valhalla.thor.rootservice.SuspensionReadbackResult;
+import com.valhalla.thor.rootservice.RootDataClearResult;
+
 /**
  * The privileged surface the :root daemon exposes to the app process.
  *
@@ -66,7 +69,7 @@ interface IThorRootService {
      *
      * <p>The daemon cannot work the user out for itself. It runs as uid 0 in user 0, so
      * {@code Process.myUserHandle()} answers 0 there no matter which user the app that bound it
-     * belongs to -- and IPackageManager.clearApplicationUserData takes the user id as an argument,
+     * belongs to -- and IActivityManager.clearApplicationUserData takes the user id as an argument,
      * so the one-argument {@link #clearAppData} above could only ever pass 0. For Thor in a work
      * profile or a Xiaomi Second Space that wipes the *primary* user's copy of the package, which is
      * irreversible and reported as a success.
@@ -114,4 +117,27 @@ interface IThorRootService {
      *   let the daemon apply its own fallback order.
      */
     boolean setAppSuspendedAsForUser(String packageName, boolean suspended, in @nullable String suspendingPackage, int userId);
+
+    /**
+     * Bounded suspension state and complete owner identities for one package and Android user.
+     * UNKNOWN never means not suspended. A null reply may identify an older daemon; clients must
+     * also handle Binder transport failure. This read does not dispatch or replay a mutation.
+     * Appended after all six legacy transactions, whose numbering and signatures must stay fixed.
+     */
+    @nullable SuspensionReadbackResult getSuspensionStateForUser(String packageName, int userId);
+
+    /**
+     * Dispatches one clear-data request at most once in this service instance. The bounded wait
+     * covers preparation, dispatch and observer delivery; an unknown reply does not cancel work.
+     * Request IDs are caller-owned canonical UUIDs. Reusing a retained ID returns its existing
+     * observation, never another clear. History is bounded and never evicted during this instance.
+     * A client must never resubmit an uncertain request after reconnect, restart or a null reply.
+     */
+    @nullable RootDataClearResult clearAppDataForUserWithResult(String requestId, String packageName, int userId);
+
+    /**
+     * Read-only lookup of the exact caller/request/package/user record. A missing record or a
+     * replacement service is UNKNOWN, not proof that the operation was never dispatched.
+     */
+    @nullable RootDataClearResult getClearAppDataResult(String requestId, String packageName, int userId);
 }

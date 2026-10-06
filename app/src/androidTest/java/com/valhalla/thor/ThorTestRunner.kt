@@ -8,7 +8,7 @@ import android.content.Context
 import android.os.Bundle
 import androidx.test.runner.AndroidJUnitRunner
 
-/** Uses an isolated application runtime for tests that replace Room and WorkManager themselves. */
+/** Isolates tests that control service startup or replace Room and WorkManager themselves. */
 class ThorTestRunner : AndroidJUnitRunner() {
 
     internal var isolateApplicationRuntime = false
@@ -35,6 +35,14 @@ class ThorTestRunner : AndroidJUnitRunner() {
     private companion object {
         const val CLASS_ARGUMENT = "class"
         val ISOLATED_TESTS = setOf(
+            "com.valhalla.thor.presentation.widgets.RearrangingBoxesAnimationTest",
+            "com.valhalla.thor.presentation.widgets.RearrangingBoxesParityTest",
+            "com.valhalla.thor.presentation.widgets.TermLoggerPlaybackTest",
+            "com.valhalla.thor.presentation.widgets.TermLoggerRealClockTest",
+            "com.valhalla.thor.data.gateway.root.OdinLifecycleIntegrationTest",
+            "com.valhalla.thor.data.gateway.root.OdinRootServiceBindingIntegrationTest",
+            "com.valhalla.thor.data.gateway.root.OdinRootServiceLifecycleIntegrationTest",
+            "com.valhalla.thor.data.gateway.root.OdinRootPolicyIntegrationTest",
             "com.valhalla.thor.data.freezer.PrivilegeSweepWorkerIntegrationTest",
             "com.valhalla.thor.data.freezer.PrivilegeSweepServiceIntegrationTest",
             "com.valhalla.thor.data.service.LegacyWorkManagerCutoverIntegrationTest",

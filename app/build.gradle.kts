@@ -1,4 +1,5 @@
 import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.HostTestBuilder
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.FileInputStream
 import java.util.Properties
@@ -113,10 +114,10 @@ android {
             debugSymbolLevel = "SYMBOL_TABLE"
         }
 
-        // Startup-timing instrumentation switch, read by PrivilegeProbeTrace and by
-        // ThorApplication's Logger.isDebug wiring. Off by default so `release` inherits false and
-        // stays silent; `debug` and `benchmark` turn it back on below. It exists as its own field
-        // rather than reusing BuildConfig.DEBUG because the benchmark build type is release-shaped,
+        // Development privilege diagnostics switch, shared by startup timing, structured root
+        // lifecycle events, and ThorApplication's Logger.isDebug wiring. Off by default so `release`
+        // inherits false and stays silent; `debug` and `benchmark` turn it back on below. It has its
+        // own field rather than reusing BuildConfig.DEBUG because the benchmark is release-shaped,
         // so BuildConfig.DEBUG is false there and the trace would compile out again.
         buildConfigField("boolean", "PRIVILEGE_TRACE", "false")
     }
@@ -140,9 +141,38 @@ android {
         }
     }
 
+    // Keep the existing test suite on debug, as it was under AGP's default. Release and
+    // benchmark host-test components are enabled below only to supply Compose Preview resources.
+    // The Compose UI tests rely on the test activity in debugImplementation's binary manifest.
+    sourceSets {
+        getByName("test") {
+            java.directories.clear()
+            kotlin.directories.clear()
+        }
+        getByName("testDebug") {
+            java.directories.add("src/test/java")
+            kotlin.directories.addAll(listOf("src/test/java", "src/test/kotlin"))
+        }
+    }
+
     testOptions {
         execution = "ANDROIDX_TEST_ORCHESTRATOR"
         unitTests.isIncludeAndroidResources = true
+        // Robolectric 4.17 requires these module opens on Java 17+.
+        // Keep them on test workers: https://robolectric.org/getting-started/
+        unitTests.all {
+            it.jvmArgs(
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.util=ALL-UNNAMED",
+                "--add-opens=java.base/java.io=ALL-UNNAMED",
+                "--add-opens=java.base/java.net=ALL-UNNAMED",
+                "--add-opens=java.base/java.security=ALL-UNNAMED",
+                "--add-opens=java.base/java.text=ALL-UNNAMED",
+                "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+                "--add-opens=java.desktop/java.awt.font=ALL-UNNAMED",
+                "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+            )
+        }
     }
 
     dependenciesInfo {
@@ -294,6 +324,11 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // Compress native libraries in standalone APKs; Android extracts the device's ABI
+            // at installation. Device-targeted bundle APKs retain direct loading via the override below.
+            useLegacyPackaging = true
+        }
         dex {
             // Compress dex in generated APKs. dex is otherwise STORED uncompressed (~76% of the
             // foss-release APK), so this roughly halves the direct-download size. By AGP design this
@@ -317,6 +352,13 @@ android {
 }
 
 androidComponents {
+    // AGP 9.5 registers Compose Preview tasks for every app variant, but its default only
+    // enables unit tests for debug. Preview needs the unit-test resource APK even for release
+    // and benchmark; without it, Studio fails while collecting the Gradle task model.
+    beforeVariants(selector().all()) { variantBuilder ->
+        variantBuilder.hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = true
+    }
+
     // 0. Confine the benchmark build type to the store flavour.
     //
     // Build types and flavours are a cross product in AGP, so declaring `benchmark` would otherwise
@@ -328,6 +370,12 @@ androidComponents {
         selector().withBuildType("benchmark").withFlavor("distribution", "foss")
     ) { variantBuilder ->
         variantBuilder.enable = false
+    }
+
+    onVariants { variant ->
+        // Play already compresses APK downloads in transit. Keep its device-targeted native
+        // splits directly loadable instead of creating extracted copies with no download benefit.
+        variant.packaging.jniLibs.useLegacyPackagingFromBundle.set(false)
     }
 
     // 1. Locale filtering — every variant, one set.
@@ -381,7 +429,9 @@ androidComponents {
 }
 
 dependencies {
-    implementation(libs.odin) // published com.trinadhthatakula:odin (was project(":suCore"))
+    val odinLocalVersion = providers.gradleProperty("odinLocalVersion").orNull
+    if (odinLocalVersion != null) implementation("com.trinadhthatakula:odin:$odinLocalVersion")
+    else implementation(libs.odin) // published com.trinadhthatakula:odin (was project(":suCore"))
     implementation(project(":bypass"))
     implementation(libs.thor.extension.api)
     implementation(libs.asgard)
@@ -423,19 +473,19 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    // Original renderer is a pixel oracle for the terminal Canvas animation; never packaged.
+    androidTestImplementation(libs.lottie.test)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    implementation(libs.accompanist.drawablepainter)
     implementation(libs.kotlinx.serialization.json)
     // :app has ~300 `import kotlinx.coroutines.*` and no direct declaration — they arrive through
     // Odin's `api(kotlinx-coroutines-android)`. Declared here so Thor pins its own version instead of
     // silently tracking whatever Odin ships, and so coroutines-test stays on the same 1.11.0.
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.lottie.compose)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.dhizuku.api)
@@ -450,11 +500,9 @@ dependencies {
     // Adaptive Layouts
     implementation(libs.androidx.adaptive)
     implementation(libs.androidx.adaptive.layout)
-    implementation(libs.androidx.adaptive.navigation)
     implementation(libs.androidx.adaptive.navigation3)
 
     implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
     // Store-only dependencies

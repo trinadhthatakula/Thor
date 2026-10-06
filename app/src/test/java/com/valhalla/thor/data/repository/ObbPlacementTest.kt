@@ -4,6 +4,8 @@
 package com.valhalla.thor.data.repository
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,20 +42,30 @@ class ObbPlacementTest {
     }
 
     @Test
-    fun `the copy unlinks the destination before writing it`() {
+    fun `the copy stages a sibling and publishes without unlinking the destination`() {
         val command = obbPlaceCommand(root, pkg, "main.obb", "/tmp/main.obb", 1L)!!
         val dest = "/storage/emulated/0/Android/obb/com.example.game/main.obb"
-
-        // `cp -f` unlinks only when the *open* fails, so an existing symlink at the destination is
-        // followed — an arbitrary root write, plus an arbitrary chmod, into whatever it names. `rm`
-        // does not follow links, so it removes the link rather than the target.
-        //
-        // The directory is re-tested in this same invocation rather than trusted from the earlier
-        // `mkdir`: `-L` examines only a path's final component, so the leaf guard says nothing about
-        // a link at `<pkg>`, and the mkdir ran in a different shell. That narrows the swap window to
-        // one invocation without closing it — see the KDoc.
         val dir = "/storage/emulated/0/Android/obb/com.example.game"
-        assertTrue(command, command.startsWith("[ ! -L '$dir' ] && rm -f '$dest' && cp -f "))
+        val staged = stagedPath(command)
+
+        // A matching basename moved into the parent directory replaces symlink leaves without
+        // requiring mv -T, which is unavailable on older supported toybox versions.
+        assertTrue(command, staged.startsWith("$dir/.thor-obb-"))
+        assertTrue(command, staged.endsWith("/main.obb"))
+        assertFalse(command, command.contains("rm -f '$dest'"))
+        assertTrue(command, command.contains("[ ! -L '$dir' ]"))
+        assertTrue(command, command.contains("{ [ ! -d '$dest' ] || [ -L '$dest' ]; }"))
+        assertTrue(command, command.contains("mv -f '$staged' '$dir/'"))
+        assertTrue(command, command.indexOf("chmod 644 '$staged'") < command.indexOf("mv -f"))
+        assertTrue(command, command.indexOf("stat -c %s '$staged'") < command.indexOf("mv -f"))
+    }
+
+    @Test
+    fun `each copy owns a fresh temporary sibling`() {
+        val first = obbPlaceCommand(root, pkg, "main.obb", "/tmp/main.obb", 1L)!!
+        val second = obbPlaceCommand(root, pkg, "main.obb", "/tmp/main.obb", 1L)!!
+
+        assertNotEquals(stagedPath(first), stagedPath(second))
     }
 
     @Test
@@ -146,4 +158,7 @@ class ObbPlacementTest {
             obbPlaceCommand(root, pkg, "main.obb", "/tmp/main.obb", 1L)!!.contains("'$dir/main.obb'")
         )
     }
+
+    private fun stagedPath(command: String): String =
+        requireNotNull(Regex("cp -f '[^']+' '([^']+)'").find(command)).groupValues[1]
 }

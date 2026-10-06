@@ -120,6 +120,11 @@
     <string name="suspended">Suspended</string>
     <string name="privilege_check">Privilege Check</string>
     <string name="privilege_check_desc">Thor requires Root, Shizuku or Dhizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.</string>
+    <string name="choose_root_manager">Choose root manager</string>
+    <string name="choose_root_manager_action">Choose</string>
+    <string name="root_manager_picker_description">If your root manager uses a hidden or randomized package name, choose its app here. This saves a shortcut; root access is checked separately.</string>
+    <string name="root_manager_apps_unavailable">Could not load apps. Try again.</string>
+    <string name="selected_root_manager_unavailable">The selected manager is unavailable. Choose it again if its package name changed.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ System Apps</string>
@@ -156,6 +161,13 @@
     <string name="permission_filter_loading">Reading permissions…</string>
     <string name="permission_filter_unavailable">No permission groups found on this device</string>
     <string name="permission_filter_failed">Couldn\'t read permissions on this device</string>
+    <string name="filter_type_uad">UAD recommendation</string>
+    <string name="uad_filter_recommended">Recommended</string>
+    <string name="uad_filter_advanced">Advanced</string>
+    <string name="uad_filter_expert">Expert</string>
+    <string name="uad_filter_unsafe">Unsafe</string>
+    <string name="uad_filter_loading">Loading UAD recommendations…</string>
+    <string name="uad_filter_failed">Couldn’t load UAD recommendations.</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">Clear App Data?</string>
@@ -1027,4 +1039,10 @@
     <string name="unfreeze_system_app_failed">Could not unfreeze %1$s with Shizuku. Restoring or enabling the app failed. Check the diagnostic logs for the device response.</string>
     <string name="system_app_removal_fallback">System app removal fallback</string>
     <string name="system_app_removal_fallback_desc">If Shizuku is refused permission to disable a system app, allow removing it for the current Android user while keeping data files. Accounts managed by the app may be lost. Applies to manual and automatic freezes. Unfreeze reinstalls the app. This setting applies only to this device.</string>
+
+    <!-- Root refresh status; availability remains the last confirmed observation. -->
+    <string name="root_refresh_checking">Checking root access…</string>
+    <string name="root_refresh_busy">Waiting for root work to finish. New root actions are paused.</string>
+    <string name="root_refresh_timed_out">The root check timed out. New root actions are paused.</string>
+    <string name="root_refresh_failed">Could not check root access. New root actions are paused.</string>
 </resources>

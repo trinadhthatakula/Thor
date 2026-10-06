@@ -9,6 +9,7 @@ import androidx.core.net.toUri
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.ObbPlacementUnresolved
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.StagedPackage
@@ -130,19 +131,18 @@ class AppArchiveInstallerImpl(
      *    synchronously before `installPackage` returns. [settledArchiveInstallState] states that
      *    rule as a pure function of the two values, so it is decided by data rather than by which
      *    thread won, and it is tested.
-     *  - **The watcher is still what makes the fallback safe.** On a session rung the outcome
-     *    arrives *after* `installPackage` returns — `InstallReceiver` answers a commit that has
-     *    already been made — so the cache's last word is only `Installing`. Subscribing after that
-     *    read would race the broadcast; subscribing before the install, as below, cannot.
-     *  - **[INSTALL_WAIT_MS] bounds the whole operation.** The install call is inside the budget,
-     *    not just the wait after it, so a rung that never returns ends in `Unconfirmed` instead of
-     *    hanging the restore worker with no outcome at all.
+     *  - **The watcher records receiver and placement outcomes throughout the call.** Session
+     *    rungs wait for their own terminal callback before returning; the watcher also retains
+     *    the fallback for an installer implementation that returns before emitting its outcome.
+     *  - **[INSTALL_WAIT_MS] requests cancellation of the whole operation.** An accepted session
+     *    retains its own lease references until its terminal callback after this caller exits.
+     *    A missing callback therefore retains ownership in this process beyond the budget.
      *
      * What this does *not* fix, because the constant is in `InstallerRepositoryImpl` and shared with
      * the foreground installer: for an OBB-carrying archive installed through a **session** rung
      * (Shizuku's reflection fallback, or the normal-installer fallback below it), `installPackage`
-     * runs its own 90 s `awaitInstalled` and emits "Thor could not confirm … finished installing" on
-     * timeout. That error settles this wait at 90 s even though the budget here is ten minutes. The
+     * runs its own 90 s `awaitInstalled` after terminal success and emits "Thor could not confirm …
+     * finished installing" if package readback still cannot establish placement eligibility. The
      * shell rungs — root, and Shizuku's first rung — are synchronous and never reach it. The reason
      * now travels with the outcome, so the user is told the install could not be confirmed rather
      * than that it failed.
@@ -188,6 +188,7 @@ class AppArchiveInstallerImpl(
                         mode = mode,
                         canDowngrade = true,
                         execution = execution,
+                        packageLeaseHeldFor = packageName,
                         // Only this invocation's installer success can authorize cancellation rollback.
                         onInstallSucceeded = { installSucceeded = true },
                     )
@@ -228,6 +229,12 @@ class AppArchiveInstallerImpl(
             return ArchiveInstallResult(outcome)
         }
 
+        // The outer install budget can expire during OBB placement after earlier install work.
+        // withTimeoutOrNull consumes that cancellation, but must not consume its retained root
+        // uncertainty and let the restore caller clear its interruption breadcrumb.
+        if (settled == null && obbInstaller.hasUnresolvedPlacement(packageName)) {
+            throw ObbPlacementUnresolved(packageName)
+        }
         val stampAfter = installStamp(packageName)
         val outcome = archiveInstallOutcome(
             settled = settled,
@@ -281,6 +288,9 @@ class AppArchiveInstallerImpl(
         receipt: ArchiveRollbackReceipt,
         execution: PrivilegeExecutionContext,
     ): ArchiveRollbackOutcome = withContext(ioDispatcher) {
+        if (obbInstaller.hasUnresolvedPlacement(receipt.packageName)) {
+            return@withContext ArchiveRollbackOutcome.REFUSED
+        }
         when (rollbackAction(receipt, installStamp(receipt.packageName))) {
             RollbackAction.ALREADY_ABSENT -> ArchiveRollbackOutcome.CLEAN
             RollbackAction.REFUSE -> ArchiveRollbackOutcome.REFUSED
@@ -301,11 +311,15 @@ class AppArchiveInstallerImpl(
         }
     }
 
+    override suspend fun hasUnresolvedObbPlacement(packageName: String): Boolean =
+        withContext(ioDispatcher) { obbInstaller.hasUnresolvedPlacement(packageName) }
+
     override suspend fun placeBundleObb(
         bundle: File,
         packageName: String,
         onFile: (String, Int, Int) -> Unit,
-    ): ObbPlacement = obbInstaller.placeStreaming(bundle, packageName, onFile)
+        execution: PrivilegeExecutionContext,
+    ): ObbPlacement = obbInstaller.placeStreaming(bundle, packageName, onFile, execution)
 
     companion object {
         private const val TAG = "AppArchiveInstaller"

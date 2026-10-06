@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.backup
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.gateway.root.TestRootAdmission
 import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
 import com.valhalla.thor.data.backup.PassphraseVault
 import com.valhalla.thor.data.backup.PassphraseVaultStore
@@ -510,7 +511,7 @@ class ArchiveRestoreViewModelTest {
         // real cache here means a regression to the direct call fails
         // `an ungranted privilege state is refused without any probe at all` rather than passing
         // quietly.
-        capability = DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState)),
+        capability = DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState), TestRootAdmission().apply { state.value = privilegeState.rootAvailability }),
         installedFacts = ReadInstalledAppFactsUseCase(
             appRepository = FakeAppRepository(installedApps),
             gateway = gateway,

@@ -77,7 +77,7 @@ class ArchiveKeyHolderTest {
     }
 
     /**
-     * The branch neither the worker's `finally` nor `ThorJobLauncher.cancel` can reach.
+     * Expiry also covers a retained legacy job that never enters the worker's `finally`.
      *
      * `beginUniqueWork(…, APPEND_OR_REPLACE, …)` appends a second request as a **dependent**, and
      * WorkManager cancels the dependents of a prerequisite that returns `Result.failure()`. A backup
