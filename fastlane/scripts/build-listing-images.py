@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Play listing images from the reviewed, unaltered app captures used by the website.
+"""Build Play listing images from reviewed, unaltered app captures.
 
 Requires Pillow. Run from any directory: python3 fastlane/scripts/build-listing-images.py
 Edit the copy and captures here, then review the rendered images before publishing.
@@ -27,18 +27,20 @@ REGULAR = available_font(
 # Each caption describes the app state visible beneath it; text is for people
 # browsing the listing, not a claim that Play indexes screenshot OCR.
 SCREENS = [
-    ("01-home-bento.png", "Android app manager", "See apps, status and quick actions"),
-    ("02-freezer-active-and-frozen.png", "Freeze apps", "Keep data. Restore when you choose."),
-    ("03-refusal-unsafe-system-app.png", "Debloat with guidance", "Unsafe system-app freezes are blocked"),
-    ("04-app-list-permission-chips.png", "Find any app", "Search and filter user and system apps"),
-    ("05-settings-work-mode.png", "Root or rootless", "Choose Root, Shizuku or Dhizuku"),
-    ("06-extension-manager.png", "Verified extensions", "Add optional features on demand"),
+    ("web/src/assets/screenshots/01-home-bento.png", "Android app manager", "See apps, status and quick actions"),
+    ("web/src/assets/screenshots/02-freezer-active-and-frozen.png", "Freeze apps", "Keep data. Restore when you choose."),
+    ("web/src/assets/screenshots/03-refusal-unsafe-system-app.png", "Debloat with guidance", "Unsafe system-app freezes are blocked"),
+    ("fastlane/assets/captures/uad-recommended.png", "Filter system apps", "Review UAD recommendations before acting"),
+    ("web/src/assets/screenshots/04-app-list-permission-chips.png", "Find any app", "Search and filter user and system apps"),
+    ("web/src/assets/screenshots/05-settings-work-mode.png", "Root or rootless", "Choose Root, Shizuku or Dhizuku"),
+    ("fastlane/assets/captures/backup-hub.png", "Back up and restore", "Save app bundles; Root can include private data"),
+    ("web/src/assets/screenshots/06-extension-manager.png", "Verified extensions", "Add optional features on demand"),
 ]
 W, H = 1280, 2560
 INK = "#172019"
 MUTED = "#415048"
 LIME = "#D9FFAF"
-BACKGROUNDS = ["#E6F2D8", "#E9EDFA", "#F5EDE2", "#DDEFEA", "#F1E9F2", "#EDF1DD"]
+BACKGROUNDS = ["#E6F2D8", "#E9EDFA", "#F5EDE2", "#E5EAFB", "#DDEFEA", "#F1E9F2", "#E9F2E1", "#EDF1DD"]
 
 
 def font(path: str, size: int) -> ImageFont.FreeTypeFont:
@@ -81,7 +83,7 @@ def render_screens() -> None:
         draw.text((74, 174), headline, font=fit_font(draw, headline, W - 148, 82), fill=INK)
         draw.text((76, 290), subline, font=font(REGULAR, 35), fill=MUTED)
         draw.rounded_rectangle((74, 370, 1206, 375), radius=3, fill="#A5C58E")
-        shot = Image.open(SOURCES / source)
+        shot = Image.open(ROOT / source)
         phone_card(canvas, shot, 158, 424, 964)
         canvas.convert("RGB").save(SHOTS / f"{index}.png", optimize=True)
 

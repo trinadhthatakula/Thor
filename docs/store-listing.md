@@ -6,11 +6,14 @@ copy in `shizu_store.json` aligned with `en-US`, and its Hindi copy aligned with
 `hi-IN`. The app name in the Shizu manifest follows the Play title. The website
 homepage and feature page should use the same feature vocabulary and limits.
 
-The Play phone screenshots and feature graphic are generated from the reviewed,
-real app captures under `web/src/assets/screenshots/`. To rebuild them, install
+The Play phone screenshots and feature graphic are generated from reviewed,
+real app captures under `web/src/assets/screenshots/` and
+`fastlane/assets/captures/`. The latter contains the validated UAD filter and
+Backup & Restore captures used only in the Play listing. To rebuild, install
 Pillow and run `python3 fastlane/scripts/build-listing-images.py` from any
-directory. Review all six phone images and the feature graphic at their actual
-size after each change. The icon is the existing Thor brand mark. Captions are
+directory. Review all eight phone images and the feature graphic at their actual
+size after each change. The eight phone screenshots fill Play's phone limit;
+the icon is the existing Thor brand mark. Captions are
 written to help people understand a screenshot while browsing; do not assume
 Google indexes text baked into images as search keywords.
 
