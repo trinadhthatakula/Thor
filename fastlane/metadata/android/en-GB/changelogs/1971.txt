@@ -1,0 +1,13 @@
+• 🔍 Filter system apps by UAD advice; save separate User and System filters.
+
+• 🛡️ Privilege Check shows grants and root-manager shortcuts.
+
+• 🛠️ Sett Edit reviews Android settings and tracks verified edits.
+
+• ⏸️ Find suspended apps and use supported Unpause.
+
+• 📦 Safer installs, exports and game-file copies; manage App Ops.
+
+• ❄️ Better Dhizuku actions, Shizuku recovery and Freezer profiles.
+
+• 🎛️ Customize actions, drag lists and use Japanese; Extensions sheets now scroll.
