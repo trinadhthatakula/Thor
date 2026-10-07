@@ -171,7 +171,7 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
         appScope.launch {
             runCatching {
                 val prefs = preferenceRepository.userPreferences.first()
-                freezerShortcutManager.syncShortcuts(!prefs.disableShortcuts)
+                freezerShortcutManager.syncShortcuts(!prefs.settingsLost && !prefs.disableShortcuts)
             }.onFailure { throwable ->
                 if (throwable is CancellationException) throw throwable
                 Logger.e("ThorApp", "Shortcut label refresh failed", throwable)
@@ -343,7 +343,8 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
                         )
                     }
                 }
-                freezerShortcutManager.syncShortcuts(!prefs.disableShortcuts)
+                val shortcutPrefs = preferenceRepository.userPreferences.first()
+                freezerShortcutManager.syncShortcuts(!shortcutPrefs.settingsLost && !shortcutPrefs.disableShortcuts)
             }.onFailure { throwable ->
                 // runCatching also catches CancellationException; rethrow it so appScope.cancel()
                 // (onTerminate) isn't logged as a failure and cooperative cancellation is preserved.

@@ -119,7 +119,8 @@ class FreezerLaunchActivity : Activity() {
     // Bulk: persist and enqueue inside the short report window, then get out of the launcher's way.
     private fun guardThenBulk(disable: Boolean) {
         scope.launch {
-            if (preferences.userPreferences.first().disableShortcuts) {
+            val prefs = preferences.userPreferences.first()
+            if (prefs.settingsLost || prefs.disableShortcuts) {
                 toast(getString(R.string.shortcuts_disabled_message))
                 finish()
                 return@launch
@@ -143,7 +144,8 @@ class FreezerLaunchActivity : Activity() {
     // Launch: stay foreground through startActivity (Android 10+ background-launch rule).
     private fun launchApp(pkg: String) {
         scope.launch {
-            if (preferences.userPreferences.first().disableShortcuts) {
+            val prefs = preferences.userPreferences.first()
+            if (prefs.settingsLost || prefs.disableShortcuts) {
                 toast(getString(R.string.shortcuts_disabled_message))
                 finish()
                 return@launch

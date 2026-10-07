@@ -308,7 +308,8 @@ class SettingsViewModel(
     fun setDisableShortcuts(disabled: Boolean) {
         viewModelScope.launch {
             preferenceRepository.setDisableShortcuts(disabled)
-            appShortcuts.syncShortcuts(!preferenceRepository.userPreferences.first().disableShortcuts)
+            val prefs = preferenceRepository.userPreferences.first()
+            appShortcuts.syncShortcuts(!prefs.settingsLost && !prefs.disableShortcuts)
         }
     }
 
