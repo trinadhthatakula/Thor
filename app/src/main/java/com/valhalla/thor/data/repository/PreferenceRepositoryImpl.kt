@@ -193,6 +193,8 @@ class PreferenceRepositoryImpl(
 
         // Auto Freeze
         val AUTO_FREEZE = booleanPreferencesKey("auto_freeze")
+        val DISABLE_SHORTCUTS = booleanPreferencesKey("disable_shortcuts")
+        // Legacy positive setting; only an explicitly saved false remains an opt out.
         val ADD_FREEZER_TO_LAUNCHER = booleanPreferencesKey("add_freezer_to_launcher")
         val FREEZER_MODE = stringPreferencesKey("freezer_mode")
         val SKIP_ROUTINE_FREEZE_CONFIRMATION =
@@ -366,9 +368,10 @@ class PreferenceRepositoryImpl(
         }
     }
 
-    override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
+    override suspend fun setDisableShortcuts(disabled: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
-            it[Keys.ADD_FREEZER_TO_LAUNCHER] = enabled
+            it[Keys.DISABLE_SHORTCUTS] = disabled
+            it.remove(Keys.ADD_FREEZER_TO_LAUNCHER)
         }
     }
 
@@ -830,7 +833,8 @@ internal fun Preferences.toUserPreferences(
         language = prefs[Keys.LANGUAGE],
         autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
         freezerMode = freezerMode,
-        addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
+        disableShortcuts = prefs[Keys.DISABLE_SHORTCUTS]
+            ?: (prefs[Keys.ADD_FREEZER_TO_LAUNCHER] == false),
         // Only a healthy absent key uses the default; an unreadable choice cannot authorize removal.
         allowSystemAppRemovalFallback = !localStateDegraded &&
             (local[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK] ?: true),

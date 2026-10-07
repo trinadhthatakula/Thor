@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -304,10 +305,10 @@ class SettingsViewModel(
         }
     }
 
-    fun setAddFreezerToLauncher(enabled: Boolean) {
+    fun setDisableShortcuts(disabled: Boolean) {
         viewModelScope.launch {
-            preferenceRepository.setAddFreezerToLauncher(enabled)
-            appShortcuts.syncDynamicShortcuts(enabled)
+            preferenceRepository.setDisableShortcuts(disabled)
+            appShortcuts.syncShortcuts(!preferenceRepository.userPreferences.first().disableShortcuts)
         }
     }
 

@@ -752,8 +752,8 @@ class FakePreferenceRepository(
         write { it.copy(autoFreezeEnabled = enabled) }
     }
 
-    override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
-        write { it.copy(addFreezerToLauncher = enabled) }
+    override suspend fun setDisableShortcuts(disabled: Boolean) {
+        write { it.copy(disableShortcuts = disabled) }
     }
 
     override suspend fun setFreezerMode(mode: FreezerMode) {
@@ -1138,7 +1138,7 @@ class FakeAppShortcutController(
     val refreshed = mutableListOf<String>()
     val pinned = mutableListOf<String>()
     val pinnedBulkActions = mutableListOf<String>()
-    val dynamicSyncs = mutableListOf<Boolean>()
+    val shortcutSyncs = mutableListOf<Boolean>()
 
     /**
      * Failures the *port* absorbed instead of handing to its caller — see [pinAppShortcut].
@@ -1239,8 +1239,8 @@ class FakeAppShortcutController(
         pinnedBulkActions += action
     }
 
-    override fun syncDynamicShortcuts(enabled: Boolean) {
-        dynamicSyncs += enabled
+    override fun syncShortcuts(enabled: Boolean) {
+        shortcutSyncs += enabled
     }
 }
 

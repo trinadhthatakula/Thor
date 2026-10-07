@@ -375,8 +375,10 @@
     <string name="auto_freeze_desc">Freeze apps automatically when screen is locked</string>
     <string name="skip_routine_freeze_confirmation">Don\'t confirm routine freezes</string>
     <string name="skip_routine_freeze_confirmation_desc">Freeze system apps without asking first, unless the removal list flags them. Apps marked Expert still warn, and unsafe ones are still refused.</string>
-    <string name="add_freezer_to_launcher">Add Freezer to launcher</string>
-    <string name="add_freezer_to_launcher_desc">Show frozen apps as home-screen shortcuts you can tap to launch</string>
+
+    <string name="disable_shortcuts">Disable shortcuts</string>
+    <string name="disable_shortcuts_desc">Turn off Freezer shortcuts, including pinned home-screen shortcuts</string>
+    <string name="shortcuts_disabled_message">Shortcuts are disabled in Thor</string>
     <string name="add_to_home_screen">Add to Home screen</string>
     <string name="freeze_all_apps">Freeze all in Freezer</string>
     <string name="shortcuts">Shortcuts</string>

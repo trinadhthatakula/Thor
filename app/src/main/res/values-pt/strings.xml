@@ -382,8 +382,10 @@
     <string name="auto_freeze_desc">Congelar as aplicações automaticamente quando o ecrã é bloqueado</string>
     <string name="skip_routine_freeze_confirmation">Não confirmar congelamentos de rotina</string>
     <string name="skip_routine_freeze_confirmation_desc">Congelar aplicações de sistema sem perguntar primeiro, exceto quando a lista de remoção as assinala. As marcadas como Expert continuam a avisar e as inseguras continuam a ser recusadas.</string>
-    <string name="add_freezer_to_launcher">Adicionar o Congelador ao launcher</string>
-    <string name="add_freezer_to_launcher_desc">Mostrar as aplicações congeladas como atalhos no ecrã principal em que pode tocar para as abrir</string>
+
+    <string name="disable_shortcuts">Desativar atalhos</string>
+    <string name="disable_shortcuts_desc">Desativa os atalhos do Congelador, incluindo os fixados no ecrã principal</string>
+    <string name="shortcuts_disabled_message">Os atalhos estão desativados no Thor</string>
     <string name="add_to_home_screen">Adicionar ao ecrã principal</string>
     <string name="freeze_all_apps">Congelar tudo no Congelador</string>
     <string name="shortcuts">Atalhos</string>

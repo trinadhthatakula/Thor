@@ -279,8 +279,10 @@
     <string name="auto_freeze_desc">画面がロックされているときにアプリを自動的に凍結する</string>
     <string name="skip_routine_freeze_confirmation">日常的な凍結を確認しない</string>
     <string name="skip_routine_freeze_confirmation_desc">削除リストにフラグが立てられていない限り、最初に確認することなくシステム アプリを凍結します。 Expert とマークされたアプリは引き続き警告し、安全でないアプリは引き続き拒否されます。</string>
-    <string name="add_freezer_to_launcher">フリーザーをランチャーに追加</string>
-    <string name="add_freezer_to_launcher_desc">凍結したアプリをホーム画面のショートカットとして表示し、タップして起動できる</string>
+
+    <string name="disable_shortcuts">ショートカットを無効にする</string>
+    <string name="disable_shortcuts_desc">ホーム画面に固定したものを含め、フリーザーのショートカットを無効にします</string>
+    <string name="shortcuts_disabled_message">Thor でショートカットが無効になっています</string>
     <string name="add_to_home_screen">ホーム画面に追加</string>
     <string name="freeze_all_apps">フリーザー内のすべてのアプリを凍結</string>
     <string name="shortcuts">ショートカット</string>

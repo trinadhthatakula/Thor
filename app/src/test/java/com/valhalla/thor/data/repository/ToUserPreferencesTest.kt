@@ -33,6 +33,24 @@ import org.junit.Test
 class ToUserPreferencesTest {
 
     @Test
+    fun `shortcuts default on while explicit legacy opt out survives upgrade`() {
+        assertFalse(com.valhalla.thor.domain.model.UserPreferences().disableShortcuts)
+        assertFalse(emptyPreferences().toUserPreferences().disableShortcuts)
+        assertFalse(preferencesOf(Keys.ADD_FREEZER_TO_LAUNCHER to true).toUserPreferences().disableShortcuts)
+        assertTrue(preferencesOf(Keys.ADD_FREEZER_TO_LAUNCHER to false).toUserPreferences().disableShortcuts)
+
+        // Once the new switch is saved, its value wins over the retired positive setting.
+        assertTrue(preferencesOf(
+            Keys.ADD_FREEZER_TO_LAUNCHER to true,
+            Keys.DISABLE_SHORTCUTS to true,
+        ).toUserPreferences().disableShortcuts)
+        assertFalse(preferencesOf(
+            Keys.ADD_FREEZER_TO_LAUNCHER to false,
+            Keys.DISABLE_SHORTCUTS to false,
+        ).toUserPreferences().disableShortcuts)
+    }
+
+    @Test
     fun `no root manager shortcut is selected by default`() {
         assertNull(com.valhalla.thor.domain.model.UserPreferences().selectedRootManagerPackage)
         assertNull(emptyPreferences().toUserPreferences().selectedRootManagerPackage)

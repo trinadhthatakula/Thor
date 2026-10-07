@@ -233,7 +233,7 @@ fun AppActionRow(
                     )
                 }
 
-                AppInfoActionId.ADD_TO_HOME -> if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
+                AppInfoActionId.ADD_TO_HOME -> if (!prefs.disableShortcuts && !appInfo.isSystem && shortcutManager.isPinSupported()) {
                     ActionItem(
                         icon = R.drawable.home,
                         label = stringResource(R.string.add_to_home_screen),

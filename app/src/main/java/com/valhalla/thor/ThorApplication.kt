@@ -82,7 +82,7 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
      *
      * **Only tracks it because something re-publishes.** The Freeze-all / Unfreeze-all *dynamic*
      * shortcut labels are a copy held by the launcher, and `getResources()` cannot reach a copy. It
-     * is [onCreate]'s `appliedTag` collector that re-runs `syncDynamicShortcuts`, and only for the
+     * is [onCreate]'s `appliedTag` collector that re-runs `syncShortcuts`, and only for the
      * dynamic pair. A bulk shortcut the user has **pinned** keeps its old label until they pin it
      * again: `ShortcutManager` rate-limits background updates and re-pushing every pinned id on a
      * language change would spend that budget on cosmetics.
@@ -158,7 +158,7 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
      *   one half of the problem it deliberately leaves to `ACTION_LOCALE_CHANGED`.
      * - **In someone else's process.** A launcher shortcut label is a copy `ShortcutManager` handed
      *   the launcher at publish time. Only the dynamic Freeze-all / Unfreeze-all pair is re-pushed:
-     *   `syncDynamicShortcuts` is idempotent and takes the enabled flag from the preference, so this
+     *   `syncShortcuts` is idempotent and takes the enabled flag from the preference, so this
      *   publishes nothing a user has turned off. Pinned per-app shortcuts are deliberately left —
      *   re-pushing every pinned id on a language change spends `ShortcutManager`'s background update
      *   budget on cosmetics.
@@ -171,7 +171,7 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
         appScope.launch {
             runCatching {
                 val prefs = preferenceRepository.userPreferences.first()
-                freezerShortcutManager.syncDynamicShortcuts(prefs.addFreezerToLauncher)
+                freezerShortcutManager.syncShortcuts(!prefs.disableShortcuts)
             }.onFailure { throwable ->
                 if (throwable is CancellationException) throw throwable
                 Logger.e("ThorApp", "Shortcut label refresh failed", throwable)
@@ -343,7 +343,7 @@ open class ThorApplication : Application(), SingletonImageLoader.Factory {
                         )
                     }
                 }
-                freezerShortcutManager.syncDynamicShortcuts(prefs.addFreezerToLauncher)
+                freezerShortcutManager.syncShortcuts(!prefs.disableShortcuts)
             }.onFailure { throwable ->
                 // runCatching also catches CancellationException; rethrow it so appScope.cancel()
                 // (onTerminate) isn't logged as a failure and cooperative cancellation is preserved.

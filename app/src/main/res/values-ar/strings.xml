@@ -606,8 +606,10 @@
     <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>
     <string name="skip_routine_freeze_confirmation">عدم تأكيد عمليات التجميد المعتادة</string>
     <string name="skip_routine_freeze_confirmation_desc">تجميد تطبيقات النظام دون السؤال أولاً، ما لم تكن قائمة UAD قد وسمتها. التطبيقات المصنفة كـ Expert لا تزال تُحذّر، وغير الآمنة لا يزال تجميدها محظوراً.</string>
-    <string name="add_freezer_to_launcher">إضافة المجمد إلى شاشة التشغيل</string>
-    <string name="add_freezer_to_launcher_desc">إظهار التطبيقات المجمدة كاختصارات على الشاشة الرئيسية يمكنك النقر عليها لتشغيلها</string>
+
+    <string name="disable_shortcuts">تعطيل الاختصارات</string>
+    <string name="disable_shortcuts_desc">إيقاف اختصارات المجمّد، بما فيها الاختصارات المثبّتة على الشاشة الرئيسية</string>
+    <string name="shortcuts_disabled_message">الاختصارات معطّلة في Thor</string>
     <string name="add_to_home_screen">إضافة إلى الشاشة الرئيسية</string>
     <string name="freeze_all_apps">تجميد الكل في المجمد</string>
     <string name="shortcuts">الاختصارات</string>
