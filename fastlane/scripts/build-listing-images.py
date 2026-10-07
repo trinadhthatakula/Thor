@@ -36,6 +36,24 @@ SCREENS = [
     ("fastlane/assets/captures/backup-hub.png", "Back up and restore", "Save app bundles; Root can include private data"),
     ("web/src/assets/screenshots/06-extension-manager.png", "Verified extensions", "Add optional features on demand"),
 ]
+
+# Real unfolded-device captures. The output directories are Fastlane's Play
+# Console slots: unfolded foldables use the 7-inch slot, tablets the 10-inch slot.
+FOLDABLE_SCREENS = [
+    ("fastlane/assets/captures/foldable/01-home.png", "Built for foldables", "Adaptive home • app status • installs"),
+    ("fastlane/assets/captures/foldable/02-app-list-details.png", "Browse side by side", "App list • details • actions"),
+    ("fastlane/assets/captures/foldable/03-app-actions.png", "Quick app actions", "Open • freeze • suspend"),
+    ("fastlane/assets/captures/foldable/04-app-list-sorting.png", "Find apps your way", "Sources • sorting • filters"),
+    ("fastlane/assets/captures/foldable/05-installer.png", "Review APK updates", "Versions • permissions • install modes"),
+    ("fastlane/assets/captures/foldable/06-appearance-settings.png", "Customize your setup", "Theme • AMOLED • app language"),
+]
+TABLET_SCREENS = [
+    ("fastlane/assets/captures/tablet/01-home.png", "App management, expanded", "Home • app status • quick actions"),
+    ("fastlane/assets/captures/tablet/02-app-list-details.png", "Browse apps side by side", "App list • details • actions"),
+    ("fastlane/assets/captures/tablet/03-app-actions.png", "Manage apps in a tap", "Open • freeze • suspend"),
+    ("fastlane/assets/captures/tablet/04-app-list-sorting.png", "Find apps faster", "Sources • sorting • filters"),
+    ("fastlane/assets/captures/tablet/05-appearance-settings.png", "Make Thor your own", "Theme • AMOLED • animations"),
+]
 W, H = 1280, 2560
 INK = "#172019"
 MUTED = "#415048"
@@ -88,6 +106,36 @@ def render_screens() -> None:
         canvas.convert("RGB").save(SHOTS / f"{index}.png", optimize=True)
 
 
+def render_large_screens(
+    screens: list[tuple[str, str, str]],
+    directory: str,
+    canvas_size: tuple[int, int],
+    screenshot_width: int,
+    background_offset: int,
+) -> None:
+    output = IMAGES / directory
+    output.mkdir(parents=True, exist_ok=True)
+    width = canvas_size[0]
+    gutter = 96
+    for index, (source, headline, keywords) in enumerate(screens):
+        canvas = Image.new("RGBA", canvas_size, BACKGROUNDS[(index + background_offset) % len(BACKGROUNDS)])
+        draw = ImageDraw.Draw(canvas)
+        draw.rounded_rectangle((gutter, 62, gutter + 460, 136), radius=37, fill=INK)
+        draw.text((gutter + 28, 78), "THOR  /  APP MANAGER", font=font(BOLD, 32), fill=LIME)
+        draw.text((width - gutter - 150, 82), f"{index + 1:02d} / {len(screens):02d}", font=font(BOLD, 32), fill=MUTED)
+        draw.text((gutter, 172), headline, font=fit_font(draw, headline, width - 2 * gutter, 104), fill=INK)
+        draw.text((gutter + 2, 303), keywords, font=font(REGULAR, 47), fill=MUTED)
+        draw.rounded_rectangle((gutter, 390, width - gutter, 396), radius=3, fill="#A5C58E")
+        with Image.open(ROOT / source) as shot:
+            phone_card(canvas, shot, (width - screenshot_width) // 2, 438, screenshot_width)
+        canvas.convert("RGB").save(output / f"{index}.png", optimize=True)
+
+
+def render_tablet_and_foldable_screens() -> None:
+    render_large_screens(FOLDABLE_SCREENS, "sevenInchScreenshots", (2400, 2000), 1790, 1)
+    render_large_screens(TABLET_SCREENS, "tenInchScreenshots", (2560, 1800), 2048, 0)
+
+
 def render_feature_graphic() -> None:
     canvas = Image.new("RGBA", (1024, 500), INK)
     draw = ImageDraw.Draw(canvas)
@@ -107,4 +155,5 @@ def render_feature_graphic() -> None:
 
 if __name__ == "__main__":
     render_screens()
+    render_tablet_and_foldable_screens()
     render_feature_graphic()
