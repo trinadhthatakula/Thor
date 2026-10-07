@@ -383,8 +383,10 @@
     <string name="auto_freeze_desc">Zamrażaj aplikacje automatycznie, gdy ekran jest zablokowany</string>
     <string name="skip_routine_freeze_confirmation">Nie potwierdzaj rutynowych zamrożeń</string>
     <string name="skip_routine_freeze_confirmation_desc">Zamrażaj aplikacje systemowe bez pytania, chyba że oznacza je lista usuwania. Aplikacje oznaczone jako Expert nadal ostrzegają, a niebezpieczne nadal są odrzucane.</string>
-    <string name="add_freezer_to_launcher">Dodaj Zamrażarkę do launchera</string>
-    <string name="add_freezer_to_launcher_desc">Pokazuj zamrożone aplikacje jako skróty na ekranie głównym, które uruchomisz jednym dotknięciem</string>
+
+    <string name="disable_shortcuts">Wyłącz skróty</string>
+    <string name="disable_shortcuts_desc">Wyłącza skróty Zamrażarki, także te przypięte do ekranu głównego</string>
+    <string name="shortcuts_disabled_message">Skróty są wyłączone w Thorze</string>
     <string name="add_to_home_screen">Dodaj do ekranu głównego</string>
     <string name="freeze_all_apps">Zamroź wszystkie w Zamrażarce</string>
     <string name="shortcuts">Skróty</string>

@@ -572,8 +572,10 @@
     <string name="suspend_instead_of_freeze_desc">Al congelar (incluyendo el autocongelado), suspende las aplicaciones en lugar de desactivarlas. Las aplicaciones suspendidas siguen siendo visibles pero pausadas.</string>
     <string name="skip_routine_freeze_confirmation">No confirmar las congelaciones habituales</string>
     <string name="skip_routine_freeze_confirmation_desc">Congelar aplicaciones del sistema sin preguntar antes, salvo que la lista UAD las marque. Las marcadas como Expert siguen avisando y las inseguras siguen bloqueadas.</string>
-    <string name="add_freezer_to_launcher">Añadir Congelador al lanzador</string>
-    <string name="add_freezer_to_launcher_desc">Mostrar las aplicaciones congeladas como accesos directos en la pantalla de inicio para abrirlas con un toque</string>
+
+    <string name="disable_shortcuts">Desactivar accesos directos</string>
+    <string name="disable_shortcuts_desc">Desactiva los accesos directos del Congelador, incluidos los fijados en la pantalla de inicio</string>
+    <string name="shortcuts_disabled_message">Los accesos directos están desactivados en Thor</string>
     <string name="add_to_home_screen">Añadir a la pantalla de inicio</string>
     <string name="freeze_all_apps">Congelar todo en el Congelador</string>
     <string name="shortcuts">Accesos directos</string>

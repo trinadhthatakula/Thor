@@ -134,7 +134,7 @@ data class FreezerUiState(
     val gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     val multiActionsOrder: List<MultiAppActionId> = MultiAppActionLayout.FREEZER.defaultOrder,
     val hiddenMultiActions: Set<MultiAppActionId> = emptySet(),
-    val addFreezerToLauncher: Boolean = false,
+    val disableShortcuts: Boolean = false,
     val profiles: List<FreezeProfile> = emptyList(),
     val profileEditorSearchQuery: String = "",
     /**
@@ -875,7 +875,7 @@ class FreezerViewModel(
                         gridDensity = prefs.appGridDensity,
                         multiActionsOrder = prefs.freezerMultiActionsOrder,
                         hiddenMultiActions = prefs.hiddenFreezerMultiActions,
-                        addFreezerToLauncher = prefs.addFreezerToLauncher
+                        disableShortcuts = prefs.disableShortcuts
                     )
                 }
             }

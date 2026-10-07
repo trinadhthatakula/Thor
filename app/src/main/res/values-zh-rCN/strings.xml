@@ -564,8 +564,10 @@
     <string name="suspend_instead_of_freeze_desc">冻结（包括自动冻结）时暂停应用，而不是禁用它们。被暂停的应用仍然可见，但无法打开。</string>
     <string name="skip_routine_freeze_confirmation">常规冻结不再确认</string>
     <string name="skip_routine_freeze_confirmation_desc">冻结系统应用时不再先询问，除非 UAD 列表已标记该应用。标记为 Expert 的应用仍会警告，不安全的应用仍会被阻止。</string>
-    <string name="add_freezer_to_launcher">添加冻结室到启动器</string>
-    <string name="add_freezer_to_launcher_desc">将冻结的应用显示为桌面快捷方式，点击即可启动</string>
+
+    <string name="disable_shortcuts">停用快捷方式</string>
+    <string name="disable_shortcuts_desc">停用冻结室快捷方式，包括已固定到主屏幕的快捷方式</string>
+    <string name="shortcuts_disabled_message">Thor 中的快捷方式已停用</string>
     <string name="add_to_home_screen">添加到主屏幕</string>
     <string name="freeze_all_apps">冻结列表中的全部应用</string>
     <string name="shortcuts">快捷方式</string>

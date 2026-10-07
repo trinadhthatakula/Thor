@@ -24,6 +24,10 @@ object FreezerShortcutContract {
     /** Stable, package-scoped id for a per-app frozen-app shortcut. */
     fun appShortcutId(packageName: String): String = "$APP_SHORTCUT_PREFIX$packageName"
 
+    /** Only Freezer-owned pinned shortcuts are affected by the global disable switch. */
+    fun isFreezerShortcutId(id: String): Boolean =
+        id == SHORTCUT_FREEZE_ALL || id == SHORTCUT_UNFREEZE_ALL || id.startsWith(APP_SHORTCUT_PREFIX)
+
     /** Normalize a raw intent extra to a known action, or null if unrecognized. */
     fun parseAction(raw: String?): String? = when (raw) {
         ACTION_LAUNCH, ACTION_FREEZE_ALL, ACTION_UNFREEZE_ALL -> raw

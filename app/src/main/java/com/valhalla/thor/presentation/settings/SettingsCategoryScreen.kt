@@ -470,17 +470,13 @@ fun SettingsCategoryScreen(
                         onCheckedChange = { viewModel.setSkipRoutineFreezeConfirmation(it) }
                     )
 
-                    SettingsRowId.ADD_FREEZER_TO_LAUNCHER -> SettingsExpandedSwitchRow(
+                    SettingsRowId.DISABLE_SHORTCUTS -> SettingsExpandedSwitchRow(
                         icon = R.drawable.frozen,
-                        title = stringResource(R.string.add_freezer_to_launcher),
-                        subtitle = privilegeAwareSubtitle(
-                            hasPrivilege,
-                            R.string.add_freezer_to_launcher_desc
-                        ),
-                        checked = prefs.addFreezerToLauncher,
-                        enabled = hasPrivilege,
+                        title = stringResource(R.string.disable_shortcuts),
+                        subtitle = stringResource(R.string.disable_shortcuts_desc),
+                        checked = prefs.disableShortcuts,
                         highlighted = lit,
-                        onCheckedChange = { viewModel.setAddFreezerToLauncher(it) }
+                        onCheckedChange = { viewModel.setDisableShortcuts(it) }
                     )
 
                     // The one row in Settings that *does* something the moment you confirm it, and

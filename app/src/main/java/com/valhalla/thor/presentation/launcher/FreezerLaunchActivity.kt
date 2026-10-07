@@ -21,6 +21,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.AppLocale
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +64,7 @@ internal suspend fun shortcutPrivilegeFailureRes(privilege: PrivilegeStateProvid
 class FreezerLaunchActivity : Activity() {
 
     private val privilege: PrivilegeStateProvider by inject()
+    private val preferences: PreferenceRepository by inject()
     private val manageAppUseCase: ManageAppUseCase by inject()
     private val freezerShortcutManager: FreezerShortcutManager by inject()
     private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
@@ -117,6 +119,11 @@ class FreezerLaunchActivity : Activity() {
     // Bulk: persist and enqueue inside the short report window, then get out of the launcher's way.
     private fun guardThenBulk(disable: Boolean) {
         scope.launch {
+            if (preferences.userPreferences.first().disableShortcuts) {
+                toast(getString(R.string.shortcuts_disabled_message))
+                finish()
+                return@launch
+            }
             val result = withTimeoutOrNull(REPORT_WINDOW_MS) {
                 sweepLauncher.launch(
                     request = BulkRequest(if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE),
@@ -136,6 +143,11 @@ class FreezerLaunchActivity : Activity() {
     // Launch: stay foreground through startActivity (Android 10+ background-launch rule).
     private fun launchApp(pkg: String) {
         scope.launch {
+            if (preferences.userPreferences.first().disableShortcuts) {
+                toast(getString(R.string.shortcuts_disabled_message))
+                finish()
+                return@launch
+            }
             var launchIntent = packageManager.getLaunchIntentForPackage(pkg)
             // A frozen app may be DISABLED (no launch intent) or — in Suspend mode — SUSPENDED but
             // still enabled (the intent resolves, yet launching it pops the system "app paused"

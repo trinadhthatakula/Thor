@@ -572,8 +572,10 @@
     <string name="suspend_instead_of_freeze_desc">Lors de la congélation (y compris la congélation automatique), suspendez les applications au lieu de les désactiver. Les applications suspendues restent visibles mais en pause.</string>
     <string name="skip_routine_freeze_confirmation">Ne pas confirmer les gels courants</string>
     <string name="skip_routine_freeze_confirmation_desc">Geler les applications système sans demander d\'abord, sauf si la liste UAD les signale. Celles marquées Expert avertissent toujours et les dangereuses restent bloquées.</string>
-    <string name="add_freezer_to_launcher">Ajouter le Congélateur au lanceur</string>
-    <string name="add_freezer_to_launcher_desc">Afficher les applications congelées comme raccourcis d\'écran d\'accueil pour les lancer d\'un simple geste</string>
+
+    <string name="disable_shortcuts">Désactiver les raccourcis</string>
+    <string name="disable_shortcuts_desc">Désactive les raccourcis du Congélateur, y compris ceux épinglés sur l\'écran d\'accueil</string>
+    <string name="shortcuts_disabled_message">Les raccourcis sont désactivés dans Thor</string>
     <string name="add_to_home_screen">Ajouter à l\'écran d\'accueil</string>
     <string name="freeze_all_apps">Tout congeler dans le Congélateur</string>
     <string name="shortcuts">Raccourcis</string>
