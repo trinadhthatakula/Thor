@@ -45,7 +45,7 @@ FOLDABLE_SCREENS = [
     ("fastlane/assets/captures/foldable/03-app-actions.png", "Quick app actions", "Open • freeze • suspend"),
     ("fastlane/assets/captures/foldable/04-app-list-sorting.png", "Find apps your way", "Sources • sorting • filters"),
     ("fastlane/assets/captures/foldable/05-installer.png", "Review APK updates", "Versions • permissions • install modes"),
-    ("fastlane/assets/captures/foldable/06-appearance-settings.png", "Customize your setup", "Theme • AMOLED • app language"),
+    ("fastlane/assets/captures/foldable/06-appearance-settings.png", "Customize your setup", "Theme • AMOLED • animations"),
 ]
 TABLET_SCREENS = [
     ("fastlane/assets/captures/tablet/01-home.png", "App management, expanded", "Home • app status • quick actions"),

@@ -26,9 +26,9 @@ phone limit; the icon is the existing Thor brand mark. Captions help people
 understand a screenshot while browsing; do not assume Google indexes text
 baked into images as search keywords.
 
-The large-screen source captures were recorded in July 2026 and some visibly
-show `v1.92.1-foss`. Check them against the current UI before publishing; replace
-the captures and regenerate if the pictured flow has changed.
+The foldable and tablet captures were refreshed on the v1.97.1 emulator in
+October 2026. Check them against the current UI before publishing a later
+release.
 
 Keep titles within 30 characters, short descriptions within 80, and full
 descriptions within 4,000. Use precise terms people search for, but describe
