@@ -30,6 +30,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
@@ -37,10 +38,12 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+import java.util.concurrent.atomic.AtomicLong
 
 internal fun terminalSweepRequestIds(statuses: List<PrivilegeSweepStatus>): Set<java.util.UUID> =
     statuses.asSequence()
@@ -62,6 +65,7 @@ internal fun terminalSweepRequestIds(statuses: List<PrivilegeSweepStatus>): Set<
 class FreezerShortcutManager(
     private val context: Context,
     private val freezerRepository: FreezerRepository,
+    private val preferenceRepository: PreferenceRepository,
     private val sweepController: PrivilegeSweepController,
     private val stateReader: AppFreezeStateReader,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
@@ -71,6 +75,7 @@ class FreezerShortcutManager(
     private val shortcutState = context.getSharedPreferences("freezer_shortcut_state", Context.MODE_PRIVATE)
     private val shortcutSyncLock = Any()
     @Volatile private var shortcutsEnabled = true
+    private val shortcutSyncVersion = AtomicLong()
 
     // Solid launcher-tile backgrounds for the bulk action shortcuts (shared with the in-app preview).
     private val freezeShortcutBg = FreezerShortcutContract.FREEZE_TILE_COLOR
@@ -174,6 +179,7 @@ class FreezerShortcutManager(
     /** Sync the dynamic pair and any already-pinned Freezer shortcuts with the global setting. */
     override fun syncShortcuts(enabled: Boolean) {
         shortcutsEnabled = enabled
+        shortcutSyncVersion.incrementAndGet()
         // Binder IPC — called from Main (cold-start + Settings); keep it off the caller's thread.
         //
         // Guarded for the same reason as the two above, and this one is the worst of the three to
@@ -197,6 +203,26 @@ class FreezerShortcutManager(
                     disablePinnedShortcuts()
                 }
             }
+        }
+    }
+
+    /** A launcher may finish a pending pin after the disable pass has already scanned pinned ids. */
+    suspend fun reconcilePinnedShortcutAfterPin(): Boolean {
+        val versionAtRead = shortcutSyncVersion.get()
+        val prefs = preferenceRepository.userPreferences.first()
+        synchronized(shortcutSyncLock) {
+            // A toggle may restore pins while this preference read waits for the lock. If a sync
+            // was requested meanwhile, its shared state supersedes that earlier snapshot.
+            val disabled = if (shortcutSyncVersion.get() != versionAtRead) {
+                !shortcutsEnabled
+            } else {
+                prefs.disableShortcuts || prefs.settingsLost
+            }
+            if (!disabled) return true
+            // Use the same save-before-disable path as syncShortcuts(false), so these pins can be
+            // restored when the user enables shortcuts again.
+            disablePinnedShortcuts()
+            return false
         }
     }
 
