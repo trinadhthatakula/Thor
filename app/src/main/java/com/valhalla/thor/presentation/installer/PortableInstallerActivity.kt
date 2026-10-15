@@ -4,14 +4,17 @@
 package com.valhalla.thor.presentation.installer
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.R
 import com.valhalla.thor.presentation.common.asActivityPreferences
 import com.valhalla.thor.util.AppLocale
 import org.koin.android.ext.android.inject
@@ -46,17 +49,13 @@ class PortableInstallerActivity : ComponentActivity() {
         // Reached from outside the app and long-lived enough to still be open when the user changes
         // the language in a separate task; recreating keeps its strings in step. No-op above API 32.
         AppLocale.recreateOnChange(this, attachedLocaleTag)
-        // Reset the app-scoped installer event bus to Idle on a fresh launch only
-        // (savedInstanceState == null). Without this, a leftover Success/ReadyToInstall
-        // from a previous install would be replayed by the SharedFlow and suppress the
-        // Idle-gated auto-parse of the newly shared APK. On a configuration-change
-        // recreation (savedInstanceState != null) we intentionally keep the current
-        // state so an in-progress install isn't reset and re-parsed.
-        if (savedInstanceState == null) {
-            installerViewModel.resetState()
-        }
+        installerViewModel.receivePortableIntent(intent)
         setContent {
             val preferenceState by activityPreferences.collectAsStateWithLifecycle()
+            val kernel by installerViewModel.kernelPackage.collectAsStateWithLifecycle()
+            LaunchedEffect(kernel != null) {
+                setTitle(if (kernel != null) R.string.bolt else R.string.title_thor_installer)
+            }
             InstallerPreferencesContent(preferences = preferenceState?.preferences) {
                 PortableInstaller(
                     viewModel = installerViewModel,
@@ -66,5 +65,11 @@ class PortableInstallerActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        installerViewModel.receivePortableIntent(intent, newIntent = true)
     }
 }

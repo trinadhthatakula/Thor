@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.installer
 
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
@@ -16,6 +17,7 @@ import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.model.InstallSessionUnresolved
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeState
+import com.valhalla.thor.domain.model.PortablePackage
 import com.valhalla.thor.domain.model.isVersionDowngrade
 import com.valhalla.thor.domain.model.requiresLowTargetSdkBypass
 import com.valhalla.thor.domain.model.supportsLowTargetSdkBypass
@@ -24,6 +26,7 @@ import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.RootRefreshController
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.supportsInstallTimePermissionGrants
@@ -72,11 +75,15 @@ class InstallerViewModel(
     private val eventBus: InstallerEventBus,
     private val packageManager: PackageManager,
     private val privilegeState: PrivilegeStateProvider,
+    private val rootRefresh: RootRefreshController,
     private val preferenceRepository: PreferenceRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     val installState = eventBus.events
+    private val _kernelPackage = MutableStateFlow<PortablePackage.Kernel?>(null)
+    val kernelPackage = _kernelPackage.asStateFlow()
+    private var receivedPortableIntent = false
     private val _isInstallCallActive = MutableStateFlow(false)
     val isInstallCallActive: StateFlow<Boolean> = _isInstallCallActive.asStateFlow()
 
@@ -181,6 +188,8 @@ class InstallerViewModel(
 
     fun resetState() {
         invalidateLegacyConfirmation()
+        _kernelPackage.value?.staged?.file?.delete()
+        _kernelPackage.value = null
         viewModelScope.launch { eventBus.emit(InstallState.Idle) }
     }
 
@@ -197,9 +206,26 @@ class InstallerViewModel(
         // away, the Activity finishes, and nothing else would ever delete the staged copy.
         analyzer.discard(analyzed)
         analyzed = null
+        _kernelPackage.value?.staged?.file?.delete()
     }
 
     fun parsePackage(uri: Uri) {
+        parseInput(uri, allowKernel = false)
+    }
+
+    /** Rotation keeps this VM; a new process reparses instead of replaying any operation. */
+    fun receivePortableIntent(intent: Intent, newIntent: Boolean = false) {
+        if ((!newIntent && receivedPortableIntent) || _isInstallCallActive.value || _kernelPackage.value != null) return
+        receivedPortableIntent = true
+        val uri = portableInstallerUri(intent)
+        if (uri == null) {
+            viewModelScope.launch { eventBus.emit(InstallState.Error(UiText.StringResource(R.string.error_parse_package))) }
+        } else parseInput(uri, allowKernel = true)
+    }
+
+    private fun parseInput(uri: Uri, allowKernel: Boolean) {
+        _kernelPackage.value?.staged?.file?.delete()
+        _kernelPackage.value = null
         modeSelectionReady = false
         modeSelectedByUser = false
         pendingUri = uri
@@ -227,10 +253,16 @@ class InstallerViewModel(
         analyzed = null
         analysisJob = viewModelScope.launch {
             eventBus.emit(InstallState.Parsing)
-            val result = analyzer.analyze(uri)
+            val result = if (allowKernel) analyzer.analyzePortable(uri)
+                else analyzer.analyze(uri).map { PortablePackage.App(it) }
 
             result.fold(
-                onSuccess = { analysis ->
+                onSuccess = { input ->
+                    if (input is PortablePackage.Kernel) {
+                        acceptKernel(input)
+                        return@fold
+                    }
+                    val analysis = (input as PortablePackage.App).analysis
                     analyzed = analysis
                     val meta = analysis.metadata
                     currentPackageName = meta.packageName
@@ -277,6 +309,27 @@ class InstallerViewModel(
                     eventBus.emit(InstallState.Error(UiText.StringResource(R.string.error_parse_package)))
                 }
             )
+        }
+    }
+
+    private suspend fun acceptKernel(input: PortablePackage.Kernel) {
+        try {
+            // Root eligibility is shared by Home and external VIEW/SEND. A remembered privilege
+            // or another provider cannot open Bolt; its controller rechecks before importing too.
+            val refreshed = rootRefresh.refreshAndAwait()
+            if (refreshed.canAdmitRoot && rootRefresh.state.value.canAdmitRoot) {
+                _kernelPackage.value = input
+            } else {
+                eventBus.emit(InstallState.Error(UiText.StringResource(R.string.kernel_root_required)))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            eventBus.emit(InstallState.Error(UiText.StringResource(R.string.kernel_root_required)))
+        } finally {
+            // The analyzer has handed ownership over. Rejection or cancellation while checking
+            // root must reclaim this copy even though it never reached the Bolt UI.
+            if (_kernelPackage.value !== input) input.staged.file.delete()
         }
     }
 

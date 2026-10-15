@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import androidx.activity.ComponentActivity
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
@@ -187,6 +186,14 @@ fun PortableInstaller(
     onDismiss: () -> Unit,
     viewModel: InstallerViewModel = koinViewModel()
 ) {
+    val kernel by viewModel.kernelPackage.collectAsStateWithLifecycle()
+    kernel?.let { input ->
+        PortableKernelInstaller(input, onDismiss = {
+            viewModel.resetState()
+            onDismiss()
+        })
+        return
+    }
     val observedStates = remember(viewModel) { viewModel.installState.observeSupportCompletion() }
     val observation by observedStates.collectAsStateWithLifecycle(
         initialValue = InstallerSupportObservation(InstallState.Idle),
@@ -232,17 +239,6 @@ fun PortableInstaller(
             onConfirm = { viewModel.confirmLegacyInstallation(confirmation.id) },
             onDismiss = { viewModel.dismissLegacyInstallConfirmation(confirmation.id) },
         )
-    }
-
-    // Auto-start installation process if intent is present
-    LaunchedEffect(Unit) {
-        val activity = context as? ComponentActivity
-        val intent = activity?.intent
-        if (state is InstallState.Idle && intent?.action == Intent.ACTION_VIEW) {
-            intent.data?.let { uri ->
-                viewModel.parsePackage(uri)
-            }
-        }
     }
 
     // Handle System Dialogs

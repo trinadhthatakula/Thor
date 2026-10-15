@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kernel_flasher">内核刷写</string>
+    <string name="kernel_description">使用 root 权限刷入 AnyKernel3 格式的内核 ZIP。</string>
+    <string name="kernel_requirements">需要 root 权限，以及由 Magisk、KernelSU 或 APatch 提供的可正常运行的 BusyBox。不支持其他 ZIP 格式或启动镜像。</string>
+    <string name="kernel_warning">仅刷入来自可信来源、专为你的设备型号和 ROM 制作的软件包。其中的脚本和原生工具将以 root 权限运行，可修改启动分区、数据和设备安全设置。不兼容的刷写或刷写中断可能导致 Android 无法启动。请保留已知可用的启动镜像，并准备好在 Thor 之外恢复该镜像的方法。</string>
+    <string name="kernel_choose">选择 AnyKernel3 ZIP</string>
+    <string name="kernel_flash">刷写内核</string>
+    <string name="kernel_confirm_title">刷入此内核？</string>
+    <string name="kernel_acknowledge">我信任此软件包，已检查设备兼容性，并准备好了恢复方法。</string>
+    <string name="kernel_confirmation">刷写开始后无法取消。ZIP 验证仅检查格式，不检查兼容性或安全性。Thor 不会自动重启、重试或恢复原来的内核。</string>
+    <string name="kernel_root_required">请授予 Thor root 权限，以选择并刷写内核。</string>
+    <string name="kernel_preparing">正在检查 ZIP…</string>
+    <string name="kernel_starting">正在准备以 root 权限运行的安装程序…</string>
+    <string name="kernel_running">正在刷写内核。请勿关机或强行停止 Thor。</string>
+    <string name="kernel_success">安装程序已成功退出。尚未验证启动兼容性。重启前请检查日志。</string>
+    <string name="kernel_failed">操作失败。请查看下方详情。</string>
+    <string name="kernel_unknown">安装程序的结果未知。它可能仍在运行，也可能已部分修改设备。请勿开始另一次刷写。请检查日志和你的恢复步骤。</string>
+    <string name="kernel_boot_lock">在检测到设备重新启动之前，将禁止再次刷写。刷写失败后重启，可能需要借助外部工具恢复设备。</string>
+    <string name="kernel_save_log">保存日志</string>
+    <string name="kernel_reboot">重启设备</string>
+    <string name="kernel_reboot_confirm">现在重新启动设备吗？</string>
+    <string name="kernel_service_blocked">请启用内核刷写的通知渠道，并在 Thor 打开时重试。</string>
+    <string name="kernel_hash">SHA-256：%1$s</string>
+    <string name="kernel_open">打开内核刷写</string>
+    <string name="kernel_package_heading">1. 内核安装包</string>
+    <string name="kernel_slot_heading">2. 目标槽位</string>
+    <string name="kernel_change_package">更换 ZIP</string>
+    <string name="kernel_package_details">安装包详情</string>
+    <string name="kernel_slot_default">安装包默认设置</string>
+    <string name="kernel_slot_current">当前槽位（%1$s）</string>
+    <string name="kernel_slot_inactive">非活动槽位（%1$s）</string>
+    <string name="kernel_slot_description">槽位选择由安装包处理。请仅使用专为此设备构建的 ZIP。</string>
+    <string name="kernel_slot_unknown">无法识别当前槽位。安装包将自行选择目标。</string>
+    <string name="kernel_slot_unsupported">此安装包未声明支持 AnyKernel3 标准槽位选择。请使用其默认目标。</string>
+    <string name="kernel_single_slot">此设备未报告 A/B 槽位。安装包将自行选择目标。</string>
+    <string name="kernel_inactive_warning">仅当非活动槽位包含兼容的系统时才使用它。Thor 不会更改下次启动所用的槽位。</string>
+    <string name="kernel_before_flash">刷写前须知</string>
+    <string name="kernel_safety_summary">请使用适用于您具体设备型号的可信 ZIP，并保留恢复镜像。刷写前需要您确认。</string>
+    <string name="kernel_slot_both">两个槽位（A + B）</string>
+    <string name="kernel_both_warning">完整运行安装程序两次：先当前槽位，再非活动槽位。仅使用作者明确支持在两个已安装系统上重复安装的软件包。这可能替换两个内核、失去未修改的备用内核，并重复进行共享更改。失败可能导致仅一个槽位完成更新。Thor 无法回滚更改或更改下次启动的槽位。</string>
+    <string name="kernel_both_acknowledge">我理解两个槽位都可能被修改，并确认此软件包支持两个已安装系统及重复安装。</string>
+    <string name="kernel_both_partial">至少一次运行成功，但两个槽位未全部成功完成。请查看日志中的每次运行；未执行回滚。</string>
+    <string name="kernel_shared_blocked">另一个内核操作正在进行或等待设备重新启动。请先在扩展中打开内核刷写工具查看，再分享其他 ZIP。</string>
+</resources>
