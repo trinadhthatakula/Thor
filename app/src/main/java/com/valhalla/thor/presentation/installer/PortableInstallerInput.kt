@@ -15,7 +15,7 @@ internal fun createPortableInstallerIntent(context: Context, uri: Uri): Intent =
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 
-/** Accept one explicitly shared local document; intent extras never select slots or dispatch. */
+/** Accept one shared content-provider document; intent extras never select slots or dispatch. */
 internal fun portableInstallerUri(intent: Intent): Uri? = runCatching {
     val uri = when (intent.action) {
         Intent.ACTION_VIEW -> intent.data
@@ -27,5 +27,5 @@ internal fun portableInstallerUri(intent: Intent): Uri? = runCatching {
         }
         else -> null
     }
-    uri?.takeIf { it.scheme == "content" || it.scheme == "file" }
+    uri?.takeIf { it.scheme == "content" }
 }.getOrNull()

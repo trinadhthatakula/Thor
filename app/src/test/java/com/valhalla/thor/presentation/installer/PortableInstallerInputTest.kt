@@ -40,9 +40,17 @@ class PortableInstallerInputTest {
         assertEquals(uri, portableInstallerUri(intent))
     }
 
-    @Test fun `multiple or remote inputs never select a package`() {
+    @Test fun `multiple or unsupported inputs never select a package`() {
         assertNull(portableInstallerUri(Intent(Intent.ACTION_SEND_MULTIPLE)))
-        assertNull(portableInstallerUri(Intent(Intent.ACTION_VIEW, "https://example.test/kernel.zip".toUri())))
+        for (unsupported in listOf("file:///data/local/tmp/kernel.zip", "https://example.test/kernel.zip")) {
+            val unsupportedUri = unsupported.toUri()
+            assertNull(portableInstallerUri(Intent(Intent.ACTION_VIEW, unsupportedUri)))
+            assertNull(portableInstallerUri(Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, unsupportedUri)))
+            assertNull(portableInstallerUri(Intent(Intent.ACTION_SEND).apply {
+                clipData = ClipData.newRawUri("kernel", unsupportedUri)
+            }))
+        }
+        assertNull(portableInstallerUri(Intent(Intent.ACTION_VIEW)))
         assertNull(portableInstallerUri(Intent(Intent.ACTION_SEND)))
         assertNull(portableInstallerUri(Intent(Intent.ACTION_SEND).apply {
             clipData = ClipData.newRawUri("one", uri).apply { addItem(ClipData.Item(uri)) }
