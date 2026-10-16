@@ -180,6 +180,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:mimeType="application/vnd.android.package-archive" />
             </intent-filter>
 
@@ -190,6 +191,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
@@ -205,7 +207,7 @@
                 <data android:mimeType="application/vnd.apkp" />
             </intent-filter>
 
-            <!-- Match by extension for content URIs with a wildcard MIME type (common in modern file managers) -->
+            <!-- Match by extension for content/file URIs with a wildcard MIME type (common in modern file managers) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -213,6 +215,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:host="*" />
                 <data android:mimeType="*/*" />
 
@@ -299,7 +302,7 @@
 
         </activity>
 
-        <!-- OFF BY DEFAULT. The last-resort filter for content:// URIs whose type
+        <!-- OFF BY DEFAULT. The last-resort filter for content:// and file:// URIs whose type
              nobody could name.
 
              Declaring no android:mimeType is what makes it *reach* those URIs: matchData returns
@@ -315,9 +318,10 @@
              middle setting — the filter is either this broad or it is absent.
 
              Hence the alias, and hence android:enabled="false". Left on the activity this would put
-             Thor in the "Open with" list for every content URI whose type nobody can name.
-             resolveType returns mType first when one is set, so a setDataAndType intent is
-             rejected here like any other typed one. docs/follow-ups/161-*.md ruled
+             Thor in the "Open with" list for every file whose type nobody can name — including any
+             untyped file:// URI, for which resolveType cannot consult a provider at all. (Only
+             untyped: resolveType returns mType first when one is set, so a setDataAndType intent is
+             rejected here like any other typed one.) docs/follow-ups/161-*.md ruled
              that trade unacceptable unenabled and prescribed exactly this shape: a separate
              component, shipped off, turned on from Settings by a user who has actually hit the bug.
              AnyFileOpenerManager flips it; PackageManager owns the state, so there is no
@@ -337,6 +341,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="content" />
+                <data android:scheme="file" />
             </intent-filter>
         </activity-alias>
 

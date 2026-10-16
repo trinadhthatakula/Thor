@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.installer
 import android.app.Application
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.core.net.toUri
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.*
@@ -40,9 +41,20 @@ class PortableInstallerInputTest {
         assertEquals(uri, portableInstallerUri(intent))
     }
 
+    @Test fun `local package files resolve from views streams and clips`() {
+        for (extension in listOf("apk", "apks", "apkm", "apkp", "xapk", "zip")) {
+            val fileUri = "file:///sdcard/Download/package.1.2.$extension".toUri()
+            assertEquals(fileUri, portableInstallerUri(Intent(Intent.ACTION_VIEW, fileUri)))
+            assertEquals(fileUri, portableInstallerUri(Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, fileUri)))
+            assertEquals(fileUri, portableInstallerUri(Intent(Intent.ACTION_SEND).apply {
+                clipData = ClipData.newRawUri("package", fileUri)
+            }))
+        }
+    }
+
     @Test fun `multiple or unsupported inputs never select a package`() {
         assertNull(portableInstallerUri(Intent(Intent.ACTION_SEND_MULTIPLE)))
-        for (unsupported in listOf("file:///data/local/tmp/kernel.zip", "https://example.test/kernel.zip")) {
+        for (unsupported in listOf("https://example.test/kernel.zip", "ftp://example.test/kernel.zip")) {
             val unsupportedUri = unsupported.toUri()
             assertNull(portableInstallerUri(Intent(Intent.ACTION_VIEW, unsupportedUri)))
             assertNull(portableInstallerUri(Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, unsupportedUri)))
@@ -64,6 +76,47 @@ class PortableInstallerInputTest {
                 Intent(Intent.ACTION_SEND).setType(type).setPackage(context.packageName), 0,
             )
             assertTrue(matches.any { it.activityInfo.name == PortableInstallerActivity::class.java.name })
+        }
+    }
+
+    @Test @Config(sdk = [28, 36]) fun `manifest offers the installer for typed content and local package files`() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val types = mapOf(
+            "apk" to "application/vnd.android.package-archive",
+            "apks" to "application/x-apks",
+            "apkm" to "application/vnd.apkm",
+            "apkp" to "application/x-apkp",
+            "xapk" to "application/x-xapk",
+            "zip" to "application/zip",
+        )
+        for (base in listOf("content://fixture.test/", "file:///sdcard/Download/")) {
+            for ((extension, type) in types) {
+                val input = "${base}package.1.2.$extension".toUri()
+                val matches = context.packageManager.queryIntentActivities(
+                    Intent(Intent.ACTION_VIEW).setDataAndType(input, type).setPackage(context.packageName),
+                    PackageManager.MATCH_DEFAULT_ONLY,
+                )
+                assertTrue("installer missing for $input ($type)",
+                    matches.any { it.activityInfo.name == PortableInstallerActivity::class.java.name })
+            }
+        }
+    }
+
+    // Robolectric 4.17's manifest parser ignores pathSuffix. Its declarations are guarded in
+    // AnyFileOpenerAliasTest; verify long multi-dot names against Android's package manager.
+    @Test @Config(sdk = [28, 36]) fun `manifest extension fallback matches generically typed package documents`() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        for (extension in listOf("apk", "apks", "apkm", "apkp", "xapk", "zip")) {
+            for (name in listOf("package.1.2.$extension", "package.${extension.uppercase()}")) {
+                val input = "content://fixture.test/$name".toUri()
+                val matches = context.packageManager.queryIntentActivities(
+                    Intent(Intent.ACTION_VIEW).setDataAndType(input, "application/x-unknown")
+                        .setPackage(context.packageName),
+                    PackageManager.MATCH_DEFAULT_ONLY,
+                )
+                assertTrue("extension fallback did not match $input",
+                    matches.any { it.activityInfo.name == PortableInstallerActivity::class.java.name })
+            }
         }
     }
 }
