@@ -128,6 +128,7 @@ fun TermLoggerContent(
     status: TermLoggerStatus,
     modifier: Modifier = Modifier,
     onClose: (() -> Unit)? = null,
+    wrapLines: Boolean = false,
     footerContent: @Composable ColumnScope.() -> Unit = {},
 ) {
     Column(
@@ -183,7 +184,7 @@ fun TermLoggerContent(
         }
 
         val lazyListState = rememberLazyListState()
-        LaunchedEffect(logs.size) {
+        LaunchedEffect(logs) {
             if (logs.isNotEmpty()) {
                 lazyListState.animateScrollToItem(logs.lastIndex)
             }
@@ -199,14 +200,14 @@ fun TermLoggerContent(
             itemsIndexed(logs) { index, logText ->
                 Text(
                     text = "> ${logText.asString()}",
-                    softWrap = false,
+                    softWrap = wrapLines,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag(termLoggerLineTag(index)),
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = LocalTechnicalFontFamily.current,
                     ),
-                    maxLines = 1,
+                    maxLines = if (wrapLines) Int.MAX_VALUE else 1,
                     textAlign = TextAlign.Start,
                     color = MaterialTheme.colorScheme.onBackground,
                 )

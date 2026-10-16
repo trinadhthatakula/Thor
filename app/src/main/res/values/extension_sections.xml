@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="extension_builtin_heading">Built-in extensions</string>
+    <string name="extension_installed_heading">Installed extensions</string>
+</resources>

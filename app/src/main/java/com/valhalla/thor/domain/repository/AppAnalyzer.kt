@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.repository
 
 import android.net.Uri
 import com.valhalla.thor.domain.model.AnalyzedPackage
+import com.valhalla.thor.domain.model.PortablePackage
 
 interface AppAnalyzer {
     /**
@@ -16,6 +17,10 @@ interface AppAnalyzer {
      * pass it to [discard] on every exit path.
      */
     suspend fun analyze(uri: Uri): Result<AnalyzedPackage>
+
+    /** Classifies the same single private copy as an app or a validated AnyKernel3 package. */
+    suspend fun analyzePortable(uri: Uri): Result<PortablePackage> =
+        analyze(uri).map { PortablePackage.App(it) }
 
     /**
      * Delete the file staged by [analyze]. Idempotent, and a no-op for null, so it is safe to

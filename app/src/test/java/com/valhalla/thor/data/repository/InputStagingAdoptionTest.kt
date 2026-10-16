@@ -12,6 +12,8 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.RootJobOutcome
 import com.valhalla.thor.domain.model.RootJobOutcomeKind
+import com.valhalla.thor.domain.model.PortablePackage
+import com.valhalla.thor.data.kernel.AnyKernel3Archive
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
@@ -83,6 +85,92 @@ class InputStagingAdoptionTest {
     fun cleanUp() {
         File(context.cacheDir, "staged_installs").deleteRecursively()
         readCopies().forEach(File::delete)
+    }
+
+    @Test
+    fun `readable local file stages without privileged access`() = runBlocking {
+        val source = File(context.cacheDir, "local-input.xapk")
+        val bytes = bundle()
+        source.writeBytes(bytes)
+        try {
+            val input = analyzer.analyzePortable(Uri.fromFile(source)).getOrThrow() as PortablePackage.App
+            assertTrue(copies.isEmpty())
+            assertArrayEquals(bytes, input.analysis.staged.file.readBytes())
+            analyzer.discard(input.analysis)
+        } finally {
+            source.delete()
+        }
+    }
+
+    @Test
+    fun `unreadable local file stages only after a successful privileged copy`() = runBlocking {
+        val uri = "file:///sdcard/Download/restricted.xapk".toUri()
+        resolver.registerInputStreamSupplier(uri) { throw SecurityException("direct read denied") }
+        val bytes = bundle()
+        copy = { request -> request.destination.writeBytes(bytes); Result.success(Unit) }
+
+        val input = analyzer.analyzePortable(uri).getOrThrow() as PortablePackage.App
+        assertEquals(uri.path, copies.single().source)
+        assertArrayEquals(bytes, input.analysis.staged.file.readBytes())
+        analyzer.discard(input.analysis)
+    }
+
+    @Test
+    fun `failed direct and privileged file access returns failure and removes partial staging`() = runBlocking {
+        val uri = "file:///sdcard/Download/restricted.xapk".toUri()
+        resolver.registerInputStreamSupplier(uri) { throw SecurityException("direct read denied") }
+        val failure = SecurityException("privileged read unavailable")
+        copy = { request -> request.destination.writeText("partial"); Result.failure(failure) }
+
+        assertSame(failure, analyzer.analyzePortable(uri).exceptionOrNull())
+        assertFalse(copies.single().destination.exists())
+    }
+
+    @Test
+    fun `portable kernel recognition reads the provider once and retains the validated copy`() = runBlocking {
+        val uri = uri("mislabelled.apk")
+        val bytes = kernelZip()
+        var opens = 0
+        resolver.registerInputStreamSupplier(uri) {
+            opens++
+            ByteArrayInputStream(if (opens == 1) bytes else bundle("changed"))
+        }
+        val input = analyzer.analyzePortable(uri).getOrThrow() as PortablePackage.Kernel
+        assertEquals(1, opens)
+        assertTrue(copies.isEmpty())
+        assertArrayEquals(bytes, input.staged.file.readBytes())
+        assertEquals(AnyKernel3Archive.inspect(input.staged.file).sha256, input.sha256)
+    }
+
+    @Test
+    fun `portable app bundle retains existing metadata and private staging`() = runBlocking {
+        val uri = uri("application.zip")
+        val bytes = bundle()
+        var opens = 0
+        resolver.registerInputStreamSupplier(uri) { opens++; ByteArrayInputStream(bytes) }
+        val input = analyzer.analyzePortable(uri).getOrThrow() as PortablePackage.App
+        assertEquals(1, opens)
+        assertEquals("com.example.preview", input.analysis.metadata.packageName)
+        assertArrayEquals(bytes, input.analysis.staged.file.readBytes())
+        analyzer.discard(input.analysis)
+        assertFalse(input.analysis.staged.file.exists())
+    }
+
+    @Test
+    fun `invalid portable kernel removes its staged copy and never uses the APK fallback`() = runBlocking {
+        val uri = uri("bad.zip")
+        resolver.registerInputStream(uri, ByteArrayInputStream(zip("anykernel.sh", "incomplete")))
+        assertTrue(analyzer.analyzePortable(uri).isFailure)
+        assertTrue(File(context.cacheDir, "staged_installs").listFiles().orEmpty().isEmpty())
+    }
+
+    private fun kernelZip(): ByteArray = ByteArrayOutputStream().use { bytes ->
+        ZipOutputStream(bytes).use { zip ->
+            for (name in listOf("anykernel.sh", "tools/ak3-core.sh", "META-INF/com/google/android/update-binary")) {
+                zip.putNextEntry(ZipEntry(name)); zip.write("# harmless fixture\n".toByteArray()); zip.closeEntry()
+            }
+        }
+        bytes.toByteArray()
     }
 
     @Test
