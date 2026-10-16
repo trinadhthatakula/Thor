@@ -80,6 +80,80 @@ class InstallerViewModelTest {
 
     private var fixtureNumber = 0
 
+    @Test fun `failed local file can be picked again without root or an automatic install`() = runTest {
+        val roots = FakeRootRefresh(RootAvailabilityState(confirmation = RootConfirmation.NON_ROOT))
+        val fixture = fixture(
+            privileges = FakePrivilegeStateProvider(PrivilegeState(isReady = true)), rootRefresh = roots,
+        )
+        val fileUri = "file:///sdcard/Download/unreadable.apk".toUri()
+        val intent = Intent(Intent.ACTION_VIEW, fileUri)
+        fixture.analyzer.portableFailure = IOException("direct and privileged reads unavailable")
+        fixture.viewModel.receivePortableIntent(intent)
+        runCurrent()
+        assertTrue(fixture.viewModel.canPickDocument.value)
+        assertTrue(fixture.eventBus.latest is InstallState.Error)
+
+        // Rotation, picker cancellation, and a non-document result must not retry the file.
+        fixture.viewModel.receivePortableIntent(intent)
+        fixture.viewModel.receivePickedDocument(null)
+        fixture.viewModel.receivePickedDocument(fileUri)
+        runCurrent()
+        assertEquals(listOf(fileUri), fixture.analyzer.analyzedUris)
+        assertTrue(fixture.viewModel.canPickDocument.value)
+
+        fixture.analyzer.portableFailure = null
+        fixture.viewModel.receivePickedDocument(fixture.uri)
+        runCurrent()
+        assertEquals(listOf(fileUri, fixture.uri), fixture.analyzer.analyzedUris)
+        assertTrue(fixture.eventBus.latest is InstallState.ReadyToInstall)
+        assertFalse(fixture.viewModel.canPickDocument.value)
+        assertEquals(listOf(InstallMode.NORMAL), fixture.viewModel.availableModes.value)
+        assertEquals(0, roots.requests)
+        assertTrue(fixture.repository.calls.isEmpty())
+
+        fixture.viewModel.receivePickedDocument(fixture.uri)
+        runCurrent()
+        assertEquals(2, fixture.analyzer.analyzedUris.size)
+    }
+
+    @Test fun `document picker recovery is unavailable for content failures or after dismissal`() = runTest {
+        val fixture = fixture()
+        fixture.analyzer.portableFailure = IOException("unreadable")
+        fixture.viewModel.receivePortableIntent(Intent(Intent.ACTION_VIEW, fixture.uri))
+        runCurrent()
+        assertFalse(fixture.viewModel.canPickDocument.value)
+        fixture.viewModel.receivePickedDocument(fixture.uri)
+        assertEquals(1, fixture.analyzer.analyzedUris.size)
+
+        fixture.viewModel.receivePortableIntent(
+            Intent(Intent.ACTION_VIEW, "file:///sdcard/Download/unreadable.zip".toUri()), newIntent = true,
+        )
+        runCurrent()
+        assertTrue(fixture.viewModel.canPickDocument.value)
+        fixture.viewModel.resetState()
+        fixture.viewModel.receivePickedDocument(fixture.uri)
+        runCurrent()
+        assertFalse(fixture.viewModel.canPickDocument.value)
+        assertEquals(2, fixture.analyzer.analyzedUris.size)
+    }
+
+    @Test fun `a kernel chosen through document recovery still requires fresh root`() = runTest {
+        val fixture = fixture(rootRefresh = FakeRootRefresh(RootAvailabilityState(confirmation = RootConfirmation.NON_ROOT)))
+        fixture.analyzer.portableFailure = IOException("unreadable")
+        fixture.viewModel.receivePortableIntent(Intent(Intent.ACTION_VIEW, "file:///sdcard/Download/kernel.zip".toUri()))
+        runCurrent()
+        assertTrue(fixture.viewModel.canPickDocument.value)
+        fixture.analyzer.portableFailure = null
+        fixture.analyzer.portableKernel = PortablePackage.Kernel(fixture.analyzed.staged, "digest")
+        fixture.viewModel.receivePickedDocument(fixture.uri)
+        runCurrent()
+        assertNull(fixture.viewModel.kernelPackage.value)
+        assertFalse(fixture.viewModel.canPickDocument.value)
+        assertFalse(fixture.analyzed.staged.file.exists())
+        assertEquals(InstallState.Error(UiText.StringResource(R.string.kernel_root_required)), fixture.eventBus.latest)
+        assertTrue(fixture.repository.calls.isEmpty())
+    }
+
     @Test fun `home kernel pick uses Bolt through the portable Activity input`() = runTest {
         val fixture = fixture()
         val kernel = PortablePackage.Kernel(fixture.analyzed.staged, "home-digest")
@@ -861,9 +935,11 @@ class InstallerViewModelTest {
     ) : AppAnalyzer {
         val analyzedUris = mutableListOf<Uri>()
         var portableKernel: PortablePackage.Kernel? = null
+        var portableFailure: Throwable? = null
 
         override suspend fun analyzePortable(uri: Uri): Result<PortablePackage> {
             analyzedUris += uri
+            portableFailure?.let { return Result.failure(it) }
             return Result.success(portableKernel ?: PortablePackage.App(analyzed))
         }
 

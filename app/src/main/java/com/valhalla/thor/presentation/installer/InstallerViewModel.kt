@@ -83,6 +83,8 @@ class InstallerViewModel(
     val installState = eventBus.events
     private val _kernelPackage = MutableStateFlow<PortablePackage.Kernel?>(null)
     val kernelPackage = _kernelPackage.asStateFlow()
+    private val _canPickDocument = MutableStateFlow(false)
+    val canPickDocument = _canPickDocument.asStateFlow()
     private var receivedPortableIntent = false
     private val _isInstallCallActive = MutableStateFlow(false)
     val isInstallCallActive: StateFlow<Boolean> = _isInstallCallActive.asStateFlow()
@@ -187,6 +189,7 @@ class InstallerViewModel(
     }
 
     fun resetState() {
+        _canPickDocument.value = false
         invalidateLegacyConfirmation()
         _kernelPackage.value?.staged?.file?.delete()
         _kernelPackage.value = null
@@ -217,13 +220,21 @@ class InstallerViewModel(
     fun receivePortableIntent(intent: Intent, newIntent: Boolean = false) {
         if ((!newIntent && receivedPortableIntent) || _isInstallCallActive.value || _kernelPackage.value != null) return
         receivedPortableIntent = true
+        _canPickDocument.value = false
         val uri = portableInstallerUri(intent)
         if (uri == null) {
             viewModelScope.launch { eventBus.emit(InstallState.Error(UiText.StringResource(R.string.error_parse_package))) }
         } else parseInput(uri, allowKernel = true)
     }
 
+    /** Retry through the picker grant only after a failed local-file analysis; cancel keeps the error. */
+    fun receivePickedDocument(uri: Uri?) {
+        if (!_canPickDocument.value || uri?.scheme != "content" || _isInstallCallActive.value) return
+        parseInput(uri, allowKernel = true)
+    }
+
     private fun parseInput(uri: Uri, allowKernel: Boolean) {
+        _canPickDocument.value = false
         _kernelPackage.value?.staged?.file?.delete()
         _kernelPackage.value = null
         modeSelectionReady = false
@@ -306,6 +317,9 @@ class InstallerViewModel(
                     )
                 },
                 onFailure = {
+                    // Let staging try direct/privileged access first. A picker grant can recover
+                    // an unreadable file without a separate permission probe before the copy.
+                    _canPickDocument.value = allowKernel && uri.scheme == "file"
                     eventBus.emit(InstallState.Error(UiText.StringResource(R.string.error_parse_package)))
                 }
             )

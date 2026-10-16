@@ -118,5 +118,12 @@ class PortableInstallerInputTest {
                     matches.any { it.activityInfo.name == PortableInstallerActivity::class.java.name })
             }
         }
+        val textMatches = context.packageManager.queryIntentActivities(
+            Intent(Intent.ACTION_VIEW).setDataAndType("content://fixture.test/document.txt".toUri(), "application/x-unknown")
+                .setPackage(context.packageName),
+            PackageManager.MATCH_DEFAULT_ONLY,
+        )
+        assertFalse("installer must not match an unrelated .txt document",
+            textMatches.any { it.activityInfo.name == PortableInstallerActivity::class.java.name })
     }
 }

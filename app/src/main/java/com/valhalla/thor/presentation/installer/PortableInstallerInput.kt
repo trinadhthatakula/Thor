@@ -15,7 +15,11 @@ internal fun createPortableInstallerIntent(context: Context, uri: Uri): Intent =
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 
-/** Accept one shared document or local file; intent extras never select slots or dispatch. */
+/**
+ * Extract one document or local file; readability is established by the analyzer's staged copy.
+ * The portable installer offers a document picker when a local file cannot be analyzed.
+ * Intent extras never select slots or dispatch.
+ */
 internal fun portableInstallerUri(intent: Intent): Uri? = runCatching {
     val uri = when (intent.action) {
         Intent.ACTION_VIEW -> intent.data

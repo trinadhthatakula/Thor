@@ -88,6 +88,45 @@ class InputStagingAdoptionTest {
     }
 
     @Test
+    fun `readable local file stages without privileged access`() = runBlocking {
+        val source = File(context.cacheDir, "local-input.xapk")
+        val bytes = bundle()
+        source.writeBytes(bytes)
+        try {
+            val input = analyzer.analyzePortable(Uri.fromFile(source)).getOrThrow() as PortablePackage.App
+            assertTrue(copies.isEmpty())
+            assertArrayEquals(bytes, input.analysis.staged.file.readBytes())
+            analyzer.discard(input.analysis)
+        } finally {
+            source.delete()
+        }
+    }
+
+    @Test
+    fun `unreadable local file stages only after a successful privileged copy`() = runBlocking {
+        val uri = "file:///sdcard/Download/restricted.xapk".toUri()
+        resolver.registerInputStreamSupplier(uri) { throw SecurityException("direct read denied") }
+        val bytes = bundle()
+        copy = { request -> request.destination.writeBytes(bytes); Result.success(Unit) }
+
+        val input = analyzer.analyzePortable(uri).getOrThrow() as PortablePackage.App
+        assertEquals(uri.path, copies.single().source)
+        assertArrayEquals(bytes, input.analysis.staged.file.readBytes())
+        analyzer.discard(input.analysis)
+    }
+
+    @Test
+    fun `failed direct and privileged file access returns failure and removes partial staging`() = runBlocking {
+        val uri = "file:///sdcard/Download/restricted.xapk".toUri()
+        resolver.registerInputStreamSupplier(uri) { throw SecurityException("direct read denied") }
+        val failure = SecurityException("privileged read unavailable")
+        copy = { request -> request.destination.writeText("partial"); Result.failure(failure) }
+
+        assertSame(failure, analyzer.analyzePortable(uri).exceptionOrNull())
+        assertFalse(copies.single().destination.exists())
+    }
+
+    @Test
     fun `portable kernel recognition reads the provider once and retains the validated copy`() = runBlocking {
         val uri = uri("mislabelled.apk")
         val bytes = kernelZip()
