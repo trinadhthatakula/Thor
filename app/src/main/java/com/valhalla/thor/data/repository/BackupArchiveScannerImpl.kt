@@ -18,10 +18,18 @@ import com.valhalla.thor.domain.model.escapeShellArg
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
+import com.valhalla.thor.domain.repository.BackupArchiveScan
+import com.valhalla.thor.domain.repository.BackupArchiveSourceKind
+import com.valhalla.thor.domain.repository.UnavailableArchiveSource
+import com.valhalla.thor.domain.repository.ArchiveDeleteFailure
+import com.valhalla.thor.domain.repository.ArchiveDeleteResult
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -39,8 +47,9 @@ class BackupArchiveScannerImpl(
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : BackupArchiveScanner {
 
-    override fun scanBackups(): Flow<List<BackupArchiveItem>> = flow {
+    override fun scanBackups(): Flow<BackupArchiveScan> = flow {
         val items = mutableListOf<BackupArchiveItem>()
+        val unavailableSources = mutableListOf<UnavailableArchiveSource>()
         val seenUris = mutableSetOf<String>()
         val seenKeys = mutableSetOf<String>()
 
@@ -60,11 +69,14 @@ class BackupArchiveScannerImpl(
 
         // 1. Direct filesystem scan for Downloads/Thor
         val fsItems = queryFilesystemDownloads(seenUris, seenKeys)
-        items.addAll(fsItems)
+        items.addAll(fsItems.items)
 
         // 2. Privileged shell scan (Shizuku / Root) to discover non-owned files across Downloads/Thor
         val shellItems = queryShellDownloads(seenUris, seenKeys)
-        items.addAll(shellItems)
+        items.addAll(shellItems.items)
+        if (!fsItems.readable && !shellItems.readable) {
+            unavailableSources += UnavailableArchiveSource(BackupArchiveSourceKind.DOWNLOADS)
+        }
 
         // 3. MediaStore query (Downloads and Files tables) on Q+
         val msItems = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -77,7 +89,16 @@ class BackupArchiveScannerImpl(
         // 4. Custom SAF tree if configured
         val customTreeUri = preferences.userPreferences.first().exportDirUri
         val treeItems = if (!customTreeUri.isNullOrBlank()) {
-            queryCustomTree(customTreeUri, seenUris, seenKeys)
+            try {
+                queryCustomTree(customTreeUri, seenUris, seenKeys)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                unavailableSources += UnavailableArchiveSource(
+                    BackupArchiveSourceKind.CUSTOM_FOLDER, customTreeUri,
+                )
+                emptyList()
+            }
         } else {
             emptyList()
         }
@@ -86,24 +107,27 @@ class BackupArchiveScannerImpl(
         items.sortByDescending { it.dateModifiedEpochSec }
         Logger.i(
             "BackupArchiveScanner",
-            "Discovered ${items.size} items (filesystem=${fsItems.size}, shell=${shellItems.size}, mediaStore=${msItems.size}, customTree=${treeItems.size}): ${items.map { it.displayName }}"
+            "Discovered ${items.size} items (filesystem=${fsItems.items.size}, shell=${shellItems.items.size}, mediaStore=${msItems.size}, customTree=${treeItems.size})"
         )
-        emit(items)
+        emit(BackupArchiveScan(items, unavailableSources))
     }.flowOn(ioDispatcher)
 
-    override suspend fun deleteArchive(item: BackupArchiveItem): Boolean =
+    override suspend fun deleteArchive(item: BackupArchiveItem): ArchiveDeleteResult =
         withContext(ioDispatcher) {
             try {
                 val uri = item.uriString.toUri()
-                if (uri.scheme == "content") {
+                val deleted = if (uri.scheme == "content") {
                     if (DocumentsContract.isDocumentUri(context, uri)) {
                         val doc = DocumentFile.fromSingleUri(context, uri)
-                        doc?.delete() ?: false
+                        if (doc?.exists() == true && doc.canRead() && !doc.canWrite()) {
+                            return@withContext ArchiveDeleteResult.Failed(ArchiveDeleteFailure.READ_ONLY)
+                        }
+                        DocumentsContract.deleteDocument(context.contentResolver, uri)
                     } else {
                         context.contentResolver.delete(uri, null, null) > 0
                     }
                 } else if (uri.scheme == "file") {
-                    val path = uri.path ?: return@withContext false
+                    val path = uri.path ?: return@withContext ArchiveDeleteResult.Failed(ArchiveDeleteFailure.UNAVAILABLE)
                     val f = File(path)
                     if (!f.delete()) {
                         val safePath = path.escapeShellArg()
@@ -114,16 +138,27 @@ class BackupArchiveScannerImpl(
                 } else {
                     false
                 }
+                if (deleted) ArchiveDeleteResult.Deleted
+                else ArchiveDeleteResult.Failed(ArchiveDeleteFailure.UNAVAILABLE)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: SecurityException) {
+                ArchiveDeleteResult.Failed(ArchiveDeleteFailure.ACCESS_DENIED)
+            } catch (_: FileNotFoundException) {
+                ArchiveDeleteResult.Failed(ArchiveDeleteFailure.NOT_FOUND)
             } catch (_: Exception) {
-                false
+                ArchiveDeleteResult.Failed(ArchiveDeleteFailure.UNAVAILABLE)
             }
         }
+
+    private data class DirectoryScan(val items: List<BackupArchiveItem>, val readable: Boolean)
 
     private suspend fun queryShellDownloads(
         seenUris: MutableSet<String>,
         seenKeys: MutableSet<String>,
-    ): List<BackupArchiveItem> {
+    ): DirectoryScan {
         val results = mutableListOf<BackupArchiveItem>()
+        var readable = false
         val extPath = Environment.getExternalStorageDirectory().absolutePath
         val candidateDirs = listOf(
             "$extPath/Download/$THOR_DOWNLOADS_SUBDIR",
@@ -134,8 +169,11 @@ class BackupArchiveScannerImpl(
 
         for (dir in candidateDirs) {
             val safeDir = dir.escapeShellArg()
-            val cmd = "stat -c '%s\t%Y\t%n' $safeDir/* 2>/dev/null"
+            // An empty directory is a successful scan; stat alone exits nonzero for an empty glob.
+            val cmd = "if [ -d $safeDir ] && [ -r $safeDir ] && [ -x $safeDir ]; then " +
+                "stat -c '%s\t%Y\t%n' $safeDir/* 2>/dev/null; exit 0; else exit 1; fi"
             val res = systemRepository.executeShellCommand(cmd).getOrNull()
+            if (res?.first == 0) readable = true
             if (res != null && res.first == 0 && !res.second.isNullOrBlank()) {
                 val lines = res.second!!.lines()
                 for (line in lines) {
@@ -163,7 +201,7 @@ class BackupArchiveScannerImpl(
                 }
             }
         }
-        return results
+        return DirectoryScan(results, readable)
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -233,8 +271,9 @@ class BackupArchiveScannerImpl(
     private fun queryFilesystemDownloads(
         seenUris: MutableSet<String>,
         seenKeys: MutableSet<String>,
-    ): List<BackupArchiveItem> {
+    ): DirectoryScan {
         val results = mutableListOf<BackupArchiveItem>()
+        var readable = false
         val candidateDirs = listOfNotNull(
             File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -251,6 +290,7 @@ class BackupArchiveScannerImpl(
                     val n = f.name.lowercase()
                     !n.endsWith(".part") && (n.endsWith(".thorbak") || n.endsWith(".xapk") || n.endsWith(".apks") || n.endsWith(".apk"))
                 } ?: continue
+                readable = true
 
                 for (f in files) {
                     val uri = f.toUri()
@@ -264,7 +304,7 @@ class BackupArchiveScannerImpl(
                 // Ignore filesystem scan errors
             }
         }
-        return results
+        return DirectoryScan(results, readable)
     }
 
     private fun queryCustomTree(
@@ -272,31 +312,37 @@ class BackupArchiveScannerImpl(
         seenUris: MutableSet<String>,
         seenKeys: MutableSet<String>,
     ): List<BackupArchiveItem> {
-        val results = mutableListOf<BackupArchiveItem>()
-        try {
-            val root = DocumentFile.fromTreeUri(context, treeUriString.toUri()) ?: return results
-            if (!root.exists() || !root.isDirectory) return results
-
-            for (doc in root.listFiles()) {
-                val name = doc.name ?: continue
+        val tree = treeUriString.toUri()
+        val root = DocumentFile.fromTreeUri(context, tree)
+            ?: throw IOException("Invalid archive folder")
+        if (!root.isDirectory || !root.canRead()) throw IOException("Archive folder unavailable")
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(
+            tree, DocumentsContract.getTreeDocumentId(tree),
+        )
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+        )
+        // DocumentFile.listFiles swallows provider errors and returns an empty list. Query directly
+        // so an offline provider or a revoked grant cannot masquerade as a successfully empty tree.
+        return context.contentResolver.query(children, projection, null, null, null)?.use { cursor ->
+            val results = mutableListOf<BackupArchiveItem>()
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(1) ?: continue
                 val lower = name.lowercase()
-                if (lower.endsWith(".part")) continue
-                if (lower.endsWith(".thorbak") || lower.endsWith(".xapk") || lower.endsWith(".apks") || lower.endsWith(".apk")) {
-                    val key = "${name.lowercase()}:${doc.length()}"
-                    if (!seenUris.add(doc.uri.toString()) || !seenKeys.add(key)) continue
-                    parseArchiveItem(
-                        doc.uri.hashCode().toLong(),
-                        doc.uri,
-                        name,
-                        doc.length(),
-                        doc.lastModified() / 1000,
-                    )?.let { results.add(it) }
-                }
+                if (!(lower.endsWith(".thorbak") || lower.endsWith(".xapk") ||
+                        lower.endsWith(".apks") || lower.endsWith(".apk"))) continue
+                val uri = DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(0))
+                val size = cursor.getLong(2)
+                val key = "${name.lowercase()}:$size"
+                if (!seenUris.add(uri.toString()) || !seenKeys.add(key)) continue
+                parseArchiveItem(uri.hashCode().toLong(), uri, name, size, cursor.getLong(3) / 1000)
+                    ?.let(results::add)
             }
-        } catch (_: Exception) {
-            // Ignored
-        }
-        return results
+            results
+        } ?: throw IOException("Archive provider returned no cursor")
     }
 
     private fun parseArchiveItem(

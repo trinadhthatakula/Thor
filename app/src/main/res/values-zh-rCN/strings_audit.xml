@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_hub_choose_folder">选择文件夹</string>
+    <string name="backup_hub_custom_folder">自定义文件夹</string>
+    <string name="backup_hub_delete_access">存储访问被拒绝。请恢复文件夹访问权限后重试。</string>
+    <string name="backup_hub_delete_failed">无法删除 %1$s。</string>
+    <string name="backup_hub_delete_missing">找不到归档。请刷新列表。</string>
+    <string name="backup_hub_delete_read_only">此位置为只读。</string>
+    <string name="backup_hub_delete_unavailable">存储提供程序未完成删除。请检查存储位置后重试。</string>
+    <string name="backup_hub_empty_saved_desc">创建备份或导出应用后即可在此查看。</string>
+    <string name="backup_hub_empty_saved_title">没有已保存的归档</string>
+    <string name="backup_hub_folder_failed">无法保存此文件夹的访问权限。请重新选择文件夹。</string>
+    <string name="backup_hub_folder_hint">此操作将设置用于导出和保存归档的文件夹。</string>
+    <string name="backup_hub_newest">最新优先</string>
+    <string name="backup_hub_no_matches">没有符合搜索条件或筛选条件的归档。</string>
+    <string name="backup_hub_saved_archives">已保存的归档</string>
+    <string name="backup_hub_scan_failed">无法刷新已保存的归档。请重试。</string>
+    <string name="backup_hub_search_archives">搜索已保存的归档</string>
+    <string name="backup_hub_source_unavailable">无法完整读取 %1$s。此列表可能缺少部分归档。</string>
+    <string name="installer_app_lock">将应用锁扩展至安装器</string>
+    <string name="installer_app_lock_desc">便携安装器和 Bolt 也需要身份验证，并保护其屏幕截图和最近任务预览。需要开启应用锁。</string>
+    <string name="installer_lock_include">包含安装器</string>
+    <string name="installer_lock_main_only">仅主应用</string>
+    <string name="installer_lock_not_saved">无法保存安装器锁定设置。请重试。</string>
+    <string name="installer_lock_prompt_desc">打开便携安装器或 Bolt 时是否也要求身份验证？这也会保护其屏幕截图和最近任务预览。之后可在安全设置中更改。</string>
+    <string name="installer_lock_prompt_title">将安装器纳入应用锁？</string>
+    <string name="kernel_refresh_root">刷新 Root 权限</string>
+    <string name="log_jump_latest">跳转到最新日志</string>
+    <string name="log_jump_latest_new_output">有新日志 · 跳转到最新</string>
+</resources>

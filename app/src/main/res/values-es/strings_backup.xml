@@ -298,12 +298,9 @@
     <string name="backup_hub_hero_backup_desc">Crear copia de datos cifrada (.thorbak) o paquete APK</string>
     <string name="backup_hub_hero_restore_title">Restaurar desde archivo</string>
     <string name="backup_hub_hero_restore_desc">Seleccionar cualquier archivo .thorbak o paquete del almacenamiento</string>
-    <string name="backup_hub_section_backups">Copias en Downloads/Thor</string>
     <string name="backup_hub_filter_all">Todo</string>
     <string name="backup_hub_filter_backups">Copias</string>
     <string name="backup_hub_filter_bundles">Paquetes</string>
-    <string name="backup_hub_empty_title">No hay copias en Downloads/Thor</string>
-    <string name="backup_hub_empty_desc">Los archivos guardados en Downloads/Thor aparecerán aquí para restaurarlos rápidamente.</string>
     <string name="backup_hub_tip_thorbak_title">Copias de datos (.thorbak)</string>
     <string name="backup_hub_tip_thorbak_desc">Archivos completos cifrados con datos de apps y divisiones APK opcionales. Los datos privados de apps (CE/DE) requieren root, mientras que los datos de almacenamiento compartido pueden restaurarse con una shell con privilegios.</string>
     <string name="backup_hub_tip_bundle_title">Paquetes de apps (.xapk / .apks / .apk)</string>
@@ -318,5 +315,4 @@
     <string name="backup_hub_badge_app_bundle">Paquete de app</string>
     <string name="backup_hub_action_delete">Eliminar</string>
     <string name="backup_hub_action_share">Compartir</string>
-    <string name="backup_hub_no_archives">No se encontraron archivos</string>
 </resources>

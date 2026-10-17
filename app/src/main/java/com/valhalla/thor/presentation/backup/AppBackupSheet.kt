@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,7 +27,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedButton
@@ -47,7 +50,6 @@ import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -131,8 +133,16 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
     // accepted, not when the sheet opens.
     RequestNotificationsWhenJobStarts(jobActive = state.jobAccepted)
 
-    var passphrase by remember { mutableStateOf("") }
-    var confirmation by remember { mutableStateOf("") }
+    val passphraseState = remember { TextFieldState() }
+    val passphrase = passphraseState.text.toString()
+    val confirmationState = remember { TextFieldState() }
+    val confirmation = confirmationState.text.toString()
+    LaunchedEffect(state.jobAccepted) {
+        if (state.jobAccepted) {
+            passphraseState.edit { replace(0, length, "") }
+            confirmationState.edit { replace(0, length, "") }
+        }
+    }
     var rememberIt by remember { mutableStateOf(true) }
 
     // Resolved here rather than in the callback: a result callback is not a composable scope.
@@ -197,6 +207,7 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
@@ -369,12 +380,10 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                     }
 
                     if (state.passphraseNeeded) {
-                        OutlinedTextField(
-                            value = passphrase,
-                            onValueChange = { passphrase = it },
+                        OutlinedSecureTextField(
+                            state = passphraseState,
                             label = { Text(stringResource(R.string.backup_passphrase)) },
-                            visualTransformation = PasswordVisualTransformation(),
-                            singleLine = true,
+                            textObfuscationMode = TextObfuscationMode.Hidden,
                             enabled = !state.running,
                             isError = shownRefusal == PassphraseError.TOO_SHORT,
                             supportingText = shownRefusal
@@ -382,12 +391,10 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                                 ?.let { { Text(passphraseErrorText(it)) } },
                             modifier = Modifier.fillMaxWidth()
                         )
-                        OutlinedTextField(
-                            value = confirmation,
-                            onValueChange = { confirmation = it },
+                        OutlinedSecureTextField(
+                            state = confirmationState,
                             label = { Text(stringResource(R.string.backup_passphrase_confirm)) },
-                            visualTransformation = PasswordVisualTransformation(),
-                            singleLine = true,
+                            textObfuscationMode = TextObfuscationMode.Hidden,
                             enabled = !state.running,
                             isError = shownRefusal == PassphraseError.MISMATCH,
                             // The mismatch was already marked with `isError` and nothing else; the

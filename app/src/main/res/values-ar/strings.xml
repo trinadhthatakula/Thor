@@ -30,7 +30,7 @@
     <string name="dynamic_colors">ألوان ديناميكية</string>
     <string name="dynamic_colors_desc">تكامل Material You</string>
     <string name="biometric_lock">قفل القياسات الحيوية</string>
-    <string name="biometric_lock_desc">يتطلب المصادقة عند التشغيل. عند تفعيل القفل، تُحظر لقطات الشاشة وتسجيل الشاشة في Thor وتُخفى معاينته في التطبيقات الأخيرة.</string>
+    <string name="biometric_lock_desc">طلب المصادقة عند فتح التطبيق الرئيسي، وحظر لقطات الشاشة وتسجيلها، وإخفاء معاينته في التطبيقات الأخيرة.</string>
     <string name="biometric_not_available">المقاييس الحيوية غير مسجلة أو غير متوفرة</string>
     <string name="active_engine">المحرك النشط</string>
     <string name="active_engine_desc">التبديل بين الموفرين المتاحين</string>

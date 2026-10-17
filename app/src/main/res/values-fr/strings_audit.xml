@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_hub_choose_folder">Choisir un dossier</string>
+    <string name="backup_hub_custom_folder">Dossier personnalisé</string>
+    <string name="backup_hub_delete_access">Accès au stockage refusé. Rétablissez l’accès au dossier, puis réessayez.</string>
+    <string name="backup_hub_delete_failed">Impossible de supprimer %1$s.</string>
+    <string name="backup_hub_delete_missing">Archive introuvable. Actualisez la liste.</string>
+    <string name="backup_hub_delete_read_only">Cet emplacement est en lecture seule.</string>
+    <string name="backup_hub_delete_unavailable">Le fournisseur de stockage n’a pas terminé la suppression. Vérifiez l’emplacement et réessayez.</string>
+    <string name="backup_hub_empty_saved_desc">Créez une sauvegarde ou exportez une application pour la retrouver ici.</string>
+    <string name="backup_hub_empty_saved_title">Aucune archive enregistrée</string>
+    <string name="backup_hub_folder_failed">Impossible de conserver l’accès à ce dossier. Sélectionnez-le à nouveau.</string>
+    <string name="backup_hub_folder_hint">Ce choix définit le dossier des exportations et des archives enregistrées.</string>
+    <string name="backup_hub_newest">Plus récentes d’abord</string>
+    <string name="backup_hub_no_matches">Aucune archive ne correspond à votre recherche ou filtre.</string>
+    <string name="backup_hub_saved_archives">Archives enregistrées</string>
+    <string name="backup_hub_scan_failed">Impossible d’actualiser les archives enregistrées. Réessayez.</string>
+    <string name="backup_hub_search_archives">Rechercher des archives enregistrées</string>
+    <string name="backup_hub_source_unavailable">Impossible de lire entièrement %1$s. Certaines archives peuvent manquer dans cette liste.</string>
+    <string name="installer_app_lock">Étendre le verrouillage à l’installateur</string>
+    <string name="installer_app_lock_desc">Exiger aussi l’authentification pour l’installateur portable et Bolt, et protéger leurs captures et aperçus dans les applications récentes. Nécessite le verrouillage de l’application.</string>
+    <string name="installer_lock_include">Inclure l’installateur</string>
+    <string name="installer_lock_main_only">Application principale uniquement</string>
+    <string name="installer_lock_not_saved">Impossible d’enregistrer le verrouillage de l’installateur. Réessayez.</string>
+    <string name="installer_lock_prompt_desc">Exiger aussi l’authentification à l’ouverture de l’installateur portable ou de Bolt ? Leurs captures et aperçus dans les applications récentes seront aussi protégés. Ce choix reste modifiable dans les paramètres de sécurité.</string>
+    <string name="installer_lock_prompt_title">Inclure l’installateur dans le verrouillage ?</string>
+    <string name="kernel_refresh_root">Actualiser l’accès root</string>
+    <string name="log_jump_latest">Aller aux dernières lignes</string>
+    <string name="log_jump_latest_new_output">Nouvelles lignes · Aller aux dernières</string>
+</resources>

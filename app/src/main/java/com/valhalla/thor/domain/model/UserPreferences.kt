@@ -30,6 +30,8 @@ data class UserPreferences(
 
     // Security
     val biometricLockEnabled: Boolean = false,
+    /** Opt-in coverage for external package installation and Bolt. */
+    val installerAppLockEnabled: Boolean = false,
 
     // Work Mode
     val preferredPrivilegeMode: PrivilegeMode? = null,
