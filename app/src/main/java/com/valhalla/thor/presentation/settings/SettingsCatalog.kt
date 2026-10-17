@@ -173,6 +173,7 @@ enum class SettingsRowId(
 
     // ── Security ────────────────────────────────────────────────────────────────────────────────
     BIOMETRIC_LOCK(SettingsCategory.SECURITY, R.string.biometric_lock, R.string.biometric_lock_desc),
+    INSTALLER_APP_LOCK(SettingsCategory.SECURITY, R.string.installer_app_lock, R.string.installer_app_lock_desc),
     USAGE_ACCESS(
         SettingsCategory.SECURITY,
         R.string.usage_access,

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -23,7 +24,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,9 +72,10 @@ fun TermLoggerDialog(
             dismissOnBackPress = false,
             dismissOnClickOutside = false,
             usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
         ),
     ) {
-        Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.Bottom) {
+        Column(modifier = modifier.fillMaxSize().safeDrawingPadding(), verticalArrangement = Arrangement.Bottom) {
             TermLoggerContent(
                 title = if (isOperationComplete) {
                     UiText.StringResource(R.string.done)
@@ -120,7 +129,7 @@ fun TermLoggerDialog(
 
 enum class TermLoggerStatus { ACTIVE, SUCCESS, NEUTRAL }
 
-/** Stateless terminal surface shared by legacy dialogs and durable queue task detail. */
+/** Terminal surface shared by legacy dialogs and durable queue task detail. */
 @Composable
 fun TermLoggerContent(
     title: UiText,
@@ -138,8 +147,7 @@ fun TermLoggerContent(
                 color = MaterialTheme.colorScheme.background,
                 shape = RoundedCornerShape(topEnd = 20.dp, topStart = 20.dp),
             )
-            .padding(10.dp)
-            .padding(bottom = 50.dp),
+            .padding(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(
@@ -184,9 +192,26 @@ fun TermLoggerContent(
         }
 
         val lazyListState = rememberLazyListState()
-        LaunchedEffect(logs) {
-            if (logs.isNotEmpty()) {
-                lazyListState.animateScrollToItem(logs.lastIndex)
+        var followOutput by rememberSaveable { mutableStateOf(true) }
+        var followingScroll by remember { mutableStateOf(false) }
+        var lastSeenOutput by remember { mutableStateOf(logs.size to logs.lastOrNull()) }
+        val currentOutput = logs.size to logs.lastOrNull()
+        LaunchedEffect(lazyListState) {
+            snapshotFlow {
+                Triple(lazyListState.isScrollInProgress && !followingScroll,
+                    lazyListState.lastScrolledBackward, lazyListState.canScrollForward)
+            }.collect { (userScrolling, backward, moreBelow) ->
+                if (!moreBelow) followOutput = true
+                else if (userScrolling && backward) followOutput = false
+            }
+        }
+        LaunchedEffect(currentOutput, followOutput) {
+            if (logs.isEmpty()) followOutput = true
+            else if (followOutput) {
+                lastSeenOutput = currentOutput
+                followingScroll = true
+                try { lazyListState.scrollToItem(logs.lastIndex) }
+                finally { followingScroll = false }
             }
         }
 
@@ -214,6 +239,14 @@ fun TermLoggerContent(
             }
         }
 
+        if (!followOutput) {
+            TextButton(onClick = { followOutput = true }) {
+                Text(stringResource(
+                    if (currentOutput != lastSeenOutput) R.string.log_jump_latest_new_output
+                    else R.string.log_jump_latest,
+                ))
+            }
+        }
         footerContent()
     }
 }

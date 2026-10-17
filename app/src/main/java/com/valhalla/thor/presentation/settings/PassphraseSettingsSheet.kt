@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,9 +18,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,8 +53,16 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
     val viewModel = koinViewModel<PassphraseSettingsViewModel>()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    var passphrase by remember { mutableStateOf("") }
-    var confirmation by remember { mutableStateOf("") }
+    val passphraseState = remember { TextFieldState() }
+    val passphrase = passphraseState.text.toString()
+    val confirmationState = remember { TextFieldState() }
+    val confirmation = confirmationState.text.toString()
+    LaunchedEffect(state.saved) {
+        if (state.saved) {
+            passphraseState.edit { replace(0, length, "") }
+            confirmationState.edit { replace(0, length, "") }
+        }
+    }
     var confirmForget by remember { mutableStateOf(false) }
 
     if (confirmForget) {
@@ -70,8 +81,8 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
                 TextButton(
                     onClick = {
                         viewModel.forget()
-                        passphrase = ""
-                        confirmation = ""
+                        passphraseState.edit { replace(0, length, "") }
+                        confirmationState.edit { replace(0, length, "") }
                         confirmForget = false
                     }
                 ) {
@@ -100,6 +111,7 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
@@ -138,21 +150,17 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
                 )
             }
 
-            OutlinedTextField(
-                value = passphrase,
-                onValueChange = { passphrase = it },
+            OutlinedSecureTextField(
+                state = passphraseState,
                 label = { Text(stringResource(R.string.backup_passphrase)) },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
+                textObfuscationMode = TextObfuscationMode.Hidden,
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth()
             )
-            OutlinedTextField(
-                value = confirmation,
-                onValueChange = { confirmation = it },
+            OutlinedSecureTextField(
+                state = confirmationState,
                 label = { Text(stringResource(R.string.backup_passphrase_confirm)) },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
+                textObfuscationMode = TextObfuscationMode.Hidden,
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -181,9 +189,8 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
                         // Fresh arrays on every click, and the view model owns each one from here: it
                         // wipes both on every path it takes, with the one exception its `save` KDoc
                         // names — a view model cleared before the launched block is dispatched never
-                        // runs that block's `finally`. The `String`s these were made from stay in this
-                        // composition until the sheet leaves it, which is why the wipe there is
-                        // described as narrowing the window rather than closing it.
+                        // runs that block's `finally`. Clear the fields on success; JVM strings cannot
+                        // be wiped, so this narrows their lifetime without promising memory erasure.
                         viewModel.save(passphrase.toCharArray(), confirmation.toCharArray())
                     },
                     enabled = !state.busy && passphrase.isNotEmpty(),

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -71,7 +73,8 @@ import com.valhalla.thor.data.kernel.KernelFlashController
 import com.valhalla.thor.data.kernel.KernelFlashPhase
 import com.valhalla.thor.data.kernel.KernelFlashState
 import com.valhalla.thor.data.kernel.KernelSlotSelection
-import com.valhalla.thor.domain.repository.RootAvailabilityProvider
+import com.valhalla.thor.domain.model.RootRefreshStatus
+import com.valhalla.thor.domain.repository.RootRefreshController
 import com.valhalla.thor.presentation.widgets.TermLoggerContent
 import com.valhalla.thor.presentation.widgets.TermLoggerStatus
 import com.valhalla.thor.util.UiText
@@ -88,7 +91,7 @@ fun KernelFlasherScreen(
 ) {
     val controller = koinInject<KernelFlashController>()
     val state by controller.state.collectAsStateWithLifecycle()
-    val roots = koinInject<RootAvailabilityProvider>()
+    val roots = koinInject<RootRefreshController>()
     val root by roots.state.collectAsStateWithLifecycle()
     LaunchedEffect(root.confirmedRevision) {
         if (root.canAdmitRoot) controller.refreshRecovery()
@@ -121,14 +124,16 @@ fun KernelFlasherScreen(
                     if (confirmed.slot == KernelSlotSelection.BOTH) Text(stringResource(R.string.kernel_both_warning), color = MaterialTheme.colorScheme.error)
                     Text(stringResource(R.string.kernel_warning))
                     Text(stringResource(R.string.kernel_confirmation))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it })
-                        Text(stringResource(R.string.kernel_acknowledge))
-                    }
-                    if (confirmed.slot == KernelSlotSelection.BOTH) Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = bothAcknowledged, onCheckedChange = { bothAcknowledged = it })
-                        Text(stringResource(R.string.kernel_both_acknowledge))
-                    }
+                    KernelAcknowledgement(
+                        checked = acknowledged,
+                        label = stringResource(R.string.kernel_acknowledge),
+                        onCheckedChange = { acknowledged = it },
+                    )
+                    if (confirmed.slot == KernelSlotSelection.BOTH) KernelAcknowledgement(
+                        checked = bothAcknowledged,
+                        label = stringResource(R.string.kernel_both_acknowledge),
+                        onCheckedChange = { bothAcknowledged = it },
+                    )
                 }
             },
             confirmButton = {
@@ -179,8 +184,23 @@ fun KernelFlasherScreen(
                         Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        if (!root.canAdmitRoot) Text(stringResource(R.string.kernel_root_required), style = MaterialTheme.typography.bodySmall)
-                        Button(
+                        if (!root.canAdmitRoot) {
+                            Text(stringResource(when (root.refreshStatus) {
+                                RootRefreshStatus.CHECKING -> R.string.root_refresh_checking
+                                RootRefreshStatus.BUSY -> R.string.root_refresh_busy
+                                RootRefreshStatus.TIMED_OUT -> R.string.root_refresh_timed_out
+                                RootRefreshStatus.FAILED -> R.string.root_refresh_failed
+                                RootRefreshStatus.IDLE -> R.string.kernel_root_required
+                            }), style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(
+                                onClick = { roots.requestRefresh() },
+                                enabled = root.refreshStatus != RootRefreshStatus.CHECKING && !state.busy,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text(stringResource(R.string.kernel_refresh_root)) }
+                            TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+                                Text(stringResource(R.string.exit))
+                            }
+                        } else Button(
                             onClick = {
                                 if (state.phase == KernelFlashPhase.READY) {
                                     confirmation = FlashConfirmation(state.sha256, state.slotSelection, state.slotInfo.current)
@@ -352,4 +372,17 @@ private fun slotLabel(slot: KernelSlotSelection, current: String?): String = whe
     KernelSlotSelection.CURRENT -> stringResource(R.string.kernel_slot_current, current?.removePrefix("_")?.uppercase() ?: "—")
     KernelSlotSelection.INACTIVE -> stringResource(R.string.kernel_slot_inactive, when (current) { "_a" -> "B"; "_b" -> "A"; else -> "—" })
     KernelSlotSelection.BOTH -> stringResource(R.string.kernel_slot_both)
+}
+
+@Composable
+private fun KernelAcknowledgement(checked: Boolean, label: String, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Text(label, modifier = Modifier.weight(1f).padding(start = 12.dp))
+    }
 }

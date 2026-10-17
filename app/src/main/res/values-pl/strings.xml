@@ -44,7 +44,7 @@
     <string name="dynamic_colors">Kolory dynamiczne</string>
     <string name="dynamic_colors_desc">Integracja z Material You</string>
     <string name="biometric_lock">Blokada biometryczna</string>
-    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia przy uruchomieniu. Włączona blokada uniemożliwia robienie zrzutów i nagrywanie ekranu aplikacji Thor oraz ukrywa jej podgląd na liście ostatnich aplikacji.</string>
+    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia przy otwieraniu głównej aplikacji, blokuj jej zrzuty i nagrywanie ekranu oraz ukrywaj podgląd ostatnich aplikacji.</string>
     <string name="biometric_not_available">Biometria niedostępna lub bez zapisanych danych</string>
     <string name="active_engine">Aktywny silnik</string>
     <string name="active_engine_desc">Przełączaj między dostępnymi dostawcami</string>

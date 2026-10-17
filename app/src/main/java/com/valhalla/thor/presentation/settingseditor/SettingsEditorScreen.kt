@@ -68,8 +68,10 @@ fun SettingsEditorScreen(onBack: () -> Unit, viewModel: SettingsEditorViewModel 
                     Box(Modifier.padding(horizontal = 16.dp)) {
                         OutlinedButton(onClick = { expanded = true }, enabled = !state.busy) { Text(stringResource(state.view.titleRes())) }
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            SettingsEditorView.entries.forEach { view ->
-                                DropdownMenuItem(text = { Text(stringResource(view.titleRes())) }, onClick = { expanded = false; search = ""; viewModel.select(view) })
+                            SettingsEditorView.entries.forEachIndexed { index, view ->
+                                SelectableDropdownMenuItem(selected = state.view == view, enabled = !state.busy,
+                                    shapes = MenuDefaults.itemShape(index, SettingsEditorView.entries.size),
+                                    text = { Text(stringResource(view.titleRes())) }, onClick = { expanded = false; search = ""; viewModel.select(view) })
                             }
                         }
                     }

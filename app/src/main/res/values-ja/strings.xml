@@ -34,7 +34,7 @@
     <string name="dynamic_colors">ダイナミックカラー</string>
     <string name="dynamic_colors_desc">マテリアルユー統合</string>
     <string name="biometric_lock">生体認証ロック</string>
-    <string name="biometric_lock_desc">起動時に認証を要求します。有効にすると、Thor のスクリーンショットと画面記録がブロックされ、[最近] プレビューが非表示になります。</string>
+    <string name="biometric_lock_desc">メインアプリの起動時に認証を要求し、スクリーンショットと画面録画を禁止して、最近使ったアプリのプレビューを非表示にします。</string>
     <string name="biometric_not_available">生体認証が登録されていないか、利用できません</string>
     <string name="active_engine">アクティブエンジン</string>
     <string name="active_engine_desc">利用可能なプロバイダーを切り替える</string>
