@@ -3,8 +3,8 @@
 
 package com.valhalla.thor.data.source.local.room
 
-import androidx.room.Entity
-import androidx.room.Index
+import androidx.room3.Entity
+import androidx.room3.Index
 
 /**
  * One component Thor switched off, and what it was before Thor touched it.

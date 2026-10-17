@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.launcher
 
+import androidx.room3.support.getSupportWrapper
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Context
@@ -10,7 +11,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
 import androidx.core.net.toUri
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.BuildConfig
@@ -186,7 +187,7 @@ class ShareHandoffActivityTest {
         persistReadyTask(taskId, listOf(output))
         writeOutput(output)
         File(context.cacheDir, TRAVERSAL_FILE).writeBytes(output.bytes)
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_task_outputs SET private_relative_path = ? WHERE task_id = ?",
             arrayOf("share_ready/../$TRAVERSAL_FILE", taskId.toString()),
         )
@@ -328,7 +329,7 @@ class ShareHandoffActivityTest {
             lock.withLock {
                 locked.countDown()
                 check(release.await(TIMEOUT_MS, TimeUnit.MILLISECONDS)) { "mutation release timed out" }
-                database.openHelper.writableDatabase.execSQL(
+                database.getSupportWrapper().execSQL(
                     "UPDATE data_task_outputs SET output_id = ?, private_relative_path = ?, display_name = ? WHERE task_id = ?",
                     arrayOf(UUID.randomUUID().toString(), replacement.relativePath, replacement.displayName, taskId.toString()),
                 )
