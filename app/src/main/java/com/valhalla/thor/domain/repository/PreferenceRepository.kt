@@ -100,7 +100,9 @@ interface PreferenceRepository {
      * unlocked after Thor has said it armed it. "Some settings could not be saved" does not tell
      * anyone which way their front door is facing.
      */
-    suspend fun setBiometricLock(enabled: Boolean): Boolean
+    suspend fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean? = null): Boolean
+
+    suspend fun setInstallerAppLock(enabled: Boolean): Boolean
 
     // --- Work Mode ---
     suspend fun setPrivilegeMode(mode: PrivilegeMode?)
@@ -120,7 +122,7 @@ interface PreferenceRepository {
     suspend fun setLanguage(language: String?): Boolean
 
     // --- Export ---
-    suspend fun setExportDirUri(uri: String?)
+    suspend fun setExportDirUri(uri: String?): Boolean
 
     // --- Auto Freeze ---
     suspend fun setAutoFreezeEnabled(enabled: Boolean)

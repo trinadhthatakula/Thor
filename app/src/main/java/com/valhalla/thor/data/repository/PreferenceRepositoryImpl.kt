@@ -181,6 +181,7 @@ class PreferenceRepositoryImpl(
 
         // Security
         val BIOMETRIC_LOCK = booleanPreferencesKey("biometric_lock")
+        val INSTALLER_APP_LOCK = booleanPreferencesKey("installer_app_lock")
 
         // Work Mode
         val PRIVILEGE_MODE = stringPreferencesKey("privilege_mode")
@@ -318,9 +319,15 @@ class PreferenceRepositoryImpl(
      * `announce = false`: the caller is told directly and says something more useful than the
      * generic notice. See [PreferenceRepository.setBiometricLock].
      */
-    override suspend fun setBiometricLock(enabled: Boolean): Boolean =
+    override suspend fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean?): Boolean =
         context.dataStore.guardedWrite(SETTINGS_STORE, announce = false) {
             it[Keys.BIOMETRIC_LOCK] = enabled
+            extendToInstaller?.let { extend -> it[Keys.INSTALLER_APP_LOCK] = extend }
+        }
+
+    override suspend fun setInstallerAppLock(enabled: Boolean): Boolean =
+        context.dataStore.guardedWrite(SETTINGS_STORE, announce = false) {
+            it[Keys.INSTALLER_APP_LOCK] = enabled
         }
 
     // --- Work Mode ---
@@ -349,12 +356,11 @@ class PreferenceRepositoryImpl(
             else it[Keys.LANGUAGE] = language
         }
 
-    override suspend fun setExportDirUri(uri: String?) {
+    override suspend fun setExportDirUri(uri: String?): Boolean =
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             if (uri == null) it.remove(Keys.EXPORT_DIR_URI)
             else it[Keys.EXPORT_DIR_URI] = uri
         }
-    }
 
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
@@ -827,6 +833,7 @@ internal fun Preferences.toUserPreferences(
         useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
         useAmoled = prefs[Keys.USE_AMOLED] ?: false,
         biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
+        installerAppLockEnabled = prefs[Keys.INSTALLER_APP_LOCK] ?: false,
         preferredPrivilegeMode = privilegeMode,
         selectedRootManagerPackage = if (localStateDegraded) null
             else local[LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE],

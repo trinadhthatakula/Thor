@@ -43,7 +43,7 @@
     <string name="grant_all_permissions_install">Conceder todas as permissões solicitadas</string>
     <string name="default_tab">Aba padrão</string>
     <string name="default_tab_desc">A tela que o Thor abre ao iniciar</string>
-    <string name="biometric_lock_desc">Exigir autenticação ao iniciar. Quando ativado, o bloqueio impede capturas e gravações da tela do Thor e oculta a prévia nos apps recentes.</string>
+    <string name="biometric_lock_desc">Exigir autenticação ao abrir o aplicativo principal, bloquear suas capturas e gravações de tela e ocultar a prévia nos aplicativos recentes.</string>
     <string name="built_with_precision">CONSTRUÍDO COM PRECISÃO PARA USUÁRIOS AVANÇADOS</string>
 
     <!-- Language picker -->
@@ -601,10 +601,7 @@
     <string name="backup_hub_hero_backup_title">Fazer backup de um aplicativo</string>
     <string name="backup_hub_hero_backup_desc">Criar backup de dados criptografado (.thorbak) ou pacote APK</string>
     <string name="backup_hub_hero_restore_title">Restaurar de um arquivo</string>
-    <string name="backup_hub_section_backups">Backups em Downloads/Thor</string>
     <string name="backup_hub_filter_backups">Backups</string>
-    <string name="backup_hub_empty_title">Nenhum backup em Downloads/Thor</string>
-    <string name="backup_hub_empty_desc">Os arquivos salvos em Downloads/Thor aparecerão aqui para restauração rápida com um toque.</string>
     <string name="backup_hub_tip_thorbak_title">Backups de dados (.thorbak)</string>
     <string name="backup_hub_tip_thorbak_desc">Arquivos completos criptografados contendo dados de aplicativos e splits de APK opcionais. Os dados privados de aplicativos (CE/DE) exigem root, enquanto os dados do armazenamento compartilhado podem ser restaurados com um shell privilegiado.</string>
     <string name="backup_hub_tip_bundle_title">Pacotes de aplicativos (.xapk / .apks / .apk)</string>

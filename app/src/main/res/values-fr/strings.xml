@@ -30,7 +30,7 @@
     <string name="dynamic_colors">Couleurs dynamiques</string>
     <string name="dynamic_colors_desc">Intégration Material You</string>
     <string name="biometric_lock">Verrouillage biométrique</string>
-    <string name="biometric_lock_desc">Exiger une authentification au lancement. Une fois activé, le verrouillage bloque les captures et enregistrements d’écran de Thor et masque son aperçu dans les applications récentes.</string>
+    <string name="biometric_lock_desc">Exiger une authentification à l’ouverture de l’application principale, bloquer ses captures et enregistrements d’écran et masquer son aperçu dans les applications récentes.</string>
     <string name="biometric_not_available">Biométrie non enregistrée ou indisponible</string>
     <string name="active_engine">Moteur actif</string>
     <string name="active_engine_desc">Passer d\'un fournisseur à l\'autre</string>

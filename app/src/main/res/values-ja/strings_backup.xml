@@ -107,12 +107,9 @@
     <string name="backup_hub_hero_backup_desc">暗号化されたデータのバックアップ（.thorbak）またはAPKバンドルを作成</string>
     <string name="backup_hub_hero_restore_title">ファイルから復元</string>
     <string name="backup_hub_hero_restore_desc">ストレージ内の.thorbakファイルまたはバンドルアーカイブを選択</string>
-    <string name="backup_hub_section_backups">Downloads/Thor内のバックアップ</string>
     <string name="backup_hub_filter_all">すべて</string>
     <string name="backup_hub_filter_backups">バックアップ</string>
     <string name="backup_hub_filter_bundles">バンドル</string>
-    <string name="backup_hub_empty_title">Downloads/Thorにバックアップはありません</string>
-    <string name="backup_hub_empty_desc">Downloads/Thorに保存したアーカイブは、ここに表示され、ワンタップですぐに復元できます。</string>
     <string name="backup_hub_tip_thorbak_title">データのバックアップ（.thorbak）</string>
     <string name="backup_hub_tip_thorbak_desc">暗号化された完全なアーカイブには、アプリデータと必要に応じて分割APKが含まれます。非公開のアプリデータ（CE/DE）にはroot権限が必要ですが、共有ストレージ上のデータは特権シェルで復元できます。</string>
     <string name="backup_hub_tip_bundle_title">アプリバンドル（.xapk / .apks / .apk）</string>
@@ -127,5 +124,4 @@
     <string name="backup_hub_badge_app_bundle">アプリバンドル</string>
     <string name="backup_hub_action_delete">削除</string>
     <string name="backup_hub_action_share">共有</string>
-    <string name="backup_hub_no_archives">アーカイブが見つかりません</string>
 </resources>

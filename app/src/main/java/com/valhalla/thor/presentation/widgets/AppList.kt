@@ -45,8 +45,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ContainedLoadingIndicator
@@ -74,7 +72,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -84,9 +81,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -512,81 +506,29 @@ internal fun AppSearchBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(4.dp)
-        ) {
-            BasicTextField(
-                value = localQuery,
-                onValueChange = {
-                    localQuery = it
-                    onQueryChange(it)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                    capitalization = KeyboardCapitalization.Words,
-                    imeAction = ImeAction.Search
-                ),
-                decorationBox = { innerTextField ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            painter = painterResource(R.drawable.round_search),
-                            contentDescription = "Search",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Box(modifier = Modifier.weight(1f)) {
-                            if (localQuery.isEmpty()) {
-                                Text(
-                                    stringResource(R.string.search_apps),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
-                            }
-                            innerTextField()
-                        }
-                        if (localQuery.isNotEmpty()) {
-                            Icon(
-                                painter = painterResource(R.drawable.round_close),
-                                contentDescription = stringResource(R.string.cd_clear),
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        localQuery = ""
-                                        onQueryChange("")
-                                    }
-                                    .padding(8.dp)
-                            )
-                        }
-                    }
-                }
-            )
-        }
+        ThorSearchField(
+            query = localQuery,
+            onQueryChange = { localQuery = it; onQueryChange(it) },
+            placeholder = stringResource(R.string.search_apps),
+            onSearch = { keyboardController?.hide() },
+            modifier = Modifier.weight(1f),
+        )
 
         if (onOpenConfig != null) {
-            IconButton(
-                onClick = onOpenConfig,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.filter_list),
-                    contentDescription = stringResource(R.string.cd_config),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            ThorTooltip(stringResource(R.string.cd_config)) {
+                IconButton(
+                    onClick = onOpenConfig,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.filter_list),
+                        contentDescription = stringResource(R.string.cd_config),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

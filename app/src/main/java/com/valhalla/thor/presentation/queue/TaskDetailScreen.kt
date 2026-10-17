@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -100,6 +101,7 @@ internal fun TaskDetailContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .safeDrawingPadding()
                 .testTag(TASK_DETAIL_SCRIM_TAG)
                 .pointerInput(onBackground) {
                     detectTapGestures { onBackground() }
@@ -137,6 +139,7 @@ internal fun TaskDetailContent(
                 dismissOnBackPress = true,
                 dismissOnClickOutside = true,
                 usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
             ),
             content = content,
         )

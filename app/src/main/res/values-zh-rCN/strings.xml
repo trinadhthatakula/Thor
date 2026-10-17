@@ -29,7 +29,7 @@
     <string name="dynamic_colors">动态色彩</string>
     <string name="dynamic_colors_desc">Material You 集成</string>
     <string name="biometric_lock">生物识别锁定</string>
-    <string name="biometric_lock_desc">启动时要求身份验证。启用后，将禁止截取或录制 Thor 的屏幕，并隐藏其在最近任务中的预览。</string>
+    <string name="biometric_lock_desc">打开主应用时要求身份验证，禁止截屏和录屏，并隐藏最近任务预览。</string>
     <string name="biometric_not_available">生物识别未注册或不可用</string>
     <string name="active_engine">活动引擎</string>
     <string name="active_engine_desc">在可用提供者之间切换</string>

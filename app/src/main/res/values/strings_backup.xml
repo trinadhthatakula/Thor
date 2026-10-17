@@ -311,12 +311,9 @@
     <string name="backup_hub_hero_backup_desc">Create encrypted data backup (.thorbak) or APK bundle</string>
     <string name="backup_hub_hero_restore_title">Restore from file</string>
     <string name="backup_hub_hero_restore_desc">Select any .thorbak or bundle archive from storage</string>
-    <string name="backup_hub_section_backups">Backups in Downloads/Thor</string>
     <string name="backup_hub_filter_all">All</string>
     <string name="backup_hub_filter_backups">Backups</string>
     <string name="backup_hub_filter_bundles">Bundles</string>
-    <string name="backup_hub_empty_title">No backups in Downloads/Thor</string>
-    <string name="backup_hub_empty_desc">Archives saved to Downloads/Thor will appear here for fast one-tap restore.</string>
     <string name="backup_hub_tip_thorbak_title">Data Backups (.thorbak)</string>
     <string name="backup_hub_tip_thorbak_desc">Encrypted full archives carrying app data and optional APK splits. Private app data (CE/DE) requires Root, while shared storage data can be restored with privileged shell.</string>
     <string name="backup_hub_tip_bundle_title">App Bundles (.xapk / .apks / .apk)</string>
@@ -331,5 +328,4 @@
     <string name="backup_hub_badge_app_bundle">App bundle</string>
     <string name="backup_hub_action_delete">Delete</string>
     <string name="backup_hub_action_share">Share</string>
-    <string name="backup_hub_no_archives">No archives found</string>
 </resources>

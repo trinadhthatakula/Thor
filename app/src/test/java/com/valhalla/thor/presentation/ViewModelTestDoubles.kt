@@ -730,8 +730,12 @@ class FakePreferenceRepository(
         write { it.copy(useAmoled = enabled) }
     }
 
-    override suspend fun setBiometricLock(enabled: Boolean): Boolean =
-        write(announce = false) { it.copy(biometricLockEnabled = enabled) }
+    override suspend fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean?): Boolean =
+        write(announce = false) { it.copy(biometricLockEnabled = enabled,
+            installerAppLockEnabled = extendToInstaller ?: it.installerAppLockEnabled) }
+
+    override suspend fun setInstallerAppLock(enabled: Boolean): Boolean =
+        write(announce = false) { it.copy(installerAppLockEnabled = enabled) }
 
     override suspend fun setPrivilegeMode(mode: PrivilegeMode?) {
         write { it.copy(preferredPrivilegeMode = mode) }
@@ -744,9 +748,8 @@ class FakePreferenceRepository(
     override suspend fun setLanguage(language: String?): Boolean =
         write(announce = false) { it.copy(language = language) }
 
-    override suspend fun setExportDirUri(uri: String?) {
+    override suspend fun setExportDirUri(uri: String?): Boolean =
         write { it.copy(exportDirUri = uri) }
-    }
 
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
         write { it.copy(autoFreezeEnabled = enabled) }

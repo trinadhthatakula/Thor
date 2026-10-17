@@ -300,12 +300,9 @@
     <string name="backup_hub_hero_backup_desc">Utwórz zaszyfrowaną kopię danych (.thorbak) lub pakiet APK</string>
     <string name="backup_hub_hero_restore_title">Przywróć z pliku</string>
     <string name="backup_hub_hero_restore_desc">Wybierz dowolne archiwum .thorbak lub pakiet z pamięci</string>
-    <string name="backup_hub_section_backups">Kopie w Downloads/Thor</string>
     <string name="backup_hub_filter_all">Wszystko</string>
     <string name="backup_hub_filter_backups">Kopie</string>
     <string name="backup_hub_filter_bundles">Pakiety</string>
-    <string name="backup_hub_empty_title">Brak kopii w Downloads/Thor</string>
-    <string name="backup_hub_empty_desc">Archiwa zapisane w Downloads/Thor pojawią się tutaj, umożliwiając szybkie przywrócenie jednym dotknięciem.</string>
     <string name="backup_hub_tip_thorbak_title">Kopie danych (.thorbak)</string>
     <string name="backup_hub_tip_thorbak_desc">Zaszyfrowane pełne archiwa zawierające dane aplikacji i opcjonalne podziały APK. Prywatne dane aplikacji (CE/DE) wymagają uprawnień root, natomiast dane z pamięci współdzielonej można przywrócić z uprzywilejowaną powłoką.</string>
     <string name="backup_hub_tip_bundle_title">Pakiety aplikacji (.xapk / .apks / .apk)</string>
@@ -320,5 +317,4 @@
     <string name="backup_hub_badge_app_bundle">Pakiet aplikacji</string>
     <string name="backup_hub_action_delete">Usuń</string>
     <string name="backup_hub_action_share">Udostępnij</string>
-    <string name="backup_hub_no_archives">Nie znaleziono archiwów</string>
 </resources>

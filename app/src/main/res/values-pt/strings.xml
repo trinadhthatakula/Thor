@@ -44,7 +44,7 @@
     <string name="dynamic_colors">Cores dinâmicas</string>
     <string name="dynamic_colors_desc">Integração com o Material You</string>
     <string name="biometric_lock">Bloqueio biométrico</string>
-    <string name="biometric_lock_desc">Exigir autenticação ao iniciar. Quando ativo, o bloqueio impede capturas e gravações do ecrã do Thor e oculta a pré-visualização nas aplicações recentes.</string>
+    <string name="biometric_lock_desc">Exigir autenticação ao abrir a aplicação principal, bloquear as suas capturas e gravações do ecrã e ocultar a pré-visualização nas aplicações recentes.</string>
     <string name="biometric_not_available">Biometria não configurada ou indisponível</string>
     <string name="active_engine">Motor ativo</string>
     <string name="active_engine_desc">Alternar entre os fornecedores disponíveis</string>
