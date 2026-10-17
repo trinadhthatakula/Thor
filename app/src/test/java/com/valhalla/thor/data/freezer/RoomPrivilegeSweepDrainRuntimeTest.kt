@@ -3,7 +3,7 @@
 package com.valhalla.thor.data.freezer
 
 import android.app.Application
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import android.content.pm.InstallSourceInfo
 import android.os.Build

@@ -3,13 +3,13 @@
 
 package com.valhalla.thor.data.source.local.room
 
-import androidx.room.ColumnInfo
-import androidx.room.Embedded
-import androidx.room.Entity
-import androidx.room.ForeignKey
-import androidx.room.Index
-import androidx.room.PrimaryKey
-import androidx.room.Relation
+import androidx.room3.ColumnInfo
+import androidx.room3.Embedded
+import androidx.room3.Entity
+import androidx.room3.ForeignKey
+import androidx.room3.Index
+import androidx.room3.PrimaryKey
+import androidx.room3.Relation
 
 /**
  * One named freeze profile.
@@ -64,6 +64,6 @@ data class FreezeProfileAppEntity(
 /** A profile with its membership, read in one `@Transaction` so the two cannot disagree. */
 data class FreezeProfileWithApps(
     @Embedded val profile: FreezeProfileEntity,
-    @Relation(parentColumn = "id", entityColumn = "profileId")
+    @Relation(parentColumns = ["id"], entityColumns = ["profileId"])
     val apps: List<FreezeProfileAppEntity>,
 )
