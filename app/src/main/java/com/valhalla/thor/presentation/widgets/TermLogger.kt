@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.LaunchedEffect
@@ -191,7 +192,7 @@ fun TermLoggerContent(
         }
 
         val lazyListState = rememberLazyListState()
-        var followOutput by remember { mutableStateOf(true) }
+        var followOutput by rememberSaveable { mutableStateOf(true) }
         var followingScroll by remember { mutableStateOf(false) }
         var lastSeenOutput by remember { mutableStateOf(logs.size to logs.lastOrNull()) }
         val currentOutput = logs.size to logs.lastOrNull()

@@ -14,6 +14,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.os.BundleCompat
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
@@ -66,7 +67,13 @@ class PortableInstallerActivity : ComponentActivity() {
         // Reached from outside the app and long-lived enough to still be open when the user changes
         // the language in a separate task; recreating keeps its strings in step. No-op above API 32.
         AppLocale.recreateOnChange(this, attachedLocaleTag)
-        pendingInput = PendingInput(intent, newIntent = savedInstanceState?.getBoolean("pending_new_intent") == true)
+        val savedPendingIntent = savedInstanceState?.let {
+            BundleCompat.getParcelable(it, "pending_intent", Intent::class.java)
+        }
+        pendingInput = PendingInput(
+            savedPendingIntent ?: intent,
+            newIntent = savedInstanceState?.getBoolean("pending_new_intent") == true,
+        )
         setContent {
             val preferenceState by activityPreferences.collectAsStateWithLifecycle()
             val authState by securityViewModel.installerAuthState.collectAsStateWithLifecycle()
@@ -121,6 +128,7 @@ class PortableInstallerActivity : ComponentActivity() {
         pendingInput = PendingInput(intent, newIntent = true)
     }
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putParcelable("pending_intent", pendingInput?.intent)
         outState.putBoolean("pending_new_intent", pendingInput?.newIntent == true)
         super.onSaveInstanceState(outState)
     }

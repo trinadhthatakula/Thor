@@ -294,9 +294,11 @@ fun BackupRestoreHubScreen(
                 item(key = "empty") { EmptyStateKnowledgeCards() }
             } else if (!state.isLoading && state.archives.isNotEmpty() && archives.isEmpty()) {
                 item(key = "no_matches") {
-                    Text(stringResource(R.string.backup_hub_no_matches), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { viewModel.setArchiveQuery(""); viewModel.setFilter(BackupHubFilter.ALL) }) {
-                        Text(stringResource(R.string.cd_settings_search_clear))
+                    Column {
+                        Text(stringResource(R.string.backup_hub_no_matches), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick = { viewModel.setArchiveQuery(""); viewModel.setFilter(BackupHubFilter.ALL) }) {
+                            Text(stringResource(R.string.cd_settings_search_clear))
+                        }
                     }
                 }
             }

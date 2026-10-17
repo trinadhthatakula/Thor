@@ -588,7 +588,7 @@ fun SettingsCategoryScreen(
                         checked = prefs.biometricLockEnabled,
                         highlighted = lit,
                         onCheckedChange = {
-                            if (it && state.canUseBiometric) showInstallerLockChoice = true
+                            if (it && viewModel.canUseBiometric) showInstallerLockChoice = true
                             else viewModel.setBiometricLock(it)
                         }
                     )
