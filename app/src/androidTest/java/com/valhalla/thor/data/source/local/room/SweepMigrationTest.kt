@@ -3,8 +3,13 @@
 
 package com.valhalla.thor.data.source.local.room
 
-import androidx.room.testing.MigrationTestHelper
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.room3.testing.MigrationTestHelper
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.SQLiteStatement
+import androidx.sqlite.driver.AndroidSQLiteDriver
+import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
+import org.junit.Before
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -17,21 +22,34 @@ import org.junit.runner.RunWith
 class SweepMigrationTest {
 
     @get:Rule
-    val helper = MigrationTestHelper(
-        InstrumentationRegistry.getInstrumentation(),
-        AppDatabase::class.java,
-        emptyList(),
-    )
+    val helper = helperFor(TEST_DATABASE)
+
+    private fun helperFor(name: String): MigrationTestHelper {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        return MigrationTestHelper(
+            instrumentation = instrumentation,
+            file = instrumentation.targetContext.getDatabasePath(name),
+            driver = AndroidSQLiteDriver(),
+            databaseClass = AppDatabase::class,
+        )
+    }
+
+    @Before
+    fun clearFixtureFiles() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase(TEST_DATABASE)
+        (1..9).forEach { context.deleteDatabase("$TEST_DATABASE-chain-$it") }
+    }
 
     @Test
-    fun migrate7To8_preservesExistingRowsAndAddsCascadingSweepTables() {
-        helper.createDatabase(TEST_DATABASE, 7).apply {
+    fun migrate7To8_preservesExistingRowsAndAddsCascadingSweepTables() = runBlocking {
+        helper.createDatabase(7).apply {
             seedEveryVersion7Table()
             close()
         }
 
-        val migrated = helper.runMigrationsAndValidate(TEST_DATABASE, 8, true)
-        migrated.setForeignKeyConstraintsEnabled(true)
+        val migrated = helper.migrateAndValidateTables(8)
+        migrated.execSQL("PRAGMA foreign_keys = ON")
 
         VERSION_7_TABLES.forEach { table ->
             assertEquals("$table row was not preserved", 1, migrated.rowCount(table))
@@ -87,8 +105,8 @@ class SweepMigrationTest {
     }
 
     @Test
-    fun migrate8To9_createsDataTablesAndPreservesSweepRows() {
-        helper.createDatabase(TEST_DATABASE, 8).apply {
+    fun migrate8To9_createsDataTablesAndPreservesSweepRows() = runBlocking {
+        helper.createDatabase(8).apply {
             seedVersion8Sweep(
                 requestId = "request-preserved",
                 workId = "work-preserved",
@@ -101,10 +119,8 @@ class SweepMigrationTest {
             close()
         }
 
-        val migrated = helper.runMigrationsAndValidate(
-            TEST_DATABASE,
+        val migrated = helper.migrateAndValidateTables(
             9,
-            true,
             AppDatabase.MIGRATION_8_9,
         )
 
@@ -121,8 +137,8 @@ class SweepMigrationTest {
     }
 
     @Test
-    fun migrate8To9_nonterminalSweepPreservesOrdinalAndSourcesAndMapsEveryTargetLegacyUnknown() {
-        helper.createDatabase(TEST_DATABASE, 8).apply {
+    fun migrate8To9_nonterminalSweepPreservesOrdinalAndSourcesAndMapsEveryTargetLegacyUnknown() = runBlocking {
+        helper.createDatabase(8).apply {
             seedVersion8Sweep(
                 requestId = "request-active",
                 workId = "work-active",
@@ -135,10 +151,8 @@ class SweepMigrationTest {
             close()
         }
 
-        val migrated = helper.runMigrationsAndValidate(
-            TEST_DATABASE,
+        val migrated = helper.migrateAndValidateTables(
             9,
-            true,
             AppDatabase.MIGRATION_8_9,
         )
 
@@ -163,8 +177,8 @@ class SweepMigrationTest {
     }
 
     @Test
-    fun migrate8To9_terminalSweepPreservesHistoryWithoutInventingPerTargetSuccess() {
-        helper.createDatabase(TEST_DATABASE, 8).apply {
+    fun migrate8To9_terminalSweepPreservesHistoryWithoutInventingPerTargetSuccess() = runBlocking {
+        helper.createDatabase(8).apply {
             seedVersion8Sweep(
                 requestId = "request-terminal",
                 workId = "work-terminal",
@@ -177,10 +191,8 @@ class SweepMigrationTest {
             close()
         }
 
-        val migrated = helper.runMigrationsAndValidate(
-            TEST_DATABASE,
+        val migrated = helper.migrateAndValidateTables(
             9,
-            true,
             AppDatabase.MIGRATION_8_9,
         )
 
@@ -198,16 +210,14 @@ class SweepMigrationTest {
     }
 
     @Test
-    fun migrate9To10_defaultsExistingSweepMembershipIntentToFalse() {
-        helper.createDatabase(TEST_DATABASE, 9).apply {
+    fun migrate9To10_defaultsExistingSweepMembershipIntentToFalse() = runBlocking {
+        helper.createDatabase(9).apply {
             seedVersion9Sweep(requestId = "request-legacy-membership")
             close()
         }
 
-        val migrated = helper.runMigrationsAndValidate(
-            TEST_DATABASE,
+        val migrated = helper.migrateAndValidateTables(
             10,
-            true,
             AppDatabase.MIGRATION_9_10,
         )
 
@@ -221,15 +231,14 @@ class SweepMigrationTest {
     }
 
     @Test
-    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema10() {
+    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema10() = runBlocking {
         (1..9).forEach { startVersion ->
             val databaseName = "$TEST_DATABASE-chain-$startVersion"
-            helper.createDatabase(databaseName, startVersion).close()
+            val chainHelper = helperFor(databaseName)
+            chainHelper.createDatabase(startVersion).close()
 
-            helper.runMigrationsAndValidate(
-                databaseName,
+            chainHelper.migrateAndValidateTables(
                 10,
-                true,
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.MIGRATION_8_9,
                 AppDatabase.MIGRATION_9_10,
@@ -237,7 +246,7 @@ class SweepMigrationTest {
         }
     }
 
-    private fun SupportSQLiteDatabase.seedVersion9Sweep(requestId: String) {
+    private fun SQLiteConnection.seedVersion9Sweep(requestId: String) {
         execSQL(
             """
             INSERT INTO sweep_requests (
@@ -258,7 +267,7 @@ class SweepMigrationTest {
         )
     }
 
-    private fun SupportSQLiteDatabase.seedVersion8Sweep(
+    private fun SQLiteConnection.seedVersion8Sweep(
         requestId: String,
         workId: String,
         terminalState: String?,
@@ -310,7 +319,7 @@ class SweepMigrationTest {
         }
     }
 
-    private fun SupportSQLiteDatabase.seedEveryVersion7Table() {
+    private fun SQLiteConnection.seedEveryVersion7Table() {
         execSQL(
             """
             INSERT INTO apps (
@@ -344,51 +353,51 @@ class SweepMigrationTest {
         )
     }
 
-    private fun SupportSQLiteDatabase.rowCount(table: String): Int =
+    private fun SQLiteConnection.rowCount(table: String): Int =
         query("SELECT COUNT(*) FROM `$table`").use { cursor ->
-            check(cursor.moveToFirst()) { "COUNT(*) returned no row for $table" }
+            check(cursor.step()) { "COUNT(*) returned no row for $table" }
             cursor.getInt(0)
         }
 
-    private fun SupportSQLiteDatabase.stringValue(table: String, column: String): String =
+    private fun SQLiteConnection.stringValue(table: String, column: String): String =
         query("SELECT `$column` FROM `$table` LIMIT 1").use { cursor ->
-            check(cursor.moveToFirst()) { "No row in $table" }
-            cursor.getString(0)
+            check(cursor.step()) { "No row in $table" }
+            cursor.getText(0)
         }
 
-    private fun SupportSQLiteDatabase.intValue(table: String, column: String): Int =
+    private fun SQLiteConnection.intValue(table: String, column: String): Int =
         query("SELECT `$column` FROM `$table` LIMIT 1").use { cursor ->
-            check(cursor.moveToFirst()) { "No row in $table" }
+            check(cursor.step()) { "No row in $table" }
             cursor.getInt(0)
         }
 
-    private fun SupportSQLiteDatabase.longValue(table: String, column: String): Long =
+    private fun SQLiteConnection.longValue(table: String, column: String): Long =
         query("SELECT `$column` FROM `$table` LIMIT 1").use { cursor ->
-            check(cursor.moveToFirst()) { "No row in $table" }
+            check(cursor.step()) { "No row in $table" }
             cursor.getLong(0)
         }
 
-    private fun SupportSQLiteDatabase.targetOrdinalsAndPackages(requestId: String): List<Pair<Int, String>> =
+    private fun SQLiteConnection.targetOrdinalsAndPackages(requestId: String): List<Pair<Int, String>> =
         query(
             "SELECT ordinal, package_name FROM sweep_targets WHERE request_id = ? ORDER BY ordinal",
             arrayOf(requestId),
         ).use { cursor ->
             buildList {
-                while (cursor.moveToNext()) add(cursor.getInt(0) to cursor.getString(1))
+                while (cursor.step()) add(cursor.getInt(0) to cursor.getText(1))
             }
         }
 
-    private fun SupportSQLiteDatabase.targetStates(requestId: String): List<String> =
+    private fun SQLiteConnection.targetStates(requestId: String): List<String> =
         query(
             "SELECT state FROM sweep_targets WHERE request_id = ? ORDER BY ordinal",
             arrayOf(requestId),
         ).use { cursor ->
             buildList {
-                while (cursor.moveToNext()) add(cursor.getString(0))
+                while (cursor.step()) add(cursor.getText(0))
             }
         }
 
-    private fun SupportSQLiteDatabase.sourceSurfaces(requestId: String): List<String> =
+    private fun SQLiteConnection.sourceSurfaces(requestId: String): List<String> =
         query(
             """
             SELECT source_surface FROM sweep_request_sources
@@ -397,9 +406,61 @@ class SweepMigrationTest {
             arrayOf(requestId),
         ).use { cursor ->
             buildList {
-                while (cursor.moveToNext()) add(cursor.getString(0))
+                while (cursor.step()) add(cursor.getText(0))
             }
         }
+
+    // MigrationTestHelper 3 validates known tables but no longer accepts validateDroppedTables.
+    // Preserve the old strict check by comparing the actual table set with the exported schema.
+    private suspend fun MigrationTestHelper.migrateAndValidateTables(
+        version: Int,
+        vararg migrations: androidx.room3.migration.Migration,
+    ): SQLiteConnection {
+        val connection = runMigrationsAndValidate(version, migrations.toList())
+        try {
+            val assets = InstrumentationRegistry.getInstrumentation().context.assets
+            val schema = assets.open("${AppDatabase::class.java.name}/$version.json")
+                .bufferedReader().use { JSONObject(it.readText()) }
+            val entities = schema.getJSONObject("database").getJSONArray("entities")
+            val expected = (0 until entities.length()).map {
+                entities.getJSONObject(it).getString("tableName")
+            }.toSet()
+            val actual = connection.query(
+                "SELECT name FROM sqlite_master WHERE type = 'table' " +
+                    "AND name NOT LIKE 'sqlite_%' AND name NOT IN ('room_master_table', 'android_metadata')",
+            ).use { statement ->
+                buildSet { while (statement.step()) add(statement.getText(0)) }
+            }
+            assertEquals(expected, actual)
+            return connection
+        } catch (failure: Throwable) {
+            connection.close()
+            throw failure
+        }
+    }
+
+    private fun SQLiteConnection.execSQL(sql: String, args: Array<out Any?> = emptyArray()) {
+        query(sql, args).use { it.step() }
+    }
+
+    private fun SQLiteConnection.query(sql: String, args: Array<out Any?> = emptyArray()): SQLiteStatement {
+        val statement = prepare(sql)
+        try {
+            args.forEachIndexed { index, value ->
+                when (value) {
+                    null -> statement.bindNull(index + 1)
+                    is String -> statement.bindText(index + 1, value)
+                    is Int -> statement.bindLong(index + 1, value.toLong())
+                    is Long -> statement.bindLong(index + 1, value)
+                    else -> error("Unsupported fixture argument: ${value::class}")
+                }
+            }
+            return statement
+        } catch (failure: Throwable) {
+            statement.close()
+            throw failure
+        }
+    }
 
     private companion object {
         const val TEST_DATABASE = "sweep-migration-test"

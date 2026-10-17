@@ -3,12 +3,17 @@
 
 package com.valhalla.thor.data.source.local.room
 
+import androidx.room3.support.getSupportWrapper
 import android.content.Context
-import androidx.room.Room
-import androidx.room.RoomDatabase
-import androidx.sqlite.db.SupportSQLiteDatabase
-import androidx.sqlite.db.SupportSQLiteOpenHelper
-import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import androidx.room3.Room
+import androidx.room3.PooledConnection
+import androidx.room3.TransactionScope
+import androidx.room3.withWriteTransaction
+import androidx.room3.RoomDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.SQLiteDriver
+import androidx.sqlite.SQLiteStatement
+import androidx.sqlite.driver.AndroidSQLiteDriver
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.domain.model.BundleFormat
@@ -883,11 +888,11 @@ class DataTaskDaoTest {
         dao.insertTask(newExportTask(TASK_2))
         dao.claimOldestRunnableTask("prior-session", "claim-without-token", 2_000L, 3_000L)
         dao.claimOldestRunnableTask("prior-session", "claim-without-session", 2_000L, 3_000L)
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_tasks SET claim_token = NULL WHERE task_id = ?",
             arrayOf(TASK_1),
         )
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_tasks SET service_session_token = NULL WHERE task_id = ?",
             arrayOf(TASK_2),
         )
@@ -1250,9 +1255,9 @@ class DataTaskDaoTest {
         val insertionCompleted = CompletableDeferred<Unit>()
         val stopDecisionMade = AtomicBoolean(false)
         val writerProbe = WriterTransactionProbe()
-        val inserterDatabase = buildDatabase(WriterTrackingOpenHelperFactory(writerProbe))
+        val inserterDatabase = buildDatabase(WriterTrackingDriver(writerProbe))
         val inserterDao = inserterDatabase.dataTaskDao()
-        inserterDatabase.openHelper.writableDatabase
+        inserterDatabase.getSupportWrapper().query("SELECT 1").close()
 
         try {
             coroutineScope {
@@ -1306,9 +1311,24 @@ class DataTaskDaoTest {
         observed: Channel<DataTaskSnapshot?>,
     ): DataTaskSnapshot? = withTimeout(5_000L) { observed.receive() }
 
-    private fun inDatabaseTransaction(block: SupportSQLiteDatabase.() -> Unit) {
-        database.runInTransaction {
-            database.openHelper.writableDatabase.block()
+    private fun inDatabaseTransaction(block: suspend TransactionScope<Unit>.() -> Unit) {
+        // This boundary commits the writer transaction and schedules Flow invalidation, matching
+        // the old RoomDatabase.runInTransaction fixture instead of bypassing Room through a wrapper.
+        runBlocking { database.withWriteTransaction(block) }
+    }
+
+    private suspend fun PooledConnection.execSQL(sql: String, args: Array<out Any?>) {
+        usePrepared(sql) { statement ->
+            args.forEachIndexed { index, value ->
+                when (value) {
+                    null -> statement.bindNull(index + 1)
+                    is String -> statement.bindText(index + 1, value)
+                    is Int -> statement.bindLong(index + 1, value.toLong())
+                    is Long -> statement.bindLong(index + 1, value)
+                    else -> error("Unsupported fixture argument: ${value::class}")
+                }
+            }
+            statement.step()
         }
     }
 
@@ -1399,14 +1419,14 @@ class DataTaskDaoTest {
     }
 
     private fun buildDatabase(
-        openHelperFactory: SupportSQLiteOpenHelper.Factory? = null,
+        driver: SQLiteDriver = AndroidSQLiteDriver(),
     ): AppDatabase {
         val builder = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             DATABASE_NAME,
         ).setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-        openHelperFactory?.let(builder::openHelperFactory)
+        builder.setDriver(driver)
         return builder.build()
     }
 
@@ -1416,7 +1436,7 @@ class DataTaskDaoTest {
     }
 
     private fun loadPersistedTask(taskId: String = TASK_1): PersistedTask =
-        database.openHelper.readableDatabase.query(
+        database.getSupportWrapper().query(
             """
             SELECT state, interruption, result_code, service_session_token, claim_token,
                    claim_lease_expires_at_epoch_ms
@@ -1437,7 +1457,7 @@ class DataTaskDaoTest {
         }
 
     private fun loadPersistedItem(taskId: String = TASK_1): PersistedItem =
-        database.openHelper.readableDatabase.query(
+        database.getSupportWrapper().query(
             """
             SELECT state, claim_token, claim_lease_expires_at_epoch_ms
             FROM data_task_items
@@ -1454,7 +1474,7 @@ class DataTaskDaoTest {
         }
 
     private fun loadPersistedBreadcrumb(): RestoreMutationBreadcrumb =
-        database.openHelper.readableDatabase.query(
+        database.getSupportWrapper().query(
             """
             SELECT mutation_package_name, mutation_app_label, mutation_started_at_epoch_ms
             FROM archive_task_details
@@ -1589,37 +1609,30 @@ class DataTaskDaoTest {
         }
     }
 
-    private class WriterTrackingOpenHelperFactory(
+    private class WriterTrackingDriver(
         private val probe: WriterTransactionProbe,
-        private val delegate: SupportSQLiteOpenHelper.Factory = FrameworkSQLiteOpenHelperFactory(),
-    ) : SupportSQLiteOpenHelper.Factory {
-        override fun create(
-            configuration: SupportSQLiteOpenHelper.Configuration,
-        ): SupportSQLiteOpenHelper = WriterTrackingOpenHelper(
-            delegate = delegate.create(configuration),
-            probe = probe,
-        )
+        private val delegate: SQLiteDriver = AndroidSQLiteDriver(),
+    ) : SQLiteDriver by delegate {
+        override fun open(fileName: String): SQLiteConnection =
+            WriterTrackingConnection(delegate.open(fileName), probe)
     }
 
-    private class WriterTrackingOpenHelper(
-        private val delegate: SupportSQLiteOpenHelper,
+    private class WriterTrackingConnection(
+        private val delegate: SQLiteConnection,
         private val probe: WriterTransactionProbe,
-    ) : SupportSQLiteOpenHelper by delegate {
-        override val writableDatabase: SupportSQLiteDatabase
-            get() = WriterTrackingDatabase(delegate.writableDatabase, probe)
-
-        override val readableDatabase: SupportSQLiteDatabase
-            get() = WriterTrackingDatabase(delegate.readableDatabase, probe)
-    }
-
-    private class WriterTrackingDatabase(
-        private val delegate: SupportSQLiteDatabase,
-        private val probe: WriterTransactionProbe,
-    ) : SupportSQLiteDatabase by delegate {
-        override fun beginTransactionNonExclusive() {
-            probe.onTransactionAttempted()
-            delegate.beginTransactionNonExclusive()
-            probe.onTransactionAcquired()
+    ) : SQLiteConnection by delegate {
+        override fun prepare(sql: String): SQLiteStatement {
+            val statement = delegate.prepare(sql)
+            // Room's writer transaction acquires the same platform SQLite writer lock here.
+            if (!sql.trimStart().startsWith("BEGIN IMMEDIATE", ignoreCase = true)) return statement
+            return object : SQLiteStatement by statement {
+                override fun step(): Boolean {
+                    probe.onTransactionAttempted()
+                    val result = statement.step()
+                    probe.onTransactionAcquired()
+                    return result
+                }
+            }
         }
     }
 

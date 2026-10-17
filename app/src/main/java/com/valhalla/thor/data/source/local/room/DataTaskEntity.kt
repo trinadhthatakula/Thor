@@ -3,10 +3,10 @@
 
 package com.valhalla.thor.data.source.local.room
 
-import androidx.room.ColumnInfo
-import androidx.room.Entity
-import androidx.room.Index
-import androidx.room.PrimaryKey
+import androidx.room3.ColumnInfo
+import androidx.room3.Entity
+import androidx.room3.Index
+import androidx.room3.PrimaryKey
 
 @Entity(
     tableName = "data_tasks",
