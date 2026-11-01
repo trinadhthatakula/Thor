@@ -3,11 +3,15 @@
 
 package com.valhalla.thor.presentation.tile
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.os.Build
 import android.service.quicksettings.TileService
+import androidx.core.content.ContextCompat
 import com.valhalla.thor.R
 import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
 import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
@@ -18,6 +22,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
@@ -27,11 +32,15 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
@@ -54,6 +63,7 @@ class FreezerTileService : TileService() {
     private val sweepResolver: PrivilegeSweepTargetResolver by inject()
     private val sweepController: PrivilegeSweepController by inject()
     private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
+    private val freezerRepository: FreezerRepository by inject()
     private val privilegeManager: PrivilegeManager by inject()
     private val mainDispatcher: CoroutineDispatcher by inject(named("main"))
     private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
@@ -159,7 +169,18 @@ class FreezerTileService : TileService() {
             }
         }
 
-        refreshCandidates(listenScope)
+        listenScope.launch {
+            try {
+                combine(
+                    freezerRepository.getAll().distinctUntilChanged(),
+                    freezeStateChanges(),
+                ) { _, _ -> Unit }.collect { refreshCandidates(listenScope) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Logger.e("FreezerTile", "candidate change observer failed", failure)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -176,6 +197,39 @@ class FreezerTileService : TileService() {
     override fun onClick() {
         sweepLauncher.launchWatchlistToggle(PrivilegeSweepSource.QS_TILE)
     }
+
+    /** Register before the initial snapshot; cancellation unregisters both receiver filters. */
+    private fun freezeStateChanges() = callbackFlow {
+        val context = applicationContext
+        fun receiver() = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                trySend(Unit)
+            }
+        }
+        val packageReceiver = receiver()
+        val packageFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        val suspensionReceiver = receiver()
+        val suspensionFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGES_SUSPENDED)
+            addAction(Intent.ACTION_PACKAGES_UNSUSPENDED)
+        }
+        ContextCompat.registerReceiver(context, packageReceiver, packageFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        try {
+            ContextCompat.registerReceiver(context, suspensionReceiver, suspensionFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            // Pair the first Room emission with a trigger only after both receivers are live.
+            trySend(Unit)
+            awaitClose { context.unregisterReceiver(suspensionReceiver) }
+        } finally {
+            context.unregisterReceiver(packageReceiver)
+        }
+    }.conflate()
 
     private fun refreshCandidates(listenScope: CoroutineScope) {
         candidateRefresh?.cancel()

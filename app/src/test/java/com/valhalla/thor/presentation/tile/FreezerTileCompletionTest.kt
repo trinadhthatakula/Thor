@@ -4,7 +4,10 @@
 package com.valhalla.thor.presentation.tile
 
 import android.app.Application
+import android.content.Intent
+import android.os.Looper
 import android.service.quicksettings.Tile
+import androidx.core.net.toUri
 import com.valhalla.thor.data.freezer.PrivilegeSweepResolutionRuntime
 import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
 import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
@@ -36,6 +39,8 @@ import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -48,6 +53,7 @@ class FreezerTileCompletionTest {
     private val frozenPackages = mutableSetOf<String>()
     private var reads = 0
     private var pause: CompletableDeferred<Unit>? = null
+    private lateinit var freezer: FakeFreezerRepository
     private lateinit var service: FreezerTileService
     private lateinit var tile: Tile
 
@@ -60,7 +66,7 @@ class FreezerTileCompletionTest {
     }
 
     private fun start(packages: Set<String> = setOf("com.example.app")) {
-        val freezer = FakeFreezerRepository(packages)
+        freezer = FakeFreezerRepository(packages)
         val reading = object : FreezerRepository by freezer {
             override suspend fun getAllPackageNames(): List<String> {
                 reads++
@@ -89,11 +95,16 @@ class FreezerTileCompletionTest {
             single<PrivilegeSweepController> { controller }
             single { PrivilegeSweepSurfaceLauncher(resolver, controller, main.dispatcher) }
             single { manager }
+            single<FreezerRepository> { reading }
             single<kotlinx.coroutines.CoroutineDispatcher>(org.koin.core.qualifier.named("main")) { main.dispatcher }
             single<kotlinx.coroutines.CoroutineDispatcher>(org.koin.core.qualifier.named("io")) { main.dispatcher }
         }) }
         service = Robolectric.buildService(FreezerTileService::class.java).create().get()
         tile = service.qsTile
+        // Robolectric does not auto-grant AndroidX's signature permission from the merged manifest.
+        shadowOf(service.applicationContext as Application).grantPermissions(
+            "${service.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+        )
         service.onStartListening()
     }
 
@@ -214,6 +225,72 @@ class FreezerTileCompletionTest {
         service.onClick()
         runCurrent()
         assertEquals(PrivilegeSweepOperation.UNFREEZE, controller.launched.single().operation)
+    }
+
+    @Test fun `Room watchlist changes repaint candidates without a tile sweep`() = runTest {
+        start(emptySet())
+        runCurrent()
+        assertTrue(tile.contentDescription.toString().contains(service.getString(com.valhalla.thor.R.string.tile_no_apps)))
+        frozen = true
+        freezer.add("com.example.app")
+        runCurrent()
+        assertEquals(Tile.STATE_ACTIVE, tile.state)
+        freezer.remove("com.example.app")
+        runCurrent()
+        assertEquals(Tile.STATE_INACTIVE, tile.state)
+        assertTrue(tile.contentDescription.toString().contains(service.getString(com.valhalla.thor.R.string.tile_no_apps)))
+        assertTrue(controller.launched.isEmpty())
+    }
+
+    @Test fun `package freeze and unfreeze broadcasts repaint while shade remains open`() = runTest {
+        start()
+        runCurrent()
+        frozen = true
+        broadcast(Intent(Intent.ACTION_PACKAGE_CHANGED, "package:com.example.app".toUri()))
+        runCurrent()
+        assertEquals(Tile.STATE_ACTIVE, tile.state)
+        frozen = false
+        broadcast(Intent(Intent.ACTION_PACKAGE_CHANGED, "package:com.example.app".toUri()))
+        runCurrent()
+        assertEquals(Tile.STATE_INACTIVE, tile.state)
+        assertTrue(controller.launched.isEmpty())
+    }
+
+    @Test fun `suspension broadcasts without package URI refresh frozen state`() = runTest {
+        start()
+        runCurrent()
+        frozen = true
+        broadcast(Intent(Intent.ACTION_PACKAGES_SUSPENDED)
+            .putExtra(Intent.EXTRA_CHANGED_PACKAGE_LIST, arrayOf("com.example.app")))
+        runCurrent()
+        assertEquals(Tile.STATE_ACTIVE, tile.state)
+        frozen = false
+        broadcast(Intent(Intent.ACTION_PACKAGES_UNSUSPENDED)
+            .putExtra(Intent.EXTRA_CHANGED_PACKAGE_LIST, arrayOf("com.example.app")))
+        runCurrent()
+        assertEquals(Tile.STATE_INACTIVE, tile.state)
+    }
+
+    @Test fun `stopping listening removes receivers and stops watchlist refreshes`() = runTest {
+        val application = RuntimeEnvironment.getApplication()
+        val before = shadowOf(application).registeredReceivers.size
+        start()
+        runCurrent()
+        assertTrue(shadowOf(application).registeredReceivers.size > before)
+        val previousReads = reads
+        service.onStopListening()
+        runCurrent()
+        assertEquals(before, shadowOf(application).registeredReceivers.size)
+        frozen = true
+        freezer.add("another.app")
+        broadcast(Intent(Intent.ACTION_PACKAGE_CHANGED, "package:com.example.app".toUri()))
+        runCurrent()
+        assertEquals(previousReads, reads)
+    }
+
+    private fun broadcast(intent: Intent) {
+        service.applicationContext.sendBroadcast(intent)
+        shadowOf(Looper.getMainLooper()).idle()
     }
 
     @Test fun `running unfreeze keeps its label and repeated taps reconnect`() = runTest {
