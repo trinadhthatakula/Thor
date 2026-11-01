@@ -58,6 +58,53 @@ class PrivilegeSweepTargetResolverTest {
     }
 
     @Test
+    fun `tile snapshot reads each member once and preserves freeze-only safety policy`() = runTest {
+        val candidates = mapOf(
+            "active.safe" to FreezeCandidate(FreezeState.ACTIVE),
+            "active.blocked" to FreezeCandidate(FreezeState.ACTIVE, blockedFromFreeze = true),
+            "frozen.blocked" to FreezeCandidate(FreezeState.FROZEN, blockedFromFreeze = true),
+            "missing" to FreezeCandidate(FreezeState.ABSENT, blockedFromFreeze = true),
+        )
+        val reads = mutableListOf<String>()
+        val ops = mutableListOf<BulkOp>()
+        val resolver = PrivilegeSweepTargetResolver(
+            FakeFreezerRepository(candidates.keys), FakeFreezeProfileRepository(), FakePreferenceRepository(),
+            object : PrivilegeSweepResolutionRuntime {
+                override val userId = 0
+                override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate {
+                    ops += op
+                    return { packageName -> reads += packageName; candidates.getValue(packageName) }
+                }
+            },
+        )
+
+        val snapshot = resolver.resolveWatchlistCandidates()
+
+        assertEquals(candidates.keys, reads.toSet())
+        assertEquals(candidates.size, reads.size)
+        assertEquals(listOf(BulkOp.FREEZE), ops)
+        assertEquals(listOf("active.safe"), snapshot.freezeTargets)
+        assertEquals(listOf("frozen.blocked"), snapshot.unfreezeTargets)
+        assertEquals(BulkOp.UNFREEZE, snapshot.operation)
+        assertEquals(listOf("frozen.blocked"), snapshot.targets)
+    }
+
+    @Test
+    fun `empty tile snapshot skips PackageManager and UAD reads`() = runTest {
+        val resolver = PrivilegeSweepTargetResolver(
+            FakeFreezerRepository(), FakeFreezeProfileRepository(), FakePreferenceRepository(),
+            object : PrivilegeSweepResolutionRuntime {
+                override val userId = 0
+                override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate =
+                    error("empty membership must not load candidate state")
+            },
+        )
+        val snapshot = resolver.resolveWatchlistCandidates()
+        assertEquals(emptyList<String>(), snapshot.targets)
+        assertEquals(BulkOp.FREEZE, snapshot.operation)
+    }
+
+    @Test
     fun `freeze applies UAD and freeze tier safety filters`() = runTest {
         val candidates = mapOf(
             "active.safe" to FreezeCandidate(FreezeState.ACTIVE),

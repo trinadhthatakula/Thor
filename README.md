@@ -46,6 +46,7 @@
 ### Freezer and bulk actions
 
 - Root and Shizuku freeze by disabling; Dhizuku uses Android's device-owner hide/unhide API. These paths retain the APK and app data. Thor also helps recover system apps removed for the current user by older versions. Settings → Freezer offers a default-on Shizuku removal fallback when the device refuses disabling: it keeps data files but may affect accounts, and Unfreeze reinstalls the package. Turning the setting off is respected across app updates.
+- The **Freezer Quick Settings tile** toggles apps in the Freezer watchlist. It lights up when frozen apps are present and offers Unfreeze; otherwise it offers Freeze for eligible apps. Mixed lists unfreeze frozen apps first. Taps during running work reconnect to that task, and new actions check live app state.
 - Universal Android Debloater recommendations label system apps. Thor blocks **Unsafe** freeze targets and warns for **Expert** targets to reduce the risk of boot problems.
 - Freeze Profiles group apps for freeze/unfreeze, suspend, or force-stop actions. Assign selected apps to existing profiles from the App list or Freezer; App Info shows membership, and removing the last profile membership of a frozen app offers a recovery choice.
 - Batch reinstall, uninstall, freeze, unfreeze, force-stop, suspend, unsuspend, cache clearing, sharing, and APK/bundle export. Bulk Freeze asks whether successfully frozen apps should also be added to the Freezer list. **Batch clear data and batch install are not available.**

@@ -364,6 +364,12 @@
         <item quantity="many">%1$d aplikacji · dotknij, aby zamrozić</item>
         <item quantity="other">%1$d aplikacji · dotknij, aby zamrozić</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d aplikacja · dotknij, aby odmrozić</item>
+        <item quantity="few">%1$d aplikacje · dotknij, aby odmrozić</item>
+        <item quantity="many">%1$d aplikacji · dotknij, aby odmrozić</item>
+        <item quantity="other">%1$d aplikacji · dotknij, aby odmrozić</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Najpierw przyznaj Root / Shizuku / Dhizuku</string>
     <string name="tile_no_apps_toast">Brak aplikacji w Zamrażarce</string>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
@@ -371,6 +377,8 @@
          fired before these packages resolved. -->
     <string name="tile_checking">Sprawdzanie…</string>
     <string name="tile_freezing">Zamrażanie…</string>
+    <string name="tile_unfreezing">Odmrażanie…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ustawienia Zamrażarki</string>
