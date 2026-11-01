@@ -359,10 +359,16 @@
         <item quantity="one">%1$d app · tap to freeze</item>
         <item quantity="other">%1$d apps · tap to freeze</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d app · tap to unfreeze</item>
+        <item quantity="other">%1$d apps · tap to unfreeze</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Grant Root / Shizuku / Dhizuku first</string>
     <string name="tile_no_apps_toast">No apps in Freezer</string>
     <string name="tile_checking">Checking…</string>
     <string name="tile_freezing">Freezing…</string>
+    <string name="tile_unfreezing">Unfreezing…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>

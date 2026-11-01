@@ -225,10 +225,16 @@
         <item quantity="one">%1$d appli · appuyer pour geler</item>
         <item quantity="other">%1$d applis · appuyer pour geler</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d appli · appuyer pour dégeler</item>
+        <item quantity="other">%1$d applis · appuyer pour dégeler</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Accordez Root / Shizuku / Dhizuku d\'abord</string>
     <string name="tile_no_apps_toast">Aucune application dans le Congélateur</string>
     <string name="tile_checking">Vérification…</string>
     <string name="tile_freezing">Gel en cours…</string>
+    <string name="tile_unfreezing">Dégel en cours…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Paramètres du congélateur</string>

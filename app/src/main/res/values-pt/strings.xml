@@ -363,6 +363,10 @@
         <item quantity="one">%1$d aplicação · tocar para congelar</item>
         <item quantity="other">%1$d aplicações · tocar para congelar</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d aplicação · tocar para descongelar</item>
+        <item quantity="other">%1$d aplicações · tocar para descongelar</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Conceda primeiro Root / Shizuku / Dhizuku</string>
     <string name="tile_no_apps_toast">Não há aplicações no Congelador</string>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
@@ -370,6 +374,8 @@
          fired before these packages resolved. -->
     <string name="tile_checking">A verificar…</string>
     <string name="tile_freezing">A congelar…</string>
+    <string name="tile_unfreezing">A descongelar…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Definições do Congelador</string>

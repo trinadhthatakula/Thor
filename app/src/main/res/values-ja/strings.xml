@@ -265,10 +265,15 @@
     <plurals name="tile_subtitle_format">
         <item quantity="other">%1$d件のアプリ · タップして凍結</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="other">%1$d件のアプリ · タップして凍結解除</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">先にRoot、Shizuku、またはDhizukuへのアクセスを許可してください。</string>
     <string name="tile_no_apps_toast">フリーザーにアプリがありません</string>
     <string name="tile_checking">確認中…</string>
     <string name="tile_freezing">凍結中…</string>
+    <string name="tile_unfreezing">凍結解除中…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
     <string name="freezer_settings">フリーザーの設定</string>
     <string name="unfreeze_all">フリーザーアプリの凍結を解除する</string>
     <string name="unfreeze_all_apps">フリーザー内のすべてのアプリの凍結を解除</string>

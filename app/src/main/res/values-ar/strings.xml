@@ -230,11 +230,21 @@
         <item quantity="many">%1$d تطبيقًا · اضغط للتجميد</item>
         <item quantity="other">%1$d تطبيق · اضغط للتجميد</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="zero">لا توجد تطبيقات · اضغط لإلغاء التجميد</item>
+        <item quantity="one">تطبيق واحد · اضغط لإلغاء التجميد</item>
+        <item quantity="two">تطبيقان · اضغط لإلغاء التجميد</item>
+        <item quantity="few">%1$d تطبيقات · اضغط لإلغاء التجميد</item>
+        <item quantity="many">%1$d تطبيقًا · اضغط لإلغاء التجميد</item>
+        <item quantity="other">%1$d تطبيق · اضغط لإلغاء التجميد</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">امنح صلاحية Root / Shizuku / Dhizuku أولاً</string>
     <string name="tile_no_apps_toast">لا توجد تطبيقات في المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <string name="tile_checking">جارٍ التحقق…</string>
     <string name="tile_freezing">جارٍ التجميد…</string>
+    <string name="tile_unfreezing">جارٍ إلغاء التجميد…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>

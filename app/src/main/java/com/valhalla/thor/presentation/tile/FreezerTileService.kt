@@ -11,9 +11,9 @@ import android.service.quicksettings.TileService
 import com.valhalla.thor.R
 import com.valhalla.thor.data.freezer.PrivilegeSweepSurfaceLauncher
 import com.valhalla.thor.data.freezer.PrivilegeSweepTargetResolver
+import com.valhalla.thor.data.freezer.WatchlistFreezeCandidates
 import com.valhalla.thor.data.manager.PrivilegeManager
-import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
@@ -33,11 +33,12 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
 import org.koin.core.qualifier.named
 
 /**
- * Quick Settings tile that bulk-freezes the freezer watchlist.
+ * Quick Settings tile that toggles the freezer watchlist; mixed lists unfreeze first.
  *
  * The tile owns no work. [the durable sweep controller] is an app-scoped @Single that runs the batch and
  * publishes its state, so a QS shade collapse destroying this service cannot truncate a
@@ -55,11 +56,11 @@ class FreezerTileService : TileService() {
     private val sweepLauncher: PrivilegeSweepSurfaceLauncher by inject()
     private val privilegeManager: PrivilegeManager by inject()
     private val mainDispatcher: CoroutineDispatcher by inject(named("main"))
+    private val ioDispatcher: CoroutineDispatcher by inject(named("io"))
 
     private var scope: CoroutineScope? = null
     private var candidateRefresh: Job? = null
-    private val freezableCount = MutableStateFlow<Int?>(null)
-    private val unfreezeCount = MutableStateFlow<Int?>(null)
+    private val candidates = MutableStateFlow<WatchlistFreezeCandidates?>(null)
     private var latestStatus: PrivilegeSweepStatus? = null
 
     /**
@@ -143,10 +144,9 @@ class FreezerTileService : TileService() {
                     }
                 combine(
                     privilegeManager.state,
-                    freezableCount,
-                    unfreezeCount,
+                    candidates,
                     statuses,
-                ) { _, _, _, status -> status }.collect { status ->
+                ) { _, _, status -> status }.collect { status ->
                     latestStatus = status
                     paint()
                 }
@@ -174,39 +174,18 @@ class FreezerTileService : TileService() {
     }
 
     override fun onClick() {
-        // সব অ্যাপ frozen থাকলে Unfreeze, না হলে Freeze
-        val op = if (freezableCount.value == 0 && (unfreezeCount.value ?: 0) > 0) {
-            BulkOp.UNFREEZE
-        } else {
-            BulkOp.FREEZE
-        }
-        sweepLauncher.launch(
-            request = BulkRequest(op),
-            source = PrivilegeSweepSource.QS_TILE,
-        )
+        sweepLauncher.launchWatchlistToggle(PrivilegeSweepSource.QS_TILE)
     }
 
     private fun refreshCandidates(listenScope: CoroutineScope) {
         candidateRefresh?.cancel()
-        freezableCount.value = null
-        unfreezeCount.value = null
+        candidates.value = null
         candidateRefresh = listenScope.launch {
             try {
-                // কতটা freeze করা যাবে
-                val freeze = sweepResolver.resolve(
-                    BulkRequest(BulkOp.FREEZE),
-                    PrivilegeSweepSource.QS_TILE,
-                ).packageNames.size
+                val snapshot = withContext(ioDispatcher) { sweepResolver.resolveWatchlistCandidates() }
+                // A cancelled lifecycle/refresh generation cannot publish even an uncooperative read.
                 currentCoroutineContext().ensureActive()
-                freezableCount.value = freeze
-
-                // কতটা unfreeze করা যাবে
-                val unfreeze = sweepResolver.resolve(
-                    BulkRequest(BulkOp.UNFREEZE),
-                    PrivilegeSweepSource.QS_TILE,
-                ).packageNames.size
-                currentCoroutineContext().ensureActive()
-                unfreezeCount.value = unfreeze
+                candidates.value = snapshot
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -225,12 +204,15 @@ class FreezerTileService : TileService() {
         if (scope == null) return
         val tile = qsTile ?: return
         val status = latestStatus
+        val snapshot = candidates.value
+        val freezeCount = snapshot?.freezeTargets?.size
+        val unfreezeCount = snapshot?.unfreezeTargets?.size
         val visual = tileVisualFor(
             privilege = privilegeManager.state.value,
-            freezableCount = freezableCount.value,
+            freezableCount = freezeCount,
+            unfreezeCount = unfreezeCount,
             status = status,
         )
-        val count = freezableCount.value ?: 0
 
         tile.state = tileStateFor(visual)
 
@@ -241,24 +223,29 @@ class FreezerTileService : TileService() {
                 it.phase == PrivilegeSweepPhase.FAILED ||
                 it.phase == PrivilegeSweepPhase.OBSERVER_FAILURE
         }
-        val subtitle = if (terminal != null) {
-            getString(
-                R.string.sweep_result_summary,
-                terminal.succeeded,
-                terminal.failed,
-                terminal.busy,
-                terminal.unresolved,
+        val action = when (visual) {
+            TileVisual.CHECKING -> getString(R.string.tile_checking)
+            TileVisual.WORKING -> getString(
+                if (status?.operation == PrivilegeSweepOperation.UNFREEZE) R.string.tile_unfreezing
+                else R.string.tile_freezing,
             )
-        } else {
-            when (visual) {
-                TileVisual.CHECKING -> getString(R.string.tile_checking)
-                TileVisual.WORKING -> getString(R.string.tile_freezing)
-                TileVisual.NO_PRIVILEGE -> getString(R.string.tile_no_privilege)
-                TileVisual.NOTHING_TO_FREEZE -> getString(R.string.tile_no_apps)
-                TileVisual.READY ->
-                    resources.getQuantityString(R.plurals.tile_subtitle_format, count, count)
-            }
+            TileVisual.NO_PRIVILEGE -> getString(R.string.tile_no_privilege)
+            TileVisual.NOTHING_TO_FREEZE -> getString(R.string.tile_no_apps)
+            TileVisual.READY -> resources.getQuantityString(
+                R.plurals.tile_subtitle_format, freezeCount ?: 0, freezeCount ?: 0,
+            )
+            TileVisual.READY_TO_UNFREEZE -> resources.getQuantityString(
+                R.plurals.tile_unfreeze_subtitle_format, unfreezeCount ?: 0, unfreezeCount ?: 0,
+            )
         }
+        val subtitle = if (terminal != null && visual in CANDIDATE_IDLE_VISUALS) {
+            getString(
+                R.string.tile_result_action_format,
+                action,
+                getString(R.string.sweep_result_summary, terminal.succeeded, terminal.failed,
+                    terminal.busy, terminal.unresolved),
+            )
+        } else action
 
         // Never setLabel: it mutates the tile's identity in the QS picker.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) tile.subtitle = subtitle
@@ -285,4 +272,10 @@ private val CANDIDATE_TERMINAL_PHASES = setOf(
     PrivilegeSweepPhase.PARTIAL,
     PrivilegeSweepPhase.CANCELLED,
     PrivilegeSweepPhase.FAILED,
+)
+
+private val CANDIDATE_IDLE_VISUALS = setOf(
+    TileVisual.READY,
+    TileVisual.READY_TO_UNFREEZE,
+    TileVisual.NOTHING_TO_FREEZE,
 )

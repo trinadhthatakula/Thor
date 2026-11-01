@@ -3,9 +3,7 @@
 
 package com.valhalla.thor.presentation.tile
 
-import com.valhalla.thor.data.freezer.launchSurfaceSweep
-import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.data.freezer.launchWatchlistToggleSurfaceSweep
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
@@ -24,12 +22,11 @@ class FreezerTileServiceTest {
     @Test
     fun `tile enqueues and returns without awaiting sweep completion`() = runTest {
         val controller = FakePrivilegeSweepController()
-        val result = launchSurfaceSweep(
+        val result = launchWatchlistToggleSurfaceSweep(
             resolver = privilegeSweepResolver(
                 freezerRepository = FakeFreezerRepository(setOf("b", "a"))
             ),
             controller = controller,
-            request = BulkRequest(BulkOp.FREEZE),
             source = PrivilegeSweepSource.QS_TILE,
         )
 
@@ -43,17 +40,37 @@ class FreezerTileServiceTest {
         val status = status(PrivilegeSweepPhase.QUEUED)
         controller.emit(status)
 
-        val result = launchSurfaceSweep(
+        val result = launchWatchlistToggleSurfaceSweep(
             resolver = privilegeSweepResolver(
                 freezerRepository = FakeFreezerRepository(setOf("a"))
             ),
             controller = controller,
-            request = BulkRequest(BulkOp.FREEZE),
             source = PrivilegeSweepSource.QS_TILE,
         )
 
         assertTrue((result as PrivilegeSweepLaunchResult.Accepted).coalesced)
         assertEquals(status.requestId, result.requestId)
+        assertTrue(controller.launched.isEmpty())
+    }
+
+    @Test
+    fun `tile reconnects if another sweep is accepted during candidate resolution`() = runTest {
+        val controller = FakePrivilegeSweepController()
+        val retained = status(PrivilegeSweepPhase.QUEUED).copy(operation = PrivilegeSweepOperation.UNFREEZE)
+        val freezer = FakeFreezerRepository(setOf("a"))
+        val reading = object : com.valhalla.thor.domain.repository.FreezerRepository by freezer {
+            override suspend fun getAllPackageNames(): List<String> {
+                controller.emit(retained)
+                return freezer.getAllPackageNames()
+            }
+        }
+        val result = launchWatchlistToggleSurfaceSweep(
+            resolver = privilegeSweepResolver(freezerRepository = reading),
+            controller = controller,
+            source = PrivilegeSweepSource.QS_TILE,
+        )
+        assertEquals(retained.requestId, (result as PrivilegeSweepLaunchResult.Accepted).requestId)
+        assertTrue(result.coalesced)
         assertTrue(controller.launched.isEmpty())
     }
 
