@@ -59,6 +59,7 @@ class FreezerTileService : TileService() {
     private var scope: CoroutineScope? = null
     private var candidateRefresh: Job? = null
     private val freezableCount = MutableStateFlow<Int?>(null)
+    private val unfreezeCount = MutableStateFlow<Int?>(null)
     private var latestStatus: PrivilegeSweepStatus? = null
 
     /**
@@ -143,8 +144,9 @@ class FreezerTileService : TileService() {
                 combine(
                     privilegeManager.state,
                     freezableCount,
+                    unfreezeCount,
                     statuses,
-                ) { _, _, status -> status }.collect { status ->
+                ) { _, _, _, status -> status }.collect { status ->
                     latestStatus = status
                     paint()
                 }
@@ -172,8 +174,14 @@ class FreezerTileService : TileService() {
     }
 
     override fun onClick() {
+        // সব অ্যাপ frozen থাকলে Unfreeze, না হলে Freeze
+        val op = if (freezableCount.value == 0 && (unfreezeCount.value ?: 0) > 0) {
+            BulkOp.UNFREEZE
+        } else {
+            BulkOp.FREEZE
+        }
         sweepLauncher.launch(
-            request = BulkRequest(BulkOp.FREEZE),
+            request = BulkRequest(op),
             source = PrivilegeSweepSource.QS_TILE,
         )
     }
@@ -181,15 +189,24 @@ class FreezerTileService : TileService() {
     private fun refreshCandidates(listenScope: CoroutineScope) {
         candidateRefresh?.cancel()
         freezableCount.value = null
+        unfreezeCount.value = null
         candidateRefresh = listenScope.launch {
             try {
-                val count = sweepResolver.resolve(
+                // কতটা freeze করা যাবে
+                val freeze = sweepResolver.resolve(
                     BulkRequest(BulkOp.FREEZE),
                     PrivilegeSweepSource.QS_TILE,
                 ).packageNames.size
-                // A late/non-cancellable read cannot overwrite a newer listening/refresh generation.
                 currentCoroutineContext().ensureActive()
-                freezableCount.value = count
+                freezableCount.value = freeze
+
+                // কতটা unfreeze করা যাবে
+                val unfreeze = sweepResolver.resolve(
+                    BulkRequest(BulkOp.UNFREEZE),
+                    PrivilegeSweepSource.QS_TILE,
+                ).packageNames.size
+                currentCoroutineContext().ensureActive()
+                unfreezeCount.value = unfreeze
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
