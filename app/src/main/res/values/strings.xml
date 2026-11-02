@@ -491,7 +491,6 @@
     <!-- %1$s is an app name, %2$s a comma-separated list of package names that recorded the
          suspension. Shown when Thor cannot lift a suspension because Android only lets the
          privilege that applied it remove it (API 30+). -->
-    <string name="suspend_owned_by_other_privilege">Can\'t unsuspend %1$s from here. It was suspended by %2$s, and Android only lets the same privilege lift it. Switch Thor back to that privilege mode and try again.</string>
     <!-- %1$s is an app name. Shown when a preinstalled app cannot be frozen because this device
          refused to disable it and this build of Android reserves "remove for one user" for uid 0.
          Deliberately names no privilege mode: both the Shizuku and the Dhizuku gateway raise it,

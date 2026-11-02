@@ -31,3 +31,16 @@ internal fun buildSuspendDialogInfo(message: String, title: String): Any? = runC
     Logger.w("SuspendDialog", "Custom suspension dialog unavailable: $error")
     null
 }
+
+/** Complete fixed resource strings, including dialogs created before a language switch. */
+internal fun knownThorSuspendDialogs(context: android.content.Context): Set<String> =
+    listOf("en", "ar", "es", "fr", "ja", "pl", "pt", "pt-BR", "zh-CN").mapNotNull { tag ->
+        val configuration = android.content.res.Configuration(context.resources.configuration).apply {
+            setLocale(java.util.Locale.forLanguageTag(tag))
+        }
+        val resources = context.createConfigurationContext(configuration).resources
+        buildSuspendDialogInfo(
+            resources.getString(com.valhalla.thor.R.string.suspended_app_dialog_message),
+            resources.getString(com.valhalla.thor.R.string.suspended_app_dialog_title),
+        )?.toString()
+    }.toSet()

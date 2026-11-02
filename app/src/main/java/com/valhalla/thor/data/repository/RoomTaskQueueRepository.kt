@@ -205,7 +205,7 @@ internal fun StoredPrivilegeSweep.toQueuedDetail(): QueuedTaskDetail = QueuedTas
             order = target.ordinal.toLong(),
             messageCode = "SWEEP_TARGET_${target.state.name}",
             arguments = listOfNotNull(target.packageName, target.resultCode?.value?.takeIf {
-                target.state == PrivilegeSweepTargetState.FAILED && it != "FAILED"
+                (target.state == PrivilegeSweepTargetState.FAILED && it != "FAILED") || it == "EXTERNAL_SUSPENSION_REMAINS"
             }),
             level = when (target.state) {
                 PrivilegeSweepTargetState.SUCCEEDED -> TaskLogLevel.SUCCESS
@@ -225,7 +225,8 @@ internal fun StoredPrivilegeSweep.toQueuedDetail(): QueuedTaskDetail = QueuedTas
         pendingCount = targetSnapshots.count { it.state == PrivilegeSweepTargetState.PENDING },
     ),
     resultCode = terminalState?.name,
-    warningCodes = emptyList(),
+    warningCodes = if (targetSnapshots.any { it.resultCode?.value == "EXTERNAL_SUSPENSION_REMAINS" })
+        listOf("EXTERNAL_SUSPENSION_REMAINS") else emptyList(),
 )
 
 /** A bounded snapshot window, not an event journal. Pending children consume only one row. */

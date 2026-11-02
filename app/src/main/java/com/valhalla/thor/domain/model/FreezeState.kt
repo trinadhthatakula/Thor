@@ -23,6 +23,9 @@ data class FreezeCandidate(
      * allowed and is in fact the way *out* of a bad state.
      */
     val blockedFromFreeze: Boolean = false,
+    /** Mechanisms from the same live read. Null preserves conservative legacy/fake callers. */
+    val isDisabled: Boolean? = null,
+    val isSuspended: Boolean? = null,
 )
 
 /**
@@ -30,7 +33,9 @@ data class FreezeCandidate(
  *
  * This is the fix for the tile counting watchlist rows: the freezer watchlist is invariant
  * under freeze/unfreeze, so only the live per-app state can tell us whether there is
- * anything left to do. [FreezeState.ABSENT] packages are skipped but deliberately left in
+ * anything left to do. Explicit Freeze includes suspended/disabled apps for mode conversion;
+ * its executor verifies the selected mode instead of treating every suspension as already done.
+ * [FreezeState.ABSENT] packages are skipped but deliberately left in
  * the watchlist — pruning them is out of scope.
  *
  * Written as two explicit branches rather than one `wanted` state plus a shared filter so the
@@ -45,7 +50,7 @@ fun freezableCandidates(
 ): List<String> = when (op) {
     BulkOp.FREEZE -> watchlist.filter {
         val candidate = candidateOf(it)
-        candidate.state == FreezeState.ACTIVE && !candidate.blockedFromFreeze
+        candidate.state != FreezeState.ABSENT && !candidate.blockedFromFreeze
     }
 
     BulkOp.UNFREEZE -> watchlist.filter { candidateOf(it).state == FreezeState.FROZEN }

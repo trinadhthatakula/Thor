@@ -26,6 +26,12 @@ import org.junit.Test
 class UiTextTest {
 
     @Test
+    fun `unknown remaining suspension reports preservation instead of unfreeze success`() {
+        val change = com.valhalla.thor.domain.model.SuspensionChange(ownershipUnknown = true)
+        assertEquals(UiText.StringResource(R.string.suspension_ownership_unknown), change.restorationFeedback("App"))
+    }
+
+    @Test
     fun `an argument list with nothing nested is handed back untouched`() {
         val args = arrayOf<Any>("disk is full", 3)
 

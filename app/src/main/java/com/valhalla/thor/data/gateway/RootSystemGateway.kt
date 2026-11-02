@@ -3,6 +3,15 @@
 
 package com.valhalla.thor.data.gateway
 
+import com.valhalla.thor.data.source.local.SuspensionMarkers
+import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
+import com.valhalla.thor.domain.model.THOR_SUSPENDER_IDENTITY
+import com.valhalla.thor.domain.model.changeOwnedSuspension
+import com.valhalla.thor.domain.model.SuspensionFailureReason
+import com.valhalla.thor.domain.model.SuspensionPolicyException
+import com.valhalla.thor.domain.model.OwnedSuspensionSnapshot
+import com.valhalla.thor.domain.model.SuspensionOwner
+import com.valhalla.thor.domain.model.SuspensionChange
 import android.annotation.SuppressLint
 import android.content.Context
 import com.valhalla.superuser.utils.escapeForShell
@@ -776,244 +785,89 @@ class RootSystemGateway internal constructor(
             (it.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
         }
 
-    /**
-     * Suspends or unsuspends [packageName], reporting only what a re-read of the platform's own
-     * record can prove.
-     *
-     * ### The unsuspend side reads before it writes
-     *
-     * Android keys a suspension on the suspending package name captured at suspend time, and from
-     * API 30 `PackageSettingBase.removeSuspension(callingPackage)` (android-11.0.0_r1
-     * `PackageSettingBase.java:443-452`, carried into `SuspendPackageHelper` on 13-16) drops only
-     * the caller's own entry, leaving `suspended` true while anyone else's survives. A suspension
-     * made in Shizuku mode is recorded as `com.android.shell`, so the root path that only ever
-     * named `com.valhalla.thor` removed nothing — and was told nothing, because naming a suspender
-     * that owns no entry leaves `oldSuspendParams == null == newSuspendParams`, so `changed` is
-     * false, so the package is logged "No change is needed" and left *out* of the failure array the
-     * API returns. Switching to root to rescue such an app is the reported bug, and reading the
-     * record and issuing one removal per recorded owner is what fixes it.
-     *
-     * Root can do that and no other privilege can:
-     * `PackageManagerService.enforceCanSetPackagesSuspendedAsUser` (android-17.0.0_r1
-     * `PackageManagerService.java:3354-3358`) unconditionally early-returns for `Process.ROOT_UID`
-     * *before* any suspender-name validation, unchanged from API 28 to main, so a uid-0 call naming
-     * `com.android.shell` is accepted verbatim. The shell branch of the same check is
-     * `callingUid == SHELL_UID && isCallerSameApp(...)`, which is why Shizuku cannot do the reverse.
-     *
-     * ### Nothing here trusts an exit code
-     *
-     * `pm unsuspend` exits 0 for precisely the no-op above, so the old `cleared || shell.isSuccess`
-     * turned "removed nothing" into a success; and the old flag read ended in `?: false`, so a
-     * package whose `ApplicationInfo` could not be read reported "not suspended", which read as "we
-     * succeeded". Both are gone. Every success below is either a record that no longer names anyone
-     * or a `FLAG_SUSPENDED` that positively reads false; "could not tell" is a failure, and the
-     * failure names the owner so the user learns *which* privilege holds the app.
-     */
+    /** The bounded, typed daemon read is shared by mutations and read-only tile resolution. */
+    private fun readOwnedSuspension(
+        packageName: String,
+        userId: Int,
+        service: IThorRootService?,
+    ): OwnedSuspensionSnapshot? {
+        if (service == null) {
+            return if (readSuspendedFlag(packageName) == false)
+                OwnedSuspensionSnapshot(emptySet(), emptySet()) else null
+        }
+        return when (val state = RootSuspensionReadbackClient(service).read(packageName, userId)) {
+            RootSuspensionReadback.NotSuspended -> {
+                if (readSuspendedFlag(packageName) == true) null
+                else OwnedSuspensionSnapshot(emptySet(), emptySet())
+            }
+            is RootSuspensionReadback.Suspended -> {
+                val owners = state.owners.map { SuspensionOwner(it.packageName, it.userId) }.toSet()
+                val markers = SuspensionMarkers(context)
+                val token = markers.token(packageName, userId)
+                val markedShell = token != null && try {
+                    markers.readToken(packageName, userId) == token
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    false
+                }
+                val ours = owners.filter {
+                    it.userId == userId &&
+                        (it.packageName in setOf(context.packageName, THOR_SUSPENDER_IDENTITY) ||
+                            (it.packageName == SHELL_SUSPENDER_IDENTITY && markedShell))
+                }.toSet()
+                OwnedSuspensionSnapshot(owners, ours)
+            }
+            else -> null
+        }
+    }
+
+    override suspend fun isAppSuspendedByThor(packageName: String): Boolean? = withContext(ioDispatcher) {
+        try {
+            if (!packageName.matches(PACKAGE_NAME_REGEX)) return@withContext null
+            readOwnedSuspension(packageName, SUSPEND_USER_ID, getRootService())?.thorOwners?.isNotEmpty()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Root names only verified Thor owners, including marked shell entries from another mode. */
     override suspend fun setAppSuspended(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = admittedResult(ioDispatcher) {
-        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
-        }
-        val hasReflection = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
-        val escapedPackage = packageName.escapeForShell()
-
-        if (isSuspended) {
-            // SUSPEND via the reflection path only: setPackagesSuspendedAsUser(caller = our app id).
-            // A root-shell `pm suspend` (uid 0) records the suspender as "root", a non-existent
-            // package, so tapping the paused app crashes SuspendedAppActivity
-            // ("IllegalArgumentException: Package root does not exist"). We never fall back to the
-            // shell for suspend — a broken suspension is worse than a reported failure. GH#239.
-            //
-            // The identity is still left to the daemon — hence the null third argument: the system
-            // builds the user-visible "managed by Thor" line out of the recorded suspender name, so
-            // what this writes as *who* is deliberately unchanged.
-            //
-            // What this writes as *where* is not. `setAppSuspendedAsForUser` and not the userless
-            // `setAppSuspended`: the daemon runs as uid 0 in user 0 and cannot read Thor's user for
-            // itself, so the old entry point suspended the primary user's copy while
-            // [readSuspendedFlag] below — the only thing that can contradict the daemon — asked
-            // Thor's. A daemon left over from an older build has no transaction code for this and
-            // answers false, which lands on the failure below rather than on another user's app.
-            if (hasReflection) {
-                val service = getRootService()
-                if (service != null) {
-                    val taskResult = try {
-                        service.setAppSuspendedAsForUser(packageName, true, null, SUSPEND_USER_ID)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (failure: Exception) {
-                        Logger.e("RootSystemGateway", "AIDL suspend outcome is uncertain", failure)
-                        false
-                    }
-                    // `== true` and not a bare call: readSuspendedFlag answers null when the package
-                    // cannot be read, and "could not tell" must not stand in for the daemon's own
-                    // verified success.
-                    if (taskResult || readSuspendedFlag(packageName) == true) {
-                        return@admittedResult Result.success(Unit)
-                    }
-                }
-                return@admittedResult Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
+    ): Result<SuspensionChange> = admittedResult(ioDispatcher) {
+        try {
+            if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+                return@admittedResult Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
             }
-            // API < 29 has no SuspendDialogInfo reflection path, so the shell is the whole rung and
-            // it has to name the user itself. `PackageManagerShellCommand.runSuspend` seeds
-            // `UserHandle.USER_SYSTEM`, so the bare form this replaces suspended user 0 whichever
-            // user Thor runs as, while [readSuspendedFlag] — the only judge of the result — read
-            // Thor's own and saw nothing change. On a single-user device the two commands are the
-            // same operation byte for byte; on a secondary user they are two different apps.
-            //
-            // Its exit code is not the judge either, and never was entitled to be:
-            // `PackageManagerShellCommand.runSuspend` returns 0 whenever `setPackagesSuspendedAsUser`
-            // did not throw, discarding the failure array that names the packages it declined to
-            // suspend — an exempt package, or one not installed for this user, comes back as a clean
-            // exit. [readSuspendedFlag] already decides every other branch of this function (the AIDL
-            // suspend above, the early return in [unsuspendPackage]); this rung was the one place a
-            // `pm` exit code still stood in for it.
-            //
-            // `== true` and not a bare call, for the reason the AIDL branch above spells out:
-            // [readSuspendedFlag] answers `null` for "could not read the package at all", and "could
-            // not tell" must never stand in for success. The readback is legitimate here only because
-            // [SUSPEND_USER_ID] is [thorUserId]: `--user` and `getApplicationInfo` — which can answer
-            // for Thor's own user and nothing else — name one user by construction. Pin either back
-            // to 0 and this guard starts asking about a different copy of the app than the command
-            // changed. It is also fresh by the same argument [setAppDisabled] makes, only stronger:
-            // this rung runs on API 28 alone, which has no `ApplicationInfo` cache, so the read is a
-            // plain binder round trip to PMS.
-            val shell = runCommand(
-                "pm suspend --user $SUSPEND_USER_ID $escapedPackage", execution, APP_SUSPEND,
-            )
-            return@admittedResult if (shell.isSuccess && readSuspendedFlag(packageName) == true) shell
-            else Result.failure(
-                Exception(
-                    if (shell.isSuccess) {
-                        "Root suspend of $packageName is unverified: the shell step exited 0 but " +
-                            "FLAG_SUSPENDED does not read back as set for user $SUSPEND_USER_ID."
-                    } else {
-                        "Root suspend failed for $packageName."
-                    }
-                )
-            )
-        }
-
-        return@admittedResult unsuspendPackage(packageName, escapedPackage, hasReflection, execution)
-    }
-
-    /**
-     * Removes only owners from a complete typed read for Thor's Android user. Unknown, refused,
-     * stale-protocol and cross-user ownership cannot authorize a guessed sweep. A failed dispatched
-     * mutation ends further writes; only readback may establish its result, never a shell replay.
-     */
-    private suspend fun unsuspendPackage(
-        packageName: String,
-        escapedPackage: String,
-        hasReflection: Boolean,
-        execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        if (readSuspendedFlag(packageName) == false) {
-            Logger.i("RootSystemGateway", "unsuspend $packageName: not suspended, no rung run")
-            return Result.success(Unit)
-        }
-
-        val userId = SUSPEND_USER_ID
-        val service = if (hasReflection) getRootService() else null
-        if (service != null) {
-            val reader = RootSuspensionReadbackClient(service)
-            val recorded = when (val readback = reader.read(packageName, userId)) {
-                RootSuspensionReadback.NotSuspended -> {
-                    return if (readSuspendedFlag(packageName) != true) Result.success(Unit)
-                    else unsuspendFailure(
-                        "Root unsuspend of $packageName is unverified: the service reports no " +
-                            "suspension for user $userId, but the package still reports FLAG_SUSPENDED."
-                    )
-                }
-                is RootSuspensionReadback.Suspended -> readback.owners
-                RootSuspensionReadback.NotInstalled -> return unsuspendFailure(
-                    "Root unsuspend of $packageName cannot proceed: the package is not installed " +
-                        "for user $userId."
-                )
-                is RootSuspensionReadback.Refused -> return unsuspendFailure(
-                    "Root unsuspend of $packageName cannot proceed: the service refused the " +
-                        "suspension read for user $userId."
-                )
-                is RootSuspensionReadback.Unknown -> return unsuspendFailure(
-                    "Root unsuspend of $packageName is unverified: suspension ownership could not " +
-                        "be read for user $userId. No removal was attempted."
-                )
+            if (!isSuspended && readSuspendedFlag(packageName) == false) {
+                return@admittedResult Result.success(SuspensionChange())
             }
-            // The legacy mutation method names one user for both target and owner. Retain the
-            // cross-user identity in the read result, but never flatten it into an unsafe write.
-            if (recorded.any { it.userId != userId }) {
-                return unsuspendFailure(
-                    "Root unsuspend of $packageName cannot proceed: a suspension belongs to " +
-                        "another Android user. No removal was attempted."
-                )
+            val userId = SUSPEND_USER_ID
+            val service = getRootService()
+            val actor = SuspensionOwner(context.packageName, userId)
+            if (isSuspended && android.os.Build.VERSION.SDK_INT < 29) {
+                return@admittedResult Result.failure(
+                    SuspensionPolicyException(SuspensionFailureReason.CANNOT_KEEP_INDEPENDENT))
             }
-
-            for (owner in recorded) {
-                val confirmed = try {
-                    service.setAppSuspendedAsForUser(packageName, false, owner.packageName, userId)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    // Binder can die after dispatch. Stop here rather than rebinding, removing the
-                    // next owner, or replaying the mutation through pm. Read-only verification follows.
-                    Logger.e("RootSystemGateway", "AIDL owner removal outcome is uncertain", failure)
-                    break
-                }
-                // The legacy boolean cannot distinguish refusal from an unverified write. Both
-                // stop further mutations; the typed read and local flag below may still prove success.
-                if (!confirmed) break
-            }
-
-            val remaining = reader.read(packageName, userId)
-            val suspended = readSuspendedFlag(packageName)
-            return when {
-                remaining is RootSuspensionReadback.Suspended -> unsuspendFailure(
-                    "Root unsuspend of $packageName is unverified: ${remaining.owners.size} " +
-                        "suspension record(s) remain in the service readback."
-                )
-                suspended == false ||
-                    (remaining == RootSuspensionReadback.NotSuspended && suspended != true) ->
-                    Result.success(Unit)
-                else -> unsuspendFailure(
-                    "Root unsuspend of $packageName is unverified: readback did not confirm that " +
-                        "the suspension was removed for user $userId."
-                )
-            }
+            Result.success(changeOwnedSuspension(
+                isSuspended, android.os.Build.VERSION.SDK_INT, actor,
+                read = { readOwnedSuspension(packageName, userId, service) },
+                write = { owner, suspended ->
+                    checkNotNull(service) { "Root service unavailable" }
+                    // Explicit identity prevents the daemon's historical fallback to shell/android.
+                    service.setAppSuspendedAsForUser(packageName, suspended, owner.packageName, userId)
+                },
+                canWrite = { it.userId == userId },
+            ))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
         }
-
-        // No Binder mutation was dispatched. Keep the historical single shell removal for API 28
-        // and a daemon that never bound, with the same-user public flag as its only success evidence.
-        val shell = runCommand(
-            "pm unsuspend --user $userId $escapedPackage", execution, APP_UNSUSPEND,
-        )
-        if (shell.exceptionOrNull() is PrivilegeExecutionException) return shell
-        return when (readSuspendedFlag(packageName)) {
-            false -> Result.success(Unit)
-            true -> unsuspendFailure(
-                "Root unsuspend of $packageName failed: it is still suspended after the shell step."
-            )
-            null -> unsuspendFailure(
-                "Root unsuspend of $packageName is unverified: the package's suspension state " +
-                    "could not be read back for user $userId."
-            )
-        }
-    }
-
-    /**
-     * Logs [reason] and returns it as the failure the UI renders verbatim.
-     *
-     * `AppInfoDetailsViewModel.toggleSuspendState` (and every other caller of
-     * `ManageAppUseCase.setAppSuspended`) puts `e.message` straight into `R.string.error_format`, so
-     * these sentences are user-facing: they name the recorded suspender because that is the only
-     * thing that tells someone *which* privilege still holds their app.
-     */
-    private fun unsuspendFailure(reason: String): Result<Unit> {
-        val failure = java.io.IOException(reason)
-        Logger.e("RootSystemGateway", reason, failure)
-        return Result.failure(failure)
     }
 
     override suspend fun setAppRestricted(

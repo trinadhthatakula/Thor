@@ -17,6 +17,7 @@ import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
+import com.valhalla.thor.domain.model.SuspensionChange
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionException
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
@@ -233,11 +234,21 @@ class SystemRepositoryImpl(
         runGatewayAction(execution) { it.setAppDisabled(packageName, isDisabled, execution) }
     }
 
+    override suspend fun isAppSuspendedByThor(packageName: String): Boolean? = withContext(ioDispatcher) {
+        try {
+            getActiveGateway(PrivilegeExecutionContext()).getOrNull()?.isAppSuspendedByThor(packageName)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override suspend fun setAppSuspended(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = withContext(ioDispatcher) {
+    ): Result<SuspensionChange> = withContext(ioDispatcher) {
         runGatewayAction(execution) { it.setAppSuspended(packageName, isSuspended, execution) }
     }
 

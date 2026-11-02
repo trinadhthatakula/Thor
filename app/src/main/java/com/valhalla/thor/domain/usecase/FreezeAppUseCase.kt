@@ -67,9 +67,6 @@ class FreezeAppUseCase(
                 UiTextException(UiText.StringResource(R.string.error_unsafe_skipped))
             )
         }
-        return when (mode) {
-            FreezerMode.SUSPEND -> manageAppUseCase.setAppSuspended(packageName, true)
-            FreezerMode.FREEZE -> manageAppUseCase.setAppDisabled(packageName, true)
-        }
+        return manageAppUseCase.freezeForFreezer(packageName, mode)
     }
 }

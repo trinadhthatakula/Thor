@@ -161,6 +161,11 @@ class FreezerLaunchActivity : Activity() {
                     finish(); return@launch
                 }
                 val restored = withContext(Dispatchers.IO) { manageAppUseCase.forceUnfreeze(pkg) }
+                restored.getOrNull()?.takeIf { it.suspensionRemains }?.let {
+                    toast(if (it.ownershipUnknown) getString(R.string.suspension_ownership_unknown)
+                        else getString(R.string.thaw_external_pause, pkg, it.remainingOwners.sorted().joinToString()))
+                    finish(); return@launch
+                }
                 if (restored.isFailure) {
                     // Restore failed (privilege/shell error) — fail fast instead of waiting out the retry loop.
                     toast(getString(R.string.freezer_launch_failed))

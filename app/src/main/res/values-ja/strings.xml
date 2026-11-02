@@ -373,7 +373,6 @@
     <string name="data_cleared_success">%1$sのデータをクリアしました</string>
     <string name="suspended_success">%1$s を一時停止しました</string>
     <string name="unsuspended_success">%1$s の一時停止を解除しました</string>
-    <string name="suspend_owned_by_other_privilege">ここから %1$s の一時停止を解除できません。これは %2$s によって一時停止されており、Android では同じ権限でのみ解除できます。 Thor をその特権モードに戻して、再試行してください。</string>
     <string name="freeze_system_app_requires_root">ここでは%1$sを凍結できません。この端末ではThorによる無効化が許可されず、Androidではroot権限がある場合にのみ、プリインストールアプリを1人のユーザーから削除できます。アプリは変更されていません。凍結するにはThorのRootモードが必要です。</string>
     <string name="freeze_system_app_removal_failed">%1$s を凍結できません。この端末ではThorによる無効化が許可されず、現在のユーザー向けのアンインストールにも失敗しました。Android の報告: %2$s</string>
     <string name="freeze_system_app_disable_refused">%1$s を凍結できません。このデバイスは無効化を拒否したため、Thor はアプリをそのまま残しました。代わりにアプリを削除すると、アプリが管理しているアカウントからサインアウトする可能性があります。</string>

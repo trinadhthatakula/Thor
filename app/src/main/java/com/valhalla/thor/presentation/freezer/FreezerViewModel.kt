@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.freezer
 
+import com.valhalla.thor.util.restorationFeedback
+
 import android.database.sqlite.SQLiteConstraintException
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
@@ -294,6 +296,7 @@ class FreezerViewModel(
         viewModelScope.launch(ioDispatcher) {
             val succeeded = mutableSetOf<String>()
             val failures = mutableListOf<Throwable>()
+            var externalPauseRemains = false
             packageNames.forEach { pkg ->
                 try {
                     // forceUnfreeze, not restoreApp(app.enabled, app.isSuspended): the flags would
@@ -307,6 +310,7 @@ class FreezerViewModel(
                     // both early-return on a *positive* not-suspended read); Dhizuku pays one
                     // `pm unsuspend` for it. A redundant call is the cheaper of the two mistakes.
                     manageAppUseCase.forceUnfreeze(pkg)
+                        .onSuccess { externalPauseRemains = externalPauseRemains || it.suspensionRemains }
                         .onFailure { e ->
                             failures += e
                             return@forEach
@@ -333,15 +337,17 @@ class FreezerViewModel(
             // than finding the app in the list again.
             _uiState.update { it.copy(multiSelection = it.multiSelection - succeeded) }
             emitToast(
-                when (failures.size) {
-                    0 -> UiText.PluralsResource(
+                when {
+                    failures.isEmpty() && externalPauseRemains ->
+                        UiText.StringResource(R.string.sweep_external_pause_notice)
+                    failures.isEmpty() -> UiText.PluralsResource(
                         R.plurals.removed_from_freezer_success,
                         succeeded.size
                     )
                     // One failure: say what the gateway said. Post-GH#330 that message names the
                     // privilege still holding the app, which is the whole answer — a count would be
                     // strictly less than what the Apps tab already gives for the same action.
-                    1 -> UiText.StringResource(
+                    failures.size == 1 -> UiText.StringResource(
                         R.string.error_format,
                         failures.first().message ?: ""
                     )
@@ -386,9 +392,7 @@ class FreezerViewModel(
                         emitToast(UiText.StringResource(R.string.error_unsafe_skipped))
                         return@launch
                     }
-                    val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
-                        manageAppUseCase.setAppSuspended(packageName, true)
-                    else manageAppUseCase.setAppDisabled(packageName, true)
+                    val freezeResult = manageAppUseCase.freezeForFreezer(packageName, _uiState.value.freezerMode)
                     freezeResult
                         .onSuccess {
                             freezerRepository.add(packageName)
@@ -410,15 +414,18 @@ class FreezerViewModel(
                     // off restores from a snapshot that still calls it active, plans nothing, and
                     // reports success having made no privileged call at all — the row goes, the
                     // app stays frozen.
-                    manageAppUseCase.forceUnfreeze(packageName)
-                        .onFailure { e ->
-                            emitToast(e.asUiText())
-                            return@launch
-                        }
+                    val restoration = manageAppUseCase.forceUnfreeze(packageName)
+                    restoration.onFailure { e ->
+                        emitToast(e.asUiText())
+                        return@launch
+                    }
                     // Shortcut first, then the row — the same order as the bulk path above and
                     // AppListViewModel.toggleFreezerMembership.
                     appShortcuts.disableAppShortcut(packageName)
                     freezerRepository.remove(packageName)
+                    restoration.getOrThrow().takeIf { it.suspensionRemains }?.let {
+                        emitToast(it.restorationFeedback(packageName))
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -586,6 +593,7 @@ class FreezerViewModel(
                     return@launch
                 }
 
+                val externallyPaused = mutableSetOf<String>()
                 if (unfreeze) {
                     for (candidate in affected) {
                         val app = candidate.app
@@ -601,6 +609,9 @@ class FreezerViewModel(
                             showProfileRemovalError(R.string.profile_removal_restore_failed)
                             return@launch
                         }
+                        if (restored.getOrThrow().suspensionRemains) {
+                            externallyPaused += candidate.packageName
+                        }
                         // Shortcut refresh is diagnostic-only; it must not turn a successful
                         // restore into a claim that the app is still frozen.
                         try {
@@ -614,10 +625,13 @@ class FreezerViewModel(
                     // Restoring can take time. Re-read memberships and package state so a new
                     // orphaned freeze cannot inherit approval for the earlier set of apps.
                     val remaining = profileRemovalRisk(removal).filter {
-                        // An unavailable state cannot verify the result, but a successful
-                        // forceUnfreeze already cleared both dimensions. New unknown packages
-                        // still require their own decision.
-                        it.app != null || it.packageName !in affectedPackages
+                        // A fresh enabled app with verified external-only ownership needs no Thor
+                        // recovery membership. Unknown or newly added Thor restrictions still do.
+                        val app = it.app
+                        val externalOnly = it.packageName in externallyPaused && app?.isInstalled == true &&
+                            app.enabled && app.isSuspended &&
+                            manageAppUseCase.isAppSuspendedByThor(it.packageName) == false
+                        !externalOnly && (app != null || it.packageName !in affectedPackages)
                     }
                     if (remaining.isNotEmpty()) {
                         _uiState.update { it.copy(profileRemovalRecovery = ProfileRemovalRecovery(remaining)) }
@@ -644,10 +658,12 @@ class FreezerViewModel(
                     _uiState.update { it.copy(profileRemovalRecovery = null) }
                     when (removal) {
                         is ProfileRemoval.Update -> {
-                            emitToast(UiText.StringResource(R.string.profile_saved))
+                            emitToast(UiText.StringResource(if (externallyPaused.isNotEmpty())
+                                R.string.sweep_external_pause_notice else R.string.profile_saved))
                             _events.send(FreezerEvent.ProfileSaveSucceeded(removal.editorSession))
                         }
-                        is ProfileRemoval.Delete -> emitToast(UiText.StringResource(R.string.profile_deleted))
+                        is ProfileRemoval.Delete -> emitToast(UiText.StringResource(if (externallyPaused.isNotEmpty())
+                            R.string.sweep_external_pause_notice else R.string.profile_deleted))
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -819,10 +835,10 @@ class FreezerViewModel(
                 manageAppUseCase.forceUnfreeze(packageName)
             }
             restoreResult
-                .onSuccess {
+                .onSuccess { restoration ->
                     appShortcuts.refreshAppShortcut(packageName)
                     emitToast(
-                        UiText.StringResource(R.string.unfrozen_success, appName ?: packageName), isSuccess = true
+                        restoration.restorationFeedback(appName ?: packageName), isSuccess = true
                     )
                 }
                 .onFailure { e ->
