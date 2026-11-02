@@ -1340,7 +1340,10 @@ class MainViewModel(
                 .onSuccess { value ->
                     _effect.send(
                         MainSideEffect.Message(
-                            successMessage?.invoke(app, value) ?: if (value is com.valhalla.thor.domain.model.SuspensionChange && value.suspensionRemains)
+                            successMessage?.invoke(app, value) ?: if (
+                                (action is AppClickAction.UnFreeze || action is AppClickAction.UnSuspend) &&
+                                value is com.valhalla.thor.domain.model.SuspensionChange && value.suspensionRemains
+                            )
                                 value.restorationFeedback(app.appName ?: app.packageName)
                             else getSuccessMessage(
                                 action,
