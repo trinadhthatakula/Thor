@@ -565,10 +565,10 @@ class AppListViewModel(
                 _rawState.update { state ->
                     state.copy(
                         allUserApps = state.allUserApps.map {
-                            if (it.packageName == packageName) it.copy(enabled = !freeze, isSuspended = if (freeze) it.isSuspended else restoration.remainingOwners.isNotEmpty()) else it
+                            if (it.packageName == packageName) it.copy(enabled = !freeze, isSuspended = if (freeze) it.isSuspended else restoration.suspensionRemains) else it
                         },
                         allSystemApps = state.allSystemApps.map {
-                            if (it.packageName == packageName) it.copy(enabled = !freeze, isSuspended = if (freeze) it.isSuspended else restoration.remainingOwners.isNotEmpty()) else it
+                            if (it.packageName == packageName) it.copy(enabled = !freeze, isSuspended = if (freeze) it.isSuspended else restoration.suspensionRemains) else it
                         }
                     )
                 }
@@ -756,7 +756,7 @@ class AppListViewModel(
                 // it can be right: past here the app is thawed whatever the rest of this block does.
                 val restoredState = restored.getOrThrow()
                 unfrozenLabel = app?.appName ?: packageName
-                if (restoredState.remainingOwners.isNotEmpty()) {
+                if (restoredState.suspensionRemains) {
                     _events.send(AppListEvent.ShowMessage(restoredState.restorationFeedback(unfrozenLabel)))
                 }
                 // Same optimistic local patch freezeApp does, so the row stops reading as frozen
@@ -769,7 +769,7 @@ class AppListViewModel(
                     fun restore(list: List<AppInfo>) = list.map {
                         if (it.packageName == packageName) it.copy(
                             enabled = true,
-                            isSuspended = restoredState.remainingOwners.isNotEmpty()
+                            isSuspended = restoredState.suspensionRemains
                         )
                         else it
                     }

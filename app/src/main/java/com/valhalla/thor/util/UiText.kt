@@ -203,5 +203,8 @@ fun Throwable.asUiText(): UiText = when (this) {
 }
 
 fun SuspensionChange.restorationFeedback(appName: String): UiText =
-    if (remainingOwners.isEmpty()) UiText.StringResource(R.string.unfrozen_success, appName)
-    else UiText.StringResource(R.string.thaw_external_pause, appName, remainingOwners.sorted().joinToString())
+    when {
+        ownershipUnknown -> UiText.StringResource(R.string.suspension_ownership_unknown)
+        remainingOwners.isEmpty() -> UiText.StringResource(R.string.unfrozen_success, appName)
+        else -> UiText.StringResource(R.string.thaw_external_pause, appName, remainingOwners.sorted().joinToString())
+    }

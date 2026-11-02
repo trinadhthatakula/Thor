@@ -425,7 +425,7 @@ class AppInfoDetailsViewModel(
                 refreshDetails(packageName)
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 emitMessage(
-                    if (!suspend && restoration.remainingOwners.isNotEmpty()) restoration.restorationFeedback(appName)
+                    if (!suspend && restoration.suspensionRemains) restoration.restorationFeedback(appName)
                     else UiText.StringResource(
                         if (suspend) R.string.suspended_success else R.string.unsuspended_success,
                         appName,

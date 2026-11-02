@@ -737,7 +737,7 @@ class MainViewModel(
                         val result = manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
                         if (result.isSuccess) {
                             val restored = result.getOrThrow()
-                            if (restored.remainingOwners.isNotEmpty()) {
+                            if (restored.suspensionRemains) {
                                 _effect.send(MainSideEffect.Message(restored.restorationFeedback(app.appName ?: app.packageName)))
                             } else _effect.send(MainSideEffect.LaunchApp(app.packageName))
                         } else {
@@ -1340,7 +1340,7 @@ class MainViewModel(
                 .onSuccess { value ->
                     _effect.send(
                         MainSideEffect.Message(
-                            successMessage?.invoke(app, value) ?: if (value is com.valhalla.thor.domain.model.SuspensionChange && value.remainingOwners.isNotEmpty())
+                            successMessage?.invoke(app, value) ?: if (value is com.valhalla.thor.domain.model.SuspensionChange && value.suspensionRemains)
                                 value.restorationFeedback(app.appName ?: app.packageName)
                             else getSuccessMessage(
                                 action,

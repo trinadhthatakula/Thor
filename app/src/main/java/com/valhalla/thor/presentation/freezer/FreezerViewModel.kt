@@ -310,7 +310,7 @@ class FreezerViewModel(
                     // both early-return on a *positive* not-suspended read); Dhizuku pays one
                     // `pm unsuspend` for it. A redundant call is the cheaper of the two mistakes.
                     manageAppUseCase.forceUnfreeze(pkg)
-                        .onSuccess { externalPauseRemains = externalPauseRemains || it.remainingOwners.isNotEmpty() }
+                        .onSuccess { externalPauseRemains = externalPauseRemains || it.suspensionRemains }
                         .onFailure { e ->
                             failures += e
                             return@forEach
@@ -423,7 +423,7 @@ class FreezerViewModel(
                     // AppListViewModel.toggleFreezerMembership.
                     appShortcuts.disableAppShortcut(packageName)
                     freezerRepository.remove(packageName)
-                    restoration.getOrThrow().takeIf { it.remainingOwners.isNotEmpty() }?.let {
+                    restoration.getOrThrow().takeIf { it.suspensionRemains }?.let {
                         emitToast(it.restorationFeedback(packageName))
                     }
                 }
@@ -609,7 +609,7 @@ class FreezerViewModel(
                             showProfileRemovalError(R.string.profile_removal_restore_failed)
                             return@launch
                         }
-                        if (restored.getOrThrow().remainingOwners.isNotEmpty()) {
+                        if (restored.getOrThrow().suspensionRemains) {
                             externallyPaused += candidate.packageName
                         }
                         // Shortcut refresh is diagnostic-only; it must not turn a successful

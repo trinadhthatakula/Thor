@@ -11,7 +11,9 @@ added a suspension or that Thor's own entry was removed.
   even when suspension ownership cannot be read or an older entry cannot be safely removed.
 - **Suspend mode:** add a separate Thor entry without first unsuspending the app. An existing
   verified Thor entry is idempotent, including after switching privilege modes. If converting from
-  disable/hide, enable/unhide only after Thor's suspension has been verified.
+  disable/hide, attempt enable/unhide only after Thor's suspension has been verified. A verified
+  suspension remains successful and tracked even if this optional cleanup fails; cancellation is
+  still propagated.
 - **Unfreeze:** enable/unhide first, then remove verified Thor suspension entries. External owners
   remain in control of their restrictions. A known remaining external pause is reported as such,
   including in durable task details and the Quick Settings tile. Launch shortcuts do not attempt to
@@ -42,8 +44,10 @@ against another privileged tool intentionally copying it.
 Android 9/10 has a single suspension slot. Existing external suspension cannot be overlaid and is
 left untouched. Android 9's shell-only suspension cannot carry a verifiable independent Thor
 identity and is skipped. Dhizuku's shared device-owner suspension API cannot verify an independent
-Thor entry and is also skipped with an explanation. Freeze mode remains available; no automatic
-switch of the selected mode occurs.
+Thor entry and is also skipped with an explanation. During Unfreeze, Dhizuku preserves a confirmed
+suspension with unknown ownership and reports it as remaining after enabling/unhiding; an unreadable
+app state still fails verification. Freeze mode remains available; no automatic switch of the selected
+mode occurs.
 
 ## Device validation (pending)
 

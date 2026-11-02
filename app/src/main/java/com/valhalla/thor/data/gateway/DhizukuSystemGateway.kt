@@ -326,10 +326,14 @@ class DhizukuSystemGateway internal constructor(
         // DPM's aggregate boolean cannot identify a Thor entry under the shared owner app. Never
         // overwrite or remove another Dhizuku client's suspension, or pretend the flag proves ours.
         val app = reflector.getApplicationInfoOrNull(packageName)
-        if (!isSuspended && app != null && (app.flags and ApplicationInfo.FLAG_SUSPENDED) == 0) {
-            Result.success(SuspensionChange())
-        } else Result.failure(SuspensionPolicyException(
-            SuspensionFailureReason.CANNOT_KEEP_INDEPENDENT))
+        when {
+            isSuspended -> Result.failure(SuspensionPolicyException(
+                SuspensionFailureReason.CANNOT_KEEP_INDEPENDENT))
+            app == null -> Result.failure(SuspensionPolicyException(
+                SuspensionFailureReason.OWNERSHIP_UNKNOWN))
+            else -> Result.success(SuspensionChange(
+                ownershipUnknown = (app.flags and ApplicationInfo.FLAG_SUSPENDED) != 0))
+        }
     }
 
     override suspend fun setAppRestricted(

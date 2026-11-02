@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
 import com.valhalla.thor.domain.repository.SweepAttemptOutcome
@@ -81,6 +82,52 @@ class PrivilegeSweepItemExecutorTest {
             PrivilegeCommandClass("sweep.freeze"),
             repository.executions.first().second,
         )
+    }
+
+    @Test
+    fun `tracked suspend survives failed enable cleanup`() = runTest {
+        val repository = FakeSystemRepository()
+        val freezer = FakeFreezerRepository()
+        repository.failWith("setAppDisabled:$PACKAGE:false", IllegalStateException("enable failed"))
+
+        val result = executor(repository, freezerRepository = freezer).execute(
+            stored(PrivilegeSweepOperation.FREEZE, FreezerMode.SUSPEND, addToFreezer = true), PACKAGE)
+
+        assertEquals(SweepAttemptOutcome.SUCCEEDED, result.outcome)
+        assertEquals(listOf(PACKAGE), freezer.added)
+        assertEquals(listOf("setAppSuspended:$PACKAGE:true", "setAppDisabled:$PACKAGE:false"), repository.calls)
+    }
+
+    @Test
+    fun `suspend cleanup cancellation leaves tracking unfinished`() = runTest {
+        val repository = FakeSystemRepository()
+        val freezer = FakeFreezerRepository()
+        val cancelled = CancellationException("enable cancelled")
+        repository.failWith("setAppDisabled:$PACKAGE:false", cancelled)
+
+        val thrown = runCatching {
+            executor(repository, freezerRepository = freezer).execute(
+                stored(PrivilegeSweepOperation.FREEZE, FreezerMode.SUSPEND, addToFreezer = true), PACKAGE)
+        }.exceptionOrNull()
+
+        assertSame(cancelled, thrown)
+        assertTrue(freezer.added.isEmpty())
+    }
+
+    @Test
+    fun `unknown preserved suspension produces a successful remaining pause warning`() = runTest {
+        val backing = FakeSystemRepository()
+        val repository = object : SystemRepository by backing {
+            override suspend fun setAppSuspended(
+                packageName: String, isSuspended: Boolean,
+                execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
+            ) = Result.success(com.valhalla.thor.domain.model.SuspensionChange(ownershipUnknown = true))
+        }
+        for (operation in listOf(PrivilegeSweepOperation.UNFREEZE, PrivilegeSweepOperation.UNSUSPEND)) {
+            val result = executor(repository, FakeStateReader(FreezeState.FROZEN, suspended = true)).execute(stored(operation), PACKAGE)
+            assertEquals(SweepAttemptOutcome.SUCCEEDED, result.outcome)
+            assertTrue(result.externalSuspensionRemains)
+        }
     }
 
     @Test
@@ -465,7 +512,7 @@ class PrivilegeSweepItemExecutorTest {
     }
 
     private fun executor(
-        repository: FakeSystemRepository,
+        repository: SystemRepository,
         stateReader: PrivilegeSweepPackageStateReader = FakeStateReader(FreezeState.ACTIVE),
         coordinator: PackageOperationCoordinator = TestPackageOperationCoordinator(),
         freezerRepository: FakeFreezerRepository = FakeFreezerRepository(),

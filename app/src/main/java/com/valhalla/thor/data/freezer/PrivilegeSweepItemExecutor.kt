@@ -119,7 +119,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
                             FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
                             FreezeState.FROZEN -> manageApp
                                 .forceUnfreezeUncoordinated(packageName, execution)
-                                .onSuccess { externalSuspensionRemains = it.remainingOwners.isNotEmpty() }
+                                .onSuccess { externalSuspensionRemains = it.suspensionRemains }
                                 .toAttemptOutcome(::recordFailure)
                         }
 
@@ -131,7 +131,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
                                 suspended == null -> SweepAttemptOutcome.FAILED
                                 else -> manageApp
                                     .setAppSuspendedUncoordinated(packageName, desired, execution)
-                                    .onSuccess { externalSuspensionRemains = !desired && it.remainingOwners.isNotEmpty() }
+                                    .onSuccess { externalSuspensionRemains = !desired && it.suspensionRemains }
                                     .toAttemptOutcome(::recordFailure)
                             }
                         }

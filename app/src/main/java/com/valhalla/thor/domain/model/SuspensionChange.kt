@@ -4,7 +4,13 @@
 package com.valhalla.thor.domain.model
 
 /** Successful removal of Thor's restriction does not mean every other restriction is gone. */
-data class SuspensionChange(val remainingOwners: Set<String> = emptySet())
+data class SuspensionChange(
+    val remainingOwners: Set<String> = emptySet(),
+    /** A confirmed suspension remains, but its owner could not be identified. */
+    val ownershipUnknown: Boolean = false,
+) {
+    val suspensionRemains: Boolean get() = remainingOwners.isNotEmpty() || ownershipUnknown
+}
 
 data class SuspensionOwner(val packageName: String, val userId: Int)
 

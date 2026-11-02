@@ -128,7 +128,14 @@ class ManageAppUseCase(
         FreezerMode.SUSPEND -> {
             val suspended = setAppSuspendedUncoordinated(packageName, true, execution)
             if (suspended.isFailure) Result.failure(requireNotNull(suspended.exceptionOrNull()))
-            else setAppDisabledUncoordinated(packageName, false, execution)
+            else {
+                // The requested suspension is already verified. Keep it successful and tracked
+                // even if optional enable/unhide cleanup cannot finish the mode conversion.
+                val cleanup = setAppDisabledUncoordinated(packageName, false, execution)
+                val failure = cleanup.exceptionOrNull()
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                Result.success(Unit)
+            }
         }
     }
 

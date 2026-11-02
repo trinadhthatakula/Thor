@@ -24,6 +24,14 @@ class SuspensionChangeTest {
                 if (suspend) owned = owned + owner
             }, canWrite = { it.userId == actor.userId })
 
+    @Test fun `unidentified remaining ownership is not an empty successful restore`() {
+        val unknown = SuspensionChange(ownershipUnknown = true)
+        assertTrue(unknown.remainingOwners.isEmpty())
+        assertTrue(unknown.suspensionRemains)
+        assertFalse(SuspensionChange().suspensionRemains)
+        assertTrue(SuspensionChange(setOf(wellbeing.packageName)).suspensionRemains)
+    }
+
     @Test fun `known Thor suspension survives privilege mode change without another entry`() = runTest {
         owners = setOf(thor, wellbeing); owned = setOf(thor)
         assertEquals(setOf(wellbeing.packageName), change(true, actor = shell).remainingOwners)

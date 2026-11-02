@@ -39,6 +39,29 @@ class ManageAppUseCaseTest {
             PACKAGE_NAME, com.valhalla.thor.domain.model.FreezerMode.FREEZE).isSuccess)
     }
 
+    @Test fun `verified suspend succeeds when enable cleanup fails`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        repository.disableResult = Result.failure(IllegalStateException("enable failed"))
+        ManageAppUseCase(repository, coordinator).freezeForFreezer(
+            PACKAGE_NAME, com.valhalla.thor.domain.model.FreezerMode.SUSPEND).getOrThrow()
+        assertEquals(listOf("setAppSuspended($PACKAGE_NAME, true)", "setAppDisabled($PACKAGE_NAME, false)"), repository.calls)
+        assertEquals(1, coordinator.calls.size)
+    }
+
+    @Test fun `suspend cleanup cancellation propagates unchanged`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        val cancelled = kotlinx.coroutines.CancellationException("enable cancelled")
+        repository.disableResult = Result.failure(cancelled)
+        val thrown = runCatching {
+            ManageAppUseCase(repository, coordinator).freezeForFreezer(
+                PACKAGE_NAME, com.valhalla.thor.domain.model.FreezerMode.SUSPEND)
+        }.exceptionOrNull()
+        assertSame(cancelled, thrown)
+        assertEquals(2, repository.calls.size)
+    }
+
     @Test fun `unfreeze enables before a refused ownership read`() = runTest {
         val coordinator = RecordingPackageOperationCoordinator()
         val repository = RecordingManageSystemRepository { coordinator.currentOwner }
@@ -70,9 +93,11 @@ class ManageAppUseCaseTest {
     @Test fun `suspend conversion does not enable if own entry cannot be verified`() = runTest {
         val coordinator = RecordingPackageOperationCoordinator()
         val repository = RecordingManageSystemRepository { coordinator.currentOwner }
-        repository.suspensionResult = Result.failure(com.valhalla.thor.domain.model.SuspensionPolicyException(
-            com.valhalla.thor.domain.model.SuspensionFailureReason.NOT_VERIFIED))
-        assertTrue(ManageAppUseCase(repository, coordinator).freezeForFreezer(PACKAGE_NAME, com.valhalla.thor.domain.model.FreezerMode.SUSPEND).isFailure)
+        val failure = com.valhalla.thor.domain.model.SuspensionPolicyException(
+            com.valhalla.thor.domain.model.SuspensionFailureReason.NOT_VERIFIED)
+        repository.suspensionResult = Result.failure(failure)
+        assertSame(failure, ManageAppUseCase(repository, coordinator).freezeForFreezer(
+            PACKAGE_NAME, com.valhalla.thor.domain.model.FreezerMode.SUSPEND).exceptionOrNull())
         assertEquals(listOf("setAppSuspended($PACKAGE_NAME, true)"), repository.calls)
     }
 
@@ -334,6 +359,7 @@ private class RecordingManageSystemRepository(
     val calls = mutableListOf<String>()
     val executions = mutableListOf<Pair<String, PrivilegeExecutionContext>>()
     var suspensionResult = Result.success(com.valhalla.thor.domain.model.SuspensionChange())
+    var disableResult = Result.success(Unit)
 
     private fun record(
         call: String,
@@ -367,7 +393,7 @@ private class RecordingManageSystemRepository(
         packageName: String,
         isDisabled: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = record("setAppDisabled($packageName, $isDisabled)", execution)
+    ): Result<Unit> = record("setAppDisabled($packageName, $isDisabled)", execution).mapCatching { disableResult.getOrThrow() }
 
     override suspend fun setAppSuspended(
         packageName: String,
