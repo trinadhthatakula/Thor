@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="suspend_independent_unavailable">已跳过暂停：Thor 无法验证独立的暂停状态。请使用冻结模式；现有限制已保留。</string>
+    <string name="suspension_ownership_unknown">Thor 无法确认暂停的设置方。现有暂停已保留；请检查应用限制后重试。</string>
+    <string name="suspension_change_unverified">Thor 无法验证暂停状态的更改。请刷新后重试。</string>
+    <string name="suspend_wrong_privilege">Thor 的暂停属于另一种权限模式。请切回该模式以解除暂停。</string>
+    <string name="thaw_external_pause">%1$s：Thor 限制已解除；仍被 %2$s 暂停。</string>
+    <string name="thaw_external_pause_generic">%1$s：Thor 限制已解除；仍被其他应用暂停。</string>
+    <string name="sweep_external_pause_notice">部分已恢复的应用仍被其他应用暂停。</string>
+</resources>

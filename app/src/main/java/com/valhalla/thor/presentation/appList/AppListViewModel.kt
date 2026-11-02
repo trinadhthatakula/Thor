@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.appList
 
+import com.valhalla.thor.util.restorationFeedback
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
@@ -557,17 +558,17 @@ class AppListViewModel(
             // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
             // view model rather than by AppRiskDialog declining to render a confirm button.
             // Unfreezing keeps the raw call: it must never be blocked.
-            val result = if (freeze) freezeAppUseCase(packageName)
-            else manageAppUseCase.setAppDisabled(packageName, false)
-            result.onSuccess {
+            val result = if (freeze) freezeAppUseCase(packageName).map { com.valhalla.thor.domain.model.SuspensionChange() }
+            else manageAppUseCase.forceUnfreeze(packageName)
+            result.onSuccess { restoration ->
                 // Update the app's enabled state in our local list immediately for UI responsiveness
                 _rawState.update { state ->
                     state.copy(
                         allUserApps = state.allUserApps.map {
-                            if (it.packageName == packageName) it.copy(enabled = !freeze) else it
+                            if (it.packageName == packageName) it.copy(enabled = !freeze, isSuspended = if (freeze) it.isSuspended else restoration.remainingOwners.isNotEmpty()) else it
                         },
                         allSystemApps = state.allSystemApps.map {
-                            if (it.packageName == packageName) it.copy(enabled = !freeze) else it
+                            if (it.packageName == packageName) it.copy(enabled = !freeze, isSuspended = if (freeze) it.isSuspended else restoration.remainingOwners.isNotEmpty()) else it
                         }
                     )
                 }
@@ -615,10 +616,7 @@ class AppListViewModel(
                 } else {
                     _events.send(
                         AppListEvent.ShowMessage(
-                            UiText.StringResource(
-                                R.string.unfrozen_success,
-                                appName ?: packageName
-                            ), isSuccess = true
+                            restoration.restorationFeedback(appName ?: packageName), isSuccess = true
                         )
                     )
                 }
@@ -756,7 +754,11 @@ class AppListViewModel(
                 }
                 // Latched between the privileged call and the durable one, which is the only place
                 // it can be right: past here the app is thawed whatever the rest of this block does.
+                val restoredState = restored.getOrThrow()
                 unfrozenLabel = app?.appName ?: packageName
+                if (restoredState.remainingOwners.isNotEmpty()) {
+                    _events.send(AppListEvent.ShowMessage(restoredState.restorationFeedback(unfrozenLabel)))
+                }
                 // Same optimistic local patch freezeApp does, so the row stops reading as frozen
                 // without waiting for a full rescan. Ordered ahead of the two steps that can throw,
                 // because it cannot: it is a CAS over two `List.map`s, touching neither Room nor the
@@ -767,7 +769,7 @@ class AppListViewModel(
                     fun restore(list: List<AppInfo>) = list.map {
                         if (it.packageName == packageName) it.copy(
                             enabled = true,
-                            isSuspended = false
+                            isSuspended = restoredState.remainingOwners.isNotEmpty()
                         )
                         else it
                     }

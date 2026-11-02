@@ -23,6 +23,7 @@ import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
+import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -38,6 +39,8 @@ import org.koin.core.annotation.Single
 interface PrivilegeSweepResolutionRuntime {
     val userId: Int
 
+    suspend fun isAppSuspendedByThor(packageName: String): Boolean? = null
+
     /** Returns one candidate lookup closed over one UAD snapshot for the complete resolution pass. */
     fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate
 }
@@ -46,8 +49,12 @@ interface PrivilegeSweepResolutionRuntime {
 class DefaultPrivilegeSweepResolutionRuntime(
     private val stateReader: AppFreezeStateReader,
     private val uadHelper: UadHelper,
+    private val systemRepository: SystemRepository,
 ) : PrivilegeSweepResolutionRuntime {
     override val userId: Int get() = thorUserId
+
+    override suspend fun isAppSuspendedByThor(packageName: String): Boolean? =
+        systemRepository.isAppSuspendedByThor(packageName)
 
     override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate {
         val uad = if (op == BulkOp.FREEZE) uadHelper.snapshot() else UadSnapshot.UNFILTERED
@@ -88,7 +95,15 @@ class PrivilegeSweepTargetResolver(
             val candidate = candidateOf(packageName)
             when (candidate.state) {
                 FreezeState.ACTIVE -> if (!candidate.blockedFromFreeze) freeze.add(packageName)
-                FreezeState.FROZEN -> unfreeze.add(packageName)
+                FreezeState.FROZEN -> {
+                    val externalOnly = candidate.isDisabled == false && candidate.isSuspended == true &&
+                        runtime.isAppSuspendedByThor(packageName) == false
+                    if (externalOnly) {
+                        if (!candidate.blockedFromFreeze) freeze.add(packageName)
+                    } else {
+                        unfreeze.add(packageName)
+                    }
+                }
                 FreezeState.ABSENT -> Unit
             }
         }

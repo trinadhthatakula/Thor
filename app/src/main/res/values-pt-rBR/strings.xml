@@ -285,7 +285,6 @@
     <string name="cache_cleared_success">Cache de %1$s limpo</string>
     <string name="suspended_success">%1$s suspenso</string>
     <string name="unsuspended_success">Suspensão de %1$s removida</string>
-    <string name="suspend_owned_by_other_privilege">Não é possível remover a suspensão de %1$s por aqui. Ele foi suspenso por %2$s, e o Android só permite que o mesmo privilégio remova a suspensão. Coloque o Thor nesse modo de privilégio novamente e tente de novo.</string>
     <string name="freeze_system_app_requires_root">Não é possível congelar %1$s por aqui. Este dispositivo não deixou o Thor desativá-lo, e o Android só permite que o root remova um aplicativo pré-instalado para um usuário. O aplicativo ficou intacto — congelá-lo exige o modo Root do Thor.</string>
     <string name="freeze_system_app_removal_failed">Não é possível congelar %1$s. Este dispositivo não deixou o Thor desativá-lo, e removê-lo para este usuário também falhou. O Android informou: %2$s</string>
     <string name="freeze_system_app_disable_refused">Não é possível congelar %1$s. Este dispositivo recusou desativá-lo, então o Thor deixou o aplicativo como estava — removê-lo poderia desconectar você das contas que ele gerencia.</string>

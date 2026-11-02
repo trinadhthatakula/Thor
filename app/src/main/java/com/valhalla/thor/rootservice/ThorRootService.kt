@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.rootservice
 
+import com.valhalla.thor.data.source.local.knownThorSuspendDialogs
+import com.valhalla.thor.domain.model.THOR_SUSPENDER_IDENTITY
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -270,6 +272,11 @@ class ThorRootService : RootService() {
 
             val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
 
+            if (suspended && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                val existing = readSuspenders(packageName, userId) ?: return@runCatching false
+                val actors = suspendIdentities(suspendingPackage)
+                if (existing.any { it !in actors }) return@runCatching false
+            }
             if (suspended) {
                 suspendAsAnyOf(
                     pmClass, pm, dialogInfoClass, packageName,
@@ -291,55 +298,19 @@ class ThorRootService : RootService() {
         }.getOrDefault(false)
     }
 
-    /**
-     * The identities to try, in order, when suspending.
-     *
-     * An explicit [suspendingPackage] is the *only* one tried — the caller read the record and knows
-     * which identity it means; falling back to another name behind its back would write a second
-     * suspension entry nobody asked for.
-     *
-     * With none given, this keeps the historical order, and Thor's own applicationId stays first for
-     * a reason: the system builds the user-visible "managed by Thor" line on the paused-app dialog
-     * out of the recorded suspender name. That is the whole point of root writing its own name rather
-     * than borrowing the shell's, it works today, and this change must not disturb it.
-     */
+    /** A fallback identity would claim somebody else's shared entry; use only the requested owner. */
     private fun suspendIdentities(suspendingPackage: String?): List<String> =
-        suspendingPackage?.let(::listOf) ?: listOf(
-            this@ThorRootService.packageName,
-            SHELL_SUSPENDER_IDENTITY,
-            PLATFORM_SUSPENDER_IDENTITY
-        )
+        listOf(suspendingPackage ?: this@ThorRootService.packageName)
 
-    /**
-     * The identities to clear when unsuspending [targetPackage] for [userId].
-     *
-     * An explicit [suspendingPackage] is again the only entry touched: the gateway reads the record
-     * and calls once per recorded suspender, so each call stays a single well-defined removal.
-     *
-     * With none given — the identity-less entry points — the record itself is the list, read for
-     * [userId] so that a work profile's suspenders are never lifted off the primary user's section of
-     * the dump. Guessing is exactly what caused the bug: a Shizuku-era suspension is recorded as
-     * [SHELL_SUSPENDER_IDENTITY], and a root-mode Thor that only ever named its own package removed
-     * nothing. When the record cannot be read at all we still make a best-effort pass over every name
-     * Thor has written across its history, including the pre-GH#239
-     * [LEGACY_ROOT_SUSPENDER_IDENTITY]; that cannot turn into a false success, because the post-write
-     * readback in [unsuspendAllOf] will be just as unreadable and will fail closed.
-     */
+    /** Legacy entry points clear only Thor package identities, never guessed shell/root/android. */
     private fun unsuspendIdentities(
         targetPackage: String,
         suspendingPackage: String?,
         userId: Int
     ): List<String> {
         if (suspendingPackage != null) return listOf(suspendingPackage)
-        // A readable empty set is a real answer — nothing is recorded, so there is nothing to remove
-        // and [unsuspendAllOf]'s readback confirms it. Only an unreadable dump falls through.
-        readSuspenders(targetPackage, userId)?.let { return it.toList() }
-        return listOf(
-            this@ThorRootService.packageName,
-            SHELL_SUSPENDER_IDENTITY,
-            PLATFORM_SUSPENDER_IDENTITY,
-            LEGACY_ROOT_SUSPENDER_IDENTITY
-        )
+        val owners = readSuspenders(targetPackage, userId) ?: return emptyList()
+        return owners.filter { it == this@ThorRootService.packageName || it == THOR_SUSPENDER_IDENTITY }
     }
 
     /**
@@ -597,6 +568,7 @@ class ThorRootService : RootService() {
             // Arbitrary third-party string dialogs can forge dump framing. Only Thor's fixed
             // strings from our actual build identity or its shell path are accepted as text.
             trustedStringOwners = setOf(packageName, SHELL_SUSPENDER_IDENTITY),
+            trustedDialogs = knownThorSuspendDialogs(this),
         )
         return verifySuspensionSnapshot(parsed, read.canonicalState, targetPackage, userId)
     }

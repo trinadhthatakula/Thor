@@ -297,7 +297,8 @@ class FreezerTileService : TileService() {
                 R.string.tile_result_action_format,
                 action,
                 getString(R.string.sweep_result_summary, terminal.succeeded, terminal.failed,
-                    terminal.busy, terminal.unresolved),
+                    terminal.busy, terminal.unresolved) + if (terminal.externalSuspensionRemains)
+                    " " + getString(R.string.sweep_external_pause_notice) else "",
             )
         } else action
 

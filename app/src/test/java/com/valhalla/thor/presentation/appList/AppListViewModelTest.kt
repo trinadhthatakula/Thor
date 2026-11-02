@@ -710,7 +710,7 @@ class AppListViewModelTest {
 
         assertEquals(
             "both halves of the mixed disabled+suspended state have to be undone",
-            listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+            listOf("setAppDisabled:a:false", "setAppSuspended:a:false"),
             system.calls
         )
         assertFalse("and it leaves the watchlist", freezer.contains("a"))

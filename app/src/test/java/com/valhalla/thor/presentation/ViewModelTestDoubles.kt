@@ -189,7 +189,7 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ) = record("setAppSuspended:$packageName:$isSuspended", execution)
+    ) = record("setAppSuspended:$packageName:$isSuspended", execution).map { com.valhalla.thor.domain.model.SuspensionChange() }
 
     override suspend fun setAppRestricted(
         packageName: String,

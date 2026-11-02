@@ -21,9 +21,9 @@ class FreezeStateTest {
     }
 
     @Test
-    fun `freeze targets only active apps`() {
+    fun `freeze targets installed apps including suspension mode conversion`() {
         assertEquals(
-            listOf("com.active.one", "com.active.two"),
+            listOf("com.active.one", "com.active.two", "com.frozen.one"),
             freezableCandidates(watchlist, BulkOp.FREEZE, candidateOf)
         )
     }
@@ -44,12 +44,12 @@ class FreezeStateTest {
     }
 
     @Test
-    fun `a fully frozen watchlist yields no freeze candidates`() {
+    fun `frozen watchlist members can convert to the requested mode`() {
         // This is the reported bug: the tile must go INACTIVE here, and it can only do that
         // if the candidate list is empty rather than the watchlist size.
         val allFrozen = listOf("a", "b", "c")
         assertEquals(
-            emptyList<String>(),
+            allFrozen,
             freezableCandidates(allFrozen, BulkOp.FREEZE) { FreezeCandidate(FreezeState.FROZEN) }
         )
     }

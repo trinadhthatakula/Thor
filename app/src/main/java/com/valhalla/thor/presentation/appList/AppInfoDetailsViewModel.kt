@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.appList
 
+import com.valhalla.thor.util.restorationFeedback
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
@@ -376,9 +377,9 @@ class AppInfoDetailsViewModel(
             // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
             // view model rather than by AppRiskDialog declining to render a confirm button.
             // Unfreezing keeps the raw call: it must never be blocked.
-            val result = if (freeze) freezeAppUseCase(packageName)
-            else manageAppUseCase.setAppDisabled(packageName, false)
-            result.onSuccess {
+            val result = if (freeze) freezeAppUseCase(packageName).map { com.valhalla.thor.domain.model.SuspensionChange() }
+            else manageAppUseCase.forceUnfreeze(packageName)
+            result.onSuccess { restoration ->
                 appliedButUnannounced = true
                 appShortcuts.refreshAppShortcut(packageName)
                 val membershipSnapshot = withContext(ioDispatcher) { isInFreezer(packageName) }
@@ -404,7 +405,8 @@ class AppInfoDetailsViewModel(
                 refreshDetails(packageName)
                 if (!freeze || inFreezer) {
                     val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
-                    emitMessage(UiText.StringResource(msgRes, appName ?: packageName), isSuccess = true)
+                    emitMessage(if (freeze) UiText.StringResource(msgRes, appName ?: packageName)
+                        else restoration.restorationFeedback(appName ?: packageName), isSuccess = true)
                     appliedButUnannounced = false
                 }
             }.onFailure { e ->
@@ -418,12 +420,13 @@ class AppInfoDetailsViewModel(
     fun toggleSuspendState(packageName: String, suspend: Boolean) {
         viewModelScope.launch {
             val result = manageAppUseCase.setAppSuspended(packageName, suspend)
-            result.onSuccess {
+            result.onSuccess { restoration ->
                 // Refresh detail only — no privilege re-probe, no loader flash.
                 refreshDetails(packageName)
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 emitMessage(
-                    UiText.StringResource(
+                    if (!suspend && restoration.remainingOwners.isNotEmpty()) restoration.restorationFeedback(appName)
+                    else UiText.StringResource(
                         if (suspend) R.string.suspended_success else R.string.unsuspended_success,
                         appName,
                     ),

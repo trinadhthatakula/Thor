@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="suspend_independent_unavailable">一時停止をスキップしました。Thor は独立した一時停止を確認できません。凍結モードを使用してください。既存の制限は保持されました。</string>
+    <string name="suspension_ownership_unknown">Thor は一時停止の設定元を確認できませんでした。既存の一時停止は保持されました。アプリの制限を確認して再試行してください。</string>
+    <string name="suspension_change_unverified">Thor は一時停止の変更を確認できませんでした。更新して再試行してください。</string>
+    <string name="suspend_wrong_privilege">Thor の一時停止は別の権限モードに属しています。そのモードに戻して解除してください。</string>
+    <string name="thaw_external_pause">%1$s：Thor の制限は解除されましたが、%2$s により一時停止中です。</string>
+    <string name="thaw_external_pause_generic">%1$s：Thor の制限は解除されましたが、別のアプリにより一時停止中です。</string>
+    <string name="sweep_external_pause_notice">復元したアプリの一部は、他のアプリにより一時停止中です。</string>
+</resources>

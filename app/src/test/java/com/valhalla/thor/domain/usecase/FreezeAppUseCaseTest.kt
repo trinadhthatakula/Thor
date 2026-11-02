@@ -52,10 +52,10 @@ private class RecordingSystemRepository : SystemRepository {
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
+    ): Result<com.valhalla.thor.domain.model.SuspensionChange> {
         calls += "setAppSuspended($packageName, $isSuspended)"
         executions += execution
-        return Result.success(Unit)
+        return Result.success(com.valhalla.thor.domain.model.SuspensionChange())
     }
 
     // Nothing else belongs on a freeze path. These throw rather than record so a stray call is a
@@ -356,7 +356,7 @@ class FreezeAppUseCaseTest {
         details = { expertSystemApp }
 
         assertTrue(gate(PKG).isSuccess)
-        assertEquals(listOf("setAppDisabled($PKG, true)"), system.calls)
+        assertEquals(listOf("setAppDisabled($PKG, true)", "setAppSuspended($PKG, false)"), system.calls)
     }
 
     @Test
@@ -364,7 +364,7 @@ class FreezeAppUseCaseTest {
         details = { safeSystemApp }
 
         assertTrue(gate(PKG).isSuccess)
-        assertEquals(listOf("setAppDisabled($PKG, true)"), system.calls)
+        assertEquals(listOf("setAppDisabled($PKG, true)", "setAppSuspended($PKG, false)"), system.calls)
     }
 
     @Test
@@ -376,7 +376,7 @@ class FreezeAppUseCaseTest {
         details = { AppInfo(packageName = PKG, bloatRecommendation = "Unsafe") }
 
         assertTrue(gate(PKG).isSuccess)
-        assertEquals(listOf("setAppDisabled($PKG, true)"), system.calls)
+        assertEquals(listOf("setAppDisabled($PKG, true)", "setAppSuspended($PKG, false)"), system.calls)
     }
 
     @Test
@@ -384,7 +384,7 @@ class FreezeAppUseCaseTest {
         details = { safeSystemApp }
 
         assertTrue(gate(PKG, FreezerMode.SUSPEND).isSuccess)
-        assertEquals(listOf("setAppSuspended($PKG, true)"), system.calls)
+        assertEquals(listOf("setAppSuspended($PKG, true)", "setAppDisabled($PKG, false)"), system.calls)
     }
 
     @Test
@@ -421,7 +421,7 @@ class FreezeAppUseCaseTest {
         // either: an app that is both disabled and suspended has to come back from both.
         assertTrue(manage.forceUnfreeze(PKG).isSuccess)
         assertEquals(
-            listOf("setAppSuspended($PKG, false)", "setAppDisabled($PKG, false)"),
+            listOf("setAppDisabled($PKG, false)", "setAppSuspended($PKG, false)"),
             system.calls
         )
         assertEquals(emptyList<String>(), repository.lookups)

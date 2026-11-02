@@ -56,11 +56,11 @@ class PrivilegeSweepItemExecutorTest {
         val outcome = executor.execute(snapshot, PACKAGE)
 
         assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
-        assertEquals(listOf("state:$PACKAGE", "setAppDisabled:$PACKAGE:true"), trace)
+        assertEquals(listOf("state:$PACKAGE", "setAppDisabled:$PACKAGE:true", "setAppSuspended:$PACKAGE:false"), trace)
         assertSweepExecution(
             snapshot,
             PrivilegeCommandClass("sweep.freeze"),
-            repository.executions.single().second,
+            repository.executions.first().second,
         )
     }
 
@@ -75,11 +75,11 @@ class PrivilegeSweepItemExecutorTest {
         val outcome = executor(repository).execute(snapshot, PACKAGE)
 
         assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
-        assertEquals(listOf("setAppSuspended:$PACKAGE:true"), repository.calls)
+        assertEquals(listOf("setAppSuspended:$PACKAGE:true", "setAppDisabled:$PACKAGE:false"), repository.calls)
         assertSweepExecution(
             snapshot,
             PrivilegeCommandClass("sweep.freeze"),
-            repository.executions.single().second,
+            repository.executions.first().second,
         )
     }
 
@@ -94,8 +94,8 @@ class PrivilegeSweepItemExecutorTest {
         assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
         assertEquals(
             listOf(
-                "setAppSuspended:$PACKAGE:false",
                 "setAppDisabled:$PACKAGE:false",
+                "setAppSuspended:$PACKAGE:false",
             ),
             repository.calls,
         )
@@ -129,7 +129,7 @@ class PrivilegeSweepItemExecutorTest {
                         else -> error("unexpected operation")
                     }
                 ),
-                repository.executions.single().second,
+                repository.executions.first().second,
             )
         }
     }
@@ -148,12 +148,12 @@ class PrivilegeSweepItemExecutorTest {
         assertSweepExecution(
             snapshot,
             PrivilegeCommandClass("sweep.clear_cache"),
-            repository.executions.single().second,
+            repository.executions.first().second,
         )
     }
 
     @Test
-    fun `already converged freeze and unfreeze succeed without mutation`() = runTest {
+    fun `freeze checks mode conversion while active unfreeze stays a no-op`() = runTest {
         val cases = listOf(
             stored(
                 operation = PrivilegeSweepOperation.FREEZE,
@@ -169,7 +169,9 @@ class PrivilegeSweepItemExecutorTest {
 
             assertEquals(SweepAttemptOutcome.SUCCEEDED, outcome.outcome)
             assertFalse(outcome.rootLaneDegraded)
-            assertTrue(repository.calls.isEmpty())
+            if (snapshot.operation == PrivilegeSweepOperation.FREEZE) {
+                assertEquals(listOf("setAppDisabled:$PACKAGE:true", "setAppSuspended:$PACKAGE:false"), repository.calls)
+            } else assertTrue(repository.calls.isEmpty())
         }
     }
 
@@ -291,7 +293,7 @@ class PrivilegeSweepItemExecutorTest {
         assertEquals(SweepAttemptOutcome.SUCCEEDED, suspend.outcome)
         assertEquals(listOf("setAppSuspended:$PACKAGE:true"), suspendRepository.calls)
         assertEquals(SweepAttemptOutcome.SUCCEEDED, unsuspend.outcome)
-        assertTrue(unsuspendRepository.calls.isEmpty())
+        assertEquals(listOf("setAppSuspended:$PACKAGE:false"), unsuspendRepository.calls)
         assertEquals(SweepAttemptOutcome.FAILED, unknown.outcome)
     }
 

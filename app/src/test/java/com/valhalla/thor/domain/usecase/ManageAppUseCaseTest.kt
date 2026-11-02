@@ -30,6 +30,52 @@ private const val PACKAGE_NAME = "com.example.app"
 
 class ManageAppUseCaseTest {
 
+    @Test fun `verified disable succeeds when suspension cleanup must be preserved`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        repository.suspensionResult = Result.failure(com.valhalla.thor.domain.model.SuspensionPolicyException(
+            com.valhalla.thor.domain.model.SuspensionFailureReason.OWNERSHIP_UNKNOWN))
+        assertTrue(ManageAppUseCase(repository, coordinator).freezeForFreezer(
+            PACKAGE_NAME, com.valhalla.thor.domain.model.FreezerMode.FREEZE).isSuccess)
+    }
+
+    @Test fun `unfreeze enables before a refused ownership read`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        val failure = com.valhalla.thor.domain.model.SuspensionPolicyException(
+            com.valhalla.thor.domain.model.SuspensionFailureReason.OWNERSHIP_UNKNOWN)
+        repository.suspensionResult = Result.failure(failure)
+        val result = ManageAppUseCase(repository, coordinator).forceUnfreeze(PACKAGE_NAME)
+        assertSame(failure, result.exceptionOrNull())
+        assertEquals(listOf("setAppDisabled($PACKAGE_NAME, false)", "setAppSuspended($PACKAGE_NAME, false)"), repository.calls)
+    }
+
+    @Test fun `restoration preserves and reports wellbeing restriction`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        repository.suspensionResult = Result.success(com.valhalla.thor.domain.model.SuspensionChange(setOf("wellbeing")))
+        val result = ManageAppUseCase(repository, coordinator).restoreApp(PACKAGE_NAME, false, true).getOrThrow()
+        assertEquals(setOf("wellbeing"), result.remainingOwners)
+        assertEquals(listOf("setAppDisabled($PACKAGE_NAME, false)", "setAppSuspended($PACKAGE_NAME, false)"), repository.calls)
+    }
+
+    @Test fun `freeze conversion disables before removing own suspension`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        ManageAppUseCase(repository, coordinator).freezeForFreezer(PACKAGE_NAME, com.valhalla.thor.domain.model.FreezerMode.FREEZE).getOrThrow()
+        assertEquals(listOf("setAppDisabled($PACKAGE_NAME, true)", "setAppSuspended($PACKAGE_NAME, false)"), repository.calls)
+        assertEquals(1, coordinator.calls.size)
+    }
+
+    @Test fun `suspend conversion does not enable if own entry cannot be verified`() = runTest {
+        val coordinator = RecordingPackageOperationCoordinator()
+        val repository = RecordingManageSystemRepository { coordinator.currentOwner }
+        repository.suspensionResult = Result.failure(com.valhalla.thor.domain.model.SuspensionPolicyException(
+            com.valhalla.thor.domain.model.SuspensionFailureReason.NOT_VERIFIED))
+        assertTrue(ManageAppUseCase(repository, coordinator).freezeForFreezer(PACKAGE_NAME, com.valhalla.thor.domain.model.FreezerMode.SUSPEND).isFailure)
+        assertEquals(listOf("setAppSuspended($PACKAGE_NAME, true)"), repository.calls)
+    }
+
     @Test
     fun `coordinator is a required non-null constructor dependency`() {
         val constructor = ManageAppUseCase::class.java.getDeclaredConstructor(
@@ -76,8 +122,8 @@ class ManageAppUseCaseTest {
         )
         assertEquals(
             listOf(
-                "setAppSuspended($PACKAGE_NAME, false)",
                 "setAppDisabled($PACKAGE_NAME, false)",
+                "setAppSuspended($PACKAGE_NAME, false)",
             ),
             repository.calls,
         )
@@ -287,6 +333,7 @@ private class RecordingManageSystemRepository(
 ) : SystemRepository {
     val calls = mutableListOf<String>()
     val executions = mutableListOf<Pair<String, PrivilegeExecutionContext>>()
+    var suspensionResult = Result.success(com.valhalla.thor.domain.model.SuspensionChange())
 
     private fun record(
         call: String,
@@ -326,7 +373,7 @@ private class RecordingManageSystemRepository(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = record("setAppSuspended($packageName, $isSuspended)", execution)
+    ): Result<com.valhalla.thor.domain.model.SuspensionChange> = record("setAppSuspended($packageName, $isSuspended)", execution).mapCatching { suspensionResult.getOrThrow() }
 
     override suspend fun uninstallApp(
         packageName: String,
