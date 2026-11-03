@@ -1,0 +1,7 @@
+• ❄️ Quick Settings now switches between Freeze and Unfreeze using the current watchlist, with clearer progress and results.
+
+• ⏸️ Freezing keeps Digital Wellbeing and other apps’ pauses. Unfreeze restores Thor’s controls and explains pauses that remain.
+
+• 🔄 Apps stay in the Freezer list if changing freeze mode only partly succeeds. Suspend is skipped when it cannot preserve an independent pause.
+
+• 💬 Successful Suspend actions now show the right confirmation.
